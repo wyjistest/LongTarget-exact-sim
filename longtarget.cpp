@@ -1,0 +1,3041 @@
+#include "exact_sim.h"
+#include "cuda/calc_score_cuda.h"
+#include <future>
+#include <thread>
+using namespace std;
+struct ExactFragmentInfo
+{
+  ExactFragmentInfo():dnaStartPos(0),skip(false) {}
+  ExactFragmentInfo(const string &s1,long n1,bool n2):sequence(s1),dnaStartPos(n1),skip(n2) {}
+  string sequence;
+  long dnaStartPos;
+  bool skip;
+};
+
+struct ExactSimTaskSpec
+{
+  ExactSimTaskSpec():fragmentIndex(0),dnaStartPos(0),reverseMode(0),parallelMode(0),rule(0) {}
+  ExactSimTaskSpec(size_t n1,long n2,long n3,long n4,int n5,const string &s1):
+    fragmentIndex(n1),dnaStartPos(n2),reverseMode(n3),parallelMode(n4),rule(n5),transformedSequence(s1) {}
+  size_t fragmentIndex;
+  long dnaStartPos;
+  long reverseMode;
+  long parallelMode;
+  int rule;
+  string transformedSequence;
+};
+
+struct LongTargetCudaWorkerMetrics
+{
+  LongTargetCudaWorkerMetrics():
+    device(-1),
+    slot(0),
+    taskCount(0),
+    thresholdSeconds(0.0),
+    simSeconds(0.0),
+    filterSeconds(0.0) {}
+
+  int device;
+  int slot;
+  uint64_t taskCount;
+  double thresholdSeconds;
+  double simSeconds;
+  double filterSeconds;
+};
+
+struct LongTargetCudaDeviceMetrics
+{
+  LongTargetCudaDeviceMetrics():
+    device(-1),
+    workerCount(0),
+    taskCount(0),
+    thresholdSeconds(0.0),
+    simSeconds(0.0),
+    filterSeconds(0.0) {}
+
+  int device;
+  uint64_t workerCount;
+  uint64_t taskCount;
+  double thresholdSeconds;
+  double simSeconds;
+  double filterSeconds;
+};
+
+struct LongTargetExecutionMetrics
+{
+  LongTargetExecutionMetrics():
+    thresholdSeconds(0.0),
+    simSeconds(0.0),
+    postProcessSeconds(0.0),
+    totalSeconds(0.0),
+    thresholdBackend("cpu"),
+    prefilterBackend("disabled"),
+    prefilterHits(0),
+    refineWindowCount(0),
+    refineTotalBp(0),
+    simScanTasks(0),
+    simScanLaunches(0),
+    simTracebackCandidates(0),
+    simTracebackTieCount(0) {}
+
+  double thresholdSeconds;
+  double simSeconds;
+  double postProcessSeconds;
+  double totalSeconds;
+  string thresholdBackend;
+  string prefilterBackend;
+  uint64_t prefilterHits;
+  uint64_t refineWindowCount;
+  uint64_t refineTotalBp;
+  uint64_t simScanTasks;
+  uint64_t simScanLaunches;
+  uint64_t simTracebackCandidates;
+  uint64_t simTracebackTieCount;
+  vector<LongTargetCudaWorkerMetrics> simCudaWorkers;
+  vector<LongTargetCudaDeviceMetrics> simCudaDevices;
+};
+
+struct LongTargetSimScoreMatrixInt
+{
+  int value[128][128];
+};
+
+struct LongTargetWindowPipelineTask
+{
+  LongTargetWindowPipelineTask():taskIndex(0),minScore(0) {}
+  LongTargetWindowPipelineTask(size_t taskIndexValue,int minScoreValue):
+    taskIndex(taskIndexValue),
+    minScore(minScoreValue) {}
+
+  size_t taskIndex;
+  int minScore;
+};
+
+struct LongTargetWindowPipelinePreparedBatch
+{
+  LongTargetWindowPipelinePreparedBatch():
+    valid(false),
+    usedInitialReduce(false),
+    usedInitialProposals(false),
+    gpuStageNanoseconds(0)
+  {
+  }
+
+  bool valid;
+  bool usedInitialReduce;
+  bool usedInitialProposals;
+  uint64_t gpuStageNanoseconds;
+  vector<LongTargetWindowPipelineTask> batchTasks;
+  string paddedQuery;
+  vector<string> paddedTargets;
+  vector<SimKernelContext> contexts;
+  vector<SimScanCudaInitialBatchResult> cudaResults;
+  SimScanCudaBatchResult cudaBatchResult;
+};
+
+static inline string longtargetSimInitialReduceBackendLabel()
+{
+  if(!simCudaInitialReduceRequestEnabledRuntime())
+  {
+    return "off";
+  }
+
+  const char *initialReduceBackendEnv = getenv("LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND");
+  if(initialReduceBackendEnv != NULL && initialReduceBackendEnv[0] != '\0')
+  {
+    if(strcmp(initialReduceBackendEnv,"hash") == 0)
+    {
+      return "hash";
+    }
+    if(strcmp(initialReduceBackendEnv,"segmented") == 0)
+    {
+      return "segmented";
+    }
+    if(strcmp(initialReduceBackendEnv,"ordered_segmented_v3") == 0 ||
+       strcmp(initialReduceBackendEnv,"ordered-segmented-v3") == 0)
+    {
+      return "ordered_segmented_v3";
+    }
+    return "legacy";
+  }
+
+  const char *legacyHashBackendEnv = getenv("LONGTARGET_SIM_CUDA_INITIAL_HASH_REDUCE");
+  if(legacyHashBackendEnv != NULL &&
+     legacyHashBackendEnv[0] != '\0' &&
+     strcmp(legacyHashBackendEnv,"0") != 0)
+  {
+    return "hash";
+  }
+
+  return simCudaMainlineResidencyEnabledRuntime() ? "ordered_segmented_v3" : "legacy";
+}
+
+static inline size_t longtarget_window_pipeline_batch_size()
+{
+  static const size_t batchSize = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_WINDOW_PIPELINE_BATCH_SIZE");
+    if(env == NULL || env[0] == '\0')
+    {
+      return static_cast<size_t>(8u);
+    }
+    char *end = NULL;
+    long parsed = strtol(env,&end,10);
+    if(end == env)
+    {
+      return static_cast<size_t>(8u);
+    }
+    if(parsed < 2)
+    {
+      return static_cast<size_t>(2u);
+    }
+    if(parsed > 64)
+    {
+      return static_cast<size_t>(64u);
+    }
+    return static_cast<size_t>(parsed);
+  }();
+  return batchSize;
+}
+
+static inline bool longtarget_window_pipeline_enabled_runtime(bool twoStage)
+{
+  return !twoStage &&
+         simCudaWindowPipelineEnabledRuntime() &&
+         !simFastEnabledRuntime() &&
+         !simCudaValidateEnabledRuntime() &&
+         sim_scan_cuda_is_built();
+}
+
+static inline bool longtarget_window_pipeline_overlap_enabled_runtime(bool useWindowPipeline)
+{
+  return useWindowPipeline &&
+         simCudaWindowPipelineOverlapEnabledRuntime();
+}
+
+static inline int longtarget_prepare_exact_sim_min_score(string &rnaSequence,
+                                                         const string &transformedSequence,
+                                                         ExactSimRunContext &runContext,
+                                                         CalcScoreWorkspace &workspace,
+                                                         ExactSimTaskTiming *taskTiming)
+{
+  const double thresholdStart = taskTiming != NULL ? exact_sim_now_seconds() : 0.0;
+  const int minScore = getExactReferenceMinScore(rnaSequence,
+                                                 transformedSequence,
+                                                 &runContext,
+                                                 workspace);
+  if(taskTiming != NULL)
+  {
+    taskTiming->thresholdSeconds += exact_sim_now_seconds() - thresholdStart;
+  }
+  return minScore;
+}
+
+static inline void longtarget_run_exact_sim_single_stage_with_min_score(string &rnaSequence,
+                                                                        const ExactSimTaskSpec &task,
+                                                                        const vector<ExactFragmentInfo> &fragments,
+                                                                        int minScore,
+                                                                        const ExactSimConfig &exactSimConfig,
+                                                                        const struct para &paraList,
+                                                                        vector<struct triplex> &triplexList,
+                                                                        ExactSimTaskTiming *taskTiming,
+                                                                        double *filterSecondsOut);
+
+static inline bool longtarget_task_supports_window_pipeline(const string &rnaSequence,
+                                                            const ExactSimTaskSpec &task,
+                                                            int minScore)
+{
+  return !rnaSequence.empty() &&
+         !task.transformedSequence.empty() &&
+         rnaSequence.size() <= 8192u &&
+         task.transformedSequence.size() <= 8192u &&
+         minScore >= 0 &&
+         minScore <= static_cast<int>(0x7fffffff);
+}
+
+static inline bool longtarget_flush_window_pipeline_batch(string &rnaSequence,
+                                                          const vector<ExactSimTaskSpec> &tasks,
+                                                          const vector<ExactFragmentInfo> &fragments,
+                                                          const vector<LongTargetWindowPipelineTask> &batchTasks,
+                                                          const ExactSimConfig &exactSimConfig,
+                                                          const struct para &paraList,
+                                                          vector< vector<struct triplex> > &taskTriplexLists,
+                                                          vector<ExactSimTaskTiming> &taskTimings,
+                                                          vector<double> &taskFilterSeconds);
+
+static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSequence,
+                                                                const vector<ExactSimTaskSpec> &tasks,
+                                                                const vector<LongTargetWindowPipelineTask> &batchTasks,
+                                                                const ExactSimConfig &exactSimConfig,
+                                                                LongTargetWindowPipelinePreparedBatch &preparedBatch);
+
+static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<ExactSimTaskSpec> &tasks,
+                                                                const vector<ExactFragmentInfo> &fragments,
+                                                                const struct para &paraList,
+                                                                LongTargetWindowPipelinePreparedBatch &preparedBatch,
+                                                                vector< vector<struct triplex> > &taskTriplexLists,
+                                                                vector<ExactSimTaskTiming> &taskTimings,
+                                                                vector<double> &taskFilterSeconds);
+
+struct lgInfo
+{
+  lgInfo(){};
+  lgInfo(const string &s1,const string &s2,const string &s3,const string &s4,const string &s5,const string &s6,int s7,const string &s8):lncName(s1),lncSeq(s2),species(s3),dnaChroTag(s4),fileName(s5),dnaSeq(s6),startGenome(s7),resultDir(s8) {};
+  string lncName;
+  string lncSeq;
+  string species;
+  string dnaChroTag;
+  string fileName;
+  string dnaSeq;
+  int startGenome;
+  string resultDir;
+};
+struct para
+{
+  string file1path;
+  string file2path;
+  string outpath;
+  int rule;
+  int cutLength;
+  int strand;
+  int overlapLength;
+  int minScore;
+  bool detailOutput;
+  int ntMin;
+  int ntMax;
+  float scoreMin;
+  float minIdentity;
+  float minStability;
+  int penaltyT;
+  int penaltyC;
+  int cDistance;
+  int cLength;
+};
+void cutSequence(string& seq, vector<string>& seqsVec, vector<int>& seqsStartPos, int& cutLength, int& overlapLength,int& cut_num);
+void show_help();
+void initEnv(int argc,char * const *argv,struct para &paraList);
+void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vector<struct triplex> &sort_triplex_list,LongTargetExecutionMetrics *metrics=NULL);
+bool comp(const triplex &a, const triplex &b);
+string getStrand(int reverse,int strand);
+int same_seq(string &w_str);
+void printResult(string &species,struct para paraList,string &lncName,string &dnaFile,vector<struct triplex> &sort_triplex_list,string &chroTag,string &dnaSequence,int start_genome,string &c_tmp_dd,string &c_tmp_length,string &resultDir);
+string readDna(string dnaFileName,string &species,string &chroTag,string &startGenome);
+string readRna(string rnaFileName,string &lncName);
+
+static inline double longtarget_now_seconds()
+{
+  return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+static inline bool longtarget_benchmark_enabled()
+{
+  const char *benchmarkEnv = getenv("LONGTARGET_BENCHMARK");
+  return benchmarkEnv != NULL && benchmarkEnv[0] != '\0' && strcmp(benchmarkEnv,"0") != 0;
+}
+
+static inline bool longtarget_progress_enabled()
+{
+  static const bool enabled = []()
+  {
+    const char *progressEnv = getenv("LONGTARGET_PROGRESS");
+    return progressEnv != NULL && progressEnv[0] != '\0' && strcmp(progressEnv,"0") != 0;
+  }();
+  return enabled;
+}
+
+static inline bool longtarget_cuda_enabled()
+{
+  const char *cudaEnv = getenv("LONGTARGET_ENABLE_CUDA");
+  return cudaEnv != NULL && cudaEnv[0] != '\0' && strcmp(cudaEnv,"0") != 0;
+}
+
+static inline int longtarget_cuda_device()
+{
+  const char *deviceEnv = getenv("LONGTARGET_CUDA_DEVICE");
+  if(deviceEnv == NULL || deviceEnv[0] == '\0')
+  {
+    return -1;
+  }
+  return atoi(deviceEnv);
+}
+
+static inline bool longtarget_cuda_validate_enabled()
+{
+  const char *validateEnv = getenv("LONGTARGET_CUDA_VALIDATE");
+  return validateEnv != NULL && validateEnv[0] != '\0' && strcmp(validateEnv,"0") != 0;
+}
+
+static inline bool longtarget_write_tfosorted_lite_enabled()
+{
+  const char *env = getenv("LONGTARGET_WRITE_TFOSORTED_LITE");
+  return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+}
+
+static inline vector<int> longtarget_cuda_devices_runtime()
+{
+  static const vector<int> devices = []()
+  {
+    vector<int> parsed;
+    const char *env = getenv("LONGTARGET_CUDA_DEVICES");
+    if(env == NULL || env[0] == '\0')
+    {
+      return parsed;
+    }
+    const string spec(env);
+    const char *p = spec.c_str();
+    while(*p != '\0')
+    {
+      while(*p == ' ' || *p == '\t' || *p == ',')
+      {
+        ++p;
+      }
+      if(*p == '\0')
+      {
+        break;
+      }
+      char *end = NULL;
+      long v = strtol(p, &end, 10);
+      if(end == p)
+      {
+        break;
+      }
+      if(v >= 0 && v <= 1024)
+      {
+        parsed.push_back(static_cast<int>(v));
+      }
+      p = end;
+      while(*p != '\0' && *p != ',')
+      {
+        ++p;
+      }
+    }
+    sort(parsed.begin(), parsed.end());
+    parsed.erase(unique(parsed.begin(), parsed.end()), parsed.end());
+    return parsed;
+  }();
+  return devices;
+}
+
+static inline vector<SimCudaWorkerAssignment> longtarget_cuda_worker_assignments_runtime()
+{
+  static const vector<SimCudaWorkerAssignment> assignments = []()
+  {
+    vector<int> devices = longtarget_cuda_devices_runtime();
+    if(devices.empty())
+    {
+      const int singleDevice = longtarget_cuda_device();
+      if(singleDevice >= 0)
+      {
+        devices.push_back(singleDevice);
+      }
+      else if(longtarget_cuda_enabled())
+      {
+        devices.push_back(0);
+      }
+    }
+    return simBuildCudaWorkerAssignments(devices,
+                                         simCudaWorkersPerDeviceRuntime());
+  }();
+  return assignments;
+}
+
+enum LongTargetOutputMode
+{
+  LONGTARGET_OUTPUT_FULL = 0,
+  LONGTARGET_OUTPUT_TFOSORTED = 1,
+  LONGTARGET_OUTPUT_LITE = 2,
+};
+
+static inline LongTargetOutputMode longtarget_output_mode_runtime()
+{
+  static const LongTargetOutputMode mode = []()
+  {
+    const char *env = getenv("LONGTARGET_OUTPUT_MODE");
+    if(env == NULL || env[0] == '\0')
+    {
+      return LONGTARGET_OUTPUT_FULL;
+    }
+    string value(env);
+    for(size_t i = 0; i < value.size(); ++i)
+    {
+      value[i] = static_cast<char>(tolower(static_cast<unsigned char>(value[i])));
+    }
+    if(value == "tfosorted" || value == "tfo")
+    {
+      return LONGTARGET_OUTPUT_TFOSORTED;
+    }
+    if(value == "lite" || value == "tfosorted-lite" || value == "tfo-lite")
+    {
+      return LONGTARGET_OUTPUT_LITE;
+    }
+    if(value == "full")
+    {
+      return LONGTARGET_OUTPUT_FULL;
+    }
+    return LONGTARGET_OUTPUT_FULL;
+  }();
+  return mode;
+}
+
+static inline void appendExactSimTask(vector<ExactSimTaskSpec> &tasks,
+                                      size_t fragmentIndex,
+                                      const string &fragmentSequence,
+                                      long dnaStartPos,
+                                      long reverseMode,
+                                      long parallelMode,
+                                      int rule)
+{
+  string transformedSequence = transferString(fragmentSequence,reverseMode,parallelMode,rule);
+  if(reverseMode == 1)
+  {
+    reverseSeq(transformedSequence);
+  }
+  tasks.push_back(ExactSimTaskSpec(fragmentIndex,dnaStartPos,reverseMode,parallelMode,rule,transformedSequence));
+}
+
+static inline void appendExactSimTaskRange(vector<ExactSimTaskSpec> &tasks,
+                                           size_t fragmentIndex,
+                                           const string &fragmentSequence,
+                                           long dnaStartPos,
+                                           long reverseMode,
+                                           long parallelMode,
+                                           int firstRule,
+                                           int lastRule)
+{
+  for(int rule = firstRule; rule <= lastRule; ++rule)
+  {
+    appendExactSimTask(tasks,fragmentIndex,fragmentSequence,dnaStartPos,reverseMode,parallelMode,rule);
+  }
+}
+
+static inline void filterTriplexListInPlace(vector<struct triplex> &triplexList,const struct para &paraList)
+{
+  size_t writeIndex = 0;
+  for(size_t readIndex = 0; readIndex < triplexList.size(); ++readIndex)
+  {
+    const triplex &candidate = triplexList[readIndex];
+    if(candidate.score>=paraList.scoreMin&&candidate.identity>=paraList.minIdentity&&candidate.tri_score>=paraList.minStability)
+    {
+      if(writeIndex != readIndex)
+      {
+        triplexList[writeIndex] = candidate;
+      }
+      ++writeIndex;
+    }
+  }
+  triplexList.resize(writeIndex);
+}
+
+static inline void longtarget_run_exact_sim_single_stage_with_min_score(string &rnaSequence,
+                                                                        const ExactSimTaskSpec &task,
+                                                                        const vector<ExactFragmentInfo> &fragments,
+                                                                        int minScore,
+                                                                        const ExactSimConfig &exactSimConfig,
+                                                                        const struct para &paraList,
+                                                                        vector<struct triplex> &triplexList,
+                                                                        ExactSimTaskTiming *taskTiming,
+                                                                        double *filterSecondsOut)
+{
+  runExactReferenceSIMWithMinScore(rnaSequence,
+                                   task.transformedSequence,
+                                   fragments[task.fragmentIndex].sequence,
+                                   task.dnaStartPos,
+                                   task.reverseMode,
+                                   task.parallelMode,
+                                   task.rule,
+                                   minScore,
+                                   exactSimConfig,
+                                   paraList.ntMin,
+                                   paraList.ntMax,
+                                   paraList.penaltyT,
+                                   paraList.penaltyC,
+                                   triplexList,
+                                   taskTiming);
+  const double filterStart = longtarget_now_seconds();
+  filterTriplexListInPlace(triplexList,paraList);
+  if(filterSecondsOut != NULL)
+  {
+    *filterSecondsOut = longtarget_now_seconds() - filterStart;
+  }
+}
+
+static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSequence,
+                                                                const vector<ExactSimTaskSpec> &tasks,
+                                                                const vector<LongTargetWindowPipelineTask> &batchTasks,
+                                                                const ExactSimConfig &exactSimConfig,
+                                                                LongTargetWindowPipelinePreparedBatch &preparedBatch)
+{
+  preparedBatch = LongTargetWindowPipelinePreparedBatch();
+  preparedBatch.batchTasks = batchTasks;
+  if(batchTasks.size() <= 1)
+  {
+    return false;
+  }
+
+  const size_t batchSize = batchTasks.size();
+  const long M = static_cast<long>(rnaSequence.size());
+  const long N = static_cast<long>(tasks[batchTasks[0].taskIndex].transformedSequence.size());
+  if(M <= 0 || N <= 0)
+  {
+    return false;
+  }
+
+  const bool benchmarkEnabled = simBenchmarkEnabledRuntime();
+  const std::chrono::steady_clock::time_point gpuStageStart =
+    benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+
+  preparedBatch.paddedQuery = ' ' + rnaSequence;
+  preparedBatch.paddedTargets.assign(batchSize,string());
+  preparedBatch.contexts.reserve(batchSize);
+  vector<LongTargetSimScoreMatrixInt> scoreMatrices(batchSize);
+  vector<SimScanCudaInitialBatchRequest> cudaRequests(batchSize);
+  const bool useInitialProposals = simCudaInitialProposalRequestEnabledRuntime();
+  const bool useInitialReduce = simCudaInitialReduceRequestEnabledRuntime();
+
+  for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
+  {
+    const ExactSimTaskSpec &task = tasks[batchTasks[batchOffset].taskIndex];
+    if(static_cast<long>(task.transformedSequence.size()) != N)
+    {
+      return false;
+    }
+    preparedBatch.paddedTargets[batchOffset] = ' ' + task.transformedSequence;
+    preparedBatch.contexts.emplace_back(M,N);
+    initializeSimKernel(exactSimConfig.matchScore,
+                        exactSimConfig.mismatchScore,
+                        exactSimConfig.gapOpen,
+                        exactSimConfig.gapExtend,
+                        preparedBatch.contexts.back());
+    fillSimScoreMatrixInt(preparedBatch.contexts.back().scoreMatrix,scoreMatrices[batchOffset].value);
+
+    SimScanCudaInitialBatchRequest &cudaRequest = cudaRequests[batchOffset];
+    cudaRequest.A = preparedBatch.paddedQuery.c_str();
+    cudaRequest.B = preparedBatch.paddedTargets[batchOffset].c_str();
+    cudaRequest.queryLength = static_cast<int>(M);
+    cudaRequest.targetLength = static_cast<int>(N);
+    cudaRequest.gapOpen = static_cast<int>(preparedBatch.contexts.back().gapOpen);
+    cudaRequest.gapExtend = static_cast<int>(preparedBatch.contexts.back().gapExtend);
+    cudaRequest.scoreMatrix = scoreMatrices[batchOffset].value;
+    cudaRequest.eventScoreFloor = batchTasks[batchOffset].minScore;
+    cudaRequest.reduceCandidates = useInitialReduce;
+    cudaRequest.proposalCandidates = useInitialProposals;
+    cudaRequest.persistAllCandidateStatesOnDevice = simCudaInitialReducePersistOnDeviceRuntime();
+  }
+
+  preparedBatch.usedInitialReduce = useInitialReduce;
+  preparedBatch.usedInitialProposals = useInitialProposals;
+  string cudaError;
+  if(!(sim_scan_cuda_init(simCudaDeviceRuntime(),&cudaError) &&
+       sim_scan_cuda_enumerate_initial_events_row_major_true_batch(cudaRequests,
+                                                                   &preparedBatch.cudaResults,
+                                                                   &preparedBatch.cudaBatchResult,
+                                                                   &cudaError) &&
+       preparedBatch.cudaResults.size() == batchSize))
+  {
+    return false;
+  }
+
+  if(benchmarkEnabled)
+  {
+    preparedBatch.gpuStageNanoseconds = simElapsedNanoseconds(gpuStageStart);
+  }
+  preparedBatch.valid = true;
+  return true;
+}
+
+static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<ExactSimTaskSpec> &tasks,
+                                                                const vector<ExactFragmentInfo> &fragments,
+                                                                const struct para &paraList,
+                                                                LongTargetWindowPipelinePreparedBatch &preparedBatch,
+                                                                vector< vector<struct triplex> > &taskTriplexLists,
+                                                                vector<ExactSimTaskTiming> &taskTimings,
+                                                                vector<double> &taskFilterSeconds)
+{
+  if(!preparedBatch.valid || preparedBatch.batchTasks.empty() || preparedBatch.cudaResults.size() != preparedBatch.batchTasks.size())
+  {
+    return false;
+  }
+
+  const size_t batchSize = preparedBatch.batchTasks.size();
+  const long N = static_cast<long>(tasks[preparedBatch.batchTasks[0].taskIndex].transformedSequence.size());
+  if(N <= 0)
+  {
+    return false;
+  }
+
+  const bool benchmarkEnabled = simBenchmarkEnabledRuntime();
+  uint64_t cpuApplyNanoseconds = 0;
+  const std::chrono::steady_clock::time_point cpuApplyStart =
+    benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+
+  if(benchmarkEnabled)
+  {
+    recordSimInitialScanGpuNanoseconds(simSecondsToNanoseconds(preparedBatch.cudaBatchResult.gpuSeconds));
+    recordSimInitialScanD2HNanoseconds(simSecondsToNanoseconds(preparedBatch.cudaBatchResult.d2hSeconds));
+    recordSimInitialScanDiagNanoseconds(simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialDiagSeconds));
+    recordSimInitialScanOnlineReduceNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialOnlineReduceSeconds));
+    recordSimInitialScanWaitNanoseconds(simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialWaitSeconds));
+    recordSimInitialScanCountCopyNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialCountCopySeconds));
+    recordSimInitialScanBaseUploadNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialBaseUploadSeconds));
+    recordSimInitialProposalSelectD2HNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialProposalSelectD2HSeconds));
+    recordSimInitialScanSyncWaitNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSyncWaitSeconds));
+    recordSimInitialScanTailNanoseconds(simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialScanTailSeconds));
+    recordSimInitialHashReduceNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialHashReduceSeconds));
+    recordSimInitialSegmentedReduceNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSegmentedReduceSeconds));
+    recordSimInitialSegmentedCompactNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSegmentedCompactSeconds));
+    recordSimInitialTopKNanoseconds(
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialTopKSeconds));
+    recordSimInitialSegmentedStateStats(preparedBatch.cudaBatchResult.initialSegmentedTileStateCount,
+                                        preparedBatch.cudaBatchResult.initialSegmentedGroupedStateCount);
+  }
+  recordSimInitialScanBackend(true,
+                              preparedBatch.cudaBatchResult.taskCount,
+                              preparedBatch.cudaBatchResult.launchCount);
+  recordSimWindowPipelineBatch(static_cast<uint64_t>(batchSize));
+  if(preparedBatch.usedInitialReduce)
+  {
+    recordSimInitialReduceReplayStats(preparedBatch.cudaBatchResult.initialReduceReplayStats);
+  }
+  if(preparedBatch.usedInitialProposals)
+  {
+    recordSimProposalGpuNanoseconds(simSecondsToNanoseconds(preparedBatch.cudaBatchResult.proposalSelectGpuSeconds));
+    if(preparedBatch.cudaBatchResult.usedInitialProposalV2Path)
+    {
+      recordSimInitialProposalV2(1,preparedBatch.cudaBatchResult.initialProposalV2RequestCount);
+    }
+    if(preparedBatch.cudaBatchResult.usedInitialProposalV2DirectTopKPath)
+    {
+      recordSimInitialProposalDirectTopK(1,
+                                         preparedBatch.cudaBatchResult.initialProposalLogicalCandidateCount,
+                                         preparedBatch.cudaBatchResult.initialProposalMaterializedCandidateCount,
+                                         simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialProposalDirectTopKGpuSeconds));
+    }
+    if(preparedBatch.cudaBatchResult.usedInitialProposalV3Path)
+    {
+      recordSimInitialProposalV3(1,
+                                 preparedBatch.cudaBatchResult.initialProposalV3RequestCount,
+                                 preparedBatch.cudaBatchResult.initialProposalV3SelectedStateCount,
+                                 simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialProposalV3GpuSeconds));
+    }
+  }
+
+  for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
+  {
+    SimScanCudaInitialBatchResult &result = preparedBatch.cudaResults[batchOffset];
+    recordSimInitialEvents(result.eventCount);
+    recordSimInitialRunSummaries(result.runSummaryCount);
+    if(preparedBatch.usedInitialReduce || preparedBatch.usedInitialProposals)
+    {
+      recordSimInitialAllCandidateStates(result.allCandidateStateCount);
+      recordSimInitialStoreBytesD2H((preparedBatch.usedInitialProposals ||
+                                     result.persistentSafeStoreHandle.valid) ?
+                                    0 :
+                                    (static_cast<uint64_t>(result.allCandidateStates.size()) *
+                                     static_cast<uint64_t>(sizeof(SimScanCudaCandidateState))));
+      if(preparedBatch.usedInitialReduce)
+      {
+        recordSimInitialReducedCandidates(static_cast<uint64_t>(result.candidateStates.size()));
+      }
+      else
+      {
+        recordSimProposalAllCandidateStates(result.allCandidateStateCount);
+        recordSimProposalBytesD2H(static_cast<uint64_t>(result.candidateStates.size()) *
+                                  static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)));
+        recordSimProposalSelected(static_cast<uint64_t>(result.candidateStates.size()));
+      }
+      applySimCudaInitialReduceResults(result.candidateStates,
+                                       result.runningMin,
+                                       result.allCandidateStates,
+                                       result.persistentSafeStoreHandle,
+                                       result.eventCount,
+                                       preparedBatch.contexts[batchOffset],
+                                       benchmarkEnabled,
+                                       preparedBatch.usedInitialProposals);
+    }
+    else
+    {
+      recordSimInitialSummaryBytesD2H(static_cast<uint64_t>(result.initialRunSummaries.size()) *
+                                      static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
+      applySimCudaInitialRunSummariesToContext(result.initialRunSummaries,
+                                               result.eventCount,
+                                               preparedBatch.contexts[batchOffset],
+                                               benchmarkEnabled);
+    }
+  }
+
+  if(benchmarkEnabled)
+  {
+    cpuApplyNanoseconds = simElapsedNanoseconds(cpuApplyStart);
+    recordSimInitialScanNanoseconds(preparedBatch.gpuStageNanoseconds + cpuApplyNanoseconds);
+  }
+  const double sharedInitialSeconds =
+    batchSize > 0 ? static_cast<double>(preparedBatch.gpuStageNanoseconds + cpuApplyNanoseconds) /
+                    1.0e9 / static_cast<double>(batchSize) : 0.0;
+
+  for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
+  {
+    const LongTargetWindowPipelineTask &batchTask = preparedBatch.batchTasks[batchOffset];
+    const ExactSimTaskSpec &task = tasks[batchTask.taskIndex];
+    const string &sourceSequence = fragments[task.fragmentIndex].sequence;
+    SimRequest request(sourceSequence,
+                       task.dnaStartPos,
+                       batchTask.minScore,
+                       task.reverseMode,
+                       task.parallelMode,
+                       paraList.ntMin,
+                       paraList.ntMax,
+                       paraList.penaltyT,
+                       paraList.penaltyC);
+
+    recordSimSolverBackend(SIM_SOLVER_BACKEND_CUDA_WINDOW_PIPELINE);
+    taskTimings[batchTask.taskIndex].simSeconds += sharedInitialSeconds;
+
+    const double simStart = exact_sim_now_seconds();
+    runSimCandidateLoop(request,
+                        preparedBatch.paddedQuery.c_str(),
+                        preparedBatch.paddedTargets[batchOffset].c_str(),
+                        N,
+                        task.rule,
+                        preparedBatch.contexts[batchOffset],
+                        taskTriplexLists[batchTask.taskIndex]);
+    taskTimings[batchTask.taskIndex].simSeconds += exact_sim_now_seconds() - simStart;
+
+    const double filterStart = longtarget_now_seconds();
+    filterTriplexListInPlace(taskTriplexLists[batchTask.taskIndex],paraList);
+    taskFilterSeconds[batchTask.taskIndex] = longtarget_now_seconds() - filterStart;
+  }
+  return true;
+}
+
+static inline bool longtarget_flush_window_pipeline_batch(string &rnaSequence,
+                                                          const vector<ExactSimTaskSpec> &tasks,
+                                                          const vector<ExactFragmentInfo> &fragments,
+                                                          const vector<LongTargetWindowPipelineTask> &batchTasks,
+                                                          const ExactSimConfig &exactSimConfig,
+                                                          const struct para &paraList,
+                                                          vector< vector<struct triplex> > &taskTriplexLists,
+                                                          vector<ExactSimTaskTiming> &taskTimings,
+                                                          vector<double> &taskFilterSeconds)
+{
+  LongTargetWindowPipelinePreparedBatch preparedBatch;
+  if(!longtarget_prepare_window_pipeline_batch_gpu(rnaSequence,
+                                                   tasks,
+                                                   batchTasks,
+                                                   exactSimConfig,
+                                                   preparedBatch))
+  {
+    return false;
+  }
+  return longtarget_execute_window_pipeline_batch_cpu(tasks,
+                                                      fragments,
+                                                      paraList,
+                                                      preparedBatch,
+                                                      taskTriplexLists,
+                                                      taskTimings,
+                                                      taskFilterSeconds);
+}
+
+static inline void finalizeLongTargetCudaWorkerMetrics(const vector<SimCudaWorkerAssignment> &assignments,
+                                                       const vector<int> &taskWorkerIndices,
+                                                       const vector<ExactSimTaskTiming> &taskTimings,
+                                                       const vector<double> &taskFilterSeconds,
+                                                       LongTargetExecutionMetrics *metrics)
+{
+  if(metrics == NULL)
+  {
+    return;
+  }
+
+  metrics->simCudaWorkers.assign(assignments.size(),LongTargetCudaWorkerMetrics());
+  metrics->simCudaDevices.clear();
+
+  map<int,size_t> deviceMetricIndices;
+  for(size_t workerIndex = 0; workerIndex < assignments.size(); ++workerIndex)
+  {
+    LongTargetCudaWorkerMetrics &workerMetrics = metrics->simCudaWorkers[workerIndex];
+    workerMetrics.device = assignments[workerIndex].device;
+    workerMetrics.slot = assignments[workerIndex].slot;
+
+    map<int,size_t>::iterator existingDevice = deviceMetricIndices.find(assignments[workerIndex].device);
+    if(existingDevice == deviceMetricIndices.end())
+    {
+      const size_t deviceMetricIndex = metrics->simCudaDevices.size();
+      deviceMetricIndices.insert(make_pair(assignments[workerIndex].device,deviceMetricIndex));
+      metrics->simCudaDevices.push_back(LongTargetCudaDeviceMetrics());
+      metrics->simCudaDevices.back().device = assignments[workerIndex].device;
+      existingDevice = deviceMetricIndices.find(assignments[workerIndex].device);
+    }
+    metrics->simCudaDevices[existingDevice->second].workerCount += 1;
+  }
+
+  for(size_t taskIndex = 0; taskIndex < taskWorkerIndices.size(); ++taskIndex)
+  {
+    const int workerIndex = taskWorkerIndices[taskIndex];
+    if(workerIndex < 0 || static_cast<size_t>(workerIndex) >= metrics->simCudaWorkers.size())
+    {
+      continue;
+    }
+
+    LongTargetCudaWorkerMetrics &workerMetrics = metrics->simCudaWorkers[static_cast<size_t>(workerIndex)];
+    workerMetrics.taskCount += 1;
+    workerMetrics.thresholdSeconds += taskTimings[taskIndex].thresholdSeconds;
+    workerMetrics.simSeconds += taskTimings[taskIndex].simSeconds;
+    workerMetrics.filterSeconds += taskFilterSeconds[taskIndex];
+
+    const size_t deviceMetricIndex = deviceMetricIndices[workerMetrics.device];
+    LongTargetCudaDeviceMetrics &deviceMetrics = metrics->simCudaDevices[deviceMetricIndex];
+    deviceMetrics.taskCount += 1;
+    deviceMetrics.thresholdSeconds += taskTimings[taskIndex].thresholdSeconds;
+    deviceMetrics.simSeconds += taskTimings[taskIndex].simSeconds;
+    deviceMetrics.filterSeconds += taskFilterSeconds[taskIndex];
+  }
+}
+
+static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetrics &metrics)
+{
+  uint64_t simSolverCpuCalls = 0;
+  uint64_t simSolverCudaFullExactCalls = 0;
+  uint64_t simSolverCudaWindowPipelineCalls = 0;
+  getSimSolverBackendCounts(simSolverCpuCalls,
+                            simSolverCudaFullExactCalls,
+                            simSolverCudaWindowPipelineCalls);
+  string simSolverBackend = "cpu";
+  const int simSolverBackendModes =
+    (simSolverCpuCalls > 0 ? 1 : 0) +
+    (simSolverCudaFullExactCalls > 0 ? 1 : 0) +
+    (simSolverCudaWindowPipelineCalls > 0 ? 1 : 0);
+  if(simSolverBackendModes > 1)
+  {
+    simSolverBackend = "mixed";
+  }
+  else if(simSolverCudaWindowPipelineCalls > 0)
+  {
+    simSolverBackend = "cuda_window_pipeline";
+  }
+  else if(simSolverCudaFullExactCalls > 0)
+  {
+    simSolverBackend = "cuda_full_exact";
+  }
+  cerr<<"benchmark.sim_solver_backend="<<simSolverBackend<<endl;
+  uint64_t simWindowPipelineBatches = 0;
+  uint64_t simWindowPipelineTasksBatched = 0;
+  uint64_t simWindowPipelineTaskFallbacks = 0;
+  getSimWindowPipelineStats(simWindowPipelineBatches,
+                            simWindowPipelineTasksBatched,
+                            simWindowPipelineTaskFallbacks);
+  cerr<<"benchmark.sim_window_pipeline_batches="<<simWindowPipelineBatches<<endl;
+  cerr<<"benchmark.sim_window_pipeline_tasks_batched="<<simWindowPipelineTasksBatched<<endl;
+  cerr<<"benchmark.sim_window_pipeline_task_fallbacks="<<simWindowPipelineTaskFallbacks<<endl;
+  cerr<<"benchmark.sim_window_pipeline_overlap_enabled="
+      <<(simCudaWindowPipelineOverlapEnabledRuntime() ? 1 : 0)
+      <<endl;
+  cerr<<"benchmark.sim_window_pipeline_overlap_batches="
+      <<getSimWindowPipelineOverlapBatchCount()
+      <<endl;
+
+  uint64_t simInitialCpuCalls = 0;
+  uint64_t simInitialCudaCalls = 0;
+  getSimInitialScanBackendCounts(simInitialCpuCalls,simInitialCudaCalls);
+  string simInitialBackend = "cpu";
+  if(simInitialCudaCalls > 0)
+  {
+    simInitialBackend = (simInitialCpuCalls == 0) ? "cuda" : "mixed";
+  }
+  cerr<<"benchmark.sim_initial_backend="<<simInitialBackend<<endl;
+  cerr<<"benchmark.sim_initial_reduce_backend="<<longtargetSimInitialReduceBackendLabel()<<endl;
+  cerr<<"benchmark.sim_initial_residency_mode="
+      <<(simCudaMainlineResidencyEnabledRuntime() ? 1 : 0)
+      <<endl;
+  cerr<<"benchmark.sim_proposal_backend="
+      <<(simCudaProposalLoopEnabledRuntime() ? "cuda" : "off")
+      <<endl;
+
+  uint64_t simRegionCpuCalls = 0;
+  uint64_t simRegionCudaCalls = 0;
+  getSimRegionScanBackendCounts(simRegionCpuCalls,simRegionCudaCalls);
+  string simRegionBackend = "cpu";
+  if(simRegionCudaCalls > 0)
+  {
+    simRegionBackend = (simRegionCpuCalls == 0) ? "cuda" : "mixed";
+  }
+  cerr<<"benchmark.sim_region_backend="<<simRegionBackend<<endl;
+
+  uint64_t simLocateCpuCalls = 0;
+  uint64_t simLocateCudaCalls = 0;
+  getSimLocateBackendCounts(simLocateCpuCalls,simLocateCudaCalls);
+  string simLocateBackend = "cpu";
+  if(simLocateCudaCalls > 0)
+  {
+    simLocateBackend = (simLocateCpuCalls == 0) ? "cuda" : "mixed";
+  }
+  cerr<<"benchmark.sim_locate_backend="<<simLocateBackend<<endl;
+  uint64_t simLocateExactCalls = 0;
+  uint64_t simLocateFastCalls = 0;
+  uint64_t simLocateSafeWorksetCalls = 0;
+  uint64_t simLocateFastFallbacks = 0;
+  getSimLocateModeCounts(simLocateExactCalls,
+                         simLocateFastCalls,
+                         simLocateSafeWorksetCalls,
+                         simLocateFastFallbacks);
+  string simLocateMode = "exact";
+  const bool sawLocateExact = simLocateExactCalls > 0;
+  const bool sawLocateFast = simLocateFastCalls > 0 || simLocateFastFallbacks > 0;
+  const bool sawLocateSafeWorkset = simLocateSafeWorksetCalls > 0;
+  const int locateModeVariants =
+    (sawLocateExact ? 1 : 0) +
+    (sawLocateFast ? 1 : 0) +
+    (sawLocateSafeWorkset ? 1 : 0);
+  if(locateModeVariants > 1)
+  {
+    simLocateMode = "mixed";
+  }
+  else if(sawLocateSafeWorkset)
+  {
+    simLocateMode = "safe_workset";
+  }
+  else if(sawLocateFast)
+  {
+    simLocateMode = (simLocateFastFallbacks == 0) ? "fast" : "mixed";
+  }
+  cerr<<"benchmark.sim_locate_mode="<<simLocateMode<<endl;
+  cerr<<"benchmark.sim_locate_fast_passes="<<simLocateFastCalls<<endl;
+  cerr<<"benchmark.sim_locate_fast_fallbacks="<<simLocateFastFallbacks<<endl;
+  uint64_t simSafeWorksetPassCount = 0;
+  uint64_t simSafeWorksetFallbackInvalidStoreCount = 0;
+  uint64_t simSafeWorksetFallbackNoAffectedStartCount = 0;
+  uint64_t simSafeWorksetFallbackNoWorksetCount = 0;
+  uint64_t simSafeWorksetFallbackInvalidBandsCount = 0;
+  uint64_t simSafeWorksetFallbackScanFailureCount = 0;
+  uint64_t simSafeWorksetFallbackShadowMismatchCount = 0;
+  getSimSafeWorksetStats(simSafeWorksetPassCount,
+                         simSafeWorksetFallbackInvalidStoreCount,
+                         simSafeWorksetFallbackNoAffectedStartCount,
+                         simSafeWorksetFallbackNoWorksetCount,
+                         simSafeWorksetFallbackInvalidBandsCount,
+                         simSafeWorksetFallbackScanFailureCount,
+                         simSafeWorksetFallbackShadowMismatchCount);
+  cerr<<"benchmark.sim_safe_workset_passes="<<simSafeWorksetPassCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_fallback_invalid_store="<<simSafeWorksetFallbackInvalidStoreCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_fallback_no_affected_start="<<simSafeWorksetFallbackNoAffectedStartCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_fallback_no_workset="<<simSafeWorksetFallbackNoWorksetCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_fallback_invalid_bands="<<simSafeWorksetFallbackInvalidBandsCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_fallback_scan_failure="<<simSafeWorksetFallbackScanFailureCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_fallback_shadow_mismatch="<<simSafeWorksetFallbackShadowMismatchCount<<endl;
+  uint64_t simSafeWorksetAffectedStartCount = 0;
+  uint64_t simSafeWorksetUniqueAffectedStartCount = 0;
+  uint64_t simSafeWorksetInputBandCount = 0;
+  uint64_t simSafeWorksetInputCellCount = 0;
+  uint64_t simSafeWorksetExecBandCount = 0;
+  uint64_t simSafeWorksetExecCellCount = 0;
+  uint64_t simSafeWorksetCudaTaskCount = 0;
+  uint64_t simSafeWorksetCudaLaunchCount = 0;
+  uint64_t simSafeWorksetReturnedStateCount = 0;
+  uint64_t simSafeWorksetBuildNanoseconds = 0;
+  uint64_t simSafeWorksetMergeNanoseconds = 0;
+  uint64_t simSafeWorksetTotalNanoseconds = 0;
+  getSimSafeWorksetExecutionStats(simSafeWorksetAffectedStartCount,
+                                  simSafeWorksetUniqueAffectedStartCount,
+                                  simSafeWorksetInputBandCount,
+                                  simSafeWorksetInputCellCount,
+                                  simSafeWorksetExecBandCount,
+                                  simSafeWorksetExecCellCount,
+                                  simSafeWorksetCudaTaskCount,
+                                  simSafeWorksetCudaLaunchCount,
+                                  simSafeWorksetReturnedStateCount);
+  getSimSafeWorksetTimingStats(simSafeWorksetBuildNanoseconds,
+                               simSafeWorksetMergeNanoseconds,
+                               simSafeWorksetTotalNanoseconds);
+  cerr<<"benchmark.sim_safe_workset_affected_starts="<<simSafeWorksetAffectedStartCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_unique_affected_starts="<<simSafeWorksetUniqueAffectedStartCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_input_bands="<<simSafeWorksetInputBandCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_input_cells="<<simSafeWorksetInputCellCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_exec_bands="<<simSafeWorksetExecBandCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_exec_cells="<<simSafeWorksetExecCellCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_cuda_tasks="<<simSafeWorksetCudaTaskCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_cuda_launches="<<simSafeWorksetCudaLaunchCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_cuda_true_batch_requests="<<getSimSafeWorksetCudaTrueBatchRequestCount()<<endl;
+  cerr<<"benchmark.sim_safe_workset_returned_states="<<simSafeWorksetReturnedStateCount<<endl;
+  cerr<<"benchmark.sim_safe_workset_build_seconds="<<(static_cast<double>(simSafeWorksetBuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_seconds="<<(static_cast<double>(simSafeWorksetMergeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_total_seconds="<<(static_cast<double>(simSafeWorksetTotalNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_builder_calls_after_safe_window="
+      <<getSimSafeWorksetBuilderCallsAfterSafeWindow()<<endl;
+  uint64_t simSafeStoreRefreshAttemptCount = 0;
+  uint64_t simSafeStoreRefreshSuccessCount = 0;
+  uint64_t simSafeStoreRefreshFailureCount = 0;
+  uint64_t simSafeStoreRefreshTrackedStartCount = 0;
+  uint64_t simSafeStoreRefreshGpuNanoseconds = 0;
+  uint64_t simSafeStoreRefreshD2hNanoseconds = 0;
+  uint64_t simSafeStoreInvalidatedAfterExactFallbackCount = 0;
+  uint64_t simFrontierCacheInvalidateProposalEraseCount = 0;
+  uint64_t simFrontierCacheInvalidateStoreUpdateCount = 0;
+  uint64_t simFrontierCacheInvalidateReleaseOrErrorCount = 0;
+  uint64_t simFrontierCacheRebuildFromResidencyCount = 0;
+  uint64_t simFrontierCacheRebuildFromHostFinalCandidatesCount = 0;
+  getSimSafeStoreRefreshStats(simSafeStoreRefreshAttemptCount,
+                              simSafeStoreRefreshSuccessCount,
+                              simSafeStoreRefreshFailureCount,
+                              simSafeStoreRefreshTrackedStartCount,
+                              simSafeStoreRefreshGpuNanoseconds,
+                              simSafeStoreRefreshD2hNanoseconds,
+                              simSafeStoreInvalidatedAfterExactFallbackCount);
+  getSimFrontierCacheTransitionStats(simFrontierCacheInvalidateProposalEraseCount,
+                                     simFrontierCacheInvalidateStoreUpdateCount,
+                                     simFrontierCacheInvalidateReleaseOrErrorCount,
+                                     simFrontierCacheRebuildFromResidencyCount,
+                                     simFrontierCacheRebuildFromHostFinalCandidatesCount);
+  cerr<<"benchmark.sim_safe_store_refresh_attempts="<<simSafeStoreRefreshAttemptCount<<endl;
+  cerr<<"benchmark.sim_safe_store_refresh_success="<<simSafeStoreRefreshSuccessCount<<endl;
+  cerr<<"benchmark.sim_safe_store_refresh_failures="<<simSafeStoreRefreshFailureCount<<endl;
+  cerr<<"benchmark.sim_safe_store_refresh_tracked_starts="<<simSafeStoreRefreshTrackedStartCount<<endl;
+  cerr<<"benchmark.sim_safe_store_refresh_gpu_seconds="
+      <<(static_cast<double>(simSafeStoreRefreshGpuNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_store_refresh_d2h_seconds="
+      <<(static_cast<double>(simSafeStoreRefreshD2hNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_store_invalidated_after_exact_fallback="
+      <<simSafeStoreInvalidatedAfterExactFallbackCount<<endl;
+  cerr<<"benchmark.sim_frontier_invalidate_proposal_erase="
+      <<simFrontierCacheInvalidateProposalEraseCount<<endl;
+  cerr<<"benchmark.sim_frontier_invalidate_store_update="
+      <<simFrontierCacheInvalidateStoreUpdateCount<<endl;
+  cerr<<"benchmark.sim_frontier_invalidate_release_or_error="
+      <<simFrontierCacheInvalidateReleaseOrErrorCount<<endl;
+  cerr<<"benchmark.sim_frontier_rebuild_from_residency="
+      <<simFrontierCacheRebuildFromResidencyCount<<endl;
+  cerr<<"benchmark.sim_frontier_rebuild_from_host_final_candidates="
+      <<simFrontierCacheRebuildFromHostFinalCandidatesCount<<endl;
+  uint64_t simSafeWindowCount = 0;
+  uint64_t simSafeWindowAffectedStartCount = 0;
+  uint64_t simSafeWindowCoordBytesD2H = 0;
+  uint64_t simSafeWindowFallbackCount = 0;
+  uint64_t simSafeWindowGpuNanoseconds = 0;
+  uint64_t simSafeWindowD2hNanoseconds = 0;
+  uint64_t simSafeWindowExecBandCount = 0;
+  uint64_t simSafeWindowExecCellCount = 0;
+  uint64_t simSafeWindowPlanBandCount = 0;
+  uint64_t simSafeWindowPlanCellCount = 0;
+  uint64_t simSafeWindowPlanGpuNanoseconds = 0;
+  uint64_t simSafeWindowPlanD2hNanoseconds = 0;
+  uint64_t simSafeWindowPlanFallbackCount = 0;
+  uint64_t simSafeWindowPlanBetterThanBuilderCount = 0;
+  uint64_t simSafeWindowPlanWorseThanBuilderCount = 0;
+  uint64_t simSafeWindowPlanEqualToBuilderCount = 0;
+  uint64_t simSafeWindowAttemptCount = 0;
+  uint64_t simSafeWindowSkippedUnconvertibleCount = 0;
+  uint64_t simSafeWindowSelectedWorksetCount = 0;
+  uint64_t simSafeWindowAppliedCount = 0;
+  uint64_t simSafeWindowGpuBuilderFallbackCount = 0;
+  uint64_t simSafeWindowGpuBuilderPassCount = 0;
+  uint64_t simSafeWindowExactFallbackCount = 0;
+  uint64_t simSafeWindowExactFallbackNoUpdateRegionCount = 0;
+  uint64_t simSafeWindowExactFallbackRefreshSuccessCount = 0;
+  uint64_t simSafeWindowExactFallbackRefreshFailureCount = 0;
+  uint64_t simSafeWindowExactFallbackBaseNoUpdateCount = 0;
+  uint64_t simSafeWindowExactFallbackExpansionNoUpdateCount = 0;
+  uint64_t simSafeWindowExactFallbackStopNoCrossCount = 0;
+  uint64_t simSafeWindowExactFallbackStopBoundaryCount = 0;
+  uint64_t simSafeWindowExactFallbackBaseCellCount = 0;
+  uint64_t simSafeWindowExactFallbackExpansionCellCount = 0;
+  uint64_t simSafeWindowExactFallbackLocateGpuNanoseconds = 0;
+  uint64_t simSafeWindowStoreInvalidationCount = 0;
+  uint64_t simSafeWindowFallbackSelectorErrorCount = 0;
+  uint64_t simSafeWindowFallbackOverflowCount = 0;
+  uint64_t simSafeWindowFallbackEmptySelectionCount = 0;
+  getSimSafeWindowStats(simSafeWindowCount,
+                        simSafeWindowAffectedStartCount,
+                        simSafeWindowCoordBytesD2H,
+                        simSafeWindowFallbackCount,
+                        simSafeWindowGpuNanoseconds,
+                        simSafeWindowD2hNanoseconds);
+  getSimSafeWindowExecutionStats(simSafeWindowExecBandCount,
+                                 simSafeWindowExecCellCount);
+  getSimSafeWindowPlanStats(simSafeWindowPlanBandCount,
+                            simSafeWindowPlanCellCount,
+                            simSafeWindowPlanGpuNanoseconds,
+                            simSafeWindowPlanD2hNanoseconds,
+                            simSafeWindowPlanFallbackCount);
+  getSimSafeWindowPlanComparisonStats(simSafeWindowPlanBetterThanBuilderCount,
+                                      simSafeWindowPlanWorseThanBuilderCount,
+                                      simSafeWindowPlanEqualToBuilderCount);
+  getSimSafeWindowPathStats(simSafeWindowAttemptCount,
+                            simSafeWindowSkippedUnconvertibleCount,
+                            simSafeWindowSelectedWorksetCount,
+                            simSafeWindowAppliedCount,
+                            simSafeWindowGpuBuilderFallbackCount,
+                            simSafeWindowGpuBuilderPassCount,
+                            simSafeWindowExactFallbackCount,
+                            simSafeWindowStoreInvalidationCount);
+  getSimSafeWindowExactFallbackOutcomeStats(simSafeWindowExactFallbackNoUpdateRegionCount,
+                                            simSafeWindowExactFallbackRefreshSuccessCount,
+                                            simSafeWindowExactFallbackRefreshFailureCount);
+  getSimSafeWindowExactFallbackPrecheckStats(simSafeWindowExactFallbackBaseNoUpdateCount,
+                                             simSafeWindowExactFallbackExpansionNoUpdateCount,
+                                             simSafeWindowExactFallbackStopNoCrossCount,
+                                             simSafeWindowExactFallbackStopBoundaryCount,
+                                             simSafeWindowExactFallbackBaseCellCount,
+                                             simSafeWindowExactFallbackExpansionCellCount,
+                                             simSafeWindowExactFallbackLocateGpuNanoseconds);
+  getSimSafeWindowFallbackReasonStats(simSafeWindowFallbackSelectorErrorCount,
+                                      simSafeWindowFallbackOverflowCount,
+                                      simSafeWindowFallbackEmptySelectionCount);
+  cerr<<"benchmark.sim_safe_window_planner_mode="
+      <<simSafeWindowCudaPlannerModeName(simSafeWindowCudaPlannerModeRuntime())<<endl;
+  cerr<<"benchmark.sim_safe_window_attempts="<<simSafeWindowAttemptCount<<endl;
+  cerr<<"benchmark.sim_safe_window_skipped_unconvertible="<<simSafeWindowSkippedUnconvertibleCount<<endl;
+  cerr<<"benchmark.sim_safe_window_selected_worksets="<<simSafeWindowSelectedWorksetCount<<endl;
+  cerr<<"benchmark.sim_safe_window_applied="<<simSafeWindowAppliedCount<<endl;
+  cerr<<"benchmark.sim_safe_window_gpu_builder_fallbacks="<<simSafeWindowGpuBuilderFallbackCount<<endl;
+  cerr<<"benchmark.sim_safe_window_gpu_builder_passes="<<simSafeWindowGpuBuilderPassCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallbacks="<<simSafeWindowExactFallbackCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_no_update_region="
+      <<simSafeWindowExactFallbackNoUpdateRegionCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_refresh_success="
+      <<simSafeWindowExactFallbackRefreshSuccessCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_refresh_failure="
+      <<simSafeWindowExactFallbackRefreshFailureCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_base_no_update="
+      <<simSafeWindowExactFallbackBaseNoUpdateCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_expansion_no_update="
+      <<simSafeWindowExactFallbackExpansionNoUpdateCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_stop_no_cross="
+      <<simSafeWindowExactFallbackStopNoCrossCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_stop_boundary="
+      <<simSafeWindowExactFallbackStopBoundaryCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_base_cells="
+      <<simSafeWindowExactFallbackBaseCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_expansion_cells="
+      <<simSafeWindowExactFallbackExpansionCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exact_fallback_locate_gpu_seconds="
+      <<(static_cast<double>(simSafeWindowExactFallbackLocateGpuNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_window_store_invalidations="<<simSafeWindowStoreInvalidationCount<<endl;
+  cerr<<"benchmark.sim_safe_window_count="<<simSafeWindowCount<<endl;
+  cerr<<"benchmark.sim_safe_window_affected_starts="<<simSafeWindowAffectedStartCount<<endl;
+  cerr<<"benchmark.sim_safe_window_coord_bytes_d2h="<<simSafeWindowCoordBytesD2H<<endl;
+  cerr<<"benchmark.sim_safe_window_fallbacks="<<simSafeWindowFallbackCount<<endl;
+  cerr<<"benchmark.sim_safe_window_fallback_selector_error="<<simSafeWindowFallbackSelectorErrorCount<<endl;
+  cerr<<"benchmark.sim_safe_window_fallback_overflow="<<simSafeWindowFallbackOverflowCount<<endl;
+  cerr<<"benchmark.sim_safe_window_fallback_empty_selection="<<simSafeWindowFallbackEmptySelectionCount<<endl;
+  cerr<<"benchmark.sim_safe_window_gpu_seconds="<<(static_cast<double>(simSafeWindowGpuNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_window_d2h_seconds="<<(static_cast<double>(simSafeWindowD2hNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_window_exec_bands="<<simSafeWindowExecBandCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exec_cells="<<simSafeWindowExecCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_bands="<<simSafeWindowPlanBandCount<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_cells="<<simSafeWindowPlanCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_gpu_seconds="
+      <<(static_cast<double>(simSafeWindowPlanGpuNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_d2h_seconds="
+      <<(static_cast<double>(simSafeWindowPlanD2hNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_fallbacks="<<simSafeWindowPlanFallbackCount<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_better_than_builder="
+      <<simSafeWindowPlanBetterThanBuilderCount<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_worse_than_builder="
+      <<simSafeWindowPlanWorseThanBuilderCount<<endl;
+  cerr<<"benchmark.sim_safe_window_plan_equal_to_builder="
+      <<simSafeWindowPlanEqualToBuilderCount<<endl;
+  uint64_t simFastWorksetBandCount = 0;
+  uint64_t simFastWorksetCellCount = 0;
+  uint64_t simFastSegmentCount = 0;
+  uint64_t simFastDiagonalSegmentCount = 0;
+  uint64_t simFastHorizontalSegmentCount = 0;
+  uint64_t simFastVerticalSegmentCount = 0;
+  uint64_t simFastFallbackNoWorksetCount = 0;
+  uint64_t simFastFallbackAreaCapCount = 0;
+  uint64_t simFastFallbackShadowRunningMinCount = 0;
+  uint64_t simFastFallbackShadowCandidateCountCount = 0;
+  uint64_t simFastFallbackShadowCandidateValueCount = 0;
+  getSimFastPathStats(simFastWorksetBandCount,
+                      simFastWorksetCellCount,
+                      simFastSegmentCount,
+                      simFastDiagonalSegmentCount,
+                      simFastHorizontalSegmentCount,
+                      simFastVerticalSegmentCount,
+                      simFastFallbackNoWorksetCount,
+                      simFastFallbackAreaCapCount,
+                      simFastFallbackShadowRunningMinCount,
+                      simFastFallbackShadowCandidateCountCount,
+                      simFastFallbackShadowCandidateValueCount);
+  cerr<<"benchmark.sim_fast_workset_bands="<<simFastWorksetBandCount<<endl;
+  cerr<<"benchmark.sim_fast_workset_cells="<<simFastWorksetCellCount<<endl;
+  cerr<<"benchmark.sim_fast_segments="<<simFastSegmentCount<<endl;
+  cerr<<"benchmark.sim_fast_diagonal_segments="<<simFastDiagonalSegmentCount<<endl;
+  cerr<<"benchmark.sim_fast_horizontal_segments="<<simFastHorizontalSegmentCount<<endl;
+  cerr<<"benchmark.sim_fast_vertical_segments="<<simFastVerticalSegmentCount<<endl;
+  cerr<<"benchmark.sim_fast_fallback_no_workset="<<simFastFallbackNoWorksetCount<<endl;
+  cerr<<"benchmark.sim_fast_fallback_area_cap="<<simFastFallbackAreaCapCount<<endl;
+  cerr<<"benchmark.sim_fast_fallback_shadow_running_min="<<simFastFallbackShadowRunningMinCount<<endl;
+  cerr<<"benchmark.sim_fast_fallback_shadow_candidate_count="<<simFastFallbackShadowCandidateCountCount<<endl;
+  cerr<<"benchmark.sim_fast_fallback_shadow_candidate_value="<<simFastFallbackShadowCandidateValueCount<<endl;
+
+  uint64_t simTracebackCpuCalls = 0;
+  uint64_t simTracebackCudaCalls = 0;
+  getSimTracebackBackendCounts(simTracebackCpuCalls,simTracebackCudaCalls);
+  string simTracebackBackend = "cpu";
+  if(simTracebackCudaCalls > 0)
+  {
+    simTracebackBackend = (simTracebackCpuCalls == 0) ? "cuda" : "mixed";
+  }
+  cerr<<"benchmark.sim_traceback_backend="<<simTracebackBackend<<endl;
+  cerr<<"benchmark.sim_cuda_worker_count="<<metrics.simCudaWorkers.size()<<endl;
+  cerr<<"benchmark.sim_cuda_device_count="<<metrics.simCudaDevices.size()<<endl;
+  for(size_t workerIndex = 0; workerIndex < metrics.simCudaWorkers.size(); ++workerIndex)
+  {
+    const LongTargetCudaWorkerMetrics &workerMetrics = metrics.simCudaWorkers[workerIndex];
+    cerr<<"benchmark.sim_cuda_worker_"<<workerIndex<<"_device="<<workerMetrics.device<<endl;
+    cerr<<"benchmark.sim_cuda_worker_"<<workerIndex<<"_slot="<<workerMetrics.slot<<endl;
+    cerr<<"benchmark.sim_cuda_worker_"<<workerIndex<<"_tasks="<<workerMetrics.taskCount<<endl;
+    cerr<<"benchmark.sim_cuda_worker_"<<workerIndex<<"_threshold_seconds="<<workerMetrics.thresholdSeconds<<endl;
+    cerr<<"benchmark.sim_cuda_worker_"<<workerIndex<<"_sim_seconds="<<workerMetrics.simSeconds<<endl;
+    cerr<<"benchmark.sim_cuda_worker_"<<workerIndex<<"_filter_seconds="<<workerMetrics.filterSeconds<<endl;
+  }
+  for(size_t deviceIndex = 0; deviceIndex < metrics.simCudaDevices.size(); ++deviceIndex)
+  {
+    const LongTargetCudaDeviceMetrics &deviceMetrics = metrics.simCudaDevices[deviceIndex];
+    cerr<<"benchmark.sim_cuda_device_"<<deviceMetrics.device<<"_workers="<<deviceMetrics.workerCount<<endl;
+    cerr<<"benchmark.sim_cuda_device_"<<deviceMetrics.device<<"_tasks="<<deviceMetrics.taskCount<<endl;
+    cerr<<"benchmark.sim_cuda_device_"<<deviceMetrics.device<<"_threshold_seconds="<<deviceMetrics.thresholdSeconds<<endl;
+    cerr<<"benchmark.sim_cuda_device_"<<deviceMetrics.device<<"_sim_seconds="<<deviceMetrics.simSeconds<<endl;
+    cerr<<"benchmark.sim_cuda_device_"<<deviceMetrics.device<<"_filter_seconds="<<deviceMetrics.filterSeconds<<endl;
+  }
+
+  cerr<<"benchmark.prefilter_backend="<<metrics.prefilterBackend<<endl;
+  cerr<<"benchmark.prefilter_hits="<<metrics.prefilterHits<<endl;
+  cerr<<"benchmark.refine_window_count="<<metrics.refineWindowCount<<endl;
+  cerr<<"benchmark.refine_total_bp="<<metrics.refineTotalBp<<endl;
+  cerr<<"benchmark.sim_scan_tasks="<<metrics.simScanTasks<<endl;
+  cerr<<"benchmark.sim_scan_launches="<<metrics.simScanLaunches<<endl;
+  cerr<<"benchmark.sim_traceback_candidates="<<metrics.simTracebackCandidates<<endl;
+  const double simTracebackTieRate =
+    metrics.simTracebackCandidates > 0 ? static_cast<double>(metrics.simTracebackTieCount) / static_cast<double>(metrics.simTracebackCandidates) : 0.0;
+  cerr<<"benchmark.sim_traceback_tie_rate="<<simTracebackTieRate<<endl;
+  uint64_t simGpuIterations = 0;
+  uint64_t simGpuFullRescans = 0;
+  uint64_t simGpuBlockedDiagonals = 0;
+  getSimCudaFullExactStats(simGpuIterations,simGpuFullRescans,simGpuBlockedDiagonals);
+  cerr<<"benchmark.sim_gpu_iterations="<<simGpuIterations<<endl;
+  cerr<<"benchmark.sim_gpu_full_rescans="<<simGpuFullRescans<<endl;
+  cerr<<"benchmark.sim_gpu_blocked_diagonals="<<simGpuBlockedDiagonals<<endl;
+  uint64_t simBlockedPackWords = 0;
+  uint64_t simBlockedMirrorBytes = 0;
+  getSimBlockedMirrorStats(simBlockedPackWords,simBlockedMirrorBytes);
+  cerr<<"benchmark.sim_blocked_pack_words="<<simBlockedPackWords<<endl;
+  cerr<<"benchmark.sim_blocked_mirror_bytes="<<simBlockedMirrorBytes<<endl;
+  uint64_t simRegionTotalCells = 0;
+  uint64_t simTracebackTotalCells = 0;
+  getSimWorkCellStats(simRegionTotalCells,simTracebackTotalCells);
+  cerr<<"benchmark.sim_region_total_cells="<<simRegionTotalCells<<endl;
+  cerr<<"benchmark.sim_traceback_total_cells="<<simTracebackTotalCells<<endl;
+  uint64_t simRegionEventsTotal = 0;
+  uint64_t simRegionCandidateSummariesTotal = 0;
+  uint64_t simRegionEventBytesD2H = 0;
+  uint64_t simRegionSummaryBytesD2H = 0;
+  double simRegionCpuMergeSeconds = 0.0;
+  uint64_t simLocateTotalCells = 0;
+  getSimRegionReductionStats(simRegionEventsTotal,
+                             simRegionCandidateSummariesTotal,
+                             simRegionEventBytesD2H,
+                             simRegionSummaryBytesD2H,
+                             simRegionCpuMergeSeconds,
+                             simLocateTotalCells);
+  cerr<<"benchmark.sim_region_events_total="<<simRegionEventsTotal<<endl;
+  cerr<<"benchmark.sim_region_candidate_summaries_total="<<simRegionCandidateSummariesTotal<<endl;
+  cerr<<"benchmark.sim_region_event_bytes_d2h="<<simRegionEventBytesD2H<<endl;
+  cerr<<"benchmark.sim_region_summary_bytes_d2h="<<simRegionSummaryBytesD2H<<endl;
+  cerr<<"benchmark.sim_region_cpu_merge_seconds="<<simRegionCpuMergeSeconds<<endl;
+  cerr<<"benchmark.sim_locate_total_cells="<<simLocateTotalCells<<endl;
+  uint64_t simInitialEventsTotal = 0;
+  uint64_t simInitialRunSummariesTotal = 0;
+  uint64_t simInitialSummaryBytesD2H = 0;
+  uint64_t simInitialReducedCandidatesTotal = 0;
+  uint64_t simInitialAllCandidateStatesTotal = 0;
+  uint64_t simInitialStoreBytesD2H = 0;
+  uint64_t simInitialStoreBytesH2D = 0;
+  uint64_t simInitialStoreUploadNanoseconds = 0;
+  uint64_t simInitialSafeStoreFrontierBytesH2D = 0;
+  uint64_t simInitialReduceChunkTotal = 0;
+  uint64_t simInitialReduceChunkReplayedTotal = 0;
+  uint64_t simInitialReduceSummaryReplayedTotal = 0;
+  getSimInitialReductionStats(simInitialEventsTotal,
+                              simInitialRunSummariesTotal,
+                              simInitialSummaryBytesD2H,
+                              simInitialReducedCandidatesTotal,
+                              simInitialAllCandidateStatesTotal,
+                              simInitialStoreBytesD2H,
+                              simInitialStoreBytesH2D,
+                              simInitialStoreUploadNanoseconds,
+                              simInitialReduceChunkTotal,
+                              simInitialReduceChunkReplayedTotal,
+                              simInitialReduceSummaryReplayedTotal);
+  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
+  double simInitialSafeStoreDevicePruneSeconds = 0.0;
+  double simInitialSafeStoreFrontierUploadSeconds = 0.0;
+  getSimInitialSafeStoreDeviceStats(simInitialSafeStoreFrontierBytesH2D,
+                                    simInitialSafeStoreDeviceBuildSeconds,
+                                    simInitialSafeStoreDevicePruneSeconds,
+                                    simInitialSafeStoreFrontierUploadSeconds);
+  const uint64_t simInitialReduceChunkSkippedTotal =
+    simInitialReduceChunkTotal >= simInitialReduceChunkReplayedTotal ?
+    (simInitialReduceChunkTotal - simInitialReduceChunkReplayedTotal) : 0;
+  uint64_t simProposalAllCandidateStatesTotal = 0;
+  uint64_t simProposalBytesD2H = 0;
+  uint64_t simProposalSelectedTotal = 0;
+  uint64_t simProposalSelectedBoxCellsTotal = 0;
+  uint64_t simProposalMaterializedTotal = 0;
+  uint64_t simProposalMaterializedQueryBasesTotal = 0;
+  uint64_t simProposalMaterializedTargetBasesTotal = 0;
+  double simProposalGpuSeconds = 0.0;
+  uint64_t simProposalTracebackBatchRequests = 0;
+  uint64_t simProposalTracebackBatchBatches = 0;
+  uint64_t simProposalTracebackBatchSuccess = 0;
+  uint64_t simProposalTracebackBatchFallbacks = 0;
+  uint64_t simProposalTracebackBatchTieFallbacks = 0;
+  uint64_t simProposalTracebackCudaEligible = 0;
+  uint64_t simProposalTracebackCudaSizeFiltered = 0;
+  uint64_t simProposalTracebackCudaBatchFailed = 0;
+  uint64_t simProposalTracebackCpuDirect = 0;
+  uint64_t simProposalPostScoreRejects = 0;
+  uint64_t simProposalPostNtRejects = 0;
+  uint64_t simProposalTracebackCpuCells = 0;
+  uint64_t simProposalTracebackCudaCells = 0;
+  uint64_t simProposalLoopAttempts = 0;
+  uint64_t simProposalLoopShortCircuits = 0;
+  uint64_t simProposalLoopInitialSources = 0;
+  uint64_t simProposalLoopSafeStoreSources = 0;
+  uint64_t simProposalLoopGpuSafeStoreSources = 0;
+  uint64_t simProposalLoopGpuFrontierCacheSources = 0;
+  uint64_t simProposalLoopGpuSafeStoreFullSources = 0;
+  uint64_t simProposalLoopFallbackNoStore = 0;
+  uint64_t simProposalLoopFallbackSelectorFailure = 0;
+  uint64_t simProposalLoopFallbackEmptySelection = 0;
+  uint64_t simProposalMaterializeCpuBackendCalls = 0;
+  uint64_t simProposalMaterializeCudaBatchBackendCalls = 0;
+  uint64_t simProposalMaterializeHybridBackendCalls = 0;
+  uint64_t simInitialProposalV2Batches = 0;
+  uint64_t simInitialProposalV2Requests = 0;
+  uint64_t simInitialProposalV3Batches = 0;
+  uint64_t simInitialProposalV3Requests = 0;
+  uint64_t simInitialProposalV3SelectedCandidateStates = 0;
+  uint64_t simInitialProposalDirectTopKBatches = 0;
+  uint64_t simInitialProposalDirectTopKLogicalCandidateStates = 0;
+  uint64_t simInitialProposalDirectTopKMaterializedCandidateStates = 0;
+  double simInitialProposalV3GpuSeconds = 0.0;
+  double simInitialProposalDirectTopKGpuSeconds = 0.0;
+  double simProposalTracebackBatchGpuSeconds = 0.0;
+  double simProposalPostSeconds = 0.0;
+  double simDeviceKLoopSeconds = 0.0;
+  uint64_t simLocateDeviceKLoopAttempts = 0;
+  uint64_t simLocateDeviceKLoopShortCircuits = 0;
+  getSimProposalStats(simProposalAllCandidateStatesTotal,
+                      simProposalBytesD2H,
+                      simProposalSelectedTotal,
+                      simProposalSelectedBoxCellsTotal,
+                      simProposalMaterializedTotal,
+                      simProposalMaterializedQueryBasesTotal,
+                      simProposalMaterializedTargetBasesTotal,
+                      simProposalGpuSeconds);
+  getSimProposalMaterializeBatchStats(simProposalTracebackBatchRequests,
+                                      simProposalTracebackBatchBatches,
+                                      simProposalTracebackBatchSuccess,
+                                      simProposalTracebackBatchFallbacks,
+                                      simProposalTracebackBatchTieFallbacks,
+                                      simProposalTracebackBatchGpuSeconds,
+                                      simProposalPostSeconds);
+  getSimProposalTracebackRoutingStats(simProposalTracebackCudaEligible,
+                                      simProposalTracebackCudaSizeFiltered,
+                                      simProposalTracebackCudaBatchFailed,
+                                      simProposalTracebackCpuDirect,
+                                      simProposalPostScoreRejects,
+                                      simProposalPostNtRejects,
+                                      simProposalTracebackCpuCells,
+                                      simProposalTracebackCudaCells);
+  getSimProposalLoopStats(simProposalLoopAttempts,
+                          simProposalLoopShortCircuits,
+                          simProposalLoopInitialSources,
+                          simProposalLoopSafeStoreSources,
+                          simProposalLoopFallbackNoStore,
+                          simProposalLoopFallbackSelectorFailure,
+                          simProposalLoopFallbackEmptySelection);
+  getSimDeviceKLoopStats(simProposalLoopGpuSafeStoreSources,
+                         simProposalLoopGpuFrontierCacheSources,
+                         simProposalLoopGpuSafeStoreFullSources,
+                         simDeviceKLoopSeconds);
+  getSimLocateDeviceKLoopStats(simLocateDeviceKLoopAttempts,
+                               simLocateDeviceKLoopShortCircuits);
+  getSimProposalMaterializeBackendStats(simProposalMaterializeCpuBackendCalls,
+                                        simProposalMaterializeCudaBatchBackendCalls,
+                                        simProposalMaterializeHybridBackendCalls);
+  getSimInitialProposalV2Stats(simInitialProposalV2Batches,
+                               simInitialProposalV2Requests);
+  getSimInitialProposalV3Stats(simInitialProposalV3Batches,
+                               simInitialProposalV3Requests,
+                               simInitialProposalV3SelectedCandidateStates,
+                               simInitialProposalV3GpuSeconds);
+  getSimInitialProposalDirectTopKStats(simInitialProposalDirectTopKBatches,
+                                       simInitialProposalDirectTopKLogicalCandidateStates,
+                                       simInitialProposalDirectTopKMaterializedCandidateStates,
+                                       simInitialProposalDirectTopKGpuSeconds);
+  const char *simProposalMaterializeBackend = "cpu";
+  switch(simProposalMaterializeBackendRuntime())
+  {
+    case SIM_PROPOSAL_MATERIALIZE_BACKEND_CUDA_BATCH_TRACEBACK:
+      simProposalMaterializeBackend = "cuda_batch_traceback";
+      break;
+    case SIM_PROPOSAL_MATERIALIZE_BACKEND_HYBRID:
+      simProposalMaterializeBackend = "hybrid";
+      break;
+    case SIM_PROPOSAL_MATERIALIZE_BACKEND_CPU:
+    default:
+      break;
+  }
+  cerr<<"benchmark.sim_initial_events_total="<<simInitialEventsTotal<<endl;
+  cerr<<"benchmark.sim_initial_run_summaries_total="<<simInitialRunSummariesTotal<<endl;
+  cerr<<"benchmark.sim_initial_summary_bytes_d2h="<<simInitialSummaryBytesD2H<<endl;
+  cerr<<"benchmark.sim_initial_reduced_candidates_total="<<simInitialReducedCandidatesTotal<<endl;
+  cerr<<"benchmark.sim_initial_all_candidate_states_total="<<simInitialAllCandidateStatesTotal<<endl;
+  cerr<<"benchmark.sim_initial_store_bytes_d2h="<<simInitialStoreBytesD2H<<endl;
+  cerr<<"benchmark.sim_initial_store_bytes_h2d="<<simInitialStoreBytesH2D<<endl;
+  cerr<<"benchmark.sim_initial_store_upload_seconds="<<(static_cast<double>(simInitialStoreUploadNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_device_build_seconds="<<simInitialSafeStoreDeviceBuildSeconds<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_device_prune_seconds="<<simInitialSafeStoreDevicePruneSeconds<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_frontier_bytes_h2d="<<simInitialSafeStoreFrontierBytesH2D<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_frontier_upload_seconds="<<simInitialSafeStoreFrontierUploadSeconds<<endl;
+  cerr<<"benchmark.sim_proposal_materialize_backend="<<simProposalMaterializeBackend<<endl;
+  cerr<<"benchmark.sim_proposal_all_candidate_states_total="<<simProposalAllCandidateStatesTotal<<endl;
+  cerr<<"benchmark.sim_proposal_bytes_d2h="<<simProposalBytesD2H<<endl;
+  cerr<<"benchmark.sim_proposal_selected_total="<<simProposalSelectedTotal<<endl;
+  cerr<<"benchmark.sim_proposal_selected_box_cells_total="<<simProposalSelectedBoxCellsTotal<<endl;
+  cerr<<"benchmark.sim_proposal_materialized_total="<<simProposalMaterializedTotal<<endl;
+  cerr<<"benchmark.sim_proposal_materialized_query_bases_total="<<simProposalMaterializedQueryBasesTotal<<endl;
+  cerr<<"benchmark.sim_proposal_materialized_target_bases_total="<<simProposalMaterializedTargetBasesTotal<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_batch_requests="<<simProposalTracebackBatchRequests<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_batch_batches="<<simProposalTracebackBatchBatches<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_batch_success="<<simProposalTracebackBatchSuccess<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_batch_fallbacks="<<simProposalTracebackBatchFallbacks<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_batch_tie_fallbacks="<<simProposalTracebackBatchTieFallbacks<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_cuda_eligible="<<simProposalTracebackCudaEligible<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_cuda_size_filtered="<<simProposalTracebackCudaSizeFiltered<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_cuda_batch_failed="<<simProposalTracebackCudaBatchFailed<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_cpu_direct="<<simProposalTracebackCpuDirect<<endl;
+  cerr<<"benchmark.sim_proposal_post_score_rejects="<<simProposalPostScoreRejects<<endl;
+  cerr<<"benchmark.sim_proposal_post_nt_rejects="<<simProposalPostNtRejects<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_cpu_cells="<<simProposalTracebackCpuCells<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_cuda_cells="<<simProposalTracebackCudaCells<<endl;
+  cerr<<"benchmark.sim_proposal_loop_attempts="<<simProposalLoopAttempts<<endl;
+  cerr<<"benchmark.sim_proposal_loop_short_circuits="<<simProposalLoopShortCircuits<<endl;
+  cerr<<"benchmark.sim_proposal_loop_source_initial="<<simProposalLoopInitialSources<<endl;
+  cerr<<"benchmark.sim_proposal_loop_source_safe_store="<<simProposalLoopSafeStoreSources<<endl;
+  cerr<<"benchmark.sim_proposal_loop_source_gpu_safe_store="<<simProposalLoopGpuSafeStoreSources<<endl;
+  cerr<<"benchmark.sim_proposal_loop_source_gpu_frontier_cache="<<simProposalLoopGpuFrontierCacheSources<<endl;
+  cerr<<"benchmark.sim_proposal_loop_source_gpu_safe_store_full="<<simProposalLoopGpuSafeStoreFullSources<<endl;
+  cerr<<"benchmark.sim_proposal_loop_fallback_no_store="<<simProposalLoopFallbackNoStore<<endl;
+  cerr<<"benchmark.sim_proposal_loop_fallback_selector_failure="<<simProposalLoopFallbackSelectorFailure<<endl;
+  cerr<<"benchmark.sim_proposal_loop_fallback_empty_selection="<<simProposalLoopFallbackEmptySelection<<endl;
+  cerr<<"benchmark.sim_locate_device_k_loop_attempts="<<simLocateDeviceKLoopAttempts<<endl;
+  cerr<<"benchmark.sim_locate_device_k_loop_short_circuits="<<simLocateDeviceKLoopShortCircuits<<endl;
+  cerr<<"benchmark.sim_device_k_loop_seconds="<<simDeviceKLoopSeconds<<endl;
+  cerr<<"benchmark.sim_proposal_materialize_backend_cpu_calls="
+      <<simProposalMaterializeCpuBackendCalls<<endl;
+  cerr<<"benchmark.sim_proposal_materialize_backend_cuda_batch_calls="
+      <<simProposalMaterializeCudaBatchBackendCalls<<endl;
+  cerr<<"benchmark.sim_proposal_materialize_backend_hybrid_calls="
+      <<simProposalMaterializeHybridBackendCalls<<endl;
+  cerr<<"benchmark.sim_initial_proposal_v2_batches="<<simInitialProposalV2Batches<<endl;
+  cerr<<"benchmark.sim_initial_proposal_v2_requests="<<simInitialProposalV2Requests<<endl;
+  cerr<<"benchmark.sim_initial_proposal_v3_batches="<<simInitialProposalV3Batches<<endl;
+  cerr<<"benchmark.sim_initial_proposal_v3_requests="<<simInitialProposalV3Requests<<endl;
+  cerr<<"benchmark.sim_initial_proposal_v3_selected_candidate_states="
+      <<simInitialProposalV3SelectedCandidateStates<<endl;
+  cerr<<"benchmark.sim_initial_proposal_v3_gpu_seconds="<<simInitialProposalV3GpuSeconds<<endl;
+  cerr<<"benchmark.sim_initial_proposal_direct_topk_batches="<<simInitialProposalDirectTopKBatches<<endl;
+  cerr<<"benchmark.sim_initial_proposal_direct_topk_logical_candidate_states="
+      <<simInitialProposalDirectTopKLogicalCandidateStates<<endl;
+  cerr<<"benchmark.sim_initial_proposal_direct_topk_materialized_candidate_states="
+      <<simInitialProposalDirectTopKMaterializedCandidateStates<<endl;
+  cerr<<"benchmark.sim_initial_proposal_direct_topk_gpu_seconds="<<simInitialProposalDirectTopKGpuSeconds<<endl;
+  cerr<<"benchmark.sim_initial_reduce_chunks_total="<<simInitialReduceChunkTotal<<endl;
+  cerr<<"benchmark.sim_initial_reduce_chunks_replayed_total="<<simInitialReduceChunkReplayedTotal<<endl;
+  cerr<<"benchmark.sim_initial_reduce_chunks_skipped_total="<<simInitialReduceChunkSkippedTotal<<endl;
+  cerr<<"benchmark.sim_initial_reduce_summaries_replayed_total="<<simInitialReduceSummaryReplayedTotal<<endl;
+  double simInitialScanSeconds = 0.0;
+  double simInitialScanGpuSeconds = 0.0;
+  double simInitialScanD2HSeconds = 0.0;
+  double simInitialScanCpuMergeSeconds = 0.0;
+  double simInitialScanDiagSeconds = 0.0;
+  double simInitialScanOnlineReduceSeconds = 0.0;
+  double simInitialScanWaitSeconds = 0.0;
+  double simInitialScanCpuContextApplySeconds = 0.0;
+  double simInitialScanCpuSafeStoreUpdateSeconds = 0.0;
+  double simInitialScanCpuSafeStorePruneSeconds = 0.0;
+  double simInitialScanCpuSafeStoreUploadSeconds = 0.0;
+  double simInitialScanCountCopySeconds = 0.0;
+  double simInitialScanBaseUploadSeconds = 0.0;
+  double simInitialProposalSelectD2HSeconds = 0.0;
+  double simInitialScanSyncWaitSeconds = 0.0;
+  double simInitialScanTailSeconds = 0.0;
+  double simInitialHashReduceSeconds = getSimInitialHashReduceSeconds();
+  double simInitialSegmentedReduceSeconds = getSimInitialSegmentedReduceSeconds();
+  double simInitialSegmentedCompactSeconds = getSimInitialSegmentedCompactSeconds();
+  double simInitialTopKSeconds = getSimInitialTopKSeconds();
+  uint64_t simInitialSegmentedTileStates = 0;
+  uint64_t simInitialSegmentedGroupedStates = 0;
+  getSimInitialSegmentedStateStats(simInitialSegmentedTileStates,
+                                   simInitialSegmentedGroupedStates);
+  double simLocateSeconds = 0.0;
+  double simLocateGpuSeconds = 0.0;
+  double simRegionScanGpuSeconds = 0.0;
+  double simRegionD2HSeconds = 0.0;
+  double simMaterializeSeconds = 0.0;
+  double simTracebackDpSeconds = 0.0;
+  double simTracebackPostSeconds = 0.0;
+  getSimPhaseTimingStats(simInitialScanSeconds,
+                         simInitialScanGpuSeconds,
+                         simInitialScanD2HSeconds,
+                         simInitialScanCpuMergeSeconds,
+                         simInitialScanDiagSeconds,
+                         simInitialScanOnlineReduceSeconds,
+                         simInitialScanWaitSeconds,
+                         simInitialScanCountCopySeconds,
+                         simInitialScanBaseUploadSeconds,
+                         simInitialProposalSelectD2HSeconds,
+                         simInitialScanSyncWaitSeconds,
+                         simInitialScanTailSeconds,
+                         simLocateSeconds,
+                         simLocateGpuSeconds,
+                         simRegionScanGpuSeconds,
+                         simRegionD2HSeconds,
+                         simMaterializeSeconds,
+                         simTracebackDpSeconds,
+                         simTracebackPostSeconds);
+  getSimInitialCpuMergeTimingStats(simInitialScanCpuContextApplySeconds,
+                                   simInitialScanCpuSafeStoreUpdateSeconds,
+                                   simInitialScanCpuSafeStorePruneSeconds,
+                                   simInitialScanCpuSafeStoreUploadSeconds);
+  cerr<<"benchmark.sim_initial_scan_seconds="<<simInitialScanSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_gpu_seconds="<<simInitialScanGpuSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_d2h_seconds="<<simInitialScanD2HSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_cpu_merge_seconds="<<simInitialScanCpuMergeSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_cpu_context_apply_seconds="<<simInitialScanCpuContextApplySeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_wait_seconds="<<simInitialScanWaitSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_count_copy_seconds="<<simInitialScanCountCopySeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_base_upload_seconds="<<simInitialScanBaseUploadSeconds<<endl;
+  cerr<<"benchmark.sim_initial_proposal_select_d2h_seconds="<<simInitialProposalSelectD2HSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_sync_wait_seconds="<<simInitialScanSyncWaitSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_tail_seconds="<<simInitialScanTailSeconds<<endl;
+  cerr<<"benchmark.sim_initial_hash_reduce_seconds="<<simInitialHashReduceSeconds<<endl;
+  cerr<<"benchmark.sim_initial_segmented_reduce_seconds="<<simInitialSegmentedReduceSeconds<<endl;
+  cerr<<"benchmark.sim_initial_segmented_compact_seconds="<<simInitialSegmentedCompactSeconds<<endl;
+  cerr<<"benchmark.sim_initial_topk_seconds="<<simInitialTopKSeconds<<endl;
+  cerr<<"benchmark.sim_initial_segmented_tile_states_total="<<simInitialSegmentedTileStates<<endl;
+  cerr<<"benchmark.sim_initial_segmented_grouped_states_total="<<simInitialSegmentedGroupedStates<<endl;
+  cerr<<"benchmark.sim_proposal_gpu_seconds="<<simProposalGpuSeconds<<endl;
+  cerr<<"benchmark.sim_proposal_traceback_batch_gpu_seconds="<<simProposalTracebackBatchGpuSeconds<<endl;
+  cerr<<"benchmark.sim_proposal_post_seconds="<<simProposalPostSeconds<<endl;
+  cerr<<"benchmark.sim_locate_seconds="<<simLocateSeconds<<endl;
+  cerr<<"benchmark.sim_locate_gpu_seconds="<<simLocateGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_packed_requests="<<getSimRegionPackedRequestCount()<<endl;
+  cerr<<"benchmark.sim_region_scan_gpu_seconds="<<simRegionScanGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_d2h_seconds="<<simRegionD2HSeconds<<endl;
+  cerr<<"benchmark.sim_materialize_seconds="<<simMaterializeSeconds<<endl;
+  cerr<<"benchmark.sim_traceback_dp_seconds="<<simTracebackDpSeconds<<endl;
+  cerr<<"benchmark.sim_traceback_post_seconds="<<simTracebackPostSeconds<<endl;
+
+  cerr<<"benchmark.calc_score_backend="<<metrics.thresholdBackend<<endl;
+  cerr<<"benchmark.calc_score_seconds="<<metrics.thresholdSeconds<<endl;
+  cerr<<"benchmark.sim_seconds="<<metrics.simSeconds<<endl;
+  cerr<<"benchmark.postprocess_seconds="<<metrics.postProcessSeconds<<endl;
+  cerr<<"benchmark.total_seconds="<<metrics.totalSeconds<<endl;
+}
+int main(int argc, char* const* argv)
+{
+  struct para paraList;
+  vector<struct  lgInfo>  lgList;
+  initEnv(argc,argv,paraList);
+  char c_dd_tmp[10];
+  char c_length_tmp[10];
+  int c_loop_tmp=0;
+  string c_tmp_dd;
+  string c_tmp_length;
+  sprintf(c_dd_tmp,"%d",paraList.cDistance);
+  sprintf(c_length_tmp,"%d",paraList.cLength);
+  for(c_loop_tmp=0;c_loop_tmp<strlen(c_dd_tmp);c_loop_tmp++)
+  {
+    c_tmp_dd+=c_dd_tmp[c_loop_tmp];
+  }
+  for(c_loop_tmp=0;c_loop_tmp<strlen(c_length_tmp);c_loop_tmp++)
+  {
+    c_tmp_length+=c_length_tmp[c_loop_tmp];
+  }
+  string lncName;
+  string lncSeq;
+  string species;
+  string dnaChroTag;
+  string fileName;
+  string dnaSeq;
+  string resultDir;
+  string startGenomeTmp;
+  long   startGenome;
+  dnaSeq=readDna(paraList.file1path,species,dnaChroTag,startGenomeTmp);
+  startGenome=atoi(startGenomeTmp.c_str());
+  lncSeq=readRna(paraList.file2path,lncName);
+  fileName=paraList.file1path.substr(0,paraList.file1path.size()-3);
+  lncName.erase(remove(lncName.begin(),lncName.end(),'\r'),lncName.end());
+  lncName.erase(remove(lncName.begin(),lncName.end(),'\n'),lncName.end());
+  resultDir=paraList.outpath;
+  struct lgInfo algInfo;
+  algInfo=lgInfo(lncName,lncSeq,species,dnaChroTag,fileName,dnaSeq,startGenome,resultDir);
+  lgList.push_back(algInfo);
+  int i=0;
+  vector<struct triplex> sort_triplex_list;
+  LongTargetExecutionMetrics metrics;
+  const bool benchmarkEnabled = longtarget_benchmark_enabled();
+  const double totalStart = benchmarkEnabled ? longtarget_now_seconds() : 0.0;
+  LongTarget(paraList,lgList[i].lncSeq,lgList[i].dnaSeq,sort_triplex_list,&metrics);
+  const double postProcessStart = benchmarkEnabled ? longtarget_now_seconds() : 0.0;
+  printResult(lgList[i].species,paraList,lgList[i].lncName,lgList[i].fileName,sort_triplex_list,lgList[i].dnaChroTag,lgList[i].dnaSeq,lgList[i].startGenome,c_tmp_dd,c_tmp_length,lgList[i].resultDir);
+  if(benchmarkEnabled)
+  {
+    metrics.postProcessSeconds += longtarget_now_seconds() - postProcessStart;
+    metrics.totalSeconds = longtarget_now_seconds() - totalStart;
+    printLongTargetBenchmarkMetrics(metrics);
+  }
+  if(longtarget_progress_enabled())
+  {
+    cerr<<"finished normally"<<endl;
+  }
+  return 0;
+}
+
+void cutSequence(string& seq, vector<string>& seqsVec, vector<int>& seqsStartPos, int& cutLength, int& overlapLength,int &cut_num)
+{
+	unsigned int pos=0;
+  int tmpa=0;
+  int tmpb=0;
+  seqsVec.clear();seqsStartPos.clear();
+	string cutSeq;
+  while(pos<seq.size())
+	{
+		cutSeq = seq.substr(pos,cutLength);
+		seqsVec.push_back(cutSeq);
+		seqsStartPos.push_back(pos);
+		pos += cutLength;
+		pos -= overlapLength;
+    tmpa++;
+	}
+  cut_num=tmpa;
+}
+string readRna(string rnaFileName,string &lncName)
+{
+  ifstream rnaFile;
+  string tmpRNA;
+  string tmpStr;
+  rnaFile.open(rnaFileName.c_str());
+  getline(rnaFile,tmpStr);
+  int i=0;
+  string tmpInfo;
+  for(i=0;i<tmpStr.size();i++)
+  {
+  	if(tmpStr[i]=='>')
+  	{
+  		continue;
+  	}
+  	tmpInfo=tmpInfo+tmpStr[i];
+  }
+  lncName=tmpInfo;
+  if(longtarget_progress_enabled())
+  {
+    cerr<<lncName<<endl;
+  }
+  while(getline(rnaFile,tmpStr))
+  {
+    tmpRNA=tmpRNA+tmpStr;
+  }
+  return tmpRNA;
+}
+string readDna(string dnaFileName,string &species,string &chroTag,string &startGenome)
+{
+  ifstream dnaFile;
+  string tmpDNA;
+  string tmpStr;
+  dnaFile.open(dnaFileName.c_str());
+  getline(dnaFile,tmpStr);
+  int i=0;
+  int j=0;
+  string tmpInfo;
+  for(i=0;i<tmpStr.size();i++)
+  {
+    if(tmpStr[i]=='>')
+    {
+      continue;
+    }
+    if(tmpStr[i]=='|' &&j==0)
+    {
+      species=tmpInfo;
+      j++;
+      tmpInfo.clear();
+      continue;
+    }
+    if(tmpStr[i]=='|'&&j==1)
+    {
+      chroTag=tmpInfo;
+      j++;
+      tmpInfo.clear();
+      continue;
+    }
+    if(tmpStr[i]=='-'&&j==2)
+    {
+      startGenome=tmpInfo;
+      tmpInfo.clear();
+      continue;
+    }
+    tmpInfo=tmpInfo+tmpStr[i];
+  }
+  if(longtarget_progress_enabled())
+  {
+    cerr<<species<<endl;
+    cerr<<chroTag<<endl;
+    cerr<<startGenome<<endl;
+  }
+  while(getline(dnaFile,tmpStr))
+  {
+    tmpDNA=tmpDNA+tmpStr;
+  }
+  return tmpDNA;
+}
+
+void initEnv(int argc,char * const *argv,struct para &paraList)
+{
+  const char* optstring = "f:s:r:O:c:m:t:i:S:o:y:z:Y:Z:h:D:E:d";
+	struct option long_options[]={
+		{"f1",required_argument,NULL,'f'},
+		{"f2",required_argument,NULL,'s'},
+		{"ni",required_argument,NULL,'y'},
+    {"na",required_argument,NULL,'z'},
+    {"pc",required_argument,NULL,'Y'},
+    {"pt",required_argument,NULL,'Z'},
+    {"ds",required_argument,NULL,'D'},
+    {"lg",required_argument,NULL,'E'},
+    {0,0,0,0}
+	};
+  paraList.file1path="./";
+  paraList.file2path="./";
+  paraList.outpath="./";
+  paraList.rule=0;
+  paraList.cutLength=5000;
+  paraList.strand=0;
+  paraList.overlapLength=100;
+  paraList.minScore=0;
+	paraList.detailOutput=false;
+  paraList.ntMin=20;
+  paraList.ntMax=100000;
+  paraList.scoreMin=0.0;
+  paraList.minIdentity=60.0;
+  paraList.minStability=1.0;
+  paraList.penaltyT=-1000;
+  paraList.penaltyC=0;
+	paraList.cDistance=15;
+  paraList.cLength=50;
+  int opt;
+  if(argc==1)
+  {
+    show_help();
+  }
+	while( (opt = getopt_long_only( argc, argv, optstring, long_options, NULL)) != -1 )
+	{
+		switch(opt)
+		{
+		case 'f':
+			paraList.file1path = optarg;
+			break;
+		case 's':
+			paraList.file2path = optarg;
+			break;
+		case 'r':
+			paraList.rule = atoi(optarg);
+			break;
+		case 'O':
+			paraList.outpath = optarg;
+			break;
+		case 'c':
+			paraList.cutLength = atoi(optarg);
+			break;
+		case 'm':
+			paraList.minScore = atoi(optarg);
+			break;
+		case 't':
+			paraList.strand = atoi(optarg);
+			break;
+		case 'd':
+			paraList.detailOutput = true;
+			break;
+    case 'i':
+      paraList.minIdentity=atoi(optarg);
+      break;
+    case 'S':
+      paraList.minStability=atoi(optarg);
+      break;
+    case 'y':
+      paraList.ntMin=atoi(optarg);
+      break;
+    case 'z':
+      paraList.ntMax=atoi(optarg);
+      break;
+    case 'Y':
+      paraList.penaltyC=atoi(optarg);
+      break;
+    case 'Z':
+      paraList.penaltyT=atoi(optarg);
+      break;
+    case 'o':
+      paraList.overlapLength=atoi(optarg);
+      break;
+    case 'h':
+      show_help();
+      break;
+    case 'D':
+      paraList.cDistance=atoi(optarg);
+      break;
+    case 'E':
+      paraList.cLength=atoi(optarg);
+      break;
+		}
+	}
+}
+void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vector<struct triplex>&sort_triplex_list,LongTargetExecutionMetrics *metrics)
+{
+	vector< string> dnaSequencesVec;
+	vector< int> dnaSequencesStartPos;
+  int cut_num=0;
+	cutSequence(dnaSequence,dnaSequencesVec,dnaSequencesStartPos,paraList.cutLength,paraList.overlapLength,cut_num);
+  vector<ExactFragmentInfo> fragments;
+  vector<ExactSimTaskSpec> tasks;
+  ExactSimConfig exactSimConfig;
+
+  fragments.reserve(dnaSequencesVec.size());
+  tasks.reserve(dnaSequencesVec.size() * 48);
+	for(int i=0;i<dnaSequencesVec.size();i++)
+	{
+		long dnaStartPos = dnaSequencesStartPos[i];
+	  if(longtarget_progress_enabled())
+	  {
+	    cerr<<"dnaPos="<<dnaStartPos<<endl;
+	  }
+    string &seq1=dnaSequencesVec[i];
+    const bool skipFragment = same_seq(seq1) != 0;
+    fragments.push_back(ExactFragmentInfo(seq1,dnaStartPos,skipFragment));
+		if(skipFragment)
+    {
+      continue;
+    }
+    if(paraList.strand>=0)
+		{
+			if(paraList.rule==0)
+			{
+        appendExactSimTaskRange(tasks,fragments.size()-1,seq1,dnaStartPos,0,1,1,6);
+        appendExactSimTaskRange(tasks,fragments.size()-1,seq1,dnaStartPos,1,1,1,6);
+			}
+			if(paraList.rule>0&&paraList.rule<7)
+			{
+        appendExactSimTask(tasks,fragments.size()-1,seq1,dnaStartPos,0,1,paraList.rule);
+        appendExactSimTask(tasks,fragments.size()-1,seq1,dnaStartPos,1,1,paraList.rule);
+      }
+		}
+		if(paraList.strand<=0)
+		{
+			if(paraList.rule==0)
+			{
+        appendExactSimTaskRange(tasks,fragments.size()-1,seq1,dnaStartPos,0,-1,1,18);
+        appendExactSimTaskRange(tasks,fragments.size()-1,seq1,dnaStartPos,1,-1,1,18);
+			}
+			else
+			{
+        appendExactSimTask(tasks,fragments.size()-1,seq1,dnaStartPos,0,-1,paraList.rule);
+        appendExactSimTask(tasks,fragments.size()-1,seq1,dnaStartPos,1,-1,paraList.rule);
+			}
+		}
+	}
+
+  ExactSimRunContext runContext(rnaSequence);
+  runContext.minScoreCache.reserve(tasks.size());
+  vector< vector<struct triplex> > taskTriplexLists(tasks.size());
+  vector<ExactSimTaskTiming> taskTimings(tasks.size());
+  vector<double> taskFilterSeconds(tasks.size(),0.0);
+  vector<int> taskWorkerIndices(tasks.size(),-1);
+
+  vector<int> taskMinScores(tasks.size(),0);
+  vector<unsigned char> taskMinScoreReady(tasks.size(),0);
+  bool usedCudaAny = false;
+  bool usedCudaAll = true;
+  double cudaThresholdSeconds = 0.0;
+
+  if(longtarget_cuda_enabled() && calc_score_cuda_is_built() && !tasks.empty())
+  {
+    const int cudaDevice = longtarget_cuda_device();
+    string cudaError;
+    if(calc_score_cuda_init(cudaDevice,&cudaError))
+    {
+      CalcScoreWorkspace thresholdWorkspace;
+      thresholdWorkspace.ensureQueryProfiles(rnaSequence);
+      const int queryLength = thresholdWorkspace.queryLength;
+      const int segWidth = 32;
+      const int segLen = (queryLength + segWidth - 1) / segWidth;
+      const int maxQueryLenCuda = 8192;
+
+      if(queryLength > 0 && queryLength <= maxQueryLenCuda && segLen > 0)
+      {
+        vector<int16_t> profileFwd(static_cast<size_t>(7) * static_cast<size_t>(segLen) * static_cast<size_t>(segWidth),0);
+        vector<int16_t> profileRev(static_cast<size_t>(7) * static_cast<size_t>(segLen) * static_cast<size_t>(segWidth),0);
+
+        auto fillProfile = [&](const vector<unsigned char> &encodedQuery, vector<int16_t> &profile)
+        {
+          for(int targetProfileIndex = 1; targetProfileIndex < 7; ++targetProfileIndex)
+          {
+            const unsigned char targetCode = calc_score_profile_code_for_index(targetProfileIndex);
+            for(int lane = 0; lane < segWidth; ++lane)
+            {
+              for(int segIndex = 0; segIndex < segLen; ++segIndex)
+              {
+                const int queryIndex = lane * segLen + segIndex;
+                int16_t score = 0;
+                if(queryIndex < queryLength)
+                {
+                  const unsigned char queryCode = encodedQuery[static_cast<size_t>(queryIndex)];
+                  score = static_cast<int16_t>(thresholdWorkspace.pst.pam2[queryCode][targetCode]);
+                }
+                profile[(static_cast<size_t>(targetProfileIndex) * static_cast<size_t>(segLen) + static_cast<size_t>(segIndex)) *
+                          static_cast<size_t>(segWidth) +
+                        static_cast<size_t>(lane)] = score;
+              }
+            }
+          }
+        };
+
+        fillProfile(thresholdWorkspace.encodedQuery,profileFwd);
+        fillProfile(thresholdWorkspace.encodedReverseComplementQuery,profileRev);
+
+        CalcScoreCudaQueryHandle cudaQuery;
+        if(calc_score_cuda_prepare_query(&cudaQuery,
+                                         profileFwd.data(),
+                                         profileRev.data(),
+                                         segLen,
+                                         queryLength,
+                                         &cudaError))
+        {
+          vector<pair<int,size_t> > tasksSorted;
+          tasksSorted.reserve(tasks.size());
+          for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+          {
+            tasksSorted.push_back(make_pair(static_cast<int>(tasks[taskIndex].transformedSequence.size()), taskIndex));
+          }
+          sort(tasksSorted.begin(),tasksSorted.end());
+
+          const CalcScoreTargetBaseLut &targetBaseLut = calc_score_target_base_lut();
+          const bool validateCuda = longtarget_cuda_validate_enabled();
+
+          size_t groupStart = 0;
+          while(groupStart < tasksSorted.size())
+          {
+            const int targetLength = tasksSorted[groupStart].first;
+            size_t groupEnd = groupStart;
+            while(groupEnd < tasksSorted.size() && tasksSorted[groupEnd].first == targetLength)
+            {
+              ++groupEnd;
+            }
+            const size_t groupSize = groupEnd - groupStart;
+
+            bool groupUsedCuda = false;
+            if(targetLength > 0)
+            {
+              thresholdWorkspace.ensureShufflePlan(static_cast<size_t>(targetLength));
+              if(thresholdWorkspace.shufflePlanEnabled && thresholdWorkspace.useShortShufflePlan)
+              {
+                vector<uint8_t> encodedTargets(groupSize * static_cast<size_t>(targetLength));
+                for(size_t groupOffset = 0; groupOffset < groupSize; ++groupOffset)
+                {
+                  const size_t taskIndex = tasksSorted[groupStart + groupOffset].second;
+                  const string &target = tasks[taskIndex].transformedSequence;
+                  for(int i = 0; i < targetLength; ++i)
+                  {
+                    encodedTargets[groupOffset * static_cast<size_t>(targetLength) + static_cast<size_t>(i)] =
+                      targetBaseLut.lut[static_cast<unsigned char>(target[static_cast<size_t>(i)])];
+                  }
+                }
+
+                vector<int> pairScores;
+                CalcScoreCudaBatchResult batchResult;
+                const double groupStartSeconds = longtarget_now_seconds();
+                if(calc_score_cuda_compute_pair_max_scores(cudaQuery,
+                                                          encodedTargets.data(),
+                                                          static_cast<int>(groupSize),
+                                                          targetLength,
+                                                          thresholdWorkspace.shufflePermutations16.data(),
+                                                          CALC_SCORE_SHUFFLE_COUNT,
+                                                          CALC_SCORE_MLE_COUNT + 1,
+                                                          &pairScores,
+                                                          &batchResult,
+                                                          &cudaError))
+                {
+                  cudaThresholdSeconds += longtarget_now_seconds() - groupStartSeconds;
+                  groupUsedCuda = true;
+                  usedCudaAny = true;
+
+                  thresholdWorkspace.ensureAa1Length(targetLength);
+                  for(size_t groupOffset = 0; groupOffset < groupSize; ++groupOffset)
+                  {
+                    vector<int> maxScores(static_cast<size_t>(CALC_SCORE_MLE_COUNT));
+                    const int *rowScores = &pairScores[groupOffset * static_cast<size_t>(CALC_SCORE_MLE_COUNT + 1)];
+                    for(int i = 0; i < CALC_SCORE_MLE_COUNT; ++i)
+                    {
+                      maxScores[static_cast<size_t>(i)] = rowScores[i];
+                    }
+                    maxScores[150] = rowScores[CALC_SCORE_MLE_COUNT];
+
+                    double *mle_rst = mle_cen(maxScores.data(),
+                                              CALC_SCORE_MLE_COUNT,
+                                              thresholdWorkspace.aa1Len,
+                                              queryLength,
+                                              0.0,
+                                              0.0,
+                                              0.0);
+                    int minScore = 0;
+                    if(mle_rst != NULL)
+                    {
+                      const double lambda_tmp = mle_rst[0];
+                      const double K_tmp = mle_rst[1];
+                      minScore = static_cast<int>((log(K_tmp * static_cast<double>(targetLength) * static_cast<double>(queryLength)) -
+                                                   log(10.0)) /
+                                                    lambda_tmp +
+                                                  0.5);
+                      free(mle_rst);
+                    }
+
+                    const size_t taskIndex = tasksSorted[groupStart + groupOffset].second;
+                    taskMinScores[taskIndex] = minScore;
+                    taskMinScoreReady[taskIndex] = 1;
+
+                    if(validateCuda)
+                    {
+                      CalcScoreWorkspace cpuWorkspace;
+                      const int cpuMinScore = calc_score_with_workspace(rnaSequence, tasks[taskIndex].transformedSequence, cpuWorkspace);
+                      if(cpuMinScore != minScore)
+                      {
+                        fprintf(stderr,
+                                "CUDA minScore mismatch taskIndex=%zu targetLength=%d cpu=%d cuda=%d\n",
+                                taskIndex,
+                                targetLength,
+                                cpuMinScore,
+                                minScore);
+                        abort();
+                      }
+                    }
+                  }
+                }
+                else
+                {
+                  cudaThresholdSeconds += longtarget_now_seconds() - groupStartSeconds;
+                }
+              }
+            }
+
+            if(!groupUsedCuda)
+            {
+              usedCudaAll = false;
+            }
+
+            groupStart = groupEnd;
+          }
+
+          calc_score_cuda_release_query(&cudaQuery);
+        }
+        else
+        {
+          usedCudaAll = false;
+        }
+      }
+      else
+      {
+        usedCudaAll = false;
+      }
+    }
+    else
+    {
+      usedCudaAll = false;
+    }
+  }
+  else if(longtarget_cuda_enabled())
+  {
+    usedCudaAll = false;
+  }
+
+  if(metrics != NULL)
+  {
+    if(usedCudaAny)
+    {
+      metrics->thresholdBackend = usedCudaAll ? "cuda" : "mixed";
+    }
+    else
+    {
+      metrics->thresholdBackend = "cpu";
+    }
+    metrics->thresholdSeconds += cudaThresholdSeconds;
+  }
+
+  const bool twoStage = exact_sim_two_stage_enabled_runtime();
+  const bool useWindowPipeline = longtarget_window_pipeline_enabled_runtime(twoStage);
+  const bool useWindowPipelineOverlap = longtarget_window_pipeline_overlap_enabled_runtime(useWindowPipeline);
+  vector<size_t> taskExecutionOrder;
+  taskExecutionOrder.reserve(tasks.size());
+  for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+  {
+    taskExecutionOrder.push_back(taskIndex);
+  }
+  if(useWindowPipeline)
+  {
+    sort(taskExecutionOrder.begin(),
+         taskExecutionOrder.end(),
+         [&](size_t lhs,size_t rhs)
+         {
+           const size_t lhsLen = tasks[lhs].transformedSequence.size();
+           const size_t rhsLen = tasks[rhs].transformedSequence.size();
+           if(lhsLen != rhsLen) return lhsLen < rhsLen;
+           return lhs < rhs;
+         });
+  }
+  const vector<SimCudaWorkerAssignment> cudaWorkerAssignments = longtarget_cuda_worker_assignments_runtime();
+  if(!cudaWorkerAssignments.empty())
+  {
+    atomic<size_t> nextTask(0);
+    vector<thread> workers;
+    workers.reserve(cudaWorkerAssignments.size());
+    for(size_t workerIndex = 0; workerIndex < cudaWorkerAssignments.size(); ++workerIndex)
+    {
+      const size_t capturedWorkerIndex = workerIndex;
+      const SimCudaWorkerAssignment assignment = cudaWorkerAssignments[workerIndex];
+      workers.push_back(thread([&, assignment, capturedWorkerIndex]()
+      {
+        sim_set_cuda_device_override(assignment.device);
+        sim_set_cuda_worker_slot_override(assignment.slot);
+        CalcScoreWorkspace calcScoreWorkspace;
+        vector<LongTargetWindowPipelineTask> pendingBatchTasks;
+        pendingBatchTasks.reserve(longtarget_window_pipeline_batch_size());
+        long pendingTargetLength = -1;
+        bool hasInFlightWindowPipeline = false;
+        future<LongTargetWindowPipelinePreparedBatch> inFlightWindowPipeline;
+
+        auto runWindowPipelineBatchFallback = [&](const vector<LongTargetWindowPipelineTask> &fallbackBatchTasks)
+        {
+          if(fallbackBatchTasks.empty())
+          {
+            return;
+          }
+          recordSimWindowPipelineFallback(static_cast<uint64_t>(fallbackBatchTasks.size()));
+          for(size_t batchOffset = 0; batchOffset < fallbackBatchTasks.size(); ++batchOffset)
+          {
+            const LongTargetWindowPipelineTask &batchTask = fallbackBatchTasks[batchOffset];
+            longtarget_run_exact_sim_single_stage_with_min_score(rnaSequence,
+                                                                 tasks[batchTask.taskIndex],
+                                                                 fragments,
+                                                                 batchTask.minScore,
+                                                                 exactSimConfig,
+                                                                 paraList,
+                                                                 taskTriplexLists[batchTask.taskIndex],
+                                                                 &taskTimings[batchTask.taskIndex],
+                                                                 &taskFilterSeconds[batchTask.taskIndex]);
+          }
+        };
+
+        auto drainInFlightWindowPipeline = [&]()
+        {
+          if(!hasInFlightWindowPipeline)
+          {
+            return;
+          }
+          LongTargetWindowPipelinePreparedBatch preparedBatch = inFlightWindowPipeline.get();
+          hasInFlightWindowPipeline = false;
+          if(!preparedBatch.valid ||
+             !longtarget_execute_window_pipeline_batch_cpu(tasks,
+                                                           fragments,
+                                                           paraList,
+                                                           preparedBatch,
+                                                           taskTriplexLists,
+                                                           taskTimings,
+                                                           taskFilterSeconds))
+          {
+            runWindowPipelineBatchFallback(preparedBatch.batchTasks);
+          }
+        };
+
+        auto submitWindowPipelineBatch = [&](const vector<LongTargetWindowPipelineTask> &submittedBatchTasks)
+        {
+          const vector<LongTargetWindowPipelineTask> batchCopy = submittedBatchTasks;
+          return async(std::launch::async,[&, batchCopy]()
+          {
+            sim_set_cuda_device_override(assignment.device);
+            sim_set_cuda_worker_slot_override(assignment.slot);
+            LongTargetWindowPipelinePreparedBatch preparedBatch;
+            if(!longtarget_prepare_window_pipeline_batch_gpu(rnaSequence,
+                                                             tasks,
+                                                             batchCopy,
+                                                             exactSimConfig,
+                                                             preparedBatch))
+            {
+              preparedBatch.batchTasks = batchCopy;
+            }
+            return preparedBatch;
+          });
+        };
+
+        auto flushPendingWindowPipeline = [&]()
+        {
+          if(pendingBatchTasks.empty())
+          {
+            return;
+          }
+          vector<LongTargetWindowPipelineTask> batchToFlush;
+          batchToFlush.swap(pendingBatchTasks);
+          pendingTargetLength = -1;
+
+          if(useWindowPipelineOverlap)
+          {
+            future<LongTargetWindowPipelinePreparedBatch> nextPreparedBatch =
+              submitWindowPipelineBatch(batchToFlush);
+            if(hasInFlightWindowPipeline)
+            {
+              recordSimWindowPipelineOverlapBatch();
+              LongTargetWindowPipelinePreparedBatch preparedBatch = inFlightWindowPipeline.get();
+              if(!preparedBatch.valid ||
+                 !longtarget_execute_window_pipeline_batch_cpu(tasks,
+                                                               fragments,
+                                                               paraList,
+                                                               preparedBatch,
+                                                               taskTriplexLists,
+                                                               taskTimings,
+                                                               taskFilterSeconds))
+              {
+                runWindowPipelineBatchFallback(preparedBatch.batchTasks);
+              }
+            }
+            inFlightWindowPipeline = std::move(nextPreparedBatch);
+            hasInFlightWindowPipeline = true;
+            return;
+          }
+
+          if(!longtarget_flush_window_pipeline_batch(rnaSequence,
+                                                     tasks,
+                                                     fragments,
+                                                     batchToFlush,
+                                                     exactSimConfig,
+                                                     paraList,
+                                                     taskTriplexLists,
+                                                     taskTimings,
+                                                     taskFilterSeconds))
+          {
+            runWindowPipelineBatchFallback(batchToFlush);
+          }
+        };
+
+        while(true)
+        {
+          const size_t taskOrderIndex = nextTask.fetch_add(1, std::memory_order_relaxed);
+          if(taskOrderIndex >= taskExecutionOrder.size())
+          {
+            break;
+          }
+          const size_t taskIndex = taskExecutionOrder[taskOrderIndex];
+          taskWorkerIndices[taskIndex] = static_cast<int>(capturedWorkerIndex);
+          const ExactSimTaskSpec &task = tasks[taskIndex];
+          if(useWindowPipeline)
+          {
+            const int minScore =
+              taskMinScoreReady[taskIndex] != 0 ?
+              taskMinScores[taskIndex] :
+              longtarget_prepare_exact_sim_min_score(rnaSequence,
+                                                     task.transformedSequence,
+                                                     runContext,
+                                                     calcScoreWorkspace,
+                                                     &taskTimings[taskIndex]);
+            const bool canBatchTask =
+              longtarget_task_supports_window_pipeline(rnaSequence,task,minScore);
+            const long targetLength = static_cast<long>(task.transformedSequence.size());
+            if(!canBatchTask)
+            {
+              flushPendingWindowPipeline();
+              recordSimWindowPipelineFallback();
+              longtarget_run_exact_sim_single_stage_with_min_score(rnaSequence,
+                                                                   task,
+                                                                   fragments,
+                                                                   minScore,
+                                                                   exactSimConfig,
+                                                                   paraList,
+                                                                   taskTriplexLists[taskIndex],
+                                                                   &taskTimings[taskIndex],
+                                                                   &taskFilterSeconds[taskIndex]);
+              continue;
+            }
+            if(!pendingBatchTasks.empty() &&
+               (pendingTargetLength != targetLength ||
+                pendingBatchTasks.size() >= longtarget_window_pipeline_batch_size()))
+            {
+              flushPendingWindowPipeline();
+            }
+            pendingBatchTasks.push_back(LongTargetWindowPipelineTask(taskIndex,minScore));
+            pendingTargetLength = targetLength;
+            if(pendingBatchTasks.size() >= longtarget_window_pipeline_batch_size())
+            {
+              flushPendingWindowPipeline();
+            }
+            continue;
+          }
+          if(taskMinScoreReady[taskIndex] != 0)
+          {
+            if(twoStage)
+            {
+              runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
+                                                      task.transformedSequence,
+                                                      fragments[task.fragmentIndex].sequence,
+                                                      task.dnaStartPos,
+                                                      task.reverseMode,
+                                                      task.parallelMode,
+                                                      task.rule,
+                                                      taskMinScores[taskIndex],
+                                                      exactSimConfig,
+                                                      paraList.ntMin,
+                                                      paraList.ntMax,
+                                                      paraList.penaltyT,
+                                                      paraList.penaltyC,
+                                                      taskTriplexLists[taskIndex],
+                                                      &taskTimings[taskIndex]);
+            }
+            else
+            {
+              runExactReferenceSIMWithMinScore(rnaSequence,
+                                               task.transformedSequence,
+                                               fragments[task.fragmentIndex].sequence,
+                                               task.dnaStartPos,
+                                               task.reverseMode,
+                                               task.parallelMode,
+                                               task.rule,
+                                               taskMinScores[taskIndex],
+                                               exactSimConfig,
+                                               paraList.ntMin,
+                                               paraList.ntMax,
+                                               paraList.penaltyT,
+                                               paraList.penaltyC,
+                                               taskTriplexLists[taskIndex],
+                                               &taskTimings[taskIndex]);
+            }
+          }
+          else
+          {
+            if(twoStage)
+            {
+              runExactReferenceSIMTwoStage(rnaSequence,
+                                           task.transformedSequence,
+                                           fragments[task.fragmentIndex].sequence,
+                                           task.dnaStartPos,
+                                           task.reverseMode,
+                                           task.parallelMode,
+                                           task.rule,
+                                           exactSimConfig,
+                                           paraList.ntMin,
+                                           paraList.ntMax,
+                                           paraList.penaltyT,
+                                           paraList.penaltyC,
+                                           taskTriplexLists[taskIndex],
+                                           &runContext,
+                                           &calcScoreWorkspace,
+                                           &taskTimings[taskIndex]);
+            }
+            else
+            {
+              runExactReferenceSIM(rnaSequence,
+                                   task.transformedSequence,
+                                   fragments[task.fragmentIndex].sequence,
+                                   task.dnaStartPos,
+                                   task.reverseMode,
+                                   task.parallelMode,
+                                   task.rule,
+                                   exactSimConfig,
+                                   paraList.ntMin,
+                                   paraList.ntMax,
+                                   paraList.penaltyT,
+                                   paraList.penaltyC,
+                                   taskTriplexLists[taskIndex],
+                                   &runContext,
+                                   &calcScoreWorkspace,
+                                   &taskTimings[taskIndex]);
+            }
+          }
+
+          const double filterStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
+          filterTriplexListInPlace(taskTriplexLists[taskIndex],paraList);
+          if(metrics != NULL)
+          {
+            taskFilterSeconds[taskIndex] = longtarget_now_seconds() - filterStart;
+          }
+        }
+        flushPendingWindowPipeline();
+        drainInFlightWindowPipeline();
+        sim_clear_cuda_worker_slot_override();
+        sim_clear_cuda_device_override();
+      }));
+    }
+    for(size_t i = 0; i < workers.size(); ++i)
+    {
+      workers[i].join();
+    }
+    finalizeLongTargetCudaWorkerMetrics(cudaWorkerAssignments,
+                                        taskWorkerIndices,
+                                        taskTimings,
+                                        taskFilterSeconds,
+                                        metrics);
+  }
+  else
+  {
+#if defined(_OPENMP)
+#pragma omp parallel
+  {
+    CalcScoreWorkspace calcScoreWorkspace;
+#pragma omp for schedule(static)
+    for(long taskIndex = 0; taskIndex < static_cast<long>(tasks.size()); ++taskIndex)
+    {
+      const ExactSimTaskSpec &task = tasks[static_cast<size_t>(taskIndex)];
+      if(taskMinScoreReady[static_cast<size_t>(taskIndex)] != 0)
+      {
+        if(twoStage)
+        {
+          runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
+                                                  task.transformedSequence,
+                                                  fragments[task.fragmentIndex].sequence,
+                                                  task.dnaStartPos,
+                                                  task.reverseMode,
+                                                  task.parallelMode,
+                                                  task.rule,
+                                                  taskMinScores[static_cast<size_t>(taskIndex)],
+                                                  exactSimConfig,
+                                                  paraList.ntMin,
+                                                  paraList.ntMax,
+                                                  paraList.penaltyT,
+                                                  paraList.penaltyC,
+                                                  taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                                  &taskTimings[static_cast<size_t>(taskIndex)]);
+        }
+        else
+        {
+          runExactReferenceSIMWithMinScore(rnaSequence,
+                                           task.transformedSequence,
+                                           fragments[task.fragmentIndex].sequence,
+                                           task.dnaStartPos,
+                                           task.reverseMode,
+                                           task.parallelMode,
+                                           task.rule,
+                                           taskMinScores[static_cast<size_t>(taskIndex)],
+                                           exactSimConfig,
+                                           paraList.ntMin,
+                                           paraList.ntMax,
+                                           paraList.penaltyT,
+                                           paraList.penaltyC,
+                                           taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                           &taskTimings[static_cast<size_t>(taskIndex)]);
+        }
+      }
+      else
+      {
+        if(twoStage)
+        {
+          runExactReferenceSIMTwoStage(rnaSequence,
+                                       task.transformedSequence,
+                                       fragments[task.fragmentIndex].sequence,
+                                       task.dnaStartPos,
+                                       task.reverseMode,
+                                       task.parallelMode,
+                                       task.rule,
+                                       exactSimConfig,
+                                       paraList.ntMin,
+                                       paraList.ntMax,
+                                       paraList.penaltyT,
+                                       paraList.penaltyC,
+                                       taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                       &runContext,
+                                       &calcScoreWorkspace,
+                                       &taskTimings[static_cast<size_t>(taskIndex)]);
+        }
+        else
+        {
+          runExactReferenceSIM(rnaSequence,
+                               task.transformedSequence,
+                               fragments[task.fragmentIndex].sequence,
+                               task.dnaStartPos,
+                               task.reverseMode,
+                               task.parallelMode,
+                               task.rule,
+                               exactSimConfig,
+                               paraList.ntMin,
+                               paraList.ntMax,
+                               paraList.penaltyT,
+                               paraList.penaltyC,
+                               taskTriplexLists[static_cast<size_t>(taskIndex)],
+                               &runContext,
+                               &calcScoreWorkspace,
+                               &taskTimings[static_cast<size_t>(taskIndex)]);
+        }
+      }
+      const double filterStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
+      filterTriplexListInPlace(taskTriplexLists[static_cast<size_t>(taskIndex)],paraList);
+      if(metrics != NULL)
+      {
+        taskFilterSeconds[static_cast<size_t>(taskIndex)] = longtarget_now_seconds() - filterStart;
+      }
+    }
+  }
+#else
+  CalcScoreWorkspace calcScoreWorkspace;
+  for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+  {
+    const ExactSimTaskSpec &task = tasks[taskIndex];
+    if(taskMinScoreReady[taskIndex] != 0)
+    {
+      if(twoStage)
+      {
+        runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
+                                                task.transformedSequence,
+                                                fragments[task.fragmentIndex].sequence,
+                                                task.dnaStartPos,
+                                                task.reverseMode,
+                                                task.parallelMode,
+                                                task.rule,
+                                                taskMinScores[taskIndex],
+                                                exactSimConfig,
+                                                paraList.ntMin,
+                                                paraList.ntMax,
+                                                paraList.penaltyT,
+                                                paraList.penaltyC,
+                                                taskTriplexLists[taskIndex],
+                                                &taskTimings[taskIndex]);
+      }
+      else
+      {
+        runExactReferenceSIMWithMinScore(rnaSequence,
+                                         task.transformedSequence,
+                                         fragments[task.fragmentIndex].sequence,
+                                         task.dnaStartPos,
+                                         task.reverseMode,
+                                         task.parallelMode,
+                                         task.rule,
+                                         taskMinScores[taskIndex],
+                                         exactSimConfig,
+                                         paraList.ntMin,
+                                         paraList.ntMax,
+                                         paraList.penaltyT,
+                                         paraList.penaltyC,
+                                         taskTriplexLists[taskIndex],
+                                         &taskTimings[taskIndex]);
+      }
+    }
+    else
+    {
+      if(twoStage)
+      {
+        runExactReferenceSIMTwoStage(rnaSequence,
+                                     task.transformedSequence,
+                                     fragments[task.fragmentIndex].sequence,
+                                     task.dnaStartPos,
+                                     task.reverseMode,
+                                     task.parallelMode,
+                                     task.rule,
+                                     exactSimConfig,
+                                     paraList.ntMin,
+                                     paraList.ntMax,
+                                     paraList.penaltyT,
+                                     paraList.penaltyC,
+                                     taskTriplexLists[taskIndex],
+                                     &runContext,
+                                     &calcScoreWorkspace,
+                                     &taskTimings[taskIndex]);
+      }
+      else
+      {
+        runExactReferenceSIM(rnaSequence,
+                             task.transformedSequence,
+                             fragments[task.fragmentIndex].sequence,
+                             task.dnaStartPos,
+                             task.reverseMode,
+                             task.parallelMode,
+                             task.rule,
+                             exactSimConfig,
+                             paraList.ntMin,
+                             paraList.ntMax,
+                             paraList.penaltyT,
+                             paraList.penaltyC,
+                             taskTriplexLists[taskIndex],
+                             &runContext,
+                             &calcScoreWorkspace,
+                             &taskTimings[taskIndex]);
+      }
+    }
+    const double filterStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
+    filterTriplexListInPlace(taskTriplexLists[taskIndex],paraList);
+    if(metrics != NULL)
+    {
+      taskFilterSeconds[taskIndex] = longtarget_now_seconds() - filterStart;
+    }
+  }
+#endif
+  }
+
+  size_t mergedTriplexCount = 0;
+  auto mergePrefilterBackend = [](const string &current,const string &next) -> string
+  {
+    if(next.empty())
+    {
+      return current;
+    }
+    if(current.empty())
+    {
+      return next;
+    }
+    if(current == next)
+    {
+      return current;
+    }
+    if(current == "disabled")
+    {
+      return next;
+    }
+    if(next == "disabled")
+    {
+      return current;
+    }
+    return "mixed";
+  };
+  for(size_t taskIndex = 0; taskIndex < taskTriplexLists.size(); ++taskIndex)
+  {
+    mergedTriplexCount += taskTriplexLists[taskIndex].size();
+    if(metrics != NULL)
+    {
+      metrics->thresholdSeconds += taskTimings[taskIndex].thresholdSeconds;
+      metrics->simSeconds += taskTimings[taskIndex].simSeconds;
+      metrics->postProcessSeconds += taskFilterSeconds[taskIndex];
+      metrics->prefilterBackend = mergePrefilterBackend(metrics->prefilterBackend, taskTimings[taskIndex].prefilterBackend);
+      metrics->prefilterHits += taskTimings[taskIndex].prefilterHits;
+      metrics->refineWindowCount += taskTimings[taskIndex].refineWindowCount;
+      metrics->refineTotalBp += taskTimings[taskIndex].refineTotalBp;
+    }
+  }
+
+  if(metrics != NULL)
+  {
+    getSimScanExecutionCounts(metrics->simScanTasks,metrics->simScanLaunches);
+    getSimTracebackStats(metrics->simTracebackCandidates,metrics->simTracebackTieCount);
+  }
+
+  vector<struct triplex> triplex_list;
+  triplex_list.reserve(mergedTriplexCount);
+  for(size_t taskIndex = 0; taskIndex < taskTriplexLists.size(); ++taskIndex)
+  {
+    triplex_list.insert(triplex_list.end(),taskTriplexLists[taskIndex].begin(),taskTriplexLists[taskIndex].end());
+  }
+  sort_triplex_list.insert(sort_triplex_list.end(),triplex_list.begin(),triplex_list.end());
+}
+
+
+void printResult(string &species,struct para paraList,string &lncName,string &dnaFile,vector<struct triplex> &sort_triplex_list,string &chroTag,string &dnaSequence,int start_genome,string &c_tmp_dd,string &c_tmp_length,string &resultDir)
+{
+  vector<struct tmp_class> w_tmp_class;
+  string pre_file2=resultDir+"/"+species+"-"+lncName;
+  string pre_file1=dnaFile;
+  string outFilePath = pre_file2+"-"+pre_file1+"-TFOsorted";
+  const LongTargetOutputMode outputMode = longtarget_output_mode_runtime();
+  const bool writeTfoSorted = (outputMode != LONGTARGET_OUTPUT_LITE);
+  const bool writeLite = (outputMode == LONGTARGET_OUTPUT_LITE) || longtarget_write_tfosorted_lite_enabled();
+  ofstream outFile;
+  if(writeTfoSorted)
+  {
+    outFile.open(outFilePath.c_str(),ios::trunc);
+    outFile<<"QueryStart\t"<<"QueryEnd\t"<<"StartInSeq\t"<<"EndInSeq\t"<<"Direction\t"<<"StartInGenome\t"<<"EndInGenome\t"<<"MeanStability\t"<<"MeanIdentity(%)\t"<<"Strand\t"<<"Rule\t"<<"Score\t"<<"Nt(bp)\t"<<"Class\t"<<"MidPoint\t"<<"Center\t"<<"TFO sequence"<<endl;
+  }
+
+  const string outLitePath = outFilePath + ".lite";
+  ofstream outLiteFile;
+  if(writeLite)
+  {
+    outLiteFile.open(outLitePath.c_str(), ios::trunc);
+    outLiteFile << "Chr\t"
+                << "StartInGenome\t"
+                << "EndInGenome\t"
+                << "Strand\t"
+                << "Rule\t"
+                << "QueryStart\t"
+                << "QueryEnd\t"
+                << "StartInSeq\t"
+                << "EndInSeq\t"
+                << "Direction\t"
+                << "Score\t"
+                << "Nt(bp)\t"
+                << "MeanIdentity(%)\t"
+                << "MeanStability"
+                << endl;
+  }
+
+  const bool doCluster = (outputMode == LONGTARGET_OUTPUT_FULL);
+  map<size_t,size_t> class1[6],class1a[6],class1b[6];
+  int class_level=5;
+  if(doCluster)
+  {
+    cluster_triplex(paraList.cDistance,paraList.cLength, sort_triplex_list, class1, class1a, class1b, class_level);
+    sort(sort_triplex_list.begin(),sort_triplex_list.end(),comp);
+  }
+  for(int i=0;i<sort_triplex_list.size();i++)
+  {
+    triplex atr=sort_triplex_list[i];
+    if(doCluster && sort_triplex_list[i].motif==0)
+    {
+      continue;
+    }
+    const int motif = doCluster ? atr.motif : 0;
+    const int middle = doCluster ? atr.middle : static_cast<int>((atr.stari + atr.endi) / 2);
+    const int center = doCluster ? atr.center : middle;
+    if(writeTfoSorted)
+    {
+      atr.stri_align.erase(remove(atr.stri_align.begin(),atr.stri_align.end(),'-'),atr.stri_align.end());
+    }
+    if(atr.starj<atr.endj)
+    {
+      const long genomeStart = atr.starj + start_genome - 1;
+      const long genomeEnd = atr.endj + start_genome - 1;
+      if(writeTfoSorted)
+      {
+        outFile<<atr.stari<<"\t"<<atr.endi<<"\t"<<atr.starj<<"\t"<<atr.endj<<"\t"<<"R\t"<<genomeStart<<"\t"<<genomeEnd<<"\t"<<atr.tri_score<<"\t"<<atr.identity<<"\t"<<getStrand(atr.reverse,atr.strand)<<"\t"<<atr.rule<<"\t"<<atr.score<<"\t"<<atr.nt<<"\t"<<motif<<"\t"<<middle<<"\t"<<center<<"\t"<<atr.stri_align<<endl;
+      }
+      if(writeLite)
+      {
+        outLiteFile << chroTag << "\t"
+                    << genomeStart << "\t"
+                    << genomeEnd << "\t"
+                    << getStrand(atr.reverse, atr.strand) << "\t"
+                    << atr.rule << "\t"
+                    << atr.stari << "\t"
+                    << atr.endi << "\t"
+                    << atr.starj << "\t"
+                    << atr.endj << "\t"
+                    << "R\t"
+                    << atr.score << "\t"
+                    << atr.nt << "\t"
+                    << atr.identity << "\t"
+                    << atr.tri_score
+                    << endl;
+      }
+    }
+    else
+    {
+      const long genomeStart = atr.endj + start_genome - 1;
+      const long genomeEnd = atr.starj + start_genome - 1;
+      if(writeTfoSorted)
+      {
+        outFile<<atr.stari<<"\t"<<atr.endi<<"\t"<<atr.starj<<"\t"<<atr.endj<<"\t"<<"L\t"<<genomeStart<<"\t"<<genomeEnd<<"\t"<<atr.tri_score<<"\t"<<atr.identity<<"\t"<<getStrand(atr.reverse,atr.strand)<<"\t"<<atr.rule<<"\t"<<atr.score<<"\t"<<atr.nt<<"\t"<<motif<<"\t"<<middle<<"\t"<<center<<"\t"<<atr.stri_align<<endl;
+      }
+      if(writeLite)
+      {
+        outLiteFile << chroTag << "\t"
+                    << genomeStart << "\t"
+                    << genomeEnd << "\t"
+                    << getStrand(atr.reverse, atr.strand) << "\t"
+                    << atr.rule << "\t"
+                    << atr.stari << "\t"
+                    << atr.endi << "\t"
+                    << atr.starj << "\t"
+                    << atr.endj << "\t"
+                    << "L\t"
+                    << atr.score << "\t"
+                    << atr.nt << "\t"
+                    << atr.identity << "\t"
+                    << atr.tri_score
+                    << endl;
+      }
+    }
+  }
+  if(writeTfoSorted)
+  {
+    outFile.close();
+  }
+  if(writeLite)
+  {
+    outLiteFile.close();
+  }
+  int pr_loop=0;
+  if(doCluster)
+  {
+    for(pr_loop=1;pr_loop<3;pr_loop++)
+    {
+      print_cluster(pr_loop,class1,start_genome-1,chroTag,dnaSequence.size(),lncName,paraList.cDistance,paraList.cLength,outFilePath,c_tmp_dd,c_tmp_length,w_tmp_class);
+    }
+  }
+  vector<struct tmp_class>tmpClass;
+  tmpClass.swap(w_tmp_class);
+  for(pr_loop=0;pr_loop<6;pr_loop++)
+  {
+    class1[pr_loop].clear();
+    class1a[pr_loop].clear();
+    class1b[pr_loop].clear();
+  }
+}
+
+bool comp(const triplex &a,const triplex &b)
+{
+  if(a.motif != b.motif) return a.motif < b.motif;
+  if(a.stari != b.stari) return a.stari < b.stari;
+  if(a.endi != b.endi) return a.endi < b.endi;
+  if(a.starj != b.starj) return a.starj < b.starj;
+  if(a.endj != b.endj) return a.endj < b.endj;
+  if(a.reverse != b.reverse) return a.reverse < b.reverse;
+  if(a.strand != b.strand) return a.strand < b.strand;
+  if(a.rule != b.rule) return a.rule < b.rule;
+  if(a.nt != b.nt) return a.nt < b.nt;
+  if(a.middle != b.middle) return a.middle < b.middle;
+  if(a.center != b.center) return a.center < b.center;
+  if(a.neartriplex != b.neartriplex) return a.neartriplex < b.neartriplex;
+
+  auto floatBits = [](float value) -> uint32_t
+  {
+    uint32_t bits = 0;
+    memcpy(&bits,&value,sizeof(bits));
+    return bits;
+  };
+
+  const uint32_t scoreA = floatBits(a.score);
+  const uint32_t scoreB = floatBits(b.score);
+  if(scoreA != scoreB) return scoreA < scoreB;
+  const uint32_t identityA = floatBits(a.identity);
+  const uint32_t identityB = floatBits(b.identity);
+  if(identityA != identityB) return identityA < identityB;
+  const uint32_t stabilityA = floatBits(a.tri_score);
+  const uint32_t stabilityB = floatBits(b.tri_score);
+  if(stabilityA != stabilityB) return stabilityA < stabilityB;
+
+  if(a.stri_align != b.stri_align) return a.stri_align < b.stri_align;
+  if(a.strj_align != b.strj_align) return a.strj_align < b.strj_align;
+  return false;
+}
+string getStrand(int reverse,int strand)
+{
+  string Strand;
+  if(reverse==0 &&strand==1)
+  {
+    Strand="ParaPlus";
+  }
+  else if(reverse==1 &&strand==1)
+  {
+    Strand="ParaMinus";
+  }
+  else if(reverse==1 &&strand==-1)
+  {
+    Strand="AntiMinus";
+  }
+  else if(reverse==0 &&strand==-1)
+  {
+    Strand="AntiPlus";
+  }
+  return Strand;
+}
+
+int same_seq(string &w_str)
+{
+  string A=w_str;
+  int i=0;
+  int a=0,c=0,g=0,t=0,u=0,n=0;
+  for(i=0;i<A.size();i++)
+  {
+    switch(A[i])
+    {
+      case 'A':
+      case 'a':
+        a++;
+        break;
+      case 'C':
+      case 'c':
+        c++;
+        break;
+      case 'G':
+      case 'g':
+        g++;
+        break;
+      case 'T':
+      case 't':
+        t++;
+        break;
+      case 'U':
+      case 'u':
+        u++;
+        break;
+      case 'N':
+      case 'n':
+        n++;
+        break;
+      default:
+        break;
+    }
+  }
+  if(a==A.size())
+  {
+    return 1;
+  }
+  else if(c==A.size())
+  {
+    return 1;
+  }
+  else if(g==A.size())
+  {
+    return 1;
+  }
+  else if(t==A.size())
+  {
+    return 1;
+  }
+  else if(u==A.size())
+  {
+    return 1;
+  }
+  else if(n==A.size())
+  {
+    return 1;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+void show_help()
+{
+  cout<<"This is the help page."<<endl;
+  cout<<"options   Parameters      functions"<<endl;
+  cout<<"f1   DNA sequence file  used to get the DNA sequence"<<endl;
+  cout<<"f2   RNA sequence file  used to get the RNA sequence"<<endl;
+  cout<<"r    rules              rules used to construct triplexes.int type.0 is all."<<endl;
+  cout<<"O    Output path        if you define this,output result will be in the path.default is pwd"<<endl;
+  cout<<"c    Cutlength          Cut sequence's length."<<endl;
+  cout<<"m    min_score          Min_score...this option maybe useless.keep it for now."<<endl;
+  cout<<"d    detailoutut        if you choose -d option,it will generate a triplex.detail file which describes the sequence-alignment."<<endl;
+  cout<<"i    identity           a condition used to pick up triplexes.default is 60.this should be int type such as 60,not 0.6.default is 60."<<endl;
+  cout<<"S    stability          a condition like identity,should be float type such as 1.0.default is 1.0."<<endl;
+  cout<<"ni   ntmin              triplexes' min length.default is 20."<<endl;
+  cout<<"na   ntmax              triplexes' max length.default is 100."<<endl;
+  cout<<"pc   penaltyC           penalty about GG.default is 0."<<endl;
+  cout<<"pt   penaltyT           penalty about AA.default is -1000."<<endl;
+  cout<<"ds   c_dd               distance used by cluster function.default is 15."<<endl;
+  cout<<"lg   c_length           triplexes' length threshold used in cluster function.default is 50."<<endl;
+  cout<<"all parameters are listed.If you want to run a simple example,type ./LongTarget -f1 DNAseq.fa -f2 RNAseq.fa -r 0 will be OK"<<endl;
+  cout<<"any problems or bugs found please send email to us:zhuhao@smu.edu.cn."<<endl;
+  exit(1);
+}

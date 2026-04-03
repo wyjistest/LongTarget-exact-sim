@@ -1,0 +1,972 @@
+ADVANCES    IN APPLIED     MATHEMATICS    12, 337-357 (1991)
+
+
+
+
+                      A Time-Efficient, Linear-Space                         Local
+                              Similarity Algorithm*
+
+                                         XIAOQW HUANG
+
+
+              Department of Computer Science, Michigan Technological University,
+                                Houghton, Michigan 49931
+
+
+                                                 AND
+
+
+                                          WEBB     MILLER
+
+
+
+              Department of Computer Science, The Pennsyloania State University,
+                             Unicersity Park, Pennsylvania 16802
+
+
+
+
+        Dynamic programming algorithms to determine similar regions of two sequences
+     are useful for analyzing biosequence data. This paper presents a time-efficient
+     algorithm that produces k best “non-intersecting”     local alignments for any chosen
+     k. The algorithm’s main strength is that it needs only O(M + N + K) space,
+     where M and N are the lengths of the given sequences and K is the total length of
+     the computed alignments.    o 1991 Academic  PUS, IIIC.
+
+
+
+
+                                         1. INTRODUCTION
+
+   Local alignment algorithms locate matching segments within two se-
+quences (Sellers [lo]); this contrasts with global alignment methods, which
+align entire sequences including unconserved regions. A number of dy-
+namic programming algorithms have been designed to produce local
+alignments (Goad and Kanehisa [2], Hall and Myers [4], Sellers [ll], Smith
+
+  *This publication      was supported in part by Grant ROl LMOSllO from the National                Library
+of Medicine.
+
+                                                 337
+                                                                                    0196-8858/91        $7.50
+                                                                   Copyright  0 1991 by Academic   Press, Inc.
+                                                            All rights of reproduction  in any form reserved.
+338                        HUANG    AND   MILLER
+
+
+and Waterman [13], Waterman and Eggert [15]>. Waterman [141offers the
+opinion that such an algorithm is “probably the most useful dynamic
+programming algorithm for current problems in biology.”
+    In many contexts, a major drawback of current dynamic programming
+algorithms for local sequence alignment is the need for space proportional
+to the product of the two sequence lengths. For global alignments, there
+exists a dynamic programming algorithm that requires only space propor-
+tional to the sum of the sequence lengths (Hirschberg [51, Myers and
+Miller [7]).
+    Very recently, Huang et al. [6] used the Myers-Miller global alignment
+algorithm as part of a local alignment algorithm. The resulting method is a
+“linear-space algorithm” in the sense that it needs only space proportional
+to the sum of the input size and the output size. Huang et al. illustrate the
+method’s utility by computing 100 best non-intersecting local alignments of
+a 73,360-nucleotide sequence containing the human /?-like globin cluster
+and a corresponding 44,594-nucleotide sequence from rabbit. Such a
+problem is completely outside the scope of quadratic-space algorithms,
+i.e., those requiring space proportional to the product of the sequence
+lengths, since 73360 x 44595 is over three billion. Huang et al. also point
+out certain advantages of their method over the widely-used and faster,
+but less rigorous, LFASTA program (Pearson and Lipman 193).Unfortu-
+nately, the simple method that they present is very slow. For each of the k
+alignments it makes an O(MN)-time sweep of the entire dynamic-pro-
+gramming matrix, so the total time is O(kMN). For example, each of the
+100 local alignments for the P-globin sequences required 5 or 6 h on a Sun
+4 workstation.
+   Here we improve the algorithm of Huang et al. by lowering its time
+requirement, while retaining its space efficiency. Under reasonable as-
+sumptions, the new algorithm’s running time is O(MN + C~=,L~), where
+L, is the length of the nth computed alignment. This represents a
+considerable savings when both k is large and most of the computed
+alignments are short compared to the original sequences. For instance, the
+new algorithm finds the 100 local alignments for the /3-globin sequences
+mentioned above in about 15 h on a Sun 4, a definite improvement over
+the three weeks required by the simpler algorithm.
+   The remainder of the paper is organized as follows. In Section 2 we
+review the local similarity algorithm of Smith and Waterman [131 as
+extended by Waterman and Eggert [15]. To prepare for later develop-
+ments, this method is explained in terms of an algorithm for finding
+optimal paths in a certain graph, following Myers and Miller [81. Section 3
+presents the new linear-space algorithm. An example is given in Section 4
+to verify the need for particular care in the algorithm’s formulation.
+Section 5 closes by discussing a program that implements the algorithm.
+                       LOCAL      SIMILARITY   ALGORITHM                   339
+
+  An implementation in the C language of the program described in this
+paper is freely available from the authors. The simplest way to obtain
+the program is by electronic mail from huang@cs.mtu.edu or
+webb@cs.psu.edu.
+
+
+
+                        2.     WATERMAN’S      APPROACH
+
+
+    The sequences A and B consist of symbols chosen from an alphabet 2.
+Let E, a unique symbol not in C, denote the sequence of zero symbols.
+Then E is the identity element with respect to the concatenation of
+sequences, i.e., if u and w are sequences, then UEW= uw.
+    An aligned pair has the form [:I, where a, b E I: U {E}. An alignment
+is a finite sequence of aligned pairs. An alignment S aligns A and B if A is
+the concatenation of upper elements of S and B is the concatenation of
+lower elements. For example, the sequence of four aligned pairs
+                                                                    I:1M:l
+[ ;] aligns pqr and xyz. The null pair, 77= [ ~1, acts as the identity
+element for the concatenation of alignments, i.e., if (Y and /3 are align-
+ments, then (YTP and aP are considered equal. Without loss of generality,
+assume that alignments consist of non-null aligned pairs.
+    An aligned pair with upper entry E is called an insertion pair, and one
+with lower entry E is a deletion pair. Within a given alignment, an insertion
+gap is a contiguous subsequence of insertion pairs delimited by non-inser-
+tion pairs or an end of the alignment. A deletion gap is similarly defined,
+and collectively such blocks are called gaps. For example, the alignment [ ~1
+ml [:I
+one.
+             has an insertion gap of length two and a deletion gap of length
+
+    A score is assigned to an alignment based on a user-specified scoring
+function (+ that assigns a real-valued cost to each possible non-null aligned
+pair, and on a gap penalty g > 0. The score of an alignment S is simply
+the sum of the costs of each aligned pair in it minus a penalty g for each
+gap, i.e., score (9 = C{a(r): r is an aligned pair of Sl - g x (number of
+gaps in S). For local similarity problems, the “average” weight of an
+aligned pair should be negative so that a random extension of an align-
+ment will lower the score. For instance, with DNA sequences, which have
+a four-letter alphabet, we might set a( [ z] ) = 1 for all a E 2 and a( [ i] ) =
+ - 1 if b # a. In addition, assume that all insertion and deletion pairs have
+negative weight.
+    The above definition is slightly more general than the traditional ap-
+proach to affine gap penalties (Gotoh [3]). Beside charging g for opening a
+gap, we assesspotentially different penalties for each kind of insertion or
+340                          HUANG    AND   MILLER
+
+
+deletion pair; traditionally, each pair in the gap is charged a fixed “gap-
+extension” penalty.
+   For sequences A = u1u2 * a* uM and B = b,b, . *. b,, the alignment
+graph7 GA,By is an edge-labeled directed graph, defined as follows. G has
+3(M + MN + 1) vertices, denoted (i, j)c, (i, j),, and (i, j)I, where i E
+[O,M] and j E [O,N]. (We use [x, y] to denote the set of integers t such
+that x I t I y.> The following edges, and only these edges, are in GA+
+     1. If i E [l, M] and j E [O,N], then there is a deletion               edge
+(i - 1, i), + (i, j), labeled [ 21.
+     2. If i E [l, M] and j E [0, N], then there is a deletion initiation   edge
+(i - 1, & + (i, j), labeled [ 21.
+     3. If i E [0, M] and j E [l, N], then there is an insertion edge (i, j -
+                      [I
+l), + (i, j)I labeled i .
+    4. If i E [0, M] and j E [l, N], then there is an insertion initiation
+                                     [I
+edge (i, j - l), -+ (i, j), labeled ij .
+     5. If i E [l, M] and j E [l, N], then there is a substitution          edge
+
+                                     [1
+(i - 1, j - l), + (i, j)c labeled 2’ .
+       6. If i E [0, M] and j E [O,h;], then there is a null edge (i, j), -+
+(i, j), labeled 7.
+       7. If i E [0, M] and j E [O,N], then there is a null edge (i, j), +
+(i, j), labeled 7.
+Note that the D-vertices in row 0 and the Z-vertices in column 0 are not
+reachable from other vertices.
+   Figure 1 illustrates G,,, baa. Rows of the graph after the top-most row
+are labeled with successive entries of the first sequence; columns after the
+left-most column are labeled with entries of the second sequence. All
+edges not annotated are null edges labeled 7.
+   Let A[m..i] denote the sequence u~+~u~+~ ... ui and let B[n..j]
+denote bn+lbn+2 * * * bj. A path in GA,B from (m, n), to (i, j), is said to
+spell the alignment obtained by concatenating its edge labels. Each path
+from (m, n), to (i, j), spells an alignment between A[m..il and Bln..jl,
+and every such alignment is spelled by some path. However, there may be
+many paths from (m, n), to (i, j), spelling the same alignment. Thus the
+correspondence between paths and alignments is not one-to-one unless
+one restricts attention to a canonical subset of the paths. A path is normal
+if and only if it does not contain subpaths of the form (i - 1, jjD +
+(i - 1, j), + (i, j), or (i, j - O1 -9 (i, j - 11, -+ (i, j),. An exercise, not
+proven here, shows that alignments between A[m..i] and B[n..j] are in
+one-to-one correspondence with normal paths from (m, n), to (i, j),.
+                      LOCAL     SIMILARITY     ALGORITHM                341
+
+
+
+
+                     FIG. 1.   G,,,   for A = ab and B = baa.
+
+
+
+
+    Our first goal is an algorithm that computes the score and final vertex
+(i,j), of a highest-scoring alignment among all alignments between a
+substring A[m..i] of A and a substring B[n.. j] of B. Assign weights to
+edges of GA,B as follows. Deletion initiation and insertion initiation edges
+are weighted a(r) - g, where r is the aligned pair labeling the edge.
+Null edges are weighted 0 and all other edges are weighted a(r). The
+weight or score of a path, i.e., the sum of its edge weights, thus equals the
+sum of the scores of its non-null labels minus g times the number of
+initiation edges. For normal paths this is exactly the score of the corre-
+sponding alignment since each initiation edge corresponds to the leftmost
+aligned pair in a gap. Hence the problem is to locate a maximum-weight
+normal path between any two nodes of G. However, for every non-normal
+path there is a normal path of greater weight spelling the same alignment,
+since a subpath such as (i - 1, j), --+ (i - 1, j), + (i, j), can be replaced
+by (i - 1, j), -+ (i, j), for a net weight gain of g > 0. Thus the problem is
+to locate a maximum-weight path (it must be normal) in G. Since insertion
+and deletion edges have negative weights, there is a maximum-weight path
+that begins and ends with a substitution edge, and hence connects
+C-vertices. A path connecting C-vertices will be called a C-path.
+    Because GA,B is acyclic, a maximum-weight path can be determined in a
+single pass over its vertices, so long as they are taken in a topological
+342                                        HUANG      AND    MILLER
+
+
+
+
+  D(O,O) +- Z(O,O) * --m
+  C(0, 0) + 0
+  score-nun    + i-best + j-best            + 0
+  for j +- 1 to N do
+    ONI, i) + --co
+
+
+      j)+ (III)
+      I(O,j)+u                 ;.   -g
+
+    1 C(0,
+
+  for i + 1 to M do
+                       0
+
+
+
+
+                           (1=,
+    (l&O) + --m
+      D(i, 0) + u
+      C(i, 0) + 0
+                             EI)-g
+      for j + 1 to N do
+        (D(i, j) + max{D(i - 1, j),C(i            - 1,j) - g) + c
+                                                                 ([ I)   “,i
+
+         Z(i, j) +- max{I(i, j - l),CG, j - 1) - g) + u
+                                                                ([JI)
+                                                                    i
+
+         C(i, j) + max 0, D(i, j), I(i, j),C(i
+                         1
+         if C(i, j) > score-max          then
+                                                         - Lj   - 1) + (+
+                                                                               (1I1))
+                                                                                 t’
+
+             (i-best       *    i
+             j-best + j
+             score-m0.x + C(i, j)
+
+
+
+
+  write “A best local alignment with score” score-max                   “ends at” (i-best,   j-best)
+
+                           FIG. 2. The Smith-Waterman local alignment algorithm.
+
+
+
+order, i.e., an ordering of the vertices with the property that every edge is
+directed from a vertex to a successor in the ordering. One topological
+order for GA,B‘s vertices is to treat the rows in order, sweeping left to
+right within a row. For fixed (i, j), (i, j), is treated after (i, j), and (i, j),.
+    In the algorithm of Fig. 2, the values D(i, j), Z(i, j), and C(i, j> are,
+respectively, the maximum weight of the path from any C-vertex to (i, jjD,
+to (i, j)[, and to (i, jjC. Each of these values is found by considering the
+edges entering the vertex, where for C(i, j) we also consider the zero-edge
+path from (i, jlc to itself. For instance, when i > 0, there are two edges
+into (i, j),, i.e., one from (i - 1, j), with weight g( [ :I) and one from
+(i - 1, & with weight u( [ ~1) - g. Since a maximum weight path to
+(i, j), must end with one of these edges and since the portion of the path
+preceding that last edge must be optimal, D(i, j) is the larger of
+                      LOCAL   SIMILARITY   ALGORITHM                      343
+
+D(i - l,j> + a([:]) or c(i - 1, j) + a( [ :I) - g. Values at unreachable
+vertices, i.e., D(0, j) and I(i, 01, are defined to be - 03, a suitably large
+negative constant.
+   Waterman and Eggert [15] extend the Smith-Waterman algorithm to
+compute k best “non-intersecting” local alignments, where k > 0 can be
+chosen arbitrarily. More formally, let P,, P2,. . . , Pk be C-paths of G in
+non-increasing order of scores. P,, P,, . . . , Pk are k best non-intersecting
+paths if for each n E [l, k], P, is a maximum-score path in G,,, where G,,
+is obtained by removing the substitution (i.e., diagonal) edges of
+p,, p,, . . .7 Pnel from G. This definition has the following “non-unique-
+ness” property. It is possible to have two sequences of k best non-inter-
+secting paths {P,) and IQ,} such that for some n, P,, and Q, have different
+scores. An example of this phenomenon is given in Section 4.
+   The basic idea of the Waterman-Eggert algorithm is that once all
+entires D,(i, j), Z,(i, j), and C,(i, j) for paths in G, are found, the
+corresponding values in G,,+ 1 can be determined quite efficiently. Indeed,
+D,+Ji, j) = D,(i, j) for “most” positions (i, j) (and similarly for I and
+C). Only values at positions “near” P,, need be recomputed. See the
+Waterman-Eggert paper for more details; Waterman [ 141gives a complete
+implementation in the C language.
+
+
+
+                     3. A LINEAR-SPACE     ALGORITHM
+
+
+   A serious drawback of the Waterman-Eggert algorithm is the need to
+save all values D,(i, j), I,(i, j), and C,(i, j) from the current graph, G,.
+(A subscript n will always indicate that the value is relative to GJ Huang
+et al. [6] give a local alignment algorithm that needs only “linear space,”
+i.e., space proportional to M + N + K (instead of MN + K), where K is
+the total length of all computed alignments. Unfortunately, the technique
+is quite slow: for each n E [l, k] it computes all entries of D,,, I,, and C,,
+from scratch, so O(kMN) time is needed to find k alignments. Our goal is
+to obtain a speedup comparable to that from the Waterman-Eggert
+approach, while maintaining the linear space bound and guaranteeing
+optimality of the computed solution.
+   In outline, our approach is as follows. We perform the Smith-
+Waterman algorithm (Fig. 21, saving k best scores instead of just one.
+Care is required since typically the k largest values C(i, j) will occur at
+vertices (i, j) that are packed tightly together. To avoid this problem, we
+save values C(i,, j,) and C(i,, j.J only if there are disjoint optimal paths
+ending at (iI, j,) and (i2, j,). However, this approach introduces another
+problem. It may be that the terminal vertex of, say, the ith overall best
+344                          HUANG   AND     MILLER
+
+
+non-intersecting path is also the endpoint of a higher scoring path that
+shares its startpoint with local alignment #l. It is only after we remove the
+substitution edges of the best path that the Smith-Waterman method can
+discern this ith best path. In other words, the k best non-intersecting
+paths that can be found in one Smith-Waterman pass over the C-matrix
+may not include the k overall best paths. Huang et al. show that this
+phenomenon is important in practice.
+   Once we have determined the best path, the problem is to discover any
+high-scoring paths that were hidden from the first Smith-Waterman pass.
+This can be done by making a “backward” Smith-Waterman pass over a
+limited portion of the graph to discover the “region of influence” of the
+path being removed, followed by a forward Smith-Waterman pass over
+this region to find the newly-exposed paths. It is not immediately apparent
+how one can determine a region that is guaranteed to be sufficiently large;
+see Lemma 3, below, for our solution. In general, we need one complete
+pass over the matrix, followed by limited forward and backward passesfor
+each removed path (except for the final path). Our record of the k best
+non-intersecting paths is updated whenever we find a path that outscores
+our current k th best path. With this outline, we are ready to consider the
+details.
+   The first observation we need is that the Smith-Waterman algorithm
+(Fig. 2) can be modified to compute the first vertex of an optimal path. As
+will be shown in Section 4, it is critical how we select this first vertex in the
+case of ties, i.e., when there are several optimal paths to (i, j>, with
+different initial vertices. In what follows, let < G denote any topological
+order on the C-vertices of G. This ordering can be the same as the order
+in which vertices are treated in Fig. 2, or it can be different. First&, j), is
+defined to be the last C-vertex in this ordering such that there is a path in
+G, from that vertex to (i, j), of score D(i, j). First,(i, j), and First,(i, j),
+are defined similarly.
+   Figure 2 can be augmented so that vertices First&j) are computed. The
+basic idea is simply to inherit First from whichever incoming path is found
+to be optimal. (For O-edge optimal paths set First(i, j), = 6, j),.) For
+example, the line
+
+        D(i, j) + max{D(i      - 1, j),C(i     - 1, j) -g}   + U( [ 21)
+
+becomes
+  ifD(i-l,j)>C(i-l,j)-gthen
+     Wi, j) + D(i - 1, j) + a( [ 21)
+      First(i, j), + First(i - 1, j),
+     1
+                      LOCAL   SIMILARITY   ALGORITHM                     345
+
+  else if D(i - 1, j> < C(i - 1, j) - g then
+     (D(i, j) + C(i - 1, j> + a( [ 21) - g
+       First&j),  * First(i - 1, j),
+     I
+  else / *tier*/
+     (Hi, j) di Hi - 1, j> + a( [ 21)
+       First& j), + max, G(First(i - 1, jID, Fir&      - 1, j),)
+     1
+   LEMMA    1. Fix n E [l, k] and let u be a C-vertex such that G,, + 1 is
+formed from G,, by removing the substitution edges of an optimal path from
+First,(u) to u. Zf v is a C-vertex with First,(v) # First,(u), then C,+,(v) =
+C,(v) and First,+,(v) = First,(v).
+
+   Proof: Let P be the path from First,(u) to u whose substitution edges
+are removed, and let Q be an optimal path from First,(v) to v. We first
+show that P and Q have no vertex in common. Suppose otherwise and let
+s be a vertex lying on P and Q. The prefix of P ending at s and the prefix
+of Q ending at s must have the same score (sum of edge weights). To see
+this, suppose that the prefix of P ending at s had lower score. Form a
+path P’ from First,(v) to u by appending the suffix of P beginning at s to
+the prefix of Q ending at s. Then score(P) > score(P), contradicting the
+optimality of P.
+   Without loss of generality, suppose First,(u) < G First,(v). Then the
+path P’ constructed as above satisfies score(P’) = score(P), and P’ starts
+at a vertex that follows First,(u) in the ordering < G. This contradicts the
+definition of First,(u) and proves that P and Q are disjoint.
+   Since P and Q have no vertex in common, they have no edge
+in common. Thus Q is also a path in G,,+r, so C,+,(v) 2 C,(v). But
+since C,+,(w) I C,(w) for all vertices w, we have C,+,(v) = C,(U).
+There cannot exist an optimal path in G,,+r from a < G-successor of
+First,(v) to v, since such a path would also be a path in G,, so
+First,+,(v) = First.(u). 0
+   As described in the previous section, let G, be the original graph GA,s
+and for each n E [l, k - 11,let G,,,, be determined by locating a C-vertex
+u that maximizes C,(u) and removing from G,, the substitution edges of an
+optimal path from First,(u) to u. Define a relation E,, over the C-vertices
+of G by: uE,v if and only if First,(u) = First,(v). E,, is an equivalence
+relation, and hence E, partitions the vertices of G into equivalence
+classes.For each equivalence class S of E,, define score,(s) = max{C,(u):
+u E S}. Our local alignment algorithm begins by determining the k best
+(i.e., highest-scoring) equivalence classes for E,. Each of these k equiva-
+346                        HUANG   AND   MILLER
+
+
+lence classes S is represented by a 7-tuple:
+  (C, F, u, T, B, L, R), where
+       C = score(S),
+       F = First(s) for all s E S,
+       First(u) = F and C(u) = score(S), and
+       [T, B] X [L, R] contains all s E S with C(s) > W.
+In this definition, W is the minimum score of the retained equivalence
+classes, and we say that [T, B] x [L, R] contains (i, j), if T I i I B and
+L I j I R. Initially, C values and First vertices are relative to G,; as the
+algorithm proceeds, the tuples are updated so as to be valid for
+G,, G,, . . . , G,-,. Henceforth, we use tuple to designate such a 7-tuple,
+and refer to the entries of tuple S by SC, S.F, . . . , S.R.
+   Once k best classes of G, are determined, we select and delete a best
+class S, then remove the diagonal edges of an optimal path from S.F to
+S.u to get G,. Lemma 1 implies that if vertex u satisfies First,(v) # S.F,
+then C,(U) = C,(U) and First,(u) = First,(u). Thus, to find the k - 1 best
+classes in G, we need only re-evaluate C and First for vertices in S with
+score > W, i.e., vertices contained in [S.T, S.B] X [S.L, S.Rl. This is
+because vertices in other equivalence classes are already assigned to the
+proper First vertex, and vertices with score I W are no longer interest-
+ing, since we already have enough non-intersecting paths with score at
+least W. However, each vertex in [S.T, S.B] X [S.L, S.R] needs to be
+re-scored in G,, i, because we may find a new path to it of score > W.
+   The k - 12+ 1 best tuples for G,, are kept in a data structure, called
+LIST, that supports the following operations:
+     find(f): Return the tuple whose First vertex is f, or null if no such
+tuple exists.
+     insert(S): Add tuple S to LIST.
+     maxtuple ( ): Remove and return a maximum-score tuple in LIST.
+     minscore ( ): Return the minimum score of a tuple in LIST.
+     replace(S): Replace a minimum-score tuple in LIST by S.
+     size( ): Return the number of tuples in LIST.
+Candidates for implementing LIST include a linear list, a balanced search
+tree (Aho et al. [l]) or a splay tree (Sleator and Tarjan [12]). The data
+structure used in our alignment software is described near the end of this
+section.
+   To maintain LIST, we use the function enter of Fig. 3. Let i(u) and j(u)
+denote the i-component and j-component of vertex u. Enter(c, f, u, W,E)
+performs the following tasks. If there is already a tuple S in LIST whose
+                       LOCAL      SIMILARITY       ALGORITHM                347
+
+
+
+                  function enterk, f, 24,w, 0
+                      S + find(f)
+                      if S f null then
+                        (if S.C < c then
+                            (S.C +- c
+                             s.u - u
+                           1
+                        S.T * min(S.T, i(u))
+                        S.B + max(S.B, i(u))
+                        S.L +- min(S.L, j(u))
+                        S.R + max(S.R, j(u))
+
+                      else
+                         if size( ) = 1 then
+                               replace((c, f, u, i(u), i(u), j(u), j(u)))
+                         else
+                               insert((c, f, u, i(u), i(u), j(u), j(u)))
+                      if size( ) = I then
+                               return minscorec 1
+                      else
+                               return w
+
+                               FIG. 3. The enter function.
+
+
+
+First vertex is f, then the other attributes of S are adjusted if necessary.
+Otherwise, the tuple (c, f, U, i(u), i(u), j(u), j(u)) either replaces a mini-
+mum-score tuple in LIST or is inserted into LIST, depending on whether
+or not LIST is full (i.e., contains I tuples). Finally, the minimum tuple
+score is returned if LIST is full.
+   Notice that enter guarantees that any two tuples in LIST have distinct
+First values. That is, if S and S’ are in LIST and S f S’, then S.F # S.F.
+The rectangle [T, B] x [L, R] is properly maintained so long as enter is
+called whenever C(U) > W.
+   Figure 4 outlines our algorithm for computing k best non-intersecting
+paths. The first part of the algorithm (two nested for loops) computes
+tuples representing k highest-scoring classes in G,, while the second part
+reports k best non-intersecting paths one at a time. The nth iteration of
+the for loop in the second part selects a highest-scoring tuple, reports its
+optimal path, removes the diagonal edges of the path to form G,,+r, and
+computes the k - IZ best tuples in G,, r. The algorithm mentions only
+computation of C(i, j) and abbreviates First(i, j), by First(i, j); computa-
+tion of ZIG, j), First(i, jjD, Z(i, j), and First(i, j>, is implicit. In another
+effort to simplify the presentation, we assume in what follows that there
+are at least k distinct values of First in G, with paths of positive score.
+348                               HUANG      AND     MILLER
+
+
+
+
+W+O
+for i + 0 to M do
+      forj+Oto   Ndo
+       {Compute C(i, j) and First& j)
+       if C(i, j) > W then
+            W + enter(C(i, j), Fir&i, j), (i, j), W, k)
+       I
+for n + 1 to k do
+  (S + maxtuple( )
+   alignment(d)
+   if n # k then
+       {Determine T I S.T and L s S.L so that no C-path starting outside [T, S.B] X
+        [L, S.R] and ending inside [XT, XB] X [XL, S.Rl has scoregreaterthan W
+       for i + T to S.B do
+          for j + L to S.R do
+             (Compute C(i, j) and First(i, j) relative to IT, S.Bl X [L, S.Rl
+              if C(i, j) > Wand (i, j) is in [S.T, S.B] X [S.L,S.Rl then
+                 W + enter(C(i, j), Fir&i, j), 6, j), W, k - n)
+
+
+
+
+                       FIG. 4. Outlined of the linear-space algorithm.
+
+
+
+  The procedure alignment(S) employs the global alignment of Myers and
+Miller to find an optimal path from S.F to S.U and then removes the
+diagonal edges of the path from G,. In practice, these “removed” edges
+are recorded in a data structure so that they will not be used again in
+determining T and L, in the final nested for loops, or in subsequent calls
+to alignment. Specifically, when evaluating
+
+                           O,D(i, j),I(i,       j),C(i    - l,j - 1) + (+
+
+after entering the main for loop of Fig. 4, we need to check whether the
+edge from (i - 1, j - ljc to (i, j), has been removed; if it has, then we
+maximize over just the first three terms. We now prove correctness of
+the local alignment algorithm, postponing a description of our method for
+computing T and L until the end of this section.
+   LEMMA  2. At the start of the nth iteration of the main for loop of Fig.
+4, LIST contains k - n + 1 tuples that satisfy the following properties:
+     (1) min{S.C: S E LIST} = W,, where W, is the value of W at the
+start of the nth iteration.
+                       LOCAL   SIMILARITY   ALGORITHM                      349
+
+     (2) for each C-vertex u that satisfies C,(U) > W,, there is a S in
+LIST such that First,(u) = S.F, C,(u) I S.C, and u E [S.T, S.B] x
+[S.L, S.R],
+     (3) for each tuple S in LIST, First,(S.u) = S.F and C,(S.u) = S.C
+and
+     (4) maxtuple delivers a tuple S such that an optimal path from S.F to
+S.u is an optimal path in G,,.
+    Proof. (Induction on n). For n = 1, the claim follows readily from the
+ definition of enter in Fig. 3. (Recall our assumption that there are at least
+ k distinct values of First in G, with paths of positive score.) Assuming
+ that the claim is true for n, we will show that it is true for n + 1. Consider
+ the nth iteration of the loop. The assignment S + maxtuple ( ) reduces
+ the size of LIST from k - n + 1 to k - n. With every call to enter during
+ that iteration, the last argument in the call is k - n, so the condition
+ “size( ) = E” is true within enter. It follows that enter calls replace rather
+ than insert. Thus the size of LIST at the start of the next iteration is still
+ k - n = k - (n + 1) + 1, and hence LIST contains the claimed number
+ of tuples. It likewise follows that enter returns the minimum tuple score,
+which is assigned to W. This verifies condition 1.
+    Consider condition 2, and let u satisfy C,,, i(u) > W,,,. We have
+ already noted that insert is not called once execution reaches the main for
+ loop; instead minimum-score tuples are replaced by ones of higher score.
+ It follows that successivevalues of W are non-decreasing throughout the k
+ iterations of the main loop. Thus, C,(U) 2 C,, i(u) > W,, 1 2 W,. The
+ induction hypothesis guarantees that at the start of the nth iteration there
+is a S’ in LIST such that First,(u) = S’.F, C,(u) I SC, and u E
+[S’.T, S’.B] x [S’.L, S’J?]. Let S be the tuple selected and removed from
+LIST by maxtuple.
+    First suppose that S’ # S. Then S’.C 2 C,(U) > W, + i at the start of the
+nth iteration, so S’ is not replaced during the nth iteration. Enter is
+written so that S’.C can only increase in value and the rectangle associated
+with S’ can only increase in extent. Also, First.+,(u) = First,(u) and
+C,+,(U) = C,(U) by Lemma 1, so u satisfies condition 2 with n replaced by
+n + 1.
+    Next suppose that S’ = S. Since C,, i(u) > W,,, 2 W,, the definition
+of T and L in Fig. 4 guarantees that all paths in G,,,, to u of cost greater
+than W, are entirely contained in [T, Xl?] X [L, SX]. The nested for loop
+at the end of Fig. 4 discovers all those paths and updates LIST to contain
+the desired tuple. This completes the verification of condition 2.
+    Now consider condition 3. Let S be in LIST at the start of the (n + l)th
+iteration. If S is placed in LIST during the nth iteration, or if S.C and S.u
+are assigned new values during that iteration, then c, f, and u for that call
+350                          HUANG AND MILLER
+
+to enfer satisfy c = C,,, r(u) and f = First,+ i(u), verifying condition 3.
+Otherwise, Lemma 1 and the induction hypothesis imply that
+First,+,(S.u) = First,(S.u) = S.F and C,+i<u> = C,(u) = S.C.
+   It remains to verify condition 4. Let S be the tuple selected by maxtuple
+in the nth iteration of the main for loop of Fig. 4. It follows from
+assertions 2 and 3 of Lemma 2 that C,(S.u) = S.C = max{C,(u>: u is a
+vertex of G) and First,(S.u) = S.F. Thus any optimal path from S.F to
+S.u is a highest-scoring path in G,,. q
+  THEOREM     1.    The algorithm of Fig. 4 computes k best non-intersecting
+local alignments.
+ Proof Correctness follows immediately from condition 4 of Lem-
+ma 2. 0
+   To compute values T and L needed in the main for loop of Fig. 4, we
+use the procedures locate and disjoint of Fig. 5. Namely, the algorithm of
+Fig. 4 performs the call locate(S.T, S.B, S.L.S.R) to find T and L such
+that no C-path starting outside [T, S.B] x [L, S.R] and ending inside
+[S.T, S.B] x [S. L, S.R] has score greater than W. For the most part, the
+computation is merely a “reverse” local similarity method that proceeds
+from lower right to upper left. (The differences are that no analog of LIST
+is maintained and that any tie-breaking rule can be used.) Values C’, D’, I’
+and vertices Last in the reverse computation correspond to the C, D, I,
+and First in the forward computation. For the remainder of the section, X
+represents any of C’, D’, or I’. The notation Last(v) r (T’, Z!) means that
+both i(Last(u)) 2 T’ and j(Last(u)) 2 L’. The while loop in locate stops
+when either no optimal path beginning on row T and column L ends
+inside [T’, b] x [L’, r] or T = L = 0. The repeat loop in locate terminates
+when either disjoint               returns true or T = L = 0. Lastly,
+disjointct, b, 1, r; var t’, 1’) returns false if there is no S in LIST such that
+[S.T, S.B] x [S.L, S.R] shares any vertex with either [t, b] x [l, 1’ - 11or
+[t, t' - 11 x [I, r]; it returns true with t' and 1’ adjusted if there is such
+an S.
+  LEMMA 3. Locate(t, b, 1, r) determines T and L so that any path starting
+outside [T, b] x [L, r] and ending inside [t, b] x [I, r] has score at most W,
+where W is the minimum tuple score in LIST.
+   Proof. To smooth the way for a more formal proof, we first develop an
+intuitive understanding based on Fig. 6. If locate terminates with T = L =
+0, then the result is trivial, so suppose otherwise. Indeed, suppose that the
+final values of T and L are both positive; we leave the case that exactly
+one of T or L is 0 to the reader. At termination, r/lag = cJrag = false, so
+for each vertex u on the top and right boundaries of [T, Bl X [L, RI the
+                               LOCAL     SIMILARITY’    ALGORITHM                       351
+
+
+
+FUNCTION locate(t, b, I, r).
+    Perform a reverse local alignment computation on [t, b] x [I, r] and save C’, D’, I’, and
+Last for vertices of the forms (t, jjx for j E [I, r] or (i, I), for i E [l, b]
+    T+T’+t
+    L*L’*l
+    repeat
+      (r&y + cfiag + true
+       while (flag and T > 0) or (c&g and L > 0) do
+           (if tflug and T > 0 then
+               (r&g + false
+                 T+T-1
+                 Determine C’, D’, I’, and Lust at (T, j), for j + r down to L
+                 if Last(T, j)x 2 (T’, L’) for some j E [L, r] and X then
+                      rflag + ture
+                 if Last(T, L), 2 (T’, L’) for some X then
+                      cpug + ture
+
+           if c&g and L > 0 then
+              (cflug + false
+              L+L-1
+              Determine C’, D’, I’, and Lust at (i, L), for i + b downto T
+              if La&i, L), 2 (T’, L’) for some i E [T, b] and X then
+                    cflag +- true
+               if La&T, L), 2 (T’, L’) for some X then
+                    rflag +- true
+              1
+          I
+      I
+    until disjoint(T, b, L, r, T’, L’) or T = L = 0
+    return (T, L)
+
+  FUNCTION disjoint(t, b, 1, r; var t’, I’).
+   for each S in LIST do
+         if S.T I b and S.L I r and S.B 2 t and S. R 2 1 and (S.T < t’ or S.L < I’) then
+            { t’ +- min(t’, S.T)
+               I’ + min(l’, S.L)
+               return false
+
+    return true
+
+                              FIG. 5. The locate and disjoint functions.
+352                             HUANG     AND   MILLER
+
+
+
+
+           L
+
+
+
+                                                                     r = S.R
+
+
+
+                                                     b = S.B
+                    FIG.   6. Graphical interpretation of T and L.
+
+
+
+condition “Last(u) 2 CT’, ~3” is false. Pictorially, Last(v) is in the shaded
+region in Fig. 6. Also disjoint(T, b, L, r, T’, L’) = true, so no S in LIST
+has an associated rectangle that intersects the shaded region in Fig. 6. Part
+2 of Lemma 2 then guarantees that all vertices s in the shaded region
+satisfy C,(s) 5 W.
+    More formally, let P be a C-path that starts outside [T, b] x [L, r] at
+vertex s and ends in [t, bl X [I, r] at vertex e. Let u be the first vertex on
+P that has the form either (T, j& for j E [L, r] or (i, L), for i E [T, b].
+Also, let U’ = Last(v). Let P, be the prefix of P ending at u and let P2 be
+the sufi of P starting at U. Then U’ must be in [t, bl X [1, I’ - 11 or
+[t, t’ - l] x [I, r], so U’ is not in the rectangle [S.T, S.Bl X [S.L, S.Rl for
+any S in LIST. Thus C,(u’) I W by part 2 of Lemma 2. Let Q be the path
+from u to U’ and form P’ by appending Q to P,. Since P’ ends at u’,
+score(P’) 5 CJu’), so score(P) = score(P,) + score(P,> < score(P,) +
+score(Q) = score(P’) 5 C,(v’> I W. q
+   Notice that if no path in G,, 1 that ends in [t, b] x [1, r] has score
+ greater than W, then no value of C’ will exceed W in the reverse pass. In
+ that case, the forward pass at the end of Fig. 4 can be omitted.
+   Our preferred implementation of LIST uses an array of k records, one
+ per tuple. Special care is taken to accelerate the frequent operations size,
+find, minscore, and replace. The number of tuples in LIST is kept in a
+variable so that size takes only constant time. Since vertices in the same
+ equivalence class form a connected region, find(f) tends to be invoked
+                      LOCAL   SIMILARITY   ALGORITHM                      353
+
+with the same f for a period of time. Maintaining a pointer to the most
+recently accessed record allows find(f) to usually be served in constant
+time. To speed up minscore, a pointer to a minimum score record is kept,
+which also makes replace efficient. Whenever this minimum-score record
+is replaced or modified, the pointer needs be recomputed by searching the
+entire array. Experimental results quoted in Section 5 show that this
+simple implementation strategy is entirely adequate.
+   The algorithm is designed to require only linear space. In the complete
+forward sweep of G,, it suffices to save only the most recently computed
+row of each matrix. (For implementation details, see Huang et al. 161).In
+the reverse pass to determine a rectangle, the most recently computed
+column of each matrix is saved as well. Recomputation of rectangles is
+handled like the complete forward sweep. Thus, O(M + N) space is
+sufficient for values C,(i, j), First,(i, j),, etc. The alignment procedure of
+Myers and Miller [7] uses space O(M + N + L,), where L, is the length
+of the computed alignment. O(K) space is needed to save the aligned
+pairs of computed alignments, where K = Ck=, L,. Lastly, the data struc-
+ture for LIST takes O(k) space, where k +Z K. Thus, the algorithm
+requires 004 + N + K) space.
+   A completely rigorous and realistic analysis of the algorithm’s time
+complexity would be difficult, but the general trend is easy to grasp. The
+complete forward sweep clearly takes O(MN) time in the worst case,
+exclusive of calls to manipulate LIST, and as just noted, manipulation of
+LIST takes negligible time in practice. The remainder of the algorithm
+may take O(kMN) time in the worst case that all computed alignments are
+nearly as long as the original sequences. However, in practice, at most a
+few alignments are large, and the performance of the algorithm is much
+better than the worst case. Execution time is strongly affected by the
+choice of scoring function c and gap penalty g. When mismatches and
+gaps are penalized very lightly, the rectangles requiring recomputation are
+large and the algorithms’ efficiency suffers accordingly. When reasonable
+weights are used, sides of the recomputation rectangle are only a few
+times longer than the length L, of the local alignment, so the recomputa-
+tions take O(C:=,L2,) time in expectation.
+   One final implementation note deserves mention. Some users may
+prefer a cutoff score to k. That is, instead of computing k best alignments,
+all non-intersecting alignments with scores greater than the cutoff score
+are computed. Our algorithm can easily be modified to do this. In Fig. 4,
+replace W + 0 by W +- cutoff, and replace
+                              for n + 1 to k do
+by:
+                        while LIST is not empty do
+354                           HUANG       AND   MILLER
+
+
+In addition, the function enter is modified accordingly: no bound is placed
+on the size of LIST, insert is always called, and no minimum core is
+returned. The difficulty in working with cutoffs is that a setting just slightly
+below the optimal cutoff value may bring forth a deluge of insignificant
+local alignments.
+
+
+                               4.   AN     EXAMPLE
+
+
+   Lemma 1 is central to our approach. It implies that we need only save
+endpoints of k paths from a single complete sweep that computes all
+entries of D, I, and C. Lemma 1 guarantees that we will never “break”
+any of the retained paths by removing diagonal edges of a higher-scoring
+path. This section contains an example showing that a less meticulous
+definition of First may well not work properly for this purpose.
+   For simplicity of this example, suppose that the gap-open penalty g is 0.
+Then for each i and j the vertices (i, j), for X = D, I, and C can be
+thought of a coalescing into a single node. (Details can be found in Myers
+and Miller [8].) Consider the tie-breaking rule that is applied when the
+diagonal edge entering a node gives a path-weight identical to a horizontal
+or vertical edge. In particular, suppose that such a tie is broken in favor of
+the diagonal edge, i.e., Fist(i, j) is set equal to First(i - 1, j - 1). Assume
+the following matrix, u, of substitution costs.
+                          a           b         c        d   e
+
+                          2           1
+                 %        1           2         1
+                                      1         4            1
+                 ii                                      2
+                 e                              1
+
+Values of c not shown (including deletions and insertions) equal - 1.
+  Let A = abed and B = aced. A best local alignment of A and B is
+Mkl[:l[I$    which scores 6. The second best local alignment that shares
+noF~~~~~d7p~~~ic~~h~thefirst alignment is. [.:I [ f ] ,-which scores 5.
+                       A,B. Edges with posttive weights are shown; edges
+weighted - 1 are either not shown or dotted. First(u) and First(v) are
+shown for the rule that prefers diagonal edges. There is an alternative
+optimal path from First(u) to u that breaks the only optimal path from
+First(u) to v. The corresponding alignment is [ ~1[i] [S] [z] [:I, which
+scores 6 but contains the pair [f] . This would affect our algorithm because
+                       LOCAL          SIMILARITY       ALGORITHM                 355
+
+                                       a           c        e           cl
+                First (u)-0.                  l         l          l         l
+
+
+
+                       a                2
+                                \
+
+
+
+
+                       d
+
+
+
+                    FIG. 7.    G,,,        for A = abed and B = aced.
+
+
+
+
+when the Myers-Miller procedure is invoked to find an optimal path
+between two given vertices, there is no effective way of controlling which
+optimal path is found.
+   If First is defined as in Section 3 (using < o to break ties), then
+First(u) = First(u) = (1, 0). Then the only optimal path from First(u) to u
+spells the alignment [i] [ :I[ ~1[:I, which scores 6. The second best
+non-intersecting alignment is spelled by a path extending t of the way
+down the main diagonal of G, i.e., [ ~1[t] [ ~1, which scores 4.
+   Figure 7 also provides an example of the non-uniqueness phenomenon
+mentioned at the end of Section 2, i.e., where two sequences of k best
+non-intersecting paths have different scores. For k = 2, the paths
+
+                 (070) + (171) + (272) -+ (3,3) + (4,4)
+                 (LO) + (271) -+ (332)
+
+constitute two best non-intersecting paths, the second of which scores 5.
+The paths
+
+                (l,O) -+ (291) + (392) - (393) + (494)
+                (O,O) -+ (l,l)              + (272) + (393)
+
+also constitute two best non-intersecting paths, the second of which
+scores 4.
+356                        HUANG     AND    MILLER
+
+
+                              5.   DISCUSSION
+
+
+   This section compares the execution time of the new algorithm and that
+of the algorithm of Huang et al. [6]. Both algorithms were implemented in
+the C programming language. DNA sequences containing the human and
+rabbit P-like globin gene clusters were used as test sequences. These
+sequences share many similar regions, which tends to favor the old
+algorithm. Use of random sequences would perhaps unfairly favor the new
+algorithm because such sequences usually contain only short regions of
+similarity, hence the new algorithm would spend very little time recomput-
+ing parts of the matrix.
+   In all tests, a matching aligned pair scored 1.0 and a mismatched pair
+scored - 1.5. The running time of the old algorithm is not significantly
+affected by the choice of weights. Thus, we conducted only one run using
+one set of weights for the old algorithm. On a 73,360~nucleotide sequence
+containing the human p-globin gene cluster and a corresponding 44,594-
+nucleotide rabbit sequence, the old algorithm took about 23 days to
+compute 100 best non-intersecting alignments with a gap-open penalty
+g = 6.0 and and a gap-extension penalty e = 0.2. (That is, each deletion or
+insertion pair is scored - 0.2.) On the 11,950-nucleotide human S-p region
+and the 12,400-nucleotide rabbit 6 - p region, the old algorithm took
+53 h to compute 20 best non-intersecting alignments with g = 6.0 and
+e = 0.2.
+   Times for the new program are shown in Tables I and II. Table I
+reports the time to compute 100 best non-intersecting alignments between
+the human and rabbit sequences for various gap penalties. Table II reports
+the time to compute 20 best non-intersecting alignments between the
+shorter 6 - /3 regions. The total column shows the total time (in hours)
+taken by our program. The time distribution over the five major parts of
+the program is also given, where main is the complete forward pass, locate
+is the backward pass determining a rectangle, update is recomputation of
+the rectangle, list is maintanence of LIST, and align is the Myers-Miller
+global alignment procedure. Notice that using small gap penalties can
+
+                              TABLE I
+        Time to Compute 100 Best Alignments of p-Globin Regions
+
+   g       e     Total     Main        Locate        Update   List   Align
+
+  3.0     0.5     15.5    71.3%         12.9%        11.9%    1.4%   2.3%
+  3.0     1.0     12.5    91.7%          4.2%         2.1%    0.4%   1.5%
+  6.0     0.2     15.9    66.7%         14.3%        12.6%    2.2%   3.8%
+  8.0     0.2     13.3    82.7%          7.5%         6.8%    1.6%   1.2%
+                            LOCAL     SIMILARITY        ALGORITHM                     357
+
+                             TABLE II
+        Time to Compute 20 Best Alignments of the S - @Regions
+
+   g        e       Total           Main           Locate     Update   List       Align
+
+  3.0      0.5       2.05           25.5%          34.2%       32.6%   2.6%        4.6%
+  3.0      1.0       0.70           73.5%          12.4%        9.5%   1.3%        3.1%
+  6.0      0.2       2.08           23.8%          27.6%       27.2%   3.0%       17.9%
+  8.0      0.2       0.82           61.6%          14.9%       14.7%   4.3%        3.7%
+
+
+
+substantially increase the sizes of recomputed regions, which has a note-
+worthy impact on the total execution time.
+
+                                           REFERENCES
+
+ 1. A. V. PLHo, J. E. HOPCROFT, ANI) J. D. ULLMAN, “The Design and Analysis of Computer
+    Algorithms,” Addison-Wesley, Reading, MA, 1974.
+ 2. W. B. GOAD AND M. I. KANEHISA, Pattern recognition in nucleic acid sequences I: A
+    general method for finding local homologies and symmetries, Nucl. Acids Res. 10 (19821,
+    247-263.
+ 3. 0. GOTOH, An improved algorithm for matching biological sequences, J. Mol. Biol. 162
+    (19821,705-708.
+ 4. J. D. HALL AND E. W. MYERS, A software tool for finding locally optimal alignments in
+    protein and nucleic acid sequence, CABIOS 4 (1988), 35-40.
+ 5. D. S. HIRSCHBERG, A linear space algorithm for computing maximal common subse-
+    quences, Commun. ACM 18 (1975), 341-343.
+ 6. X. HUANG, R. C. HARDISON, AND W. MILLER, A space-efficient algorithm for local
+    similarities, CABIOS, 6 (19901,373-381.
+ 7. E. W. MYERS AND W. MILLER, Optimal alignments in linear space, CABIOS 4 (19881,
+    11-17.
+ 8. E. W. MYERS AND W. MILLER, Approximate matching of regular expressions, Bull.
+    Math. Biol. 51 (1989), 5-37.
+ 9. W. R. PEARSON AND D. J. LIPMAN, Improved tools for biological sequence comparison,
+    Proc. Nat. Acad. Sci. U.S.A. 88 (1988), 2444-2448.
+10. P. H. SELLERS, The theory and computation of evolutionary distances: pattern recogni-
+    tion, .I. Algorithms 1 (19801,359-373.
+11. P. H. SELLERS, Pattern recognition in genetic sequences by mismatch density, Bull. Math.
+    Biol. 46 (1984), 501-514.
+12. D. D. SLEATOR AND R. E. TARJAN, Self-adjusting binary search trees, J. Assoc. Comput.
+    Mach. 32 (1985), 652-686.
+13. T. F. SMITH AND M. S. WATERMAN, Identification of common molecular sequences,
+    J. Mol. Biof. 147 (1981), 195-197.
+14. M. S. WATERMAN, Sequence alignments, in “Mathematical Methods for DNA Se-
+    quences” (M. S. Waterman, Ed.), pp. 53-92, CRC Press, Boca Raton, FL, 1988.
+15. M. S. WATERMAN AND M. EGGERT, A new algorithm for best subsequence alignments
+    with application to tRNA-rRNA comparisons, J. Mol. Biol. 197 (19871,723-728.
+
