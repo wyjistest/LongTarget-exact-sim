@@ -2873,22 +2873,138 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
-		inline std::atomic<uint64_t> &simWindowPipelineTaskFallbackCount()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
+			inline std::atomic<uint64_t> &simWindowPipelineTaskFallbackCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			enum SimWindowPipelineIneligibleReason
+			{
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_RUNTIME_DISABLED = 0,
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_TWO_STAGE = 1,
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_SIM_FAST = 2,
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_VALIDATE = 3,
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_QUERY_GT_8192 = 4,
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_TARGET_GT_8192 = 5,
+			  SIM_WINDOW_PIPELINE_INELIGIBLE_NEGATIVE_MIN_SCORE = 6
+			};
+
+			inline std::atomic<uint64_t> &simWindowPipelineTaskConsideredCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineTaskEligibleCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleRuntimeDisabledCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleTwoStageCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleSimFastCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleValidateCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleQueryGt8192Count()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleTargetGt8192Count()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineIneligibleNegativeMinScoreCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simWindowPipelineBatchRuntimeFallbackCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline void recordSimWindowPipelineBatch(uint64_t taskCount)
+			{
+			  simWindowPipelineBatchCount().fetch_add(1, std::memory_order_relaxed);
+			  simWindowPipelineTaskBatchedCount().fetch_add(taskCount, std::memory_order_relaxed);
 		}
 
-		inline void recordSimWindowPipelineBatch(uint64_t taskCount)
-		{
-		  simWindowPipelineBatchCount().fetch_add(1, std::memory_order_relaxed);
-		  simWindowPipelineTaskBatchedCount().fetch_add(taskCount, std::memory_order_relaxed);
-		}
+			inline void recordSimWindowPipelineFallback(uint64_t taskCount = 1)
+			{
+			  simWindowPipelineTaskFallbackCount().fetch_add(taskCount, std::memory_order_relaxed);
+			}
 
-		inline void recordSimWindowPipelineFallback(uint64_t taskCount = 1)
-		{
-		  simWindowPipelineTaskFallbackCount().fetch_add(taskCount, std::memory_order_relaxed);
-		}
+			inline void recordSimWindowPipelineTaskConsidered(uint64_t taskCount = 1)
+			{
+			  simWindowPipelineTaskConsideredCount().fetch_add(taskCount, std::memory_order_relaxed);
+			}
+
+			inline void recordSimWindowPipelineTaskEligible(uint64_t taskCount = 1)
+			{
+			  simWindowPipelineTaskEligibleCount().fetch_add(taskCount, std::memory_order_relaxed);
+			}
+
+			inline void recordSimWindowPipelineIneligibleTask(SimWindowPipelineIneligibleReason reason,
+			                                                 uint64_t taskCount = 1)
+			{
+			  switch(reason)
+			  {
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_TWO_STAGE:
+			      simWindowPipelineIneligibleTwoStageCount().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_SIM_FAST:
+			      simWindowPipelineIneligibleSimFastCount().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_VALIDATE:
+			      simWindowPipelineIneligibleValidateCount().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_QUERY_GT_8192:
+			      simWindowPipelineIneligibleQueryGt8192Count().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_TARGET_GT_8192:
+			      simWindowPipelineIneligibleTargetGt8192Count().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_NEGATIVE_MIN_SCORE:
+			      simWindowPipelineIneligibleNegativeMinScoreCount().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			    case SIM_WINDOW_PIPELINE_INELIGIBLE_RUNTIME_DISABLED:
+			    default:
+			      simWindowPipelineIneligibleRuntimeDisabledCount().fetch_add(taskCount, std::memory_order_relaxed);
+			      break;
+			  }
+			}
+
+			inline void recordSimWindowPipelineBatchRuntimeFallback(uint64_t taskCount = 1)
+			{
+			  simWindowPipelineBatchRuntimeFallbackCount().fetch_add(taskCount, std::memory_order_relaxed);
+			}
 
 		inline std::atomic<uint64_t> &simWindowPipelineOverlapBatchCount()
 		{
@@ -2910,14 +3026,37 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  taskFallbackCount = simWindowPipelineTaskFallbackCount().load(std::memory_order_relaxed);
 		}
 
-		inline uint64_t getSimWindowPipelineOverlapBatchCount()
-		{
-		  return simWindowPipelineOverlapBatchCount().load(std::memory_order_relaxed);
-		}
+			inline uint64_t getSimWindowPipelineOverlapBatchCount()
+			{
+			  return simWindowPipelineOverlapBatchCount().load(std::memory_order_relaxed);
+			}
 
-	inline std::atomic<uint64_t> &simInitialScanCudaCallCount()
-	{
-	  static std::atomic<uint64_t> count(0);
+			inline void getSimWindowPipelineEligibilityStats(uint64_t &taskConsideredCount,
+			                                                uint64_t &taskEligibleCount,
+			                                                uint64_t &ineligibleTwoStageCount,
+			                                                uint64_t &ineligibleSimFastCount,
+			                                                uint64_t &ineligibleValidateCount,
+			                                                uint64_t &ineligibleRuntimeDisabledCount,
+			                                                uint64_t &ineligibleQueryGt8192Count,
+			                                                uint64_t &ineligibleTargetGt8192Count,
+			                                                uint64_t &ineligibleNegativeMinScoreCount,
+			                                                uint64_t &batchRuntimeFallbackCount)
+			{
+			  taskConsideredCount = simWindowPipelineTaskConsideredCount().load(std::memory_order_relaxed);
+			  taskEligibleCount = simWindowPipelineTaskEligibleCount().load(std::memory_order_relaxed);
+			  ineligibleTwoStageCount = simWindowPipelineIneligibleTwoStageCount().load(std::memory_order_relaxed);
+			  ineligibleSimFastCount = simWindowPipelineIneligibleSimFastCount().load(std::memory_order_relaxed);
+			  ineligibleValidateCount = simWindowPipelineIneligibleValidateCount().load(std::memory_order_relaxed);
+			  ineligibleRuntimeDisabledCount = simWindowPipelineIneligibleRuntimeDisabledCount().load(std::memory_order_relaxed);
+			  ineligibleQueryGt8192Count = simWindowPipelineIneligibleQueryGt8192Count().load(std::memory_order_relaxed);
+			  ineligibleTargetGt8192Count = simWindowPipelineIneligibleTargetGt8192Count().load(std::memory_order_relaxed);
+			  ineligibleNegativeMinScoreCount = simWindowPipelineIneligibleNegativeMinScoreCount().load(std::memory_order_relaxed);
+			  batchRuntimeFallbackCount = simWindowPipelineBatchRuntimeFallbackCount().load(std::memory_order_relaxed);
+			}
+
+		inline std::atomic<uint64_t> &simInitialScanCudaCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
 	  return count;
 	}
 

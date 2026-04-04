@@ -698,6 +698,48 @@
 - `locate()` / backward pass 仍然有量化入口（`benchmark.sim_locate_total_cells` / `benchmark.sim_locate_seconds`），但它已不是当前最该先拆的单点。
 - 不建议再回到“单 summary 替代单 key 全时序”的思路，它已经被证明不是 exact-safe。
 
+## 2026-04-04（whole-genome harness / telemetry）Task 1 完成
+
+这一轮不改 SIM / threshold 的算法语义，只补 **whole-genome harness** 缺的解释变量，目标是给下一步的并列 P0 提供可靠观测：
+
+- `window pipeline` 侧新增 lane telemetry：
+  - `benchmark.sim_window_pipeline_tasks_considered`
+  - `benchmark.sim_window_pipeline_tasks_eligible`
+  - `benchmark.sim_window_pipeline_ineligible_*`
+  - `benchmark.sim_window_pipeline_batch_runtime_fallbacks`
+- `calc_score` 侧新增 coverage telemetry：
+  - `benchmark.calc_score_tasks_total`
+  - `benchmark.calc_score_cuda_tasks`
+  - `benchmark.calc_score_cpu_fallback_*`
+  - `benchmark.calc_score_query_length`
+  - `benchmark.calc_score_target_bin_*`
+- `scripts/project_whole_genome_runtime.py` 保持原有线性外推：
+  - `projected_total_seconds`
+  - `projected_calc_score_seconds`
+  - `projected_sim_seconds`
+  - `projected_postprocess_seconds`
+  - 但在源 benchmark 含新字段时，会额外给出 `window_pipeline_eligible_ratio`、`window_pipeline_fallback_ratio`、`calc_score_cuda_task_ratio`、`calc_score_cpu_fallback_ratio`
+
+关键实现约束：
+
+- `window pipeline` 的计数只做旁路 telemetry，不改变 batching / fallback 行为。
+- task 级 ineligible reason 采用单一 primary reason，保证 `considered = eligible + sum(ineligible_*)` 可闭合。
+- `calc_score` coverage 也采用单一 primary fallback reason，保证 `calc_score_tasks_total = calc_score_cuda_tasks + calc_score_cpu_fallback_tasks` 可闭合。
+- target length histogram 先做 1D 分桶（`<=8192`、`8193..65535`、`>65535`），不在这一轮引入更复杂的 2D query-target 直方图。
+
+验证：
+
+- `make build`
+- `make check-project-whole-genome-runtime`
+- `make check-sim-cuda-window-pipeline`
+- `make check-sim-cuda-window-pipeline-overlap`
+
+结论：
+
+- 现在 benchmark stderr 已经能区分“lane 不 eligible”和“lane eligible 但 runtime fallback”。
+- 现在也能直接看 whole-genome workload 里有多少 `calc_score` 任务根本没进 CUDA，以及主因是不是长度门槛。
+- 这一步把 Task 2 / Task 3 的 profiler 与 representative shard benchmark 前置条件补齐了；下一步可以直接围绕 `initial scan` 和 `calc_score/threshold coverage` 做并列 P0。
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`

@@ -57,6 +57,54 @@ grep -Eq '^benchmark\.sim_window_pipeline_batches=[1-9][0-9]*$' "$OVERLAP_STDERR
 grep -Eq '^benchmark\.sim_window_pipeline_overlap_enabled=1$' "$OVERLAP_STDERR"
 grep -Eq '^benchmark\.sim_window_pipeline_overlap_batches=[1-9][0-9]*$' "$OVERLAP_STDERR"
 
+python3 - "$PIPE_STDERR" "$OVERLAP_STDERR" <<'PY'
+import sys
+
+def load_metrics(path):
+    metrics = {}
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line.startswith("benchmark.") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            metrics[key[len("benchmark."):]] = value
+    return metrics
+
+required = [
+    "sim_window_pipeline_tasks_considered",
+    "sim_window_pipeline_tasks_eligible",
+    "sim_window_pipeline_ineligible_two_stage",
+    "sim_window_pipeline_ineligible_sim_fast",
+    "sim_window_pipeline_ineligible_validate",
+    "sim_window_pipeline_ineligible_runtime_disabled",
+    "sim_window_pipeline_ineligible_query_gt_8192",
+    "sim_window_pipeline_ineligible_target_gt_8192",
+    "sim_window_pipeline_ineligible_negative_min_score",
+    "sim_window_pipeline_batch_runtime_fallbacks",
+]
+
+for path in sys.argv[1:]:
+    metrics = load_metrics(path)
+    for key in required:
+        assert key in metrics, (path, key)
+
+    considered = int(metrics["sim_window_pipeline_tasks_considered"])
+    eligible = int(metrics["sim_window_pipeline_tasks_eligible"])
+    batched = int(metrics["sim_window_pipeline_tasks_batched"])
+    fallbacks = int(metrics["sim_window_pipeline_task_fallbacks"])
+    ineligible = sum(
+        int(metrics[key])
+        for key in required
+        if key.startswith("sim_window_pipeline_ineligible_")
+    )
+
+    assert considered >= batched, path
+    assert eligible >= batched, path
+    assert considered == eligible + ineligible, path
+    assert fallbacks >= int(metrics["sim_window_pipeline_batch_runtime_fallbacks"]), path
+PY
+
 BASE_LITE="$BASE_OUT_DIR/hg19-H19-testDNA-TFOsorted.lite"
 PIPE_LITE="$PIPE_OUT_DIR/hg19-H19-testDNA-TFOsorted.lite"
 OVERLAP_LITE="$OVERLAP_OUT_DIR/hg19-H19-testDNA-TFOsorted.lite"

@@ -73,6 +73,20 @@ struct LongTargetExecutionMetrics
     prefilterHits(0),
     refineWindowCount(0),
     refineTotalBp(0),
+    calcScoreTasksTotal(0),
+    calcScoreCudaTasks(0),
+    calcScoreCpuFallbackTasks(0),
+    calcScoreCpuFallbackQueryGt8192(0),
+    calcScoreCpuFallbackTargetGt8192(0),
+    calcScoreCpuFallbackTargetGt65535(0),
+    calcScoreCpuFallbackOther(0),
+    calcScoreQueryLength(0),
+    calcScoreTargetBinLe8192Tasks(0),
+    calcScoreTargetBinLe8192Bp(0),
+    calcScoreTargetBin8193To65535Tasks(0),
+    calcScoreTargetBin8193To65535Bp(0),
+    calcScoreTargetBinGt65535Tasks(0),
+    calcScoreTargetBinGt65535Bp(0),
     simScanTasks(0),
     simScanLaunches(0),
     simTracebackCandidates(0),
@@ -87,12 +101,35 @@ struct LongTargetExecutionMetrics
   uint64_t prefilterHits;
   uint64_t refineWindowCount;
   uint64_t refineTotalBp;
+  uint64_t calcScoreTasksTotal;
+  uint64_t calcScoreCudaTasks;
+  uint64_t calcScoreCpuFallbackTasks;
+  uint64_t calcScoreCpuFallbackQueryGt8192;
+  uint64_t calcScoreCpuFallbackTargetGt8192;
+  uint64_t calcScoreCpuFallbackTargetGt65535;
+  uint64_t calcScoreCpuFallbackOther;
+  uint64_t calcScoreQueryLength;
+  uint64_t calcScoreTargetBinLe8192Tasks;
+  uint64_t calcScoreTargetBinLe8192Bp;
+  uint64_t calcScoreTargetBin8193To65535Tasks;
+  uint64_t calcScoreTargetBin8193To65535Bp;
+  uint64_t calcScoreTargetBinGt65535Tasks;
+  uint64_t calcScoreTargetBinGt65535Bp;
   uint64_t simScanTasks;
   uint64_t simScanLaunches;
   uint64_t simTracebackCandidates;
   uint64_t simTracebackTieCount;
   vector<LongTargetCudaWorkerMetrics> simCudaWorkers;
   vector<LongTargetCudaDeviceMetrics> simCudaDevices;
+};
+
+enum LongTargetCalcScoreFallbackReason
+{
+  LONGTARGET_CALC_SCORE_FALLBACK_NONE = 0,
+  LONGTARGET_CALC_SCORE_FALLBACK_QUERY_GT_8192 = 1,
+  LONGTARGET_CALC_SCORE_FALLBACK_TARGET_GT_8192 = 2,
+  LONGTARGET_CALC_SCORE_FALLBACK_TARGET_GT_65535 = 3,
+  LONGTARGET_CALC_SCORE_FALLBACK_OTHER = 4
 };
 
 struct LongTargetSimScoreMatrixInt
@@ -205,6 +242,120 @@ static inline bool longtarget_window_pipeline_enabled_runtime(bool twoStage)
          !simFastEnabledRuntime() &&
          !simCudaValidateEnabledRuntime() &&
          sim_scan_cuda_is_built();
+}
+
+static inline SimWindowPipelineIneligibleReason longtarget_classify_window_pipeline_ineligible_reason(bool twoStage,
+                                                                                                     bool simFast,
+                                                                                                     bool validateMode,
+                                                                                                     bool windowPipelineRuntimeEnabled,
+                                                                                                     const string &rnaSequence,
+                                                                                                     const ExactSimTaskSpec &task,
+                                                                                                     int minScore)
+{
+  if(twoStage)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_TWO_STAGE;
+  }
+  if(simFast)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_SIM_FAST;
+  }
+  if(validateMode)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_VALIDATE;
+  }
+  if(!windowPipelineRuntimeEnabled)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_RUNTIME_DISABLED;
+  }
+  if(rnaSequence.empty() || rnaSequence.size() > 8192u)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_QUERY_GT_8192;
+  }
+  if(task.transformedSequence.empty())
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_RUNTIME_DISABLED;
+  }
+  if(task.transformedSequence.size() > 8192u)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_TARGET_GT_8192;
+  }
+  if(minScore < 0)
+  {
+    return SIM_WINDOW_PIPELINE_INELIGIBLE_NEGATIVE_MIN_SCORE;
+  }
+  return SIM_WINDOW_PIPELINE_INELIGIBLE_RUNTIME_DISABLED;
+}
+
+static inline LongTargetCalcScoreFallbackReason longtarget_classify_calc_score_fallback_reason(int queryLength,
+                                                                                              int targetLength)
+{
+  if(queryLength > 8192)
+  {
+    return LONGTARGET_CALC_SCORE_FALLBACK_QUERY_GT_8192;
+  }
+  if(targetLength > 65535)
+  {
+    return LONGTARGET_CALC_SCORE_FALLBACK_TARGET_GT_65535;
+  }
+  if(targetLength > 8192)
+  {
+    return LONGTARGET_CALC_SCORE_FALLBACK_TARGET_GT_8192;
+  }
+  return LONGTARGET_CALC_SCORE_FALLBACK_OTHER;
+}
+
+static inline void longtarget_record_calc_score_target_bin(LongTargetExecutionMetrics &metrics,
+                                                           int targetLength,
+                                                           uint64_t taskCount)
+{
+  const uint64_t bp = targetLength > 0 ? taskCount * static_cast<uint64_t>(targetLength) : 0;
+  if(targetLength <= 8192)
+  {
+    metrics.calcScoreTargetBinLe8192Tasks += taskCount;
+    metrics.calcScoreTargetBinLe8192Bp += bp;
+    return;
+  }
+  if(targetLength <= 65535)
+  {
+    metrics.calcScoreTargetBin8193To65535Tasks += taskCount;
+    metrics.calcScoreTargetBin8193To65535Bp += bp;
+    return;
+  }
+  metrics.calcScoreTargetBinGt65535Tasks += taskCount;
+  metrics.calcScoreTargetBinGt65535Bp += bp;
+}
+
+static inline void longtarget_record_calc_score_group_result(LongTargetExecutionMetrics &metrics,
+                                                             int queryLength,
+                                                             int targetLength,
+                                                             uint64_t taskCount,
+                                                             bool usedCuda)
+{
+  if(usedCuda)
+  {
+    metrics.calcScoreCudaTasks += taskCount;
+    return;
+  }
+
+  metrics.calcScoreCpuFallbackTasks += taskCount;
+  switch(longtarget_classify_calc_score_fallback_reason(queryLength,targetLength))
+  {
+    case LONGTARGET_CALC_SCORE_FALLBACK_QUERY_GT_8192:
+      metrics.calcScoreCpuFallbackQueryGt8192 += taskCount;
+      break;
+    case LONGTARGET_CALC_SCORE_FALLBACK_TARGET_GT_65535:
+      metrics.calcScoreCpuFallbackTargetGt65535 += taskCount;
+      break;
+    case LONGTARGET_CALC_SCORE_FALLBACK_TARGET_GT_8192:
+      metrics.calcScoreCpuFallbackTargetGt8192 += taskCount;
+      break;
+    case LONGTARGET_CALC_SCORE_FALLBACK_OTHER:
+    case LONGTARGET_CALC_SCORE_FALLBACK_NONE:
+    default:
+      metrics.calcScoreCpuFallbackOther += taskCount;
+      break;
+  }
 }
 
 static inline bool longtarget_window_pipeline_overlap_enabled_runtime(bool useWindowPipeline)
@@ -931,9 +1082,39 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   getSimWindowPipelineStats(simWindowPipelineBatches,
                             simWindowPipelineTasksBatched,
                             simWindowPipelineTaskFallbacks);
+  uint64_t simWindowPipelineTasksConsidered = 0;
+  uint64_t simWindowPipelineTasksEligible = 0;
+  uint64_t simWindowPipelineIneligibleTwoStage = 0;
+  uint64_t simWindowPipelineIneligibleSimFast = 0;
+  uint64_t simWindowPipelineIneligibleValidate = 0;
+  uint64_t simWindowPipelineIneligibleRuntimeDisabled = 0;
+  uint64_t simWindowPipelineIneligibleQueryGt8192 = 0;
+  uint64_t simWindowPipelineIneligibleTargetGt8192 = 0;
+  uint64_t simWindowPipelineIneligibleNegativeMinScore = 0;
+  uint64_t simWindowPipelineBatchRuntimeFallbacks = 0;
+  getSimWindowPipelineEligibilityStats(simWindowPipelineTasksConsidered,
+                                       simWindowPipelineTasksEligible,
+                                       simWindowPipelineIneligibleTwoStage,
+                                       simWindowPipelineIneligibleSimFast,
+                                       simWindowPipelineIneligibleValidate,
+                                       simWindowPipelineIneligibleRuntimeDisabled,
+                                       simWindowPipelineIneligibleQueryGt8192,
+                                       simWindowPipelineIneligibleTargetGt8192,
+                                       simWindowPipelineIneligibleNegativeMinScore,
+                                       simWindowPipelineBatchRuntimeFallbacks);
   cerr<<"benchmark.sim_window_pipeline_batches="<<simWindowPipelineBatches<<endl;
   cerr<<"benchmark.sim_window_pipeline_tasks_batched="<<simWindowPipelineTasksBatched<<endl;
   cerr<<"benchmark.sim_window_pipeline_task_fallbacks="<<simWindowPipelineTaskFallbacks<<endl;
+  cerr<<"benchmark.sim_window_pipeline_tasks_considered="<<simWindowPipelineTasksConsidered<<endl;
+  cerr<<"benchmark.sim_window_pipeline_tasks_eligible="<<simWindowPipelineTasksEligible<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_two_stage="<<simWindowPipelineIneligibleTwoStage<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_sim_fast="<<simWindowPipelineIneligibleSimFast<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_validate="<<simWindowPipelineIneligibleValidate<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_runtime_disabled="<<simWindowPipelineIneligibleRuntimeDisabled<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_query_gt_8192="<<simWindowPipelineIneligibleQueryGt8192<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_target_gt_8192="<<simWindowPipelineIneligibleTargetGt8192<<endl;
+  cerr<<"benchmark.sim_window_pipeline_ineligible_negative_min_score="<<simWindowPipelineIneligibleNegativeMinScore<<endl;
+  cerr<<"benchmark.sim_window_pipeline_batch_runtime_fallbacks="<<simWindowPipelineBatchRuntimeFallbacks<<endl;
   cerr<<"benchmark.sim_window_pipeline_overlap_enabled="
       <<(simCudaWindowPipelineOverlapEnabledRuntime() ? 1 : 0)
       <<endl;
@@ -1653,6 +1834,20 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 
   cerr<<"benchmark.calc_score_backend="<<metrics.thresholdBackend<<endl;
   cerr<<"benchmark.calc_score_seconds="<<metrics.thresholdSeconds<<endl;
+  cerr<<"benchmark.calc_score_tasks_total="<<metrics.calcScoreTasksTotal<<endl;
+  cerr<<"benchmark.calc_score_cuda_tasks="<<metrics.calcScoreCudaTasks<<endl;
+  cerr<<"benchmark.calc_score_cpu_fallback_tasks="<<metrics.calcScoreCpuFallbackTasks<<endl;
+  cerr<<"benchmark.calc_score_cpu_fallback_query_gt_8192="<<metrics.calcScoreCpuFallbackQueryGt8192<<endl;
+  cerr<<"benchmark.calc_score_cpu_fallback_target_gt_8192="<<metrics.calcScoreCpuFallbackTargetGt8192<<endl;
+  cerr<<"benchmark.calc_score_cpu_fallback_target_gt_65535="<<metrics.calcScoreCpuFallbackTargetGt65535<<endl;
+  cerr<<"benchmark.calc_score_cpu_fallback_other="<<metrics.calcScoreCpuFallbackOther<<endl;
+  cerr<<"benchmark.calc_score_query_length="<<metrics.calcScoreQueryLength<<endl;
+  cerr<<"benchmark.calc_score_target_bin_le_8192_tasks="<<metrics.calcScoreTargetBinLe8192Tasks<<endl;
+  cerr<<"benchmark.calc_score_target_bin_le_8192_bp="<<metrics.calcScoreTargetBinLe8192Bp<<endl;
+  cerr<<"benchmark.calc_score_target_bin_8193_65535_tasks="<<metrics.calcScoreTargetBin8193To65535Tasks<<endl;
+  cerr<<"benchmark.calc_score_target_bin_8193_65535_bp="<<metrics.calcScoreTargetBin8193To65535Bp<<endl;
+  cerr<<"benchmark.calc_score_target_bin_gt_65535_tasks="<<metrics.calcScoreTargetBinGt65535Tasks<<endl;
+  cerr<<"benchmark.calc_score_target_bin_gt_65535_bp="<<metrics.calcScoreTargetBinGt65535Bp<<endl;
   cerr<<"benchmark.sim_seconds="<<metrics.simSeconds<<endl;
   cerr<<"benchmark.postprocess_seconds="<<metrics.postProcessSeconds<<endl;
   cerr<<"benchmark.total_seconds="<<metrics.totalSeconds<<endl;
@@ -1978,6 +2173,35 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
   bool usedCudaAny = false;
   bool usedCudaAll = true;
   double cudaThresholdSeconds = 0.0;
+  const int calcScoreQueryLength = static_cast<int>(rnaSequence.size());
+  vector<pair<int,size_t> > calcScoreTasksSorted;
+  calcScoreTasksSorted.reserve(tasks.size());
+  for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+  {
+    calcScoreTasksSorted.push_back(make_pair(static_cast<int>(tasks[taskIndex].transformedSequence.size()), taskIndex));
+  }
+  sort(calcScoreTasksSorted.begin(),calcScoreTasksSorted.end());
+
+  if(metrics != NULL)
+  {
+    metrics->calcScoreTasksTotal += static_cast<uint64_t>(tasks.size());
+    metrics->calcScoreQueryLength = static_cast<uint64_t>(calcScoreQueryLength);
+    for(size_t sortedIndex = 0; sortedIndex < calcScoreTasksSorted.size();)
+    {
+      const int targetLength = calcScoreTasksSorted[sortedIndex].first;
+      size_t groupEnd = sortedIndex;
+      while(groupEnd < calcScoreTasksSorted.size() && calcScoreTasksSorted[groupEnd].first == targetLength)
+      {
+        ++groupEnd;
+      }
+      longtarget_record_calc_score_target_bin(*metrics,
+                                              targetLength,
+                                              static_cast<uint64_t>(groupEnd - sortedIndex));
+      sortedIndex = groupEnd;
+    }
+  }
+
+  bool calcScoreCoverageRecorded = false;
 
   if(longtarget_cuda_enabled() && calc_score_cuda_is_built() && !tasks.empty())
   {
@@ -2032,23 +2256,16 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                          queryLength,
                                          &cudaError))
         {
-          vector<pair<int,size_t> > tasksSorted;
-          tasksSorted.reserve(tasks.size());
-          for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
-          {
-            tasksSorted.push_back(make_pair(static_cast<int>(tasks[taskIndex].transformedSequence.size()), taskIndex));
-          }
-          sort(tasksSorted.begin(),tasksSorted.end());
-
           const CalcScoreTargetBaseLut &targetBaseLut = calc_score_target_base_lut();
           const bool validateCuda = longtarget_cuda_validate_enabled();
+          calcScoreCoverageRecorded = true;
 
           size_t groupStart = 0;
-          while(groupStart < tasksSorted.size())
+          while(groupStart < calcScoreTasksSorted.size())
           {
-            const int targetLength = tasksSorted[groupStart].first;
+            const int targetLength = calcScoreTasksSorted[groupStart].first;
             size_t groupEnd = groupStart;
-            while(groupEnd < tasksSorted.size() && tasksSorted[groupEnd].first == targetLength)
+            while(groupEnd < calcScoreTasksSorted.size() && calcScoreTasksSorted[groupEnd].first == targetLength)
             {
               ++groupEnd;
             }
@@ -2063,7 +2280,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                 vector<uint8_t> encodedTargets(groupSize * static_cast<size_t>(targetLength));
                 for(size_t groupOffset = 0; groupOffset < groupSize; ++groupOffset)
                 {
-                  const size_t taskIndex = tasksSorted[groupStart + groupOffset].second;
+                  const size_t taskIndex = calcScoreTasksSorted[groupStart + groupOffset].second;
                   const string &target = tasks[taskIndex].transformedSequence;
                   for(int i = 0; i < targetLength; ++i)
                   {
@@ -2120,7 +2337,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                       free(mle_rst);
                     }
 
-                    const size_t taskIndex = tasksSorted[groupStart + groupOffset].second;
+                    const size_t taskIndex = calcScoreTasksSorted[groupStart + groupOffset].second;
                     taskMinScores[taskIndex] = minScore;
                     taskMinScoreReady[taskIndex] = 1;
 
@@ -2148,6 +2365,14 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
               }
             }
 
+            if(metrics != NULL)
+            {
+              longtarget_record_calc_score_group_result(*metrics,
+                                                        queryLength,
+                                                        targetLength,
+                                                        static_cast<uint64_t>(groupSize),
+                                                        groupUsedCuda);
+            }
             if(!groupUsedCuda)
             {
               usedCudaAll = false;
@@ -2178,6 +2403,26 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     usedCudaAll = false;
   }
 
+  if(metrics != NULL && !calcScoreCoverageRecorded)
+  {
+    size_t groupStart = 0;
+    while(groupStart < calcScoreTasksSorted.size())
+    {
+      const int targetLength = calcScoreTasksSorted[groupStart].first;
+      size_t groupEnd = groupStart;
+      while(groupEnd < calcScoreTasksSorted.size() && calcScoreTasksSorted[groupEnd].first == targetLength)
+      {
+        ++groupEnd;
+      }
+      longtarget_record_calc_score_group_result(*metrics,
+                                                calcScoreQueryLength,
+                                                targetLength,
+                                                static_cast<uint64_t>(groupEnd - groupStart),
+                                                false);
+      groupStart = groupEnd;
+    }
+  }
+
   if(metrics != NULL)
   {
     if(usedCudaAny)
@@ -2192,6 +2437,9 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
   }
 
   const bool twoStage = exact_sim_two_stage_enabled_runtime();
+  const bool simFast = simFastEnabledRuntime();
+  const bool validateCuda = simCudaValidateEnabledRuntime();
+  const bool windowPipelineRequested = simCudaWindowPipelineEnabledRuntime();
   const bool useWindowPipeline = longtarget_window_pipeline_enabled_runtime(twoStage);
   const bool useWindowPipelineOverlap = longtarget_window_pipeline_overlap_enabled_runtime(useWindowPipeline);
   vector<size_t> taskExecutionOrder;
@@ -2239,6 +2487,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
           {
             return;
           }
+          recordSimWindowPipelineBatchRuntimeFallback(static_cast<uint64_t>(fallbackBatchTasks.size()));
           recordSimWindowPipelineFallback(static_cast<uint64_t>(fallbackBatchTasks.size()));
           for(size_t batchOffset = 0; batchOffset < fallbackBatchTasks.size(); ++batchOffset)
           {
@@ -2355,6 +2604,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
           const size_t taskIndex = taskExecutionOrder[taskOrderIndex];
           taskWorkerIndices[taskIndex] = static_cast<int>(capturedWorkerIndex);
           const ExactSimTaskSpec &task = tasks[taskIndex];
+          recordSimWindowPipelineTaskConsidered();
           if(useWindowPipeline)
           {
             const int minScore =
@@ -2370,6 +2620,13 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
             const long targetLength = static_cast<long>(task.transformedSequence.size());
             if(!canBatchTask)
             {
+              recordSimWindowPipelineIneligibleTask(longtarget_classify_window_pipeline_ineligible_reason(twoStage,
+                                                                                                         simFast,
+                                                                                                         validateCuda,
+                                                                                                         useWindowPipeline,
+                                                                                                         rnaSequence,
+                                                                                                         task,
+                                                                                                         minScore));
               flushPendingWindowPipeline();
               recordSimWindowPipelineFallback();
               longtarget_run_exact_sim_single_stage_with_min_score(rnaSequence,
@@ -2383,6 +2640,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                                                    &taskFilterSeconds[taskIndex]);
               continue;
             }
+            recordSimWindowPipelineTaskEligible();
             if(!pendingBatchTasks.empty() &&
                (pendingTargetLength != targetLength ||
                 pendingBatchTasks.size() >= longtarget_window_pipeline_batch_size()))
@@ -2397,6 +2655,13 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
             }
             continue;
           }
+          recordSimWindowPipelineIneligibleTask(longtarget_classify_window_pipeline_ineligible_reason(twoStage,
+                                                                                                     simFast,
+                                                                                                     validateCuda,
+                                                                                                     windowPipelineRequested && sim_scan_cuda_is_built(),
+                                                                                                     rnaSequence,
+                                                                                                     task,
+                                                                                                     0));
           if(taskMinScoreReady[taskIndex] != 0)
           {
             if(twoStage)

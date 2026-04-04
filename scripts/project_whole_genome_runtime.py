@@ -86,6 +86,20 @@ def metric_as_float(metrics: dict[str, object], key: str) -> float:
     raise ValueError(f"benchmark.{key} is not numeric: {value!r}")
 
 
+def optional_ratio(metrics: dict[str, object], numerator_key: str, denominator_key: str):
+    numerator = metrics.get(numerator_key)
+    denominator = metrics.get(denominator_key)
+    if numerator is None or denominator is None:
+        return None
+    if not isinstance(numerator, (int, float)):
+        raise ValueError(f"benchmark.{numerator_key} is not numeric: {numerator!r}")
+    if not isinstance(denominator, (int, float)):
+        raise ValueError(f"benchmark.{denominator_key} is not numeric: {denominator!r}")
+    if float(denominator) <= 0.0:
+        return None
+    return float(numerator) / float(denominator)
+
+
 def main() -> int:
     args = parse_args()
     stderr_path = Path(args.stderr)
@@ -138,6 +152,30 @@ def main() -> int:
         "benchmark": metrics,
     }
 
+    window_pipeline_eligible_ratio = optional_ratio(
+        metrics, "sim_window_pipeline_tasks_eligible", "sim_window_pipeline_tasks_considered"
+    )
+    if window_pipeline_eligible_ratio is not None:
+        report["window_pipeline_eligible_ratio"] = window_pipeline_eligible_ratio
+
+    window_pipeline_fallback_ratio = optional_ratio(
+        metrics, "sim_window_pipeline_task_fallbacks", "sim_window_pipeline_tasks_considered"
+    )
+    if window_pipeline_fallback_ratio is not None:
+        report["window_pipeline_fallback_ratio"] = window_pipeline_fallback_ratio
+
+    calc_score_cuda_task_ratio = optional_ratio(
+        metrics, "calc_score_cuda_tasks", "calc_score_tasks_total"
+    )
+    if calc_score_cuda_task_ratio is not None:
+        report["calc_score_cuda_task_ratio"] = calc_score_cuda_task_ratio
+
+    calc_score_cpu_fallback_ratio = optional_ratio(
+        metrics, "calc_score_cpu_fallback_tasks", "calc_score_tasks_total"
+    )
+    if calc_score_cpu_fallback_ratio is not None:
+        report["calc_score_cpu_fallback_ratio"] = calc_score_cpu_fallback_ratio
+
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0
@@ -157,6 +195,14 @@ def main() -> int:
     print(f"projected_postprocess_seconds={projected_postprocess_seconds:.6f}")
     print(f"target_hours={target_hours:.6f}")
     print(f"meets_target={'yes' if report['meets_target'] else 'no'}")
+    if "window_pipeline_eligible_ratio" in report:
+        print(f"window_pipeline_eligible_ratio={report['window_pipeline_eligible_ratio']:.6f}")
+    if "window_pipeline_fallback_ratio" in report:
+        print(f"window_pipeline_fallback_ratio={report['window_pipeline_fallback_ratio']:.6f}")
+    if "calc_score_cuda_task_ratio" in report:
+        print(f"calc_score_cuda_task_ratio={report['calc_score_cuda_task_ratio']:.6f}")
+    if "calc_score_cpu_fallback_ratio" in report:
+        print(f"calc_score_cpu_fallback_ratio={report['calc_score_cpu_fallback_ratio']:.6f}")
     print(
         "note=phase seconds are projected independently; use projected_total_hours as the wall-time estimate."
     )

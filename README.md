@@ -127,6 +127,11 @@ Set `LONGTARGET_BENCHMARK=1` or use `make benchmark-sample` / `make benchmark-sm
 
 When SIM CUDA region scan is enabled, benchmark output now also includes region-merge telemetry so you can see where time and PCIe traffic go:
 
+- `benchmark.sim_window_pipeline_tasks_considered`: exact-SIM tasks that reached the scheduler lane-selection point
+- `benchmark.sim_window_pipeline_tasks_eligible`: tasks that satisfied the current window-pipeline lane constraints and could be batched
+- `benchmark.sim_window_pipeline_ineligible_two_stage` / `benchmark.sim_window_pipeline_ineligible_sim_fast` / `benchmark.sim_window_pipeline_ineligible_validate` / `benchmark.sim_window_pipeline_ineligible_runtime_disabled`: tasks kept off the lane because the current runtime mode was incompatible with the exact-safe window pipeline
+- `benchmark.sim_window_pipeline_ineligible_query_gt_8192` / `benchmark.sim_window_pipeline_ineligible_target_gt_8192` / `benchmark.sim_window_pipeline_ineligible_negative_min_score`: tasks rejected by the current per-task lane constraints even though the runtime lane itself was enabled
+- `benchmark.sim_window_pipeline_batch_runtime_fallbacks`: tasks that were eligible and entered the lane, but still had to fall back because batch preparation or execution failed
 - `benchmark.sim_region_events_total`: raw CUDA region events emitted for CPU-side merge
 - `benchmark.sim_region_candidate_summaries_total`: number of reduced candidate states copied back in the experimental reduce path
 - `benchmark.sim_region_event_bytes_d2h`: raw region event bytes copied device-to-host
@@ -179,14 +184,29 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_materialize_seconds`: total time spent materializing accepted candidates
 - `benchmark.sim_traceback_dp_seconds`: traceback DP time (`diff()` or CUDA traceback kernel time)
 - `benchmark.sim_traceback_post_seconds`: traceback post-processing time (identity / tri-score / optional alignment strings)
+- `benchmark.calc_score_tasks_total`: number of threshold tasks seen by the exact threshold pre-pass
+- `benchmark.calc_score_cuda_tasks` / `benchmark.calc_score_cpu_fallback_tasks`: split of those threshold tasks between CUDA and CPU fallback
+- `benchmark.calc_score_cpu_fallback_query_gt_8192` / `benchmark.calc_score_cpu_fallback_target_gt_8192` / `benchmark.calc_score_cpu_fallback_target_gt_65535` / `benchmark.calc_score_cpu_fallback_other`: why threshold work fell back to CPU
+- `benchmark.calc_score_query_length`: single-query length for the current LongTarget run
+- `benchmark.calc_score_target_bin_le_8192_*` / `benchmark.calc_score_target_bin_8193_65535_*` / `benchmark.calc_score_target_bin_gt_65535_*`: target-length workload histogram by task count and bp, so whole-genome runs can distinguish “poor CUDA coverage” from “pathological workload shape”
 
 Current exact-safe mainline note: CUDA initial scan now keeps the row-run coalescing on the GPU handoff path: host-side candidate maintenance consumes per-row contiguous same-start run summaries instead of raw initial events. Relative to the older raw-event handoff, this keeps `benchmark.sim_initial_scan_cpu_merge_seconds` lower on the benchmark path (about `0.17s` in the latest fresh run) and cuts the large-sample handoff more materially (`benchmark.sim_initial_scan_d2h_seconds` about `0.91s -> 0.51s`, `benchmark.sim_initial_scan_cpu_merge_seconds` about `1.85s -> 1.56s` on `sample_exactness_cuda_sim_region`). The latest implementation step also removes the old "one thread per row" summary kernels: run-start detection and summary compaction are now block-parallel while still preserving row order and the "first endJ that reaches the max score" exactness rule. The default summary-handoff path now also mirrors the rebuilt exact-safe safe-store back onto the GPU when `safe_workset` locate is active, so `safe_window` / GPU safe-workset builders can stay on their fast path without forcing `LONGTARGET_ENABLE_SIM_CUDA_INITIAL_REDUCE=1`. There is still an experimental `LONGTARGET_ENABLE_SIM_CUDA_INITIAL_REDUCE=1` path that replays ordered run summaries on-device, returns both the reduced top-K candidate states and the full per-start candidate-state store, and rebuilds the exact-safe `safeCandidateStateStore` on the host without falling back to an invalid initial store. `LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND=hash` keeps the single-request path on the shared true-batch/hash reducer, while `LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND=segmented` keeps the exact legacy top-K candidate replay but replaces the full safe-store rebuild with a grouped segmented reduce over `(batchIndex,startCoord)` keys. `LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND=ordered_segmented_v3` currently reuses that segmented reducer path as the stable entry point for the next ordered-replay iteration, so the default exact-safe safe-store handoff can opt into device residency without changing result semantics. That path now also keeps the post-reduce safe-store compaction on the GPU via a device-side exclusive scan + compact pass, exposing `benchmark.sim_initial_segmented_*` telemetry (including `benchmark.sim_initial_segmented_compact_seconds`) in stderr. When `LONGTARGET_ENABLE_SIM_CUDA_DEVICE_K_LOOP=1` is enabled, the proposal loop can also source top-K states directly from the persistent GPU safe-store; stderr then reports `benchmark.sim_proposal_loop_source_gpu_safe_store` and `benchmark.sim_device_k_loop_seconds`. Large-sample telemetry still shows the experimental reducer is slower than the summary-handoff default, so it remains off by default while the device-side ordered replay is being optimized further.
+
+`scripts/project_whole_genome_runtime.py` keeps the current linear projection model, but when the new benchmark counters are present it now also reports optional derived ratios:
+
+- `window_pipeline_eligible_ratio`
+- `window_pipeline_fallback_ratio`
+- `calc_score_cuda_task_ratio`
+- `calc_score_cpu_fallback_ratio`
+
+These ratios are additive to the existing `projected_*` fields and remain optional so older benchmark logs still parse unchanged.
 
 Validation helpers:
 
 - `make check-benchmark-telemetry`: verify benchmark stderr includes the expected telemetry fields
 - `make check-sim-cuda-region-docs`: verify this README and `EXACT_SIM_PROGRESS.md` still document the SIM CUDA region exactness constraints
 - `make check-sim-initial-cuda-merge`: verify the coalesced CUDA initial-scan host merge matches per-event replay while reducing logical host updates
+- `make check-project-whole-genome-runtime`: verify the projection script preserves backward compatibility and emits the optional whole-genome ratios when the source telemetry is present
 
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 
