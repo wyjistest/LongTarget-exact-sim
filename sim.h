@@ -7575,32 +7575,17 @@ inline void summarizeSimCudaInitialRowEventRuns(const vector<SimScanCudaRowEvent
   {
     const int startIndex = rowOffsets[static_cast<size_t>(endI)];
     const int endIndex = rowOffsets[static_cast<size_t>(endI + 1)];
-    bool hasRun = false;
-    SimScanCudaInitialRunSummary summary;
-
-    for(int eventIndex = startIndex; eventIndex < endIndex; ++eventIndex)
+    for(int eventIndex = startIndex; eventIndex < endIndex;)
     {
-      const SimScanCudaRowEvent &event = events[static_cast<size_t>(eventIndex)];
-      if(!hasRun)
+      const int runEndIndex = simScanCudaInitialRunEndExclusive(events,endIndex,eventIndex);
+      SimScanCudaInitialRunSummary summary;
+      initSimCudaInitialRunSummary(events[static_cast<size_t>(eventIndex)],summary);
+      for(int runEventIndex = eventIndex + 1; runEventIndex < runEndIndex; ++runEventIndex)
       {
-        hasRun = true;
-        initSimCudaInitialRunSummary(event,summary);
-        continue;
+        updateSimCudaInitialRunSummary(events[static_cast<size_t>(runEventIndex)],summary);
       }
-
-      if(simScanCudaInitialRunStartsAt(events,startIndex,eventIndex))
-      {
-        outSummaries.push_back(summary);
-        initSimCudaInitialRunSummary(event,summary);
-        continue;
-      }
-
-      updateSimCudaInitialRunSummary(event,summary);
-    }
-
-    if(hasRun)
-    {
       outSummaries.push_back(summary);
+      eventIndex = runEndIndex;
     }
   }
 }

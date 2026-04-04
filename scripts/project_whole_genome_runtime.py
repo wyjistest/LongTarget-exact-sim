@@ -100,6 +100,15 @@ def optional_ratio(metrics: dict[str, object], numerator_key: str, denominator_k
     return float(numerator) / float(denominator)
 
 
+def optional_projected_metric(metrics: dict[str, object], key: str, scale_factor: float):
+    value = metrics.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"benchmark.{key} is not numeric: {value!r}")
+    return float(value) * scale_factor
+
+
 def main() -> int:
     args = parse_args()
     stderr_path = Path(args.stderr)
@@ -176,6 +185,36 @@ def main() -> int:
     if calc_score_cpu_fallback_ratio is not None:
         report["calc_score_cpu_fallback_ratio"] = calc_score_cpu_fallback_ratio
 
+    projected_sim_initial_scan_seconds = optional_projected_metric(
+        metrics, "sim_initial_scan_seconds", scale_factor
+    )
+    if projected_sim_initial_scan_seconds is not None:
+        report["projected_sim_initial_scan_seconds"] = projected_sim_initial_scan_seconds
+
+    projected_sim_initial_scan_cpu_merge_seconds = optional_projected_metric(
+        metrics, "sim_initial_scan_cpu_merge_seconds", scale_factor
+    )
+    if projected_sim_initial_scan_cpu_merge_seconds is not None:
+        report["projected_sim_initial_scan_cpu_merge_seconds"] = (
+            projected_sim_initial_scan_cpu_merge_seconds
+        )
+
+    projected_sim_initial_scan_cpu_merge_subtotal_seconds = optional_projected_metric(
+        metrics, "sim_initial_scan_cpu_merge_subtotal_seconds", scale_factor
+    )
+    if projected_sim_initial_scan_cpu_merge_subtotal_seconds is not None:
+        report["projected_sim_initial_scan_cpu_merge_subtotal_seconds"] = (
+            projected_sim_initial_scan_cpu_merge_subtotal_seconds
+        )
+
+    projected_sim_initial_run_summary_pipeline_seconds = optional_projected_metric(
+        metrics, "sim_initial_run_summary_pipeline_seconds", scale_factor
+    )
+    if projected_sim_initial_run_summary_pipeline_seconds is not None:
+        report["projected_sim_initial_run_summary_pipeline_seconds"] = (
+            projected_sim_initial_run_summary_pipeline_seconds
+        )
+
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0
@@ -203,6 +242,25 @@ def main() -> int:
         print(f"calc_score_cuda_task_ratio={report['calc_score_cuda_task_ratio']:.6f}")
     if "calc_score_cpu_fallback_ratio" in report:
         print(f"calc_score_cpu_fallback_ratio={report['calc_score_cpu_fallback_ratio']:.6f}")
+    if "projected_sim_initial_scan_seconds" in report:
+        print(
+            f"projected_sim_initial_scan_seconds={report['projected_sim_initial_scan_seconds']:.6f}"
+        )
+    if "projected_sim_initial_scan_cpu_merge_seconds" in report:
+        print(
+            "projected_sim_initial_scan_cpu_merge_seconds="
+            f"{report['projected_sim_initial_scan_cpu_merge_seconds']:.6f}"
+        )
+    if "projected_sim_initial_scan_cpu_merge_subtotal_seconds" in report:
+        print(
+            "projected_sim_initial_scan_cpu_merge_subtotal_seconds="
+            f"{report['projected_sim_initial_scan_cpu_merge_subtotal_seconds']:.6f}"
+        )
+    if "projected_sim_initial_run_summary_pipeline_seconds" in report:
+        print(
+            "projected_sim_initial_run_summary_pipeline_seconds="
+            f"{report['projected_sim_initial_run_summary_pipeline_seconds']:.6f}"
+        )
     print(
         "note=phase seconds are projected independently; use projected_total_hours as the wall-time estimate."
     )

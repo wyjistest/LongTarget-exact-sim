@@ -173,6 +173,10 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_scan_gpu_seconds`: CUDA kernel time inside SIM initial scan
 - `benchmark.sim_initial_scan_d2h_seconds`: result handoff time while bringing SIM initial scan data back to host
 - `benchmark.sim_initial_scan_cpu_merge_seconds`: CPU time spent merging CUDA initial-scan events into exact candidate maintenance
+- `benchmark.sim_initial_scan_cpu_merge_subtotal_seconds`: explicit subtotal of the CPU-side merge subphases (`context_apply + safe_store_update + safe_store_prune + safe_store_upload`) so benchmark logs can check whether the detailed merge counters still close to the total
+- `benchmark.sim_initial_scan_sync_wait_seconds`: synchronization wait time currently attributed to the initial scan handoff path
+- `benchmark.sim_initial_reduce_chunks_total` / `benchmark.sim_initial_reduce_chunks_replayed_total` / `benchmark.sim_initial_reduce_chunks_skipped_total` / `benchmark.sim_initial_reduce_summaries_replayed_total`: ordered-replay chunk statistics from the experimental initial reducer
+- `benchmark.sim_initial_run_summary_pipeline_seconds`: subtotal of the run-summary grouping stages (`hash_reduce + segmented_reduce + segmented_compact + topk`) for profiler-guided initial-scan tuning
 - `benchmark.sim_initial_hash_reduce_seconds` / `benchmark.sim_initial_segmented_reduce_seconds`: time spent in the optional hash or segmented grouping stage inside the experimental initial reducer
 - `benchmark.sim_initial_segmented_compact_seconds`: GPU time spent compacting the segmented safe-store candidates after the grouped reduce (device scan + compact on the `segmented` backend)
 - `benchmark.sim_initial_topk_seconds`: time spent maintaining the exact top-K candidate set on the experimental initial reducer path
@@ -198,6 +202,10 @@ Current exact-safe mainline note: CUDA initial scan now keeps the row-run coales
 - `window_pipeline_fallback_ratio`
 - `calc_score_cuda_task_ratio`
 - `calc_score_cpu_fallback_ratio`
+- `projected_sim_initial_scan_seconds`
+- `projected_sim_initial_scan_cpu_merge_seconds`
+- `projected_sim_initial_scan_cpu_merge_subtotal_seconds`
+- `projected_sim_initial_run_summary_pipeline_seconds`
 
 These ratios are additive to the existing `projected_*` fields and remain optional so older benchmark logs still parse unchanged.
 

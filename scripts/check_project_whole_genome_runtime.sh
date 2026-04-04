@@ -17,6 +17,10 @@ benchmark.calc_score_cpu_fallback_tasks=3
 benchmark.calc_score_cpu_fallback_query_gt_8192=1
 benchmark.calc_score_cpu_fallback_target_gt_8192=1
 benchmark.calc_score_cpu_fallback_target_gt_65535=1
+benchmark.sim_initial_scan_seconds=2
+benchmark.sim_initial_scan_cpu_merge_seconds=0.5
+benchmark.sim_initial_scan_cpu_merge_subtotal_seconds=0.4
+benchmark.sim_initial_run_summary_pipeline_seconds=0.25
 benchmark.sim_seconds=3
 benchmark.postprocess_seconds=1
 benchmark.total_seconds=5
@@ -47,6 +51,10 @@ assert abs(data["projected_total_seconds"] - 25.0) < 1e-9
 assert abs(data["projected_calc_score_seconds"] - 5.0) < 1e-9
 assert abs(data["projected_sim_seconds"] - 15.0) < 1e-9
 assert abs(data["projected_postprocess_seconds"] - 5.0) < 1e-9
+assert abs(data["projected_sim_initial_scan_seconds"] - 10.0) < 1e-9
+assert abs(data["projected_sim_initial_scan_cpu_merge_seconds"] - 2.5) < 1e-9
+assert abs(data["projected_sim_initial_scan_cpu_merge_subtotal_seconds"] - 2.0) < 1e-9
+assert abs(data["projected_sim_initial_run_summary_pipeline_seconds"] - 1.25) < 1e-9
 assert abs(data["window_pipeline_eligible_ratio"] - 0.8) < 1e-9
 assert abs(data["window_pipeline_fallback_ratio"] - 0.2) < 1e-9
 assert abs(data["calc_score_cuda_task_ratio"] - 0.7) < 1e-9
@@ -82,4 +90,8 @@ assert "window_pipeline_eligible_ratio" not in data
 assert "window_pipeline_fallback_ratio" not in data
 assert "calc_score_cuda_task_ratio" not in data
 assert "calc_score_cpu_fallback_ratio" not in data
+assert "projected_sim_initial_scan_seconds" not in data
+assert "projected_sim_initial_scan_cpu_merge_seconds" not in data
+assert "projected_sim_initial_scan_cpu_merge_subtotal_seconds" not in data
+assert "projected_sim_initial_run_summary_pipeline_seconds" not in data
 PY

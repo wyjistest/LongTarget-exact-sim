@@ -460,6 +460,21 @@ int main()
                      "row2 second event starts new run") && ok;
     ok = expect_true(!simScanCudaInitialRunStartsAt(events, rowOffsets[2], rowOffsets[2] + 2),
                      "row2 third event stays in run") && ok;
+    ok = expect_equal_long(simScanCudaInitialRunEndExclusive(events, rowOffsets[2], rowOffsets[1]),
+                           rowOffsets[1] + 3,
+                           "row1 first run exclusive end") && ok;
+    ok = expect_equal_long(simScanCudaInitialRunEndExclusive(events, rowOffsets[2], rowOffsets[1] + 3),
+                           rowOffsets[2],
+                           "row1 second run exclusive end") && ok;
+    ok = expect_equal_long(simScanCudaInitialRunEndExclusive(events, rowOffsets[3], rowOffsets[2]),
+                           rowOffsets[2] + 1,
+                           "row2 first run exclusive end") && ok;
+    ok = expect_equal_long(simScanCudaInitialRunEndExclusive(events, rowOffsets[3], rowOffsets[2] + 1),
+                           rowOffsets[2] + 3,
+                           "row2 second run exclusive end") && ok;
+    ok = expect_equal_long(simScanCudaInitialRunEndExclusive(events, rowOffsets[3], rowOffsets[2] + 3),
+                           rowOffsets[3],
+                           "row2 tail run exclusive end") && ok;
     ok = expect_equal_long(coalescedContext.stats.addnodeCalls, 7, "coalesced run count") && ok;
     ok = expect_equal_long(summaryContext.stats.addnodeCalls, 7, "summary run count") && ok;
     ok = expect_equal_long(baselineContext.stats.addnodeCalls, 12, "baseline event count") && ok;

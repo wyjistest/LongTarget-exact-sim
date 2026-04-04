@@ -48,6 +48,38 @@ inline bool simScanCudaInitialRunStartsAt(const std::vector<SimScanCudaRowEvent>
          simScanCudaInitialRunStartsAt(events.data(), rowStartIndex, eventIndex);
 }
 
+LONGTARGET_SIM_SCAN_HOST_DEVICE int simScanCudaInitialRunEndExclusive(const SimScanCudaRowEvent *events,
+                                                                      int rowEndIndex,
+                                                                      int runStartIndex)
+{
+  const uint64_t startCoord = events[runStartIndex].startCoord;
+  int eventIndex = runStartIndex + 1;
+  while(eventIndex < rowEndIndex && events[eventIndex].startCoord == startCoord)
+  {
+    ++eventIndex;
+  }
+  return eventIndex;
+}
+
+inline int simScanCudaInitialRunEndExclusive(const std::vector<SimScanCudaRowEvent> &events,
+                                             int rowEndIndex,
+                                             int runStartIndex)
+{
+  if(runStartIndex < 0 ||
+     rowEndIndex < runStartIndex ||
+     static_cast<size_t>(runStartIndex) >= events.size())
+  {
+    return runStartIndex;
+  }
+  const int clampedRowEndIndex =
+    rowEndIndex < static_cast<int>(events.size()) ?
+    rowEndIndex :
+    static_cast<int>(events.size());
+  return simScanCudaInitialRunEndExclusive(events.data(),
+                                           clampedRowEndIndex,
+                                           runStartIndex);
+}
+
 LONGTARGET_SIM_SCAN_HOST_DEVICE bool simScanCudaInitialMatrixRunStartsAt(int score,
                                                                          uint64_t startCoord,
                                                                          int prevScore,

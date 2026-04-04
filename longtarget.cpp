@@ -1798,6 +1798,16 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                    simInitialScanCpuSafeStoreUpdateSeconds,
                                    simInitialScanCpuSafeStorePruneSeconds,
                                    simInitialScanCpuSafeStoreUploadSeconds);
+  const double simInitialScanCpuMergeSubtotalSeconds =
+    simInitialScanCpuContextApplySeconds +
+    simInitialScanCpuSafeStoreUpdateSeconds +
+    simInitialScanCpuSafeStorePruneSeconds +
+    simInitialScanCpuSafeStoreUploadSeconds;
+  const double simInitialRunSummaryPipelineSeconds =
+    simInitialHashReduceSeconds +
+    simInitialSegmentedReduceSeconds +
+    simInitialSegmentedCompactSeconds +
+    simInitialTopKSeconds;
   cerr<<"benchmark.sim_initial_scan_seconds="<<simInitialScanSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_gpu_seconds="<<simInitialScanGpuSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_d2h_seconds="<<simInitialScanD2HSeconds<<endl;
@@ -1806,6 +1816,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;
+  cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_wait_seconds="<<simInitialScanWaitSeconds<<endl;
@@ -1814,6 +1825,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_proposal_select_d2h_seconds="<<simInitialProposalSelectD2HSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_sync_wait_seconds="<<simInitialScanSyncWaitSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_tail_seconds="<<simInitialScanTailSeconds<<endl;
+  cerr<<"benchmark.sim_initial_run_summary_pipeline_seconds="<<simInitialRunSummaryPipelineSeconds<<endl;
   cerr<<"benchmark.sim_initial_hash_reduce_seconds="<<simInitialHashReduceSeconds<<endl;
   cerr<<"benchmark.sim_initial_segmented_reduce_seconds="<<simInitialSegmentedReduceSeconds<<endl;
   cerr<<"benchmark.sim_initial_segmented_compact_seconds="<<simInitialSegmentedCompactSeconds<<endl;

@@ -740,6 +740,31 @@
 - 现在也能直接看 whole-genome workload 里有多少 `calc_score` 任务根本没进 CUDA，以及主因是不是长度门槛。
 - 这一步把 Task 2 / Task 3 的 profiler 与 representative shard benchmark 前置条件补齐了；下一步可以直接围绕 `initial scan` 和 `calc_score/threshold coverage` 做并列 P0。
 
+## 2026-04-04（Task 2 / initial-scan observability）
+
+- 本轮先把 Task 2 的“先观测、后优化”部分落到代码上，但 **没有改变默认 exact-safe 的 initial-scan 语义**：
+  - `longtarget.cpp` 新增两个 initial-scan 派生 benchmark 字段：
+    - `benchmark.sim_initial_scan_cpu_merge_subtotal_seconds`
+    - `benchmark.sim_initial_run_summary_pipeline_seconds`
+  - `scripts/check_benchmark_telemetry.sh` 现在也会强制检查：
+    - `benchmark.sim_initial_scan_sync_wait_seconds`
+    - `benchmark.sim_initial_reduce_chunks_*`
+    - 上面两个新的 derived subtotals
+  - `scripts/project_whole_genome_runtime.py` / `scripts/check_project_whole_genome_runtime.sh` 现在会在源 log 含相关字段时额外输出：
+    - `projected_sim_initial_scan_seconds`
+    - `projected_sim_initial_scan_cpu_merge_seconds`
+    - `projected_sim_initial_scan_cpu_merge_subtotal_seconds`
+    - `projected_sim_initial_run_summary_pipeline_seconds`
+- `tests/test_sim_initial_cuda_merge.cpp` 新增了 run-boundary helper 断言，覆盖 `simScanCudaInitialRunEndExclusive(...)` 的 row 内 run 结束边界语义；`sim.h` 的 host summarizer 也改成复用这条 helper，避免 host-side summary 逻辑分叉。
+- 本轮也尝试过把 initial run-summary kernels 再往前推一层（尤其是 direct true-batch path 的更激进 chunk-local fast path），但在真实 smoke exactness 上触发了回归；因此这些 risky kernel 改动 **没有保留在默认主线里**。保留下来的只有：
+  - whole-genome / initial-scan telemetry
+  - projection / benchmark checks
+  - helper-level exactness coverage
+- 当前结论更新：
+  - Task 2 第一轮已经把 initial-scan breakdown 变成一等 benchmark 指标，whole-genome harness 现在可以直接看 initial-scan 总量、CPU merge subtotal 和 run-summary pipeline subtotal。
+  - 但 default exact-safe 主线还没有接受新的 initial-scan kernel fast path，因为现有 smoke/sample/matrix gate 说明“大样本 true-batch direct-summary exactness”还需要更强的专门 fixture。
+  - 下一轮如果继续做 initial-scan GPU 优化，优先应该先补 **更大规模的 CUDA initial summary exactness fixture**（尤其是真正覆盖 `direct_true_batch` 的长样本模式），再重试 kernel 级 fast path；否则很容易在小 test 绿、大样本 exactness 红。
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`
