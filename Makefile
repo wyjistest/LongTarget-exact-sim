@@ -329,6 +329,10 @@ benchmark-sample-cuda-vs-fasim:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_sample_vs_fasim.py >/dev/null
 
+benchmark-sample-cuda-throughput-compare:
+	$(MAKE) build-cuda build-fasim-cuda
+	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_sample_vs_fasim.py --mode throughput --compare-output-mode lite --fasim-local-cuda $(CURDIR)/fasim_longtarget_cuda >/dev/null
+
 benchmark-sample-cuda-vs-fasim-two-stage:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_sample_vs_fasim.py --run-longtarget-two-stage >/dev/null
@@ -340,6 +344,10 @@ benchmark-sample-cuda-vs-fasim-two-stage-prealign:
 benchmark-fasim-batch:
 	$(MAKE) build-fasim build-fasim-cuda
 	python3 ./scripts/benchmark_fasim_batch_throughput.py
+
+benchmark-fasim-throughput-sweep:
+	$(MAKE) build-cuda build-fasim-cuda
+	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_fasim_throughput_sweep.py --longtarget $(CURDIR)/$(CUDA_TARGET) --fasim-local-cuda $(CURDIR)/fasim_longtarget_cuda
 
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
@@ -459,6 +467,18 @@ check-benchmark-worker-telemetry:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) sh ./scripts/check_benchmark_worker_telemetry.sh
 
+check-fasim-throughput-preset:
+	$(MAKE) build-fasim-cuda
+	BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_fasim_throughput_preset.sh
+
+check-benchmark-throughput-comparator:
+	$(MAKE) build-cuda build-fasim-cuda
+	LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) FASIM_BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_benchmark_throughput_comparator.sh
+
+check-fasim-throughput-sweep:
+	$(MAKE) build-cuda build-fasim-cuda
+	LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) FASIM_BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_fasim_throughput_sweep.sh
+
 check-sim-cuda-window-pipeline:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) sh ./scripts/check_sim_cuda_window_pipeline.sh
@@ -497,7 +517,7 @@ check-longtarget-lite-output:
 		check-matrix-openmp-par benchmark-sample benchmark-smoke benchmark-sample-cuda benchmark-smoke-cuda \
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
-		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch \
+		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
 		check-sample-cuda-sim check-smoke-cuda-sim check-matrix-cuda-sim \
@@ -513,7 +533,7 @@ check-longtarget-lite-output:
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-locate-update-test check-sim-locate-update \
-		check-benchmark-telemetry check-benchmark-worker-telemetry \
+		check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 		check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output

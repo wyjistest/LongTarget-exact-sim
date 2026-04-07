@@ -254,6 +254,31 @@ Optional: also write a lightweight tab-separated `*-TFOsorted.lite` alongside `*
 - `FASIM_WRITE_TFOSORTED_LITE=1`: enable lite output for Fasim (`FASIM_OUTPUT_MODE=tfosorted` path)
 - Lite columns: `Chr`, `StartInGenome`, `EndInGenome`, `Strand`, `Rule`, `QueryStart`, `QueryEnd`, `StartInSeq`, `EndInSeq`, `Direction`, `Score`, `Nt(bp)`, `MeanIdentity(%)`, `MeanStability`
 
+Throughput-first local fasim lane (kept explicit and separate from the default exact-safe LongTarget runner):
+
+```
+make check-fasim-throughput-preset
+make check-benchmark-throughput-comparator
+make benchmark-sample-cuda-throughput-compare
+```
+
+- `scripts/run_fasim_throughput_preset.sh`: wrapper for the vendored `fasim_longtarget_cuda` throughput lane. It keeps the threshold policy explicit and currently supports only `FASIM_THRESHOLD_POLICY=fasim_peak80`.
+- Default throughput preset values: `FASIM_ENABLE_PREALIGN_CUDA=1`, `FASIM_PREALIGN_CUDA_TOPK=64`, `FASIM_PREALIGN_PEAK_SUPPRESS_BP=5`, `FASIM_VERBOSE=0`, `FASIM_OUTPUT_MODE=lite`.
+- The sample throughput comparator always compares the same repo revision, the same inputs, and the same output schema (`lite` or `tfosorted`). In throughput mode the default comparison schema is `.lite`.
+- The throughput lane does not implicitly enable two GPUs. Pass `FASIM_CUDA_DEVICES=0,1` (or use the sweep script below) only after checking whether the second device really improves wall time.
+
+Throughput sweep helper (device set × `FASIM_EXTEND_THREADS`, with one exact baseline run reused across the matrix):
+
+```
+make benchmark-fasim-throughput-sweep
+# or:
+python3 ./scripts/benchmark_fasim_throughput_sweep.py --device-sets 0 0,1 --extend-threads 1,4,8,16,20
+make check-fasim-throughput-sweep
+```
+
+- The sweep currently keeps threshold policy and prealign knobs fixed (`fasim_peak80`, `TOPK=64`, `suppress_bp=5`) and only sweeps device placement plus CPU extend/output threads.
+- `report.json` records the exact baseline, each throughput configuration, overlap/score deltas, and the fastest configuration selected by wall time.
+
 Batch throughput micro-benchmark (generates a multi-fasta with many entries and compares CPU vs CUDA):
 
 ```

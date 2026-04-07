@@ -23,6 +23,16 @@ class RunResult:
     internal_seconds: float | None = None
 
 
+@dataclasses.dataclass
+class OutputSummary:
+    files: list[str]
+    strict_keys: set[tuple]
+    relaxed_keys: set[tuple]
+    strict_scores: dict[tuple, float]
+    line_count: int
+    top_hit_keys: set[tuple]
+
+
 def _eprint(msg: str) -> None:
     print(msg, file=sys.stderr)
 
@@ -37,6 +47,12 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _output_glob(compare_output_mode: str) -> str:
+    if compare_output_mode == "lite":
+        return "*-TFOsorted.lite"
+    return "*-TFOsorted"
 
 
 def _run_checked(
@@ -136,27 +152,30 @@ def _ensure_fasim_binary(*, repo_dir: Path) -> Path:
     return fasim
 
 
-def _load_tfo_keys(tfo_sorted: Path) -> tuple[set[tuple], set[tuple]]:
+def _load_output_summary(path: Path) -> OutputSummary:
     # strict key: (QueryStart, QueryEnd, StartInGenome, EndInGenome, Strand, Rule)
     # relaxed key: (StartInGenome, EndInGenome, Strand, Rule)
     strict: set[tuple] = set()
     relaxed: set[tuple] = set()
+    strict_scores: dict[tuple, float] = {}
+    line_count = 0
 
-    with tfo_sorted.open("r", encoding="utf-8", errors="replace") as f:
+    with path.open("r", encoding="utf-8", errors="replace") as f:
         header = f.readline().rstrip("\n")
         if not header:
-            return strict, relaxed
+            return OutputSummary([path.name], strict, relaxed, strict_scores, line_count, set())
         cols = header.split("\t")
         idx = {name: i for i, name in enumerate(cols)}
-        required = ["QueryStart", "QueryEnd", "StartInGenome", "EndInGenome", "Strand", "Rule"]
+        required = ["QueryStart", "QueryEnd", "StartInGenome", "EndInGenome", "Strand", "Rule", "Score"]
         for name in required:
             if name not in idx:
-                raise RuntimeError(f"{tfo_sorted} missing column: {name}")
+                raise RuntimeError(f"{path} missing column: {name}")
 
         for line in f:
             line = line.rstrip("\n")
             if not line or line.startswith("#"):
                 continue
+            line_count += 1
             parts = line.split("\t")
             try:
                 qs = int(parts[idx["QueryStart"]])
@@ -165,13 +184,23 @@ def _load_tfo_keys(tfo_sorted: Path) -> tuple[set[tuple], set[tuple]]:
                 ge = int(parts[idx["EndInGenome"]])
                 strand = parts[idx["Strand"]]
                 rule = int(parts[idx["Rule"]])
+                score = float(parts[idx["Score"]])
             except (ValueError, IndexError) as e:
-                raise RuntimeError(f"failed parsing {tfo_sorted}: {e}") from e
+                raise RuntimeError(f"failed parsing {path}: {e}") from e
 
-            strict.add((qs, qe, gs, ge, strand, rule))
+            strict_key = (qs, qe, gs, ge, strand, rule)
+            strict.add(strict_key)
             relaxed.add((gs, ge, strand, rule))
+            prev_score = strict_scores.get(strict_key)
+            if prev_score is None or score > prev_score:
+                strict_scores[strict_key] = score
 
-    return strict, relaxed
+    top_hit_keys: set[tuple] = set()
+    if strict_scores:
+        top_score = max(strict_scores.values())
+        top_hit_keys = {key for key, score in strict_scores.items() if score == top_score}
+
+    return OutputSummary([path.name], strict, relaxed, strict_scores, line_count, top_hit_keys)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -194,36 +223,140 @@ class MatchStats:
         return self.inter / denom if denom else 1.0
 
 
-def _compare_tfo_sorted(ref_dir: Path, cand_dir: Path) -> dict[str, MatchStats]:
-    ref_files = sorted(ref_dir.glob("*-TFOsorted"))
-    if not ref_files:
-        raise RuntimeError(f"no *-TFOsorted in {ref_dir}")
+def _load_output_map(dir_path: Path, compare_output_mode: str) -> dict[str, OutputSummary]:
+    files = sorted(dir_path.glob(_output_glob(compare_output_mode)))
+    if not files:
+        raise RuntimeError(f"no {_output_glob(compare_output_mode)} in {dir_path}")
+    return {path.name: _load_output_summary(path) for path in files}
 
-    # sample 基准只预期一个文件，但这里也支持多文件聚合
-    strict_ref_all: set[tuple] = set()
-    relaxed_ref_all: set[tuple] = set()
-    strict_cand_all: set[tuple] = set()
-    relaxed_cand_all: set[tuple] = set()
 
-    for ref_file in ref_files:
-        cand_file = cand_dir / ref_file.name
-        if not cand_file.exists():
-            continue
+def _aggregate_output_summaries(summaries: list[OutputSummary]) -> OutputSummary:
+    strict_keys: set[tuple] = set()
+    relaxed_keys: set[tuple] = set()
+    strict_scores: dict[tuple, float] = {}
+    files: list[str] = []
+    line_count = 0
 
-        ref_strict, ref_relaxed = _load_tfo_keys(ref_file)
-        cand_strict, cand_relaxed = _load_tfo_keys(cand_file)
+    for summary in summaries:
+        files.extend(summary.files)
+        strict_keys |= summary.strict_keys
+        relaxed_keys |= summary.relaxed_keys
+        line_count += summary.line_count
+        for key, score in summary.strict_scores.items():
+            prev_score = strict_scores.get(key)
+            if prev_score is None or score > prev_score:
+                strict_scores[key] = score
 
-        strict_ref_all |= ref_strict
-        relaxed_ref_all |= ref_relaxed
-        strict_cand_all |= cand_strict
-        relaxed_cand_all |= cand_relaxed
+    top_hit_keys: set[tuple] = set()
+    if strict_scores:
+        top_score = max(strict_scores.values())
+        top_hit_keys = {key for key, score in strict_scores.items() if score == top_score}
 
-    strict_inter = len(strict_ref_all & strict_cand_all)
-    relaxed_inter = len(relaxed_ref_all & relaxed_cand_all)
+    return OutputSummary(files, strict_keys, relaxed_keys, strict_scores, line_count, top_hit_keys)
 
+
+def _score_delta_summary(ref_scores: dict[tuple, float], cand_scores: dict[tuple, float]) -> dict[str, float | int]:
+    common_keys = sorted(set(ref_scores) & set(cand_scores))
+    if not common_keys:
+        return {
+            "matched_count": 0,
+            "changed_count": 0,
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "positive": 0,
+            "negative": 0,
+            "zero": 0,
+        }
+
+    deltas = [cand_scores[key] - ref_scores[key] for key in common_keys]
+    positive = sum(1 for delta in deltas if delta > 0)
+    negative = sum(1 for delta in deltas if delta < 0)
+    zero = len(deltas) - positive - negative
     return {
-        "strict": MatchStats(len(strict_ref_all), len(strict_cand_all), strict_inter),
-        "relaxed": MatchStats(len(relaxed_ref_all), len(relaxed_cand_all), relaxed_inter),
+        "matched_count": len(deltas),
+        "changed_count": positive + negative,
+        "min": min(deltas),
+        "max": max(deltas),
+        "mean": sum(deltas) / len(deltas),
+        "positive": positive,
+        "negative": negative,
+        "zero": zero,
+    }
+
+
+def _aggregate_output_sha256(dir_path: Path, compare_output_mode: str) -> str:
+    files = sorted(dir_path.glob(_output_glob(compare_output_mode)))
+    if not files:
+        return "n/a"
+
+    h = hashlib.sha256()
+    for path in files:
+        h.update(path.name.encode("utf-8"))
+        h.update(b"\0")
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
+def _compare_output_mode(ref_dir: Path, cand_dir: Path, compare_output_mode: str) -> tuple[dict[str, object], OutputSummary, OutputSummary]:
+    ref_map = _load_output_map(ref_dir, compare_output_mode)
+    cand_map = _load_output_map(cand_dir, compare_output_mode)
+
+    ref_aggregate = _aggregate_output_summaries(list(ref_map.values()))
+    cand_aggregate = _aggregate_output_summaries(list(cand_map.values()))
+
+    strict_stats = MatchStats(
+        len(ref_aggregate.strict_keys),
+        len(cand_aggregate.strict_keys),
+        len(ref_aggregate.strict_keys & cand_aggregate.strict_keys),
+    )
+    relaxed_stats = MatchStats(
+        len(ref_aggregate.relaxed_keys),
+        len(cand_aggregate.relaxed_keys),
+        len(ref_aggregate.relaxed_keys & cand_aggregate.relaxed_keys),
+    )
+    top_hit_retention = (
+        len(ref_aggregate.top_hit_keys & cand_aggregate.strict_keys) / len(ref_aggregate.top_hit_keys)
+        if ref_aggregate.top_hit_keys
+        else 1.0
+    )
+
+    comparison = {
+        "strict": _match_stats_dict(strict_stats),
+        "relaxed": _match_stats_dict(relaxed_stats),
+        "score_delta_summary": _score_delta_summary(ref_aggregate.strict_scores, cand_aggregate.strict_scores),
+        "top_hit_retention": top_hit_retention,
+        "recall_proxy": relaxed_stats.recall,
+    }
+    return comparison, ref_aggregate, cand_aggregate
+
+
+def _match_stats_dict(stats: MatchStats) -> dict[str, float | int]:
+    return {
+        "ref": stats.ref,
+        "cand": stats.cand,
+        "inter": stats.inter,
+        "precision": stats.precision,
+        "recall": stats.recall,
+        "jaccard": stats.jaccard,
+    }
+
+
+def _output_report(r: RunResult, *, output_mode: str, output_summary: OutputSummary, output_sha256: str) -> dict[str, object]:
+    return {
+        "label": r.label,
+        "cmd": r.cmd,
+        "env_overrides": r.env_overrides,
+        "wall_seconds": r.wall_seconds,
+        "internal_seconds": r.internal_seconds,
+        "stderr_path": str(r.stderr_path),
+        "output_dir": str(r.output_dir),
+        "output_mode": output_mode,
+        "output_files": output_summary.files,
+        "line_count": output_summary.line_count,
+        "output_sha256": output_sha256,
     }
 
 
@@ -236,6 +369,18 @@ def main() -> int:
     parser.add_argument("--rna", default="H19.fa")
     parser.add_argument("--rule", default=0, type=int)
     parser.add_argument("--strand", default="", help="optional: pass to LongTarget -t")
+    parser.add_argument(
+        "--mode",
+        choices=("legacy", "throughput"),
+        default="legacy",
+        help="legacy keeps the existing sample benchmark matrix; throughput runs exact LongTarget vs the local fasim throughput preset",
+    )
+    parser.add_argument(
+        "--compare-output-mode",
+        choices=("tfosorted", "lite"),
+        default="tfosorted",
+        help="output schema used for comparison/reporting",
+    )
     parser.add_argument(
         "--work-dir",
         default=str(root / ".tmp" / "sample_benchmark_vs_fasim"),
@@ -258,6 +403,16 @@ def main() -> int:
         "--fasim-rev",
         default=os.environ.get("FASIM_LONGTARGET_REV", "f7b24d6ca723c2eee855715c8736fd9ab03c8235"),
         help="git revision to checkout (set empty to use current HEAD)",
+    )
+    parser.add_argument(
+        "--fasim-local-cpu",
+        default=str(root / "fasim_longtarget_x86"),
+        help="path to the vendored/local fasim CPU binary",
+    )
+    parser.add_argument(
+        "--fasim-local-cuda",
+        default=str(root / "fasim_longtarget_cuda"),
+        help="path to the vendored/local fasim CUDA binary",
     )
     parser.add_argument(
         "--fast-update-budget",
@@ -294,10 +449,38 @@ def main() -> int:
         default="",
         help="optional: set LONGTARGET_PREFILTER_BACKEND for the two-stage run (e.g. sim, prealign_cuda)",
     )
+    parser.add_argument(
+        "--throughput-threshold-policy",
+        default=os.environ.get("FASIM_THRESHOLD_POLICY", "fasim_peak80"),
+        help="throughput-mode threshold policy name passed to the local fasim preset wrapper",
+    )
+    parser.add_argument(
+        "--fasim-cuda-devices",
+        default=os.environ.get("FASIM_CUDA_DEVICES", ""),
+        help="optional: comma-separated CUDA devices for the throughput local fasim run",
+    )
+    parser.add_argument(
+        "--fasim-extend-threads",
+        default=os.environ.get("FASIM_EXTEND_THREADS", ""),
+        help="optional: CPU extend/output thread count for the throughput local fasim run",
+    )
+    parser.add_argument(
+        "--fasim-prealign-cuda-topk",
+        default=os.environ.get("FASIM_PREALIGN_CUDA_TOPK", "64"),
+        help="throughput-mode FASIM_PREALIGN_CUDA_TOPK override",
+    )
+    parser.add_argument(
+        "--fasim-prealign-peak-suppress-bp",
+        default=os.environ.get("FASIM_PREALIGN_PEAK_SUPPRESS_BP", "5"),
+        help="throughput-mode FASIM_PREALIGN_PEAK_SUPPRESS_BP override",
+    )
 
     args = parser.parse_args()
+    compare_output_mode = args.compare_output_mode
+    if args.mode == "legacy" and compare_output_mode != "tfosorted":
+        raise RuntimeError("legacy mode currently only supports --compare-output-mode=tfosorted")
 
-    work_dir = Path(args.work_dir)
+    work_dir = Path(args.work_dir).resolve()
     if work_dir.exists():
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -328,12 +511,13 @@ def main() -> int:
 
     fasim_repo_dir = Path(args.fasim_repo_dir)
     fasim_rev = args.fasim_rev.strip() or None
+    fasim_bin: Path | None = None
+    if args.mode == "legacy":
+        _ensure_fasim_repo(repo_dir=fasim_repo_dir, repo_url=args.fasim_repo_url, rev=fasim_rev)
+        fasim_bin = _ensure_fasim_binary(repo_dir=fasim_repo_dir)
 
-    _ensure_fasim_repo(repo_dir=fasim_repo_dir, repo_url=args.fasim_repo_url, rev=fasim_rev)
-    fasim_bin = _ensure_fasim_binary(repo_dir=fasim_repo_dir)
-
-    local_fasim_cpu = root / "fasim_longtarget_x86"
-    local_fasim_cuda = root / "fasim_longtarget_cuda"
+    local_fasim_cpu = Path(args.fasim_local_cpu)
+    local_fasim_cuda = Path(args.fasim_local_cuda)
 
     base_args = ["-f1", dna.name, "-f2", rna.name, "-r", str(args.rule)]
     if args.strand:
@@ -346,6 +530,8 @@ def main() -> int:
         "LONGTARGET_ENABLE_SIM_CUDA_REGION": "1",
         "LONGTARGET_BENCHMARK": "1",
     }
+    if args.mode == "throughput":
+        longtarget_common_env["LONGTARGET_OUTPUT_MODE"] = compare_output_mode
 
     # 1) LongTarget exact
     lt_exact_out = work_dir / "longtarget_exact" / "output"
@@ -362,30 +548,31 @@ def main() -> int:
         cwd=inputs_dir,
     )
 
-    # 2) LongTarget fast/hybrid
+    lt_fast: RunResult | None = None
     lt_fast_out = work_dir / "longtarget_fast" / "output"
-    lt_fast_log = work_dir / "longtarget_fast" / "stderr.log"
-    lt_fast_out.parent.mkdir(parents=True, exist_ok=True)
-    lt_fast_out.mkdir(parents=True, exist_ok=True)
-    fast_env = dict(longtarget_common_env)
-    fast_env["LONGTARGET_SIM_FAST"] = "1"
-    fast_env["LONGTARGET_SIM_FAST_UPDATE_BUDGET"] = str(args.fast_update_budget)
-    if args.fast_update_on_fail:
-        fast_env["LONGTARGET_SIM_FAST_UPDATE_ON_FAIL"] = "1"
-    lt_fast = _run_checked(
-        label="longtarget_fast",
-        cmd=[str(longtarget), *base_args, "-O", str(lt_fast_out)],
-        env_overrides=fast_env,
-        stderr_path=lt_fast_log,
-        output_dir=lt_fast_out,
-        expect_benchmark_total=True,
-        cwd=inputs_dir,
-    )
+    if args.mode == "legacy":
+        lt_fast_log = work_dir / "longtarget_fast" / "stderr.log"
+        lt_fast_out.parent.mkdir(parents=True, exist_ok=True)
+        lt_fast_out.mkdir(parents=True, exist_ok=True)
+        fast_env = dict(longtarget_common_env)
+        fast_env["LONGTARGET_SIM_FAST"] = "1"
+        fast_env["LONGTARGET_SIM_FAST_UPDATE_BUDGET"] = str(args.fast_update_budget)
+        if args.fast_update_on_fail:
+            fast_env["LONGTARGET_SIM_FAST_UPDATE_ON_FAIL"] = "1"
+        lt_fast = _run_checked(
+            label="longtarget_fast",
+            cmd=[str(longtarget), *base_args, "-O", str(lt_fast_out)],
+            env_overrides=fast_env,
+            stderr_path=lt_fast_log,
+            output_dir=lt_fast_out,
+            expect_benchmark_total=True,
+            cwd=inputs_dir,
+        )
 
     lt_two_stage: RunResult | None = None
     lt_two_stage_out = work_dir / "longtarget_two_stage" / "output"
     lt_two_stage_log = work_dir / "longtarget_two_stage" / "stderr.log"
-    if args.run_longtarget_two_stage:
+    if args.mode == "legacy" and args.run_longtarget_two_stage:
         lt_two_stage_out.parent.mkdir(parents=True, exist_ok=True)
         lt_two_stage_out.mkdir(parents=True, exist_ok=True)
         two_stage_env = dict(longtarget_common_env)
@@ -409,23 +596,24 @@ def main() -> int:
             cwd=inputs_dir,
         )
 
-    # 3) Fasim (fastSim)
-    fasim_fast_out = work_dir / "fasim_fast" / "output"
-    fasim_fast_log = work_dir / "fasim_fast" / "stderr.log"
-    fasim_fast_out.parent.mkdir(parents=True, exist_ok=True)
-    fasim_fast_out.mkdir(parents=True, exist_ok=True)
-    fasim_fast = _run_checked(
-        label="fasim_fast",
-        cmd=[str(fasim_bin), "-f1", dna.name, "-f2", rna.name, "-r", str(args.rule), "-O", str(fasim_fast_out)],
-        env_overrides={},
-        stderr_path=fasim_fast_log,
-        output_dir=fasim_fast_out,
-        expect_benchmark_total=False,
-        cwd=inputs_dir,
-    )
-
+    fasim_fast: RunResult | None = None
     fasim_sim: RunResult | None = None
-    if args.run_fasim_sim:
+    fasim_fast_out = work_dir / "fasim_fast" / "output"
+    if args.mode == "legacy":
+        fasim_fast_log = work_dir / "fasim_fast" / "stderr.log"
+        fasim_fast_out.parent.mkdir(parents=True, exist_ok=True)
+        fasim_fast_out.mkdir(parents=True, exist_ok=True)
+        fasim_fast = _run_checked(
+            label="fasim_fast",
+            cmd=[str(fasim_bin), "-f1", dna.name, "-f2", rna.name, "-r", str(args.rule), "-O", str(fasim_fast_out)],
+            env_overrides={},
+            stderr_path=fasim_fast_log,
+            output_dir=fasim_fast_out,
+            expect_benchmark_total=False,
+            cwd=inputs_dir,
+        )
+
+    if args.mode == "legacy" and args.run_fasim_sim:
         fasim_sim_out = work_dir / "fasim_sim" / "output"
         fasim_sim_log = work_dir / "fasim_sim" / "stderr.log"
         fasim_sim_out.parent.mkdir(parents=True, exist_ok=True)
@@ -453,7 +641,8 @@ def main() -> int:
 
     local_fasim_cpu_run: RunResult | None = None
     local_fasim_cuda_run: RunResult | None = None
-    if args.run_local_fasim and local_fasim_cpu.exists():
+    throughput_runner_script = root / "scripts" / "run_fasim_throughput_preset.sh"
+    if args.mode == "legacy" and args.run_local_fasim and local_fasim_cpu.exists():
         out_dir = work_dir / "fasim_local_cpu" / "output"
         log_path = work_dir / "fasim_local_cpu" / "stderr.log"
         out_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -481,7 +670,7 @@ def main() -> int:
             cwd=inputs_dir,
         )
 
-    if args.run_local_fasim and local_fasim_cuda.exists():
+    if args.mode == "legacy" and args.run_local_fasim and local_fasim_cuda.exists():
         out_dir = work_dir / "fasim_local_cuda" / "output"
         log_path = work_dir / "fasim_local_cuda" / "stderr.log"
         out_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -509,39 +698,66 @@ def main() -> int:
             expect_benchmark_total=False,
             cwd=inputs_dir,
         )
+    elif args.mode == "throughput":
+        out_dir = work_dir / "fasim_local_cuda" / "output"
+        log_path = work_dir / "fasim_local_cuda" / "stderr.log"
+        out_dir.parent.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        throughput_env = {
+            "BIN": str(local_fasim_cuda),
+            "FASIM_THRESHOLD_POLICY": args.throughput_threshold_policy,
+            "FASIM_OUTPUT_MODE": compare_output_mode,
+            "FASIM_PREALIGN_CUDA_TOPK": str(args.fasim_prealign_cuda_topk),
+            "FASIM_PREALIGN_PEAK_SUPPRESS_BP": str(args.fasim_prealign_peak_suppress_bp),
+        }
+        if args.fasim_cuda_devices:
+            throughput_env["FASIM_CUDA_DEVICES"] = args.fasim_cuda_devices
+        if args.fasim_extend_threads:
+            throughput_env["FASIM_EXTEND_THREADS"] = str(args.fasim_extend_threads)
+        local_fasim_cuda_run = _run_checked(
+            label="fasim_local_cuda",
+            cmd=[str(throughput_runner_script), "-f1", dna.name, "-f2", rna.name, "-r", str(args.rule), "-O", str(out_dir)],
+            env_overrides=throughput_env,
+            stderr_path=log_path,
+            output_dir=out_dir,
+            expect_benchmark_total=False,
+            cwd=inputs_dir,
+        )
 
     # Compare results against LongTarget exact.
-    comparisons: dict[str, dict[str, MatchStats]] = {}
-    comparisons["longtarget_fast"] = _compare_tfo_sorted(lt_exact_out, lt_fast_out)
+    comparisons: dict[str, dict[str, object]] = {}
+    output_summaries: dict[str, OutputSummary] = {}
+    output_shas: dict[str, str] = {}
+
+    def capture_output(label: str, dir_path: Path, mode: str) -> None:
+        output_map = _load_output_map(dir_path, mode)
+        output_summaries[label] = _aggregate_output_summaries(list(output_map.values()))
+        output_shas[label] = _aggregate_output_sha256(dir_path, mode)
+
+    capture_output("longtarget_exact", lt_exact_out, compare_output_mode)
+
+    if lt_fast:
+        capture_output("longtarget_fast", lt_fast_out, compare_output_mode)
+        comparisons["longtarget_fast"], _, _ = _compare_output_mode(lt_exact_out, lt_fast_out, compare_output_mode)
     if lt_two_stage:
-        comparisons["longtarget_two_stage"] = _compare_tfo_sorted(lt_exact_out, lt_two_stage.output_dir)
-    comparisons["fasim_fast"] = _compare_tfo_sorted(lt_exact_out, fasim_fast_out)
+        capture_output("longtarget_two_stage", lt_two_stage.output_dir, compare_output_mode)
+        comparisons["longtarget_two_stage"], _, _ = _compare_output_mode(lt_exact_out, lt_two_stage.output_dir, compare_output_mode)
+    if fasim_fast:
+        capture_output("fasim_fast", fasim_fast_out, compare_output_mode)
+        comparisons["fasim_fast"], _, _ = _compare_output_mode(lt_exact_out, fasim_fast_out, compare_output_mode)
     if fasim_sim:
-        comparisons["fasim_sim"] = _compare_tfo_sorted(lt_exact_out, fasim_sim.output_dir)
+        capture_output("fasim_sim", fasim_sim.output_dir, compare_output_mode)
+        comparisons["fasim_sim"], _, _ = _compare_output_mode(lt_exact_out, fasim_sim.output_dir, compare_output_mode)
     if local_fasim_cpu_run:
-        comparisons["fasim_local_cpu"] = _compare_tfo_sorted(lt_exact_out, local_fasim_cpu_run.output_dir)
+        capture_output("fasim_local_cpu", local_fasim_cpu_run.output_dir, compare_output_mode)
+        comparisons["fasim_local_cpu"], _, _ = _compare_output_mode(lt_exact_out, local_fasim_cpu_run.output_dir, compare_output_mode)
     if local_fasim_cuda_run:
-        comparisons["fasim_local_cuda"] = _compare_tfo_sorted(lt_exact_out, local_fasim_cuda_run.output_dir)
-
-    # Record representative hashes for quick eyeballing.
-    def tfo_sha(dir_path: Path) -> str:
-        files = list(dir_path.glob("*-TFOsorted"))
-        if len(files) != 1:
-            return "n/a"
-        return _sha256_file(files[0])
-
-    def run_to_dict(r: RunResult) -> dict:
-        return {
-            "label": r.label,
-            "cmd": r.cmd,
-            "env_overrides": r.env_overrides,
-            "wall_seconds": r.wall_seconds,
-            "internal_seconds": r.internal_seconds,
-            "stderr_path": str(r.stderr_path),
-            "output_dir": str(r.output_dir),
-        }
+        capture_output("fasim_local_cuda", local_fasim_cuda_run.output_dir, compare_output_mode)
+        comparisons["fasim_local_cuda"], _, _ = _compare_output_mode(lt_exact_out, local_fasim_cuda_run.output_dir, compare_output_mode)
 
     report = {
+        "mode": args.mode,
+        "compare_output_mode": compare_output_mode,
         "work_dir": str(work_dir),
         "inputs": {
             "dna_src": str(dna_src),
@@ -553,9 +769,26 @@ def main() -> int:
         },
         "longtarget": {
             "path": str(longtarget),
-            "exact": run_to_dict(lt_exact) | {"tfosorted_sha256": tfo_sha(lt_exact_out)},
-            "fast": run_to_dict(lt_fast) | {"tfosorted_sha256": tfo_sha(lt_fast_out)},
-            "two_stage": (run_to_dict(lt_two_stage) | {"tfosorted_sha256": tfo_sha(lt_two_stage.output_dir)})
+            "exact": _output_report(
+                lt_exact,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["longtarget_exact"],
+                output_sha256=output_shas["longtarget_exact"],
+            ),
+            "fast": _output_report(
+                lt_fast,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["longtarget_fast"],
+                output_sha256=output_shas["longtarget_fast"],
+            )
+            if lt_fast
+            else None,
+            "two_stage": _output_report(
+                lt_two_stage,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["longtarget_two_stage"],
+                output_sha256=output_shas["longtarget_two_stage"],
+            )
             if lt_two_stage
             else None,
             "fast_update_budget": args.fast_update_budget,
@@ -564,21 +797,50 @@ def main() -> int:
         "fasim": {
             "repo_dir": str(fasim_repo_dir),
             "rev": fasim_rev,
-            "fast": run_to_dict(fasim_fast) | {"tfosorted_sha256": tfo_sha(fasim_fast_out)},
-            "sim": (run_to_dict(fasim_sim) | {"tfosorted_sha256": tfo_sha(fasim_sim.output_dir)})
+            "fast": _output_report(
+                fasim_fast,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["fasim_fast"],
+                output_sha256=output_shas["fasim_fast"],
+            )
+            if fasim_fast
+            else None,
+            "sim": _output_report(
+                fasim_sim,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["fasim_sim"],
+                output_sha256=output_shas["fasim_sim"],
+            )
             if fasim_sim
             else None,
-            "local_cpu": (run_to_dict(local_fasim_cpu_run) | {"tfosorted_sha256": tfo_sha(local_fasim_cpu_run.output_dir)})
+            "local_cpu": _output_report(
+                local_fasim_cpu_run,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["fasim_local_cpu"],
+                output_sha256=output_shas["fasim_local_cpu"],
+            )
             if local_fasim_cpu_run
             else None,
-            "local_cuda": (run_to_dict(local_fasim_cuda_run) | {"tfosorted_sha256": tfo_sha(local_fasim_cuda_run.output_dir)})
+            "local_cuda": _output_report(
+                local_fasim_cuda_run,
+                output_mode=compare_output_mode,
+                output_summary=output_summaries["fasim_local_cuda"],
+                output_sha256=output_shas["fasim_local_cuda"],
+            )
             if local_fasim_cuda_run
             else None,
         },
-        "comparisons": {
-            k: {mode: dataclasses.asdict(v) for mode, v in stats.items()}
-            for k, stats in comparisons.items()
-        },
+        "throughput": {
+            "runner": "fasim_local_cuda",
+            "threshold_policy": args.throughput_threshold_policy,
+            "fasim_cuda_devices": args.fasim_cuda_devices or None,
+            "fasim_extend_threads": int(args.fasim_extend_threads) if args.fasim_extend_threads else None,
+            "fasim_prealign_cuda_topk": int(args.fasim_prealign_cuda_topk),
+            "fasim_prealign_peak_suppress_bp": int(args.fasim_prealign_peak_suppress_bp),
+        }
+        if args.mode == "throughput"
+        else None,
+        "comparisons": comparisons,
     }
 
     report_path = work_dir / "report.json"
@@ -587,37 +849,42 @@ def main() -> int:
     _eprint("")
     _eprint("=== Runtime (wall / internal) ===")
     _eprint(
-        f"longtarget_exact  wall={lt_exact.wall_seconds:.3f}s  internal={lt_exact.internal_seconds:.3f}s  sha256(TFOsorted)={tfo_sha(lt_exact_out)[:12]}"
+        f"longtarget_exact  wall={lt_exact.wall_seconds:.3f}s  internal={lt_exact.internal_seconds:.3f}s  sha256({compare_output_mode})={output_shas['longtarget_exact'][:12]}"
     )
-    _eprint(
-        f"longtarget_fast   wall={lt_fast.wall_seconds:.3f}s  internal={lt_fast.internal_seconds:.3f}s  budget={args.fast_update_budget}  sha256(TFOsorted)={tfo_sha(lt_fast_out)[:12]}"
-    )
+    if lt_fast:
+        _eprint(
+            f"longtarget_fast   wall={lt_fast.wall_seconds:.3f}s  internal={lt_fast.internal_seconds:.3f}s  budget={args.fast_update_budget}  sha256({compare_output_mode})={output_shas['longtarget_fast'][:12]}"
+        )
     if lt_two_stage:
         _eprint(
-            f"longtarget_2stage wall={lt_two_stage.wall_seconds:.3f}s  internal={lt_two_stage.internal_seconds:.3f}s  sha256(TFOsorted)={tfo_sha(lt_two_stage.output_dir)[:12]}"
+            f"longtarget_2stage wall={lt_two_stage.wall_seconds:.3f}s  internal={lt_two_stage.internal_seconds:.3f}s  sha256({compare_output_mode})={output_shas['longtarget_two_stage'][:12]}"
         )
-    _eprint(
-        f"fasim_fast        wall={fasim_fast.wall_seconds:.3f}s  sha256(TFOsorted)={tfo_sha(fasim_fast_out)[:12]}"
-    )
+    if fasim_fast:
+        _eprint(
+            f"fasim_fast        wall={fasim_fast.wall_seconds:.3f}s  sha256({compare_output_mode})={output_shas['fasim_fast'][:12]}"
+        )
     if fasim_sim:
-        _eprint(f"fasim_sim         wall={fasim_sim.wall_seconds:.3f}s  sha256(TFOsorted)={tfo_sha(fasim_sim.output_dir)[:12]}")
+        _eprint(f"fasim_sim         wall={fasim_sim.wall_seconds:.3f}s  sha256({compare_output_mode})={output_shas['fasim_sim'][:12]}")
     if local_fasim_cpu_run:
         _eprint(
-            f"fasim_local_cpu   wall={local_fasim_cpu_run.wall_seconds:.3f}s  sha256(TFOsorted)={tfo_sha(local_fasim_cpu_run.output_dir)[:12]}"
+            f"fasim_local_cpu   wall={local_fasim_cpu_run.wall_seconds:.3f}s  sha256({compare_output_mode})={output_shas['fasim_local_cpu'][:12]}"
         )
     if local_fasim_cuda_run:
         _eprint(
-            f"fasim_local_cuda  wall={local_fasim_cuda_run.wall_seconds:.3f}s  sha256(TFOsorted)={tfo_sha(local_fasim_cuda_run.output_dir)[:12]}"
+            f"fasim_local_cuda  wall={local_fasim_cuda_run.wall_seconds:.3f}s  sha256({compare_output_mode})={output_shas['fasim_local_cuda'][:12]}"
         )
 
-    def _fmt_stats(s: MatchStats) -> str:
-        return f"ref={s.ref} cand={s.cand} inter={s.inter} prec={s.precision:.3f} rec={s.recall:.3f} jac={s.jaccard:.3f}"
-
     _eprint("")
-    _eprint("=== TFOsorted vs longtarget_exact ===")
+    _eprint(f"=== {compare_output_mode} vs longtarget_exact ===")
     for label, stats in comparisons.items():
-        _eprint(f"{label}.strict  {_fmt_stats(stats['strict'])}")
-        _eprint(f"{label}.relaxed {_fmt_stats(stats['relaxed'])}")
+        strict = stats["strict"]
+        relaxed = stats["relaxed"]
+        _eprint(
+            f"{label}.strict  ref={strict['ref']} cand={strict['cand']} inter={strict['inter']} prec={strict['precision']:.3f} rec={strict['recall']:.3f} jac={strict['jaccard']:.3f}"
+        )
+        _eprint(
+            f"{label}.relaxed ref={relaxed['ref']} cand={relaxed['cand']} inter={relaxed['inter']} prec={relaxed['precision']:.3f} rec={relaxed['recall']:.3f} jac={relaxed['jaccard']:.3f}"
+        )
 
     _eprint("")
     _eprint(f"report: {report_path}")
