@@ -297,6 +297,18 @@ make check-make-anchor-shards
 ```
 
 - The helper writes `hg38_chr22_<start>_<length>.fa` files and preserves the UCSC-style FASTA header format as `>hg38|chr22|start-end`.
+- After you run multiple anchor sweeps, summarize them into one Pareto-oriented table with:
+
+```
+python3 ./scripts/summarize_throughput_frontier.py \
+  .tmp/hg38_chr22_anchors/*/report.json
+make check-summarize-throughput-frontier
+```
+
+- The summary groups runs by `device_set × extend_threads × topk × suppress_bp` and reports:
+  - `zero_top_hit_reports` / `all_top_hit_nonzero` for the hard top-hit filter
+  - `qualifying_reports` from each report's `quality_gate`
+  - `pareto_optimal` using `mean_wall_seconds` vs worst-output recall / top-hit retention
 - Example quality-gated sweep:
 
 ```

@@ -503,6 +503,10 @@ check-make-anchor-shards:
 	python3 ./scripts/make_anchor_shards.py --help >/dev/null
 	bash ./scripts/check_make_anchor_shards.sh
 
+check-summarize-throughput-frontier:
+	python3 ./scripts/summarize_throughput_frontier.py --help >/dev/null
+	bash ./scripts/check_summarize_throughput_frontier.sh
+
 check-sim-cuda-region-docs:
 	sh ./scripts/check_sim_cuda_region_docs.sh
 
@@ -538,6 +542,6 @@ check-longtarget-lite-output:
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-locate-update-test check-sim-locate-update \
 		check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
-		check-make-anchor-shards check-sim-cuda-initial-proposal-v2-exactness \
+		check-make-anchor-shards check-summarize-throughput-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output
