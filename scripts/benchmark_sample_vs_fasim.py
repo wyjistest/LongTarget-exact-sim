@@ -300,13 +300,18 @@ def _aggregate_output_sha256(dir_path: Path, compare_output_mode: str) -> str:
     return h.hexdigest()
 
 
-def _compare_output_mode(ref_dir: Path, cand_dir: Path, compare_output_mode: str) -> tuple[dict[str, object], OutputSummary, OutputSummary]:
-    ref_map = _load_output_map(ref_dir, compare_output_mode)
-    cand_map = _load_output_map(cand_dir, compare_output_mode)
+def _empty_output_summary(filename: str) -> OutputSummary:
+    return OutputSummary(
+        files=[filename],
+        strict_keys=set(),
+        relaxed_keys=set(),
+        strict_scores={},
+        line_count=0,
+        top_hit_keys=set(),
+    )
 
-    ref_aggregate = _aggregate_output_summaries(list(ref_map.values()))
-    cand_aggregate = _aggregate_output_summaries(list(cand_map.values()))
 
+def _comparison_from_summaries(ref_aggregate: OutputSummary, cand_aggregate: OutputSummary) -> dict[str, object]:
     strict_stats = MatchStats(
         len(ref_aggregate.strict_keys),
         len(cand_aggregate.strict_keys),
@@ -330,6 +335,23 @@ def _compare_output_mode(ref_dir: Path, cand_dir: Path, compare_output_mode: str
         "top_hit_retention": top_hit_retention,
         "recall_proxy": relaxed_stats.recall,
     }
+    return comparison
+
+
+def _compare_output_mode(ref_dir: Path, cand_dir: Path, compare_output_mode: str) -> tuple[dict[str, object], OutputSummary, OutputSummary]:
+    ref_map = _load_output_map(ref_dir, compare_output_mode)
+    cand_map = _load_output_map(cand_dir, compare_output_mode)
+
+    ref_aggregate = _aggregate_output_summaries(list(ref_map.values()))
+    cand_aggregate = _aggregate_output_summaries(list(cand_map.values()))
+    comparison = _comparison_from_summaries(ref_aggregate, cand_aggregate)
+    per_output_comparisons: dict[str, dict[str, object]] = {}
+    for filename in sorted(set(ref_map) | set(cand_map)):
+        ref_summary = ref_map.get(filename, _empty_output_summary(filename))
+        cand_summary = cand_map.get(filename, _empty_output_summary(filename))
+        per_output_comparisons[filename] = _comparison_from_summaries(ref_summary, cand_summary)
+
+    comparison["per_output_comparisons"] = per_output_comparisons
     return comparison, ref_aggregate, cand_aggregate
 
 
@@ -378,8 +400,8 @@ def main() -> int:
     parser.add_argument(
         "--compare-output-mode",
         choices=("tfosorted", "lite"),
-        default="tfosorted",
-        help="output schema used for comparison/reporting",
+        default=None,
+        help="output schema used for comparison/reporting (default: legacy=tfosorted, throughput=lite)",
     )
     parser.add_argument(
         "--work-dir",
@@ -476,7 +498,7 @@ def main() -> int:
     )
 
     args = parser.parse_args()
-    compare_output_mode = args.compare_output_mode
+    compare_output_mode = args.compare_output_mode or ("lite" if args.mode == "throughput" else "tfosorted")
     if args.mode == "legacy" and compare_output_mode != "tfosorted":
         raise RuntimeError("legacy mode currently only supports --compare-output-mode=tfosorted")
 
@@ -506,6 +528,8 @@ def main() -> int:
     shutil.copyfile(rna_src, rna)
 
     longtarget = Path(args.longtarget)
+    if not longtarget.is_absolute():
+        longtarget = (root / longtarget).resolve()
     if not longtarget.exists():
         raise RuntimeError(f"missing LongTarget binary: {longtarget}")
 
@@ -517,7 +541,11 @@ def main() -> int:
         fasim_bin = _ensure_fasim_binary(repo_dir=fasim_repo_dir)
 
     local_fasim_cpu = Path(args.fasim_local_cpu)
+    if not local_fasim_cpu.is_absolute():
+        local_fasim_cpu = (root / local_fasim_cpu).resolve()
     local_fasim_cuda = Path(args.fasim_local_cuda)
+    if not local_fasim_cuda.is_absolute():
+        local_fasim_cuda = (root / local_fasim_cuda).resolve()
 
     base_args = ["-f1", dna.name, "-f2", rna.name, "-r", str(args.rule)]
     if args.strand:

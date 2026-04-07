@@ -17,12 +17,15 @@ fi
 WORK="$ROOT/.tmp/check_fasim_throughput_sweep"
 rm -rf "$WORK"
 
-python3 "$ROOT/scripts/benchmark_fasim_throughput_sweep.py" \
-  --work-dir "$WORK" \
-  --longtarget "$LONGTARGET_BIN" \
-  --fasim-local-cuda "$FASIM_BIN" \
-  --device-sets 0 \
-  --extend-threads 1,2 >/dev/null
+(
+  cd "$ROOT"
+  python3 ./scripts/benchmark_fasim_throughput_sweep.py \
+    --work-dir "$WORK" \
+    --longtarget ./longtarget_cuda \
+    --fasim-local-cuda ./fasim_longtarget_cuda \
+    --device-sets 0 \
+    --extend-threads 1,2 >/dev/null
+)
 
 python3 - "$WORK/report.json" <<'PY'
 import json
@@ -54,6 +57,8 @@ for run in runs:
     assert "score_delta_summary" in run["comparison"]
     assert "top_hit_retention" in run["comparison"]
     assert "recall_proxy" in run["comparison"]
+    assert "per_output_comparisons" in run["comparison"]
+    assert run["comparison"]["per_output_comparisons"]
 
 best = report["best"]
 assert best["device_set"] == "0"

@@ -19,7 +19,6 @@ rm -rf "$WORK"
 
 python3 "$ROOT/scripts/benchmark_sample_vs_fasim.py" \
   --mode throughput \
-  --compare-output-mode lite \
   --work-dir "$WORK" \
   --longtarget "$LONGTARGET_BIN" \
   --fasim-local-cuda "$FASIM_BIN" \
@@ -55,6 +54,8 @@ assert "relaxed" in cmp
 assert "score_delta_summary" in cmp
 assert "top_hit_retention" in cmp
 assert "recall_proxy" in cmp
+assert "per_output_comparisons" in cmp
+assert cmp["per_output_comparisons"]
 PY
 
 echo "ok"

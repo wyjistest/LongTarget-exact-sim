@@ -171,10 +171,14 @@ def main() -> int:
         raise RuntimeError(f"missing RNA fasta: {rna_src}")
 
     longtarget = Path(args.longtarget)
+    if not longtarget.is_absolute():
+        longtarget = (ROOT / longtarget).resolve()
     if not longtarget.exists():
         raise RuntimeError(f"missing LongTarget binary: {longtarget}")
 
     local_fasim_cuda = Path(args.fasim_local_cuda)
+    if not local_fasim_cuda.is_absolute():
+        local_fasim_cuda = (ROOT / local_fasim_cuda).resolve()
     throughput_runner = ROOT / "scripts" / "run_fasim_throughput_preset.sh"
 
     inputs_dir = work_dir / "inputs"
