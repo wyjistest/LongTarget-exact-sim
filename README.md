@@ -268,7 +268,7 @@ make benchmark-sample-cuda-throughput-compare
 - `report.json` now includes both aggregate comparison metrics and `per_output_comparisons`, so shard- or output-level drops are visible without losing the aggregate summary.
 - The throughput lane does not implicitly enable two GPUs. Pass `FASIM_CUDA_DEVICES=0,1` (or use the sweep script below) only after checking whether the second device really improves wall time.
 
-Throughput sweep helper (device set × `FASIM_EXTEND_THREADS`, with one exact baseline run reused across the matrix):
+Throughput sweep helper (one exact baseline reused across a throughput matrix; by default it sweeps device set × `FASIM_EXTEND_THREADS`, and it can also sweep `TOPK` / `suppress_bp` when you want a small-shard quality frontier):
 
 ```
 make benchmark-fasim-throughput-sweep
@@ -277,8 +277,38 @@ python3 ./scripts/benchmark_fasim_throughput_sweep.py --device-sets 0 0,1 --exte
 make check-fasim-throughput-sweep
 ```
 
-- The sweep currently keeps threshold policy and prealign knobs fixed (`fasim_peak80`, `TOPK=64`, `suppress_bp=5`) and only sweeps device placement plus CPU extend/output threads.
-- `report.json` records the exact baseline, each throughput configuration, overlap/score deltas (including `per_output_comparisons`), and the fastest configuration selected by wall time.
+- `report.json` now records `quality_gate`, `best_overall`, and `best_qualifying`.
+- `best_overall` is only the wall-time winner. `best_qualifying` is the candidate to carry forward once you care about quality.
+- `best` is kept as a compatibility alias of `best_overall`.
+- Quality gates are controlled with `--min-relaxed-recall` and `--min-top-hit-retention`. Use `--require-qualifying-run` in CI or scripted sweeps when "no qualifying configuration" should be a hard failure.
+- Recommended workflow:
+  1. Start on small real shards (`200 kb` to `1 Mb`) and sweep `--topk-values` / `--suppress-bp-values` to find a speed-quality frontier.
+  2. Freeze a quality-acceptable throughput preset.
+  3. Then sweep `--device-sets` and `--extend-threads` on larger shards for wall-time tuning.
+- To generate anchor shards from a local single-record FASTA such as `.tmp/ucsc/hg38/hg38_chr22.fa`, use:
+
+```
+python3 ./scripts/make_anchor_shards.py \
+  --input-fasta .tmp/ucsc/hg38/hg38_chr22.fa \
+  --output-dir .tmp/ucsc/hg38/anchors_200kb \
+  --starts 10500001,20500001,30500001 \
+  --length 200000
+make check-make-anchor-shards
+```
+
+- The helper writes `hg38_chr22_<start>_<length>.fa` files and preserves the UCSC-style FASTA header format as `>hg38|chr22|start-end`.
+- Example quality-gated sweep:
+
+```
+python3 ./scripts/benchmark_fasim_throughput_sweep.py \
+  --dna .tmp/ucsc/hg38/hg38_chr22_10510001_50000.fa \
+  --device-sets 0 0,1 \
+  --extend-threads 1,4,8,16 \
+  --topk-values 64,128,256 \
+  --suppress-bp-values 0,1,5 \
+  --min-relaxed-recall 0.90 \
+  --min-top-hit-retention 0.75
+```
 
 Batch throughput micro-benchmark (generates a multi-fasta with many entries and compares CPU vs CUDA):
 
