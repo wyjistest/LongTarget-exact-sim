@@ -341,6 +341,10 @@ benchmark-sample-cuda-vs-fasim-two-stage-prealign:
 	$(MAKE) build-cuda
 	LONGTARGET_PREFILTER_TOPK=256 TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_sample_vs_fasim.py --run-longtarget-two-stage --two-stage-prefilter-backend prealign_cuda >/dev/null
 
+benchmark-two-stage-frontier-sweep:
+	$(MAKE) build-cuda
+	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_two_stage_frontier_sweep.py --longtarget $(CURDIR)/$(CUDA_TARGET)
+
 benchmark-fasim-batch:
 	$(MAKE) build-fasim build-fasim-cuda
 	python3 ./scripts/benchmark_fasim_batch_throughput.py
@@ -507,6 +511,15 @@ check-summarize-throughput-frontier:
 	python3 ./scripts/summarize_throughput_frontier.py --help >/dev/null
 	bash ./scripts/check_summarize_throughput_frontier.sh
 
+check-two-stage-frontier-sweep:
+	$(MAKE) build-cuda
+	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_two_stage_frontier_sweep.py --help >/dev/null
+	LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) bash ./scripts/check_two_stage_frontier_sweep.sh
+
+check-summarize-two-stage-frontier:
+	python3 ./scripts/summarize_two_stage_frontier.py --help >/dev/null
+	bash ./scripts/check_summarize_two_stage_frontier.sh
+
 check-sim-cuda-region-docs:
 	sh ./scripts/check_sim_cuda_region_docs.sh
 
@@ -541,7 +554,7 @@ check-longtarget-lite-output:
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-locate-update-test check-sim-locate-update \
-		check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
-		check-make-anchor-shards check-summarize-throughput-frontier check-sim-cuda-initial-proposal-v2-exactness \
+			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
+			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output
