@@ -10926,6 +10926,7 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->initialHashReduceSeconds += requestBatchResult.initialHashReduceSeconds;
   batchResult->initialSegmentedReduceSeconds += requestBatchResult.initialSegmentedReduceSeconds;
   batchResult->initialSegmentedCompactSeconds += requestBatchResult.initialSegmentedCompactSeconds;
+  batchResult->initialOrderedReplaySeconds += requestBatchResult.initialOrderedReplaySeconds;
   batchResult->initialTopKSeconds += requestBatchResult.initialTopKSeconds;
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
@@ -14321,6 +14322,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     batchResult->initialProposalDirectTopKGpuSeconds = proposalDirectTopKGpuSeconds;
     batchResult->initialSegmentedReduceSeconds = initialSegmentedReduceSeconds;
     batchResult->initialSegmentedCompactSeconds = initialSegmentedCompactSeconds;
+    batchResult->initialOrderedReplaySeconds = initialTopKSeconds;
     batchResult->initialTopKSeconds = initialTopKSeconds;
     batchResult->initialSegmentedTileStateCount = initialSegmentedTileStateCount;
     batchResult->initialSegmentedGroupedStateCount = initialSegmentedGroupedStateCount;

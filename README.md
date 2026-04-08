@@ -174,11 +174,14 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_scan_d2h_seconds`: result handoff time while bringing SIM initial scan data back to host
 - `benchmark.sim_initial_scan_cpu_merge_seconds`: CPU time spent merging CUDA initial-scan events into exact candidate maintenance
 - `benchmark.sim_initial_scan_cpu_merge_subtotal_seconds`: explicit subtotal of the CPU-side merge subphases (`context_apply + safe_store_update + safe_store_prune + safe_store_upload`) so benchmark logs can check whether the detailed merge counters still close to the total
+- `benchmark.sim_initial_store_rebuild_seconds`: CPU-side safe-store rebuild subtotal (`safe_store_update + safe_store_prune`) so reducer work can separate rebuild cost from frontier sync cost
+- `benchmark.sim_initial_frontier_sync_seconds`: CPU-side frontier upload / sync time (`safe_store_upload`) for the summary-handoff safe-store mirror path
 - `benchmark.sim_initial_scan_sync_wait_seconds`: synchronization wait time currently attributed to the initial scan handoff path
 - `benchmark.sim_initial_reduce_chunks_total` / `benchmark.sim_initial_reduce_chunks_replayed_total` / `benchmark.sim_initial_reduce_chunks_skipped_total` / `benchmark.sim_initial_reduce_summaries_replayed_total`: ordered-replay chunk statistics from the experimental initial reducer
 - `benchmark.sim_initial_run_summary_pipeline_seconds`: subtotal of the run-summary grouping stages (`hash_reduce + segmented_reduce + segmented_compact + topk`) for profiler-guided initial-scan tuning
 - `benchmark.sim_initial_hash_reduce_seconds` / `benchmark.sim_initial_segmented_reduce_seconds`: time spent in the optional hash or segmented grouping stage inside the experimental initial reducer
 - `benchmark.sim_initial_segmented_compact_seconds`: GPU time spent compacting the segmented safe-store candidates after the grouped reduce (device scan + compact on the `segmented` backend)
+- `benchmark.sim_initial_ordered_replay_seconds`: ordered candidate-maintenance phase on the reducer path; today this is the same measured phase as `sim_initial_topk_seconds`, exposed under a more explicit name for reducer tuning
 - `benchmark.sim_initial_topk_seconds`: time spent maintaining the exact top-K candidate set on the experimental initial reducer path
 - `benchmark.sim_initial_segmented_tile_states_total` / `benchmark.sim_initial_segmented_grouped_states_total`: pre-group and post-group state totals reported by the segmented reducer path
 - `benchmark.sim_locate_seconds`: time spent in `locate()` / disjoint region expansion after traceback

@@ -1764,6 +1764,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simInitialSegmentedReduceSeconds = getSimInitialSegmentedReduceSeconds();
   double simInitialSegmentedCompactSeconds = getSimInitialSegmentedCompactSeconds();
   double simInitialTopKSeconds = getSimInitialTopKSeconds();
+  const double simInitialOrderedReplaySeconds = simInitialTopKSeconds;
   uint64_t simInitialSegmentedTileStates = 0;
   uint64_t simInitialSegmentedGroupedStates = 0;
   getSimInitialSegmentedStateStats(simInitialSegmentedTileStates,
@@ -1803,6 +1804,11 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialScanCpuSafeStoreUpdateSeconds +
     simInitialScanCpuSafeStorePruneSeconds +
     simInitialScanCpuSafeStoreUploadSeconds;
+  const double simInitialStoreRebuildSeconds =
+    simInitialScanCpuSafeStoreUpdateSeconds +
+    simInitialScanCpuSafeStorePruneSeconds;
+  const double simInitialFrontierSyncSeconds =
+    simInitialScanCpuSafeStoreUploadSeconds;
   const double simInitialRunSummaryPipelineSeconds =
     simInitialHashReduceSeconds +
     simInitialSegmentedReduceSeconds +
@@ -1816,6 +1822,9 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;
+  cerr<<"benchmark.sim_initial_ordered_replay_seconds="<<simInitialOrderedReplaySeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_rebuild_seconds="<<simInitialStoreRebuildSeconds<<endl;
+  cerr<<"benchmark.sim_initial_frontier_sync_seconds="<<simInitialFrontierSyncSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
