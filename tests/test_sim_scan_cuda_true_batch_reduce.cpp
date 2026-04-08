@@ -1753,6 +1753,15 @@ int main()
                      "dense initial reduce recorded chunks") && ok;
     ok = expect_true(denseBatchResult.initialReduceReplayStats.summaryReplayCount <= denseReduced.runSummaryCount,
                      "dense initial reduce replay count bounded by total summaries") && ok;
+    ok = expect_true(denseBatchResult.initialReduceReplayStats.groupedSegmentCount > 0,
+                     "dense initial reduce recorded grouped segments") && ok;
+    ok = expect_true(denseBatchResult.initialReduceReplayStats.groupedSegmentCount <=
+                       denseBatchResult.initialReduceReplayStats.summaryReplayCount,
+                     "dense initial reduce grouped segments bounded by replayed summaries") && ok;
+    ok = expect_true(denseBatchResult.initialReduceReplayStats.orderedReplayCycles > 0,
+                     "dense initial reduce recorded ordered replay cycles") && ok;
+    ok = expect_true(denseBatchResult.initialReduceReplayStats.topKMaintenanceCycles > 0,
+                     "dense initial reduce recorded top-k maintenance cycles") && ok;
     ok = expect_candidate_states_equal(denseReduced.allCandidateStates,
                                        densePrunedStates,
                                        "dense initial reduce safe-store pruning") && ok;
@@ -1788,6 +1797,82 @@ int main()
                                         denseReduced,
                                         "dense segmented reduce result") && ok;
     }
+
+    const std::string longQuery(256, 'A');
+    const std::string longTarget(2048, 'A');
+    SimScanCudaBatchResult longBatchResult;
+    const SimScanCudaInitialBatchResult longReduced =
+      run_single_initial_reduce(longQuery.c_str(),
+                                longTarget.c_str(),
+                                static_cast<int>(longQuery.size()),
+                                static_cast<int>(longTarget.size()),
+                                gapOpen,
+                                gapExtend,
+                                scoreMatrix,
+                                eventScoreFloor,
+                                &longBatchResult);
+    const std::vector<SimScanCudaInitialRunSummary> longSummaries =
+      run_single_initial_summaries(longQuery.c_str(),
+                                   longTarget.c_str(),
+                                   static_cast<int>(longQuery.size()),
+                                   static_cast<int>(longTarget.size()),
+                                   gapOpen,
+                                   gapExtend,
+                                   scoreMatrix,
+                                   eventScoreFloor);
+    const std::vector<SimScanCudaCandidateState> longAllStates =
+      reduce_all_candidate_states_from_summaries(longSummaries);
+    const std::vector<SimScanCudaCandidateState> longPrunedStates =
+      prune_safe_store_states(longAllStates, longReduced.candidateStates, longReduced.runningMin);
+    ok = expect_candidate_states_equal(longReduced.allCandidateStates,
+                                       longPrunedStates,
+                                       "long initial reduce safe-store pruning") && ok;
+    ok = expect_true(longBatchResult.initialReduceReplayStats.groupedSegmentCount > 0,
+                     "long initial reduce recorded grouped segments") && ok;
+    ok = expect_true(longBatchResult.initialReduceReplayStats.groupedSegmentCount <=
+                       longBatchResult.initialReduceReplayStats.summaryReplayCount,
+                     "long initial reduce grouped segments bounded by replayed summaries") && ok;
+    ok = expect_true(longBatchResult.initialReduceReplayStats.orderedReplayCycles > 0,
+                     "long initial reduce recorded ordered replay cycles") && ok;
+    ok = expect_true(longBatchResult.initialReduceReplayStats.topKMaintenanceCycles > 0,
+                     "long initial reduce recorded top-k maintenance cycles") && ok;
+    ok = expect_true(longBatchResult.initialOrderedReplaySeconds > 0.0,
+                     "long initial reduce ordered replay seconds") && ok;
+    ok = expect_true(longBatchResult.initialTopKSeconds > 0.0,
+                     "long initial reduce top-k seconds") && ok;
+
+    std::vector<SimScanCudaInitialRunSummary> groupedSummaries;
+    groupedSummaries.push_back(SimScanCudaInitialRunSummary{10, pack_coord(3, 5), 3, 20, 20, 20});
+    groupedSummaries.push_back(SimScanCudaInitialRunSummary{15, pack_coord(3, 5), 4, 21, 23, 22});
+    groupedSummaries.push_back(SimScanCudaInitialRunSummary{15, pack_coord(3, 5), 5, 24, 25, 24});
+    groupedSummaries.push_back(SimScanCudaInitialRunSummary{8, pack_coord(7, 9), 2, 10, 10, 10});
+    groupedSummaries.push_back(SimScanCudaInitialRunSummary{12, pack_coord(7, 9), 6, 30, 32, 31});
+    std::vector<SimScanCudaCandidateState> groupedStates;
+    int groupedRunningMin = 0;
+    SimScanCudaInitialReduceReplayStats groupedReplayStats;
+    if (!sim_scan_cuda_reduce_initial_run_summaries_for_test(groupedSummaries,
+                                                             &groupedStates,
+                                                             &groupedRunningMin,
+                                                             &groupedReplayStats,
+                                                             &error))
+    {
+        std::cerr << "grouped initial reducer helper failed: " << error << "\n";
+        return 2;
+    }
+    const std::vector<SimScanCudaCandidateState> expectedGroupedStates =
+      reduce_all_candidate_states_from_summaries(groupedSummaries);
+    ok = expect_candidate_states_equal(groupedStates,
+                                       expectedGroupedStates,
+                                       "grouped helper candidate states") && ok;
+    ok = expect_equal_int(groupedRunningMin, 12, "grouped helper runningMin") && ok;
+    ok = expect_equal_uint64(groupedReplayStats.chunkCount, 1, "grouped helper chunkCount") && ok;
+    ok = expect_equal_uint64(groupedReplayStats.chunkReplayedCount, 1, "grouped helper replayed chunks") && ok;
+    ok = expect_equal_uint64(groupedReplayStats.summaryReplayCount, 5, "grouped helper replayed summaries") && ok;
+    ok = expect_equal_uint64(groupedReplayStats.groupedSegmentCount, 2, "grouped helper grouped segments") && ok;
+    ok = expect_true(groupedReplayStats.orderedReplayCycles > 0,
+                     "grouped helper ordered replay cycles") && ok;
+    ok = expect_true(groupedReplayStats.topKMaintenanceCycles > 0,
+                     "grouped helper top-k maintenance cycles") && ok;
 
     std::vector<SimScanCudaInitialRunSummary> chunkSkipSummaries;
     std::vector<SimScanCudaCandidateState> expectedChunkSkipStates;

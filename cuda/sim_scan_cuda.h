@@ -251,7 +251,10 @@ struct SimScanCudaInitialReduceReplayStats
     chunkCount(0),
     chunkReplayedCount(0),
     chunkSkippedCount(0),
-    summaryReplayCount(0)
+    summaryReplayCount(0),
+    groupedSegmentCount(0),
+    orderedReplayCycles(0),
+    topKMaintenanceCycles(0)
   {
   }
 
@@ -259,6 +262,9 @@ struct SimScanCudaInitialReduceReplayStats
   uint64_t chunkReplayedCount;
   uint64_t chunkSkippedCount;
   uint64_t summaryReplayCount;
+  uint64_t groupedSegmentCount;
+  uint64_t orderedReplayCycles;
+  uint64_t topKMaintenanceCycles;
 };
 
 struct SimCudaPersistentSafeStoreHandle

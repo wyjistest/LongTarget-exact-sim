@@ -1763,8 +1763,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simInitialHashReduceSeconds = getSimInitialHashReduceSeconds();
   double simInitialSegmentedReduceSeconds = getSimInitialSegmentedReduceSeconds();
   double simInitialSegmentedCompactSeconds = getSimInitialSegmentedCompactSeconds();
+  double simInitialOrderedReplaySeconds = getSimInitialOrderedReplaySeconds();
   double simInitialTopKSeconds = getSimInitialTopKSeconds();
-  const double simInitialOrderedReplaySeconds = simInitialTopKSeconds;
   uint64_t simInitialSegmentedTileStates = 0;
   uint64_t simInitialSegmentedGroupedStates = 0;
   getSimInitialSegmentedStateStats(simInitialSegmentedTileStates,
@@ -1813,6 +1813,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialHashReduceSeconds +
     simInitialSegmentedReduceSeconds +
     simInitialSegmentedCompactSeconds +
+    simInitialOrderedReplaySeconds +
     simInitialTopKSeconds;
   cerr<<"benchmark.sim_initial_scan_seconds="<<simInitialScanSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_gpu_seconds="<<simInitialScanGpuSeconds<<endl;

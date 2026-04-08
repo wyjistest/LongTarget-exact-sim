@@ -4922,6 +4922,12 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simInitialOrderedReplayNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simInitialTopKNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5469,6 +5475,16 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		inline double getSimInitialSegmentedCompactSeconds()
 		{
 		  return static_cast<double>(simInitialSegmentedCompactNanoseconds().load(std::memory_order_relaxed)) / 1.0e9;
+		}
+
+		inline void recordSimInitialOrderedReplayNanoseconds(uint64_t nanoseconds)
+		{
+		  simInitialOrderedReplayNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
+		}
+
+		inline double getSimInitialOrderedReplaySeconds()
+		{
+		  return static_cast<double>(simInitialOrderedReplayNanoseconds().load(std::memory_order_relaxed)) / 1.0e9;
 		}
 
 		inline void recordSimInitialTopKNanoseconds(uint64_t nanoseconds)
@@ -9274,6 +9290,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	            simSecondsToNanoseconds(cudaBatchResult.initialSegmentedReduceSeconds));
 	          recordSimInitialSegmentedCompactNanoseconds(
 	            simSecondsToNanoseconds(cudaBatchResult.initialSegmentedCompactSeconds));
+	          recordSimInitialOrderedReplayNanoseconds(
+	            simSecondsToNanoseconds(cudaBatchResult.initialOrderedReplaySeconds));
 	          recordSimInitialTopKNanoseconds(
 	            simSecondsToNanoseconds(cudaBatchResult.initialTopKSeconds));
 	          recordSimInitialSegmentedStateStats(cudaBatchResult.initialSegmentedTileStateCount,
