@@ -309,6 +309,39 @@ make check-summarize-throughput-frontier
   - `zero_top_hit_reports` / `all_top_hit_nonzero` for the hard top-hit filter
   - `qualifying_reports` from each report's `quality_gate`
   - `pareto_optimal` using `mean_wall_seconds` vs worst-output recall / top-hit retention
+- Experimental two-stage frontier calibration keeps the standalone Fasim throughput lane unchanged while measuring whether `LONGTARGET_TWO_STAGE=1` with `LONGTARGET_PREFILTER_BACKEND=prealign_cuda` is worth promoting later:
+
+```
+make benchmark-two-stage-frontier-sweep
+# or:
+python3 ./scripts/benchmark_two_stage_frontier_sweep.py \
+  --prefilter-topk-values 64,128,256 \
+  --peak-suppress-bp-values 0,1,5 \
+  --score-floor-delta-values 0 \
+  --refine-pad-values 64 \
+  --refine-merge-gap-values 32
+make check-two-stage-frontier-sweep
+```
+
+- Each run compares the same exact LongTarget baseline against a two-stage variant and records both quality metrics and prefilter/refine telemetry (`prefilter_hits`, `refine_window_count`, `refine_total_bp`).
+- `best_overall` is only the wall-time winner. `best_qualifying` is the candidate to carry forward once the quality gate is set.
+- Recommended workflow:
+  1. Start with the bundled sample pair (`testDNA.fa` + `H19.fa`).
+  2. Then run `5-8` distributed real `200 kb` anchor shards and set the quality gate from those reports.
+  3. Only after a stable `best_qualifying` appears across the anchors should you try `~1 Mb` confirmation shards or consider promoting this lane.
+- After you run multiple anchor sweeps, summarize them with:
+
+```
+python3 ./scripts/summarize_two_stage_frontier.py \
+  .tmp/hg38_chr22_two_stage/*/report.json
+make check-summarize-two-stage-frontier
+```
+
+- The summary groups runs by `prefilter_topk × peak_suppress_bp × score_floor_delta × refine_pad_bp × refine_merge_gap_bp` and reports:
+  - `zero_top_hit_reports` / `all_top_hit_nonzero`
+  - `qualifying_reports`
+  - `mean_prefilter_hits`, `mean_refine_window_count`, `mean_refine_total_bp`
+  - `pareto_optimal` using `mean_wall_seconds` vs worst-output recall / top-hit retention
 - Example quality-gated sweep:
 
 ```
