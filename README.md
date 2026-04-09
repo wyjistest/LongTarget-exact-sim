@@ -101,15 +101,19 @@ Traceback CUDA tuning knobs (only when `LONGTARGET_ENABLE_SIM_CUDA_TRACEBACK=1`)
 Optional: two-stage SIM refinement (speed-first, not exact). This mode runs a fast GPU prefilter to pick candidate windows, then runs exact SIM only inside those windows:
 
 - `LONGTARGET_TWO_STAGE=1`: enable two-stage refinement
+- `LONGTARGET_TWO_STAGE_THRESHOLD_MODE=legacy|deferred_exact`: threshold scheduling mode (default: `legacy`). `deferred_exact` prefilters first, then computes exact threshold only for surviving tasks.
 - `LONGTARGET_PREFILTER_BACKEND=sim|prealign_cuda`: prefilter backend (default: `sim`)
 - `LONGTARGET_PREFILTER_TOPK=N`: number of prefilter seeds per task (default: 8; `sim` backend is effectively capped by `K=50` in `sim.h`; `prealign_cuda` supports up to 256)
 - `LONGTARGET_PREFILTER_PEAK_SUPPRESS_BP=N`: only for `prealign_cuda` backend; suppress peaks within N bp (default: 5)
 - `LONGTARGET_PREFILTER_SCORE_FLOOR_DELTA=N`: only for `prealign_cuda` backend; keep peaks down to `minScore - delta` (default: 0)
 - `LONGTARGET_REFINE_PAD_BP=N`: bp padding added to each seed window before refine (default: 64)
 - `LONGTARGET_REFINE_MERGE_GAP_BP=N`: merge adjacent windows when gap ≤ N (default: 32)
+- `LONGTARGET_TWO_STAGE_REJECT_MODE=off|minimal_v1`: optional Stage A.5 reject gate for `deferred_exact` (default: `off`)
+- `LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE`, `LONGTARGET_TWO_STAGE_MIN_SUPPORT`, `LONGTARGET_TWO_STAGE_MIN_MARGIN`, `LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE`, `LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK`, `LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK`: `minimal_v1` gate knobs (defaults: `80`, `2`, `6`, `100`, `8`, `32768`)
 
 Notes:
 - `prealign_cuda` typically benefits from a larger `LONGTARGET_PREFILTER_TOPK` (e.g. 64–256) to recover more windows; higher values trade speed for recall.
+- `deferred_exact` currently requires `LONGTARGET_PREFILTER_BACKEND=prealign_cuda` and `LONGTARGET_PREFILTER_SCORE_FLOOR_DELTA=0`; the binary will fail fast if that contract is violated.
 
 Optional: multi-GPU exact-task scheduling (works best when SIM CUDA is enabled):
 
@@ -342,6 +346,37 @@ make check-summarize-two-stage-frontier
   - `qualifying_reports`
   - `mean_prefilter_hits`, `mean_refine_window_count`, `mean_refine_total_bp`
   - `pareto_optimal` using `mean_wall_seconds` vs worst-output recall / top-hit retention
+- Threshold-mode calibration for the native deferred lane compares `legacy`, `deferred_exact`, and `deferred_exact + minimal_v1` on the same input while preserving canonicalized output diffs:
+
+```
+make benchmark-two-stage-threshold-modes
+make check-two-stage-threshold-modes
+```
+
+- `scripts/benchmark_two_stage_threshold_modes.py` records:
+  - `benchmark.two_stage_threshold_mode`, `benchmark.two_stage_reject_mode`
+  - `benchmark.two_stage_tasks_with_any_seed`
+  - `benchmark.two_stage_tasks_with_any_refine_window_before_gate`
+  - `benchmark.two_stage_tasks_with_any_refine_window_after_gate`
+  - `benchmark.two_stage_threshold_invoked_tasks`
+  - `benchmark.two_stage_threshold_skipped_no_seed_tasks`
+  - `benchmark.two_stage_threshold_skipped_no_refine_window_tasks`
+  - `benchmark.two_stage_threshold_skipped_after_gate_tasks`
+  - `benchmark.two_stage_threshold_batch_count`, `benchmark.two_stage_threshold_batch_tasks_total`, `benchmark.two_stage_threshold_batch_size_max`, `benchmark.two_stage_threshold_batched_seconds`
+  - `benchmark.two_stage_windows_before_gate`, `benchmark.two_stage_windows_after_gate`
+  - `benchmark.two_stage_windows_rejected_by_min_peak_score`, `benchmark.two_stage_windows_rejected_by_support`, `benchmark.two_stage_windows_rejected_by_margin`, `benchmark.two_stage_windows_trimmed_by_max_windows`, `benchmark.two_stage_windows_trimmed_by_max_bp`
+  - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`
+- Heavy-zone micro-anchor calibration uses coarse tiling plus the same 3-arm threshold-mode compare:
+
+```
+make benchmark-two-stage-threshold-heavy-microanchors
+make check-two-stage-threshold-heavy-microanchors
+```
+
+- `scripts/benchmark_two_stage_threshold_heavy_microanchors.py` writes:
+  - `discovery_report.json` with all tiled candidate reports
+  - `summary.json` with selected micro-anchors, 3-arm run payloads, and `decision_flags`
+  - `summary.md` with a compact gate/quality table for the shortlisted micro-anchors
 - Example quality-gated sweep:
 
 ```
