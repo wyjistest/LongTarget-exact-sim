@@ -20,6 +20,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import benchmark_sample_vs_fasim as sample_vs_fasim  # noqa: E402
 
 SCORE_TOLERANCE = 1e-6
+RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -248,6 +249,13 @@ def main() -> int:
     parser.add_argument("--strong-score-override", default=100, type=int)
     parser.add_argument("--max-windows-per-task", default=8, type=int)
     parser.add_argument("--max-bp-per-task", default=32768, type=int)
+    parser.add_argument(
+        "--run-label",
+        action="append",
+        choices=RUN_LABELS,
+        default=None,
+        help="optional: limit execution to one or more specific run labels",
+    )
     args = parser.parse_args()
 
     work_dir = Path(args.work_dir).resolve()
@@ -297,7 +305,7 @@ def main() -> int:
         "LONGTARGET_REFINE_MERGE_GAP_BP": str(args.refine_merge_gap_bp),
     }
 
-    run_specs = [
+    all_run_specs = [
         ("legacy", {}),
         ("deferred_exact", {"LONGTARGET_TWO_STAGE_THRESHOLD_MODE": "deferred_exact"}),
         (
@@ -314,6 +322,10 @@ def main() -> int:
             },
         ),
     ]
+    requested_run_labels = args.run_label or list(RUN_LABELS)
+    run_specs = [(label, env) for label, env in all_run_specs if label in requested_run_labels]
+    if not run_specs:
+        raise RuntimeError("no run specs selected")
 
     runs: dict[str, ThresholdModeRun] = {}
     for label, extra_env in run_specs:
@@ -375,12 +387,14 @@ def main() -> int:
             normalized_output_sha256=normalized_sha256,
         )
 
-    legacy_dir = Path(runs["legacy"].output_dir)
-    comparisons = {
-        label: _comparison_against_legacy(legacy_dir, Path(run.output_dir), args.compare_output_mode)
-        for label, run in runs.items()
-        if label != "legacy"
-    }
+    comparisons: dict[str, dict[str, object]] = {}
+    if "legacy" in runs:
+        legacy_dir = Path(runs["legacy"].output_dir)
+        comparisons = {
+            label: _comparison_against_legacy(legacy_dir, Path(run.output_dir), args.compare_output_mode)
+            for label, run in runs.items()
+            if label != "legacy"
+        }
 
     report = {
         "compare_output_mode": args.compare_output_mode,
@@ -407,6 +421,7 @@ def main() -> int:
             "max_windows_per_task": args.max_windows_per_task,
             "max_bp_per_task": args.max_bp_per_task,
         },
+        "run_labels_requested": requested_run_labels,
         "runs": {label: dataclasses.asdict(run) for label, run in runs.items()},
         "comparisons_vs_legacy": comparisons,
     }

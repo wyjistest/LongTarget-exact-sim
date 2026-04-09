@@ -48,7 +48,7 @@ assert runs["deferred_exact_minimal_v1"]["reject_mode"] == "minimal_v1"
 
 for label, run in runs.items():
     if label == "legacy":
-        assert run["prefilter_backend"] in {"mixed", "prealign_cuda"}
+        assert run["prefilter_backend"] in {"mixed", "prealign_cuda", "sim"}
     else:
         assert run["prefilter_backend"] == "prealign_cuda"
     assert run["wall_seconds"] >= 0

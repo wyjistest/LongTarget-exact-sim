@@ -51,6 +51,8 @@ for item in summary["selected_microanchors"]:
 
 assert discovery["report_count"] >= 3
 assert len(discovery["candidates"]) >= 3
+for candidate in discovery["candidates"][:3]:
+    assert set(candidate["runs"]) == {"deferred_exact"}
 PY
 
 grep -q "Two-Stage Threshold Heavy Micro-Anchor Summary" "$WORK/summary.md"

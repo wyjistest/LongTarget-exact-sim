@@ -129,6 +129,7 @@ def _run_threshold_modes(
     dna_path: Path,
     args: argparse.Namespace,
     work_dir: Path,
+    run_labels: list[str] | None = None,
 ) -> tuple[Path, dict[str, object]]:
     cmd = [
         sys.executable,
@@ -170,6 +171,8 @@ def _run_threshold_modes(
     ]
     if args.strand:
         cmd += ["--strand", args.strand]
+    for label in run_labels or []:
+        cmd += ["--run-label", label]
     _run_checked(cmd, cwd=ROOT)
     report_path = work_dir / "report.json"
     if not report_path.exists():
@@ -351,6 +354,7 @@ def main() -> int:
                     dna_path=shard_path,
                     args=args,
                     work_dir=run_dir,
+                    run_labels=["deferred_exact"],
                 )
                 discovery_candidates.append(
                     {
@@ -379,11 +383,29 @@ def main() -> int:
                 if candidate["anchor_label"] == anchor_label and candidate["length_bp"] == tile_spec.length_bp
             ]
             for rank, candidate in enumerate(matching[: tile_spec.select_count], start=1):
-                selected = dict(candidate)
-                selected["selection_rank"] = rank
-                selected["gate_value_flags"] = _gate_value_flags(candidate)
+                calibration_dir = (
+                    work_dir
+                    / "calibration"
+                    / anchor_label
+                    / f"{tile_spec.length_bp}bp_stride_{tile_spec.stride_bp}"
+                    / f"{anchor_label}_{candidate['start_bp']}_{tile_spec.length_bp}"
+                )
+                calibration_report_path, calibration_report = _run_threshold_modes(
+                    dna_path=Path(candidate["shard_path"]),
+                    args=args,
+                    work_dir=calibration_dir,
+                )
+                selected = {
+                    **candidate,
+                    "selection_rank": rank,
+                    "discovery_report_path": candidate["report_path"],
+                    "report_path": str(calibration_report_path),
+                    "runs": calibration_report["runs"],
+                    "comparisons_vs_legacy": calibration_report["comparisons_vs_legacy"],
+                }
+                selected["gate_value_flags"] = _gate_value_flags(selected)
                 selected["quality_flags"] = _quality_flags(
-                    candidate,
+                    selected,
                     min_strict_recall=args.min_strict_recall,
                     min_relaxed_recall=args.min_relaxed_recall,
                     min_top_hit_retention=args.min_top_hit_retention,
