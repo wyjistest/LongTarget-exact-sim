@@ -235,6 +235,104 @@ def _ranked_strict_keys(summary: sample_vs_fasim.OutputSummary) -> list[tuple]:
     return sample_vs_fasim._sorted_strict_score_keys(summary.strict_scores)
 
 
+def analyze_coverage_attribution(
+    report_path: Path | str,
+    *,
+    candidate_label: str = "deferred_exact_minimal_v2",
+    debug_csv: Path | str | None = None,
+    near_distance_bp: int = -1,
+    max_examples_per_class: int = 5,
+) -> dict[str, object]:
+    report_path = Path(report_path).resolve()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    runs = report["runs"]
+    if "legacy" not in runs:
+        raise RuntimeError("report is missing legacy run")
+    if candidate_label not in runs:
+        raise RuntimeError(f"report is missing candidate run: {candidate_label}")
+
+    debug_csv_value = str(debug_csv) if debug_csv else runs[candidate_label].get("debug_windows_csv", "")
+    if not debug_csv_value:
+        raise RuntimeError("missing debug CSV path; pass --debug-csv or include debug_windows_csv in report")
+    debug_csv_path = Path(debug_csv_value).resolve()
+    if not debug_csv_path.exists():
+        raise RuntimeError(f"missing debug CSV: {debug_csv_path}")
+
+    compare_output_mode = report["compare_output_mode"]
+    legacy_dir = Path(runs["legacy"]["output_dir"]).resolve()
+    candidate_dir = Path(runs[candidate_label]["output_dir"]).resolve()
+    legacy_output_map = sample_vs_fasim._load_output_map(legacy_dir, compare_output_mode)
+    candidate_output_map = sample_vs_fasim._load_output_map(candidate_dir, compare_output_mode)
+    legacy_summary = sample_vs_fasim._aggregate_output_summaries(list(legacy_output_map.values()))
+    candidate_summary = sample_vs_fasim._aggregate_output_summaries(list(candidate_output_map.values()))
+    legacy_rows = _load_output_rows(legacy_dir, compare_output_mode)
+    debug_rows = _load_debug_rows(debug_csv_path)
+
+    if near_distance_bp < 0:
+        near_distance_bp = max(
+            int(report.get("refine_pad_bp", 0)),
+            int(report.get("refine_merge_gap_bp", 0)),
+        )
+
+    missing_keys = [key for key in _ranked_strict_keys(legacy_summary) if key not in candidate_summary.strict_keys]
+    missing_items: list[dict[str, object]] = []
+    for key in missing_keys:
+        hit = legacy_rows[key]
+        attribution = _classify_missing_hit(hit, debug_rows, near_distance_bp=near_distance_bp)
+        missing_items.append(
+            {
+                "strict_key_tuple": key,
+                "strict_key": _strict_key_dict(key),
+                "hit": hit,
+                **attribution,
+            }
+        )
+
+    ranked_keys = _ranked_strict_keys(legacy_summary)
+    top1_keys = set(ranked_keys[:1])
+    top5_keys = set(ranked_keys[:5])
+    top10_keys = set(ranked_keys[:10])
+
+    examples_by_class: dict[str, list[dict[str, object]]] = {name: [] for name in ATTRIBUTION_CLASSES}
+    for item in missing_items:
+        class_examples = examples_by_class[item["classification"]]
+        if len(class_examples) >= max_examples_per_class:
+            continue
+        class_examples.append(
+            {
+                "hit": item["hit"],
+                "nearest_kept_distance_bp": item["nearest_kept_distance_bp"],
+                "matching_kept_window_count": item["matching_kept_window_count"],
+                "matching_rejected_window_count": item["matching_rejected_window_count"],
+            }
+        )
+
+    total_legacy_weight = sum(max(score, 0.0) for score in legacy_summary.strict_scores.values())
+    return {
+        "report": str(report_path),
+        "candidate_label": candidate_label,
+        "debug_csv": str(debug_csv_path),
+        "near_distance_bp": near_distance_bp,
+        "legacy_strict_hit_count": len(legacy_summary.strict_keys),
+        "candidate_strict_hit_count": len(candidate_summary.strict_keys),
+        "missing_strict_hit_count": len(missing_items),
+        "summary": {
+            "overall": _subset_summary(missing_items),
+            "top1_missing": _subset_summary(
+                [item for item in missing_items if item["strict_key_tuple"] in top1_keys]
+            ),
+            "top5_missing": _subset_summary(
+                [item for item in missing_items if item["strict_key_tuple"] in top5_keys]
+            ),
+            "top10_missing": _subset_summary(
+                [item for item in missing_items if item["strict_key_tuple"] in top10_keys]
+            ),
+            "score_weighted_missing": _score_weighted_summary(missing_items, total_legacy_weight=total_legacy_weight),
+        },
+        "examples_by_class": examples_by_class,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Classify which layer lost legacy hits in a two-stage threshold shortlist lane.",
@@ -265,95 +363,13 @@ def main() -> int:
     parser.add_argument("--output", default="", help="optional output JSON path")
     args = parser.parse_args()
 
-    report_path = Path(args.report).resolve()
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    runs = report["runs"]
-    if "legacy" not in runs:
-        raise RuntimeError("report is missing legacy run")
-    if args.candidate_label not in runs:
-        raise RuntimeError(f"report is missing candidate run: {args.candidate_label}")
-
-    debug_csv_value = args.debug_csv or runs[args.candidate_label].get("debug_windows_csv", "")
-    if not debug_csv_value:
-        raise RuntimeError("missing debug CSV path; pass --debug-csv or include debug_windows_csv in report")
-    debug_csv_path = Path(debug_csv_value).resolve()
-    if not debug_csv_path.exists():
-        raise RuntimeError(f"missing debug CSV: {debug_csv_path}")
-
-    compare_output_mode = report["compare_output_mode"]
-    legacy_dir = Path(runs["legacy"]["output_dir"]).resolve()
-    candidate_dir = Path(runs[args.candidate_label]["output_dir"]).resolve()
-    legacy_output_map = sample_vs_fasim._load_output_map(legacy_dir, compare_output_mode)
-    candidate_output_map = sample_vs_fasim._load_output_map(candidate_dir, compare_output_mode)
-    legacy_summary = sample_vs_fasim._aggregate_output_summaries(list(legacy_output_map.values()))
-    candidate_summary = sample_vs_fasim._aggregate_output_summaries(list(candidate_output_map.values()))
-    legacy_rows = _load_output_rows(legacy_dir, compare_output_mode)
-    debug_rows = _load_debug_rows(debug_csv_path)
-
-    near_distance_bp = args.near_distance_bp
-    if near_distance_bp < 0:
-        near_distance_bp = max(
-            int(report.get("refine_pad_bp", 0)),
-            int(report.get("refine_merge_gap_bp", 0)),
-        )
-
-    missing_keys = [key for key in _ranked_strict_keys(legacy_summary) if key not in candidate_summary.strict_keys]
-    missing_items: list[dict[str, object]] = []
-    for key in missing_keys:
-        hit = legacy_rows[key]
-        attribution = _classify_missing_hit(hit, debug_rows, near_distance_bp=near_distance_bp)
-        missing_items.append(
-            {
-                "strict_key_tuple": key,
-                "strict_key": _strict_key_dict(key),
-                "hit": hit,
-                **attribution,
-            }
-        )
-
-    ranked_keys = _ranked_strict_keys(legacy_summary)
-    top1_keys = set(ranked_keys[:1])
-    top5_keys = set(ranked_keys[:5])
-    top10_keys = set(ranked_keys[:10])
-
-    examples_by_class: dict[str, list[dict[str, object]]] = {name: [] for name in ATTRIBUTION_CLASSES}
-    for item in missing_items:
-        class_examples = examples_by_class[item["classification"]]
-        if len(class_examples) >= args.max_examples_per_class:
-            continue
-        class_examples.append(
-            {
-                "hit": item["hit"],
-                "nearest_kept_distance_bp": item["nearest_kept_distance_bp"],
-                "matching_kept_window_count": item["matching_kept_window_count"],
-                "matching_rejected_window_count": item["matching_rejected_window_count"],
-            }
-        )
-
-    total_legacy_weight = sum(max(score, 0.0) for score in legacy_summary.strict_scores.values())
-    result = {
-        "report": str(report_path),
-        "candidate_label": args.candidate_label,
-        "debug_csv": str(debug_csv_path),
-        "near_distance_bp": near_distance_bp,
-        "legacy_strict_hit_count": len(legacy_summary.strict_keys),
-        "candidate_strict_hit_count": len(candidate_summary.strict_keys),
-        "missing_strict_hit_count": len(missing_items),
-        "summary": {
-            "overall": _subset_summary(missing_items),
-            "top1_missing": _subset_summary(
-                [item for item in missing_items if item["strict_key_tuple"] in top1_keys]
-            ),
-            "top5_missing": _subset_summary(
-                [item for item in missing_items if item["strict_key_tuple"] in top5_keys]
-            ),
-            "top10_missing": _subset_summary(
-                [item for item in missing_items if item["strict_key_tuple"] in top10_keys]
-            ),
-            "score_weighted_missing": _score_weighted_summary(missing_items, total_legacy_weight=total_legacy_weight),
-        },
-        "examples_by_class": examples_by_class,
-    }
+    result = analyze_coverage_attribution(
+        args.report,
+        candidate_label=args.candidate_label,
+        debug_csv=args.debug_csv or None,
+        near_distance_bp=args.near_distance_bp,
+        max_examples_per_class=args.max_examples_per_class,
+    )
 
     if args.output:
         output_path = Path(args.output).resolve()
