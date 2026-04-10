@@ -29,15 +29,25 @@ struct ExactSimTaskTiming
   ExactSimTaskTiming():
     thresholdSeconds(0.0),
     simSeconds(0.0),
+    prefilterSeconds(0.0),
+    twoStageGateSeconds(0.0),
     prefilterBackend("disabled"),
     prefilterHits(0),
+    twoStageRefineWindowCountBeforeGate(0),
+    twoStageHadAnySeed(0),
+    twoStageHadAnyRefineWindowBeforeGate(0),
     refineWindowCount(0),
     refineTotalBp(0) {}
 
   double thresholdSeconds;
   double simSeconds;
+  double prefilterSeconds;
+  double twoStageGateSeconds;
   string prefilterBackend;
   uint64_t prefilterHits;
+  uint64_t twoStageRefineWindowCountBeforeGate;
+  uint64_t twoStageHadAnySeed;
+  uint64_t twoStageHadAnyRefineWindowBeforeGate;
   uint64_t refineWindowCount;
   uint64_t refineTotalBp;
 };
@@ -206,6 +216,45 @@ enum ExactSimPrefilterBackend
   EXACT_SIM_PREFILTER_BACKEND_PREALIGN_CUDA = 1,
 };
 
+enum ExactSimTwoStageThresholdMode
+{
+  EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_LEGACY = 0,
+  EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_DEFERRED_EXACT = 1,
+};
+
+enum ExactSimTwoStageDiscoveryMode
+{
+  EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_OFF = 0,
+  EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_PREFILTER_ONLY = 1,
+};
+
+enum ExactSimTwoStageDiscoveryStatus
+{
+  EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_OK = 0,
+  EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_EMPTY = 1,
+  EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_PREFILTER_FAILED = 2,
+};
+
+struct ExactSimTwoStageDiscoverySummary
+{
+  ExactSimTwoStageDiscoverySummary():
+    taskCount(0),
+    prefilterFailedTasks(0),
+    tasksWithAnySeed(0),
+    tasksWithAnyRefineWindowBeforeGate(0),
+    tasksWithAnyRefineWindowAfterGate(0),
+    windowsBeforeGate(0),
+    windowsAfterGate(0) {}
+
+  uint64_t taskCount;
+  uint64_t prefilterFailedTasks;
+  uint64_t tasksWithAnySeed;
+  uint64_t tasksWithAnyRefineWindowBeforeGate;
+  uint64_t tasksWithAnyRefineWindowAfterGate;
+  uint64_t windowsBeforeGate;
+  uint64_t windowsAfterGate;
+};
+
 inline bool exact_sim_two_stage_enabled_runtime()
 {
   static const bool enabled = []()
@@ -237,6 +286,92 @@ inline ExactSimPrefilterBackend exact_sim_prefilter_backend_requested_runtime()
     return EXACT_SIM_PREFILTER_BACKEND_SIM;
   }();
   return backend;
+}
+
+inline ExactSimTwoStageThresholdMode exact_sim_two_stage_threshold_mode_runtime()
+{
+  static const ExactSimTwoStageThresholdMode mode = []()
+  {
+    const char *env = getenv("LONGTARGET_TWO_STAGE_THRESHOLD_MODE");
+    if(env == NULL || env[0] == '\0')
+    {
+      return EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_LEGACY;
+    }
+    string value(env);
+    for(size_t i = 0; i < value.size(); ++i)
+    {
+      value[i] = static_cast<char>(tolower(static_cast<unsigned char>(value[i])));
+    }
+    if(value == "deferred_exact" || value == "deferred-exact")
+    {
+      return EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_DEFERRED_EXACT;
+    }
+    return EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_LEGACY;
+  }();
+  return mode;
+}
+
+inline ExactSimTwoStageDiscoveryMode exact_sim_two_stage_discovery_mode_runtime()
+{
+  static const ExactSimTwoStageDiscoveryMode mode = []()
+  {
+    const char *env = getenv("LONGTARGET_TWO_STAGE_DISCOVERY_MODE");
+    if(env == NULL || env[0] == '\0')
+    {
+      return EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_OFF;
+    }
+    string value(env);
+    for(size_t i = 0; i < value.size(); ++i)
+    {
+      value[i] = static_cast<char>(tolower(static_cast<unsigned char>(value[i])));
+    }
+    if(value == "prefilter_only" || value == "prefilter-only")
+    {
+      return EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_PREFILTER_ONLY;
+    }
+    return EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_OFF;
+  }();
+  return mode;
+}
+
+inline const char *exact_sim_two_stage_discovery_mode_label(ExactSimTwoStageDiscoveryMode mode)
+{
+  return mode == EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_PREFILTER_ONLY ? "prefilter_only" : "off";
+}
+
+inline ExactSimTwoStageDiscoveryStatus exact_sim_two_stage_discovery_status_from_summary(
+  const ExactSimTwoStageDiscoverySummary &summary)
+{
+  if(summary.prefilterFailedTasks > 0)
+  {
+    return EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_PREFILTER_FAILED;
+  }
+  if(summary.tasksWithAnySeed == 0 || summary.tasksWithAnyRefineWindowBeforeGate == 0)
+  {
+    return EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_EMPTY;
+  }
+  return EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_OK;
+}
+
+inline bool exact_sim_two_stage_discovery_predicted_skip(const ExactSimTwoStageDiscoverySummary &summary)
+{
+  return exact_sim_two_stage_discovery_status_from_summary(summary) == EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_OK &&
+         summary.tasksWithAnyRefineWindowBeforeGate > 0 &&
+         summary.tasksWithAnyRefineWindowAfterGate == 0;
+}
+
+inline const char *exact_sim_two_stage_discovery_status_label(ExactSimTwoStageDiscoveryStatus status)
+{
+  switch(status)
+  {
+    case EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_EMPTY:
+      return "empty";
+    case EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_PREFILTER_FAILED:
+      return "prefilter_failed";
+    case EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_OK:
+    default:
+      return "ok";
+  }
 }
 
 inline int exact_sim_prefilter_topk_runtime(ExactSimPrefilterBackend backend)
@@ -324,13 +459,14 @@ static inline void exact_sim_prealign_build_query_profile(const string &query,
   prealign_shared_build_query_profile(query, matchScore, mismatchPenalty, profile, segLenOut);
 }
 
-inline bool exact_sim_prefilter_hits_prealign_cuda(const string &query,
-                                                   const string &target,
-                                                   int minScore,
-                                                   const ExactSimConfig &config,
-                                                   int topK,
-                                                   int suppressBp,
-                                                   vector<SimPrefilterHit> &hits)
+inline bool exact_sim_prefilter_hits_prealign_cuda_core(const string &query,
+                                                        const string &target,
+                                                        bool applyScoreFloor,
+                                                        int scoreFloor,
+                                                        const ExactSimConfig &config,
+                                                        int topK,
+                                                        int suppressBp,
+                                                        vector<SimPrefilterHit> &hits)
 {
   hits.clear();
   if(topK <= 0)
@@ -393,11 +529,10 @@ inline bool exact_sim_prefilter_hits_prealign_cuda(const string &query,
 
   vector<PreAlignCudaPeak> kept;
   kept.reserve(static_cast<size_t>(topK));
-  const int scoreFloor = minScore - exact_sim_prefilter_score_floor_delta_runtime();
   for(int k = 0; k < topK && k < static_cast<int>(peaks.size()); ++k)
   {
     const PreAlignCudaPeak &p = peaks[static_cast<size_t>(k)];
-    if(p.score <= scoreFloor || p.position < 0)
+    if((applyScoreFloor && p.score <= scoreFloor) || p.position < 0)
     {
       continue;
     }
@@ -464,14 +599,106 @@ inline bool exact_sim_prefilter_hits_prealign_cuda(const string &query,
   return true;
 }
 
+inline bool exact_sim_prefilter_hits_prealign_cuda(const string &query,
+                                                   const string &target,
+                                                   int minScore,
+                                                   const ExactSimConfig &config,
+                                                   int topK,
+                                                   int suppressBp,
+                                                   vector<SimPrefilterHit> &hits)
+{
+  const int scoreFloor = minScore - exact_sim_prefilter_score_floor_delta_runtime();
+  return exact_sim_prefilter_hits_prealign_cuda_core(query,
+                                                     target,
+                                                     true,
+                                                     scoreFloor,
+                                                     config,
+                                                     topK,
+                                                     suppressBp,
+                                                     hits);
+}
+
+inline bool exact_sim_prefilter_hits_prealign_cuda_without_floor(const string &query,
+                                                                 const string &target,
+                                                                 const ExactSimConfig &config,
+                                                                 int topK,
+                                                                 int suppressBp,
+                                                                 vector<SimPrefilterHit> &hits)
+{
+  return exact_sim_prefilter_hits_prealign_cuda_core(query,
+                                                     target,
+                                                     false,
+                                                     0,
+                                                     config,
+                                                     topK,
+                                                     suppressBp,
+                                                     hits);
+}
+
 struct ExactSimRefineWindow
 {
-  ExactSimRefineWindow():startJ(0),endJ(0) {}
-  ExactSimRefineWindow(int n1,int n2):startJ(n1),endJ(n2) {}
+  ExactSimRefineWindow():
+    startJ(0),
+    endJ(0),
+    bestSeedScore(std::numeric_limits<long>::min()),
+    secondBestSeedScore(std::numeric_limits<long>::min()),
+    supportCount(0) {}
+  ExactSimRefineWindow(int n1,int n2):
+    startJ(n1),
+    endJ(n2),
+    bestSeedScore(std::numeric_limits<long>::min()),
+    secondBestSeedScore(std::numeric_limits<long>::min()),
+    supportCount(0) {}
 
   int startJ;
   int endJ;
+  long bestSeedScore;
+  long secondBestSeedScore;
+  long supportCount;
 };
+
+inline long exact_sim_refine_window_missing_score()
+{
+  return std::numeric_limits<long>::min();
+}
+
+inline int exact_sim_refine_window_bp(const ExactSimRefineWindow &window)
+{
+  return window.endJ >= window.startJ ? (window.endJ - window.startJ + 1) : 0;
+}
+
+inline long exact_sim_refine_window_margin(const ExactSimRefineWindow &window)
+{
+  if(window.secondBestSeedScore == exact_sim_refine_window_missing_score())
+  {
+    return exact_sim_refine_window_missing_score();
+  }
+  return window.bestSeedScore - window.secondBestSeedScore;
+}
+
+inline double exact_sim_refine_window_seed_density(const ExactSimRefineWindow &window)
+{
+  const int bp = exact_sim_refine_window_bp(window);
+  if(bp <= 0)
+  {
+    return 0.0;
+  }
+  return static_cast<double>(window.supportCount) / static_cast<double>(bp);
+}
+
+inline void exact_sim_refine_window_note_seed_score(ExactSimRefineWindow &window,long score)
+{
+  if(score >= window.bestSeedScore)
+  {
+    window.secondBestSeedScore = window.bestSeedScore;
+    window.bestSeedScore = score;
+    return;
+  }
+  if(score > window.secondBestSeedScore)
+  {
+    window.secondBestSeedScore = score;
+  }
+}
 
 inline void exact_sim_merge_refine_windows(vector<ExactSimRefineWindow> &windows,int mergeGap)
 {
@@ -504,9 +731,609 @@ inline void exact_sim_merge_refine_windows(vector<ExactSimRefineWindow> &windows
     {
       cur.endJ = w.endJ;
     }
+    if(w.bestSeedScore != exact_sim_refine_window_missing_score())
+    {
+      exact_sim_refine_window_note_seed_score(cur,w.bestSeedScore);
+    }
+    if(w.secondBestSeedScore != exact_sim_refine_window_missing_score())
+    {
+      exact_sim_refine_window_note_seed_score(cur,w.secondBestSeedScore);
+    }
+    cur.supportCount += w.supportCount;
   }
   windows.swap(merged);
 }
+
+enum ExactSimTwoStageRejectMode
+{
+  EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF = 0,
+  EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1 = 1,
+  EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2 = 2,
+};
+
+struct ExactSimTwoStageRejectConfig
+{
+  ExactSimTwoStageRejectConfig():
+    mode(EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF),
+    minPeakScore(80),
+    minSupport(2),
+    minMargin(6),
+    strongScoreOverride(100),
+    maxWindowsPerTask(8),
+    maxBpPerTask(32768) {}
+
+  ExactSimTwoStageRejectMode mode;
+  long minPeakScore;
+  long minSupport;
+  long minMargin;
+  long strongScoreOverride;
+  long maxWindowsPerTask;
+  long maxBpPerTask;
+};
+
+inline ExactSimTwoStageRejectMode exact_sim_two_stage_reject_mode_runtime()
+{
+  static const ExactSimTwoStageRejectMode mode = []()
+  {
+    const char *env = getenv("LONGTARGET_TWO_STAGE_REJECT_MODE");
+    if(env == NULL || env[0] == '\0')
+    {
+      return EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF;
+    }
+    string value(env);
+    for(size_t i = 0; i < value.size(); ++i)
+    {
+      value[i] = static_cast<char>(tolower(static_cast<unsigned char>(value[i])));
+    }
+    if(value == "minimal_v1" || value == "minimal-v1")
+    {
+      return EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1;
+    }
+    if(value == "minimal_v2" || value == "minimal-v2")
+    {
+      return EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2;
+    }
+    return EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF;
+  }();
+  return mode;
+}
+
+inline ExactSimTwoStageRejectConfig exact_sim_two_stage_reject_config_runtime()
+{
+  ExactSimTwoStageRejectConfig config;
+  config.mode = exact_sim_two_stage_reject_mode_runtime();
+  config.minPeakScore = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE", 80);
+  config.minSupport = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_MIN_SUPPORT", 2);
+  config.minMargin = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_MIN_MARGIN", 6);
+  config.strongScoreOverride = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE", 100);
+  config.maxWindowsPerTask = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK", 8);
+  config.maxBpPerTask = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK", 32768);
+  if(config.minSupport < 0) config.minSupport = 0;
+  if(config.maxWindowsPerTask < 0) config.maxWindowsPerTask = 0;
+  if(config.maxBpPerTask < 0) config.maxBpPerTask = 0;
+  return config;
+}
+
+struct ExactSimTwoStageRejectStats
+{
+  ExactSimTwoStageRejectStats():
+    windowsRejectedByMinPeakScore(0),
+    windowsRejectedBySupport(0),
+    windowsRejectedByMargin(0),
+    windowsTrimmedByMaxWindows(0),
+    windowsTrimmedByMaxBp(0),
+    singletonRescuedWindows(0),
+    singletonRescuedTasks(0),
+    singletonRescueBpTotal(0) {}
+
+  uint64_t windowsRejectedByMinPeakScore;
+  uint64_t windowsRejectedBySupport;
+  uint64_t windowsRejectedByMargin;
+  uint64_t windowsTrimmedByMaxWindows;
+  uint64_t windowsTrimmedByMaxBp;
+  uint64_t singletonRescuedWindows;
+  uint64_t singletonRescuedTasks;
+  uint64_t singletonRescueBpTotal;
+};
+
+enum ExactSimTwoStageWindowRejectReason
+{
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_NONE = 0,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MIN_PEAK_SCORE = 1,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN = 2,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN = 3,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_WINDOWS = 4,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_BP = 5,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_RESCUED = 6,
+};
+
+struct ExactSimTwoStageWindowTrace
+{
+  ExactSimTwoStageWindowTrace():
+    originalIndex(0),
+    sortedRank(std::numeric_limits<size_t>::max()),
+    beforeGate(false),
+    afterGate(false),
+    peakScoreOk(false),
+    supportOk(false),
+    marginOk(false),
+    strongScoreOk(false),
+    rejectReason(EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_NONE) {}
+
+  size_t originalIndex;
+  size_t sortedRank;
+  ExactSimRefineWindow window;
+  bool beforeGate;
+  bool afterGate;
+  bool peakScoreOk;
+  bool supportOk;
+  bool marginOk;
+  bool strongScoreOk;
+  ExactSimTwoStageWindowRejectReason rejectReason;
+};
+
+inline const char *exact_sim_two_stage_window_reject_reason_label(ExactSimTwoStageWindowRejectReason reason)
+{
+  switch(reason)
+  {
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MIN_PEAK_SCORE:
+      return "min_peak_score";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN:
+      return "low_support_or_margin";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN:
+      return "singleton_missing_margin";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_WINDOWS:
+      return "max_windows";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_BP:
+      return "max_bp";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_RESCUED:
+      return "singleton_rescued";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_NONE:
+    default:
+      return "kept";
+  }
+}
+
+inline long exact_sim_two_stage_singleton_score_override_minimal_v2()
+{
+  return 85;
+}
+
+inline bool exact_sim_refine_window_is_singleton_missing_margin(const ExactSimRefineWindow &window)
+{
+  return window.supportCount == 1 &&
+         (window.secondBestSeedScore == exact_sim_refine_window_missing_score() ||
+          exact_sim_refine_window_margin(window) == exact_sim_refine_window_missing_score());
+}
+
+inline void exact_sim_apply_two_stage_reject_gate_in_place(vector<ExactSimRefineWindow> &windows,
+                                                           const ExactSimTwoStageRejectConfig &config,
+                                                           ExactSimTwoStageRejectStats *stats = NULL,
+                                                           vector<ExactSimTwoStageWindowTrace> *trace = NULL)
+{
+  struct ExactSimTwoStageSingletonRescueCandidate
+  {
+    ExactSimRefineWindow window;
+    size_t traceIndex;
+    bool supportOk;
+    bool marginOk;
+  };
+
+  if(trace != NULL)
+  {
+    trace->clear();
+    trace->reserve(windows.size());
+  }
+  vector<ExactSimRefineWindow> kept;
+  kept.reserve(windows.size());
+  vector<char> keptIsSingletonRescue;
+  keptIsSingletonRescue.reserve(windows.size());
+  vector<size_t> keptTraceIndices;
+  if(trace != NULL)
+  {
+    keptTraceIndices.reserve(windows.size());
+  }
+  vector<ExactSimTwoStageSingletonRescueCandidate> singletonCandidates;
+  singletonCandidates.reserve(windows.size());
+  for(size_t i = 0; i < windows.size(); ++i)
+  {
+    const ExactSimRefineWindow &window = windows[i];
+    const long margin = exact_sim_refine_window_margin(window);
+    const bool singletonMissingMargin = exact_sim_refine_window_is_singleton_missing_margin(window);
+    ExactSimTwoStageWindowTrace entry;
+    entry.originalIndex = i;
+    entry.window = window;
+    entry.beforeGate = true;
+    entry.peakScoreOk = window.bestSeedScore >= config.minPeakScore;
+    entry.supportOk = window.supportCount >= config.minSupport;
+    entry.marginOk = margin != exact_sim_refine_window_missing_score() &&
+                     margin >= config.minMargin;
+    entry.strongScoreOk = window.bestSeedScore >= config.strongScoreOverride;
+
+    if(config.mode == EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF)
+    {
+      entry.afterGate = true;
+      if(trace != NULL)
+      {
+        trace->push_back(entry);
+      }
+      continue;
+    }
+
+    if(!entry.peakScoreOk)
+    {
+      if(stats != NULL)
+      {
+        stats->windowsRejectedByMinPeakScore += 1;
+      }
+      entry.rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MIN_PEAK_SCORE;
+      if(trace != NULL)
+      {
+        trace->push_back(entry);
+      }
+      continue;
+    }
+
+    if(!entry.supportOk && !entry.marginOk && !entry.strongScoreOk)
+    {
+      entry.rejectReason = singletonMissingMargin
+                             ? EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN
+                             : EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+      const bool rescueCandidate =
+        config.mode == EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2 &&
+        singletonMissingMargin &&
+        window.bestSeedScore >= exact_sim_two_stage_singleton_score_override_minimal_v2();
+      const size_t traceIndex = trace != NULL ? trace->size() : 0u;
+      if(trace != NULL)
+      {
+        trace->push_back(entry);
+      }
+      if(rescueCandidate)
+      {
+        ExactSimTwoStageSingletonRescueCandidate candidate;
+        candidate.window = window;
+        candidate.traceIndex = traceIndex;
+        candidate.supportOk = entry.supportOk;
+        candidate.marginOk = entry.marginOk;
+        singletonCandidates.push_back(candidate);
+      }
+      else if(stats != NULL)
+      {
+        if(!entry.supportOk)
+        {
+          stats->windowsRejectedBySupport += 1;
+        }
+        if(!entry.marginOk)
+        {
+          stats->windowsRejectedByMargin += 1;
+        }
+      }
+      continue;
+    }
+
+    const size_t traceIndex = trace != NULL ? trace->size() : 0u;
+    if(trace != NULL)
+    {
+      trace->push_back(entry);
+    }
+    kept.push_back(window);
+    keptIsSingletonRescue.push_back(0);
+    if(trace != NULL)
+    {
+      keptTraceIndices.push_back(traceIndex);
+    }
+  }
+
+  if(config.mode == EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF)
+  {
+    return;
+  }
+
+  if(config.mode == EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2 && !singletonCandidates.empty())
+  {
+    size_t bestIndex = 0;
+    for(size_t i = 1; i < singletonCandidates.size(); ++i)
+    {
+      if(singletonCandidates[i].window.bestSeedScore > singletonCandidates[bestIndex].window.bestSeedScore)
+      {
+        bestIndex = i;
+      }
+    }
+    for(size_t i = 0; i < singletonCandidates.size(); ++i)
+    {
+      if(i == bestIndex || stats == NULL)
+      {
+        continue;
+      }
+      if(!singletonCandidates[i].supportOk)
+      {
+        stats->windowsRejectedBySupport += 1;
+      }
+      if(!singletonCandidates[i].marginOk)
+      {
+        stats->windowsRejectedByMargin += 1;
+      }
+    }
+    kept.push_back(singletonCandidates[bestIndex].window);
+    keptIsSingletonRescue.push_back(1);
+    if(trace != NULL)
+    {
+      keptTraceIndices.push_back(singletonCandidates[bestIndex].traceIndex);
+      (*trace)[singletonCandidates[bestIndex].traceIndex].rejectReason =
+        EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_RESCUED;
+    }
+  }
+
+  vector<size_t> keptOrder(kept.size(),0u);
+  for(size_t i = 0; i < keptOrder.size(); ++i)
+  {
+    keptOrder[i] = i;
+  }
+  stable_sort(keptOrder.begin(),
+              keptOrder.end(),
+              [&kept](size_t lhsIndex,size_t rhsIndex)
+              {
+                const ExactSimRefineWindow &lhs = kept[lhsIndex];
+                const ExactSimRefineWindow &rhs = kept[rhsIndex];
+                if(lhs.bestSeedScore != rhs.bestSeedScore) return lhs.bestSeedScore > rhs.bestSeedScore;
+                if(lhs.supportCount != rhs.supportCount) return lhs.supportCount > rhs.supportCount;
+                const long lhsMargin = exact_sim_refine_window_margin(lhs);
+                const long rhsMargin = exact_sim_refine_window_margin(rhs);
+                if(lhsMargin != rhsMargin) return lhsMargin > rhsMargin;
+                if(lhs.startJ != rhs.startJ) return lhs.startJ < rhs.startJ;
+                return lhs.endJ < rhs.endJ;
+              });
+
+  vector<ExactSimRefineWindow> sortedKept;
+  sortedKept.reserve(kept.size());
+  vector<char> sortedKeptIsSingletonRescue;
+  sortedKeptIsSingletonRescue.reserve(keptIsSingletonRescue.size());
+  vector<size_t> sortedTraceIndices;
+  if(trace != NULL)
+  {
+    sortedTraceIndices.reserve(keptTraceIndices.size());
+  }
+  for(size_t rank = 0; rank < keptOrder.size(); ++rank)
+  {
+    const size_t keptIndex = keptOrder[rank];
+    sortedKept.push_back(kept[keptIndex]);
+    sortedKeptIsSingletonRescue.push_back(keptIsSingletonRescue[keptIndex]);
+    if(trace != NULL)
+    {
+      const size_t traceIndex = keptTraceIndices[keptIndex];
+      (*trace)[traceIndex].sortedRank = rank;
+      sortedTraceIndices.push_back(traceIndex);
+    }
+  }
+
+  if(config.maxWindowsPerTask >= 0 && static_cast<long>(sortedKept.size()) > config.maxWindowsPerTask)
+  {
+    if(stats != NULL)
+    {
+      stats->windowsTrimmedByMaxWindows +=
+        static_cast<uint64_t>(sortedKept.size() - static_cast<size_t>(config.maxWindowsPerTask));
+    }
+    if(trace != NULL)
+    {
+      for(size_t i = static_cast<size_t>(config.maxWindowsPerTask); i < sortedTraceIndices.size(); ++i)
+      {
+        (*trace)[sortedTraceIndices[i]].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_WINDOWS;
+      }
+      sortedTraceIndices.resize(static_cast<size_t>(config.maxWindowsPerTask));
+    }
+    sortedKept.resize(static_cast<size_t>(config.maxWindowsPerTask));
+    sortedKeptIsSingletonRescue.resize(static_cast<size_t>(config.maxWindowsPerTask));
+  }
+
+  if(config.maxBpPerTask >= 0)
+  {
+    vector<ExactSimRefineWindow> budgeted;
+    budgeted.reserve(sortedKept.size());
+    vector<char> budgetedIsSingletonRescue;
+    budgetedIsSingletonRescue.reserve(sortedKeptIsSingletonRescue.size());
+    long totalBp = 0;
+    for(size_t i = 0; i < sortedKept.size(); ++i)
+    {
+      const long windowBp = static_cast<long>(exact_sim_refine_window_bp(sortedKept[i]));
+      if(windowBp <= 0)
+      {
+        continue;
+      }
+      if(totalBp + windowBp > config.maxBpPerTask)
+      {
+        if(stats != NULL)
+        {
+          stats->windowsTrimmedByMaxBp += 1;
+        }
+        if(trace != NULL)
+        {
+          (*trace)[sortedTraceIndices[i]].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_BP;
+        }
+        continue;
+      }
+      totalBp += windowBp;
+      budgeted.push_back(sortedKept[i]);
+      budgetedIsSingletonRescue.push_back(sortedKeptIsSingletonRescue[i]);
+      if(trace != NULL)
+      {
+        (*trace)[sortedTraceIndices[i]].afterGate = true;
+      }
+    }
+    sortedKept.swap(budgeted);
+    sortedKeptIsSingletonRescue.swap(budgetedIsSingletonRescue);
+  }
+  else if(trace != NULL)
+  {
+    for(size_t i = 0; i < sortedTraceIndices.size(); ++i)
+    {
+      (*trace)[sortedTraceIndices[i]].afterGate = true;
+    }
+  }
+
+  if(stats != NULL)
+  {
+    for(size_t i = 0; i < sortedKept.size(); ++i)
+    {
+      if(!sortedKeptIsSingletonRescue[i])
+      {
+        continue;
+      }
+      stats->singletonRescuedWindows += 1;
+      stats->singletonRescuedTasks += 1;
+      const int rescuedBp = exact_sim_refine_window_bp(sortedKept[i]);
+      if(rescuedBp > 0)
+      {
+        stats->singletonRescueBpTotal += static_cast<uint64_t>(rescuedBp);
+      }
+    }
+  }
+
+  windows.swap(sortedKept);
+}
+
+inline uint64_t exact_sim_total_refine_window_bp(const vector<ExactSimRefineWindow> &windows)
+{
+  uint64_t totalBp = 0;
+  for(size_t i = 0; i < windows.size(); ++i)
+  {
+    const int bp = exact_sim_refine_window_bp(windows[i]);
+    if(bp > 0)
+    {
+      totalBp += static_cast<uint64_t>(bp);
+    }
+  }
+  return totalBp;
+}
+
+inline void exact_sim_build_refine_windows_from_hits(const vector<SimPrefilterHit> &hits,
+                                                     int targetLen,
+                                                     int pad,
+                                                     vector<ExactSimRefineWindow> &windows)
+{
+  windows.clear();
+  windows.reserve(hits.size());
+  for(size_t i = 0; i < hits.size(); ++i)
+  {
+    const SimPrefilterHit &h = hits[i];
+    long seedStart = h.STARJ + 1;
+    long seedEnd = h.ENDJ;
+    if(seedStart < 1) seedStart = 1;
+    if(seedEnd < seedStart) seedEnd = seedStart;
+    long winStart = seedStart - static_cast<long>(pad);
+    long winEnd = seedEnd + static_cast<long>(pad);
+    if(winStart < 1) winStart = 1;
+    if(winEnd > targetLen) winEnd = targetLen;
+    if(winEnd < winStart)
+    {
+      continue;
+    }
+    ExactSimRefineWindow window(static_cast<int>(winStart), static_cast<int>(winEnd));
+    window.supportCount = 1;
+    exact_sim_refine_window_note_seed_score(window,h.SCORE);
+    windows.push_back(window);
+  }
+}
+
+struct ExactSimDeferredTwoStagePrefilterResult
+{
+  ExactSimDeferredTwoStagePrefilterResult():
+    hadAnySeed(false),
+    hadAnyRefineWindowBeforeGate(false),
+    hadAnyRefineWindowAfterGate(false),
+    prefilterBackend("disabled"),
+    prefilterHits(0),
+    windowsBeforeGate(0),
+    windowsAfterGate(0) {}
+
+  bool hadAnySeed;
+  bool hadAnyRefineWindowBeforeGate;
+  bool hadAnyRefineWindowAfterGate;
+  string prefilterBackend;
+  uint64_t prefilterHits;
+  uint64_t windowsBeforeGate;
+  uint64_t windowsAfterGate;
+  ExactSimTwoStageRejectStats rejectStats;
+  vector<ExactSimRefineWindow> windows;
+};
+
+inline bool collectExactSimTwoStageDeferredPrefilterCore(string &rnaSequence,
+                                                         const string &transformedSequence,
+                                                         const ExactSimConfig &config,
+                                                         ExactSimDeferredTwoStagePrefilterResult &result,
+                                                         ExactSimTaskTiming *taskTiming = NULL,
+                                                         vector<ExactSimTwoStageWindowTrace> *trace = NULL)
+{
+  result = ExactSimDeferredTwoStagePrefilterResult();
+
+  const double prefilterStart = taskTiming != NULL ? exact_sim_now_seconds() : 0.0;
+  vector<SimPrefilterHit> hits;
+  if(!prealign_cuda_is_built())
+  {
+    return false;
+  }
+
+  const int topk = exact_sim_prefilter_topk_runtime(EXACT_SIM_PREFILTER_BACKEND_PREALIGN_CUDA);
+  const int suppressBp = exact_sim_prefilter_peak_suppress_bp_runtime();
+  if(!exact_sim_prefilter_hits_prealign_cuda_without_floor(rnaSequence,
+                                                           transformedSequence,
+                                                           config,
+                                                           topk,
+                                                           suppressBp,
+                                                           hits))
+  {
+    if(taskTiming != NULL)
+    {
+      taskTiming->prefilterSeconds += exact_sim_now_seconds() - prefilterStart;
+    }
+    return false;
+  }
+
+  result.prefilterBackend = "prealign_cuda";
+  result.prefilterHits = static_cast<uint64_t>(hits.size());
+  result.hadAnySeed = !hits.empty();
+  if(taskTiming != NULL)
+  {
+    taskTiming->prefilterBackend = result.prefilterBackend;
+    taskTiming->prefilterHits += result.prefilterHits;
+    taskTiming->twoStageHadAnySeed += result.hadAnySeed ? 1u : 0u;
+  }
+  if(hits.empty())
+  {
+    if(taskTiming != NULL)
+    {
+      taskTiming->prefilterSeconds += exact_sim_now_seconds() - prefilterStart;
+    }
+    return true;
+  }
+
+  const int pad = exact_sim_refine_pad_bp_runtime();
+  const int mergeGap = exact_sim_refine_merge_gap_bp_runtime();
+  const int targetLen = static_cast<int>(transformedSequence.size());
+  exact_sim_build_refine_windows_from_hits(hits,targetLen,pad,result.windows);
+  exact_sim_merge_refine_windows(result.windows,mergeGap);
+  result.windowsBeforeGate = static_cast<uint64_t>(result.windows.size());
+  result.hadAnyRefineWindowBeforeGate = !result.windows.empty();
+  if(taskTiming != NULL)
+  {
+    taskTiming->twoStageRefineWindowCountBeforeGate += result.windowsBeforeGate;
+    taskTiming->twoStageHadAnyRefineWindowBeforeGate += result.hadAnyRefineWindowBeforeGate ? 1u : 0u;
+    taskTiming->prefilterSeconds += exact_sim_now_seconds() - prefilterStart;
+  }
+
+  const ExactSimTwoStageRejectConfig rejectConfig = exact_sim_two_stage_reject_config_runtime();
+  const double gateStart = taskTiming != NULL ? exact_sim_now_seconds() : 0.0;
+  exact_sim_apply_two_stage_reject_gate_in_place(result.windows,rejectConfig,&result.rejectStats,trace);
+  result.windowsAfterGate = static_cast<uint64_t>(result.windows.size());
+  result.hadAnyRefineWindowAfterGate = !result.windows.empty();
+  if(taskTiming != NULL)
+  {
+    taskTiming->twoStageGateSeconds += exact_sim_now_seconds() - gateStart;
+    taskTiming->refineWindowCount += result.windowsAfterGate;
+    taskTiming->refineTotalBp += exact_sim_total_refine_window_bp(result.windows);
+  }
+  return true;
+}
+
 
 struct ExactSimTriplexKey
 {
@@ -567,6 +1394,87 @@ struct ExactSimTriplexKeyHash
     return h;
   }
 };
+
+inline void runExactReferenceSIMTwoStageRescueWithWindows(string &rnaSequence,
+                                                          const string &transformedSequence,
+                                                          const string &sourceSequence,
+                                                          long dnaStartPos,
+                                                          long reverseMode,
+                                                          long parallelMode,
+                                                          long rule,
+                                                          int minScore,
+                                                          const ExactSimConfig &config,
+                                                          int ntMin,
+                                                          int ntMax,
+                                                          int penaltyT,
+                                                          int penaltyC,
+                                                          const vector<ExactSimRefineWindow> &windows,
+                                                          vector<struct triplex> &triplexList)
+{
+  unordered_set<ExactSimTriplexKey, ExactSimTriplexKeyHash> seen;
+  seen.reserve(256);
+
+  for(size_t w = 0; w < windows.size(); ++w)
+  {
+    const int winStartJ = windows[w].startJ;
+    const int winEndJ = windows[w].endJ;
+    const int winLen = exact_sim_refine_window_bp(windows[w]);
+    if(winLen <= 0)
+    {
+      continue;
+    }
+
+    const string transformedWindow = transformedSequence.substr(static_cast<size_t>(winStartJ - 1), static_cast<size_t>(winLen));
+
+    string sourceWindow;
+    long dnaStartPosWindow = dnaStartPos;
+    if(reverseMode == 0)
+    {
+      sourceWindow = sourceSequence.substr(static_cast<size_t>(winStartJ - 1), static_cast<size_t>(winLen));
+      dnaStartPosWindow = dnaStartPos + (winStartJ - 1);
+    }
+    else
+    {
+      const int fullLen = static_cast<int>(sourceSequence.size());
+      const int srcStartJ = fullLen - winEndJ + 1;
+      if(srcStartJ < 1 || srcStartJ + winLen - 1 > fullLen)
+      {
+        continue;
+      }
+      sourceWindow = sourceSequence.substr(static_cast<size_t>(srcStartJ - 1), static_cast<size_t>(winLen));
+      dnaStartPosWindow = dnaStartPos + (srcStartJ - 1);
+    }
+
+    vector<struct triplex> localTriplex;
+    SIM(rnaSequence,
+        transformedWindow,
+        sourceWindow,
+        dnaStartPosWindow,
+        minScore,
+        config.matchScore,
+        config.mismatchScore,
+        config.gapOpen,
+        config.gapExtend,
+        localTriplex,
+        reverseMode,
+        parallelMode,
+        rule,
+        ntMin,
+        ntMax,
+        penaltyT,
+        penaltyC);
+
+    for(size_t i = 0; i < localTriplex.size(); ++i)
+    {
+      const triplex &t = localTriplex[i];
+      const ExactSimTriplexKey key(t);
+      if(seen.insert(key).second)
+      {
+        triplexList.push_back(t);
+      }
+    }
+  }
+}
 
 inline void runExactReferenceSIMTwoStageWithMinScore(string &rnaSequence,
                                                      const string &transformedSequence,
@@ -632,101 +1540,32 @@ inline void runExactReferenceSIMTwoStageWithMinScore(string &rnaSequence,
 
   const int targetLen = static_cast<int>(transformedSequence.size());
   vector<ExactSimRefineWindow> windows;
-  windows.reserve(hits.size());
-  for(size_t i = 0; i < hits.size(); ++i)
-  {
-    const SimPrefilterHit &h = hits[i];
-    long seedStart = h.STARJ + 1;
-    long seedEnd = h.ENDJ;
-    if(seedStart < 1) seedStart = 1;
-    if(seedEnd < seedStart) seedEnd = seedStart;
-    long winStart = seedStart - static_cast<long>(pad);
-    long winEnd = seedEnd + static_cast<long>(pad);
-    if(winStart < 1) winStart = 1;
-    if(winEnd > targetLen) winEnd = targetLen;
-    if(winEnd < winStart)
-    {
-      continue;
-    }
-    windows.push_back(ExactSimRefineWindow(static_cast<int>(winStart), static_cast<int>(winEnd)));
-  }
+  exact_sim_build_refine_windows_from_hits(hits,targetLen,pad,windows);
   exact_sim_merge_refine_windows(windows, mergeGap);
   if(taskTiming != NULL)
   {
+    taskTiming->twoStageHadAnySeed += hits.empty() ? 0u : 1u;
+    taskTiming->twoStageHadAnyRefineWindowBeforeGate += windows.empty() ? 0u : 1u;
+    taskTiming->twoStageRefineWindowCountBeforeGate += static_cast<uint64_t>(windows.size());
     taskTiming->refineWindowCount += static_cast<uint64_t>(windows.size());
-    for(size_t i = 0; i < windows.size(); ++i)
-    {
-      const int winLen = windows[i].endJ >= windows[i].startJ ? (windows[i].endJ - windows[i].startJ + 1) : 0;
-      if(winLen > 0)
-      {
-        taskTiming->refineTotalBp += static_cast<uint64_t>(winLen);
-      }
-    }
+    taskTiming->refineTotalBp += exact_sim_total_refine_window_bp(windows);
   }
 
-  unordered_set<ExactSimTriplexKey, ExactSimTriplexKeyHash> seen;
-  seen.reserve(256);
-
-  for(size_t w = 0; w < windows.size(); ++w)
-  {
-    const int winStartJ = windows[w].startJ;
-    const int winEndJ = windows[w].endJ;
-    const int winLen = winEndJ >= winStartJ ? (winEndJ - winStartJ + 1) : 0;
-    if(winLen <= 0)
-    {
-      continue;
-    }
-
-    const string transformedWindow = transformedSequence.substr(static_cast<size_t>(winStartJ - 1), static_cast<size_t>(winLen));
-
-    string sourceWindow;
-    long dnaStartPosWindow = dnaStartPos;
-    if(reverseMode == 0)
-    {
-      sourceWindow = sourceSequence.substr(static_cast<size_t>(winStartJ - 1), static_cast<size_t>(winLen));
-      dnaStartPosWindow = dnaStartPos + (winStartJ - 1);
-    }
-    else
-    {
-      const int fullLen = static_cast<int>(sourceSequence.size());
-      const int srcStartJ = fullLen - winEndJ + 1;
-      if(srcStartJ < 1 || srcStartJ + winLen - 1 > fullLen)
-      {
-        continue;
-      }
-      sourceWindow = sourceSequence.substr(static_cast<size_t>(srcStartJ - 1), static_cast<size_t>(winLen));
-      dnaStartPosWindow = dnaStartPos + (srcStartJ - 1);
-    }
-
-    vector<struct triplex> localTriplex;
-    SIM(rnaSequence,
-        transformedWindow,
-        sourceWindow,
-        dnaStartPosWindow,
-        minScore,
-        config.matchScore,
-        config.mismatchScore,
-        config.gapOpen,
-        config.gapExtend,
-        localTriplex,
-        reverseMode,
-        parallelMode,
-        rule,
-        ntMin,
-        ntMax,
-        penaltyT,
-        penaltyC);
-
-    for(size_t i = 0; i < localTriplex.size(); ++i)
-    {
-      const triplex &t = localTriplex[i];
-      const ExactSimTriplexKey key(t);
-      if(seen.insert(key).second)
-      {
-        triplexList.push_back(t);
-      }
-    }
-  }
+  runExactReferenceSIMTwoStageRescueWithWindows(rnaSequence,
+                                                transformedSequence,
+                                                sourceSequence,
+                                                dnaStartPos,
+                                                reverseMode,
+                                                parallelMode,
+                                                rule,
+                                                minScore,
+                                                config,
+                                                ntMin,
+                                                ntMax,
+                                                penaltyT,
+                                                penaltyC,
+                                                windows,
+                                                triplexList);
 
   if(taskTiming != NULL)
   {
@@ -773,6 +1612,45 @@ inline void runExactReferenceSIMTwoStage(string &rnaSequence,
                                           penaltyC,
                                           triplexList,
                                           taskTiming);
+}
+
+inline void runExactReferenceSIMTwoStageDeferredWithMinScore(string &rnaSequence,
+                                                             const string &transformedSequence,
+                                                             const string &sourceSequence,
+                                                             long dnaStartPos,
+                                                             long reverseMode,
+                                                             long parallelMode,
+                                                             long rule,
+                                                             int minScore,
+                                                             const ExactSimConfig &config,
+                                                             int ntMin,
+                                                             int ntMax,
+                                                             int penaltyT,
+                                                             int penaltyC,
+                                                             const vector<ExactSimRefineWindow> &windows,
+                                                             vector<struct triplex> &triplexList,
+                                                             ExactSimTaskTiming *taskTiming = NULL)
+{
+  const double simStart = taskTiming != NULL ? exact_sim_now_seconds() : 0.0;
+  runExactReferenceSIMTwoStageRescueWithWindows(rnaSequence,
+                                                transformedSequence,
+                                                sourceSequence,
+                                                dnaStartPos,
+                                                reverseMode,
+                                                parallelMode,
+                                                rule,
+                                                minScore,
+                                                config,
+                                                ntMin,
+                                                ntMax,
+                                                penaltyT,
+                                                penaltyC,
+                                                windows,
+                                                triplexList);
+  if(taskTiming != NULL)
+  {
+    taskTiming->simSeconds += exact_sim_now_seconds() - simStart;
+  }
 }
 
 inline void appendExactReferenceSIMCase(string &rnaSequence,

@@ -69,8 +69,39 @@ struct LongTargetExecutionMetrics
     postProcessSeconds(0.0),
     totalSeconds(0.0),
     thresholdBackend("cpu"),
+    twoStageThresholdMode("legacy"),
+    twoStageRejectMode("off"),
+    twoStageDiscoveryMode("off"),
+    twoStageDiscoveryStatus("off"),
     prefilterBackend("disabled"),
     prefilterHits(0),
+    twoStageTasksWithAnySeed(0),
+    twoStageTasksWithAnyRefineWindowBeforeGate(0),
+    twoStageTasksWithAnyRefineWindowAfterGate(0),
+    twoStageThresholdInvokedTasks(0),
+    twoStageThresholdSkippedNoSeedTasks(0),
+    twoStageThresholdSkippedNoRefineWindowTasks(0),
+    twoStageThresholdSkippedAfterGateTasks(0),
+    twoStageThresholdBatchCount(0),
+    twoStageThresholdBatchTasksTotal(0),
+    twoStageThresholdBatchSizeMax(0),
+    twoStageThresholdBatchedSeconds(0.0),
+    twoStageDiscoveryTaskCount(0),
+    twoStageDiscoveryPrefilterFailedTasks(0),
+    twoStageDiscoveryPredictedSkip(0),
+    twoStageDiscoveryPredictedSkipTasks(0),
+    twoStageDiscoveryPrefilterOnlySeconds(0.0),
+    twoStageDiscoveryGateSeconds(0.0),
+    twoStageWindowsBeforeGate(0),
+    twoStageWindowsAfterGate(0),
+    twoStageWindowsRejectedByMinPeakScore(0),
+    twoStageWindowsRejectedBySupport(0),
+    twoStageWindowsRejectedByMargin(0),
+    twoStageWindowsTrimmedByMaxWindows(0),
+    twoStageWindowsTrimmedByMaxBp(0),
+    twoStageSingletonRescuedWindows(0),
+    twoStageSingletonRescuedTasks(0),
+    twoStageSingletonRescueBpTotal(0),
     refineWindowCount(0),
     refineTotalBp(0),
     calcScoreTasksTotal(0),
@@ -97,8 +128,39 @@ struct LongTargetExecutionMetrics
   double postProcessSeconds;
   double totalSeconds;
   string thresholdBackend;
+  string twoStageThresholdMode;
+  string twoStageRejectMode;
+  string twoStageDiscoveryMode;
+  string twoStageDiscoveryStatus;
   string prefilterBackend;
   uint64_t prefilterHits;
+  uint64_t twoStageTasksWithAnySeed;
+  uint64_t twoStageTasksWithAnyRefineWindowBeforeGate;
+  uint64_t twoStageTasksWithAnyRefineWindowAfterGate;
+  uint64_t twoStageThresholdInvokedTasks;
+  uint64_t twoStageThresholdSkippedNoSeedTasks;
+  uint64_t twoStageThresholdSkippedNoRefineWindowTasks;
+  uint64_t twoStageThresholdSkippedAfterGateTasks;
+  uint64_t twoStageThresholdBatchCount;
+  uint64_t twoStageThresholdBatchTasksTotal;
+  uint64_t twoStageThresholdBatchSizeMax;
+  double twoStageThresholdBatchedSeconds;
+  uint64_t twoStageDiscoveryTaskCount;
+  uint64_t twoStageDiscoveryPrefilterFailedTasks;
+  uint64_t twoStageDiscoveryPredictedSkip;
+  uint64_t twoStageDiscoveryPredictedSkipTasks;
+  double twoStageDiscoveryPrefilterOnlySeconds;
+  double twoStageDiscoveryGateSeconds;
+  uint64_t twoStageWindowsBeforeGate;
+  uint64_t twoStageWindowsAfterGate;
+  uint64_t twoStageWindowsRejectedByMinPeakScore;
+  uint64_t twoStageWindowsRejectedBySupport;
+  uint64_t twoStageWindowsRejectedByMargin;
+  uint64_t twoStageWindowsTrimmedByMaxWindows;
+  uint64_t twoStageWindowsTrimmedByMaxBp;
+  uint64_t twoStageSingletonRescuedWindows;
+  uint64_t twoStageSingletonRescuedTasks;
+  uint64_t twoStageSingletonRescueBpTotal;
   uint64_t refineWindowCount;
   uint64_t refineTotalBp;
   uint64_t calcScoreTasksTotal;
@@ -380,6 +442,194 @@ static inline int longtarget_prepare_exact_sim_min_score(string &rnaSequence,
     taskTiming->thresholdSeconds += exact_sim_now_seconds() - thresholdStart;
   }
   return minScore;
+}
+
+static inline const char *longtarget_two_stage_threshold_mode_label(ExactSimTwoStageThresholdMode mode)
+{
+  return mode == EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_DEFERRED_EXACT ? "deferred_exact" : "legacy";
+}
+
+static inline const char *longtarget_two_stage_reject_mode_label(ExactSimTwoStageRejectMode mode)
+{
+  switch(mode)
+  {
+    case EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1:
+      return "minimal_v1";
+    case EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2:
+      return "minimal_v2";
+    case EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF:
+    default:
+      return "off";
+  }
+}
+
+static inline const char *longtarget_two_stage_discovery_mode_label(ExactSimTwoStageDiscoveryMode mode)
+{
+  return exact_sim_two_stage_discovery_mode_label(mode);
+}
+
+static inline string longtarget_two_stage_debug_windows_csv_path_runtime()
+{
+  const char *env = getenv("LONGTARGET_TWO_STAGE_DEBUG_WINDOWS_CSV");
+  if(env == NULL || env[0] == '\0')
+  {
+    return "";
+  }
+  return string(env);
+}
+
+static inline string longtarget_task_strand_label(long reverseMode,long parallelMode)
+{
+  if(reverseMode == 0 && parallelMode == 1)
+  {
+    return "ParaPlus";
+  }
+  if(reverseMode == 1 && parallelMode == 1)
+  {
+    return "ParaMinus";
+  }
+  if(reverseMode == 1 && parallelMode == -1)
+  {
+    return "AntiMinus";
+  }
+  if(reverseMode == 0 && parallelMode == -1)
+  {
+    return "AntiPlus";
+  }
+  return "";
+}
+
+static inline string longtarget_merge_prefilter_backend(const string &current,const string &next)
+{
+  if(next.empty())
+  {
+    return current;
+  }
+  if(current.empty())
+  {
+    return next;
+  }
+  if(current == next)
+  {
+    return current;
+  }
+  if(current == "disabled")
+  {
+    return next;
+  }
+  if(next == "disabled")
+  {
+    return current;
+  }
+  return "mixed";
+}
+
+static inline ExactSimTwoStageDiscoverySummary longtarget_build_two_stage_discovery_summary(
+  size_t taskCount,
+  uint64_t prefilterFailedTasks,
+  const LongTargetExecutionMetrics &metrics)
+{
+  ExactSimTwoStageDiscoverySummary summary;
+  summary.taskCount = static_cast<uint64_t>(taskCount);
+  summary.prefilterFailedTasks = prefilterFailedTasks;
+  summary.tasksWithAnySeed = metrics.twoStageTasksWithAnySeed;
+  summary.tasksWithAnyRefineWindowBeforeGate = metrics.twoStageTasksWithAnyRefineWindowBeforeGate;
+  summary.tasksWithAnyRefineWindowAfterGate = metrics.twoStageTasksWithAnyRefineWindowAfterGate;
+  summary.windowsBeforeGate = metrics.twoStageWindowsBeforeGate;
+  summary.windowsAfterGate = metrics.twoStageWindowsAfterGate;
+  return summary;
+}
+
+static inline void longtarget_write_two_stage_window_trace_header(ostream &out)
+{
+  out<<"task_index\t"
+     <<"fragment_index\t"
+     <<"fragment_start_in_seq\t"
+     <<"fragment_end_in_seq\t"
+     <<"reverse_mode\t"
+     <<"parallel_mode\t"
+     <<"strand\t"
+     <<"rule\t"
+     <<"window_id\t"
+     <<"sorted_rank\t"
+     <<"window_start_in_fragment\t"
+     <<"window_end_in_fragment\t"
+     <<"window_start_in_seq\t"
+     <<"window_end_in_seq\t"
+     <<"best_seed_score\t"
+     <<"second_best_seed_score\t"
+     <<"margin\t"
+     <<"support_count\t"
+     <<"window_bp\t"
+     <<"before_gate\t"
+     <<"after_gate\t"
+     <<"peak_score_ok\t"
+     <<"support_ok\t"
+     <<"margin_ok\t"
+     <<"strong_score_ok\t"
+     <<"reject_reason"
+     <<endl;
+}
+
+static inline void longtarget_write_two_stage_window_trace_row(ostream &out,
+                                                               size_t taskIndex,
+                                                               const ExactSimTaskSpec &task,
+                                                               size_t fragmentLength,
+                                                               const ExactSimTwoStageWindowTrace &trace)
+{
+  const long fragmentStart = task.dnaStartPos + 1;
+  const long fragmentEnd = task.dnaStartPos + static_cast<long>(fragmentLength);
+  const long windowStartInSeq = task.dnaStartPos + static_cast<long>(trace.window.startJ);
+  const long windowEndInSeq = task.dnaStartPos + static_cast<long>(trace.window.endJ);
+  const long margin = exact_sim_refine_window_margin(trace.window);
+  out<<taskIndex<<"\t"
+     <<task.fragmentIndex<<"\t"
+     <<fragmentStart<<"\t"
+     <<fragmentEnd<<"\t"
+     <<task.reverseMode<<"\t"
+     <<task.parallelMode<<"\t"
+     <<longtarget_task_strand_label(task.reverseMode,task.parallelMode)<<"\t"
+     <<task.rule<<"\t"
+     <<trace.originalIndex<<"\t";
+  if(trace.sortedRank == std::numeric_limits<size_t>::max())
+  {
+    out<<""<<"\t";
+  }
+  else
+  {
+    out<<trace.sortedRank<<"\t";
+  }
+  out<<trace.window.startJ<<"\t"
+     <<trace.window.endJ<<"\t"
+     <<windowStartInSeq<<"\t"
+     <<windowEndInSeq<<"\t"
+     <<trace.window.bestSeedScore<<"\t";
+  if(trace.window.secondBestSeedScore == exact_sim_refine_window_missing_score())
+  {
+    out<<""<<"\t";
+  }
+  else
+  {
+    out<<trace.window.secondBestSeedScore<<"\t";
+  }
+  if(margin == exact_sim_refine_window_missing_score())
+  {
+    out<<""<<"\t";
+  }
+  else
+  {
+    out<<margin<<"\t";
+  }
+  out<<trace.window.supportCount<<"\t"
+     <<exact_sim_refine_window_bp(trace.window)<<"\t"
+     <<(trace.beforeGate ? 1 : 0)<<"\t"
+     <<(trace.afterGate ? 1 : 0)<<"\t"
+     <<(trace.peakScoreOk ? 1 : 0)<<"\t"
+     <<(trace.supportOk ? 1 : 0)<<"\t"
+     <<(trace.marginOk ? 1 : 0)<<"\t"
+     <<(trace.strongScoreOk ? 1 : 0)<<"\t"
+     <<exact_sim_two_stage_window_reject_reason_label(trace.rejectReason)
+     <<endl;
 }
 
 static inline void longtarget_run_exact_sim_single_stage_with_min_score(string &rnaSequence,
@@ -1488,6 +1738,29 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 
   cerr<<"benchmark.prefilter_backend="<<metrics.prefilterBackend<<endl;
   cerr<<"benchmark.prefilter_hits="<<metrics.prefilterHits<<endl;
+  cerr<<"benchmark.two_stage_threshold_mode="<<metrics.twoStageThresholdMode<<endl;
+  cerr<<"benchmark.two_stage_reject_mode="<<metrics.twoStageRejectMode<<endl;
+  cerr<<"benchmark.two_stage_tasks_with_any_seed="<<metrics.twoStageTasksWithAnySeed<<endl;
+  cerr<<"benchmark.two_stage_tasks_with_any_refine_window_before_gate="<<metrics.twoStageTasksWithAnyRefineWindowBeforeGate<<endl;
+  cerr<<"benchmark.two_stage_tasks_with_any_refine_window_after_gate="<<metrics.twoStageTasksWithAnyRefineWindowAfterGate<<endl;
+  cerr<<"benchmark.two_stage_threshold_invoked_tasks="<<metrics.twoStageThresholdInvokedTasks<<endl;
+  cerr<<"benchmark.two_stage_threshold_skipped_no_seed_tasks="<<metrics.twoStageThresholdSkippedNoSeedTasks<<endl;
+  cerr<<"benchmark.two_stage_threshold_skipped_no_refine_window_tasks="<<metrics.twoStageThresholdSkippedNoRefineWindowTasks<<endl;
+  cerr<<"benchmark.two_stage_threshold_skipped_after_gate_tasks="<<metrics.twoStageThresholdSkippedAfterGateTasks<<endl;
+  cerr<<"benchmark.two_stage_threshold_batch_count="<<metrics.twoStageThresholdBatchCount<<endl;
+  cerr<<"benchmark.two_stage_threshold_batch_tasks_total="<<metrics.twoStageThresholdBatchTasksTotal<<endl;
+  cerr<<"benchmark.two_stage_threshold_batch_size_max="<<metrics.twoStageThresholdBatchSizeMax<<endl;
+  cerr<<"benchmark.two_stage_threshold_batched_seconds="<<metrics.twoStageThresholdBatchedSeconds<<endl;
+  cerr<<"benchmark.two_stage_windows_before_gate="<<metrics.twoStageWindowsBeforeGate<<endl;
+  cerr<<"benchmark.two_stage_windows_after_gate="<<metrics.twoStageWindowsAfterGate<<endl;
+  cerr<<"benchmark.two_stage_windows_rejected_by_min_peak_score="<<metrics.twoStageWindowsRejectedByMinPeakScore<<endl;
+  cerr<<"benchmark.two_stage_windows_rejected_by_support="<<metrics.twoStageWindowsRejectedBySupport<<endl;
+  cerr<<"benchmark.two_stage_windows_rejected_by_margin="<<metrics.twoStageWindowsRejectedByMargin<<endl;
+  cerr<<"benchmark.two_stage_windows_trimmed_by_max_windows="<<metrics.twoStageWindowsTrimmedByMaxWindows<<endl;
+  cerr<<"benchmark.two_stage_windows_trimmed_by_max_bp="<<metrics.twoStageWindowsTrimmedByMaxBp<<endl;
+  cerr<<"benchmark.two_stage_singleton_rescued_windows="<<metrics.twoStageSingletonRescuedWindows<<endl;
+  cerr<<"benchmark.two_stage_singleton_rescued_tasks="<<metrics.twoStageSingletonRescuedTasks<<endl;
+  cerr<<"benchmark.two_stage_singleton_rescue_bp_total="<<metrics.twoStageSingletonRescueBpTotal<<endl;
   cerr<<"benchmark.refine_window_count="<<metrics.refineWindowCount<<endl;
   cerr<<"benchmark.refine_total_bp="<<metrics.refineTotalBp<<endl;
   cerr<<"benchmark.sim_scan_tasks="<<metrics.simScanTasks<<endl;
@@ -1862,6 +2135,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.calc_score_target_bin_gt_65535_bp="<<metrics.calcScoreTargetBinGt65535Bp<<endl;
   cerr<<"benchmark.sim_seconds="<<metrics.simSeconds<<endl;
   cerr<<"benchmark.postprocess_seconds="<<metrics.postProcessSeconds<<endl;
+  cerr<<"benchmark.two_stage_discovery_mode="<<metrics.twoStageDiscoveryMode<<endl;
+  cerr<<"benchmark.two_stage_discovery_status="<<metrics.twoStageDiscoveryStatus<<endl;
+  cerr<<"benchmark.two_stage_discovery_task_count="<<metrics.twoStageDiscoveryTaskCount<<endl;
+  cerr<<"benchmark.two_stage_discovery_prefilter_failed_tasks="<<metrics.twoStageDiscoveryPrefilterFailedTasks<<endl;
+  cerr<<"benchmark.two_stage_discovery_predicted_skip="<<metrics.twoStageDiscoveryPredictedSkip<<endl;
+  cerr<<"benchmark.two_stage_discovery_predicted_skip_tasks="<<metrics.twoStageDiscoveryPredictedSkipTasks<<endl;
+  cerr<<"benchmark.two_stage_discovery_prefilter_only_seconds="<<metrics.twoStageDiscoveryPrefilterOnlySeconds<<endl;
+  cerr<<"benchmark.two_stage_discovery_gate_seconds="<<metrics.twoStageDiscoveryGateSeconds<<endl;
   cerr<<"benchmark.total_seconds="<<metrics.totalSeconds<<endl;
 }
 int main(int argc, char* const* argv)
@@ -1907,13 +2188,22 @@ int main(int argc, char* const* argv)
   vector<struct triplex> sort_triplex_list;
   LongTargetExecutionMetrics metrics;
   const bool benchmarkEnabled = longtarget_benchmark_enabled();
+  const bool discoveryPrefilterOnly =
+    exact_sim_two_stage_enabled_runtime() &&
+    exact_sim_two_stage_discovery_mode_runtime() == EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_PREFILTER_ONLY;
   const double totalStart = benchmarkEnabled ? longtarget_now_seconds() : 0.0;
   LongTarget(paraList,lgList[i].lncSeq,lgList[i].dnaSeq,sort_triplex_list,&metrics);
-  const double postProcessStart = benchmarkEnabled ? longtarget_now_seconds() : 0.0;
-  printResult(lgList[i].species,paraList,lgList[i].lncName,lgList[i].fileName,sort_triplex_list,lgList[i].dnaChroTag,lgList[i].dnaSeq,lgList[i].startGenome,c_tmp_dd,c_tmp_length,lgList[i].resultDir);
+  if(!discoveryPrefilterOnly)
+  {
+    const double postProcessStart = benchmarkEnabled ? longtarget_now_seconds() : 0.0;
+    printResult(lgList[i].species,paraList,lgList[i].lncName,lgList[i].fileName,sort_triplex_list,lgList[i].dnaChroTag,lgList[i].dnaSeq,lgList[i].startGenome,c_tmp_dd,c_tmp_length,lgList[i].resultDir);
+    if(benchmarkEnabled)
+    {
+      metrics.postProcessSeconds += longtarget_now_seconds() - postProcessStart;
+    }
+  }
   if(benchmarkEnabled)
   {
-    metrics.postProcessSeconds += longtarget_now_seconds() - postProcessStart;
     metrics.totalSeconds = longtarget_now_seconds() - totalStart;
     printLongTargetBenchmarkMetrics(metrics);
   }
@@ -2182,21 +2472,188 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
 
   vector<int> taskMinScores(tasks.size(),0);
   vector<unsigned char> taskMinScoreReady(tasks.size(),0);
+  const bool twoStage = exact_sim_two_stage_enabled_runtime();
+  const ExactSimTwoStageThresholdMode twoStageThresholdMode = exact_sim_two_stage_threshold_mode_runtime();
+  const bool deferredExactTwoStage = twoStage && twoStageThresholdMode == EXACT_SIM_TWO_STAGE_THRESHOLD_MODE_DEFERRED_EXACT;
+  const ExactSimTwoStageDiscoveryMode twoStageDiscoveryMode = exact_sim_two_stage_discovery_mode_runtime();
+  const bool discoveryPrefilterOnly = twoStageDiscoveryMode == EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_PREFILTER_ONLY;
+  const ExactSimTwoStageRejectMode twoStageRejectMode =
+    deferredExactTwoStage ? exact_sim_two_stage_reject_mode_runtime() : EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF;
+  vector<ExactSimDeferredTwoStagePrefilterResult> deferredPrefilterResults(tasks.size());
+  vector<unsigned char> deferredTaskShouldRun(tasks.size(),0);
+  uint64_t discoveryPrefilterFailedTasks = 0;
+  const string twoStageDebugWindowsCsvPath =
+    deferredExactTwoStage ? longtarget_two_stage_debug_windows_csv_path_runtime() : "";
+  ofstream twoStageDebugWindowsCsv;
+
+  if(discoveryPrefilterOnly && !deferredExactTwoStage)
+  {
+    fprintf(stderr,
+            "prefilter_only discovery requires LONGTARGET_TWO_STAGE=1 and LONGTARGET_TWO_STAGE_THRESHOLD_MODE=deferred_exact\n");
+    exit(2);
+  }
+
+  if(deferredExactTwoStage || discoveryPrefilterOnly)
+  {
+    if(exact_sim_prefilter_backend_requested_runtime() != EXACT_SIM_PREFILTER_BACKEND_PREALIGN_CUDA)
+    {
+      fprintf(stderr,
+              "%s requires LONGTARGET_PREFILTER_BACKEND=prealign_cuda\n",
+              discoveryPrefilterOnly ? "prefilter_only discovery" : "deferred_exact");
+      exit(2);
+    }
+    if(exact_sim_prefilter_score_floor_delta_runtime() != 0)
+    {
+      fprintf(stderr,
+              "%s requires LONGTARGET_PREFILTER_SCORE_FLOOR_DELTA=0\n",
+              discoveryPrefilterOnly ? "prefilter_only discovery" : "deferred_exact");
+      exit(2);
+    }
+    if(!prealign_cuda_is_built())
+    {
+      fprintf(stderr,
+              "%s requires prealign_cuda support in this build\n",
+              discoveryPrefilterOnly ? "prefilter_only discovery" : "deferred_exact");
+      exit(2);
+    }
+  }
+
+  if(metrics != NULL)
+  {
+    metrics->twoStageThresholdMode = longtarget_two_stage_threshold_mode_label(twoStageThresholdMode);
+    metrics->twoStageRejectMode = longtarget_two_stage_reject_mode_label(twoStageRejectMode);
+    metrics->twoStageDiscoveryMode = longtarget_two_stage_discovery_mode_label(twoStageDiscoveryMode);
+  }
+
+  if(!twoStageDebugWindowsCsvPath.empty())
+  {
+    twoStageDebugWindowsCsv.open(twoStageDebugWindowsCsvPath.c_str());
+    if(!twoStageDebugWindowsCsv.is_open())
+    {
+      fprintf(stderr,
+              "failed to open LONGTARGET_TWO_STAGE_DEBUG_WINDOWS_CSV=%s\n",
+              twoStageDebugWindowsCsvPath.c_str());
+      exit(2);
+    }
+    longtarget_write_two_stage_window_trace_header(twoStageDebugWindowsCsv);
+  }
+
   bool usedCudaAny = false;
   bool usedCudaAll = true;
   double cudaThresholdSeconds = 0.0;
+  uint64_t deferredThresholdBatchCount = 0;
+  uint64_t deferredThresholdBatchTasksTotal = 0;
+  uint64_t deferredThresholdBatchSizeMax = 0;
+  double deferredThresholdBatchedSeconds = 0.0;
   const int calcScoreQueryLength = static_cast<int>(rnaSequence.size());
   vector<pair<int,size_t> > calcScoreTasksSorted;
   calcScoreTasksSorted.reserve(tasks.size());
   for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
   {
+    if(deferredExactTwoStage)
+    {
+      ExactSimDeferredTwoStagePrefilterResult result;
+      vector<ExactSimTwoStageWindowTrace> windowTrace;
+      if(!collectExactSimTwoStageDeferredPrefilterCore(rnaSequence,
+                                                       tasks[taskIndex].transformedSequence,
+                                                       exactSimConfig,
+                                                       result,
+                                                       &taskTimings[taskIndex],
+                                                       twoStageDebugWindowsCsv.is_open() ? &windowTrace : NULL))
+      {
+        if(discoveryPrefilterOnly)
+        {
+          discoveryPrefilterFailedTasks += 1;
+          continue;
+        }
+        fprintf(stderr,
+                "deferred_exact prefilter failed for taskIndex=%zu targetLength=%zu\n",
+                taskIndex,
+                tasks[taskIndex].transformedSequence.size());
+        exit(2);
+      }
+      if(twoStageDebugWindowsCsv.is_open())
+      {
+        const ExactSimTaskSpec &task = tasks[taskIndex];
+        const size_t fragmentLength = fragments[task.fragmentIndex].sequence.size();
+        for(size_t traceIndex = 0; traceIndex < windowTrace.size(); ++traceIndex)
+        {
+          longtarget_write_two_stage_window_trace_row(twoStageDebugWindowsCsv,
+                                                      taskIndex,
+                                                      task,
+                                                      fragmentLength,
+                                                      windowTrace[traceIndex]);
+        }
+      }
+      deferredPrefilterResults[taskIndex] = result;
+      if(metrics != NULL)
+      {
+        metrics->twoStageTasksWithAnySeed += result.hadAnySeed ? 1u : 0u;
+        metrics->twoStageTasksWithAnyRefineWindowBeforeGate += result.hadAnyRefineWindowBeforeGate ? 1u : 0u;
+        metrics->twoStageTasksWithAnyRefineWindowAfterGate += result.hadAnyRefineWindowAfterGate ? 1u : 0u;
+        metrics->twoStageWindowsBeforeGate += result.windowsBeforeGate;
+        metrics->twoStageWindowsAfterGate += result.windowsAfterGate;
+        metrics->twoStageWindowsRejectedByMinPeakScore += result.rejectStats.windowsRejectedByMinPeakScore;
+        metrics->twoStageWindowsRejectedBySupport += result.rejectStats.windowsRejectedBySupport;
+        metrics->twoStageWindowsRejectedByMargin += result.rejectStats.windowsRejectedByMargin;
+        metrics->twoStageWindowsTrimmedByMaxWindows += result.rejectStats.windowsTrimmedByMaxWindows;
+        metrics->twoStageWindowsTrimmedByMaxBp += result.rejectStats.windowsTrimmedByMaxBp;
+        metrics->twoStageSingletonRescuedWindows += result.rejectStats.singletonRescuedWindows;
+        metrics->twoStageSingletonRescuedTasks += result.rejectStats.singletonRescuedTasks;
+        metrics->twoStageSingletonRescueBpTotal += result.rejectStats.singletonRescueBpTotal;
+        if(!result.hadAnySeed)
+        {
+          metrics->twoStageThresholdSkippedNoSeedTasks += 1;
+        }
+        else if(!result.hadAnyRefineWindowBeforeGate)
+        {
+          metrics->twoStageThresholdSkippedNoRefineWindowTasks += 1;
+        }
+        else if(!result.hadAnyRefineWindowAfterGate)
+        {
+          metrics->twoStageThresholdSkippedAfterGateTasks += 1;
+        }
+      }
+      if(result.hadAnyRefineWindowAfterGate)
+      {
+        deferredTaskShouldRun[taskIndex] = 1;
+        calcScoreTasksSorted.push_back(make_pair(static_cast<int>(tasks[taskIndex].transformedSequence.size()), taskIndex));
+      }
+      continue;
+    }
     calcScoreTasksSorted.push_back(make_pair(static_cast<int>(tasks[taskIndex].transformedSequence.size()), taskIndex));
+  }
+  if(discoveryPrefilterOnly)
+  {
+    if(metrics != NULL)
+    {
+      metrics->thresholdBackend = "skipped";
+      metrics->twoStageDiscoveryTaskCount = static_cast<uint64_t>(tasks.size());
+      metrics->twoStageDiscoveryPrefilterFailedTasks = discoveryPrefilterFailedTasks;
+      metrics->twoStageDiscoveryPredictedSkipTasks = metrics->twoStageThresholdSkippedAfterGateTasks;
+      for(size_t taskIndex = 0; taskIndex < taskTimings.size(); ++taskIndex)
+      {
+        metrics->prefilterBackend =
+          longtarget_merge_prefilter_backend(metrics->prefilterBackend, taskTimings[taskIndex].prefilterBackend);
+        metrics->prefilterHits += taskTimings[taskIndex].prefilterHits;
+        metrics->twoStageDiscoveryPrefilterOnlySeconds += taskTimings[taskIndex].prefilterSeconds;
+        metrics->twoStageDiscoveryGateSeconds += taskTimings[taskIndex].twoStageGateSeconds;
+      }
+      const ExactSimTwoStageDiscoverySummary discoverySummary =
+        longtarget_build_two_stage_discovery_summary(tasks.size(), discoveryPrefilterFailedTasks, *metrics);
+      metrics->twoStageDiscoveryStatus =
+        exact_sim_two_stage_discovery_status_label(
+          exact_sim_two_stage_discovery_status_from_summary(discoverySummary));
+      metrics->twoStageDiscoveryPredictedSkip =
+        exact_sim_two_stage_discovery_predicted_skip(discoverySummary) ? 1u : 0u;
+    }
+    return;
   }
   sort(calcScoreTasksSorted.begin(),calcScoreTasksSorted.end());
 
   if(metrics != NULL)
   {
-    metrics->calcScoreTasksTotal += static_cast<uint64_t>(tasks.size());
+    metrics->calcScoreTasksTotal += static_cast<uint64_t>(calcScoreTasksSorted.size());
     metrics->calcScoreQueryLength = static_cast<uint64_t>(calcScoreQueryLength);
     for(size_t sortedIndex = 0; sortedIndex < calcScoreTasksSorted.size();)
     {
@@ -2315,9 +2772,18 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                                           &batchResult,
                                                           &cudaError))
                 {
-                  cudaThresholdSeconds += longtarget_now_seconds() - groupStartSeconds;
+                  const double groupElapsedSeconds = longtarget_now_seconds() - groupStartSeconds;
+                  cudaThresholdSeconds += groupElapsedSeconds;
                   groupUsedCuda = true;
                   usedCudaAny = true;
+                  if(deferredExactTwoStage)
+                  {
+                    deferredThresholdBatchCount += 1;
+                    deferredThresholdBatchTasksTotal += static_cast<uint64_t>(groupSize);
+                    deferredThresholdBatchSizeMax = std::max(deferredThresholdBatchSizeMax,
+                                                            static_cast<uint64_t>(groupSize));
+                    deferredThresholdBatchedSeconds += groupElapsedSeconds;
+                  }
 
                   thresholdWorkspace.ensureAa1Length(targetLength);
                   for(size_t groupOffset = 0; groupOffset < groupSize; ++groupOffset)
@@ -2415,6 +2881,49 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     usedCudaAll = false;
   }
 
+  if(deferredExactTwoStage)
+  {
+    vector<size_t> deferredCpuBatch;
+    deferredCpuBatch.reserve(calcScoreTasksSorted.size());
+    for(size_t sortedIndex = 0; sortedIndex < calcScoreTasksSorted.size(); ++sortedIndex)
+    {
+      const size_t taskIndex = calcScoreTasksSorted[sortedIndex].second;
+      if(taskMinScoreReady[taskIndex] == 0)
+      {
+        deferredCpuBatch.push_back(taskIndex);
+      }
+    }
+    if(!deferredCpuBatch.empty())
+    {
+      CalcScoreWorkspace deferredCpuWorkspace;
+      const double batchStartSeconds = longtarget_now_seconds();
+      for(size_t i = 0; i < deferredCpuBatch.size(); ++i)
+      {
+        const size_t taskIndex = deferredCpuBatch[i];
+        taskMinScores[taskIndex] =
+          longtarget_prepare_exact_sim_min_score(rnaSequence,
+                                                 tasks[taskIndex].transformedSequence,
+                                                 runContext,
+                                                 deferredCpuWorkspace,
+                                                 &taskTimings[taskIndex]);
+        taskMinScoreReady[taskIndex] = 1;
+      }
+      deferredThresholdBatchCount += 1;
+      deferredThresholdBatchTasksTotal += static_cast<uint64_t>(deferredCpuBatch.size());
+      deferredThresholdBatchSizeMax = std::max(deferredThresholdBatchSizeMax,
+                                              static_cast<uint64_t>(deferredCpuBatch.size()));
+      deferredThresholdBatchedSeconds += longtarget_now_seconds() - batchStartSeconds;
+    }
+    if(metrics != NULL)
+    {
+      metrics->twoStageThresholdInvokedTasks = static_cast<uint64_t>(calcScoreTasksSorted.size());
+      metrics->twoStageThresholdBatchCount = deferredThresholdBatchCount;
+      metrics->twoStageThresholdBatchTasksTotal = deferredThresholdBatchTasksTotal;
+      metrics->twoStageThresholdBatchSizeMax = deferredThresholdBatchSizeMax;
+      metrics->twoStageThresholdBatchedSeconds = deferredThresholdBatchedSeconds;
+    }
+  }
+
   if(metrics != NULL && !calcScoreCoverageRecorded)
   {
     size_t groupStart = 0;
@@ -2448,7 +2957,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     metrics->thresholdSeconds += cudaThresholdSeconds;
   }
 
-  const bool twoStage = exact_sim_two_stage_enabled_runtime();
+  if(metrics != NULL && twoStage && !deferredExactTwoStage)
+  {
+    metrics->twoStageThresholdInvokedTasks = static_cast<uint64_t>(tasks.size());
+  }
   const bool simFast = simFastEnabledRuntime();
   const bool validateCuda = simCudaValidateEnabledRuntime();
   const bool windowPipelineRequested = simCudaWindowPipelineEnabledRuntime();
@@ -2617,6 +3129,17 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
           taskWorkerIndices[taskIndex] = static_cast<int>(capturedWorkerIndex);
           const ExactSimTaskSpec &task = tasks[taskIndex];
           recordSimWindowPipelineTaskConsidered();
+          if(deferredExactTwoStage && deferredTaskShouldRun[taskIndex] == 0)
+          {
+            recordSimWindowPipelineIneligibleTask(longtarget_classify_window_pipeline_ineligible_reason(twoStage,
+                                                                                                       simFast,
+                                                                                                       validateCuda,
+                                                                                                       windowPipelineRequested && sim_scan_cuda_is_built(),
+                                                                                                       rnaSequence,
+                                                                                                       task,
+                                                                                                       0));
+            continue;
+          }
           if(useWindowPipeline)
           {
             const int minScore =
@@ -2674,84 +3197,116 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                                                                                      rnaSequence,
                                                                                                      task,
                                                                                                      0));
-          if(taskMinScoreReady[taskIndex] != 0)
+          if(twoStage && deferredExactTwoStage)
           {
-            if(twoStage)
+            if(taskMinScoreReady[taskIndex] == 0)
             {
-              runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
-                                                      task.transformedSequence,
-                                                      fragments[task.fragmentIndex].sequence,
-                                                      task.dnaStartPos,
-                                                      task.reverseMode,
-                                                      task.parallelMode,
-                                                      task.rule,
-                                                      taskMinScores[taskIndex],
-                                                      exactSimConfig,
-                                                      paraList.ntMin,
-                                                      paraList.ntMax,
-                                                      paraList.penaltyT,
-                                                      paraList.penaltyC,
-                                                      taskTriplexLists[taskIndex],
-                                                      &taskTimings[taskIndex]);
+              taskMinScores[taskIndex] =
+                longtarget_prepare_exact_sim_min_score(rnaSequence,
+                                                       task.transformedSequence,
+                                                       runContext,
+                                                       calcScoreWorkspace,
+                                                       &taskTimings[taskIndex]);
+              taskMinScoreReady[taskIndex] = 1;
             }
-            else
-            {
-              runExactReferenceSIMWithMinScore(rnaSequence,
-                                               task.transformedSequence,
-                                               fragments[task.fragmentIndex].sequence,
-                                               task.dnaStartPos,
-                                               task.reverseMode,
-                                               task.parallelMode,
-                                               task.rule,
-                                               taskMinScores[taskIndex],
-                                               exactSimConfig,
-                                               paraList.ntMin,
-                                               paraList.ntMax,
-                                               paraList.penaltyT,
-                                               paraList.penaltyC,
-                                               taskTriplexLists[taskIndex],
-                                               &taskTimings[taskIndex]);
-            }
+            runExactReferenceSIMTwoStageDeferredWithMinScore(rnaSequence,
+                                                             task.transformedSequence,
+                                                             fragments[task.fragmentIndex].sequence,
+                                                             task.dnaStartPos,
+                                                             task.reverseMode,
+                                                             task.parallelMode,
+                                                             task.rule,
+                                                             taskMinScores[taskIndex],
+                                                             exactSimConfig,
+                                                             paraList.ntMin,
+                                                             paraList.ntMax,
+                                                             paraList.penaltyT,
+                                                             paraList.penaltyC,
+                                                             deferredPrefilterResults[taskIndex].windows,
+                                                             taskTriplexLists[taskIndex],
+                                                             &taskTimings[taskIndex]);
           }
           else
           {
-            if(twoStage)
+            if(taskMinScoreReady[taskIndex] != 0)
             {
-              runExactReferenceSIMTwoStage(rnaSequence,
-                                           task.transformedSequence,
-                                           fragments[task.fragmentIndex].sequence,
-                                           task.dnaStartPos,
-                                           task.reverseMode,
-                                           task.parallelMode,
-                                           task.rule,
-                                           exactSimConfig,
-                                           paraList.ntMin,
-                                           paraList.ntMax,
-                                           paraList.penaltyT,
-                                           paraList.penaltyC,
-                                           taskTriplexLists[taskIndex],
-                                           &runContext,
-                                           &calcScoreWorkspace,
-                                           &taskTimings[taskIndex]);
+              if(twoStage)
+              {
+                runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
+                                                        task.transformedSequence,
+                                                        fragments[task.fragmentIndex].sequence,
+                                                        task.dnaStartPos,
+                                                        task.reverseMode,
+                                                        task.parallelMode,
+                                                        task.rule,
+                                                        taskMinScores[taskIndex],
+                                                        exactSimConfig,
+                                                        paraList.ntMin,
+                                                        paraList.ntMax,
+                                                        paraList.penaltyT,
+                                                        paraList.penaltyC,
+                                                        taskTriplexLists[taskIndex],
+                                                        &taskTimings[taskIndex]);
+              }
+              else
+              {
+                runExactReferenceSIMWithMinScore(rnaSequence,
+                                                 task.transformedSequence,
+                                                 fragments[task.fragmentIndex].sequence,
+                                                 task.dnaStartPos,
+                                                 task.reverseMode,
+                                                 task.parallelMode,
+                                                 task.rule,
+                                                 taskMinScores[taskIndex],
+                                                 exactSimConfig,
+                                                 paraList.ntMin,
+                                                 paraList.ntMax,
+                                                 paraList.penaltyT,
+                                                 paraList.penaltyC,
+                                                 taskTriplexLists[taskIndex],
+                                                 &taskTimings[taskIndex]);
+              }
             }
             else
             {
-              runExactReferenceSIM(rnaSequence,
-                                   task.transformedSequence,
-                                   fragments[task.fragmentIndex].sequence,
-                                   task.dnaStartPos,
-                                   task.reverseMode,
-                                   task.parallelMode,
-                                   task.rule,
-                                   exactSimConfig,
-                                   paraList.ntMin,
-                                   paraList.ntMax,
-                                   paraList.penaltyT,
-                                   paraList.penaltyC,
-                                   taskTriplexLists[taskIndex],
-                                   &runContext,
-                                   &calcScoreWorkspace,
-                                   &taskTimings[taskIndex]);
+              if(twoStage)
+              {
+                runExactReferenceSIMTwoStage(rnaSequence,
+                                             task.transformedSequence,
+                                             fragments[task.fragmentIndex].sequence,
+                                             task.dnaStartPos,
+                                             task.reverseMode,
+                                             task.parallelMode,
+                                             task.rule,
+                                             exactSimConfig,
+                                             paraList.ntMin,
+                                             paraList.ntMax,
+                                             paraList.penaltyT,
+                                             paraList.penaltyC,
+                                             taskTriplexLists[taskIndex],
+                                             &runContext,
+                                             &calcScoreWorkspace,
+                                             &taskTimings[taskIndex]);
+              }
+              else
+              {
+                runExactReferenceSIM(rnaSequence,
+                                     task.transformedSequence,
+                                     fragments[task.fragmentIndex].sequence,
+                                     task.dnaStartPos,
+                                     task.reverseMode,
+                                     task.parallelMode,
+                                     task.rule,
+                                     exactSimConfig,
+                                     paraList.ntMin,
+                                     paraList.ntMax,
+                                     paraList.penaltyT,
+                                     paraList.penaltyC,
+                                     taskTriplexLists[taskIndex],
+                                     &runContext,
+                                     &calcScoreWorkspace,
+                                     &taskTimings[taskIndex]);
+              }
             }
           }
 
@@ -2788,7 +3343,171 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     for(long taskIndex = 0; taskIndex < static_cast<long>(tasks.size()); ++taskIndex)
     {
       const ExactSimTaskSpec &task = tasks[static_cast<size_t>(taskIndex)];
-      if(taskMinScoreReady[static_cast<size_t>(taskIndex)] != 0)
+      if(deferredExactTwoStage && deferredTaskShouldRun[static_cast<size_t>(taskIndex)] == 0)
+      {
+        continue;
+      }
+      if(twoStage && deferredExactTwoStage)
+      {
+        if(taskMinScoreReady[static_cast<size_t>(taskIndex)] == 0)
+        {
+          taskMinScores[static_cast<size_t>(taskIndex)] =
+            longtarget_prepare_exact_sim_min_score(rnaSequence,
+                                                   task.transformedSequence,
+                                                   runContext,
+                                                   calcScoreWorkspace,
+                                                   &taskTimings[static_cast<size_t>(taskIndex)]);
+          taskMinScoreReady[static_cast<size_t>(taskIndex)] = 1;
+        }
+        runExactReferenceSIMTwoStageDeferredWithMinScore(rnaSequence,
+                                                         task.transformedSequence,
+                                                         fragments[task.fragmentIndex].sequence,
+                                                         task.dnaStartPos,
+                                                         task.reverseMode,
+                                                         task.parallelMode,
+                                                         task.rule,
+                                                         taskMinScores[static_cast<size_t>(taskIndex)],
+                                                         exactSimConfig,
+                                                         paraList.ntMin,
+                                                         paraList.ntMax,
+                                                         paraList.penaltyT,
+                                                         paraList.penaltyC,
+                                                         deferredPrefilterResults[static_cast<size_t>(taskIndex)].windows,
+                                                         taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                                         &taskTimings[static_cast<size_t>(taskIndex)]);
+      }
+      else
+      {
+        if(taskMinScoreReady[static_cast<size_t>(taskIndex)] != 0)
+        {
+          if(twoStage)
+          {
+            runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
+                                                    task.transformedSequence,
+                                                    fragments[task.fragmentIndex].sequence,
+                                                    task.dnaStartPos,
+                                                    task.reverseMode,
+                                                    task.parallelMode,
+                                                    task.rule,
+                                                    taskMinScores[static_cast<size_t>(taskIndex)],
+                                                    exactSimConfig,
+                                                    paraList.ntMin,
+                                                    paraList.ntMax,
+                                                    paraList.penaltyT,
+                                                    paraList.penaltyC,
+                                                    taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                                    &taskTimings[static_cast<size_t>(taskIndex)]);
+          }
+          else
+          {
+            runExactReferenceSIMWithMinScore(rnaSequence,
+                                             task.transformedSequence,
+                                             fragments[task.fragmentIndex].sequence,
+                                             task.dnaStartPos,
+                                             task.reverseMode,
+                                             task.parallelMode,
+                                             task.rule,
+                                             taskMinScores[static_cast<size_t>(taskIndex)],
+                                             exactSimConfig,
+                                             paraList.ntMin,
+                                             paraList.ntMax,
+                                             paraList.penaltyT,
+                                             paraList.penaltyC,
+                                             taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                             &taskTimings[static_cast<size_t>(taskIndex)]);
+          }
+        }
+        else
+        {
+          if(twoStage)
+          {
+            runExactReferenceSIMTwoStage(rnaSequence,
+                                         task.transformedSequence,
+                                         fragments[task.fragmentIndex].sequence,
+                                         task.dnaStartPos,
+                                         task.reverseMode,
+                                         task.parallelMode,
+                                         task.rule,
+                                         exactSimConfig,
+                                         paraList.ntMin,
+                                         paraList.ntMax,
+                                         paraList.penaltyT,
+                                         paraList.penaltyC,
+                                         taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                         &runContext,
+                                         &calcScoreWorkspace,
+                                         &taskTimings[static_cast<size_t>(taskIndex)]);
+          }
+          else
+          {
+            runExactReferenceSIM(rnaSequence,
+                                 task.transformedSequence,
+                                 fragments[task.fragmentIndex].sequence,
+                                 task.dnaStartPos,
+                                 task.reverseMode,
+                                 task.parallelMode,
+                                 task.rule,
+                                 exactSimConfig,
+                                 paraList.ntMin,
+                                 paraList.ntMax,
+                                 paraList.penaltyT,
+                                 paraList.penaltyC,
+                                 taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                 &runContext,
+                                 &calcScoreWorkspace,
+                                 &taskTimings[static_cast<size_t>(taskIndex)]);
+          }
+        }
+      }
+      const double filterStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
+      filterTriplexListInPlace(taskTriplexLists[static_cast<size_t>(taskIndex)],paraList);
+      if(metrics != NULL)
+      {
+        taskFilterSeconds[static_cast<size_t>(taskIndex)] = longtarget_now_seconds() - filterStart;
+      }
+    }
+  }
+#else
+  CalcScoreWorkspace calcScoreWorkspace;
+  for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+  {
+    const ExactSimTaskSpec &task = tasks[taskIndex];
+    if(deferredExactTwoStage && deferredTaskShouldRun[taskIndex] == 0)
+    {
+      continue;
+    }
+    if(twoStage && deferredExactTwoStage)
+    {
+      if(taskMinScoreReady[taskIndex] == 0)
+      {
+        taskMinScores[taskIndex] =
+          longtarget_prepare_exact_sim_min_score(rnaSequence,
+                                                 task.transformedSequence,
+                                                 runContext,
+                                                 calcScoreWorkspace,
+                                                 &taskTimings[taskIndex]);
+        taskMinScoreReady[taskIndex] = 1;
+      }
+      runExactReferenceSIMTwoStageDeferredWithMinScore(rnaSequence,
+                                                       task.transformedSequence,
+                                                       fragments[task.fragmentIndex].sequence,
+                                                       task.dnaStartPos,
+                                                       task.reverseMode,
+                                                       task.parallelMode,
+                                                       task.rule,
+                                                       taskMinScores[taskIndex],
+                                                       exactSimConfig,
+                                                       paraList.ntMin,
+                                                       paraList.ntMax,
+                                                       paraList.penaltyT,
+                                                       paraList.penaltyC,
+                                                       deferredPrefilterResults[taskIndex].windows,
+                                                       taskTriplexLists[taskIndex],
+                                                       &taskTimings[taskIndex]);
+    }
+    else
+    {
+      if(taskMinScoreReady[taskIndex] != 0)
       {
         if(twoStage)
         {
@@ -2799,14 +3518,14 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                                   task.reverseMode,
                                                   task.parallelMode,
                                                   task.rule,
-                                                  taskMinScores[static_cast<size_t>(taskIndex)],
+                                                  taskMinScores[taskIndex],
                                                   exactSimConfig,
                                                   paraList.ntMin,
                                                   paraList.ntMax,
                                                   paraList.penaltyT,
                                                   paraList.penaltyC,
-                                                  taskTriplexLists[static_cast<size_t>(taskIndex)],
-                                                  &taskTimings[static_cast<size_t>(taskIndex)]);
+                                                  taskTriplexLists[taskIndex],
+                                                  &taskTimings[taskIndex]);
         }
         else
         {
@@ -2817,14 +3536,14 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                            task.reverseMode,
                                            task.parallelMode,
                                            task.rule,
-                                           taskMinScores[static_cast<size_t>(taskIndex)],
+                                           taskMinScores[taskIndex],
                                            exactSimConfig,
                                            paraList.ntMin,
                                            paraList.ntMax,
                                            paraList.penaltyT,
                                            paraList.penaltyC,
-                                           taskTriplexLists[static_cast<size_t>(taskIndex)],
-                                           &taskTimings[static_cast<size_t>(taskIndex)]);
+                                           taskTriplexLists[taskIndex],
+                                           &taskTimings[taskIndex]);
         }
       }
       else
@@ -2843,10 +3562,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                        paraList.ntMax,
                                        paraList.penaltyT,
                                        paraList.penaltyC,
-                                       taskTriplexLists[static_cast<size_t>(taskIndex)],
+                                       taskTriplexLists[taskIndex],
                                        &runContext,
                                        &calcScoreWorkspace,
-                                       &taskTimings[static_cast<size_t>(taskIndex)]);
+                                       &taskTimings[taskIndex]);
         }
         else
         {
@@ -2862,103 +3581,11 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                paraList.ntMax,
                                paraList.penaltyT,
                                paraList.penaltyC,
-                               taskTriplexLists[static_cast<size_t>(taskIndex)],
+                               taskTriplexLists[taskIndex],
                                &runContext,
                                &calcScoreWorkspace,
-                               &taskTimings[static_cast<size_t>(taskIndex)]);
+                               &taskTimings[taskIndex]);
         }
-      }
-      const double filterStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
-      filterTriplexListInPlace(taskTriplexLists[static_cast<size_t>(taskIndex)],paraList);
-      if(metrics != NULL)
-      {
-        taskFilterSeconds[static_cast<size_t>(taskIndex)] = longtarget_now_seconds() - filterStart;
-      }
-    }
-  }
-#else
-  CalcScoreWorkspace calcScoreWorkspace;
-  for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
-  {
-    const ExactSimTaskSpec &task = tasks[taskIndex];
-    if(taskMinScoreReady[taskIndex] != 0)
-    {
-      if(twoStage)
-      {
-        runExactReferenceSIMTwoStageWithMinScore(rnaSequence,
-                                                task.transformedSequence,
-                                                fragments[task.fragmentIndex].sequence,
-                                                task.dnaStartPos,
-                                                task.reverseMode,
-                                                task.parallelMode,
-                                                task.rule,
-                                                taskMinScores[taskIndex],
-                                                exactSimConfig,
-                                                paraList.ntMin,
-                                                paraList.ntMax,
-                                                paraList.penaltyT,
-                                                paraList.penaltyC,
-                                                taskTriplexLists[taskIndex],
-                                                &taskTimings[taskIndex]);
-      }
-      else
-      {
-        runExactReferenceSIMWithMinScore(rnaSequence,
-                                         task.transformedSequence,
-                                         fragments[task.fragmentIndex].sequence,
-                                         task.dnaStartPos,
-                                         task.reverseMode,
-                                         task.parallelMode,
-                                         task.rule,
-                                         taskMinScores[taskIndex],
-                                         exactSimConfig,
-                                         paraList.ntMin,
-                                         paraList.ntMax,
-                                         paraList.penaltyT,
-                                         paraList.penaltyC,
-                                         taskTriplexLists[taskIndex],
-                                         &taskTimings[taskIndex]);
-      }
-    }
-    else
-    {
-      if(twoStage)
-      {
-        runExactReferenceSIMTwoStage(rnaSequence,
-                                     task.transformedSequence,
-                                     fragments[task.fragmentIndex].sequence,
-                                     task.dnaStartPos,
-                                     task.reverseMode,
-                                     task.parallelMode,
-                                     task.rule,
-                                     exactSimConfig,
-                                     paraList.ntMin,
-                                     paraList.ntMax,
-                                     paraList.penaltyT,
-                                     paraList.penaltyC,
-                                     taskTriplexLists[taskIndex],
-                                     &runContext,
-                                     &calcScoreWorkspace,
-                                     &taskTimings[taskIndex]);
-      }
-      else
-      {
-        runExactReferenceSIM(rnaSequence,
-                             task.transformedSequence,
-                             fragments[task.fragmentIndex].sequence,
-                             task.dnaStartPos,
-                             task.reverseMode,
-                             task.parallelMode,
-                             task.rule,
-                             exactSimConfig,
-                             paraList.ntMin,
-                             paraList.ntMax,
-                             paraList.penaltyT,
-                             paraList.penaltyC,
-                             taskTriplexLists[taskIndex],
-                             &runContext,
-                             &calcScoreWorkspace,
-                             &taskTimings[taskIndex]);
       }
     }
     const double filterStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
@@ -3008,7 +3635,22 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
       metrics->prefilterHits += taskTimings[taskIndex].prefilterHits;
       metrics->refineWindowCount += taskTimings[taskIndex].refineWindowCount;
       metrics->refineTotalBp += taskTimings[taskIndex].refineTotalBp;
+      if(twoStage && !deferredExactTwoStage)
+      {
+        metrics->twoStageTasksWithAnySeed += taskTimings[taskIndex].twoStageHadAnySeed;
+        metrics->twoStageTasksWithAnyRefineWindowBeforeGate += taskTimings[taskIndex].twoStageHadAnyRefineWindowBeforeGate;
+        metrics->twoStageWindowsBeforeGate += taskTimings[taskIndex].twoStageRefineWindowCountBeforeGate;
+        if(taskTimings[taskIndex].refineWindowCount > 0)
+        {
+          metrics->twoStageTasksWithAnyRefineWindowAfterGate += 1;
+        }
+      }
     }
+  }
+
+  if(metrics != NULL && twoStage && !deferredExactTwoStage)
+  {
+    metrics->twoStageWindowsAfterGate = metrics->refineWindowCount;
   }
 
   if(metrics != NULL)

@@ -1,0 +1,291 @@
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <limits>
+#include <vector>
+
+#include "../exact_sim.h"
+
+namespace
+{
+
+static bool expect_equal_int(int actual, int expected, const char *label)
+{
+  if(actual == expected)
+  {
+    return true;
+  }
+  std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+  return false;
+}
+
+static bool expect_equal_long(long actual, long expected, const char *label)
+{
+  if(actual == expected)
+  {
+    return true;
+  }
+  std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+  return false;
+}
+
+static bool expect_equal_size(size_t actual, size_t expected, const char *label)
+{
+  if(actual == expected)
+  {
+    return true;
+  }
+  std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+  return false;
+}
+
+static bool expect_true(bool value, const char *label)
+{
+  if(value)
+  {
+    return true;
+  }
+  std::cerr << label << ": expected true, got false\n";
+  return false;
+}
+
+static bool expect_false(bool value, const char *label)
+{
+  if(!value)
+  {
+    return true;
+  }
+  std::cerr << label << ": expected false, got true\n";
+  return false;
+}
+
+static bool expect_equal_cstr(const char *actual, const char *expected, const char *label)
+{
+  if(std::strcmp(actual, expected) == 0)
+  {
+    return true;
+  }
+  std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+  return false;
+}
+
+static ExactSimRefineWindow make_window(int startJ,
+                                        int endJ,
+                                        long bestSeedScore,
+                                        long secondBestSeedScore,
+                                        long supportCount)
+{
+  ExactSimRefineWindow window(startJ,endJ);
+  window.bestSeedScore = bestSeedScore;
+  window.secondBestSeedScore = secondBestSeedScore;
+  window.supportCount = supportCount;
+  return window;
+}
+
+} // namespace
+
+int main()
+{
+  bool ok = true;
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(10,20,95,80,1));
+    windows.push_back(make_window(18,30,110,90,1));
+    windows.push_back(make_window(50,60,70,std::numeric_limits<long>::min(),1));
+
+    exact_sim_merge_refine_windows(windows,3);
+
+    ok = expect_equal_size(windows.size(),2u,"merged window count") && ok;
+    ok = expect_equal_int(windows[0].startJ,10,"merged[0].startJ") && ok;
+    ok = expect_equal_int(windows[0].endJ,30,"merged[0].endJ") && ok;
+    ok = expect_equal_long(windows[0].bestSeedScore,110,"merged[0].best score") && ok;
+    ok = expect_equal_long(windows[0].secondBestSeedScore,95,"merged[0].second best") && ok;
+    ok = expect_equal_long(windows[0].supportCount,2,"merged[0].support") && ok;
+    ok = expect_equal_long(exact_sim_refine_window_margin(windows[0]),15,"merged[0].margin") && ok;
+  }
+
+  {
+    ExactSimTwoStageRejectConfig config;
+    config.mode = EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1;
+    config.minPeakScore = 80;
+    config.minSupport = 2;
+    config.minMargin = 6;
+    config.strongScoreOverride = 100;
+    config.maxWindowsPerTask = 2;
+    config.maxBpPerTask = 30;
+
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(1,10,90,89,1));
+    windows.push_back(make_window(20,30,95,std::numeric_limits<long>::min(),2));
+    windows.push_back(make_window(40,55,105,104,1));
+    windows.push_back(make_window(70,90,92,80,1));
+
+    ExactSimTwoStageRejectStats stats;
+    exact_sim_apply_two_stage_reject_gate_in_place(windows,config,&stats);
+
+    ok = expect_equal_size(windows.size(),2u,"gated window count") && ok;
+    ok = expect_equal_int(windows[0].startJ,40,"gated[0].startJ") && ok;
+    ok = expect_equal_int(windows[1].startJ,20,"gated[1].startJ") && ok;
+    ok = expect_equal_long(stats.windowsRejectedByMinPeakScore,0,"rejected by score") && ok;
+    ok = expect_equal_long(stats.windowsRejectedBySupport,1,"rejected by support") && ok;
+    ok = expect_equal_long(stats.windowsRejectedByMargin,1,"rejected by margin") && ok;
+    ok = expect_equal_long(stats.windowsTrimmedByMaxWindows,1,"trimmed by max windows") && ok;
+    ok = expect_equal_long(stats.windowsTrimmedByMaxBp,0,"trimmed by max bp") && ok;
+  }
+
+  {
+    ExactSimTwoStageRejectConfig config;
+    config.mode = EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1;
+    config.minPeakScore = 80;
+    config.minSupport = 2;
+    config.minMargin = 6;
+    config.strongScoreOverride = 100;
+    config.maxWindowsPerTask = 1;
+    config.maxBpPerTask = 100;
+
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(1,10,70,65,2));
+    windows.push_back(make_window(20,30,95,std::numeric_limits<long>::min(),1));
+    windows.push_back(make_window(40,52,105,104,1));
+    windows.push_back(make_window(60,72,102,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace;
+    exact_sim_apply_two_stage_reject_gate_in_place(windows,config,&stats,&trace);
+
+    ok = expect_equal_size(trace.size(),4u,"trace window count") && ok;
+    ok = expect_equal_int(
+           static_cast<int>(trace[0].rejectReason),
+           static_cast<int>(EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MIN_PEAK_SCORE),
+           "trace[0] reject reason") && ok;
+    ok = expect_false(trace[0].afterGate,"trace[0] after gate") && ok;
+    ok = expect_equal_cstr(
+           exact_sim_two_stage_window_reject_reason_label(trace[1].rejectReason),
+           "singleton_missing_margin",
+           "trace[1] reject reason label") && ok;
+    ok = expect_false(trace[1].afterGate,"trace[1] after gate") && ok;
+    ok = expect_equal_int(
+           static_cast<int>(trace[2].rejectReason),
+           static_cast<int>(EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_NONE),
+           "trace[2] reject reason") && ok;
+    ok = expect_true(trace[2].afterGate,"trace[2] after gate") && ok;
+    ok = expect_equal_int(
+           static_cast<int>(trace[3].rejectReason),
+           static_cast<int>(EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_WINDOWS),
+           "trace[3] reject reason") && ok;
+    ok = expect_false(trace[3].afterGate,"trace[3] after gate") && ok;
+  }
+
+  {
+    ExactSimTwoStageRejectConfig config;
+    config.mode = EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2;
+    config.minPeakScore = 80;
+    config.minSupport = 2;
+    config.minMargin = 6;
+    config.strongScoreOverride = 100;
+    config.maxWindowsPerTask = 8;
+    config.maxBpPerTask = 200;
+
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(1,10,85,std::numeric_limits<long>::min(),1));
+    windows.push_back(make_window(20,30,90,std::numeric_limits<long>::min(),1));
+    windows.push_back(make_window(40,55,105,104,1));
+    windows.push_back(make_window(70,82,70,65,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace;
+    exact_sim_apply_two_stage_reject_gate_in_place(windows,config,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),2u,"minimal_v2 rescued window count") && ok;
+    ok = expect_equal_int(windows[0].startJ,40,"minimal_v2 strongest kept first") && ok;
+    ok = expect_equal_int(windows[1].startJ,20,"minimal_v2 rescues best singleton") && ok;
+    ok = expect_false(trace[0].afterGate,"minimal_v2 lower singleton stays rejected") && ok;
+    ok = expect_true(trace[1].afterGate,"minimal_v2 higher singleton rescued") && ok;
+    ok = expect_equal_cstr(
+           exact_sim_two_stage_window_reject_reason_label(trace[1].rejectReason),
+           "singleton_rescued",
+           "minimal_v2 rescued singleton label") && ok;
+    ok = expect_equal_cstr(
+           exact_sim_two_stage_window_reject_reason_label(trace[0].rejectReason),
+           "singleton_missing_margin",
+           "minimal_v2 lower singleton reject label") && ok;
+    ok = expect_equal_long(stats.singletonRescuedWindows,1,"minimal_v2 rescued windows") && ok;
+    ok = expect_equal_long(stats.singletonRescuedTasks,1,"minimal_v2 rescued tasks") && ok;
+    ok = expect_equal_long(stats.singletonRescueBpTotal,11,"minimal_v2 rescued bp") && ok;
+  }
+
+  {
+    ExactSimTwoStageRejectConfig config;
+    config.mode = EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1;
+    config.minPeakScore = 80;
+    config.minSupport = 2;
+    config.minMargin = 6;
+    config.strongScoreOverride = 100;
+    config.maxWindowsPerTask = 8;
+    config.maxBpPerTask = 5;
+
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(1,8,120,110,1));
+    windows.push_back(make_window(20,26,118,112,1));
+
+    ExactSimTwoStageRejectStats stats;
+    exact_sim_apply_two_stage_reject_gate_in_place(windows,config,&stats);
+
+    ok = expect_true(windows.empty(),"bp cap empties task") && ok;
+    ok = expect_equal_long(stats.windowsTrimmedByMaxBp,2,"trimmed by bp") && ok;
+  }
+
+  {
+    ExactSimTwoStageDiscoverySummary summary;
+    summary.taskCount = 12;
+    summary.tasksWithAnySeed = 4;
+    summary.tasksWithAnyRefineWindowBeforeGate = 3;
+    summary.tasksWithAnyRefineWindowAfterGate = 0;
+    summary.windowsBeforeGate = 7;
+    summary.windowsAfterGate = 0;
+
+    ok = expect_equal_int(
+           static_cast<int>(exact_sim_two_stage_discovery_status_from_summary(summary)),
+           static_cast<int>(EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_OK),
+           "predicted skip discovery status") && ok;
+    ok = expect_true(exact_sim_two_stage_discovery_predicted_skip(summary),
+                     "predicted skip discovery flag") && ok;
+  }
+
+  {
+    ExactSimTwoStageDiscoverySummary summary;
+    summary.taskCount = 12;
+    summary.prefilterFailedTasks = 1;
+    summary.tasksWithAnySeed = 4;
+    summary.tasksWithAnyRefineWindowBeforeGate = 4;
+    summary.tasksWithAnyRefineWindowAfterGate = 2;
+
+    ok = expect_equal_int(
+           static_cast<int>(exact_sim_two_stage_discovery_status_from_summary(summary)),
+           static_cast<int>(EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_PREFILTER_FAILED),
+           "prefilter failed discovery status") && ok;
+    ok = expect_false(exact_sim_two_stage_discovery_predicted_skip(summary),
+                      "prefilter failed disables predicted skip") && ok;
+  }
+
+  {
+    ExactSimTwoStageDiscoverySummary summary;
+    summary.taskCount = 12;
+
+    ok = expect_equal_int(
+           static_cast<int>(exact_sim_two_stage_discovery_status_from_summary(summary)),
+           static_cast<int>(EXACT_SIM_TWO_STAGE_DISCOVERY_STATUS_EMPTY),
+           "empty discovery status") && ok;
+    ok = expect_false(exact_sim_two_stage_discovery_predicted_skip(summary),
+                      "empty discovery flag") && ok;
+  }
+
+  if(!ok)
+  {
+    return 1;
+  }
+
+  std::cout << "ok\n";
+  return 0;
+}
