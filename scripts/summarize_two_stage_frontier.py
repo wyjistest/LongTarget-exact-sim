@@ -14,6 +14,17 @@ def _anchor_name(report: dict, path: Path) -> str:
     return inputs.get("dna_basename") or path.parent.name
 
 
+def _comparison_metric(run: dict, key: str) -> float:
+    comparison = run["comparison"]
+    if key in comparison:
+        return float(comparison[key])
+    if key in {"top5_retention", "top10_retention"}:
+        return float(comparison.get("top_hit_retention", 0.0))
+    if key == "score_weighted_recall":
+        return float(comparison.get("relaxed", {}).get("recall", 0.0))
+    return 0.0
+
+
 def _run_qualifies(run: dict, report: dict) -> bool:
     gate = report.get("quality_gate")
     if not gate:
@@ -59,7 +70,7 @@ def _worst_output_metrics(run: dict) -> tuple[str | None, float, float, bool]:
 
 
 def _mean(values: list[float]) -> float:
-    return statistics.fmean(values) if values else 0.0
+    return round(statistics.fmean(values), 12) if values else 0.0
 
 
 def _build_rows(report_paths: list[Path]) -> list[dict]:
@@ -91,6 +102,9 @@ def _build_rows(report_paths: list[Path]) -> list[dict]:
                     "refine_total_bp": [],
                     "relaxed_recall": [],
                     "top_hit_retention": [],
+                    "top5_retention": [],
+                    "top10_retention": [],
+                    "score_weighted_recall": [],
                     "worst_output_relaxed_recall": [],
                     "worst_output_top_hit_retention": [],
                     "zero_top_hit_reports": 0,
@@ -110,6 +124,9 @@ def _build_rows(report_paths: list[Path]) -> list[dict]:
                     "refine_total_bp": int(run["refine_total_bp"]),
                     "relaxed_recall": float(run["comparison"]["relaxed"]["recall"]),
                     "top_hit_retention": float(run["comparison"]["top_hit_retention"]),
+                    "top5_retention": _comparison_metric(run, "top5_retention"),
+                    "top10_retention": _comparison_metric(run, "top10_retention"),
+                    "score_weighted_recall": _comparison_metric(run, "score_weighted_recall"),
                     "worst_output": worst_name,
                     "worst_output_relaxed_recall": worst_recall,
                     "worst_output_top_hit_retention": worst_top_hit,
@@ -124,6 +141,9 @@ def _build_rows(report_paths: list[Path]) -> list[dict]:
             bucket["refine_total_bp"].append(float(run["refine_total_bp"]))
             bucket["relaxed_recall"].append(float(run["comparison"]["relaxed"]["recall"]))
             bucket["top_hit_retention"].append(float(run["comparison"]["top_hit_retention"]))
+            bucket["top5_retention"].append(_comparison_metric(run, "top5_retention"))
+            bucket["top10_retention"].append(_comparison_metric(run, "top10_retention"))
+            bucket["score_weighted_recall"].append(_comparison_metric(run, "score_weighted_recall"))
             bucket["worst_output_relaxed_recall"].append(worst_recall)
             bucket["worst_output_top_hit_retention"].append(worst_top_hit)
             if zero_top_hit:
@@ -152,6 +172,12 @@ def _build_rows(report_paths: list[Path]) -> list[dict]:
                 "min_relaxed_recall": min(bucket["relaxed_recall"]),
                 "mean_top_hit_retention": _mean(bucket["top_hit_retention"]),
                 "min_top_hit_retention": min(bucket["top_hit_retention"]),
+                "mean_top5_retention": _mean(bucket["top5_retention"]),
+                "min_top5_retention": min(bucket["top5_retention"]),
+                "mean_top10_retention": _mean(bucket["top10_retention"]),
+                "min_top10_retention": min(bucket["top10_retention"]),
+                "mean_score_weighted_recall": _mean(bucket["score_weighted_recall"]),
+                "min_score_weighted_recall": min(bucket["score_weighted_recall"]),
                 "mean_worst_output_relaxed_recall": _mean(bucket["worst_output_relaxed_recall"]),
                 "min_worst_output_relaxed_recall": min(bucket["worst_output_relaxed_recall"]),
                 "mean_worst_output_top_hit_retention": _mean(bucket["worst_output_top_hit_retention"]),
@@ -215,6 +241,9 @@ def _render_markdown(rows: list[dict], report_count: int) -> str:
         "mean_refine_total_bp",
         "min_worst_output_relaxed_recall",
         "min_worst_output_top_hit_retention",
+        "mean_top5_retention",
+        "min_top10_retention",
+        "min_score_weighted_recall",
         "zero_top_hit_reports",
         "all_top_hit_nonzero",
         "qualifying_reports",
@@ -243,6 +272,9 @@ def _render_markdown(rows: list[dict], report_count: int) -> str:
             f"{row['mean_refine_total_bp']:.3f}",
             f"{row['min_worst_output_relaxed_recall']:.3f}",
             f"{row['min_worst_output_top_hit_retention']:.3f}",
+            f"{row['mean_top5_retention']:.3f}",
+            f"{row['min_top10_retention']:.3f}",
+            f"{row['min_score_weighted_recall']:.3f}",
             str(row["zero_top_hit_reports"]),
             "yes" if row["all_top_hit_nonzero"] else "no",
             str(row["qualifying_reports"]),

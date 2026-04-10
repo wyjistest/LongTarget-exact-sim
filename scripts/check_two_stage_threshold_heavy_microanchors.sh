@@ -34,28 +34,57 @@ discovery = json.load(open(sys.argv[2], "r", encoding="utf-8"))
 assert summary["compare_output_mode"] == "lite"
 assert summary["prefilter_backend"] == "prealign_cuda"
 assert len(summary["tile_specs"]) == 2
-assert len(summary["selected_microanchors"]) == 3
+assert len(summary["selected_microanchors"]) == 4
 assert summary["decision_flags"].keys() == {
     "needs_stronger_gate",
     "needs_relaxation",
     "ready_for_broader_anchor_sweep",
 }
+assert summary["aggregate"]["selected_microanchor_count"] == 4
+assert "mean_top5_retention" in summary["aggregate"]
+assert "mean_top10_retention" in summary["aggregate"]
+assert "mean_score_weighted_recall" in summary["aggregate"]
+assert "min_top5_retention" in summary["aggregate"]
+assert "min_top10_retention" in summary["aggregate"]
+assert "min_score_weighted_recall" in summary["aggregate"]
 
 for item in summary["selected_microanchors"]:
     assert item["length_bp"] in {1000, 2000}
-    assert item["selection_rank"] >= 1
+    assert item["selection_rank"] in {1, 2}
+    assert item["selection_kind"] in {"strongest_shrink", "medium_shrink"}
     assert Path(item["shard_path"]).exists()
     assert Path(item["report_path"]).exists()
-    assert set(item["runs"]) == {"legacy", "deferred_exact", "deferred_exact_minimal_v1"}
-    assert set(item["comparisons_vs_legacy"]) == {"deferred_exact", "deferred_exact_minimal_v1"}
+    assert set(item["runs"]) == {"legacy", "deferred_exact", "deferred_exact_minimal_v2"}
+    assert set(item["comparisons_vs_legacy"]) == {"deferred_exact", "deferred_exact_minimal_v2"}
+    assert "top5_retention" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2"]
+    assert "top10_retention" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2"]
+    assert "score_weighted_recall" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2"]
 
 assert discovery["report_count"] >= 3
 assert len(discovery["candidates"]) >= 3
+assert discovery["discovery_mode"] == "prefilter_only"
 for candidate in discovery["candidates"][:3]:
-    assert set(candidate["runs"]) == {"deferred_exact"}
+    assert candidate["status"] in {"ok", "empty", "prefilter_failed", "hard_failed", "unsupported"}
+    assert Path(candidate["shard_path"]).exists()
+    assert Path(candidate["discovery_stderr_path"]).exists()
+    payload = candidate["discovery"]
+    assert payload["mode"] == "prefilter_only"
+    assert payload["status"] == candidate["status"]
+    assert payload["prefilter_backend"] == "prealign_cuda"
+    assert payload["prefilter_hits"] >= 0
+    assert payload["tasks_with_any_seed"] >= 0
+    assert payload["tasks_with_any_refine_window_before_gate"] >= 0
+    assert payload["tasks_with_any_refine_window_after_gate"] >= 0
+    assert payload["windows_before_gate"] >= 0
+    assert payload["windows_after_gate"] >= 0
+    assert payload["prefilter_failed_tasks"] >= 0
+    assert payload["prefilter_only_seconds"] >= 0.0
+    assert payload["gate_seconds"] >= 0.0
+    assert isinstance(payload["predicted_skip"], bool)
 PY
 
 grep -q "Two-Stage Threshold Heavy Micro-Anchor Summary" "$WORK/summary.md"
-grep -q "ready_for_broader_anchor_sweep" "$WORK/summary.md"
+grep -q "top5_retention" "$WORK/summary.md"
+grep -q "score_weighted_recall" "$WORK/summary.md"
 
 echo "ok"

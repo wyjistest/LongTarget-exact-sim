@@ -311,6 +311,37 @@ def _empty_output_summary(filename: str) -> OutputSummary:
     )
 
 
+def _sorted_strict_score_keys(strict_scores: dict[tuple, float]) -> list[tuple]:
+    return [
+        key
+        for key, _score in sorted(
+            strict_scores.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ]
+
+
+def _topk_retention(ref_scores: dict[tuple, float], cand_keys: set[tuple], *, k: int) -> float:
+    if k <= 0:
+        return 1.0
+    ranked_keys = _sorted_strict_score_keys(ref_scores)
+    if not ranked_keys:
+        return 1.0
+    topk = ranked_keys[: min(k, len(ranked_keys))]
+    if not topk:
+        return 1.0
+    retained = sum(1 for key in topk if key in cand_keys)
+    return retained / len(topk)
+
+
+def _score_weighted_recall(ref_scores: dict[tuple, float], cand_keys: set[tuple]) -> float:
+    total_weight = sum(max(score, 0.0) for score in ref_scores.values())
+    if total_weight <= 0.0:
+        return 1.0
+    retained_weight = sum(max(score, 0.0) for key, score in ref_scores.items() if key in cand_keys)
+    return retained_weight / total_weight
+
+
 def _comparison_from_summaries(ref_aggregate: OutputSummary, cand_aggregate: OutputSummary) -> dict[str, object]:
     strict_stats = MatchStats(
         len(ref_aggregate.strict_keys),
@@ -333,6 +364,9 @@ def _comparison_from_summaries(ref_aggregate: OutputSummary, cand_aggregate: Out
         "relaxed": _match_stats_dict(relaxed_stats),
         "score_delta_summary": _score_delta_summary(ref_aggregate.strict_scores, cand_aggregate.strict_scores),
         "top_hit_retention": top_hit_retention,
+        "top5_retention": _topk_retention(ref_aggregate.strict_scores, cand_aggregate.strict_keys, k=5),
+        "top10_retention": _topk_retention(ref_aggregate.strict_scores, cand_aggregate.strict_keys, k=10),
+        "score_weighted_recall": _score_weighted_recall(ref_aggregate.strict_scores, cand_aggregate.strict_keys),
         "recall_proxy": relaxed_stats.recall,
     }
     return comparison

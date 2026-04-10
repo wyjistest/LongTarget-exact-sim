@@ -30,10 +30,16 @@ cat >"$WORK/r1/report.json" <<'EOF'
       "comparison": {
         "relaxed": {"recall": 0.6},
         "top_hit_retention": 0.0,
+        "top5_retention": 0.2,
+        "top10_retention": 0.3,
+        "score_weighted_recall": 0.4,
         "per_output_comparisons": {
           "anchor_a-TFOsorted.lite": {
             "relaxed": {"recall": 0.6},
-            "top_hit_retention": 0.0
+            "top_hit_retention": 0.0,
+            "top5_retention": 0.2,
+            "top10_retention": 0.3,
+            "score_weighted_recall": 0.4
           }
         }
       }
@@ -53,10 +59,16 @@ cat >"$WORK/r1/report.json" <<'EOF'
       "comparison": {
         "relaxed": {"recall": 0.9},
         "top_hit_retention": 0.8,
+        "top5_retention": 0.9,
+        "top10_retention": 0.95,
+        "score_weighted_recall": 0.85,
         "per_output_comparisons": {
           "anchor_a-TFOsorted.lite": {
             "relaxed": {"recall": 0.85},
-            "top_hit_retention": 0.8
+            "top_hit_retention": 0.8,
+            "top5_retention": 0.9,
+            "top10_retention": 0.95,
+            "score_weighted_recall": 0.85
           }
         }
       }
@@ -89,10 +101,16 @@ cat >"$WORK/r2/report.json" <<'EOF'
       "comparison": {
         "relaxed": {"recall": 0.72},
         "top_hit_retention": 0.4,
+        "top5_retention": 0.5,
+        "top10_retention": 0.55,
+        "score_weighted_recall": 0.45,
         "per_output_comparisons": {
           "anchor_b-TFOsorted.lite": {
             "relaxed": {"recall": 0.72},
-            "top_hit_retention": 0.4
+            "top_hit_retention": 0.4,
+            "top5_retention": 0.5,
+            "top10_retention": 0.55,
+            "score_weighted_recall": 0.45
           }
         }
       }
@@ -112,10 +130,16 @@ cat >"$WORK/r2/report.json" <<'EOF'
       "comparison": {
         "relaxed": {"recall": 0.82},
         "top_hit_retention": 0.75,
+        "top5_retention": 0.8,
+        "top10_retention": 0.9,
+        "score_weighted_recall": 0.78,
         "per_output_comparisons": {
           "anchor_b-TFOsorted.lite": {
             "relaxed": {"recall": 0.8},
-            "top_hit_retention": 0.75
+            "top_hit_retention": 0.75,
+            "top5_retention": 0.8,
+            "top10_retention": 0.9,
+            "score_weighted_recall": 0.78
           }
         }
       }
@@ -156,6 +180,9 @@ assert fast_bad["qualifying_reports"] == 0
 assert fast_bad["mean_prefilter_hits"] == 13.0
 assert fast_bad["mean_refine_window_count"] == 3.5
 assert fast_bad["mean_refine_total_bp"] == 1300.0
+assert fast_bad["mean_top5_retention"] == 0.35
+assert fast_bad["min_top10_retention"] == 0.3
+assert fast_bad["mean_score_weighted_recall"] == 0.425
 
 slower_good = rows[(128, 5, 0, 64, 32)]
 assert slower_good["report_count"] == 2
@@ -167,6 +194,9 @@ assert slower_good["min_worst_output_top_hit_retention"] == 0.75
 assert slower_good["mean_prefilter_hits"] == 17.0
 assert slower_good["mean_refine_window_count"] == 2.0
 assert slower_good["mean_refine_total_bp"] == 925.0
+assert slower_good["mean_top5_retention"] == 0.85
+assert slower_good["min_top10_retention"] == 0.9
+assert slower_good["min_score_weighted_recall"] == 0.78
 assert slower_good["pareto_optimal"] is True
 PY
 
@@ -176,6 +206,8 @@ python3 "$ROOT/scripts/summarize_two_stage_frontier.py" \
 
 grep -q "prefilter_topk" "$WORK/summary.md"
 grep -q "mean_prefilter_hits" "$WORK/summary.md"
+grep -q "mean_top5_retention" "$WORK/summary.md"
+grep -q "min_score_weighted_recall" "$WORK/summary.md"
 grep -q "pareto_optimal" "$WORK/summary.md"
 grep -q "128" "$WORK/summary.md"
 

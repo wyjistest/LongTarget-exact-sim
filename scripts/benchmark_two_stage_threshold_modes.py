@@ -20,7 +20,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 import benchmark_sample_vs_fasim as sample_vs_fasim  # noqa: E402
 
 SCORE_TOLERANCE = 1e-6
-RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1")
+RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1", "deferred_exact_minimal_v2")
+DEFAULT_RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -48,6 +49,9 @@ class ThresholdModeRun:
     threshold_batched_seconds: float
     windows_before_gate: int
     windows_after_gate: int
+    singleton_rescued_windows: int
+    singleton_rescued_tasks: int
+    singleton_rescue_bp_total: int
     output_dir: str
     stderr_path: str
     output_mode: str
@@ -321,8 +325,21 @@ def main() -> int:
                 "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
             },
         ),
+        (
+            "deferred_exact_minimal_v2",
+            {
+                "LONGTARGET_TWO_STAGE_THRESHOLD_MODE": "deferred_exact",
+                "LONGTARGET_TWO_STAGE_REJECT_MODE": "minimal_v2",
+                "LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE": str(args.min_peak_score),
+                "LONGTARGET_TWO_STAGE_MIN_SUPPORT": str(args.min_support),
+                "LONGTARGET_TWO_STAGE_MIN_MARGIN": str(args.min_margin),
+                "LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE": str(args.strong_score_override),
+                "LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK": str(args.max_windows_per_task),
+                "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
+            },
+        ),
     ]
-    requested_run_labels = args.run_label or list(RUN_LABELS)
+    requested_run_labels = args.run_label or list(DEFAULT_RUN_LABELS)
     run_specs = [(label, env) for label, env in all_run_specs if label in requested_run_labels]
     if not run_specs:
         raise RuntimeError("no run specs selected")
@@ -378,6 +395,9 @@ def main() -> int:
             threshold_batched_seconds=_metric_float(metrics, "two_stage_threshold_batched_seconds"),
             windows_before_gate=_metric_int(metrics, "two_stage_windows_before_gate"),
             windows_after_gate=_metric_int(metrics, "two_stage_windows_after_gate"),
+            singleton_rescued_windows=_metric_int(metrics, "two_stage_singleton_rescued_windows"),
+            singleton_rescued_tasks=_metric_int(metrics, "two_stage_singleton_rescued_tasks"),
+            singleton_rescue_bp_total=_metric_int(metrics, "two_stage_singleton_rescue_bp_total"),
             output_dir=str(out_dir),
             stderr_path=str(stderr_path),
             output_mode=args.compare_output_mode,

@@ -21,7 +21,10 @@ rm -rf "$WORK"
     --peak-suppress-bp 5 \
     --score-floor-delta 0 \
     --refine-pad-bp 64 \
-    --refine-merge-gap-bp 32 >/dev/null
+    --refine-merge-gap-bp 32 \
+    --run-label legacy \
+    --run-label deferred_exact \
+    --run-label deferred_exact_minimal_v2 >/dev/null
 )
 
 python3 - "$WORK/report.json" <<'PY'
@@ -38,13 +41,13 @@ assert report["refine_pad_bp"] == 64
 assert report["refine_merge_gap_bp"] == 32
 
 runs = report["runs"]
-assert set(runs) == {"legacy", "deferred_exact", "deferred_exact_minimal_v1"}
+assert set(runs) == {"legacy", "deferred_exact", "deferred_exact_minimal_v2"}
 assert runs["legacy"]["threshold_mode"] == "legacy"
 assert runs["legacy"]["reject_mode"] == "off"
 assert runs["deferred_exact"]["threshold_mode"] == "deferred_exact"
 assert runs["deferred_exact"]["reject_mode"] == "off"
-assert runs["deferred_exact_minimal_v1"]["threshold_mode"] == "deferred_exact"
-assert runs["deferred_exact_minimal_v1"]["reject_mode"] == "minimal_v1"
+assert runs["deferred_exact_minimal_v2"]["threshold_mode"] == "deferred_exact"
+assert runs["deferred_exact_minimal_v2"]["reject_mode"] == "minimal_v2"
 
 for label, run in runs.items():
     if label == "legacy":
@@ -70,15 +73,21 @@ for label, run in runs.items():
     assert run["threshold_batched_seconds"] >= 0
     assert run["windows_before_gate"] >= 0
     assert run["windows_after_gate"] >= 0
+    assert run["singleton_rescued_windows"] >= 0
+    assert run["singleton_rescued_tasks"] >= 0
+    assert run["singleton_rescue_bp_total"] >= 0
     assert len(run["output_sha256"]) == 64
     assert len(run["normalized_output_sha256"]) == 64
 
 comparisons = report["comparisons_vs_legacy"]
-assert set(comparisons) == {"deferred_exact", "deferred_exact_minimal_v1"}
+assert set(comparisons) == {"deferred_exact", "deferred_exact_minimal_v2"}
 for comparison in comparisons.values():
     assert "strict" in comparison
     assert "relaxed" in comparison
     assert "top_hit_retention" in comparison
+    assert "top5_retention" in comparison
+    assert "top10_retention" in comparison
+    assert "score_weighted_recall" in comparison
     assert "per_output_comparisons" in comparison
     assert "raw_equal" in comparison
     assert "normalized_equal" in comparison
@@ -90,6 +99,13 @@ for comparison in comparisons.values():
         "score_changed",
     }
     assert comparison["difference_class"] in {"none", "ordering_or_format_only", "content_diff"}
+    assert 0.0 <= comparison["top5_retention"] <= 1.0
+    assert 0.0 <= comparison["top10_retention"] <= 1.0
+    assert 0.0 <= comparison["score_weighted_recall"] <= 1.0
+    for per_output in comparison["per_output_comparisons"].values():
+        assert "top5_retention" in per_output
+        assert "top10_retention" in per_output
+        assert "score_weighted_recall" in per_output
 PY
 
 echo "ok"
