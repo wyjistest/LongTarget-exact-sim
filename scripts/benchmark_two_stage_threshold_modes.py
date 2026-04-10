@@ -59,6 +59,7 @@ class ThresholdModeRun:
     line_count: int
     output_sha256: str
     normalized_output_sha256: str
+    debug_windows_csv: str
 
 
 def _parse_metrics(stderr_path: Path) -> dict[str, str]:
@@ -260,6 +261,13 @@ def main() -> int:
         default=None,
         help="optional: limit execution to one or more specific run labels",
     )
+    parser.add_argument(
+        "--debug-window-run-label",
+        action="append",
+        choices=RUN_LABELS,
+        default=None,
+        help="optional: emit LONGTARGET_TWO_STAGE_DEBUG_WINDOWS_CSV for selected run labels",
+    )
     args = parser.parse_args()
 
     work_dir = Path(args.work_dir).resolve()
@@ -340,6 +348,7 @@ def main() -> int:
         ),
     ]
     requested_run_labels = args.run_label or list(DEFAULT_RUN_LABELS)
+    debug_window_run_labels = set(args.debug_window_run_label or [])
     run_specs = [(label, env) for label, env in all_run_specs if label in requested_run_labels]
     if not run_specs:
         raise RuntimeError("no run specs selected")
@@ -348,10 +357,13 @@ def main() -> int:
     for label, extra_env in run_specs:
         out_dir = work_dir / label / "output"
         stderr_path = work_dir / label / "stderr.log"
+        debug_windows_csv = work_dir / label / "two_stage_windows.tsv"
         out_dir.parent.mkdir(parents=True, exist_ok=True)
         out_dir.mkdir(parents=True, exist_ok=True)
         env = dict(shared_env)
         env.update(extra_env)
+        if label in debug_window_run_labels:
+            env["LONGTARGET_TWO_STAGE_DEBUG_WINDOWS_CSV"] = str(debug_windows_csv)
         run = sample_vs_fasim._run_checked(
             label=label,
             cmd=[str(longtarget), *base_args, "-O", str(out_dir)],
@@ -366,6 +378,11 @@ def main() -> int:
         internal_seconds = run.internal_seconds
         if internal_seconds is None:
             raise RuntimeError(f"{label} missing benchmark.total_seconds")
+        debug_windows_csv_str = ""
+        if label in debug_window_run_labels:
+            if not debug_windows_csv.exists():
+                raise RuntimeError(f"{label} requested debug windows CSV but file was not created: {debug_windows_csv}")
+            debug_windows_csv_str = str(debug_windows_csv)
         runs[label] = ThresholdModeRun(
             label=label,
             threshold_mode=_metric_str(metrics, "two_stage_threshold_mode", default="legacy"),
@@ -405,6 +422,7 @@ def main() -> int:
             line_count=summary.line_count,
             output_sha256=raw_sha256,
             normalized_output_sha256=normalized_sha256,
+            debug_windows_csv=debug_windows_csv_str,
         )
 
     comparisons: dict[str, dict[str, object]] = {}
@@ -442,6 +460,7 @@ def main() -> int:
             "max_bp_per_task": args.max_bp_per_task,
         },
         "run_labels_requested": requested_run_labels,
+        "debug_window_run_labels_requested": sorted(debug_window_run_labels),
         "runs": {label: dataclasses.asdict(run) for label, run in runs.items()},
         "comparisons_vs_legacy": comparisons,
     }

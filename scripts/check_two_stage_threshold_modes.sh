@@ -24,7 +24,8 @@ rm -rf "$WORK"
     --refine-merge-gap-bp 32 \
     --run-label legacy \
     --run-label deferred_exact \
-    --run-label deferred_exact_minimal_v2 >/dev/null
+    --run-label deferred_exact_minimal_v2 \
+    --debug-window-run-label deferred_exact_minimal_v2 >/dev/null
 )
 
 python3 - "$WORK/report.json" <<'PY'
@@ -48,6 +49,7 @@ assert runs["deferred_exact"]["threshold_mode"] == "deferred_exact"
 assert runs["deferred_exact"]["reject_mode"] == "off"
 assert runs["deferred_exact_minimal_v2"]["threshold_mode"] == "deferred_exact"
 assert runs["deferred_exact_minimal_v2"]["reject_mode"] == "minimal_v2"
+assert runs["deferred_exact_minimal_v2"]["debug_windows_csv"].endswith("two_stage_windows.tsv")
 
 for label, run in runs.items():
     if label == "legacy":
@@ -78,6 +80,11 @@ for label, run in runs.items():
     assert run["singleton_rescue_bp_total"] >= 0
     assert len(run["output_sha256"]) == 64
     assert len(run["normalized_output_sha256"]) == 64
+    if label == "deferred_exact_minimal_v2":
+        assert run["debug_windows_csv"]
+        assert open(run["debug_windows_csv"], "r", encoding="utf-8").readline().startswith("task_index\t")
+    else:
+        assert run["debug_windows_csv"] == ""
 
 comparisons = report["comparisons_vs_legacy"]
 assert set(comparisons) == {"deferred_exact", "deferred_exact_minimal_v2"}
