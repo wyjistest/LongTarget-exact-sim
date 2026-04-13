@@ -2,7 +2,7 @@
 
 ## 时间与目标
 
-- 日期：2026-03-25（最近更新：2026-03-29）
+- 日期：2026-03-25（最近更新：2026-04-13）
 - 仓库：`/data/wenyujianData/LongTarget-exact-sim`
 - 目标：在 **最终输出文件 byte-identical** 的前提下，尽可能把 x86_64 CPU 路径优化到极致。
 - 约束：
@@ -824,6 +824,42 @@
 - 当前结论：
   - two-stage lane 的观察维度已经从“更快多少”推进到“丢失到底发生在 gate 内、kept-window 附近，还是 prefilter 覆盖之外”；
   - 这让后续决策可以围绕证据做：该继续调 `minimal_v2`，还是该给某些代表性 miss 加 selective fallback。
+
+## 2026-04-13（panel compare / decision report / non-empty ambiguity rescue）
+
+- 这一轮把 two-stage lane 的定位继续收紧为 **candidate generator + targeted exact rescue**，不再把 `minimal_v2` 当成 final-output 近似路径：
+  - `exact_sim.h` / `longtarget.cpp` 把 `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` 从“空 task 兜底”扩展到“稀疏 non-empty task 的 ambiguity-triggered rescue”；
+  - 新增 `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS`、`LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP` 两个运行时阈值；
+  - stderr benchmark 新增 `benchmark.two_stage_selective_fallback_non_empty_triggered_tasks`，用于区分空 task rescue 与 non-empty rescue 是否真正命中。
+- 这一轮也补齐了 panel 决策链缺的最后一段：
+  - 新增 `scripts/compare_two_stage_panel_summaries.py`，在同一组 selected heavy micro-anchor tile 上直接对比 `minimal_v2` baseline 与 candidate lane；
+  - 新增 `scripts/summarize_two_stage_panel_decision.py`，把 compare summary 和 coverage attribution summary 合成单一 decision report；
+  - `README.md` / `Makefile` 同步加入对应入口与自检脚本，保证 compare / decision 不是一次性的临时分析。
+- 真实 panel 结果已经在 `.tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty/` 落盘：
+  - `compare_vs_minimal_v2/summary.json` 显示 12 个代表 tile 上：
+    - `selective_fallback_triggered_tasks=0`
+    - `selective_fallback_non_empty_triggered_tasks=0`
+    - `selective_fallback_selected_windows=0`
+    - `top5_retention` / `top10_retention` / `score_weighted_recall` / `threshold_skipped_after_gate` 的 `delta_mean` 全部为 `0.0`
+    - 只有 `threshold_batched_seconds` 的 `delta_mean≈+2.7386s`
+  - `coverage_attribution_panel/summary.json` 显示 residual miss 仍然主要落在 `inside_rejected_window`：
+    - overall share `≈66.6%`
+    - `top5_missing` share `70%`
+    - `top10_missing` share `55%`
+    - `score_weighted_missing` share `≈66.3%`
+    - `outside_kept_but_near_kept` 仍然很低（overall `≈0.6%`，`top5/top10` 为 `0%`）
+  - `panel_decision/summary.json` 因此给出的 `recommended_next_step` 仍是 `non_empty_ambiguity_triggered_selective_fallback`。
+- 验证入口：
+  - `make check-exact-sim-two-stage-threshold`
+  - `make check-two-stage-threshold-modes`
+  - `make check-two-stage-threshold-heavy-microanchors`
+  - `make check-compare-two-stage-panel-summaries`
+  - `make check-summarize-two-stage-panel-decision`
+  - `bash ./scripts/check_two_stage_coverage_attribution_panel.sh`
+- 当前结论：
+  - `minimal_v2` 现在已经明确是 shortlist / candidate-generator lane，而不是 final-output lane；
+  - 第一版 non-empty ambiguity rescue 逻辑已经接入真实 runtime，但在当前代表 panel 上 **零触发、零质量增量**；
+  - 因为 residual miss 仍由 `inside_rejected_window` 主导，下一步应继续扩 non-empty selector，而不是先做 `REFINE_PAD_BP / REFINE_MERGE_GAP_BP` sweep。
 
 ## 常用命令
 

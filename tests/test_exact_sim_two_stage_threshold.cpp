@@ -254,6 +254,48 @@ int main()
 
   {
     std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,96,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(3);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(60,72,96,90,2);
+    trace[0].beforeGate = true;
+    trace[0].afterGate = true;
+    trace[0].sortedRank = 0;
+    trace[1].originalIndex = 1;
+    trace[1].window = make_window(20,32,92,std::numeric_limits<long>::min(),1);
+    trace[1].beforeGate = true;
+    trace[1].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+    trace[2].originalIndex = 2;
+    trace[2].window = make_window(1,10,86,std::numeric_limits<long>::min(),1);
+    trace[2].beforeGate = true;
+    trace[2].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 1;
+    fallbackConfig.nonEmptyMaxScoreGap = 5;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),2u,"non-empty ambiguity fallback adds one window") && ok;
+    ok = expect_equal_int(windows[0].startJ,60,"non-empty ambiguity keeps strongest kept first") && ok;
+    ok = expect_equal_int(windows[1].startJ,20,"non-empty ambiguity keeps best rejected singleton second") && ok;
+    ok = expect_true(trace[0].afterGate,"non-empty ambiguity keeps prior winner after gate") && ok;
+    ok = expect_equal_size(trace[0].sortedRank,0u,"non-empty ambiguity keeps winner rank") && ok;
+    ok = expect_true(trace[1].afterGate,"non-empty ambiguity selected trace becomes after-gate") && ok;
+    ok = expect_true(trace[1].selectiveFallbackSelected,"non-empty ambiguity marks selected trace") && ok;
+    ok = expect_equal_size(trace[1].sortedRank,1u,"non-empty ambiguity selected rank") && ok;
+    ok = expect_false(trace[2].afterGate,"weaker rejected singleton stays rejected") && ok;
+    ok = expect_false(trace[2].selectiveFallbackSelected,"weaker rejected singleton not selected") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,1,"non-empty ambiguity increments total fallback trigger") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyTriggeredTasks,1,"non-empty ambiguity increments dedicated trigger counter") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackSelectedWindows,1,"non-empty ambiguity selected windows") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackSelectedBpTotal,13,"non-empty ambiguity selected bp") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
     windows.push_back(make_window(60,72,102,90,2));
 
     ExactSimTwoStageRejectStats stats;
@@ -265,13 +307,15 @@ int main()
 
     ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
     fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 1;
+    fallbackConfig.nonEmptyMaxScoreGap = 5;
     exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
 
-    ok = expect_equal_size(windows.size(),1u,"non-empty gate result skips fallback") && ok;
-    ok = expect_equal_int(windows[0].startJ,60,"existing gate winner preserved") && ok;
-    ok = expect_false(trace[0].afterGate,"non-empty result leaves rejected trace untouched") && ok;
-    ok = expect_false(trace[0].selectiveFallbackSelected,"non-empty result does not mark fallback") && ok;
-    ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,0,"non-empty result no fallback trigger") && ok;
+    ok = expect_equal_size(windows.size(),1u,"wide-gap non-empty result skips fallback") && ok;
+    ok = expect_equal_int(windows[0].startJ,60,"wide-gap existing gate winner preserved") && ok;
+    ok = expect_false(trace[0].afterGate,"wide-gap non-empty result leaves rejected trace untouched") && ok;
+    ok = expect_false(trace[0].selectiveFallbackSelected,"wide-gap non-empty result does not mark fallback") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,0,"wide-gap non-empty result no fallback trigger") && ok;
   }
 
   {

@@ -370,9 +370,12 @@ make check-two-stage-threshold-modes
   - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`
 - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback`:
   - scope is intentionally narrow: only deferred-exact + `minimal_v2`
-  - trigger is conservative: the task must be empty after gate and still have a qualifying `singleton_missing_margin` rejected window at the current `minimal_v2` singleton override threshold
+  - trigger is conservative: it first rescues empty-after-gate tasks, and it can also rescue sparse non-empty tasks when a qualifying rejected `singleton_missing_margin` window stays close to the strongest kept window
   - action is narrow: re-admit exactly one rejected window into the exact refine pass
   - this is an experimental candidate-lane rescue, not a default semantic change and not a task-level `reject=off`
+  - optional knobs for the non-empty ambiguity lane:
+    - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS` limits rescue to sparse tasks (default: `1`)
+    - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP` caps the allowed best-seed-score gap between the strongest kept window and the rescued rejected singleton (default: `6`)
 - Heavy-zone micro-anchor calibration uses coarse tiling plus the same 3-arm threshold-mode compare:
 
 ```
@@ -384,6 +387,37 @@ make check-two-stage-threshold-heavy-microanchors
   - `discovery_report.json` with all tiled candidate reports
   - `summary.json` with selected micro-anchors, 3-arm run payloads, and `decision_flags`
   - `summary.md` with a compact gate/quality table for the shortlisted micro-anchors
+- Selective-fallback follow-up keeps the same representative tiles, compares the fallback panel against the earlier `minimal_v2` panel, then runs residual coverage attribution on the fallback lane:
+
+```
+make check-compare-two-stage-panel-summaries
+
+python3 ./scripts/compare_two_stage_panel_summaries.py \
+  --baseline-panel-summary .tmp/panel_minimal_v2_2026-04-10_chr22_3anchor/summary.json \
+  --candidate-panel-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/summary.json \
+  --output-dir .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/compare_vs_minimal_v2
+
+python3 ./scripts/analyze_two_stage_coverage_attribution_panel.py \
+  --panel-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/summary.json \
+  --candidate-label deferred_exact_minimal_v2_selective_fallback \
+  --output-dir .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/coverage_attribution_panel
+
+make check-summarize-two-stage-panel-decision
+
+python3 ./scripts/summarize_two_stage_panel_decision.py \
+  --compare-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/compare_vs_minimal_v2/summary.json \
+  --attribution-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/coverage_attribution_panel/summary.json \
+  --output-dir .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor/panel_decision
+```
+
+- `scripts/compare_two_stage_panel_summaries.py` requires an exact selected-tile match between the two panel summaries and reports:
+  - panel-level deltas for `top5_retention`, `top10_retention`, `score_weighted_recall`, `threshold_skipped_after_gate`, `threshold_batch_size_mean`, `threshold_batched_seconds`, and `refine_total_bp`
+  - `difference_class` counts/transitions across the matched tiles
+  - candidate-side `selective_fallback_*` totals, including the dedicated non-empty trigger count, so the compare report shows whether fallback actually fired and whether it reached sparse non-empty tasks
+- `scripts/summarize_two_stage_panel_decision.py` merges the panel compare summary with the residual coverage-attribution summary and emits:
+  - `recommended_next_step` (`non_empty_ambiguity_triggered_selective_fallback`, `refine_pad_merge_sweep`, `prefilter_coverage_expansion`, or `audit_inside_kept_window_classification`)
+  - residual primary attribution classes for `overall`, `top5_missing`, `top10_missing`, and `score_weighted_missing`
+  - a compact fallback effectiveness summary keyed off the compare deltas plus `candidate_selective_fallback_totals`
 - Example quality-gated sweep:
 
 ```

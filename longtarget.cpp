@@ -104,6 +104,7 @@ struct LongTargetExecutionMetrics
     twoStageSingletonRescueBpTotal(0),
     twoStageSelectiveFallbackEnabled(0),
     twoStageSelectiveFallbackTriggeredTasks(0),
+    twoStageSelectiveFallbackNonEmptyTriggeredTasks(0),
     twoStageSelectiveFallbackSelectedWindows(0),
     twoStageSelectiveFallbackSelectedBpTotal(0),
     refineWindowCount(0),
@@ -167,6 +168,7 @@ struct LongTargetExecutionMetrics
   uint64_t twoStageSingletonRescueBpTotal;
   uint64_t twoStageSelectiveFallbackEnabled;
   uint64_t twoStageSelectiveFallbackTriggeredTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyTriggeredTasks;
   uint64_t twoStageSelectiveFallbackSelectedWindows;
   uint64_t twoStageSelectiveFallbackSelectedBpTotal;
   uint64_t refineWindowCount;
@@ -1773,6 +1775,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.two_stage_singleton_rescue_bp_total="<<metrics.twoStageSingletonRescueBpTotal<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_enabled="<<metrics.twoStageSelectiveFallbackEnabled<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_triggered_tasks="<<metrics.twoStageSelectiveFallbackTriggeredTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_triggered_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyTriggeredTasks<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_selected_windows="<<metrics.twoStageSelectiveFallbackSelectedWindows<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_selected_bp_total="<<metrics.twoStageSelectiveFallbackSelectedBpTotal<<endl;
   cerr<<"benchmark.refine_window_count="<<metrics.refineWindowCount<<endl;
@@ -2623,6 +2626,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         metrics->twoStageSingletonRescuedTasks += result.rejectStats.singletonRescuedTasks;
         metrics->twoStageSingletonRescueBpTotal += result.rejectStats.singletonRescueBpTotal;
         metrics->twoStageSelectiveFallbackTriggeredTasks += result.rejectStats.selectiveFallbackTriggeredTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyTriggeredTasks += result.rejectStats.selectiveFallbackNonEmptyTriggeredTasks;
         metrics->twoStageSelectiveFallbackSelectedWindows += result.rejectStats.selectiveFallbackSelectedWindows;
         metrics->twoStageSelectiveFallbackSelectedBpTotal += result.rejectStats.selectiveFallbackSelectedBpTotal;
         if(!result.hadAnySeed)

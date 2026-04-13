@@ -83,6 +83,7 @@ for label, run in runs.items():
     assert run["singleton_rescue_bp_total"] >= 0
     assert run["selective_fallback_enabled"] in {0, 1}
     assert run["selective_fallback_triggered_tasks"] >= 0
+    assert run["selective_fallback_non_empty_triggered_tasks"] >= 0
     assert run["selective_fallback_selected_windows"] >= 0
     assert run["selective_fallback_selected_bp_total"] >= 0
     assert len(run["output_sha256"]) == 64

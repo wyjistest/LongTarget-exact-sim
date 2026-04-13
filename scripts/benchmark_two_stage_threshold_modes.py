@@ -60,6 +60,7 @@ class ThresholdModeRun:
     singleton_rescue_bp_total: int
     selective_fallback_enabled: int
     selective_fallback_triggered_tasks: int
+    selective_fallback_non_empty_triggered_tasks: int
     selective_fallback_selected_windows: int
     selective_fallback_selected_bp_total: int
     output_dir: str
@@ -441,6 +442,7 @@ def main() -> int:
             singleton_rescue_bp_total=_metric_int(metrics, "two_stage_singleton_rescue_bp_total"),
             selective_fallback_enabled=_metric_int(metrics, "two_stage_selective_fallback_enabled"),
             selective_fallback_triggered_tasks=_metric_int(metrics, "two_stage_selective_fallback_triggered_tasks"),
+            selective_fallback_non_empty_triggered_tasks=_metric_int(metrics, "two_stage_selective_fallback_non_empty_triggered_tasks"),
             selective_fallback_selected_windows=_metric_int(metrics, "two_stage_selective_fallback_selected_windows"),
             selective_fallback_selected_bp_total=_metric_int(metrics, "two_stage_selective_fallback_selected_bp_total"),
             output_dir=str(out_dir),

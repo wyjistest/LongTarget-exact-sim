@@ -545,6 +545,14 @@ check-two-stage-threshold-heavy-microanchors:
 	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_two_stage_threshold_heavy_microanchors.py --help >/dev/null
 	LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) bash ./scripts/check_two_stage_threshold_heavy_microanchors.sh
 
+check-compare-two-stage-panel-summaries:
+	python3 ./scripts/compare_two_stage_panel_summaries.py --help >/dev/null
+	bash ./scripts/check_compare_two_stage_panel_summaries.sh
+
+check-summarize-two-stage-panel-decision:
+	python3 ./scripts/summarize_two_stage_panel_decision.py --help >/dev/null
+	bash ./scripts/check_summarize_two_stage_panel_decision.sh
+
 check-summarize-two-stage-frontier:
 	python3 ./scripts/summarize_two_stage_frontier.py --help >/dev/null
 	bash ./scripts/check_summarize_two_stage_frontier.sh
@@ -588,4 +596,5 @@ check-longtarget-lite-output:
 			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
-		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors
+		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
+		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision
