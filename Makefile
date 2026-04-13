@@ -553,6 +553,10 @@ check-summarize-two-stage-panel-decision:
 	python3 ./scripts/summarize_two_stage_panel_decision.py --help >/dev/null
 	bash ./scripts/check_summarize_two_stage_panel_decision.sh
 
+check-rerun-two-stage-panel-with-candidate-env:
+	python3 ./scripts/rerun_two_stage_panel_with_candidate_env.py --help >/dev/null
+	bash ./scripts/check_rerun_two_stage_panel_with_candidate_env.sh
+
 check-summarize-two-stage-frontier:
 	python3 ./scripts/summarize_two_stage_frontier.py --help >/dev/null
 	bash ./scripts/check_summarize_two_stage_frontier.sh
@@ -597,4 +601,5 @@ check-longtarget-lite-output:
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
-		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision
+		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
+		check-rerun-two-stage-panel-with-candidate-env

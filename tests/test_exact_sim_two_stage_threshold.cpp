@@ -288,6 +288,12 @@ int main()
     ok = expect_equal_size(trace[1].sortedRank,1u,"non-empty ambiguity selected rank") && ok;
     ok = expect_false(trace[2].afterGate,"weaker rejected singleton stays rejected") && ok;
     ok = expect_false(trace[2].selectiveFallbackSelected,"weaker rejected singleton not selected") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"non-empty ambiguity candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks,0,"non-empty ambiguity max-kept rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks,0,"non-empty ambiguity no-singleton rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks,0,"non-empty ambiguity override rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks,0,"non-empty ambiguity covered rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByScoreGapTasks,0,"non-empty ambiguity score-gap rejection count") && ok;
     ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,1,"non-empty ambiguity increments total fallback trigger") && ok;
     ok = expect_equal_long(stats.selectiveFallbackNonEmptyTriggeredTasks,1,"non-empty ambiguity increments dedicated trigger counter") && ok;
     ok = expect_equal_long(stats.selectiveFallbackSelectedWindows,1,"non-empty ambiguity selected windows") && ok;
@@ -315,7 +321,102 @@ int main()
     ok = expect_equal_int(windows[0].startJ,60,"wide-gap existing gate winner preserved") && ok;
     ok = expect_false(trace[0].afterGate,"wide-gap non-empty result leaves rejected trace untouched") && ok;
     ok = expect_false(trace[0].selectiveFallbackSelected,"wide-gap non-empty result does not mark fallback") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"wide-gap candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByScoreGapTasks,1,"wide-gap score-gap rejection count") && ok;
     ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,0,"wide-gap non-empty result no fallback trigger") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,96,90,2));
+    windows.push_back(make_window(90,102,94,88,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(1);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,92,std::numeric_limits<long>::min(),1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 1;
+    fallbackConfig.nonEmptyMaxScoreGap = 6;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),2u,"max-kept non-empty result keeps original windows") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"max-kept candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks,1,"max-kept rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks,0,"max-kept no singleton count") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,96,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(1);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,92,89,2);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 1;
+    fallbackConfig.nonEmptyMaxScoreGap = 6;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),1u,"no-singleton non-empty result keeps original winner") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"no-singleton candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks,1,"no-singleton rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks,0,"no-singleton override rejection count") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,96,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(1);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,84,std::numeric_limits<long>::min(),1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 1;
+    fallbackConfig.nonEmptyMaxScoreGap = 6;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),1u,"override-blocked non-empty result keeps original winner") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"override-blocked candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks,1,"override-blocked rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks,0,"override-blocked covered rejection count") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(10,40,96,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(1);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,92,std::numeric_limits<long>::min(),1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 1;
+    fallbackConfig.nonEmptyMaxScoreGap = 6;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),1u,"covered non-empty result keeps original winner") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"covered candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks,1,"covered rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByScoreGapTasks,0,"covered score-gap rejection count") && ok;
   }
 
   {

@@ -366,8 +366,9 @@ make check-two-stage-threshold-modes
   - `benchmark.two_stage_windows_before_gate`, `benchmark.two_stage_windows_after_gate`
   - `benchmark.two_stage_windows_rejected_by_min_peak_score`, `benchmark.two_stage_windows_rejected_by_support`, `benchmark.two_stage_windows_rejected_by_margin`, `benchmark.two_stage_windows_trimmed_by_max_windows`, `benchmark.two_stage_windows_trimmed_by_max_bp`
   - `benchmark.two_stage_singleton_rescued_windows`, `benchmark.two_stage_singleton_rescued_tasks`, `benchmark.two_stage_singleton_rescue_bp_total`
-  - `benchmark.two_stage_selective_fallback_enabled`, `benchmark.two_stage_selective_fallback_triggered_tasks`, `benchmark.two_stage_selective_fallback_selected_windows`, `benchmark.two_stage_selective_fallback_selected_bp_total`
-  - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`
+  - `benchmark.two_stage_selective_fallback_enabled`, `benchmark.two_stage_selective_fallback_triggered_tasks`, `benchmark.two_stage_selective_fallback_non_empty_candidate_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_max_kept_windows_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_singleton_override_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_as_covered_by_kept_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_score_gap_tasks`, `benchmark.two_stage_selective_fallback_non_empty_triggered_tasks`, `benchmark.two_stage_selective_fallback_selected_windows`, `benchmark.two_stage_selective_fallback_selected_bp_total`
+  - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`, `run_env_overrides_requested`
+- `--run-env LABEL:KEY=VALUE` lets one threshold-mode rerun inject a candidate-only env override without mutating the shared baseline lanes; use it for narrow selector ablations rather than broad global gate sweeps.
 - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback`:
   - scope is intentionally narrow: only deferred-exact + `minimal_v2`
   - trigger is conservative: it first rescues empty-after-gate tasks, and it can also rescue sparse non-empty tasks when a qualifying rejected `singleton_missing_margin` window stays close to the strongest kept window
@@ -413,11 +414,25 @@ python3 ./scripts/summarize_two_stage_panel_decision.py \
 - `scripts/compare_two_stage_panel_summaries.py` requires an exact selected-tile match between the two panel summaries and reports:
   - panel-level deltas for `top5_retention`, `top10_retention`, `score_weighted_recall`, `threshold_skipped_after_gate`, `threshold_batch_size_mean`, `threshold_batched_seconds`, and `refine_total_bp`
   - `difference_class` counts/transitions across the matched tiles
-  - candidate-side `selective_fallback_*` totals, including the dedicated non-empty trigger count, so the compare report shows whether fallback actually fired and whether it reached sparse non-empty tasks
+  - candidate-side `selective_fallback_*` totals, including non-empty selector candidate/blocker counters plus the dedicated non-empty trigger count, so the compare report shows whether fallback actually fired and which selector clause blocked sparse non-empty tasks
 - `scripts/summarize_two_stage_panel_decision.py` merges the panel compare summary with the residual coverage-attribution summary and emits:
   - `recommended_next_step` (`non_empty_ambiguity_triggered_selective_fallback`, `refine_pad_merge_sweep`, `prefilter_coverage_expansion`, or `audit_inside_kept_window_classification`)
   - residual primary attribution classes for `overall`, `top5_missing`, `top10_missing`, and `score_weighted_missing`
+  - selector diagnosis fields: `selector_candidate_tasks`, `selector_blocker_totals`, `dominant_selector_blocker`, `recommended_selector_ablation`
   - a compact fallback effectiveness summary keyed off the compare deltas plus `candidate_selective_fallback_totals`
+- Narrow selector ablations can reuse the same selected panel tiles while injecting candidate-only env overrides:
+
+```
+make check-rerun-two-stage-panel-with-candidate-env
+
+python3 ./scripts/rerun_two_stage_panel_with_candidate_env.py \
+  --panel-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty/summary.json \
+  --candidate-run-label deferred_exact_minimal_v2_selective_fallback \
+  --candidate-env LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP=9 \
+  --output-dir .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty/rerun_score_gap_9
+```
+
+- `scripts/rerun_two_stage_panel_with_candidate_env.py` keeps the original tile selection fixed, reruns `legacy + candidate`, forwards candidate-only overrides through `--run-env`, and supports `--dry-run` for command preview before launching a real rerun.
 - Example quality-gated sweep:
 
 ```

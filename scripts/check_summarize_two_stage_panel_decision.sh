@@ -20,6 +20,12 @@ cat >"$WORK/case_inside/compare.json" <<'EOF'
     "threshold_batched_seconds": {"baseline_mean": 13.0, "candidate_mean": 16.0, "delta_mean": 3.0},
     "refine_total_bp": {"baseline_mean": 275000.0, "candidate_mean": 275000.0, "delta_mean": 0.0},
     "candidate_selective_fallback_totals": {
+      "selective_fallback_non_empty_candidate_tasks": 11,
+      "selective_fallback_non_empty_rejected_by_max_kept_windows_tasks": 2,
+      "selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks": 1,
+      "selective_fallback_non_empty_rejected_by_singleton_override_tasks": 6,
+      "selective_fallback_non_empty_rejected_as_covered_by_kept_tasks": 0,
+      "selective_fallback_non_empty_rejected_by_score_gap_tasks": 2,
       "selective_fallback_triggered_tasks": 0,
       "selective_fallback_non_empty_triggered_tasks": 0,
       "selective_fallback_selected_windows": 0,
@@ -83,6 +89,12 @@ cat >"$WORK/case_near/compare.json" <<'EOF'
     "threshold_batched_seconds": {"baseline_mean": 13.0, "candidate_mean": 14.0, "delta_mean": 1.0},
     "refine_total_bp": {"baseline_mean": 275000.0, "candidate_mean": 280000.0, "delta_mean": 5000.0},
     "candidate_selective_fallback_totals": {
+      "selective_fallback_non_empty_candidate_tasks": 15,
+      "selective_fallback_non_empty_rejected_by_max_kept_windows_tasks": 1,
+      "selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks": 2,
+      "selective_fallback_non_empty_rejected_by_singleton_override_tasks": 1,
+      "selective_fallback_non_empty_rejected_as_covered_by_kept_tasks": 1,
+      "selective_fallback_non_empty_rejected_by_score_gap_tasks": 5,
       "selective_fallback_triggered_tasks": 8,
       "selective_fallback_non_empty_triggered_tasks": 5,
       "selective_fallback_selected_windows": 8,
@@ -143,6 +155,10 @@ import sys
 
 report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 assert report["recommended_next_step"] == "non_empty_ambiguity_triggered_selective_fallback"
+assert report["selector_candidate_tasks"] == 11
+assert report["dominant_selector_blocker"] == "singleton_override"
+assert report["recommended_selector_ablation"] == "lower_singleton_override"
+assert report["selector_blocker_totals"]["singleton_override"] == 6
 assert report["residual_primary_class"]["score_weighted_missing"] == "inside_rejected_window"
 assert report["fallback_effective"] is False
 assert report["fallback_triggered"] is False
@@ -160,6 +176,10 @@ import sys
 
 report = json.load(open(sys.argv[1], "r", encoding="utf-8"))
 assert report["recommended_next_step"] == "refine_pad_merge_sweep"
+assert report["selector_candidate_tasks"] == 15
+assert report["dominant_selector_blocker"] == "score_gap"
+assert report["recommended_selector_ablation"] == "raise_non_empty_score_gap"
+assert report["selector_blocker_totals"]["score_gap"] == 5
 assert report["residual_primary_class"]["score_weighted_missing"] == "outside_kept_but_near_kept"
 assert report["fallback_effective"] is True
 assert report["fallback_triggered"] is True
@@ -169,5 +189,6 @@ PY
 grep -q "Two-Stage Panel Decision Summary" "$WORK/case_inside/out/summary.md"
 grep -q "recommended_next_step" "$WORK/case_inside/out/summary.md"
 grep -q "inside_rejected_window" "$WORK/case_inside/out/summary.md"
+grep -q "dominant_selector_blocker" "$WORK/case_inside/out/summary.md"
 
 echo "ok"

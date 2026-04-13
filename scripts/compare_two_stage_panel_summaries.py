@@ -23,6 +23,12 @@ NUMERIC_METRICS = (
     "refine_total_bp",
 )
 FALLBACK_COUNTERS = (
+    "selective_fallback_non_empty_candidate_tasks",
+    "selective_fallback_non_empty_rejected_by_max_kept_windows_tasks",
+    "selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks",
+    "selective_fallback_non_empty_rejected_by_singleton_override_tasks",
+    "selective_fallback_non_empty_rejected_as_covered_by_kept_tasks",
+    "selective_fallback_non_empty_rejected_by_score_gap_tasks",
     "selective_fallback_triggered_tasks",
     "selective_fallback_non_empty_triggered_tasks",
     "selective_fallback_selected_windows",

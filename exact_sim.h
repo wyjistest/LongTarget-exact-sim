@@ -857,6 +857,12 @@ struct ExactSimTwoStageRejectStats
     singletonRescuedTasks(0),
     singletonRescueBpTotal(0),
     selectiveFallbackTriggeredTasks(0),
+    selectiveFallbackNonEmptyCandidateTasks(0),
+    selectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks(0),
+    selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks(0),
+    selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks(0),
+    selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks(0),
+    selectiveFallbackNonEmptyRejectedByScoreGapTasks(0),
     selectiveFallbackNonEmptyTriggeredTasks(0),
     selectiveFallbackSelectedWindows(0),
     selectiveFallbackSelectedBpTotal(0) {}
@@ -870,6 +876,12 @@ struct ExactSimTwoStageRejectStats
   uint64_t singletonRescuedTasks;
   uint64_t singletonRescueBpTotal;
   uint64_t selectiveFallbackTriggeredTasks;
+  uint64_t selectiveFallbackNonEmptyCandidateTasks;
+  uint64_t selectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks;
+  uint64_t selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks;
+  uint64_t selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks;
+  uint64_t selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks;
+  uint64_t selectiveFallbackNonEmptyRejectedByScoreGapTasks;
   uint64_t selectiveFallbackNonEmptyTriggeredTasks;
   uint64_t selectiveFallbackSelectedWindows;
   uint64_t selectiveFallbackSelectedBpTotal;
@@ -1308,9 +1320,17 @@ inline void exact_sim_apply_two_stage_selective_fallback_in_place(
   }
 
   const bool hadKeptWindows = !windows.empty();
+  if(hadKeptWindows && stats != NULL)
+  {
+    stats->selectiveFallbackNonEmptyCandidateTasks += 1;
+  }
   if(hadKeptWindows && (config.nonEmptyMaxKeptWindows <= 0 ||
                         static_cast<long>(windows.size()) > config.nonEmptyMaxKeptWindows))
   {
+    if(stats != NULL)
+    {
+      stats->selectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks += 1;
+    }
     return;
   }
 
@@ -1328,6 +1348,9 @@ inline void exact_sim_apply_two_stage_selective_fallback_in_place(
   }
 
   size_t bestTraceIndex = std::numeric_limits<size_t>::max();
+  bool foundSingletonMissingMargin = false;
+  bool foundSingletonOverrideQualified = false;
+  bool foundUncoveredCandidate = false;
   for(size_t i = 0; i < trace->size(); ++i)
   {
     const ExactSimTwoStageWindowTrace &entry = (*trace)[i];
@@ -1343,10 +1366,12 @@ inline void exact_sim_apply_two_stage_selective_fallback_in_place(
     {
       continue;
     }
+    foundSingletonMissingMargin = true;
     if(entry.window.bestSeedScore < exact_sim_two_stage_singleton_score_override_minimal_v2())
     {
       continue;
     }
+    foundSingletonOverrideQualified = true;
     if(hadKeptWindows)
     {
       if(bestKeptWindow == NULL)
@@ -1357,6 +1382,7 @@ inline void exact_sim_apply_two_stage_selective_fallback_in_place(
       {
         continue;
       }
+      foundUncoveredCandidate = true;
       const long bestScoreGap = bestKeptWindow->bestSeedScore - entry.window.bestSeedScore;
       if(bestScoreGap > config.nonEmptyMaxScoreGap)
       {
@@ -1372,6 +1398,25 @@ inline void exact_sim_apply_two_stage_selective_fallback_in_place(
 
   if(bestTraceIndex == std::numeric_limits<size_t>::max())
   {
+    if(stats != NULL && hadKeptWindows)
+    {
+      if(!foundSingletonMissingMargin)
+      {
+        stats->selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks += 1;
+      }
+      else if(!foundSingletonOverrideQualified)
+      {
+        stats->selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks += 1;
+      }
+      else if(!foundUncoveredCandidate)
+      {
+        stats->selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks += 1;
+      }
+      else
+      {
+        stats->selectiveFallbackNonEmptyRejectedByScoreGapTasks += 1;
+      }
+    }
     return;
   }
 

@@ -13,6 +13,27 @@ ATTRIBUTION_CLASSES = (
 COUNT_VIEWS = ("overall", "top5_missing", "top10_missing")
 WEIGHT_VIEW = "score_weighted_missing"
 QUALITY_METRICS = ("top5_retention", "top10_retention", "score_weighted_recall")
+SELECTOR_BLOCKER_ORDER = (
+    "max_kept_windows",
+    "no_singleton_missing_margin",
+    "singleton_override",
+    "covered_by_kept",
+    "score_gap",
+)
+SELECTOR_BLOCKER_COUNTER_KEYS = {
+    "max_kept_windows": "selective_fallback_non_empty_rejected_by_max_kept_windows_tasks",
+    "no_singleton_missing_margin": "selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks",
+    "singleton_override": "selective_fallback_non_empty_rejected_by_singleton_override_tasks",
+    "covered_by_kept": "selective_fallback_non_empty_rejected_as_covered_by_kept_tasks",
+    "score_gap": "selective_fallback_non_empty_rejected_by_score_gap_tasks",
+}
+SELECTOR_ABLATION_BY_BLOCKER = {
+    "max_kept_windows": "raise_non_empty_max_kept_windows",
+    "no_singleton_missing_margin": "expand_rescue_object_beyond_singleton_missing_margin",
+    "singleton_override": "lower_singleton_override",
+    "covered_by_kept": "audit_window_coverage_and_rescue_semantics",
+    "score_gap": "raise_non_empty_score_gap",
+}
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -36,6 +57,15 @@ def _recommended_next_step(primary_weight_class: str) -> str:
     return "audit_inside_kept_window_classification"
 
 
+def _dominant_selector_blocker(blocker_totals: dict[str, int]) -> str:
+    if not any(blocker_totals.values()):
+        return ""
+    return max(
+        SELECTOR_BLOCKER_ORDER,
+        key=lambda name: (int(blocker_totals.get(name, 0)), -SELECTOR_BLOCKER_ORDER.index(name)),
+    )
+
+
 def _render_summary_markdown(summary: dict[str, object]) -> str:
     lines = [
         "# Two-Stage Panel Decision Summary",
@@ -44,6 +74,8 @@ def _render_summary_markdown(summary: dict[str, object]) -> str:
         f"- attribution_summary: {summary['attribution_summary']}",
         f"- candidate_run_label: {summary['candidate_run_label']}",
         f"- recommended_next_step: {summary['recommended_next_step']}",
+        f"- dominant_selector_blocker: {summary['dominant_selector_blocker'] or 'n/a'}",
+        f"- recommended_selector_ablation: {summary['recommended_selector_ablation']}",
         f"- fallback_triggered: {summary['fallback_triggered']}",
         f"- fallback_effective: {summary['fallback_effective']}",
         "",
@@ -73,6 +105,21 @@ def _render_summary_markdown(summary: dict[str, object]) -> str:
     )
     for view, value in summary["residual_primary_class"].items():
         lines.append(f"| {view} | {value} |")
+    lines.extend(
+        [
+            "",
+            "## Selector Blockers",
+            "",
+            f"- selector_candidate_tasks: {summary['selector_candidate_tasks']}",
+            f"- dominant_selector_blocker: {summary['dominant_selector_blocker'] or 'n/a'}",
+            f"- recommended_selector_ablation: {summary['recommended_selector_ablation']}",
+            "",
+            "| blocker | tasks |",
+            "| --- | ---: |",
+        ]
+    )
+    for blocker in SELECTOR_BLOCKER_ORDER:
+        lines.append(f"| {blocker} | {summary['selector_blocker_totals'][blocker]} |")
     lines.extend(
         [
             "",
@@ -141,6 +188,17 @@ def main() -> int:
     }
     attribution_share_by_class[WEIGHT_VIEW] = weighted_shares
     residual_primary_class[WEIGHT_VIEW] = _primary_class(weighted_shares)
+    selector_candidate_tasks = int(fallback_totals.get("selective_fallback_non_empty_candidate_tasks", 0))
+    selector_blocker_totals = {
+        blocker: int(fallback_totals.get(counter_key, 0))
+        for blocker, counter_key in SELECTOR_BLOCKER_COUNTER_KEYS.items()
+    }
+    dominant_selector_blocker = _dominant_selector_blocker(selector_blocker_totals)
+    recommended_selector_ablation = (
+        SELECTOR_ABLATION_BY_BLOCKER[dominant_selector_blocker]
+        if dominant_selector_blocker
+        else "observe_quality_only"
+    )
 
     summary = {
         "compare_summary": str(compare_path),
@@ -149,6 +207,10 @@ def main() -> int:
         "fallback_triggered": fallback_triggered,
         "fallback_effective": fallback_effective,
         "candidate_selective_fallback_totals": fallback_totals,
+        "selector_candidate_tasks": selector_candidate_tasks,
+        "selector_blocker_totals": selector_blocker_totals,
+        "dominant_selector_blocker": dominant_selector_blocker,
+        "recommended_selector_ablation": recommended_selector_ablation,
         "quality_delta": {
             metric: float(aggregate[metric]["delta_mean"])
             for metric in (

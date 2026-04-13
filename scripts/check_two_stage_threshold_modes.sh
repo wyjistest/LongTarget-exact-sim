@@ -26,6 +26,7 @@ rm -rf "$WORK"
     --run-label deferred_exact \
     --run-label deferred_exact_minimal_v2 \
     --run-label deferred_exact_minimal_v2_selective_fallback \
+    --run-env deferred_exact_minimal_v2_selective_fallback:LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP=9 \
     --debug-window-run-label deferred_exact_minimal_v2_selective_fallback >/dev/null
 )
 
@@ -41,6 +42,11 @@ assert report["peak_suppress_bp"] == 5
 assert report["score_floor_delta"] == 0
 assert report["refine_pad_bp"] == 64
 assert report["refine_merge_gap_bp"] == 32
+assert report["run_env_overrides_requested"] == {
+    "deferred_exact_minimal_v2_selective_fallback": {
+        "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP": "9"
+    }
+}
 
 runs = report["runs"]
 assert set(runs) == {"legacy", "deferred_exact", "deferred_exact_minimal_v2", "deferred_exact_minimal_v2_selective_fallback"}
@@ -83,6 +89,12 @@ for label, run in runs.items():
     assert run["singleton_rescue_bp_total"] >= 0
     assert run["selective_fallback_enabled"] in {0, 1}
     assert run["selective_fallback_triggered_tasks"] >= 0
+    assert run["selective_fallback_non_empty_candidate_tasks"] >= 0
+    assert run["selective_fallback_non_empty_rejected_by_max_kept_windows_tasks"] >= 0
+    assert run["selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks"] >= 0
+    assert run["selective_fallback_non_empty_rejected_by_singleton_override_tasks"] >= 0
+    assert run["selective_fallback_non_empty_rejected_as_covered_by_kept_tasks"] >= 0
+    assert run["selective_fallback_non_empty_rejected_by_score_gap_tasks"] >= 0
     assert run["selective_fallback_non_empty_triggered_tasks"] >= 0
     assert run["selective_fallback_selected_windows"] >= 0
     assert run["selective_fallback_selected_bp_total"] >= 0

@@ -60,6 +60,12 @@ class ThresholdModeRun:
     singleton_rescue_bp_total: int
     selective_fallback_enabled: int
     selective_fallback_triggered_tasks: int
+    selective_fallback_non_empty_candidate_tasks: int
+    selective_fallback_non_empty_rejected_by_max_kept_windows_tasks: int
+    selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks: int
+    selective_fallback_non_empty_rejected_by_singleton_override_tasks: int
+    selective_fallback_non_empty_rejected_as_covered_by_kept_tasks: int
+    selective_fallback_non_empty_rejected_by_score_gap_tasks: int
     selective_fallback_non_empty_triggered_tasks: int
     selective_fallback_selected_windows: int
     selective_fallback_selected_bp_total: int
@@ -96,6 +102,19 @@ def _metric_int(metrics: dict[str, str], key: str, *, default: int = 0) -> int:
 def _metric_float(metrics: dict[str, str], key: str, *, default: float = 0.0) -> float:
     value = metrics.get(key)
     return default if value is None or value == "" else float(value)
+
+
+def _parse_run_env_overrides(raw_values: list[str] | None) -> dict[str, dict[str, str]]:
+    overrides: dict[str, dict[str, str]] = {}
+    for raw in raw_values or []:
+        label, sep, key_value = raw.partition(":")
+        key, eq, value = key_value.partition("=")
+        if sep != ":" or eq != "=" or not label or not key:
+            raise RuntimeError(f"invalid --run-env {raw!r}; expected LABEL:KEY=VALUE")
+        if label not in RUN_LABELS:
+            raise RuntimeError(f"invalid --run-env label {label!r}; expected one of {RUN_LABELS}")
+        overrides.setdefault(label, {})[key] = value
+    return overrides
 
 
 def _normalized_output_sha256(dir_path: Path, compare_output_mode: str) -> str:
@@ -279,6 +298,12 @@ def main() -> int:
         default=None,
         help="optional: emit LONGTARGET_TWO_STAGE_DEBUG_WINDOWS_CSV for selected run labels",
     )
+    parser.add_argument(
+        "--run-env",
+        action="append",
+        default=None,
+        help="optional: inject env override for one run label as LABEL:KEY=VALUE (repeatable)",
+    )
     args = parser.parse_args()
 
     work_dir = Path(args.work_dir).resolve()
@@ -327,6 +352,7 @@ def main() -> int:
         "LONGTARGET_REFINE_PAD_BP": str(args.refine_pad_bp),
         "LONGTARGET_REFINE_MERGE_GAP_BP": str(args.refine_merge_gap_bp),
     }
+    run_env_overrides = _parse_run_env_overrides(args.run_env)
 
     all_run_specs = [
         ("legacy", {}),
@@ -387,6 +413,7 @@ def main() -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
         env = dict(shared_env)
         env.update(extra_env)
+        env.update(run_env_overrides.get(label, {}))
         if label in debug_window_run_labels:
             env["LONGTARGET_TWO_STAGE_DEBUG_WINDOWS_CSV"] = str(debug_windows_csv)
         run = sample_vs_fasim._run_checked(
@@ -442,6 +469,24 @@ def main() -> int:
             singleton_rescue_bp_total=_metric_int(metrics, "two_stage_singleton_rescue_bp_total"),
             selective_fallback_enabled=_metric_int(metrics, "two_stage_selective_fallback_enabled"),
             selective_fallback_triggered_tasks=_metric_int(metrics, "two_stage_selective_fallback_triggered_tasks"),
+            selective_fallback_non_empty_candidate_tasks=_metric_int(
+                metrics, "two_stage_selective_fallback_non_empty_candidate_tasks"
+            ),
+            selective_fallback_non_empty_rejected_by_max_kept_windows_tasks=_metric_int(
+                metrics, "two_stage_selective_fallback_non_empty_rejected_by_max_kept_windows_tasks"
+            ),
+            selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks=_metric_int(
+                metrics, "two_stage_selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks"
+            ),
+            selective_fallback_non_empty_rejected_by_singleton_override_tasks=_metric_int(
+                metrics, "two_stage_selective_fallback_non_empty_rejected_by_singleton_override_tasks"
+            ),
+            selective_fallback_non_empty_rejected_as_covered_by_kept_tasks=_metric_int(
+                metrics, "two_stage_selective_fallback_non_empty_rejected_as_covered_by_kept_tasks"
+            ),
+            selective_fallback_non_empty_rejected_by_score_gap_tasks=_metric_int(
+                metrics, "two_stage_selective_fallback_non_empty_rejected_by_score_gap_tasks"
+            ),
             selective_fallback_non_empty_triggered_tasks=_metric_int(metrics, "two_stage_selective_fallback_non_empty_triggered_tasks"),
             selective_fallback_selected_windows=_metric_int(metrics, "two_stage_selective_fallback_selected_windows"),
             selective_fallback_selected_bp_total=_metric_int(metrics, "two_stage_selective_fallback_selected_bp_total"),
@@ -491,6 +536,7 @@ def main() -> int:
         },
         "run_labels_requested": requested_run_labels,
         "debug_window_run_labels_requested": sorted(debug_window_run_labels),
+        "run_env_overrides_requested": run_env_overrides,
         "runs": {label: dataclasses.asdict(run) for label, run in runs.items()},
         "comparisons_vs_legacy": comparisons,
     }

@@ -104,6 +104,12 @@ struct LongTargetExecutionMetrics
     twoStageSingletonRescueBpTotal(0),
     twoStageSelectiveFallbackEnabled(0),
     twoStageSelectiveFallbackTriggeredTasks(0),
+    twoStageSelectiveFallbackNonEmptyCandidateTasks(0),
+    twoStageSelectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks(0),
+    twoStageSelectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks(0),
+    twoStageSelectiveFallbackNonEmptyRejectedBySingletonOverrideTasks(0),
+    twoStageSelectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks(0),
+    twoStageSelectiveFallbackNonEmptyRejectedByScoreGapTasks(0),
     twoStageSelectiveFallbackNonEmptyTriggeredTasks(0),
     twoStageSelectiveFallbackSelectedWindows(0),
     twoStageSelectiveFallbackSelectedBpTotal(0),
@@ -168,6 +174,12 @@ struct LongTargetExecutionMetrics
   uint64_t twoStageSingletonRescueBpTotal;
   uint64_t twoStageSelectiveFallbackEnabled;
   uint64_t twoStageSelectiveFallbackTriggeredTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyCandidateTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyRejectedBySingletonOverrideTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks;
+  uint64_t twoStageSelectiveFallbackNonEmptyRejectedByScoreGapTasks;
   uint64_t twoStageSelectiveFallbackNonEmptyTriggeredTasks;
   uint64_t twoStageSelectiveFallbackSelectedWindows;
   uint64_t twoStageSelectiveFallbackSelectedBpTotal;
@@ -1775,6 +1787,12 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.two_stage_singleton_rescue_bp_total="<<metrics.twoStageSingletonRescueBpTotal<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_enabled="<<metrics.twoStageSelectiveFallbackEnabled<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_triggered_tasks="<<metrics.twoStageSelectiveFallbackTriggeredTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_candidate_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyCandidateTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_rejected_by_max_kept_windows_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_rejected_by_singleton_override_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyRejectedBySingletonOverrideTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_rejected_as_covered_by_kept_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_non_empty_rejected_by_score_gap_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyRejectedByScoreGapTasks<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_non_empty_triggered_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyTriggeredTasks<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_selected_windows="<<metrics.twoStageSelectiveFallbackSelectedWindows<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_selected_bp_total="<<metrics.twoStageSelectiveFallbackSelectedBpTotal<<endl;
@@ -2578,12 +2596,14 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     {
       ExactSimDeferredTwoStagePrefilterResult result;
       vector<ExactSimTwoStageWindowTrace> windowTrace;
+      vector<ExactSimTwoStageWindowTrace> *windowTracePtr =
+        (twoStageSelectiveFallbackEnabled || twoStageDebugWindowsCsv.is_open()) ? &windowTrace : NULL;
       if(!collectExactSimTwoStageDeferredPrefilterCore(rnaSequence,
                                                        tasks[taskIndex].transformedSequence,
                                                        exactSimConfig,
                                                        result,
                                                        &taskTimings[taskIndex],
-                                                       twoStageDebugWindowsCsv.is_open() ? &windowTrace : NULL))
+                                                       windowTracePtr))
       {
         if(discoveryPrefilterOnly)
         {
@@ -2626,6 +2646,12 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         metrics->twoStageSingletonRescuedTasks += result.rejectStats.singletonRescuedTasks;
         metrics->twoStageSingletonRescueBpTotal += result.rejectStats.singletonRescueBpTotal;
         metrics->twoStageSelectiveFallbackTriggeredTasks += result.rejectStats.selectiveFallbackTriggeredTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyCandidateTasks += result.rejectStats.selectiveFallbackNonEmptyCandidateTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks += result.rejectStats.selectiveFallbackNonEmptyRejectedByMaxKeptWindowsTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks += result.rejectStats.selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyRejectedBySingletonOverrideTasks += result.rejectStats.selectiveFallbackNonEmptyRejectedBySingletonOverrideTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks += result.rejectStats.selectiveFallbackNonEmptyRejectedAsCoveredByKeptTasks;
+        metrics->twoStageSelectiveFallbackNonEmptyRejectedByScoreGapTasks += result.rejectStats.selectiveFallbackNonEmptyRejectedByScoreGapTasks;
         metrics->twoStageSelectiveFallbackNonEmptyTriggeredTasks += result.rejectStats.selectiveFallbackNonEmptyTriggeredTasks;
         metrics->twoStageSelectiveFallbackSelectedWindows += result.rejectStats.selectiveFallbackSelectedWindows;
         metrics->twoStageSelectiveFallbackSelectedBpTotal += result.rejectStats.selectiveFallbackSelectedBpTotal;

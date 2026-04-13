@@ -834,7 +834,11 @@
 - 这一轮也补齐了 panel 决策链缺的最后一段：
   - 新增 `scripts/compare_two_stage_panel_summaries.py`，在同一组 selected heavy micro-anchor tile 上直接对比 `minimal_v2` baseline 与 candidate lane；
   - 新增 `scripts/summarize_two_stage_panel_decision.py`，把 compare summary 和 coverage attribution summary 合成单一 decision report；
-  - `README.md` / `Makefile` 同步加入对应入口与自检脚本，保证 compare / decision 不是一次性的临时分析。
+  - `exact_sim.h` / `longtarget.cpp` 为 non-empty selector 新增 **互斥 blocker telemetry**：`candidate_tasks`、`rejected_by_max_kept_windows`、`rejected_by_no_singleton_missing_margin`、`rejected_by_singleton_override`、`rejected_as_covered_by_kept`、`rejected_by_score_gap`；
+  - `scripts/benchmark_two_stage_threshold_modes.py` 同步解析这些 selector counters，并新增 `--run-env LABEL:KEY=VALUE`，允许只对 candidate lane 注入窄范围 ablation 参数；
+  - 新增 `scripts/rerun_two_stage_panel_with_candidate_env.py`，复用同一组 selected micro-anchor tile，重跑 `legacy + candidate` 并把候选 lane 的 env 覆盖显式落盘；
+  - `scripts/summarize_two_stage_panel_decision.py` 现在还会产出 `selector_candidate_tasks`、`dominant_selector_blocker`、`recommended_selector_ablation`，把“下一步该放宽哪一条 selector 条件”写成机器可复用的决策层；
+  - `README.md` / `Makefile` 同步加入对应入口与自检脚本，保证 compare / decision / rerun helper 不是一次性的临时分析。
 - 真实 panel 结果已经在 `.tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty/` 落盘：
   - `compare_vs_minimal_v2/summary.json` 显示 12 个代表 tile 上：
     - `selective_fallback_triggered_tasks=0`
@@ -855,10 +859,12 @@
   - `make check-two-stage-threshold-heavy-microanchors`
   - `make check-compare-two-stage-panel-summaries`
   - `make check-summarize-two-stage-panel-decision`
+  - `make check-rerun-two-stage-panel-with-candidate-env`
   - `bash ./scripts/check_two_stage_coverage_attribution_panel.sh`
 - 当前结论：
   - `minimal_v2` 现在已经明确是 shortlist / candidate-generator lane，而不是 final-output lane；
   - 第一版 non-empty ambiguity rescue 逻辑已经接入真实 runtime，但在当前代表 panel 上 **零触发、零质量增量**；
+  - 这轮刻意 **不修改默认 selector 行为**，而是先补齐 blocker telemetry 和定向 rerun 工具；下一次默认变更仍应先看 `dominant_selector_blocker`，只放宽真正卡住触发的那一条 selector 条件；
   - 因为 residual miss 仍由 `inside_rejected_window` 主导，下一步应继续扩 non-empty selector，而不是先做 `REFINE_PAD_BP / REFINE_MERGE_GAP_BP` sweep。
 
 ## 常用命令
