@@ -765,6 +765,66 @@
   - 但 default exact-safe 主线还没有接受新的 initial-scan kernel fast path，因为现有 smoke/sample/matrix gate 说明“大样本 true-batch direct-summary exactness”还需要更强的专门 fixture。
   - 下一轮如果继续做 initial-scan GPU 优化，优先应该先补 **更大规模的 CUDA initial summary exactness fixture**（尤其是真正覆盖 `direct_true_batch` 的长样本模式），再重试 kernel 级 fast path；否则很容易在小 test 绿、大样本 exactness 红。
 
+## 2026-04-08（two-stage frontier calibration）
+
+- 这一轮把工作重点从“先补 telemetry”推进到“给实验性 two-stage lane 建质量前沿”：
+  - 新增 `scripts/benchmark_two_stage_frontier_sweep.py`，用同一个 exact LongTarget baseline 对比多组 `LONGTARGET_TWO_STAGE=1` + `LONGTARGET_PREFILTER_BACKEND=prealign_cuda` 参数组合。
+  - 新增 `scripts/summarize_two_stage_frontier.py`，把多个 `report.json` 聚合成 Pareto-oriented summary，直接输出 `best_overall`、`best_qualifying`、`pareto_optimal` 等决策字段。
+  - `README.md` / `Makefile` 同步加入 `benchmark-two-stage-frontier-sweep`、`check-two-stage-frontier-sweep`、`check-summarize-two-stage-frontier`。
+- 这一步的目标不是默认启用 two-stage，而是把“速度更快但质量是否可接受”从口头判断变成可批量跑的 frontier sweep：
+  - report 会同时记录 wall time 与质量侧指标；
+  - 也会保留 `prefilter_hits`、`refine_window_count`、`refine_total_bp` 这类 prefilter/refine telemetry，方便判断快慢来自哪里。
+- 验证入口：
+  - `make check-two-stage-frontier-sweep`
+  - `make check-summarize-two-stage-frontier`
+- 当前结论：
+  - 现在已经能在多个真实 anchor shard 上复用同一个 exact baseline，批量筛出“值得继续观察”的 two-stage 参数组合；
+  - 但这仍然是 **实验性质量前沿**，不是默认主线语义。
+
+## 2026-04-09（heavy micro-anchor threshold calibration）
+
+- 这一轮把 two-stage 质量校准从“全局 sweep”进一步收敛到“重灾区 micro-anchor”：
+  - 新增 `scripts/benchmark_two_stage_threshold_modes.py`，对比 `legacy`、`deferred_exact`、`deferred_exact_minimal_v2` 等共享输入下的阈值门控行为；
+  - 新增 `scripts/benchmark_two_stage_threshold_heavy_microanchors.py`，对 coarse tiling 选出的重热点 tile 生成 `discovery_report.json`、`summary.json`、`summary.md`，并附带 `decision_flags`；
+  - `README.md` / `Makefile` 同步加入 `benchmark-two-stage-threshold-modes`、`check-two-stage-threshold-modes`、`benchmark-two-stage-threshold-heavy-microanchors`、`check-two-stage-threshold-heavy-microanchors`。
+- 这一轮后续还把 heavy micro-anchor discovery 缩到单 arm：
+  - 目的不是改语义，而是把探索成本压到更小，同时把代表性问题集中到一条最值得分析的候选链路上。
+- 输出侧现在不只看 “有没有 diff”，而是开始看：
+  - `top5_retention`
+  - `top10_retention`
+  - `score_weighted_recall`
+  - 以及 per-tile `decision_flags`
+- 验证入口：
+  - `make check-two-stage-threshold-modes`
+  - `make check-two-stage-threshold-heavy-microanchors`
+- 当前结论：
+  - 现在可以先挑出最容易暴露 gate 问题的热点 tile，再决定是继续收紧门槛、放松门槛，还是进入更大范围 anchor sweep；
+  - 这让 two-stage 校准从“看总体 diff”变成“先看最有信息量的局部失败样本”。
+
+## 2026-04-10（`minimal_v2` safeguard / coverage attribution / panel automation）
+
+- 这一轮第一次把 two-stage 校准推进到 **核心 gate 语义 + 归因自动化** 两个层面：
+  - `exact_sim.h` / `longtarget.cpp` 新增 `minimal_v2` reject mode：
+    - 在 deferred two-stage shortlist 中，允许每个 task 最多救回一个 `singleton_missing_margin` 候选；
+    - 仍然要求它是该 task 里最强的 singleton-no-margin 候选，并满足预设的 best-seed override 门槛；
+    - stderr benchmark 新增 `benchmark.two_stage_singleton_rescued_windows`、`benchmark.two_stage_singleton_rescued_tasks`、`benchmark.two_stage_singleton_rescue_bp_total`。
+  - 新增 `tests/test_exact_sim_two_stage_threshold.cpp`，覆盖 `minimal_v1/minimal_v2` gate 行为、reject reason label 与 rescued counter，保证 singleton safeguard 不是只停留在脚本层。
+- 这一轮也补齐了“质量前沿为什么掉点”的分析工具链：
+  - `scripts/replay_two_stage_singleton_safeguard.py`：离线重放 singleton safeguard，验证不同 rescue 策略/override 的影响；
+  - `scripts/analyze_two_stage_top_hit_autopsy.py`：针对 top hit 丢失做 autopsy；
+  - `scripts/analyze_two_stage_coverage_attribution.py`：把 legacy strict hits 的缺失归因为 `inside_kept_window`、`inside_rejected_window`、`outside_kept_but_near_kept`、`far_outside_all_kept`；
+  - `scripts/analyze_two_stage_coverage_attribution_panel.py`：从 heavy micro-anchor `summary.json` 里挑代表性 tile，自动重跑 candidate lane debug window，并汇总成 panel 级 `summary.json` / `summary.md`。
+- `docs/plans/2026-04-10-panel-coverage-attribution.md` 记录了 panel automation 的实现计划；这一层的目标不是继续调 gate，而是回答：
+  - 当前 `minimal_v2` 的 miss 是否仍然主要被 `inside_rejected_window` 主导；
+  - 如果不是，后续优化应该落在 selective fallback、prefilter coverage，还是 gate 细调。
+- 验证入口：
+  - `make check-exact-sim-two-stage-threshold`
+  - `bash ./scripts/check_two_stage_coverage_attribution.sh`
+  - `bash ./scripts/check_two_stage_coverage_attribution_panel.sh`
+- 当前结论：
+  - two-stage lane 的观察维度已经从“更快多少”推进到“丢失到底发生在 gate 内、kept-window 附近，还是 prefilter 覆盖之外”；
+  - 这让后续决策可以围绕证据做：该继续调 `minimal_v2`，还是该给某些代表性 miss 加 selective fallback。
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`
@@ -859,4 +919,6 @@
 - oracle 目录：
   - `tests/oracle`
   - `tests/oracle_rule1`
-- 当前重点不是“再造一个近似 fastSIM”，而是继续保住 **exact SIM / exact threshold** 的结果一致性，同时做 CPU 侧极限优化。
+- 当前重点已经分成两条：
+  - **exact-safe 主线**：继续保住 `exact SIM` / `exact threshold` 的结果一致性，避免实验路径回流污染默认语义；
+  - **实验性 two-stage lane**：围绕 `minimal_v2`、heavy micro-anchor、coverage attribution 与 panel summary 做质量门控校准，暂不提升为默认路径。
