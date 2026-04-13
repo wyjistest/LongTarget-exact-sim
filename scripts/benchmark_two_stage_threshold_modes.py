@@ -20,7 +20,13 @@ if str(SCRIPTS_DIR) not in sys.path:
 import benchmark_sample_vs_fasim as sample_vs_fasim  # noqa: E402
 
 SCORE_TOLERANCE = 1e-6
-RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1", "deferred_exact_minimal_v2")
+RUN_LABELS = (
+    "legacy",
+    "deferred_exact",
+    "deferred_exact_minimal_v1",
+    "deferred_exact_minimal_v2",
+    "deferred_exact_minimal_v2_selective_fallback",
+)
 DEFAULT_RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1")
 
 
@@ -52,6 +58,10 @@ class ThresholdModeRun:
     singleton_rescued_windows: int
     singleton_rescued_tasks: int
     singleton_rescue_bp_total: int
+    selective_fallback_enabled: int
+    selective_fallback_triggered_tasks: int
+    selective_fallback_selected_windows: int
+    selective_fallback_selected_bp_total: int
     output_dir: str
     stderr_path: str
     output_mode: str
@@ -346,6 +356,20 @@ def main() -> int:
                 "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
             },
         ),
+        (
+            "deferred_exact_minimal_v2_selective_fallback",
+            {
+                "LONGTARGET_TWO_STAGE_THRESHOLD_MODE": "deferred_exact",
+                "LONGTARGET_TWO_STAGE_REJECT_MODE": "minimal_v2",
+                "LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE": str(args.min_peak_score),
+                "LONGTARGET_TWO_STAGE_MIN_SUPPORT": str(args.min_support),
+                "LONGTARGET_TWO_STAGE_MIN_MARGIN": str(args.min_margin),
+                "LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE": str(args.strong_score_override),
+                "LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK": str(args.max_windows_per_task),
+                "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK": "1",
+            },
+        ),
     ]
     requested_run_labels = args.run_label or list(DEFAULT_RUN_LABELS)
     debug_window_run_labels = set(args.debug_window_run_label or [])
@@ -415,6 +439,10 @@ def main() -> int:
             singleton_rescued_windows=_metric_int(metrics, "two_stage_singleton_rescued_windows"),
             singleton_rescued_tasks=_metric_int(metrics, "two_stage_singleton_rescued_tasks"),
             singleton_rescue_bp_total=_metric_int(metrics, "two_stage_singleton_rescue_bp_total"),
+            selective_fallback_enabled=_metric_int(metrics, "two_stage_selective_fallback_enabled"),
+            selective_fallback_triggered_tasks=_metric_int(metrics, "two_stage_selective_fallback_triggered_tasks"),
+            selective_fallback_selected_windows=_metric_int(metrics, "two_stage_selective_fallback_selected_windows"),
+            selective_fallback_selected_bp_total=_metric_int(metrics, "two_stage_selective_fallback_selected_bp_total"),
             output_dir=str(out_dir),
             stderr_path=str(stderr_path),
             output_mode=args.compare_output_mode,

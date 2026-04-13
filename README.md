@@ -346,7 +346,7 @@ make check-summarize-two-stage-frontier
   - `qualifying_reports`
   - `mean_prefilter_hits`, `mean_refine_window_count`, `mean_refine_total_bp`
   - `pareto_optimal` using `mean_wall_seconds` vs worst-output recall / top-hit retention
-- Threshold-mode calibration for the native deferred lane compares `legacy`, `deferred_exact`, and `deferred_exact + minimal_v1` on the same input while preserving canonicalized output diffs:
+- Threshold-mode calibration for the native deferred lane compares `legacy`, `deferred_exact`, `deferred_exact + minimal_v1`, `deferred_exact + minimal_v2`, and the experimental `deferred_exact + minimal_v2 + selective_fallback` lane on the same input while preserving canonicalized output diffs:
 
 ```
 make benchmark-two-stage-threshold-modes
@@ -365,7 +365,14 @@ make check-two-stage-threshold-modes
   - `benchmark.two_stage_threshold_batch_count`, `benchmark.two_stage_threshold_batch_tasks_total`, `benchmark.two_stage_threshold_batch_size_max`, `benchmark.two_stage_threshold_batched_seconds`
   - `benchmark.two_stage_windows_before_gate`, `benchmark.two_stage_windows_after_gate`
   - `benchmark.two_stage_windows_rejected_by_min_peak_score`, `benchmark.two_stage_windows_rejected_by_support`, `benchmark.two_stage_windows_rejected_by_margin`, `benchmark.two_stage_windows_trimmed_by_max_windows`, `benchmark.two_stage_windows_trimmed_by_max_bp`
+  - `benchmark.two_stage_singleton_rescued_windows`, `benchmark.two_stage_singleton_rescued_tasks`, `benchmark.two_stage_singleton_rescue_bp_total`
+  - `benchmark.two_stage_selective_fallback_enabled`, `benchmark.two_stage_selective_fallback_triggered_tasks`, `benchmark.two_stage_selective_fallback_selected_windows`, `benchmark.two_stage_selective_fallback_selected_bp_total`
   - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`
+- `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback`:
+  - scope is intentionally narrow: only deferred-exact + `minimal_v2`
+  - trigger is conservative: the task must be empty after gate and still have a qualifying `singleton_missing_margin` rejected window at the current `minimal_v2` singleton override threshold
+  - action is narrow: re-admit exactly one rejected window into the exact refine pass
+  - this is an experimental candidate-lane rescue, not a default semantic change and not a task-level `reject=off`
 - Heavy-zone micro-anchor calibration uses coarse tiling plus the same 3-arm threshold-mode compare:
 
 ```

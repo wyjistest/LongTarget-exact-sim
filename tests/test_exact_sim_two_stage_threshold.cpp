@@ -216,6 +216,88 @@ int main()
   }
 
   {
+    std::vector<ExactSimRefineWindow> windows;
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(3);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(1,10,85,std::numeric_limits<long>::min(),1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+    trace[1].originalIndex = 1;
+    trace[1].window = make_window(20,32,90,std::numeric_limits<long>::min(),1);
+    trace[1].beforeGate = true;
+    trace[1].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+    trace[2].originalIndex = 2;
+    trace[2].window = make_window(40,56,110,100,1);
+    trace[2].beforeGate = true;
+    trace[2].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),1u,"selective fallback adds one window") && ok;
+    ok = expect_equal_int(windows[0].startJ,20,"selective fallback keeps strongest singleton") && ok;
+    ok = expect_false(trace[0].afterGate,"weaker singleton stays rejected") && ok;
+    ok = expect_true(trace[1].afterGate,"fallback-selected singleton becomes after-gate") && ok;
+    ok = expect_true(trace[1].selectiveFallbackSelected,"selected trace flagged for fallback") && ok;
+    ok = expect_equal_size(trace[1].sortedRank,0u,"fallback-selected trace rank") && ok;
+    ok = expect_equal_cstr(
+           exact_sim_two_stage_window_reject_reason_label(trace[1].rejectReason),
+           "selective_fallback",
+           "fallback-selected label") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,1,"fallback triggered tasks") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackSelectedWindows,1,"fallback selected windows") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackSelectedBpTotal,13,"fallback selected bp") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,102,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(1);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,90,std::numeric_limits<long>::min(),1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),1u,"non-empty gate result skips fallback") && ok;
+    ok = expect_equal_int(windows[0].startJ,60,"existing gate winner preserved") && ok;
+    ok = expect_false(trace[0].afterGate,"non-empty result leaves rejected trace untouched") && ok;
+    ok = expect_false(trace[0].selectiveFallbackSelected,"non-empty result does not mark fallback") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,0,"non-empty result no fallback trigger") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(2);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(1,10,84,std::numeric_limits<long>::min(),1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN;
+    trace[1].originalIndex = 1;
+    trace[1].window = make_window(20,32,95,90,1);
+    trace[1].beforeGate = true;
+    trace[1].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_true(windows.empty(),"below-threshold trace does not trigger fallback") && ok;
+    ok = expect_false(trace[0].selectiveFallbackSelected,"below-threshold singleton not selected") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackTriggeredTasks,0,"below-threshold no fallback trigger") && ok;
+  }
+
+  {
     ExactSimTwoStageRejectConfig config;
     config.mode = EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V1;
     config.minPeakScore = 80;

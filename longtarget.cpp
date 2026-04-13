@@ -102,6 +102,10 @@ struct LongTargetExecutionMetrics
     twoStageSingletonRescuedWindows(0),
     twoStageSingletonRescuedTasks(0),
     twoStageSingletonRescueBpTotal(0),
+    twoStageSelectiveFallbackEnabled(0),
+    twoStageSelectiveFallbackTriggeredTasks(0),
+    twoStageSelectiveFallbackSelectedWindows(0),
+    twoStageSelectiveFallbackSelectedBpTotal(0),
     refineWindowCount(0),
     refineTotalBp(0),
     calcScoreTasksTotal(0),
@@ -161,6 +165,10 @@ struct LongTargetExecutionMetrics
   uint64_t twoStageSingletonRescuedWindows;
   uint64_t twoStageSingletonRescuedTasks;
   uint64_t twoStageSingletonRescueBpTotal;
+  uint64_t twoStageSelectiveFallbackEnabled;
+  uint64_t twoStageSelectiveFallbackTriggeredTasks;
+  uint64_t twoStageSelectiveFallbackSelectedWindows;
+  uint64_t twoStageSelectiveFallbackSelectedBpTotal;
   uint64_t refineWindowCount;
   uint64_t refineTotalBp;
   uint64_t calcScoreTasksTotal;
@@ -567,6 +575,7 @@ static inline void longtarget_write_two_stage_window_trace_header(ostream &out)
      <<"support_ok\t"
      <<"margin_ok\t"
      <<"strong_score_ok\t"
+     <<"selective_fallback_selected\t"
      <<"reject_reason"
      <<endl;
 }
@@ -628,6 +637,7 @@ static inline void longtarget_write_two_stage_window_trace_row(ostream &out,
      <<(trace.supportOk ? 1 : 0)<<"\t"
      <<(trace.marginOk ? 1 : 0)<<"\t"
      <<(trace.strongScoreOk ? 1 : 0)<<"\t"
+     <<(trace.selectiveFallbackSelected ? 1 : 0)<<"\t"
      <<exact_sim_two_stage_window_reject_reason_label(trace.rejectReason)
      <<endl;
 }
@@ -1761,6 +1771,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.two_stage_singleton_rescued_windows="<<metrics.twoStageSingletonRescuedWindows<<endl;
   cerr<<"benchmark.two_stage_singleton_rescued_tasks="<<metrics.twoStageSingletonRescuedTasks<<endl;
   cerr<<"benchmark.two_stage_singleton_rescue_bp_total="<<metrics.twoStageSingletonRescueBpTotal<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_enabled="<<metrics.twoStageSelectiveFallbackEnabled<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_triggered_tasks="<<metrics.twoStageSelectiveFallbackTriggeredTasks<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_selected_windows="<<metrics.twoStageSelectiveFallbackSelectedWindows<<endl;
+  cerr<<"benchmark.two_stage_selective_fallback_selected_bp_total="<<metrics.twoStageSelectiveFallbackSelectedBpTotal<<endl;
   cerr<<"benchmark.refine_window_count="<<metrics.refineWindowCount<<endl;
   cerr<<"benchmark.refine_total_bp="<<metrics.refineTotalBp<<endl;
   cerr<<"benchmark.sim_scan_tasks="<<metrics.simScanTasks<<endl;
@@ -2479,6 +2493,12 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
   const bool discoveryPrefilterOnly = twoStageDiscoveryMode == EXACT_SIM_TWO_STAGE_DISCOVERY_MODE_PREFILTER_ONLY;
   const ExactSimTwoStageRejectMode twoStageRejectMode =
     deferredExactTwoStage ? exact_sim_two_stage_reject_mode_runtime() : EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF;
+  const ExactSimTwoStageSelectiveFallbackConfig twoStageSelectiveFallbackConfig =
+    exact_sim_two_stage_selective_fallback_config_runtime();
+  const bool twoStageSelectiveFallbackEnabled =
+    deferredExactTwoStage &&
+    twoStageRejectMode == EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2 &&
+    twoStageSelectiveFallbackConfig.enabled;
   vector<ExactSimDeferredTwoStagePrefilterResult> deferredPrefilterResults(tasks.size());
   vector<unsigned char> deferredTaskShouldRun(tasks.size(),0);
   uint64_t discoveryPrefilterFailedTasks = 0;
@@ -2523,6 +2543,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     metrics->twoStageThresholdMode = longtarget_two_stage_threshold_mode_label(twoStageThresholdMode);
     metrics->twoStageRejectMode = longtarget_two_stage_reject_mode_label(twoStageRejectMode);
     metrics->twoStageDiscoveryMode = longtarget_two_stage_discovery_mode_label(twoStageDiscoveryMode);
+    metrics->twoStageSelectiveFallbackEnabled = twoStageSelectiveFallbackEnabled ? 1u : 0u;
   }
 
   if(!twoStageDebugWindowsCsvPath.empty())
@@ -2601,6 +2622,9 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         metrics->twoStageSingletonRescuedWindows += result.rejectStats.singletonRescuedWindows;
         metrics->twoStageSingletonRescuedTasks += result.rejectStats.singletonRescuedTasks;
         metrics->twoStageSingletonRescueBpTotal += result.rejectStats.singletonRescueBpTotal;
+        metrics->twoStageSelectiveFallbackTriggeredTasks += result.rejectStats.selectiveFallbackTriggeredTasks;
+        metrics->twoStageSelectiveFallbackSelectedWindows += result.rejectStats.selectiveFallbackSelectedWindows;
+        metrics->twoStageSelectiveFallbackSelectedBpTotal += result.rejectStats.selectiveFallbackSelectedBpTotal;
         if(!result.hadAnySeed)
         {
           metrics->twoStageThresholdSkippedNoSeedTasks += 1;

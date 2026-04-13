@@ -20,7 +20,8 @@ rm -rf "$WORK"
     --rna H19.fa \
     --heavy-anchor testDNA.fa \
     --tile-spec 1000:1000:2 \
-    --tile-spec 2000:2000:1 >/dev/null
+    --tile-spec 2000:2000:1 \
+    --gated-run-label deferred_exact_minimal_v2_selective_fallback >/dev/null
 )
 
 python3 - "$WORK/summary.json" "$WORK/discovery_report.json" <<'PY'
@@ -33,6 +34,7 @@ discovery = json.load(open(sys.argv[2], "r", encoding="utf-8"))
 
 assert summary["compare_output_mode"] == "lite"
 assert summary["prefilter_backend"] == "prealign_cuda"
+assert summary["gated_run_label"] == "deferred_exact_minimal_v2_selective_fallback"
 assert len(summary["tile_specs"]) == 2
 assert len(summary["selected_microanchors"]) == 4
 assert summary["decision_flags"].keys() == {
@@ -54,11 +56,11 @@ for item in summary["selected_microanchors"]:
     assert item["selection_kind"] in {"strongest_shrink", "medium_shrink"}
     assert Path(item["shard_path"]).exists()
     assert Path(item["report_path"]).exists()
-    assert set(item["runs"]) == {"legacy", "deferred_exact", "deferred_exact_minimal_v2"}
-    assert set(item["comparisons_vs_legacy"]) == {"deferred_exact", "deferred_exact_minimal_v2"}
-    assert "top5_retention" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2"]
-    assert "top10_retention" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2"]
-    assert "score_weighted_recall" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2"]
+    assert set(item["runs"]) == {"legacy", "deferred_exact", "deferred_exact_minimal_v2_selective_fallback"}
+    assert set(item["comparisons_vs_legacy"]) == {"deferred_exact", "deferred_exact_minimal_v2_selective_fallback"}
+    assert "top5_retention" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2_selective_fallback"]
+    assert "top10_retention" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2_selective_fallback"]
+    assert "score_weighted_recall" in item["comparisons_vs_legacy"]["deferred_exact_minimal_v2_selective_fallback"]
 
 assert discovery["report_count"] >= 3
 assert len(discovery["candidates"]) >= 3

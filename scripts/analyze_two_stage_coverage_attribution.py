@@ -109,6 +109,10 @@ def _load_debug_rows(path: Path) -> list[dict[str, object]]:
                 "strong_score_ok",
             ):
                 row[name] = int(row[name]) if row[name] != "" else None
+            if "selective_fallback_selected" in row:
+                row["selective_fallback_selected"] = int(row["selective_fallback_selected"]) if row["selective_fallback_selected"] != "" else 0
+            else:
+                row["selective_fallback_selected"] = 0
             for name in ("sorted_rank", "second_best_seed_score", "margin"):
                 row[name] = int(row[name]) if row[name] != "" else None
             rows.append(row)

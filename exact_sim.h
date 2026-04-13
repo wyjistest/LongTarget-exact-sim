@@ -771,6 +771,14 @@ struct ExactSimTwoStageRejectConfig
   long maxBpPerTask;
 };
 
+struct ExactSimTwoStageSelectiveFallbackConfig
+{
+  ExactSimTwoStageSelectiveFallbackConfig():
+    enabled(false) {}
+
+  bool enabled;
+};
+
 inline ExactSimTwoStageRejectMode exact_sim_two_stage_reject_mode_runtime()
 {
   static const ExactSimTwoStageRejectMode mode = []()
@@ -796,6 +804,13 @@ inline ExactSimTwoStageRejectMode exact_sim_two_stage_reject_mode_runtime()
     return EXACT_SIM_TWO_STAGE_REJECT_MODE_OFF;
   }();
   return mode;
+}
+
+inline ExactSimTwoStageSelectiveFallbackConfig exact_sim_two_stage_selective_fallback_config_runtime()
+{
+  ExactSimTwoStageSelectiveFallbackConfig config;
+  config.enabled = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK", 0) != 0;
+  return config;
 }
 
 inline ExactSimTwoStageRejectConfig exact_sim_two_stage_reject_config_runtime()
@@ -824,7 +839,10 @@ struct ExactSimTwoStageRejectStats
     windowsTrimmedByMaxBp(0),
     singletonRescuedWindows(0),
     singletonRescuedTasks(0),
-    singletonRescueBpTotal(0) {}
+    singletonRescueBpTotal(0),
+    selectiveFallbackTriggeredTasks(0),
+    selectiveFallbackSelectedWindows(0),
+    selectiveFallbackSelectedBpTotal(0) {}
 
   uint64_t windowsRejectedByMinPeakScore;
   uint64_t windowsRejectedBySupport;
@@ -834,6 +852,9 @@ struct ExactSimTwoStageRejectStats
   uint64_t singletonRescuedWindows;
   uint64_t singletonRescuedTasks;
   uint64_t singletonRescueBpTotal;
+  uint64_t selectiveFallbackTriggeredTasks;
+  uint64_t selectiveFallbackSelectedWindows;
+  uint64_t selectiveFallbackSelectedBpTotal;
 };
 
 enum ExactSimTwoStageWindowRejectReason
@@ -845,6 +866,7 @@ enum ExactSimTwoStageWindowRejectReason
   EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_WINDOWS = 4,
   EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_MAX_BP = 5,
   EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_RESCUED = 6,
+  EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SELECTIVE_FALLBACK = 7,
 };
 
 struct ExactSimTwoStageWindowTrace
@@ -858,6 +880,7 @@ struct ExactSimTwoStageWindowTrace
     supportOk(false),
     marginOk(false),
     strongScoreOk(false),
+    selectiveFallbackSelected(false),
     rejectReason(EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_NONE) {}
 
   size_t originalIndex;
@@ -869,6 +892,7 @@ struct ExactSimTwoStageWindowTrace
   bool supportOk;
   bool marginOk;
   bool strongScoreOk;
+  bool selectiveFallbackSelected;
   ExactSimTwoStageWindowRejectReason rejectReason;
 };
 
@@ -888,6 +912,8 @@ inline const char *exact_sim_two_stage_window_reject_reason_label(ExactSimTwoSta
       return "max_bp";
     case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_RESCUED:
       return "singleton_rescued";
+    case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SELECTIVE_FALLBACK:
+      return "selective_fallback";
     case EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_NONE:
     default:
       return "kept";
@@ -904,6 +930,18 @@ inline bool exact_sim_refine_window_is_singleton_missing_margin(const ExactSimRe
   return window.supportCount == 1 &&
          (window.secondBestSeedScore == exact_sim_refine_window_missing_score() ||
           exact_sim_refine_window_margin(window) == exact_sim_refine_window_missing_score());
+}
+
+inline bool exact_sim_refine_window_sort_before(const ExactSimRefineWindow &lhs,
+                                                const ExactSimRefineWindow &rhs)
+{
+  if(lhs.bestSeedScore != rhs.bestSeedScore) return lhs.bestSeedScore > rhs.bestSeedScore;
+  if(lhs.supportCount != rhs.supportCount) return lhs.supportCount > rhs.supportCount;
+  const long lhsMargin = exact_sim_refine_window_margin(lhs);
+  const long rhsMargin = exact_sim_refine_window_margin(rhs);
+  if(lhsMargin != rhsMargin) return lhsMargin > rhsMargin;
+  if(lhs.startJ != rhs.startJ) return lhs.startJ < rhs.startJ;
+  return lhs.endJ < rhs.endJ;
 }
 
 inline void exact_sim_apply_two_stage_reject_gate_in_place(vector<ExactSimRefineWindow> &windows,
@@ -1073,15 +1111,7 @@ inline void exact_sim_apply_two_stage_reject_gate_in_place(vector<ExactSimRefine
               keptOrder.end(),
               [&kept](size_t lhsIndex,size_t rhsIndex)
               {
-                const ExactSimRefineWindow &lhs = kept[lhsIndex];
-                const ExactSimRefineWindow &rhs = kept[rhsIndex];
-                if(lhs.bestSeedScore != rhs.bestSeedScore) return lhs.bestSeedScore > rhs.bestSeedScore;
-                if(lhs.supportCount != rhs.supportCount) return lhs.supportCount > rhs.supportCount;
-                const long lhsMargin = exact_sim_refine_window_margin(lhs);
-                const long rhsMargin = exact_sim_refine_window_margin(rhs);
-                if(lhsMargin != rhsMargin) return lhsMargin > rhsMargin;
-                if(lhs.startJ != rhs.startJ) return lhs.startJ < rhs.startJ;
-                return lhs.endJ < rhs.endJ;
+                return exact_sim_refine_window_sort_before(kept[lhsIndex],kept[rhsIndex]);
               });
 
   vector<ExactSimRefineWindow> sortedKept;
@@ -1189,6 +1219,68 @@ inline void exact_sim_apply_two_stage_reject_gate_in_place(vector<ExactSimRefine
   }
 
   windows.swap(sortedKept);
+}
+
+inline void exact_sim_apply_two_stage_selective_fallback_in_place(
+  vector<ExactSimRefineWindow> &windows,
+  const ExactSimTwoStageSelectiveFallbackConfig &config,
+  ExactSimTwoStageRejectStats *stats = NULL,
+  vector<ExactSimTwoStageWindowTrace> *trace = NULL)
+{
+  if(!config.enabled || !windows.empty() || trace == NULL || trace->empty())
+  {
+    return;
+  }
+
+  size_t bestTraceIndex = std::numeric_limits<size_t>::max();
+  for(size_t i = 0; i < trace->size(); ++i)
+  {
+    const ExactSimTwoStageWindowTrace &entry = (*trace)[i];
+    if(!entry.beforeGate || entry.afterGate)
+    {
+      continue;
+    }
+    if(entry.rejectReason != EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SINGLETON_MISSING_MARGIN)
+    {
+      continue;
+    }
+    if(!exact_sim_refine_window_is_singleton_missing_margin(entry.window))
+    {
+      continue;
+    }
+    if(entry.window.bestSeedScore < exact_sim_two_stage_singleton_score_override_minimal_v2())
+    {
+      continue;
+    }
+    if(bestTraceIndex == std::numeric_limits<size_t>::max() ||
+       exact_sim_refine_window_sort_before(entry.window,(*trace)[bestTraceIndex].window))
+    {
+      bestTraceIndex = i;
+    }
+  }
+
+  if(bestTraceIndex == std::numeric_limits<size_t>::max())
+  {
+    return;
+  }
+
+  ExactSimTwoStageWindowTrace &selected = (*trace)[bestTraceIndex];
+  windows.push_back(selected.window);
+  selected.afterGate = true;
+  selected.sortedRank = 0;
+  selected.selectiveFallbackSelected = true;
+  selected.rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_SELECTIVE_FALLBACK;
+
+  if(stats != NULL)
+  {
+    stats->selectiveFallbackTriggeredTasks += 1;
+    stats->selectiveFallbackSelectedWindows += 1;
+    const int selectedBp = exact_sim_refine_window_bp(selected.window);
+    if(selectedBp > 0)
+    {
+      stats->selectiveFallbackSelectedBpTotal += static_cast<uint64_t>(selectedBp);
+    }
+  }
 }
 
 inline uint64_t exact_sim_total_refine_window_bp(const vector<ExactSimRefineWindow> &windows)
@@ -1321,10 +1413,25 @@ inline bool collectExactSimTwoStageDeferredPrefilterCore(string &rnaSequence,
   }
 
   const ExactSimTwoStageRejectConfig rejectConfig = exact_sim_two_stage_reject_config_runtime();
+  const ExactSimTwoStageSelectiveFallbackConfig selectiveFallbackConfig =
+    exact_sim_two_stage_selective_fallback_config_runtime();
   const double gateStart = taskTiming != NULL ? exact_sim_now_seconds() : 0.0;
   exact_sim_apply_two_stage_reject_gate_in_place(result.windows,rejectConfig,&result.rejectStats,trace);
   result.windowsAfterGate = static_cast<uint64_t>(result.windows.size());
   result.hadAnyRefineWindowAfterGate = !result.windows.empty();
+  if(selectiveFallbackConfig.enabled &&
+     rejectConfig.mode == EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2 &&
+     result.hadAnySeed &&
+     result.hadAnyRefineWindowBeforeGate &&
+     !result.hadAnyRefineWindowAfterGate)
+  {
+    exact_sim_apply_two_stage_selective_fallback_in_place(result.windows,
+                                                          selectiveFallbackConfig,
+                                                          &result.rejectStats,
+                                                          trace);
+    result.windowsAfterGate = static_cast<uint64_t>(result.windows.size());
+    result.hadAnyRefineWindowAfterGate = !result.windows.empty();
+  }
   if(taskTiming != NULL)
   {
     taskTiming->twoStageGateSeconds += exact_sim_now_seconds() - gateStart;
