@@ -378,6 +378,66 @@ int main()
     windows.push_back(make_window(60,72,96,90,2));
 
     ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(2);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,77,75,1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+    trace[1].originalIndex = 1;
+    trace[1].window = make_window(40,52,70,68,1);
+    trace[1].beforeGate = true;
+    trace[1].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 2;
+    fallbackConfig.nonEmptyMaxScoreGap = 6;
+    fallbackConfig.nonEmptyEnableScoreBand7579 = true;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),2u,"score-band non-empty result adds one window") && ok;
+    ok = expect_equal_int(windows[0].startJ,60,"score-band non-empty keeps original winner first") && ok;
+    ok = expect_equal_int(windows[1].startJ,20,"score-band non-empty rescues 75-79 candidate") && ok;
+    ok = expect_true(trace[0].afterGate,"score-band candidate becomes after-gate") && ok;
+    ok = expect_true(trace[0].selectiveFallbackSelected,"score-band candidate marked selected") && ok;
+    ok = expect_false(trace[1].afterGate,"lt-75 candidate stays rejected") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"score-band candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks,0,"score-band no-singleton rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyTriggeredTasks,1,"score-band triggered count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackSelectedWindows,1,"score-band selected windows") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackSelectedBpTotal,13,"score-band selected bp") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,96,90,2));
+
+    ExactSimTwoStageRejectStats stats;
+    std::vector<ExactSimTwoStageWindowTrace> trace(1);
+    trace[0].originalIndex = 0;
+    trace[0].window = make_window(20,32,70,68,1);
+    trace[0].beforeGate = true;
+    trace[0].rejectReason = EXACT_SIM_TWO_STAGE_WINDOW_REJECT_REASON_LOW_SUPPORT_OR_MARGIN;
+
+    ExactSimTwoStageSelectiveFallbackConfig fallbackConfig;
+    fallbackConfig.enabled = true;
+    fallbackConfig.nonEmptyMaxKeptWindows = 2;
+    fallbackConfig.nonEmptyMaxScoreGap = 6;
+    fallbackConfig.nonEmptyEnableScoreBand7579 = true;
+    exact_sim_apply_two_stage_selective_fallback_in_place(windows,fallbackConfig,&stats,&trace);
+
+    ok = expect_equal_size(windows.size(),1u,"lt-75 score-band result keeps original winner") && ok;
+    ok = expect_false(trace[0].afterGate,"lt-75 score-band result leaves rejected trace untouched") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyCandidateTasks,1,"lt-75 score-band candidate count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyRejectedByNoSingletonMissingMarginTasks,1,"lt-75 score-band keeps no-singleton rejection count") && ok;
+    ok = expect_equal_long(stats.selectiveFallbackNonEmptyTriggeredTasks,0,"lt-75 score-band does not trigger") && ok;
+  }
+
+  {
+    std::vector<ExactSimRefineWindow> windows;
+    windows.push_back(make_window(60,72,96,90,2));
+
+    ExactSimTwoStageRejectStats stats;
     std::vector<ExactSimTwoStageWindowTrace> trace(1);
     trace[0].originalIndex = 0;
     trace[0].window = make_window(20,32,84,std::numeric_limits<long>::min(),1);

@@ -776,11 +776,13 @@ struct ExactSimTwoStageSelectiveFallbackConfig
   ExactSimTwoStageSelectiveFallbackConfig():
     enabled(false),
     nonEmptyMaxKeptWindows(1),
-    nonEmptyMaxScoreGap(6) {}
+    nonEmptyMaxScoreGap(6),
+    nonEmptyEnableScoreBand7579(false) {}
 
   bool enabled;
   long nonEmptyMaxKeptWindows;
   long nonEmptyMaxScoreGap;
+  bool nonEmptyEnableScoreBand7579;
 };
 
 inline ExactSimTwoStageRejectMode exact_sim_two_stage_reject_mode_runtime()
@@ -818,6 +820,8 @@ inline ExactSimTwoStageSelectiveFallbackConfig exact_sim_two_stage_selective_fal
     exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS", 1);
   config.nonEmptyMaxScoreGap =
     exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP", 6);
+  config.nonEmptyEnableScoreBand7579 =
+    exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79", 0) != 0;
   if(config.nonEmptyMaxKeptWindows < 0)
   {
     config.nonEmptyMaxKeptWindows = 0;
@@ -960,6 +964,11 @@ inline bool exact_sim_refine_window_is_singleton_missing_margin(const ExactSimRe
   return window.supportCount == 1 &&
          (window.secondBestSeedScore == exact_sim_refine_window_missing_score() ||
           exact_sim_refine_window_margin(window) == exact_sim_refine_window_missing_score());
+}
+
+inline bool exact_sim_refine_window_in_score_band_75_79(const ExactSimRefineWindow &window)
+{
+  return window.bestSeedScore >= 75 && window.bestSeedScore <= 79;
 }
 
 inline bool exact_sim_refine_window_sort_before(const ExactSimRefineWindow &lhs,
@@ -1393,6 +1402,33 @@ inline void exact_sim_apply_two_stage_selective_fallback_in_place(
        exact_sim_refine_window_sort_before(entry.window,(*trace)[bestTraceIndex].window))
     {
       bestTraceIndex = i;
+    }
+  }
+
+  if(bestTraceIndex == std::numeric_limits<size_t>::max() &&
+     hadKeptWindows &&
+     config.nonEmptyEnableScoreBand7579)
+  {
+    for(size_t i = 0; i < trace->size(); ++i)
+    {
+      const ExactSimTwoStageWindowTrace &entry = (*trace)[i];
+      if(!entry.beforeGate || entry.afterGate)
+      {
+        continue;
+      }
+      if(!exact_sim_refine_window_in_score_band_75_79(entry.window))
+      {
+        continue;
+      }
+      if(exact_sim_refine_window_covered_by_kept_windows(entry.window,windows))
+      {
+        continue;
+      }
+      if(bestTraceIndex == std::numeric_limits<size_t>::max() ||
+         exact_sim_refine_window_sort_before(entry.window,(*trace)[bestTraceIndex].window))
+      {
+        bestTraceIndex = i;
+      }
     }
   }
 

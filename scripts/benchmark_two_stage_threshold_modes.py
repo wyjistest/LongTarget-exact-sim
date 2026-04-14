@@ -26,6 +26,7 @@ RUN_LABELS = (
     "deferred_exact_minimal_v1",
     "deferred_exact_minimal_v2",
     "deferred_exact_minimal_v2_selective_fallback",
+    "deferred_exact_minimal_v3_scoreband_75_79",
 )
 DEFAULT_RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1")
 
@@ -395,6 +396,22 @@ def main() -> int:
                 "LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK": str(args.max_windows_per_task),
                 "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
                 "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK": "1",
+            },
+        ),
+        (
+            "deferred_exact_minimal_v3_scoreband_75_79",
+            {
+                "LONGTARGET_TWO_STAGE_THRESHOLD_MODE": "deferred_exact",
+                "LONGTARGET_TWO_STAGE_REJECT_MODE": "minimal_v2",
+                "LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE": str(args.min_peak_score),
+                "LONGTARGET_TWO_STAGE_MIN_SUPPORT": str(args.min_support),
+                "LONGTARGET_TWO_STAGE_MIN_MARGIN": str(args.min_margin),
+                "LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE": str(args.strong_score_override),
+                "LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK": str(args.max_windows_per_task),
+                "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK": "1",
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS": "2",
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79": "1",
             },
         ),
     ]

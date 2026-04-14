@@ -916,6 +916,16 @@
     - 首先应围绕 `score_lt_85` 的 `75_79` 这层做 very narrow runtime 原型，而不是直接放开整个 `<85`；
     - `lt_75` 暂时只保留为 offline 对照，因为它虽然还能抬 `score_weighted_recall`，但不会抬 `top10`，且成本更高；
   - 在拿到新的 offline replay 正增益之前，不应把这类 selector 扩展直接写进默认 runtime 行为。
+- 这一轮已经把上述 runtime 原型落地成一个严格受限的 `minimal_v3`：
+  - `exact_sim.h` 的 `ExactSimTwoStageSelectiveFallbackConfig` 新增 `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79` 开关；
+  - 在 `deferred_exact + minimal_v2 + selective_fallback` 的 non-empty path 上，若现有 `singleton_missing_margin` rescue 没有选中任何窗口，则允许再补救 **exactly one** 个未被 kept windows 覆盖的 `75-79` rejected window；
+  - 这一步不改 `score_gap`、不改 `strong_score_override`、不包含 `<75`，也不碰 `REFINE_PAD_BP / REFINE_MERGE_GAP_BP`；
+  - `scripts/benchmark_two_stage_threshold_modes.py` / `scripts/check_two_stage_threshold_modes.sh` 已新增对应 lane：`deferred_exact_minimal_v3_scoreband_75_79`，其唯一额外条件是 `NON_EMPTY_MAX_KEPT_WINDOWS=2` + `NON_EMPTY_SCORE_BAND_75_79=1`；
+  - 目前已完成的验证只有实现级回归：`make check-exact-sim-two-stage-threshold`、`make check-two-stage-threshold-modes`。
+- 因此当前最自然的下一步已经从“做 runtime 原型”收缩为“跑真实固定 selected-tiles panel rerun”：
+  - 直接对比 `deferred_exact_minimal_v2_selective_fallback` vs `deferred_exact_minimal_v3_scoreband_75_79`；
+  - 重点看 `selective_fallback_non_empty_triggered_tasks`、`top_hit_retention`、`top5/top10 retention`、`score_weighted_recall`、`threshold_skipped_after_gate`、`batch_retention`；
+  - 只有在真实 panel 也出现净正增益时，才值得把这条 lane 继续扩到更广的评估面。
 
 ## 常用命令
 

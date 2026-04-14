@@ -26,6 +26,7 @@ rm -rf "$WORK"
     --run-label deferred_exact \
     --run-label deferred_exact_minimal_v2 \
     --run-label deferred_exact_minimal_v2_selective_fallback \
+    --run-label deferred_exact_minimal_v3_scoreband_75_79 \
     --run-env deferred_exact_minimal_v2_selective_fallback:LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP=9 \
     --debug-window-run-label deferred_exact_minimal_v2_selective_fallback >/dev/null
 )
@@ -49,7 +50,13 @@ assert report["run_env_overrides_requested"] == {
 }
 
 runs = report["runs"]
-assert set(runs) == {"legacy", "deferred_exact", "deferred_exact_minimal_v2", "deferred_exact_minimal_v2_selective_fallback"}
+assert set(runs) == {
+    "legacy",
+    "deferred_exact",
+    "deferred_exact_minimal_v2",
+    "deferred_exact_minimal_v2_selective_fallback",
+    "deferred_exact_minimal_v3_scoreband_75_79",
+}
 assert runs["legacy"]["threshold_mode"] == "legacy"
 assert runs["legacy"]["reject_mode"] == "off"
 assert runs["deferred_exact"]["threshold_mode"] == "deferred_exact"
@@ -59,6 +66,8 @@ assert runs["deferred_exact_minimal_v2"]["reject_mode"] == "minimal_v2"
 assert runs["deferred_exact_minimal_v2_selective_fallback"]["threshold_mode"] == "deferred_exact"
 assert runs["deferred_exact_minimal_v2_selective_fallback"]["reject_mode"] == "minimal_v2"
 assert runs["deferred_exact_minimal_v2_selective_fallback"]["debug_windows_csv"].endswith("two_stage_windows.tsv")
+assert runs["deferred_exact_minimal_v3_scoreband_75_79"]["threshold_mode"] == "deferred_exact"
+assert runs["deferred_exact_minimal_v3_scoreband_75_79"]["reject_mode"] == "minimal_v2"
 
 for label, run in runs.items():
     if label == "legacy":
@@ -104,12 +113,20 @@ for label, run in runs.items():
         assert run["debug_windows_csv"]
         assert run["selective_fallback_enabled"] == 1
         assert open(run["debug_windows_csv"], "r", encoding="utf-8").readline().startswith("task_index\t")
+    elif label == "deferred_exact_minimal_v3_scoreband_75_79":
+        assert run["debug_windows_csv"] == ""
+        assert run["selective_fallback_enabled"] == 1
     else:
         assert run["debug_windows_csv"] == ""
         assert run["selective_fallback_enabled"] == 0
 
 comparisons = report["comparisons_vs_legacy"]
-assert set(comparisons) == {"deferred_exact", "deferred_exact_minimal_v2", "deferred_exact_minimal_v2_selective_fallback"}
+assert set(comparisons) == {
+    "deferred_exact",
+    "deferred_exact_minimal_v2",
+    "deferred_exact_minimal_v2_selective_fallback",
+    "deferred_exact_minimal_v3_scoreband_75_79",
+}
 for comparison in comparisons.values():
     assert "strict" in comparison
     assert "relaxed" in comparison

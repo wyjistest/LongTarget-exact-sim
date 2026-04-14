@@ -369,14 +369,16 @@ make check-two-stage-threshold-modes
   - `benchmark.two_stage_selective_fallback_enabled`, `benchmark.two_stage_selective_fallback_triggered_tasks`, `benchmark.two_stage_selective_fallback_non_empty_candidate_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_max_kept_windows_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_singleton_override_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_as_covered_by_kept_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_score_gap_tasks`, `benchmark.two_stage_selective_fallback_non_empty_triggered_tasks`, `benchmark.two_stage_selective_fallback_selected_windows`, `benchmark.two_stage_selective_fallback_selected_bp_total`
   - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`, `run_env_overrides_requested`
 - `--run-env LABEL:KEY=VALUE` lets one threshold-mode rerun inject a candidate-only env override without mutating the shared baseline lanes; use it for narrow selector ablations rather than broad global gate sweeps.
-- `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback`:
+- `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback` and the narrow `deferred_exact_minimal_v3_scoreband_75_79` runtime prototype:
   - scope is intentionally narrow: only deferred-exact + `minimal_v2`
   - trigger is conservative: it first rescues empty-after-gate tasks, and it can also rescue sparse non-empty tasks when a qualifying rejected `singleton_missing_margin` window stays close to the strongest kept window
+  - `deferred_exact_minimal_v3_scoreband_75_79` keeps the existing singleton path intact, then adds one post-hoc non-empty rescue for the strongest uncovered rejected window in the `75-79` score band
   - action is narrow: re-admit exactly one rejected window into the exact refine pass
   - this is an experimental candidate-lane rescue, not a default semantic change and not a task-level `reject=off`
   - optional knobs for the non-empty ambiguity lane:
     - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS` limits rescue to sparse tasks (default: `1`)
     - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP` caps the allowed best-seed-score gap between the strongest kept window and the rescued rejected singleton (default: `6`)
+    - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79=1` enables the first runtime candidate-class expansion: rescue one uncovered `75-79` rejected window after the singleton path fails; the benchmark lane sets `NON_EMPTY_MAX_KEPT_WINDOWS=2` and leaves `SCORE_GAP` unchanged
 - Heavy-zone micro-anchor calibration uses coarse tiling plus the same 3-arm threshold-mode compare:
 
 ```
@@ -473,6 +475,10 @@ python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
   - On the current real panel, `score_band_dominant` resolves to `75_79` and matches `score_band_75_79`: `predicted_rescued_task_count=286`, `delta_top10_retention=+0.1`, `delta_score_weighted_recall≈+0.0128`, with `top_hit_retention` unchanged.
   - `score_band_lt_75` improves only `score_weighted_recall` (`≈+0.0165`) while costing more rescued tasks/windows, so it should stay a comparison lane, not the first runtime expansion target.
   - This lets us answer a narrower question before touching runtime semantics: if we admitted one more candidate class, would `top5/top10` or `score_weighted_recall` move enough to justify a real selector change?
+- `scripts/benchmark_two_stage_threshold_modes.py` now exposes the matching runtime prototype lane `deferred_exact_minimal_v3_scoreband_75_79`, which keeps `deferred_exact_minimal_v2_selective_fallback` as the baseline and adds only:
+  - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS=2`
+  - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79=1`
+  - the next required step is a fixed selected-tiles real panel rerun to compare actual `top5/top10`, `score_weighted_recall`, `threshold_skipped_after_gate`, and `batch_retention` deltas against `deferred_exact_minimal_v2_selective_fallback`
 - Example quality-gated sweep:
 
 ```
