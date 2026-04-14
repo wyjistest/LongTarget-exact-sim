@@ -562,6 +562,10 @@ check-rerun-two-stage-panel-with-candidate-env:
 	python3 ./scripts/rerun_two_stage_panel_with_candidate_env.py --help >/dev/null
 	bash ./scripts/check_rerun_two_stage_panel_with_candidate_env.sh
 
+check-rerun-two-stage-panel-task-rerun-runtime:
+	python3 ./scripts/rerun_two_stage_panel_task_rerun_runtime.py --help >/dev/null
+	bash ./scripts/check_rerun_two_stage_panel_task_rerun_runtime.sh
+
 check-analyze-two-stage-selector-candidate-classes:
 	python3 ./scripts/analyze_two_stage_selector_candidate_classes.py --help >/dev/null
 	bash ./scripts/check_analyze_two_stage_selector_candidate_classes.sh
@@ -623,6 +627,6 @@ check-longtarget-lite-output:
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
-		check-rerun-two-stage-panel-with-candidate-env check-analyze-two-stage-selector-candidate-classes \
+		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \
 		check-replay-two-stage-task-level-rerun check-two-stage-task-rerun-runtime

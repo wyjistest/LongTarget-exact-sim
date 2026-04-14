@@ -34,6 +34,13 @@ def _tile_name(item: dict[str, object]) -> str:
     )
 
 
+def _selected_tasks_filename(item: dict[str, object]) -> str:
+    return (
+        f"{item['anchor_label']}_{item['selection_bucket_length_bp']}_"
+        f"{item['selection_kind']}_{item['start_bp']}_{item['length_bp']}.tsv"
+    )
+
+
 def _tile_key(item: dict[str, object]) -> str:
     return (
         f"{item['anchor_label']}|"
@@ -231,15 +238,16 @@ def main() -> int:
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    selected_tasks_root = output_dir / "task_rerun_selected_tasks"
+    selected_tasks_root.mkdir(parents=True, exist_ok=True)
 
     commands: list[list[str]] = []
     selected_task_count_total = 0
     for panel_item in selected_microanchors:
         tile_output_dir = output_dir / "tiles" / _tile_name(panel_item)
-        tile_output_dir.mkdir(parents=True, exist_ok=True)
         tile_selected_tasks = selected_by_tile.get(_tile_key(panel_item), [])
         selected_task_count_total += len(tile_selected_tasks)
-        selected_tasks_path = tile_output_dir / "task_rerun_selected_tasks.tsv"
+        selected_tasks_path = selected_tasks_root / _selected_tasks_filename(panel_item)
         _write_selected_tasks_tsv(selected_tasks_path, tile_selected_tasks)
         commands.append(
             _build_tile_command(
@@ -270,7 +278,7 @@ def main() -> int:
     def run_tile(panel_item: dict[str, object]) -> dict[str, object]:
         tile_output_dir = output_dir / "tiles" / _tile_name(panel_item)
         tile_selected_tasks = selected_by_tile.get(_tile_key(panel_item), [])
-        selected_tasks_path = tile_output_dir / "task_rerun_selected_tasks.tsv"
+        selected_tasks_path = selected_tasks_root / _selected_tasks_filename(panel_item)
         cmd = _build_tile_command(
             panel_item=panel_item,
             candidate_run_label=candidate_run_label,
