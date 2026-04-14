@@ -220,4 +220,106 @@ PY
 grep -q "score_lt_85 Band Breakdown" "$OUT_BAND/summary.md"
 grep -q "recommended_score_lt_85_band" "$OUT_BAND/summary.md"
 
+mkdir -p "$WORK/lt75_legacy/output" "$WORK/lt75_candidate/output"
+
+cat >"$WORK/lt75_legacy/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	8000	8020	ParaPlus	1	1105	1115	+	100	11	90	-12
+chr22	21	40	9000	9020	ParaPlus	1	2205	2215	+	74	11	90	-12
+chr22	41	60	10000	10020	ParaPlus	1	3205	3215	+	67	11	90	-12
+chr22	61	80	11000	11020	ParaPlus	1	4205	4215	+	60	11	90	-12
+EOF
+
+cat >"$WORK/lt75_candidate/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	8000	8020	ParaPlus	1	1105	1115	+	100	11	90	-12
+EOF
+
+cat >"$WORK/lt75_two_stage_windows.tsv" <<'EOF'
+task_index	fragment_index	fragment_start_in_seq	fragment_end_in_seq	reverse_mode	parallel_mode	strand	rule	window_id	sorted_rank	window_start_in_fragment	window_end_in_fragment	window_start_in_seq	window_end_in_seq	best_seed_score	second_best_seed_score	margin	support_count	window_bp	before_gate	after_gate	peak_score_ok	support_ok	margin_ok	strong_score_ok	selective_fallback_selected	reject_reason
+0	0	1	5000	0	1	ParaPlus	1	0	0	1100	1160	1100	1160	100	90	10	3	61	1	1	1	1	1	1	0	kept
+1	0	1	5000	0	1	ParaPlus	1	0	0	2100	2160	2100	2160	100	90	10	3	61	1	1	1	1	1	1	0	kept
+1	0	1	5000	0	1	ParaPlus	1	1		2200	2230	2200	2230	74	72	2	1	31	1	0	0	0	0	0	0	low_support_or_margin
+2	0	1	5000	0	1	ParaPlus	1	0	0	3100	3160	3100	3160	100	90	10	3	61	1	1	1	1	1	1	0	kept
+2	0	1	5000	0	1	ParaPlus	1	1		3200	3230	3200	3230	67	65	2	1	31	1	0	0	0	0	0	0	low_support_or_margin
+3	0	1	5000	0	1	ParaPlus	1	0	0	4100	4160	4100	4160	100	90	10	3	61	1	1	1	1	1	1	0	kept
+3	0	1	5000	0	1	ParaPlus	1	1		4200	4230	4200	4230	60	58	2	1	31	1	0	0	0	0	0	0	low_support_or_margin
+EOF
+
+cat >"$WORK/lt75_report.json" <<EOF
+{
+  "compare_output_mode": "lite",
+  "runs": {
+    "legacy": {
+      "output_dir": "$WORK/lt75_legacy/output"
+    },
+    "deferred_exact_minimal_v3_scoreband_75_79": {
+      "output_dir": "$WORK/lt75_candidate/output",
+      "debug_windows_csv": "$WORK/lt75_two_stage_windows.tsv"
+    }
+  }
+}
+EOF
+
+cat >"$WORK/lt75_panel_summary.json" <<EOF
+{
+  "gated_run_label": "deferred_exact_minimal_v3_scoreband_75_79",
+  "selected_microanchors": [
+    {
+      "anchor_label": "anchorLt75",
+      "selection_bucket_length_bp": 25000,
+      "selection_kind": "strongest_shrink",
+      "selection_rank": 0,
+      "start_bp": 1,
+      "length_bp": 25000,
+      "report_path": "$WORK/lt75_report.json"
+    }
+  ]
+}
+EOF
+
+OUT_LT75="$WORK/out_lt75"
+python3 "$ROOT/scripts/analyze_two_stage_selector_candidate_classes.py" \
+  --panel-summary "$WORK/lt75_panel_summary.json" \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --output-dir "$OUT_LT75" >/dev/null
+
+python3 - "$OUT_LT75/summary.json" <<'PY'
+import json
+import math
+import sys
+
+summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+lt75 = summary["aggregate"]["score_lt_75_band_breakdown"]
+assert lt75["task_count_by_band"] == {
+    "70_74": 1,
+    "65_69": 1,
+    "lt_65": 1,
+}
+assert lt75["window_count_by_band"] == {
+    "70_74": 1,
+    "65_69": 1,
+    "lt_65": 1,
+}
+overall = lt75["missing_hit_contribution_by_band"]["overall"]
+assert overall["matched_missing_count"] == 3
+assert overall["count_by_band"] == {
+    "70_74": 1,
+    "65_69": 1,
+    "lt_65": 1,
+}
+weighted = lt75["missing_hit_contribution_by_band"]["score_weighted_missing"]
+assert math.isclose(weighted["weight_by_band"]["70_74"], 74.0)
+assert math.isclose(weighted["weight_by_band"]["65_69"], 67.0)
+assert math.isclose(weighted["weight_by_band"]["lt_65"], 60.0)
+assert summary["recommended_score_lt_85_band"] == "lt_75"
+assert summary["recommended_score_lt_75_band"] == "70_74"
+PY
+
+grep -q "score_lt_75 Band Breakdown" "$OUT_LT75/summary.md"
+grep -q "recommended_score_lt_75_band" "$OUT_LT75/summary.md"
+
 echo "ok"

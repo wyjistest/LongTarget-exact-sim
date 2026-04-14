@@ -33,6 +33,10 @@ ALL_STRATEGIES = (
     "score_band_80_84",
     "score_band_75_79",
     "score_band_lt_75",
+    "score_band_70_74",
+    "score_band_65_69",
+    "score_band_lt_65",
+    "score_band_lt_75_dominant",
     "score_band_dominant",
 )
 
@@ -102,13 +106,21 @@ def _window_identity(row: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _resolved_score_band(strategy: str, dominant_score_band: str) -> str:
+def _resolved_score_band(strategy: str, dominant_score_band: str, dominant_lt75_band: str) -> str:
     if strategy == "score_band_80_84":
         return "80_84"
     if strategy == "score_band_75_79":
         return "75_79"
     if strategy == "score_band_lt_75":
         return "lt_75"
+    if strategy == "score_band_70_74":
+        return "70_74"
+    if strategy == "score_band_65_69":
+        return "65_69"
+    if strategy == "score_band_lt_65":
+        return "lt_65"
+    if strategy == "score_band_lt_75_dominant":
+        return dominant_lt75_band
     if strategy == "score_band_dominant":
         return dominant_score_band
     return ""
@@ -128,6 +140,18 @@ def _choose_candidate_row(
     if strategy == "strongest_low_support_or_margin":
         candidates = [
             row for row in uncovered_rows if str(row.get("reject_reason", "")) == "low_support_or_margin"
+        ]
+    elif resolved_score_band in selector_classes.SCORE_LT_75_BANDS:
+        candidates = [
+            row
+            for row in uncovered_rows
+            if selector_classes._intrinsic_window_class(
+                row,
+                singleton_override=singleton_override,
+            )
+            == "score_lt_85"
+            and selector_classes._score_lt_85_band(row) == "lt_75"
+            and selector_classes._score_lt_75_band(row) == resolved_score_band
         ]
     elif resolved_score_band:
         candidates = [
@@ -213,11 +237,16 @@ def replay_panel_candidate_classes(
         singleton_override=singleton_override,
     )
     dominant_score_band = str(selector_summary.get("recommended_score_lt_85_band", ""))
+    dominant_lt75_band = str(selector_summary.get("recommended_score_lt_75_band", ""))
 
     strategy_state: dict[str, dict[str, object]] = {}
     for strategy in strategies:
         strategy_state[strategy] = {
-            "resolved_score_band": _resolved_score_band(strategy, dominant_score_band),
+            "resolved_score_band": _resolved_score_band(
+                strategy,
+                dominant_score_band,
+                dominant_lt75_band,
+            ),
             "ref_scores": {},
             "baseline_keys": set(),
             "predicted_keys": set(),

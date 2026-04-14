@@ -926,6 +926,59 @@
   - 直接对比 `deferred_exact_minimal_v2_selective_fallback` vs `deferred_exact_minimal_v3_scoreband_75_79`；
   - 重点看 `selective_fallback_non_empty_triggered_tasks`、`top_hit_retention`、`top5/top10 retention`、`score_weighted_recall`、`threshold_skipped_after_gate`、`batch_retention`；
   - 只有在真实 panel 也出现净正增益时，才值得把这条 lane 继续扩到更广的评估面。
+- 这轮真实固定 selected-tiles panel rerun 已经完成，结果落在：
+  - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json`
+  - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/compare_vs_current_fallback/summary.json`
+  - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/panel_decision/summary.json`
+  - 相对 `deferred_exact_minimal_v2_selective_fallback`（`max_kept_windows=2` rerun baseline），`minimal_v3` 的真实增量是：
+    - `top_hit_retention: 1.0 -> 1.0`
+    - `top5_retention: +0.016666666667`
+    - `top10_retention: +0.033333333333`
+    - `score_weighted_recall: +0.01849622676`
+    - `threshold_skipped_after_gate: +0.0`
+    - `threshold_batch_size_mean: +0.0`
+    - `threshold_batched_seconds: -0.060024166667`
+    - `refine_total_bp: +6873.416666666667`
+    - `selective_fallback_non_empty_triggered_tasks=305`
+  - 这证明了 `candidate generator + targeted exact rescue` 这条 runtime 方向已经真实成立；它不再只是 offline proxy。
+- 在此基础上，这一轮又把“下一枪是否继续 score-band 下探”重新收回到 analysis-first：
+  - `scripts/analyze_two_stage_selector_candidate_classes.py`
+    - 仍保留原有 `score_lt_85_band_breakdown`（`80_84 / 75_79 / lt_75`）；
+    - 新增 `score_lt_75_band_breakdown`（`70_74 / 65_69 / lt_65`）和 `recommended_score_lt_75_band`，用于在 `minimal_v3` 之后继续细分 residual `lt_75`。
+  - `scripts/replay_two_stage_non_empty_candidate_classes.py`
+    - 保留旧策略不变；
+    - 新增 `score_band_lt_75_dominant / score_band_70_74 / score_band_65_69 / score_band_lt_65`，让 residual `lt_75` 可以继续做 fixed-tile offline replay。
+  - 对 `minimal_v3` 的真实 panel 跑完新分析后，结果落在：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/selector_candidate_classes_lt75_breakdown/summary.json`
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/candidate_class_replay_lt75_breakdown/summary.json`
+  - 当前 residual 结论已经进一步收紧：
+    - `recommended_next_candidate_class=score_lt_85`
+    - `recommended_score_lt_85_band=lt_75`
+    - `recommended_score_lt_75_band=70_74`
+    - `score_lt_75_band_breakdown.task_count_by_band = {70_74:192, 65_69:79, lt_65:49}`
+    - `score_lt_75_band_breakdown.missing_hit_contribution_by_band.score_weighted_missing.weight_by_band ≈ {70_74:972.06, 65_69:412.88, lt_65:215.22}`
+    - `score_lt_75_band_breakdown.missing_hit_contribution_by_band.top10_missing.count_by_band = {70_74:2, 65_69:0, lt_65:0}`
+  - 但新的 offline replay 同时回答了更关键的问题：**继续沿 score-band 下探已经不再改善 shortlist quality 的 `top5/top10`**
+    - `score_band_lt_75_dominant` 解析到 `70_74`，且与 `score_band_70_74` 完全一致：
+      - `predicted_rescued_task_count=225`
+      - `delta_top5_retention=0.0`
+      - `delta_top10_retention=0.0`
+      - `delta_score_weighted_recall≈+0.00710`
+      - `delta_refine_total_bp_total=56532`
+    - `score_band_65_69`：
+      - `predicted_rescued_task_count=173`
+      - `delta_top10_retention=0.0`
+      - `delta_score_weighted_recall≈+0.00572`
+    - `score_band_lt_65`：
+      - `predicted_rescued_task_count=119`
+      - `delta_top10_retention=0.0`
+      - `delta_score_weighted_recall≈+0.00498`
+  - 这意味着在 **Top10-first** 目标下，下一步不该直接做 `minimal_v4 score-band`；`70_74` 虽然仍是 residual 上最值钱的低分带，但它已经只抬 weighted recall，不再抬 `top10`。
+- 因此当前 two-stage 线的下一步又收紧了一层：
+  - 不回到 broad gate tuning；
+  - 不做 pad/merge sweep；
+  - 也不直接上 `minimal_v4 score-band_70_74`；
+  - 应该转向 **非 score-band 的 rescue object 扩展**（例如更 task-local / rule-strand-aware 的 rescue object），但仍要先用 offline replay 证明它能继续改善 `top5/top10`，再决定是否进入 runtime。
 
 ## 常用命令
 

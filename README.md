@@ -464,21 +464,48 @@ python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
 - `scripts/analyze_two_stage_selector_candidate_classes.py` reuses the panel summary + debug TSVs and reports:
   - which `no_singleton_missing_margin` tasks are blocked by the next candidate class (`support1_margin_present`, `support2`, `support3plus_low_support_or_margin`, `score_lt_85`, `covered_by_kept`, `other`)
   - a dedicated `score_lt_85_band_breakdown` for `80_84`, `75_79`, and `lt_75`
+  - when `score_lt_85` stays dominant after a runtime expansion, an additional `score_lt_75_band_breakdown` for `70_74`, `65_69`, and `lt_65`
   - which classes actually explain the remaining missing legacy hits via `overall`, `top5_missing`, `top10_missing`, and `score_weighted_missing`
-  - `recommended_next_candidate_class` plus `recommended_score_lt_85_band`, so the next selector expansion can stay evidence-driven instead of widening multiple clauses at once
-- In the current real panel, that breakdown resolves to:
+  - `recommended_next_candidate_class`, `recommended_score_lt_85_band`, and `recommended_score_lt_75_band`, so the next selector expansion can stay evidence-driven instead of widening multiple clauses at once
+- On the pre-`minimal_v3` real panel, that breakdown resolved to:
   - `recommended_next_candidate_class=score_lt_85`
   - `recommended_score_lt_85_band=75_79`
   - `80_84` currently contributes `0` representative tasks and `0` missing-hit weight on the fixed selected tiles
 - `scripts/replay_two_stage_non_empty_candidate_classes.py` keeps the same selected tiles and runs narrow offline ablations for candidate classes; by default it now focuses on the score-band follow-up (`score_band_dominant`, `score_band_75_79`, `score_band_lt_75`).
   - `predicted_*` fields in its `summary.json` / `summary.md` are coverage proxies derived from kept/rescued windows against legacy hits; they are not runtime-measured threshold-mode outputs.
-  - On the current real panel, `score_band_dominant` resolves to `75_79` and matches `score_band_75_79`: `predicted_rescued_task_count=286`, `delta_top10_retention=+0.1`, `delta_score_weighted_recall≈+0.0128`, with `top_hit_retention` unchanged.
-  - `score_band_lt_75` improves only `score_weighted_recall` (`≈+0.0165`) while costing more rescued tasks/windows, so it should stay a comparison lane, not the first runtime expansion target.
-  - This lets us answer a narrower question before touching runtime semantics: if we admitted one more candidate class, would `top5/top10` or `score_weighted_recall` move enough to justify a real selector change?
+  - On that pre-`minimal_v3` panel, `score_band_dominant` resolved to `75_79` and matched `score_band_75_79`: `predicted_rescued_task_count=286`, `delta_top10_retention=+0.1`, `delta_score_weighted_recall≈+0.0128`, with `top_hit_retention` unchanged.
+  - `score_band_lt_75` improved only `score_weighted_recall` (`≈+0.0165`) while costing more rescued tasks/windows, so it stayed a comparison lane rather than the first runtime expansion target.
+  - That historical replay answered the narrower question before touching runtime semantics: if we admitted one more candidate class, would `top5/top10` or `score_weighted_recall` move enough to justify a real selector change?
 - `scripts/benchmark_two_stage_threshold_modes.py` now exposes the matching runtime prototype lane `deferred_exact_minimal_v3_scoreband_75_79`, which keeps `deferred_exact_minimal_v2_selective_fallback` as the baseline and adds only:
   - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS=2`
   - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79=1`
-  - the next required step is a fixed selected-tiles real panel rerun to compare actual `top5/top10`, `score_weighted_recall`, `threshold_skipped_after_gate`, and `batch_retention` deltas against `deferred_exact_minimal_v2_selective_fallback`
+  - the fixed selected-tiles real panel rerun against `deferred_exact_minimal_v2_selective_fallback` is now complete: `top_hit_retention` stayed `1.0`, `top5_retention` improved by `+0.0167`, `top10_retention` by `+0.0333`, `score_weighted_recall` by `≈+0.0185`, and `threshold_skipped_after_gate` / `threshold_batch_size_mean` stayed flat
+  - the next step is analysis-first again, not another runtime edit:
+
+```
+python3 ./scripts/analyze_two_stage_selector_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/selector_candidate_classes_lt75_breakdown
+
+python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --strategy score_band_lt_75_dominant \
+  --strategy score_band_70_74 \
+  --strategy score_band_65_69 \
+  --strategy score_band_lt_65 \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/candidate_class_replay_lt75_breakdown
+```
+
+  - On the current `minimal_v3` panel, the residual recommendation tightens to `recommended_score_lt_85_band=lt_75` and `recommended_score_lt_75_band=70_74`.
+  - The new replay confirms `70_74` is the strongest residual sub-band (`predicted_rescued_task_count=225`, `delta_score_weighted_recall≈+0.0071`), but **none** of `70_74 / 65_69 / lt_65` improves `top5/top10`; under a Top10-first objective, that means do **not** plan a `minimal_v4 score-band` runtime lane yet.
 - Example quality-gated sweep:
 
 ```

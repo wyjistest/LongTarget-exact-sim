@@ -39,6 +39,7 @@ RECOMMENDED_CLASS_ORDER = (
 COUNT_VIEWS = ("overall", "top5_missing", "top10_missing")
 WEIGHT_VIEW = "score_weighted_missing"
 SCORE_LT_85_BANDS = ("80_84", "75_79", "lt_75")
+SCORE_LT_75_BANDS = ("70_74", "65_69", "lt_65")
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -65,6 +66,14 @@ def _score_lt_85_band_count_template() -> dict[str, int]:
 
 def _score_lt_85_band_weight_template() -> dict[str, float]:
     return {name: 0.0 for name in SCORE_LT_85_BANDS}
+
+
+def _score_lt_75_band_count_template() -> dict[str, int]:
+    return {name: 0 for name in SCORE_LT_75_BANDS}
+
+
+def _score_lt_75_band_weight_template() -> dict[str, float]:
+    return {name: 0.0 for name in SCORE_LT_75_BANDS}
 
 
 def _score_summary(rows: list[dict[str, object]]) -> dict[str, float | int | None]:
@@ -139,6 +148,15 @@ def _score_lt_85_band(row: dict[str, object]) -> str:
     if score >= 75:
         return "75_79"
     return "lt_75"
+
+
+def _score_lt_75_band(row: dict[str, object]) -> str:
+    score = int(row["best_seed_score"])
+    if score >= 70:
+        return "70_74"
+    if score >= 65:
+        return "65_69"
+    return "lt_65"
 
 
 def _task_sort_rejected_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -345,6 +363,25 @@ def _score_lt_85_band_count_view_summary(
     }
 
 
+def _score_lt_75_band_count_view_summary(
+    items: list[dict[str, object]],
+    *,
+    total_missing_count: int,
+) -> dict[str, object]:
+    count_by_band = _score_lt_75_band_count_template()
+    for item in items:
+        band = str(item.get("score_lt_75_band", ""))
+        if band in count_by_band:
+            count_by_band[band] += 1
+    matched_missing_count = len(items)
+    return {
+        "matched_missing_count": matched_missing_count,
+        "total_missing_count": total_missing_count,
+        "count_by_band": count_by_band,
+        "share_by_band": _share_dict(count_by_band, matched_missing_count),
+    }
+
+
 def _score_lt_85_band_weight_view_summary(
     items: list[dict[str, object]],
     *,
@@ -353,6 +390,25 @@ def _score_lt_85_band_weight_view_summary(
     weight_by_band = _score_lt_85_band_weight_template()
     for item in items:
         band = str(item.get("score_lt_85_band", ""))
+        if band in weight_by_band:
+            weight_by_band[band] += max(float(item["hit"]["score"]), 0.0)
+    matched_missing_weight = sum(weight_by_band.values())
+    return {
+        "matched_missing_weight": matched_missing_weight,
+        "total_missing_weight": total_missing_weight,
+        "weight_by_band": weight_by_band,
+        "share_by_band": _share_dict(weight_by_band, matched_missing_weight),
+    }
+
+
+def _score_lt_75_band_weight_view_summary(
+    items: list[dict[str, object]],
+    *,
+    total_missing_weight: float,
+) -> dict[str, object]:
+    weight_by_band = _score_lt_75_band_weight_template()
+    for item in items:
+        band = str(item.get("score_lt_75_band", ""))
         if band in weight_by_band:
             weight_by_band[band] += max(float(item["hit"]["score"]), 0.0)
     matched_missing_weight = sum(weight_by_band.values())
@@ -374,6 +430,27 @@ def _recommended_score_lt_85_band(aggregate: dict[str, object]) -> str:
             float(weighted[name]),
             int(counts[name]),
             -SCORE_LT_85_BANDS.index(name),
+        ),
+    )
+
+
+def _recommended_score_lt_75_band(aggregate: dict[str, object]) -> str:
+    breakdown = aggregate["score_lt_75_band_breakdown"]
+    top10_counts = breakdown["missing_hit_contribution_by_band"]["top10_missing"]["count_by_band"]
+    weighted = breakdown["missing_hit_contribution_by_band"][WEIGHT_VIEW]["weight_by_band"]
+    task_counts = breakdown["task_count_by_band"]
+    if all(
+        int(top10_counts[band]) == 0 and float(weighted[band]) == 0.0 and int(task_counts[band]) == 0
+        for band in SCORE_LT_75_BANDS
+    ):
+        return ""
+    return max(
+        SCORE_LT_75_BANDS,
+        key=lambda name: (
+            int(top10_counts[name]),
+            float(weighted[name]),
+            int(task_counts[name]),
+            -SCORE_LT_75_BANDS.index(name),
         ),
     )
 
@@ -400,6 +477,11 @@ def analyze_panel_candidate_classes(
     aggregate_score_lt_85_representative_rows: dict[str, list[dict[str, object]]] = {
         name: [] for name in SCORE_LT_85_BANDS
     }
+    aggregate_score_lt_75_task_count_by_band = _score_lt_75_band_count_template()
+    aggregate_score_lt_75_window_count_by_band = _score_lt_75_band_count_template()
+    aggregate_score_lt_75_representative_rows: dict[str, list[dict[str, object]]] = {
+        name: [] for name in SCORE_LT_75_BANDS
+    }
     aggregate_missing_by_view: dict[str, list[dict[str, object]]] = {
         name: [] for name in COUNT_VIEWS
     }
@@ -408,10 +490,16 @@ def analyze_panel_candidate_classes(
         name: [] for name in COUNT_VIEWS
     }
     aggregate_score_lt_85_missing_by_view[WEIGHT_VIEW] = []
+    aggregate_score_lt_75_missing_by_view: dict[str, list[dict[str, object]]] = {
+        name: [] for name in COUNT_VIEWS
+    }
+    aggregate_score_lt_75_missing_by_view[WEIGHT_VIEW] = []
     total_missing_count = 0
     total_missing_weight = 0.0
     total_score_lt_85_missing_count = 0
     total_score_lt_85_missing_weight = 0.0
+    total_score_lt_75_missing_count = 0
+    total_score_lt_75_missing_weight = 0.0
     per_tile: list[dict[str, object]] = []
 
     for panel_item in selected_microanchors:
@@ -430,6 +518,11 @@ def analyze_panel_candidate_classes(
         score_lt_85_window_count_by_band = _score_lt_85_band_count_template()
         score_lt_85_representative_rows: dict[str, list[dict[str, object]]] = {
             name: [] for name in SCORE_LT_85_BANDS
+        }
+        score_lt_75_task_count_by_band = _score_lt_75_band_count_template()
+        score_lt_75_window_count_by_band = _score_lt_75_band_count_template()
+        score_lt_75_representative_rows: dict[str, list[dict[str, object]]] = {
+            name: [] for name in SCORE_LT_75_BANDS
         }
         for task_index, task_rows in sorted(by_task.items()):
             info = _classify_task(
@@ -450,11 +543,18 @@ def analyze_panel_candidate_classes(
                     band = _score_lt_85_band(info["representative_window"])
                     score_lt_85_task_count_by_band[band] += 1
                     score_lt_85_representative_rows[band].append(info["representative_window"])
+                    if band == "lt_75":
+                        lt75_band = _score_lt_75_band(info["representative_window"])
+                        score_lt_75_task_count_by_band[lt75_band] += 1
+                        score_lt_75_representative_rows[lt75_band].append(info["representative_window"])
             for row in info["rejected_rows"]:
                 row_class = _intrinsic_window_class(row, singleton_override=singleton_override)
                 window_count_by_class[row_class] += 1
                 if row_class == "score_lt_85":
-                    score_lt_85_window_count_by_band[_score_lt_85_band(row)] += 1
+                    band = _score_lt_85_band(row)
+                    score_lt_85_window_count_by_band[band] += 1
+                    if band == "lt_75":
+                        score_lt_75_window_count_by_band[_score_lt_75_band(row)] += 1
 
         ranked_keys = sample_vs_fasim._sorted_strict_score_keys(context["legacy_summary"].strict_scores)
         missing_keys = [
@@ -493,6 +593,13 @@ def analyze_panel_candidate_classes(
                         and best_task_info["representative_window"] is not None
                         else ""
                     ),
+                    "score_lt_75_band": (
+                        _score_lt_75_band(best_task_info["representative_window"])
+                        if best_task_info["task_candidate_class"] == "score_lt_85"
+                        and best_task_info["representative_window"] is not None
+                        and _score_lt_85_band(best_task_info["representative_window"]) == "lt_75"
+                        else ""
+                    ),
                 }
             )
 
@@ -511,13 +618,31 @@ def analyze_panel_candidate_classes(
         score_lt_85_missing_by_view[WEIGHT_VIEW] = [
             item for item in attributed_missing_items if item["candidate_class"] == "score_lt_85"
         ]
+        score_lt_75_missing_by_view = {
+            view: [
+                item
+                for item in score_lt_85_missing_by_view[view]
+                if item.get("score_lt_75_band")
+            ]
+            for view in COUNT_VIEWS
+        }
+        score_lt_75_missing_by_view[WEIGHT_VIEW] = [
+            item for item in score_lt_85_missing_by_view[WEIGHT_VIEW] if item.get("score_lt_75_band")
+        ]
         tile_score_lt_85_missing_count = len(score_lt_85_missing_by_view["overall"])
         tile_score_lt_85_missing_weight = sum(
             max(float(item["hit"]["score"]), 0.0)
             for item in score_lt_85_missing_by_view[WEIGHT_VIEW]
         )
+        tile_score_lt_75_missing_count = len(score_lt_75_missing_by_view["overall"])
+        tile_score_lt_75_missing_weight = sum(
+            max(float(item["hit"]["score"]), 0.0)
+            for item in score_lt_75_missing_by_view[WEIGHT_VIEW]
+        )
         total_score_lt_85_missing_count += tile_score_lt_85_missing_count
         total_score_lt_85_missing_weight += tile_score_lt_85_missing_weight
+        total_score_lt_75_missing_count += tile_score_lt_75_missing_count
+        total_score_lt_75_missing_weight += tile_score_lt_75_missing_weight
         for class_name in CANDIDATE_CLASSES:
             aggregate_task_count_by_class[class_name] += task_count_by_class[class_name]
             aggregate_window_count_by_class[class_name] += window_count_by_class[class_name]
@@ -526,11 +651,17 @@ def analyze_panel_candidate_classes(
             aggregate_score_lt_85_task_count_by_band[band] += score_lt_85_task_count_by_band[band]
             aggregate_score_lt_85_window_count_by_band[band] += score_lt_85_window_count_by_band[band]
             aggregate_score_lt_85_representative_rows[band].extend(score_lt_85_representative_rows[band])
+        for band in SCORE_LT_75_BANDS:
+            aggregate_score_lt_75_task_count_by_band[band] += score_lt_75_task_count_by_band[band]
+            aggregate_score_lt_75_window_count_by_band[band] += score_lt_75_window_count_by_band[band]
+            aggregate_score_lt_75_representative_rows[band].extend(score_lt_75_representative_rows[band])
         for view in COUNT_VIEWS:
             aggregate_missing_by_view[view].extend(missing_by_view[view])
             aggregate_score_lt_85_missing_by_view[view].extend(score_lt_85_missing_by_view[view])
+            aggregate_score_lt_75_missing_by_view[view].extend(score_lt_75_missing_by_view[view])
         aggregate_missing_by_view[WEIGHT_VIEW].extend(missing_by_view[WEIGHT_VIEW])
         aggregate_score_lt_85_missing_by_view[WEIGHT_VIEW].extend(score_lt_85_missing_by_view[WEIGHT_VIEW])
+        aggregate_score_lt_75_missing_by_view[WEIGHT_VIEW].extend(score_lt_75_missing_by_view[WEIGHT_VIEW])
 
         per_tile.append(
             {
@@ -570,6 +701,32 @@ def analyze_panel_candidate_classes(
                         WEIGHT_VIEW: _score_lt_85_band_weight_view_summary(
                             score_lt_85_missing_by_view[WEIGHT_VIEW],
                             total_missing_weight=tile_score_lt_85_missing_weight,
+                        ),
+                    },
+                },
+                "score_lt_75_band_breakdown": {
+                    "task_count_by_band": score_lt_75_task_count_by_band,
+                    "window_count_by_band": score_lt_75_window_count_by_band,
+                    "best_seed_score_summary_by_band": {
+                        band: _score_summary(score_lt_75_representative_rows[band])
+                        for band in SCORE_LT_75_BANDS
+                    },
+                    "missing_hit_contribution_by_band": {
+                        "overall": _score_lt_75_band_count_view_summary(
+                            score_lt_75_missing_by_view["overall"],
+                            total_missing_count=tile_score_lt_75_missing_count,
+                        ),
+                        "top5_missing": _score_lt_75_band_count_view_summary(
+                            score_lt_75_missing_by_view["top5_missing"],
+                            total_missing_count=min(5, tile_score_lt_75_missing_count),
+                        ),
+                        "top10_missing": _score_lt_75_band_count_view_summary(
+                            score_lt_75_missing_by_view["top10_missing"],
+                            total_missing_count=min(10, tile_score_lt_75_missing_count),
+                        ),
+                        WEIGHT_VIEW: _score_lt_75_band_weight_view_summary(
+                            score_lt_75_missing_by_view[WEIGHT_VIEW],
+                            total_missing_weight=tile_score_lt_75_missing_weight,
                         ),
                     },
                 },
@@ -630,6 +787,32 @@ def analyze_panel_candidate_classes(
                 ),
             },
         },
+        "score_lt_75_band_breakdown": {
+            "task_count_by_band": aggregate_score_lt_75_task_count_by_band,
+            "window_count_by_band": aggregate_score_lt_75_window_count_by_band,
+            "best_seed_score_summary_by_band": {
+                band: _score_summary(aggregate_score_lt_75_representative_rows[band])
+                for band in SCORE_LT_75_BANDS
+            },
+            "missing_hit_contribution_by_band": {
+                "overall": _score_lt_75_band_count_view_summary(
+                    aggregate_score_lt_75_missing_by_view["overall"],
+                    total_missing_count=total_score_lt_75_missing_count,
+                ),
+                "top5_missing": _score_lt_75_band_count_view_summary(
+                    aggregate_score_lt_75_missing_by_view["top5_missing"],
+                    total_missing_count=min(5, total_score_lt_75_missing_count),
+                ),
+                "top10_missing": _score_lt_75_band_count_view_summary(
+                    aggregate_score_lt_75_missing_by_view["top10_missing"],
+                    total_missing_count=min(10, total_score_lt_75_missing_count),
+                ),
+                WEIGHT_VIEW: _score_lt_75_band_weight_view_summary(
+                    aggregate_score_lt_75_missing_by_view[WEIGHT_VIEW],
+                    total_missing_weight=total_score_lt_75_missing_weight,
+                ),
+            },
+        },
         "missing_hit_contribution_by_class": {
             "overall": _count_view_summary(
                 aggregate_missing_by_view["overall"],
@@ -662,6 +845,7 @@ def analyze_panel_candidate_classes(
         "aggregate": aggregate,
         "recommended_next_candidate_class": _recommended_next_candidate_class(aggregate),
         "recommended_score_lt_85_band": _recommended_score_lt_85_band(aggregate),
+        "recommended_score_lt_75_band": _recommended_score_lt_75_band(aggregate),
         "per_tile": per_tile,
     }
     return summary
@@ -675,6 +859,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
         f"- candidate_label: {summary['candidate_label']}",
         f"- recommended_next_candidate_class: {summary['recommended_next_candidate_class'] or 'n/a'}",
         f"- recommended_score_lt_85_band: {summary['recommended_score_lt_85_band'] or 'n/a'}",
+        f"- recommended_score_lt_75_band: {summary['recommended_score_lt_75_band'] or 'n/a'}",
         "",
         "## Task Counts",
         "",
@@ -702,6 +887,23 @@ def _render_markdown(summary: dict[str, object]) -> str:
             f"{band_breakdown['window_count_by_band'][band]} | "
             f"{band_breakdown['missing_hit_contribution_by_band']['overall']['count_by_band'][band]} | "
             f"{band_breakdown['missing_hit_contribution_by_band'][WEIGHT_VIEW]['weight_by_band'][band]:.12g} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## score_lt_75 Band Breakdown",
+            "",
+            "| band | tasks | windows | overall_missing | score_weighted_missing |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    lt75_breakdown = aggregate["score_lt_75_band_breakdown"]
+    for band in SCORE_LT_75_BANDS:
+        lines.append(
+            f"| {band} | {lt75_breakdown['task_count_by_band'][band]} | "
+            f"{lt75_breakdown['window_count_by_band'][band]} | "
+            f"{lt75_breakdown['missing_hit_contribution_by_band']['overall']['count_by_band'][band]} | "
+            f"{lt75_breakdown['missing_hit_contribution_by_band'][WEIGHT_VIEW]['weight_by_band'][band]:.12g} |"
         )
     lines.extend(
         [
