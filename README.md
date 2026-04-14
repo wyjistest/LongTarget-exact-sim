@@ -506,6 +506,40 @@ python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
 
   - On the current `minimal_v3` panel, the residual recommendation tightens to `recommended_score_lt_85_band=lt_75` and `recommended_score_lt_75_band=70_74`.
   - The new replay confirms `70_74` is the strongest residual sub-band (`predicted_rescued_task_count=225`, `delta_score_weighted_recall≈+0.0071`), but **none** of `70_74 / 65_69 / lt_65` improves `top5/top10`; under a Top10-first objective, that means do **not** plan a `minimal_v4 score-band` runtime lane yet.
+  - `minimal_v3` is therefore the current shortlist baseline; the next analysis step is **non-score-band candidate objects**, not a narrower score cut.
+  - `scripts/analyze_two_stage_selector_candidate_classes.py` now also emits:
+    - `aggregate.rule_strand_object_breakdown` / `per_tile[*].rule_strand_object_breakdown`
+    - `recommended_next_candidate_object`
+    - this tracks uncovered rejected windows grouped by `(rule, strand)` and measures how much of the residual `overall / top5 / top10 / score_weighted` miss they explain
+  - `scripts/replay_two_stage_non_empty_candidate_classes.py` now supports two explicit object strategies:
+    - `rule_strand_strongest`: per `no_singleton_missing_margin` task, rescue the strongest uncovered `(rule, strand)` object
+    - `rule_strand_dominant`: an offline-only upper bound that picks the `(rule, strand)` object with the largest attributed `top10_missing`, then `score_weighted_missing`, then `overall_missing`
+  - the intended follow-up is:
+
+```
+python3 ./scripts/analyze_two_stage_selector_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/selector_candidate_objects_rule_strand
+
+python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --strategy rule_strand_strongest \
+  --strategy rule_strand_dominant \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/candidate_object_replay_rule_strand
+```
+
+  - decision rule stays narrow:
+    - if `rule_strand_strongest` also improves `top5/top10` without eating back skip/batch gains, only then is a new runtime plan justified
+    - if only `rule_strand_dominant` improves, treat it as an attribution/proxy result rather than a runtime-ready selector
+    - if neither improves `top5/top10`, stop expanding the selector and keep `minimal_v3` as the experimental shortlist baseline
 - Example quality-gated sweep:
 
 ```

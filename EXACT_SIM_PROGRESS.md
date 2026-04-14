@@ -979,6 +979,24 @@
   - 不做 pad/merge sweep；
   - 也不直接上 `minimal_v4 score-band_70_74`；
   - 应该转向 **非 score-band 的 rescue object 扩展**（例如更 task-local / rule-strand-aware 的 rescue object），但仍要先用 offline replay 证明它能继续改善 `top5/top10`，再决定是否进入 runtime。
+- 按上述收束，这一轮先把 **analysis-first / offline-first 的 rule-strand object tooling** 落地，而不碰 runtime：
+  - `scripts/analyze_two_stage_selector_candidate_classes.py`
+    - 保留原有 class / score-band summary 不变；
+    - 新增 `aggregate.rule_strand_object_breakdown` 与 `per_tile[*].rule_strand_object_breakdown`，把 `no_singleton_missing_margin` task 里的 `uncovered_rejected_rows` 按 `(rule, strand)` 分组，并统计这些 object 对 residual `overall / top5 / top10 / score_weighted` miss 的解释度；
+    - 新增 `recommended_next_candidate_object`，当前只在 `rule_strand_object_breakdown` 真的解释到 residual miss 时返回 `rule_strand_dominant`。
+  - `scripts/replay_two_stage_non_empty_candidate_classes.py`
+    - 保留默认 score-band replay 不变；
+    - 新增 `rule_strand_strongest`：每个 `no_singleton_missing_margin` task 最多救 1 个最强 `(rule, strand)` object；
+    - 新增 `rule_strand_dominant`：offline-only upper bound，优先选 attributed `top10_missing` 最大的 object，再看 `score_weighted_missing`、`overall_missing` 与代表窗口强度；
+    - 每条新策略都会在 `summary.json|md` 里写出 `resolved_candidate_object`。
+  - `scripts/check_analyze_two_stage_selector_candidate_classes.sh`
+    - 新增 fixture，验证同一 task 内两个不同 `(rule, strand)` object 会被正确计数，并把 `recommended_next_candidate_object` 收敛到 `rule_strand_dominant`。
+  - `scripts/check_replay_two_stage_non_empty_candidate_classes.sh`
+    - 新增 fixture，强制 `rule_strand_strongest` 与 `rule_strand_dominant` 选中不同 object，确保 replay 真的按 object attribution 做决策，而不是退化成 strongest-window。
+- 这一步的意义不是宣布下一条 runtime lane，而是把下一轮 real-panel 判断条件锁死：
+  - 如果 `rule_strand_strongest` 在 `minimal_v3` panel 上也能继续改善 `top5/top10`，才值得规划新的 runtime prototype；
+  - 如果只有 `rule_strand_dominant` 有增益，它仍然只是 attribution / proxy 证据，不应直接翻译成 runtime selector；
+  - 如果两者都不能改善 `top5/top10`，则应停止继续扩 selector，并把 `minimal_v3` 固定为当前 experimental shortlist baseline。
 
 ## 常用命令
 

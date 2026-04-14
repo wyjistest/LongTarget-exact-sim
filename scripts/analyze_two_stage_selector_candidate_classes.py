@@ -76,6 +76,36 @@ def _score_lt_75_band_weight_template() -> dict[str, float]:
     return {name: 0.0 for name in SCORE_LT_75_BANDS}
 
 
+def _matched_count_view_summary(
+    items: list[dict[str, object]],
+    *,
+    total_missing_count: int,
+) -> dict[str, object]:
+    matched_missing_count = len(items)
+    return {
+        "matched_missing_count": matched_missing_count,
+        "total_missing_count": total_missing_count,
+        "matched_missing_share": (
+            float(matched_missing_count) / float(total_missing_count) if total_missing_count else 0.0
+        ),
+    }
+
+
+def _matched_weight_view_summary(
+    items: list[dict[str, object]],
+    *,
+    total_missing_weight: float,
+) -> dict[str, object]:
+    matched_missing_weight = sum(max(float(item["hit"]["score"]), 0.0) for item in items)
+    return {
+        "matched_missing_weight": matched_missing_weight,
+        "total_missing_weight": total_missing_weight,
+        "matched_missing_share": (
+            float(matched_missing_weight) / float(total_missing_weight) if total_missing_weight else 0.0
+        ),
+    }
+
+
 def _score_summary(rows: list[dict[str, object]]) -> dict[str, float | int | None]:
     if not rows:
         return {
@@ -163,6 +193,29 @@ def _task_sort_rejected_rows(rows: list[dict[str, object]]) -> list[dict[str, ob
     return sorted(rows, key=_window_sort_key)
 
 
+def _rule_strand_key(row: dict[str, object]) -> tuple[int, str]:
+    return (int(row["rule"]), str(row["strand"]))
+
+
+def _build_rule_strand_objects(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[tuple[int, str], list[dict[str, object]]] = defaultdict(list)
+    for row in rows:
+        grouped[_rule_strand_key(row)].append(row)
+    objects: list[dict[str, object]] = []
+    for key, grouped_rows in grouped.items():
+        sorted_rows = _task_sort_rejected_rows(grouped_rows)
+        representative_row = sorted_rows[0]
+        objects.append(
+            {
+                "rule": key[0],
+                "strand": key[1],
+                "rows": sorted_rows,
+                "representative_row": representative_row,
+            }
+        )
+    return sorted(objects, key=lambda item: _window_sort_key(item["representative_row"]))
+
+
 def _classify_task(
     task_index: int,
     task_rows: list[dict[str, object]],
@@ -184,6 +237,8 @@ def _classify_task(
             "uncovered_rejected_rows": [],
             "task_candidate_class": "",
             "representative_window": None,
+            "rule_strand_objects": [],
+            "rule_strand_object_map": {},
         }
 
     if max_kept_windows > 0 and len(kept_rows) > max_kept_windows:
@@ -195,6 +250,8 @@ def _classify_task(
             "uncovered_rejected_rows": [],
             "task_candidate_class": "",
             "representative_window": None,
+            "rule_strand_objects": [],
+            "rule_strand_object_map": {},
         }
 
     best_kept = kept_rows[0]
@@ -236,6 +293,7 @@ def _classify_task(
 
     representative_window = None
     task_candidate_class = ""
+    rule_strand_objects = _build_rule_strand_objects(uncovered_rejected_rows)
     if blocker == "no_singleton_missing_margin":
         if uncovered_rejected_rows:
             representative_window = uncovered_rejected_rows[0]
@@ -257,6 +315,10 @@ def _classify_task(
         "uncovered_rejected_rows": uncovered_rejected_rows,
         "task_candidate_class": task_candidate_class,
         "representative_window": representative_window,
+        "rule_strand_objects": rule_strand_objects,
+        "rule_strand_object_map": {
+            (int(item["rule"]), str(item["strand"])): item for item in rule_strand_objects
+        },
     }
 
 
@@ -341,6 +403,16 @@ def _recommended_next_candidate_class(aggregate: dict[str, object]) -> str:
     for class_name in RECOMMENDED_CLASS_ORDER:
         if float(weighted[class_name]) > 0.0 or int(counts[class_name]) > 0:
             return class_name
+    return ""
+
+
+def _recommended_next_candidate_object(aggregate: dict[str, object]) -> str:
+    breakdown = aggregate["rule_strand_object_breakdown"]["missing_hit_contribution"]
+    if (
+        int(breakdown["top10_missing"]["matched_missing_count"]) > 0
+        or float(breakdown[WEIGHT_VIEW]["matched_missing_weight"]) > 0.0
+    ):
+        return "rule_strand_dominant"
     return ""
 
 
@@ -455,6 +527,87 @@ def _recommended_score_lt_75_band(aggregate: dict[str, object]) -> str:
     )
 
 
+def _collect_rule_strand_missing_items(
+    context: dict[str, object],
+    task_infos: dict[int, dict[str, object]],
+    *,
+    ranked_keys: list[tuple],
+    missing_keys: list[tuple],
+) -> dict[str, object]:
+    top5_keys = set(ranked_keys[: min(5, len(ranked_keys))])
+    top10_keys = set(ranked_keys[: min(10, len(ranked_keys))])
+    stats_by_task: dict[int, dict[tuple[int, str], dict[str, object]]] = {}
+    for task_index, info in task_infos.items():
+        if info["blocker"] != "no_singleton_missing_margin":
+            continue
+        stats_by_task[task_index] = {}
+        for item in info.get("rule_strand_objects", []):
+            object_key = (int(item["rule"]), str(item["strand"]))
+            stats_by_task[task_index][object_key] = {
+                "task_index": task_index,
+                "rule": int(item["rule"]),
+                "strand": str(item["strand"]),
+                "representative_row": item["representative_row"],
+                "overall_missing_count": 0,
+                "top5_missing_count": 0,
+                "top10_missing_count": 0,
+                "score_weighted_missing": 0.0,
+            }
+
+    attributed_items: list[dict[str, object]] = []
+    for key in missing_keys:
+        hit = context["legacy_rows"][key]
+        matching_rejected = [
+            row
+            for row in coverage_attr._matching_windows(hit, context["debug_rows"])
+            if int(row["before_gate"]) == 1 and int(row["after_gate"]) == 0
+        ]
+        matched_objects: dict[tuple[int, tuple[int, str]], dict[str, object]] = {}
+        for row in matching_rejected:
+            task_index = int(row["task_index"])
+            info = task_infos.get(task_index)
+            if info is None or info["blocker"] != "no_singleton_missing_margin":
+                continue
+            object_key = _rule_strand_key(row)
+            stats = stats_by_task.get(task_index, {}).get(object_key)
+            if stats is None:
+                continue
+            matched_objects[(task_index, object_key)] = stats
+        if not matched_objects:
+            continue
+        best_object = min(
+            matched_objects.values(),
+            key=lambda item: _window_sort_key(item["representative_row"]),
+        )
+        best_object["overall_missing_count"] += 1
+        if key in top5_keys:
+            best_object["top5_missing_count"] += 1
+        if key in top10_keys:
+            best_object["top10_missing_count"] += 1
+        best_object["score_weighted_missing"] += max(float(hit["score"]), 0.0)
+        attributed_items.append(
+            {
+                "strict_key_tuple": key,
+                "hit": hit,
+                "task_index": int(best_object["task_index"]),
+                "rule": int(best_object["rule"]),
+                "strand": str(best_object["strand"]),
+                "representative_row": best_object["representative_row"],
+            }
+        )
+
+    missing_by_view = {
+        "overall": attributed_items,
+        "top5_missing": [item for item in attributed_items if item["strict_key_tuple"] in top5_keys],
+        "top10_missing": [item for item in attributed_items if item["strict_key_tuple"] in top10_keys],
+    }
+    missing_by_view[WEIGHT_VIEW] = attributed_items
+    return {
+        "missing_by_view": missing_by_view,
+        "stats_by_task": stats_by_task,
+    }
+
+
 def analyze_panel_candidate_classes(
     panel_summary_path: Path | str,
     *,
@@ -482,6 +635,13 @@ def analyze_panel_candidate_classes(
     aggregate_score_lt_75_representative_rows: dict[str, list[dict[str, object]]] = {
         name: [] for name in SCORE_LT_75_BANDS
     }
+    aggregate_rule_strand_object_task_count = 0
+    aggregate_rule_strand_object_count = 0
+    aggregate_rule_strand_object_representative_rows: list[dict[str, object]] = []
+    aggregate_rule_strand_missing_by_view: dict[str, list[dict[str, object]]] = {
+        name: [] for name in COUNT_VIEWS
+    }
+    aggregate_rule_strand_missing_by_view[WEIGHT_VIEW] = []
     aggregate_missing_by_view: dict[str, list[dict[str, object]]] = {
         name: [] for name in COUNT_VIEWS
     }
@@ -524,6 +684,9 @@ def analyze_panel_candidate_classes(
         score_lt_75_representative_rows: dict[str, list[dict[str, object]]] = {
             name: [] for name in SCORE_LT_75_BANDS
         }
+        rule_strand_object_task_count = 0
+        rule_strand_object_count = 0
+        rule_strand_object_representative_rows: list[dict[str, object]] = []
         for task_index, task_rows in sorted(by_task.items()):
             info = _classify_task(
                 task_index,
@@ -535,6 +698,12 @@ def analyze_panel_candidate_classes(
             task_infos[task_index] = info
             if info["blocker"] != "no_singleton_missing_margin":
                 continue
+            if info["rule_strand_objects"]:
+                rule_strand_object_task_count += 1
+                rule_strand_object_count += len(info["rule_strand_objects"])
+                rule_strand_object_representative_rows.extend(
+                    item["representative_row"] for item in info["rule_strand_objects"]
+                )
             class_name = info["task_candidate_class"] or "other"
             task_count_by_class[class_name] += 1
             if info["representative_window"] is not None:
@@ -629,6 +798,13 @@ def analyze_panel_candidate_classes(
         score_lt_75_missing_by_view[WEIGHT_VIEW] = [
             item for item in score_lt_85_missing_by_view[WEIGHT_VIEW] if item.get("score_lt_75_band")
         ]
+        rule_strand_missing_payload = _collect_rule_strand_missing_items(
+            context,
+            task_infos,
+            ranked_keys=ranked_keys,
+            missing_keys=missing_keys,
+        )
+        rule_strand_missing_by_view = rule_strand_missing_payload["missing_by_view"]
         tile_score_lt_85_missing_count = len(score_lt_85_missing_by_view["overall"])
         tile_score_lt_85_missing_weight = sum(
             max(float(item["hit"]["score"]), 0.0)
@@ -655,13 +831,18 @@ def analyze_panel_candidate_classes(
             aggregate_score_lt_75_task_count_by_band[band] += score_lt_75_task_count_by_band[band]
             aggregate_score_lt_75_window_count_by_band[band] += score_lt_75_window_count_by_band[band]
             aggregate_score_lt_75_representative_rows[band].extend(score_lt_75_representative_rows[band])
+        aggregate_rule_strand_object_task_count += rule_strand_object_task_count
+        aggregate_rule_strand_object_count += rule_strand_object_count
+        aggregate_rule_strand_object_representative_rows.extend(rule_strand_object_representative_rows)
         for view in COUNT_VIEWS:
             aggregate_missing_by_view[view].extend(missing_by_view[view])
             aggregate_score_lt_85_missing_by_view[view].extend(score_lt_85_missing_by_view[view])
             aggregate_score_lt_75_missing_by_view[view].extend(score_lt_75_missing_by_view[view])
+            aggregate_rule_strand_missing_by_view[view].extend(rule_strand_missing_by_view[view])
         aggregate_missing_by_view[WEIGHT_VIEW].extend(missing_by_view[WEIGHT_VIEW])
         aggregate_score_lt_85_missing_by_view[WEIGHT_VIEW].extend(score_lt_85_missing_by_view[WEIGHT_VIEW])
         aggregate_score_lt_75_missing_by_view[WEIGHT_VIEW].extend(score_lt_75_missing_by_view[WEIGHT_VIEW])
+        aggregate_rule_strand_missing_by_view[WEIGHT_VIEW].extend(rule_strand_missing_by_view[WEIGHT_VIEW])
 
         per_tile.append(
             {
@@ -727,6 +908,32 @@ def analyze_panel_candidate_classes(
                         WEIGHT_VIEW: _score_lt_75_band_weight_view_summary(
                             score_lt_75_missing_by_view[WEIGHT_VIEW],
                             total_missing_weight=tile_score_lt_75_missing_weight,
+                        ),
+                    },
+                },
+                "rule_strand_object_breakdown": {
+                    "eligible_task_count": rule_strand_object_task_count,
+                    "object_count": rule_strand_object_count,
+                    "best_seed_score_summary": _score_summary(rule_strand_object_representative_rows),
+                    "missing_hit_contribution": {
+                        "overall": _matched_count_view_summary(
+                            rule_strand_missing_by_view["overall"],
+                            total_missing_count=len(missing_keys),
+                        ),
+                        "top5_missing": _matched_count_view_summary(
+                            rule_strand_missing_by_view["top5_missing"],
+                            total_missing_count=min(5, len(missing_keys)),
+                        ),
+                        "top10_missing": _matched_count_view_summary(
+                            rule_strand_missing_by_view["top10_missing"],
+                            total_missing_count=min(10, len(missing_keys)),
+                        ),
+                        WEIGHT_VIEW: _matched_weight_view_summary(
+                            rule_strand_missing_by_view[WEIGHT_VIEW],
+                            total_missing_weight=sum(
+                                max(float(context["legacy_summary"].strict_scores[key]), 0.0)
+                                for key in missing_keys
+                            ),
                         ),
                     },
                 },
@@ -813,6 +1020,29 @@ def analyze_panel_candidate_classes(
                 ),
             },
         },
+        "rule_strand_object_breakdown": {
+            "eligible_task_count": aggregate_rule_strand_object_task_count,
+            "object_count": aggregate_rule_strand_object_count,
+            "best_seed_score_summary": _score_summary(aggregate_rule_strand_object_representative_rows),
+            "missing_hit_contribution": {
+                "overall": _matched_count_view_summary(
+                    aggregate_rule_strand_missing_by_view["overall"],
+                    total_missing_count=total_missing_count,
+                ),
+                "top5_missing": _matched_count_view_summary(
+                    aggregate_rule_strand_missing_by_view["top5_missing"],
+                    total_missing_count=min(5, total_missing_count),
+                ),
+                "top10_missing": _matched_count_view_summary(
+                    aggregate_rule_strand_missing_by_view["top10_missing"],
+                    total_missing_count=min(10, total_missing_count),
+                ),
+                WEIGHT_VIEW: _matched_weight_view_summary(
+                    aggregate_rule_strand_missing_by_view[WEIGHT_VIEW],
+                    total_missing_weight=total_missing_weight,
+                ),
+            },
+        },
         "missing_hit_contribution_by_class": {
             "overall": _count_view_summary(
                 aggregate_missing_by_view["overall"],
@@ -844,6 +1074,7 @@ def analyze_panel_candidate_classes(
         "tile_count": len(selected_microanchors),
         "aggregate": aggregate,
         "recommended_next_candidate_class": _recommended_next_candidate_class(aggregate),
+        "recommended_next_candidate_object": _recommended_next_candidate_object(aggregate),
         "recommended_score_lt_85_band": _recommended_score_lt_85_band(aggregate),
         "recommended_score_lt_75_band": _recommended_score_lt_75_band(aggregate),
         "per_tile": per_tile,
@@ -858,6 +1089,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
         f"- panel_summary: {summary['panel_summary']}",
         f"- candidate_label: {summary['candidate_label']}",
         f"- recommended_next_candidate_class: {summary['recommended_next_candidate_class'] or 'n/a'}",
+        f"- recommended_next_candidate_object: {summary['recommended_next_candidate_object'] or 'n/a'}",
         f"- recommended_score_lt_85_band: {summary['recommended_score_lt_85_band'] or 'n/a'}",
         f"- recommended_score_lt_75_band: {summary['recommended_score_lt_75_band'] or 'n/a'}",
         "",
@@ -905,8 +1137,17 @@ def _render_markdown(summary: dict[str, object]) -> str:
             f"{lt75_breakdown['missing_hit_contribution_by_band']['overall']['count_by_band'][band]} | "
             f"{lt75_breakdown['missing_hit_contribution_by_band'][WEIGHT_VIEW]['weight_by_band'][band]:.12g} |"
         )
+    object_breakdown = aggregate["rule_strand_object_breakdown"]
     lines.extend(
         [
+            "",
+            "## Rule/Strand Object Breakdown",
+            "",
+            f"- eligible_task_count: {object_breakdown['eligible_task_count']}",
+            f"- object_count: {object_breakdown['object_count']}",
+            f"- overall_missing: {object_breakdown['missing_hit_contribution']['overall']['matched_missing_count']}",
+            f"- top10_missing: {object_breakdown['missing_hit_contribution']['top10_missing']['matched_missing_count']}",
+            f"- score_weighted_missing: {object_breakdown['missing_hit_contribution'][WEIGHT_VIEW]['matched_missing_weight']:.12g}",
             "",
             "## Matched Missing Hits",
             "",

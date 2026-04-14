@@ -25,6 +25,10 @@ DEFAULT_STRATEGIES = (
     "score_band_75_79",
     "score_band_lt_75",
 )
+RULE_STRAND_OBJECT_STRATEGIES = (
+    "rule_strand_strongest",
+    "rule_strand_dominant",
+)
 ALL_STRATEGIES = (
     "support1_margin_present",
     "support2",
@@ -38,6 +42,8 @@ ALL_STRATEGIES = (
     "score_band_lt_65",
     "score_band_lt_75_dominant",
     "score_band_dominant",
+    "rule_strand_strongest",
+    "rule_strand_dominant",
 )
 
 
@@ -126,16 +132,58 @@ def _resolved_score_band(strategy: str, dominant_score_band: str, dominant_lt75_
     return ""
 
 
+def _resolved_candidate_object(strategy: str) -> str:
+    if strategy in RULE_STRAND_OBJECT_STRATEGIES:
+        return strategy
+    return ""
+
+
+def _choose_rule_strand_object(
+    task_info: dict[str, object],
+    *,
+    strategy: str,
+    task_rule_strand_stats: dict[tuple[int, str], dict[str, object]] | None,
+) -> dict[str, object] | None:
+    objects = list(task_info.get("rule_strand_objects", []))
+    if not objects:
+        return None
+    if strategy == "rule_strand_strongest":
+        return objects[0]
+    if strategy != "rule_strand_dominant":
+        return None
+
+    stats = task_rule_strand_stats or {}
+    return min(
+        objects,
+        key=lambda item: (
+            -int(stats.get((int(item["rule"]), str(item["strand"])), {}).get("top10_missing_count", 0)),
+            -float(stats.get((int(item["rule"]), str(item["strand"])), {}).get("score_weighted_missing", 0.0)),
+            -int(stats.get((int(item["rule"]), str(item["strand"])), {}).get("overall_missing_count", 0)),
+            selector_classes._window_sort_key(item["representative_row"]),
+        ),
+    )
+
+
 def _choose_candidate_row(
     task_info: dict[str, object],
     *,
     strategy: str,
     singleton_override: int,
     resolved_score_band: str,
+    task_rule_strand_stats: dict[tuple[int, str], dict[str, object]] | None,
 ) -> dict[str, object] | None:
     uncovered_rows = list(task_info.get("uncovered_rejected_rows", []))
     if not uncovered_rows:
         return None
+    if strategy in RULE_STRAND_OBJECT_STRATEGIES:
+        selected_object = _choose_rule_strand_object(
+            task_info,
+            strategy=strategy,
+            task_rule_strand_stats=task_rule_strand_stats,
+        )
+        if selected_object is None:
+            return None
+        return selected_object["representative_row"]
 
     if strategy == "strongest_low_support_or_margin":
         candidates = [
@@ -195,6 +243,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
                 f"## {strategy_payload['strategy']}",
                 "",
                 f"- resolved_score_band: {strategy_payload['resolved_score_band'] or 'n/a'}",
+                f"- resolved_candidate_object: {strategy_payload['resolved_candidate_object'] or 'n/a'}",
                 f"- eligible_task_count: {aggregate['eligible_task_count']}",
                 f"- predicted_rescued_task_count: {aggregate['predicted_rescued_task_count']}",
                 f"- predicted_rescued_window_count: {aggregate['predicted_rescued_window_count']}",
@@ -247,6 +296,7 @@ def replay_panel_candidate_classes(
                 dominant_score_band,
                 dominant_lt75_band,
             ),
+            "resolved_candidate_object": _resolved_candidate_object(strategy),
             "ref_scores": {},
             "baseline_keys": set(),
             "predicted_keys": set(),
@@ -279,6 +329,17 @@ def replay_panel_candidate_classes(
                 non_empty_score_gap=non_empty_score_gap,
                 singleton_override=singleton_override,
             )
+        ranked_keys = sample_vs_fasim._sorted_strict_score_keys(context["legacy_summary"].strict_scores)
+        missing_keys = [
+            key for key in ranked_keys if key not in context["candidate_summary"].strict_keys
+        ]
+        rule_strand_missing_payload = selector_classes._collect_rule_strand_missing_items(
+            context,
+            task_infos,
+            ranked_keys=ranked_keys,
+            missing_keys=missing_keys,
+        )
+        rule_strand_stats_by_task = rule_strand_missing_payload["stats_by_task"]
 
         base_kept_rows = [
             row for row in context["debug_rows"] if int(row["after_gate"]) == 1
@@ -309,6 +370,7 @@ def replay_panel_candidate_classes(
                     strategy=strategy,
                     singleton_override=singleton_override,
                     resolved_score_band=resolved_score_band,
+                    task_rule_strand_stats=rule_strand_stats_by_task.get(task_index),
                 )
                 if selected_row is not None:
                     rescued_rows.append(selected_row)
@@ -429,6 +491,7 @@ def replay_panel_candidate_classes(
             {
                 "strategy": strategy,
                 "resolved_score_band": str(state["resolved_score_band"]),
+                "resolved_candidate_object": str(state["resolved_candidate_object"]),
                 "aggregate": aggregate,
                 "per_tile": state["per_tile"],
             }

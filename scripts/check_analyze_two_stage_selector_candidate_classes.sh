@@ -322,4 +322,91 @@ PY
 grep -q "score_lt_75 Band Breakdown" "$OUT_LT75/summary.md"
 grep -q "recommended_score_lt_75_band" "$OUT_LT75/summary.md"
 
+mkdir -p "$WORK/object_legacy/output" "$WORK/object_candidate/output"
+
+cat >"$WORK/object_legacy/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	12000	12020	ParaPlus	1	605	620	+	95	16	90	-12
+chr22	21	40	13000	13020	AntiPlus	2	705	720	+	92	16	90	-12
+EOF
+
+cat >"$WORK/object_candidate/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+EOF
+
+cat >"$WORK/object_two_stage_windows.tsv" <<'EOF'
+task_index	fragment_index	fragment_start_in_seq	fragment_end_in_seq	reverse_mode	parallel_mode	strand	rule	window_id	sorted_rank	window_start_in_fragment	window_end_in_fragment	window_start_in_seq	window_end_in_seq	best_seed_score	second_best_seed_score	margin	support_count	window_bp	before_gate	after_gate	peak_score_ok	support_ok	margin_ok	strong_score_ok	selective_fallback_selected	reject_reason
+0	0	1	5000	0	1	ParaPlus	1	0	0	100	150	100	150	100	90	10	3	51	1	1	1	1	1	1	0	kept
+0	0	1	5000	0	1	ParaPlus	1	1		600	630	600	630	88	86	2	2	31	1	0	1	1	0	0	0	low_support_or_margin
+0	0	1	5000	0	1	AntiPlus	2	2		700	730	700	730	86	84	2	2	31	1	0	1	1	0	0	0	low_support_or_margin
+EOF
+
+cat >"$WORK/object_report.json" <<EOF
+{
+  "compare_output_mode": "lite",
+  "runs": {
+    "legacy": {
+      "output_dir": "$WORK/object_legacy/output"
+    },
+    "deferred_exact_minimal_v3_scoreband_75_79": {
+      "output_dir": "$WORK/object_candidate/output",
+      "debug_windows_csv": "$WORK/object_two_stage_windows.tsv"
+    }
+  }
+}
+EOF
+
+cat >"$WORK/object_panel_summary.json" <<EOF
+{
+  "gated_run_label": "deferred_exact_minimal_v3_scoreband_75_79",
+  "selected_microanchors": [
+    {
+      "anchor_label": "anchorObject",
+      "selection_bucket_length_bp": 25000,
+      "selection_kind": "strongest_shrink",
+      "selection_rank": 0,
+      "start_bp": 1,
+      "length_bp": 25000,
+      "report_path": "$WORK/object_report.json"
+    }
+  ]
+}
+EOF
+
+OUT_OBJECT="$WORK/out_object"
+python3 "$ROOT/scripts/analyze_two_stage_selector_candidate_classes.py" \
+  --panel-summary "$WORK/object_panel_summary.json" \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --output-dir "$OUT_OBJECT" >/dev/null
+
+python3 - "$OUT_OBJECT/summary.json" <<'PY'
+import json
+import math
+import sys
+
+summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+breakdown = summary["aggregate"]["rule_strand_object_breakdown"]
+assert breakdown["eligible_task_count"] == 1
+assert breakdown["object_count"] == 2
+assert breakdown["best_seed_score_summary"]["count"] == 2
+overall = breakdown["missing_hit_contribution"]["overall"]
+assert overall["matched_missing_count"] == 2
+assert overall["total_missing_count"] == 2
+top10 = breakdown["missing_hit_contribution"]["top10_missing"]
+assert top10["matched_missing_count"] == 2
+weighted = breakdown["missing_hit_contribution"]["score_weighted_missing"]
+assert math.isclose(weighted["matched_missing_weight"], 187.0)
+assert math.isclose(weighted["total_missing_weight"], 187.0)
+assert summary["recommended_next_candidate_object"] == "rule_strand_dominant"
+tile = summary["per_tile"][0]["rule_strand_object_breakdown"]
+assert tile["eligible_task_count"] == 1
+assert tile["object_count"] == 2
+PY
+
+grep -q "Rule/Strand Object Breakdown" "$OUT_OBJECT/summary.md"
+grep -q "recommended_next_candidate_object" "$OUT_OBJECT/summary.json"
+
 echo "ok"

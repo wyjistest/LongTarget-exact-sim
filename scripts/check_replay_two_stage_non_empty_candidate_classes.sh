@@ -342,4 +342,107 @@ PY
 grep -q "score_band_lt_75_dominant" "$OUT_LT75/summary.md"
 grep -q "resolved_score_band" "$OUT_LT75/summary.json"
 
+mkdir -p "$WORK/object_legacy/output" "$WORK/object_candidate/output"
+
+cat >"$WORK/object_legacy/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	1000	1020	ParaPlus	1	110	120	+	100	11	90	-12
+chr22	21	40	2000	2020	ParaPlus	1	605	620	+	80	16	90	-12
+chr22	41	60	3000	3020	AntiPlus	2	705	710	+	95	6	90	-12
+chr22	61	80	4000	4020	AntiPlus	2	720	725	+	90	6	90	-12
+EOF
+
+cat >"$WORK/object_candidate/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	1000	1020	ParaPlus	1	110	120	+	100	11	90	-12
+EOF
+
+cat >"$WORK/object_two_stage_windows.tsv" <<'EOF'
+task_index	fragment_index	fragment_start_in_seq	fragment_end_in_seq	reverse_mode	parallel_mode	strand	rule	window_id	sorted_rank	window_start_in_fragment	window_end_in_fragment	window_start_in_seq	window_end_in_seq	best_seed_score	second_best_seed_score	margin	support_count	window_bp	before_gate	after_gate	peak_score_ok	support_ok	margin_ok	strong_score_ok	selective_fallback_selected	reject_reason
+0	0	1	5000	0	1	ParaPlus	1	0	0	100	140	100	140	100	90	10	3	41	1	1	1	1	1	1	0	kept
+0	0	1	5000	0	1	ParaPlus	1	1		600	630	600	630	96	94	2	2	31	1	0	1	1	0	0	0	low_support_or_margin
+0	0	1	5000	0	1	AntiPlus	2	2		700	730	700	730	90	88	2	2	31	1	0	1	1	0	0	0	low_support_or_margin
+EOF
+
+cat >"$WORK/object_report.json" <<EOF
+{
+  "compare_output_mode": "lite",
+  "runs": {
+    "legacy": {
+      "output_dir": "$WORK/object_legacy/output"
+    },
+    "deferred_exact_minimal_v3_scoreband_75_79": {
+      "output_dir": "$WORK/object_candidate/output",
+      "debug_windows_csv": "$WORK/object_two_stage_windows.tsv",
+      "threshold_invoked": 1,
+      "threshold_skipped_after_gate": 0,
+      "windows_after_gate": 1,
+      "refine_total_bp": 41
+    }
+  }
+}
+EOF
+
+cat >"$WORK/object_panel_summary.json" <<EOF
+{
+  "gated_run_label": "deferred_exact_minimal_v3_scoreband_75_79",
+  "selected_microanchors": [
+    {
+      "anchor_label": "anchorObject",
+      "selection_bucket_length_bp": 25000,
+      "selection_kind": "medium_shrink",
+      "selection_rank": 0,
+      "start_bp": 1,
+      "length_bp": 25000,
+      "report_path": "$WORK/object_report.json"
+    }
+  ]
+}
+EOF
+
+OUT_OBJECT="$WORK/out_object"
+python3 "$ROOT/scripts/replay_two_stage_non_empty_candidate_classes.py" \
+  --panel-summary "$WORK/object_panel_summary.json" \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --strategy rule_strand_strongest \
+  --strategy rule_strand_dominant \
+  --output-dir "$OUT_OBJECT" >/dev/null
+
+python3 - "$OUT_OBJECT/summary.json" <<'PY'
+import json
+import math
+import sys
+
+summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+strategies = {item["strategy"]: item for item in summary["strategies"]}
+assert set(strategies) == {
+    "rule_strand_strongest",
+    "rule_strand_dominant",
+}
+
+strongest = strategies["rule_strand_strongest"]
+assert strongest["resolved_candidate_object"] == "rule_strand_strongest"
+assert strongest["aggregate"]["predicted_rescued_task_count"] == 1
+assert strongest["aggregate"]["predicted_rescued_window_count"] == 1
+assert math.isclose(strongest["aggregate"]["predicted_top5_retention"], 0.5)
+assert math.isclose(strongest["aggregate"]["predicted_top10_retention"], 0.5)
+assert math.isclose(strongest["aggregate"]["predicted_score_weighted_recall"], 180.0 / 365.0)
+assert strongest["per_tile"][0]["rescued_windows"][0]["rule"] == 1
+
+dominant = strategies["rule_strand_dominant"]
+assert dominant["resolved_candidate_object"] == "rule_strand_dominant"
+assert dominant["aggregate"]["predicted_rescued_task_count"] == 1
+assert dominant["aggregate"]["predicted_rescued_window_count"] == 1
+assert math.isclose(dominant["aggregate"]["predicted_top5_retention"], 0.75)
+assert math.isclose(dominant["aggregate"]["predicted_top10_retention"], 0.75)
+assert math.isclose(dominant["aggregate"]["predicted_score_weighted_recall"], 285.0 / 365.0)
+assert dominant["per_tile"][0]["rescued_windows"][0]["rule"] == 2
+PY
+
+grep -q "rule_strand_dominant" "$OUT_OBJECT/summary.md"
+grep -q "resolved_candidate_object" "$OUT_OBJECT/summary.json"
+
 echo "ok"
