@@ -29,6 +29,10 @@ RULE_STRAND_OBJECT_STRATEGIES = (
     "rule_strand_strongest",
     "rule_strand_dominant",
 )
+TASK_PROXY_STRATEGIES = (
+    "task_proxy_score_x_bp",
+    "task_proxy_score_x_support",
+)
 ALL_STRATEGIES = (
     "support1_margin_present",
     "support2",
@@ -44,6 +48,8 @@ ALL_STRATEGIES = (
     "score_band_dominant",
     "rule_strand_strongest",
     "rule_strand_dominant",
+    "task_proxy_score_x_bp",
+    "task_proxy_score_x_support",
 )
 
 
@@ -133,9 +139,32 @@ def _resolved_score_band(strategy: str, dominant_score_band: str, dominant_lt75_
 
 
 def _resolved_candidate_object(strategy: str) -> str:
-    if strategy in RULE_STRAND_OBJECT_STRATEGIES:
+    if strategy in RULE_STRAND_OBJECT_STRATEGIES or strategy in TASK_PROXY_STRATEGIES:
         return strategy
     return ""
+
+
+def _choose_task_proxy_row(task_info: dict[str, object], *, strategy: str) -> dict[str, object] | None:
+    uncovered_rows = list(task_info.get("uncovered_rejected_rows", []))
+    if not uncovered_rows:
+        return None
+    if strategy == "task_proxy_score_x_bp":
+        return min(
+            uncovered_rows,
+            key=lambda row: (
+                -int(row["best_seed_score"]) * int(row["window_bp"]),
+                selector_classes._window_sort_key(row),
+            ),
+        )
+    if strategy == "task_proxy_score_x_support":
+        return min(
+            uncovered_rows,
+            key=lambda row: (
+                -int(row["best_seed_score"]) * int(row["support_count"]),
+                selector_classes._window_sort_key(row),
+            ),
+        )
+    return None
 
 
 def _choose_rule_strand_object(
@@ -184,6 +213,8 @@ def _choose_candidate_row(
         if selected_object is None:
             return None
         return selected_object["representative_row"]
+    if strategy in TASK_PROXY_STRATEGIES:
+        return _choose_task_proxy_row(task_info, strategy=strategy)
 
     if strategy == "strongest_low_support_or_margin":
         candidates = [

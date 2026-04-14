@@ -540,6 +540,26 @@ python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
     - if `rule_strand_strongest` also improves `top5/top10` without eating back skip/batch gains, only then is a new runtime plan justified
     - if only `rule_strand_dominant` improves, treat it as an attribution/proxy result rather than a runtime-ready selector
     - if neither improves `top5/top10`, stop expanding the selector and keep `minimal_v3` as the experimental shortlist baseline
+  - the next narrower follow-up no longer changes the candidate family; it only swaps the **per-task rejected-window proxy** inside the same `no_singleton_missing_margin` task set:
+
+```
+python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --strategy task_proxy_score_x_bp \
+  --strategy task_proxy_score_x_support \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/candidate_object_replay_task_proxy
+```
+
+  - `task_proxy_score_x_bp` picks the uncovered rejected window with the largest `best_seed_score * window_bp`
+  - `task_proxy_score_x_support` picks the uncovered rejected window with the largest `best_seed_score * support_count`
+  - on the current real `minimal_v3` panel, both proxies still fail the Top10-first gate:
+    - `task_proxy_score_x_bp`: `predicted_rescued_task_count=382`, `delta_top5=0`, `delta_top10=0`, `delta_score_weighted_recall≈+0.01726`
+    - `task_proxy_score_x_support`: `predicted_rescued_task_count=382`, `delta_top5=0`, `delta_top10=0`, `delta_score_weighted_recall≈+0.01657`
+  - because neither proxy improves `top5/top10`, these strategies are evidence that selector expansion is likely exhausted on the current `minimal_v3` shortlist baseline; they do **not** justify a new runtime lane.
 - Example quality-gated sweep:
 
 ```

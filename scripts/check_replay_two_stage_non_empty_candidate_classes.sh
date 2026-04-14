@@ -445,4 +445,106 @@ PY
 grep -q "rule_strand_dominant" "$OUT_OBJECT/summary.md"
 grep -q "resolved_candidate_object" "$OUT_OBJECT/summary.json"
 
+mkdir -p "$WORK/proxy_legacy/output" "$WORK/proxy_candidate/output"
+
+cat >"$WORK/proxy_legacy/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	1000	1020	ParaPlus	1	110	120	+	100	11	90	-12
+chr22	21	40	2000	2020	ParaPlus	1	605	615	+	95	11	90	-12
+chr22	41	60	3000	3020	ParaPlus	1	705	720	+	80	16	90	-12
+EOF
+
+cat >"$WORK/proxy_candidate/output/sample-TFOsorted.lite" <<'EOF'
+Chr	QueryStart	QueryEnd	StartInGenome	EndInGenome	Strand	Rule	StartInSeq	EndInSeq	Direction	Score	Nt(bp)	MeanIdentity(%)	MeanStability
+chr22	1	20	1000	1020	ParaPlus	1	110	120	+	100	11	90	-12
+EOF
+
+cat >"$WORK/proxy_two_stage_windows.tsv" <<'EOF'
+task_index	fragment_index	fragment_start_in_seq	fragment_end_in_seq	reverse_mode	parallel_mode	strand	rule	window_id	sorted_rank	window_start_in_fragment	window_end_in_fragment	window_start_in_seq	window_end_in_seq	best_seed_score	second_best_seed_score	margin	support_count	window_bp	before_gate	after_gate	peak_score_ok	support_ok	margin_ok	strong_score_ok	selective_fallback_selected	reject_reason
+0	0	1	5000	0	1	ParaPlus	1	0	0	100	140	100	140	100	90	10	3	41	1	1	1	1	1	1	0	kept
+0	0	1	5000	0	1	ParaPlus	1	1		600	620	600	620	95	93	2	4	21	1	0	1	1	0	0	0	low_support_or_margin
+0	0	1	5000	0	1	ParaPlus	1	2		700	740	700	740	80	78	2	2	41	1	0	1	1	0	0	0	low_support_or_margin
+EOF
+
+cat >"$WORK/proxy_report.json" <<EOF
+{
+  "compare_output_mode": "lite",
+  "runs": {
+    "legacy": {
+      "output_dir": "$WORK/proxy_legacy/output"
+    },
+    "deferred_exact_minimal_v3_scoreband_75_79": {
+      "output_dir": "$WORK/proxy_candidate/output",
+      "debug_windows_csv": "$WORK/proxy_two_stage_windows.tsv",
+      "threshold_invoked": 1,
+      "threshold_skipped_after_gate": 0,
+      "windows_after_gate": 1,
+      "refine_total_bp": 41
+    }
+  }
+}
+EOF
+
+cat >"$WORK/proxy_panel_summary.json" <<EOF
+{
+  "gated_run_label": "deferred_exact_minimal_v3_scoreband_75_79",
+  "selected_microanchors": [
+    {
+      "anchor_label": "anchorProxy",
+      "selection_bucket_length_bp": 25000,
+      "selection_kind": "medium_shrink",
+      "selection_rank": 0,
+      "start_bp": 1,
+      "length_bp": 25000,
+      "report_path": "$WORK/proxy_report.json"
+    }
+  ]
+}
+EOF
+
+OUT_PROXY="$WORK/out_proxy"
+python3 "$ROOT/scripts/replay_two_stage_non_empty_candidate_classes.py" \
+  --panel-summary "$WORK/proxy_panel_summary.json" \
+  --candidate-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --strategy task_proxy_score_x_bp \
+  --strategy task_proxy_score_x_support \
+  --output-dir "$OUT_PROXY" >/dev/null
+
+python3 - "$OUT_PROXY/summary.json" <<'PY'
+import json
+import math
+import sys
+
+summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+strategies = {item["strategy"]: item for item in summary["strategies"]}
+assert set(strategies) == {
+    "task_proxy_score_x_bp",
+    "task_proxy_score_x_support",
+}
+
+proxy_bp = strategies["task_proxy_score_x_bp"]
+assert proxy_bp["resolved_candidate_object"] == "task_proxy_score_x_bp"
+assert proxy_bp["aggregate"]["predicted_rescued_task_count"] == 1
+assert proxy_bp["aggregate"]["predicted_rescued_window_count"] == 1
+assert math.isclose(proxy_bp["aggregate"]["predicted_top5_retention"], 2.0 / 3.0)
+assert math.isclose(proxy_bp["aggregate"]["predicted_top10_retention"], 2.0 / 3.0)
+assert math.isclose(proxy_bp["aggregate"]["predicted_score_weighted_recall"], 180.0 / 275.0)
+assert proxy_bp["per_tile"][0]["rescued_windows"][0]["window_id"] == 2
+
+proxy_support = strategies["task_proxy_score_x_support"]
+assert proxy_support["resolved_candidate_object"] == "task_proxy_score_x_support"
+assert proxy_support["aggregate"]["predicted_rescued_task_count"] == 1
+assert proxy_support["aggregate"]["predicted_rescued_window_count"] == 1
+assert math.isclose(proxy_support["aggregate"]["predicted_top5_retention"], 2.0 / 3.0)
+assert math.isclose(proxy_support["aggregate"]["predicted_top10_retention"], 2.0 / 3.0)
+assert math.isclose(proxy_support["aggregate"]["predicted_score_weighted_recall"], 195.0 / 275.0)
+assert proxy_support["per_tile"][0]["rescued_windows"][0]["window_id"] == 1
+PY
+
+grep -q "task_proxy_score_x_bp" "$OUT_PROXY/summary.md"
+grep -q "task_proxy_score_x_support" "$OUT_PROXY/summary.json"
+
 echo "ok"

@@ -993,10 +993,38 @@
     - 新增 fixture，验证同一 task 内两个不同 `(rule, strand)` object 会被正确计数，并把 `recommended_next_candidate_object` 收敛到 `rule_strand_dominant`。
   - `scripts/check_replay_two_stage_non_empty_candidate_classes.sh`
     - 新增 fixture，强制 `rule_strand_strongest` 与 `rule_strand_dominant` 选中不同 object，确保 replay 真的按 object attribution 做决策，而不是退化成 strongest-window。
-- 这一步的意义不是宣布下一条 runtime lane，而是把下一轮 real-panel 判断条件锁死：
+  - 这一步的意义不是宣布下一条 runtime lane，而是把下一轮 real-panel 判断条件锁死：
   - 如果 `rule_strand_strongest` 在 `minimal_v3` panel 上也能继续改善 `top5/top10`，才值得规划新的 runtime prototype；
   - 如果只有 `rule_strand_dominant` 有增益，它仍然只是 attribution / proxy 证据，不应直接翻译成 runtime selector；
   - 如果两者都不能改善 `top5/top10`，则应停止继续扩 selector，并把 `minimal_v3` 固定为当前 experimental shortlist baseline。
+- 在此之后，又按更窄的 stop-rule 再做了一轮 **task-local rejected-window proxy replay**，仍然不碰 runtime：
+  - `scripts/replay_two_stage_non_empty_candidate_classes.py`
+    - 新增 `task_proxy_score_x_bp`：在每个 `no_singleton_missing_margin` task 内，选 `best_seed_score * window_bp` 最大的未覆盖 rejected window；
+    - 新增 `task_proxy_score_x_support`：在每个 `no_singleton_missing_margin` task 内，选 `best_seed_score * support_count` 最大的未覆盖 rejected window；
+    - 两条策略都沿用现有 fixed selected-tiles panel、每 task 最多 rescue 1 个窗口、`max_kept_windows=2` 的 offline replay 口径。
+  - `scripts/check_replay_two_stage_non_empty_candidate_classes.sh`
+    - 新增 fixture，强制 `score×bp` 与 `score×support` 选中不同窗口，验证两条 proxy strategy 真的按不同 proxy 排序，而不是退化成 strongest-window。
+  - 真实 panel 结果落在：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/candidate_object_replay_task_proxy/summary.json`
+  - 结果继续收紧了 stop-signal：
+    - `task_proxy_score_x_bp`：
+      - `predicted_rescued_task_count=382`
+      - `delta_top5_retention=0.0`
+      - `delta_top10_retention=0.0`
+      - `delta_score_weighted_recall≈+0.01726`
+      - `delta_refine_total_bp_total=101350`
+    - `task_proxy_score_x_support`：
+      - `predicted_rescued_task_count=382`
+      - `delta_top5_retention=0.0`
+      - `delta_top10_retention=0.0`
+      - `delta_score_weighted_recall≈+0.01657`
+      - `delta_refine_total_bp_total=97926`
+  - 这说明当前 `minimal_v3` residual 上，哪怕不再换 score-band、不再换分桶方式，而是直接改同一 task 内的 proxy 选窗，也依然只能抬 weighted recall，抬不动 `top5/top10`。
+  - 因此 two-stage selector 的 stop-rule 现在已经非常明确：
+    - 不继续扩 selector；
+    - 不规划 `minimal_v4`；
+    - 把 `minimal_v3` 固定为当前 experimental shortlist baseline；
+    - 后续优化重心应转向更强的 exact rescue / exact-safe 主线，而不是继续在 two-stage selector 上挤 proxy。
 
 ## 常用命令
 
