@@ -540,6 +540,11 @@ check-two-stage-threshold-modes:
 	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_two_stage_threshold_modes.py --help >/dev/null
 	LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) bash ./scripts/check_two_stage_threshold_modes.sh
 
+check-two-stage-task-rerun-runtime:
+	$(MAKE) build-cuda
+	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_two_stage_threshold_modes.py --help >/dev/null
+	LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) bash ./scripts/check_two_stage_task_rerun_runtime.sh
+
 check-two-stage-threshold-heavy-microanchors:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_two_stage_threshold_heavy_microanchors.py --help >/dev/null
@@ -564,6 +569,14 @@ check-analyze-two-stage-selector-candidate-classes:
 check-replay-two-stage-non-empty-candidate-classes:
 	python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py --help >/dev/null
 	bash ./scripts/check_replay_two_stage_non_empty_candidate_classes.sh
+
+check-analyze-two-stage-task-ambiguity:
+	python3 ./scripts/analyze_two_stage_task_ambiguity.py --help >/dev/null
+	bash ./scripts/check_analyze_two_stage_task_ambiguity.sh
+
+check-replay-two-stage-task-level-rerun:
+	python3 ./scripts/replay_two_stage_task_level_rerun.py --help >/dev/null
+	bash ./scripts/check_replay_two_stage_task_level_rerun.sh
 
 check-summarize-two-stage-frontier:
 	python3 ./scripts/summarize_two_stage_frontier.py --help >/dev/null
@@ -611,4 +624,5 @@ check-longtarget-lite-output:
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
 		check-rerun-two-stage-panel-with-candidate-env check-analyze-two-stage-selector-candidate-classes \
-		check-replay-two-stage-non-empty-candidate-classes
+		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \
+		check-replay-two-stage-task-level-rerun check-two-stage-task-rerun-runtime

@@ -785,6 +785,32 @@ struct ExactSimTwoStageSelectiveFallbackConfig
   bool nonEmptyEnableScoreBand7579;
 };
 
+struct ExactSimTwoStageTaskRerunConfig
+{
+  ExactSimTwoStageTaskRerunConfig():
+    enabled(false),
+    budget(0),
+    selectedTasksPath("") {}
+
+  bool enabled;
+  long budget;
+  string selectedTasksPath;
+};
+
+struct ExactSimTwoStageTaskRerunStats
+{
+  ExactSimTwoStageTaskRerunStats():
+    selectedTasks(0),
+    effectiveTasks(0),
+    addedWindowCount(0),
+    addedBpTotal(0) {}
+
+  uint64_t selectedTasks;
+  uint64_t effectiveTasks;
+  uint64_t addedWindowCount;
+  uint64_t addedBpTotal;
+};
+
 inline ExactSimTwoStageRejectMode exact_sim_two_stage_reject_mode_runtime()
 {
   static const ExactSimTwoStageRejectMode mode = []()
@@ -829,6 +855,23 @@ inline ExactSimTwoStageSelectiveFallbackConfig exact_sim_two_stage_selective_fal
   if(config.nonEmptyMaxScoreGap < 0)
   {
     config.nonEmptyMaxScoreGap = 0;
+  }
+  return config;
+}
+
+inline ExactSimTwoStageTaskRerunConfig exact_sim_two_stage_task_rerun_config_runtime()
+{
+  ExactSimTwoStageTaskRerunConfig config;
+  config.enabled = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_TASK_RERUN", 0) != 0;
+  config.budget = exact_sim_env_int_or_default("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET", 0);
+  const char *selectedTasksPath = getenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH");
+  if(selectedTasksPath != NULL && selectedTasksPath[0] != '\0')
+  {
+    config.selectedTasksPath = selectedTasksPath;
+  }
+  if(config.budget < 0)
+  {
+    config.budget = 0;
   }
   return config;
 }
@@ -1541,8 +1584,42 @@ struct ExactSimDeferredTwoStagePrefilterResult
   uint64_t windowsBeforeGate;
   uint64_t windowsAfterGate;
   ExactSimTwoStageRejectStats rejectStats;
+  vector<ExactSimRefineWindow> windowsBeforeGateList;
   vector<ExactSimRefineWindow> windows;
 };
+
+inline bool exact_sim_apply_two_stage_task_rerun_in_place(
+  ExactSimDeferredTwoStagePrefilterResult &result,
+  bool taskSelected,
+  ExactSimTwoStageTaskRerunStats *stats = NULL)
+{
+  if(stats != NULL && taskSelected)
+  {
+    stats->selectedTasks += 1;
+  }
+  if(!taskSelected || result.windowsBeforeGateList.empty())
+  {
+    return false;
+  }
+
+  const uint64_t currentWindowCount = static_cast<uint64_t>(result.windows.size());
+  const uint64_t currentTotalBp = exact_sim_total_refine_window_bp(result.windows);
+  const uint64_t rerunWindowCount = static_cast<uint64_t>(result.windowsBeforeGateList.size());
+  const uint64_t rerunTotalBp = exact_sim_total_refine_window_bp(result.windowsBeforeGateList);
+  if(rerunWindowCount <= currentWindowCount && rerunTotalBp <= currentTotalBp)
+  {
+    return false;
+  }
+
+  result.windows = result.windowsBeforeGateList;
+  if(stats != NULL)
+  {
+    stats->effectiveTasks += 1;
+    stats->addedWindowCount += rerunWindowCount - currentWindowCount;
+    stats->addedBpTotal += rerunTotalBp - currentTotalBp;
+  }
+  return true;
+}
 
 inline bool collectExactSimTwoStageDeferredPrefilterCore(string &rnaSequence,
                                                          const string &transformedSequence,
@@ -1599,6 +1676,7 @@ inline bool collectExactSimTwoStageDeferredPrefilterCore(string &rnaSequence,
   const int targetLen = static_cast<int>(transformedSequence.size());
   exact_sim_build_refine_windows_from_hits(hits,targetLen,pad,result.windows);
   exact_sim_merge_refine_windows(result.windows,mergeGap);
+  result.windowsBeforeGateList = result.windows;
   result.windowsBeforeGate = static_cast<uint64_t>(result.windows.size());
   result.hadAnyRefineWindowBeforeGate = !result.windows.empty();
   if(taskTiming != NULL)

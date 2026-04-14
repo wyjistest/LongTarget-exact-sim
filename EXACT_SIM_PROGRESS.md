@@ -1026,6 +1026,122 @@
     - 把 `minimal_v3` 固定为当前 experimental shortlist baseline；
     - 后续优化重心应转向更强的 exact rescue / exact-safe 主线，而不是继续在 two-stage selector 上挤 proxy。
 
+## 2026-04-14（task-level ambiguity rerun upper bound）
+
+- 在 selector / proxy 这条线确认“继续扩窗口对象也抬不动 `top5/top10`”之后，这一轮把 two-stage 的下一枪正式转成 **task-level exact rerun upper bound**，仍然坚持 analysis-first / offline-first，不改 runtime：
+  - 固定 baseline 继续使用：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json`
+  - 复用同一批 fixed selected tiles，补跑 `deferred_exact` rescue source：
+    - `.tmp/panel_deferred_exact_2026-04-14_chr22_3anchor_task_level_rerun/summary.json`
+- 新增 `scripts/analyze_two_stage_task_ambiguity.py`
+  - 输入：baseline `minimal_v3` panel summary + fixed-tile `deferred_exact` rescue panel summary；
+  - 输出：`task_level_ambiguity_deferred_exact/summary.json|md`，给每个 task 同时写出：
+    - baseline ambiguity 指标：`inside_rejected_window` 的 `overall / top5 / top10` missing-hit 计数与 `score_weighted` 质量权重；
+    - rescue-gain 指标：如果把该 task 用 `deferred_exact` rerun 替换，能额外覆盖多少 baseline-missing legacy hits，以及代价是多少 `added_window_count / added_bp_total`。
+  - 根因修正：
+    - 真实 panel 证明，单靠 `(fragment_index, fragment_start/end_in_seq, reverse_mode, parallel_mode)` 不能唯一标识 task；
+    - 实际上同一 fragment 会按 `strand + rule` 再拆成不同 task；
+    - 因此脚本最终使用 `(fragment_index, fragment_start/end_in_seq, reverse_mode, parallel_mode, strand, rule)` 作为 stable task key，避免 real-panel join 冲突。
+  - 真实 panel aggregate：
+    - `eligible_task_count=4151`
+    - `rescue_gain_task_count=355`
+    - `false_positive_ambiguity_task_count=0`
+  - 说明：
+    - ambiguity signal 和 real rescue gain 在 real panel 上是对得上的；不是“高 ambiguity task 大多救不回来”，而是候选 task 很多，但真正有 gain 的只有其中一小部分。
+- 新增 `scripts/replay_two_stage_task_level_rerun.py`
+  - 输入：上一步的 `task_level_ambiguity_deferred_exact/summary.json`；
+  - 做法：按 `oracle_rescue_gain` 对 task 全局排序，然后只在离线 coverage-proxy 上回放 rerun budgets `8 / 16 / 32 / 64`；
+  - 输出：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact/summary.json`
+  - 真实 budget frontier：
+    - budget `8`
+      - `top_hit_retention=1.0`
+      - `top5_retention=0.6`（不变）
+      - `top10_retention=0.8`（相对 baseline `+0.1`）
+      - `delta_score_weighted_recall≈+0.00264`
+      - `delta_refine_total_bp_total=+3735`
+    - budget `16`
+      - `top_hit_retention=1.0`
+      - `top5_retention=0.6`（不变）
+      - `top10_retention=0.8`（相对 baseline `+0.1`）
+      - `delta_score_weighted_recall≈+0.00837`
+      - `delta_refine_total_bp_total=+8097`
+    - budget `32`
+      - `top_hit_retention=1.0`
+      - `top5_retention=0.6`（不变）
+      - `top10_retention=0.8`（相对 baseline `+0.1`）
+      - `delta_score_weighted_recall≈+0.01583`
+      - `delta_refine_total_bp_total=+19915`
+    - budget `64`
+      - `top_hit_retention=1.0`
+      - `top5_retention=0.6`（不变）
+      - `top10_retention=0.8`（相对 baseline `+0.1`）
+      - `delta_score_weighted_recall≈+0.02577`
+      - `delta_refine_total_bp_total=+38185`
+  - 这给出一个新的、比 selector 扩展更强的结论：
+    - `minimal_v3` 之后，继续扩 selector 已经不值得；
+    - 但 task-level exact rerun 的 offline upper bound **第一次重新抬动了 `top10`**；
+    - 同时，这个增益在 budget `8` 时就已经达到 `+0.1`，之后主要只是在堆 `score_weighted_recall`，并没有继续抬 `top5` 或再推高 `top10`。
+- 因此 two-stage 的下一步方向也被重新收紧：
+  - 不回 broad selector tuning；
+  - 不做 `pad/merge sweep`；
+  - 不直接规划新的 runtime lane；
+  - 下一枪应该转向 **deployable task-level ambiguity trigger** 的离线 trigger-design / calibration，目标是尽量逼近 budget-8/16 的 `top10` frontier，而不是继续在 window-level selector 上挤增量。
+- 基于这条 offline frontier，这一轮又把 **oracle-guided task-level exact rerun** 落成了一个严格受限的 runtime prototype：
+  - `exact_sim.h`
+    - 新增 `ExactSimTwoStageTaskRerunConfig` / `ExactSimTwoStageTaskRerunStats`；
+    - 新增运行时开关：
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN=1`
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET`
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH`
+    - `ExactSimDeferredTwoStagePrefilterResult` 现在同时保留：
+      - baseline 执行窗口 `windows`（gate / selective fallback 之后）
+      - `windowsBeforeGateList`（用于被选中的 task 做 stronger exact rerun）
+    - 新增 `exact_sim_apply_two_stage_task_rerun_in_place()`：
+      - 只在 task 被外部选中时触发；
+      - 把该 task 的 exact 执行窗口从 baseline `after_gate` 升级成已缓存的 `before_gate` 窗口；
+      - 同时精确回填 `addedWindowCount / addedBpTotal`。
+  - `longtarget.cpp`
+    - 新增 task-level rerun telemetry：
+      - `benchmark.two_stage_task_rerun_enabled`
+      - `benchmark.two_stage_task_rerun_budget`
+      - `benchmark.two_stage_task_rerun_selected_tasks`
+      - `benchmark.two_stage_task_rerun_effective_tasks`
+      - `benchmark.two_stage_task_rerun_added_windows`
+      - `benchmark.two_stage_task_rerun_refine_bp_total`
+      - `benchmark.two_stage_task_rerun_seconds`
+      - `benchmark.two_stage_task_rerun_selected_tasks_path`
+    - runtime 读取 `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH` 指向的 TSV，并按完整 task key 精确匹配：
+      - `(fragment_index, fragment_start_in_seq, fragment_end_in_seq, reverse_mode, parallel_mode, strand, rule)`
+    - 这保持了前一轮 real-panel root cause 修正：**不能再退回 fragment-only join**。
+  - `scripts/benchmark_two_stage_threshold_modes.py`
+    - 新增两条 runtime lane：
+      - `deferred_exact_minimal_v3_task_rerun_budget8`
+      - `deferred_exact_minimal_v3_task_rerun_budget16`
+    - 它们都以 `deferred_exact_minimal_v3_scoreband_75_79` 为 shortlist baseline，只额外打开 task-rerun runtime 开关。
+  - `scripts/check_two_stage_task_rerun_runtime.sh`
+    - 覆盖 selected-task TSV ingestion、task-rerun telemetry，以及 **strand-sensitive** task key 匹配；
+    - 通过一个故意写错 `strand` 的 selected-task 文件，验证 runtime 不会把错误 task 误升级成 rerun。
+  - `scripts/rerun_two_stage_panel_task_rerun_runtime.py`
+    - 把 fixed-panel offline replay summary 里的 `selected_tasks` 按 tile 写成 TSV；
+    - 复用同一批 selected micro-anchors，逐 tile 注入：
+      - `deferred_exact_minimal_v3_task_rerun_budget8`
+      - `deferred_exact_minimal_v3_task_rerun_budget16`
+    - 这样 runtime-vs-offline 对拍就只剩一个变量：**runtime 是否忠实复现离线已选 task 的 rerun 行为**，而不是混进新的 selector / trigger 变化。
+- 测试 / 接线：
+  - 新增 `scripts/check_analyze_two_stage_task_ambiguity.sh`
+    - 覆盖 real-panel root cause：同一 fragment、不同 `strand/rule` 的 task join 不再冲突；
+    - 同时验证 ambiguity attribution、rescue gain 归因与 zero-gain task 列表。
+  - 新增 `scripts/check_replay_two_stage_task_level_rerun.sh`
+    - 覆盖 budget 排序、selected-task union 与 `delta_refine_total_bp_total` 统计。
+  - 新增 `scripts/check_two_stage_task_rerun_runtime.sh`
+    - 覆盖 runtime lane、selected-task TSV、task-rerun telemetry 和 `strand` 维度的 key 校验。
+  - `Makefile`
+    - 新增：
+      - `check-analyze-two-stage-task-ambiguity`
+      - `check-replay-two-stage-task-level-rerun`
+      - `check-two-stage-task-rerun-runtime`
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`

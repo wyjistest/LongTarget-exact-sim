@@ -1,6 +1,8 @@
 #include "exact_sim.h"
 #include "cuda/calc_score_cuda.h"
+#include <fstream>
 #include <future>
+#include <sstream>
 #include <thread>
 using namespace std;
 struct ExactFragmentInfo
@@ -113,6 +115,14 @@ struct LongTargetExecutionMetrics
     twoStageSelectiveFallbackNonEmptyTriggeredTasks(0),
     twoStageSelectiveFallbackSelectedWindows(0),
     twoStageSelectiveFallbackSelectedBpTotal(0),
+    twoStageTaskRerunEnabled(0),
+    twoStageTaskRerunBudget(0),
+    twoStageTaskRerunSelectedTasks(0),
+    twoStageTaskRerunEffectiveTasks(0),
+    twoStageTaskRerunAddedWindows(0),
+    twoStageTaskRerunRefineBpTotal(0),
+    twoStageTaskRerunSeconds(0.0),
+    twoStageTaskRerunSelectedTasksPath(""),
     refineWindowCount(0),
     refineTotalBp(0),
     calcScoreTasksTotal(0),
@@ -183,6 +193,14 @@ struct LongTargetExecutionMetrics
   uint64_t twoStageSelectiveFallbackNonEmptyTriggeredTasks;
   uint64_t twoStageSelectiveFallbackSelectedWindows;
   uint64_t twoStageSelectiveFallbackSelectedBpTotal;
+  uint64_t twoStageTaskRerunEnabled;
+  uint64_t twoStageTaskRerunBudget;
+  uint64_t twoStageTaskRerunSelectedTasks;
+  uint64_t twoStageTaskRerunEffectiveTasks;
+  uint64_t twoStageTaskRerunAddedWindows;
+  uint64_t twoStageTaskRerunRefineBpTotal;
+  double twoStageTaskRerunSeconds;
+  string twoStageTaskRerunSelectedTasksPath;
   uint64_t refineWindowCount;
   uint64_t refineTotalBp;
   uint64_t calcScoreTasksTotal;
@@ -519,6 +537,98 @@ static inline string longtarget_task_strand_label(long reverseMode,long parallel
     return "AntiPlus";
   }
   return "";
+}
+
+static inline string longtarget_two_stage_task_rerun_task_key(const ExactSimTaskSpec &task,
+                                                              size_t fragmentLength)
+{
+  const long fragmentStart = task.dnaStartPos + 1;
+  const long fragmentEnd = task.dnaStartPos + static_cast<long>(fragmentLength);
+  ostringstream out;
+  out<<task.fragmentIndex<<"\t"
+     <<fragmentStart<<"\t"
+     <<fragmentEnd<<"\t"
+     <<task.reverseMode<<"\t"
+     <<task.parallelMode<<"\t"
+     <<longtarget_task_strand_label(task.reverseMode,task.parallelMode)<<"\t"
+     <<task.rule;
+  return out.str();
+}
+
+static inline bool longtarget_load_two_stage_task_rerun_selected_task_keys(
+  const string &path,
+  unordered_set<string> &selectedTaskKeys,
+  string *errorMessage = NULL)
+{
+  selectedTaskKeys.clear();
+  if(path.empty())
+  {
+    return true;
+  }
+
+  ifstream in(path.c_str());
+  if(!in.is_open())
+  {
+    if(errorMessage != NULL)
+    {
+      *errorMessage = "failed to open selected task list";
+    }
+    return false;
+  }
+
+  string line;
+  size_t lineNumber = 0;
+  while(getline(in,line))
+  {
+    ++lineNumber;
+    if(!line.empty() && line[line.size() - 1] == '\r')
+    {
+      line.erase(line.size() - 1);
+    }
+    if(line.empty() || line[0] == '#')
+    {
+      continue;
+    }
+    if(line == "fragment_index\tfragment_start_in_seq\tfragment_end_in_seq\treverse_mode\tparallel_mode\tstrand\trule")
+    {
+      continue;
+    }
+
+    vector<string> columns;
+    size_t start = 0;
+    while(true)
+    {
+      const size_t pos = line.find('\t',start);
+      if(pos == string::npos)
+      {
+        columns.push_back(line.substr(start));
+        break;
+      }
+      columns.push_back(line.substr(start,pos - start));
+      start = pos + 1;
+    }
+    if(columns.size() != 7)
+    {
+      if(errorMessage != NULL)
+      {
+        ostringstream out;
+        out<<"invalid selected task line "<<lineNumber<<": expected 7 tab-separated columns";
+        *errorMessage = out.str();
+      }
+      return false;
+    }
+
+    ostringstream normalized;
+    normalized<<columns[0]<<"\t"
+              <<columns[1]<<"\t"
+              <<columns[2]<<"\t"
+              <<columns[3]<<"\t"
+              <<columns[4]<<"\t"
+              <<columns[5]<<"\t"
+              <<columns[6];
+    selectedTaskKeys.insert(normalized.str());
+  }
+  return true;
 }
 
 static inline string longtarget_merge_prefilter_backend(const string &current,const string &next)
@@ -1796,6 +1906,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.two_stage_selective_fallback_non_empty_triggered_tasks="<<metrics.twoStageSelectiveFallbackNonEmptyTriggeredTasks<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_selected_windows="<<metrics.twoStageSelectiveFallbackSelectedWindows<<endl;
   cerr<<"benchmark.two_stage_selective_fallback_selected_bp_total="<<metrics.twoStageSelectiveFallbackSelectedBpTotal<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_enabled="<<metrics.twoStageTaskRerunEnabled<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_budget="<<metrics.twoStageTaskRerunBudget<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_selected_tasks="<<metrics.twoStageTaskRerunSelectedTasks<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_effective_tasks="<<metrics.twoStageTaskRerunEffectiveTasks<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_added_windows="<<metrics.twoStageTaskRerunAddedWindows<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_refine_bp_total="<<metrics.twoStageTaskRerunRefineBpTotal<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_seconds="<<metrics.twoStageTaskRerunSeconds<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_selected_tasks_path="<<metrics.twoStageTaskRerunSelectedTasksPath<<endl;
   cerr<<"benchmark.refine_window_count="<<metrics.refineWindowCount<<endl;
   cerr<<"benchmark.refine_total_bp="<<metrics.refineTotalBp<<endl;
   cerr<<"benchmark.sim_scan_tasks="<<metrics.simScanTasks<<endl;
@@ -2520,12 +2638,20 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     deferredExactTwoStage &&
     twoStageRejectMode == EXACT_SIM_TWO_STAGE_REJECT_MODE_MINIMAL_V2 &&
     twoStageSelectiveFallbackConfig.enabled;
+  const ExactSimTwoStageTaskRerunConfig twoStageTaskRerunConfig =
+    exact_sim_two_stage_task_rerun_config_runtime();
+  const bool twoStageTaskRerunEnabled =
+    deferredExactTwoStage &&
+    twoStageSelectiveFallbackEnabled &&
+    twoStageTaskRerunConfig.enabled;
   vector<ExactSimDeferredTwoStagePrefilterResult> deferredPrefilterResults(tasks.size());
   vector<unsigned char> deferredTaskShouldRun(tasks.size(),0);
+  vector<unsigned char> taskRerunEffective(tasks.size(),0);
   uint64_t discoveryPrefilterFailedTasks = 0;
   const string twoStageDebugWindowsCsvPath =
     deferredExactTwoStage ? longtarget_two_stage_debug_windows_csv_path_runtime() : "";
   ofstream twoStageDebugWindowsCsv;
+  unordered_set<string> twoStageTaskRerunSelectedTaskKeys;
 
   if(discoveryPrefilterOnly && !deferredExactTwoStage)
   {
@@ -2565,6 +2691,24 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     metrics->twoStageRejectMode = longtarget_two_stage_reject_mode_label(twoStageRejectMode);
     metrics->twoStageDiscoveryMode = longtarget_two_stage_discovery_mode_label(twoStageDiscoveryMode);
     metrics->twoStageSelectiveFallbackEnabled = twoStageSelectiveFallbackEnabled ? 1u : 0u;
+    metrics->twoStageTaskRerunEnabled = twoStageTaskRerunEnabled ? 1u : 0u;
+    metrics->twoStageTaskRerunBudget = static_cast<uint64_t>(twoStageTaskRerunConfig.budget);
+    metrics->twoStageTaskRerunSelectedTasksPath = twoStageTaskRerunConfig.selectedTasksPath;
+  }
+
+  if(twoStageTaskRerunEnabled)
+  {
+    string loadError;
+    if(!longtarget_load_two_stage_task_rerun_selected_task_keys(twoStageTaskRerunConfig.selectedTasksPath,
+                                                                twoStageTaskRerunSelectedTaskKeys,
+                                                                &loadError))
+    {
+      fprintf(stderr,
+              "failed to load LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH=%s: %s\n",
+              twoStageTaskRerunConfig.selectedTasksPath.c_str(),
+              loadError.c_str());
+      exit(2);
+    }
   }
 
   if(!twoStageDebugWindowsCsvPath.empty())
@@ -2630,6 +2774,34 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         }
       }
       deferredPrefilterResults[taskIndex] = result;
+      if(twoStageTaskRerunEnabled && !twoStageTaskRerunSelectedTaskKeys.empty())
+      {
+        const ExactSimTaskSpec &task = tasks[taskIndex];
+        const size_t fragmentLength = fragments[task.fragmentIndex].sequence.size();
+        const string taskKey = longtarget_two_stage_task_rerun_task_key(task,fragmentLength);
+        if(twoStageTaskRerunSelectedTaskKeys.find(taskKey) != twoStageTaskRerunSelectedTaskKeys.end())
+        {
+          ExactSimTwoStageTaskRerunStats taskRerunStats;
+          const bool upgraded =
+            exact_sim_apply_two_stage_task_rerun_in_place(deferredPrefilterResults[taskIndex],true,&taskRerunStats);
+          if(taskRerunStats.selectedTasks > 0 && metrics != NULL)
+          {
+            metrics->twoStageTaskRerunSelectedTasks += taskRerunStats.selectedTasks;
+          }
+          if(upgraded)
+          {
+            taskRerunEffective[taskIndex] = 1;
+            taskTimings[taskIndex].refineWindowCount += taskRerunStats.addedWindowCount;
+            taskTimings[taskIndex].refineTotalBp += taskRerunStats.addedBpTotal;
+            if(metrics != NULL)
+            {
+              metrics->twoStageTaskRerunEffectiveTasks += taskRerunStats.effectiveTasks;
+              metrics->twoStageTaskRerunAddedWindows += taskRerunStats.addedWindowCount;
+              metrics->twoStageTaskRerunRefineBpTotal += taskRerunStats.addedBpTotal;
+            }
+          }
+        }
+      }
       if(metrics != NULL)
       {
         metrics->twoStageTasksWithAnySeed += result.hadAnySeed ? 1u : 0u;
@@ -2663,12 +2835,12 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         {
           metrics->twoStageThresholdSkippedNoRefineWindowTasks += 1;
         }
-        else if(!result.hadAnyRefineWindowAfterGate)
+        else if(deferredPrefilterResults[taskIndex].windows.empty())
         {
           metrics->twoStageThresholdSkippedAfterGateTasks += 1;
         }
       }
-      if(result.hadAnyRefineWindowAfterGate)
+      if(!deferredPrefilterResults[taskIndex].windows.empty())
       {
         deferredTaskShouldRun[taskIndex] = 1;
         calcScoreTasksSorted.push_back(make_pair(static_cast<int>(tasks[taskIndex].transformedSequence.size()), taskIndex));
@@ -3689,6 +3861,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
       metrics->prefilterHits += taskTimings[taskIndex].prefilterHits;
       metrics->refineWindowCount += taskTimings[taskIndex].refineWindowCount;
       metrics->refineTotalBp += taskTimings[taskIndex].refineTotalBp;
+      if(taskRerunEffective[taskIndex] != 0)
+      {
+        metrics->twoStageTaskRerunSeconds += taskTimings[taskIndex].simSeconds;
+      }
       if(twoStage && !deferredExactTwoStage)
       {
         metrics->twoStageTasksWithAnySeed += taskTimings[taskIndex].twoStageHadAnySeed;

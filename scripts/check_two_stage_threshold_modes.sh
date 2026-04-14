@@ -27,6 +27,8 @@ rm -rf "$WORK"
     --run-label deferred_exact_minimal_v2 \
     --run-label deferred_exact_minimal_v2_selective_fallback \
     --run-label deferred_exact_minimal_v3_scoreband_75_79 \
+    --run-label deferred_exact_minimal_v3_task_rerun_budget8 \
+    --run-label deferred_exact_minimal_v3_task_rerun_budget16 \
     --run-env deferred_exact_minimal_v2_selective_fallback:LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP=9 \
     --debug-window-run-label deferred_exact_minimal_v2_selective_fallback >/dev/null
 )
@@ -56,6 +58,8 @@ assert set(runs) == {
     "deferred_exact_minimal_v2",
     "deferred_exact_minimal_v2_selective_fallback",
     "deferred_exact_minimal_v3_scoreband_75_79",
+    "deferred_exact_minimal_v3_task_rerun_budget8",
+    "deferred_exact_minimal_v3_task_rerun_budget16",
 }
 assert runs["legacy"]["threshold_mode"] == "legacy"
 assert runs["legacy"]["reject_mode"] == "off"
@@ -68,6 +72,10 @@ assert runs["deferred_exact_minimal_v2_selective_fallback"]["reject_mode"] == "m
 assert runs["deferred_exact_minimal_v2_selective_fallback"]["debug_windows_csv"].endswith("two_stage_windows.tsv")
 assert runs["deferred_exact_minimal_v3_scoreband_75_79"]["threshold_mode"] == "deferred_exact"
 assert runs["deferred_exact_minimal_v3_scoreband_75_79"]["reject_mode"] == "minimal_v2"
+assert runs["deferred_exact_minimal_v3_task_rerun_budget8"]["threshold_mode"] == "deferred_exact"
+assert runs["deferred_exact_minimal_v3_task_rerun_budget8"]["reject_mode"] == "minimal_v2"
+assert runs["deferred_exact_minimal_v3_task_rerun_budget16"]["threshold_mode"] == "deferred_exact"
+assert runs["deferred_exact_minimal_v3_task_rerun_budget16"]["reject_mode"] == "minimal_v2"
 
 for label, run in runs.items():
     if label == "legacy":
@@ -107,18 +115,38 @@ for label, run in runs.items():
     assert run["selective_fallback_non_empty_triggered_tasks"] >= 0
     assert run["selective_fallback_selected_windows"] >= 0
     assert run["selective_fallback_selected_bp_total"] >= 0
+    assert run["task_rerun_enabled"] in {0, 1}
+    assert run["task_rerun_budget"] >= 0
+    assert run["task_rerun_selected_tasks"] >= 0
+    assert run["task_rerun_effective_tasks"] >= 0
+    assert run["task_rerun_added_windows"] >= 0
+    assert run["task_rerun_refine_bp_total"] >= 0
+    assert run["task_rerun_seconds"] >= 0
     assert len(run["output_sha256"]) == 64
     assert len(run["normalized_output_sha256"]) == 64
     if label == "deferred_exact_minimal_v2_selective_fallback":
         assert run["debug_windows_csv"]
         assert run["selective_fallback_enabled"] == 1
+        assert run["task_rerun_enabled"] == 0
         assert open(run["debug_windows_csv"], "r", encoding="utf-8").readline().startswith("task_index\t")
     elif label == "deferred_exact_minimal_v3_scoreband_75_79":
         assert run["debug_windows_csv"] == ""
         assert run["selective_fallback_enabled"] == 1
+        assert run["task_rerun_enabled"] == 0
+    elif label == "deferred_exact_minimal_v3_task_rerun_budget8":
+        assert run["debug_windows_csv"] == ""
+        assert run["selective_fallback_enabled"] == 1
+        assert run["task_rerun_enabled"] == 1
+        assert run["task_rerun_budget"] == 8
+    elif label == "deferred_exact_minimal_v3_task_rerun_budget16":
+        assert run["debug_windows_csv"] == ""
+        assert run["selective_fallback_enabled"] == 1
+        assert run["task_rerun_enabled"] == 1
+        assert run["task_rerun_budget"] == 16
     else:
         assert run["debug_windows_csv"] == ""
         assert run["selective_fallback_enabled"] == 0
+        assert run["task_rerun_enabled"] == 0
 
 comparisons = report["comparisons_vs_legacy"]
 assert set(comparisons) == {
@@ -126,6 +154,8 @@ assert set(comparisons) == {
     "deferred_exact_minimal_v2",
     "deferred_exact_minimal_v2_selective_fallback",
     "deferred_exact_minimal_v3_scoreband_75_79",
+    "deferred_exact_minimal_v3_task_rerun_budget8",
+    "deferred_exact_minimal_v3_task_rerun_budget16",
 }
 for comparison in comparisons.values():
     assert "strict" in comparison

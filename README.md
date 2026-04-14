@@ -367,6 +367,7 @@ make check-two-stage-threshold-modes
   - `benchmark.two_stage_windows_rejected_by_min_peak_score`, `benchmark.two_stage_windows_rejected_by_support`, `benchmark.two_stage_windows_rejected_by_margin`, `benchmark.two_stage_windows_trimmed_by_max_windows`, `benchmark.two_stage_windows_trimmed_by_max_bp`
   - `benchmark.two_stage_singleton_rescued_windows`, `benchmark.two_stage_singleton_rescued_tasks`, `benchmark.two_stage_singleton_rescue_bp_total`
   - `benchmark.two_stage_selective_fallback_enabled`, `benchmark.two_stage_selective_fallback_triggered_tasks`, `benchmark.two_stage_selective_fallback_non_empty_candidate_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_max_kept_windows_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_singleton_override_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_as_covered_by_kept_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_score_gap_tasks`, `benchmark.two_stage_selective_fallback_non_empty_triggered_tasks`, `benchmark.two_stage_selective_fallback_selected_windows`, `benchmark.two_stage_selective_fallback_selected_bp_total`
+  - `benchmark.two_stage_task_rerun_enabled`, `benchmark.two_stage_task_rerun_budget`, `benchmark.two_stage_task_rerun_selected_tasks`, `benchmark.two_stage_task_rerun_effective_tasks`, `benchmark.two_stage_task_rerun_added_windows`, `benchmark.two_stage_task_rerun_refine_bp_total`, `benchmark.two_stage_task_rerun_seconds`, `benchmark.two_stage_task_rerun_selected_tasks_path`
   - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`, `run_env_overrides_requested`
 - `--run-env LABEL:KEY=VALUE` lets one threshold-mode rerun inject a candidate-only env override without mutating the shared baseline lanes; use it for narrow selector ablations rather than broad global gate sweeps.
 - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback` and the narrow `deferred_exact_minimal_v3_scoreband_75_79` runtime prototype:
@@ -379,6 +380,22 @@ make check-two-stage-threshold-modes
     - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS` limits rescue to sparse tasks (default: `1`)
     - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_GAP` caps the allowed best-seed-score gap between the strongest kept window and the rescued rejected singleton (default: `6`)
     - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79=1` enables the first runtime candidate-class expansion: rescue one uncovered `75-79` rejected window after the singleton path fails; the benchmark lane sets `NON_EMPTY_MAX_KEPT_WINDOWS=2` and leaves `SCORE_GAP` unchanged
+- `LONGTARGET_TWO_STAGE_TASK_RERUN=1` enables the first task-level exact-rerun runtime prototype on top of `minimal_v3`:
+  - scope is intentionally narrow: only deferred-exact + `minimal_v3` shortlist baseline, and only for tasks explicitly listed in `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH`
+  - the selected-task file is a TSV with header:
+    - `fragment_index`
+    - `fragment_start_in_seq`
+    - `fragment_end_in_seq`
+    - `reverse_mode`
+    - `parallel_mode`
+    - `strand`
+    - `rule`
+  - matching is exact on that full 7-field task key; this avoids the real-panel collision bug where fragment-only joins merged different `strand/rule` tasks
+  - action is conservative: selected tasks keep the same gate telemetry, but their exact execution windows are upgraded from `after_gate` to stored `before_gate` windows
+  - `LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET` is recorded in telemetry and used by the benchmark lanes:
+    - `deferred_exact_minimal_v3_task_rerun_budget8`
+    - `deferred_exact_minimal_v3_task_rerun_budget16`
+  - `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH` may be empty; in that case the runtime lane behaves like `minimal_v3` and reports zero selected/effective rerun tasks
 - Heavy-zone micro-anchor calibration uses coarse tiling plus the same 3-arm threshold-mode compare:
 
 ```
@@ -560,6 +577,65 @@ python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
     - `task_proxy_score_x_bp`: `predicted_rescued_task_count=382`, `delta_top5=0`, `delta_top10=0`, `delta_score_weighted_recall≈+0.01726`
     - `task_proxy_score_x_support`: `predicted_rescued_task_count=382`, `delta_top5=0`, `delta_top10=0`, `delta_score_weighted_recall≈+0.01657`
   - because neither proxy improves `top5/top10`, these strategies are evidence that selector expansion is likely exhausted on the current `minimal_v3` shortlist baseline; they do **not** justify a new runtime lane.
+  - the next step therefore moves **up one level** from per-window selector expansion to an **offline task-level exact rerun upper bound** on the same fixed selected tiles:
+
+```
+python3 ./scripts/rerun_two_stage_panel_with_candidate_env.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-run-label deferred_exact \
+  --output-dir .tmp/panel_deferred_exact_2026-04-14_chr22_3anchor_task_level_rerun
+
+python3 ./scripts/analyze_two_stage_task_ambiguity.py \
+  --baseline-panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --rescue-panel-summary .tmp/panel_deferred_exact_2026-04-14_chr22_3anchor_task_level_rerun/summary.json \
+  --baseline-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --rescue-label deferred_exact \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact
+
+python3 ./scripts/replay_two_stage_task_level_rerun.py \
+  --analysis-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact/summary.json \
+  --budget 8 --budget 16 --budget 32 --budget 64 \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact
+```
+
+  - `scripts/analyze_two_stage_task_ambiguity.py` joins baseline `minimal_v3` tasks to the fixed-tile `deferred_exact` rerun using `(fragment_index, fragment_start/end_in_seq, reverse_mode, parallel_mode, strand, rule)` as the stable task key; on real panels, fragment-only keys collide across rule/strand task splits.
+  - it reports both:
+    - baseline ambiguity features (`inside_rejected_window` top5/top10 counts and score-weight mass by task)
+    - rescue-gain features (which baseline-missing legacy hits would be recovered if that one task were rerun via `deferred_exact`)
+  - on the current real `minimal_v3` panel, the task-level upper bound resolves to:
+    - `eligible_task_count=4151`
+    - `rescue_gain_task_count=355`
+    - `false_positive_ambiguity_task_count=0`
+  - `scripts/replay_two_stage_task_level_rerun.py` then ranks tasks by `oracle_rescue_gain` and replays a small rerun-budget frontier without touching runtime semantics:
+    - budget `8`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.00264`, `delta_refine_total_bp_total=+3735`
+    - budget `16`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.00837`, `delta_refine_total_bp_total=+8097`
+    - budget `32`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.01583`, `delta_refine_total_bp_total=+19915`
+    - budget `64`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.02577`, `delta_refine_total_bp_total=+38185`
+  - this is the first post-selector analysis that **does** recover head quality (`top10`) on the current `minimal_v3` shortlist baseline, but the gain saturates early and still does not move `top5`.
+  - practical implication:
+    - do **not** go back to broader selector tuning or `pad/merge`
+    - do **not** promote a new runtime lane from this result alone
+    - the next evidence-driven step is a deployable **task-level ambiguity trigger** that tries to approximate the budget-8/16 frontier from `minimal_v3` observables
+  - once that offline frontier exists, the matching runtime prototype can be rerun on the identical fixed selected tiles by materializing per-tile task lists and injecting them into the new benchmark lanes:
+
+```
+python3 ./scripts/rerun_two_stage_panel_task_rerun_runtime.py \
+  --panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --replay-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact/summary.json \
+  --budget 16 \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_runtime
+
+python3 ./scripts/compare_two_stage_panel_summaries.py \
+  --baseline-panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --candidate-panel-summary .tmp/panel_minimal_v3_task_rerun_budget16_runtime/summary.json \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_runtime/compare_vs_minimal_v3
+```
+
+  - `scripts/rerun_two_stage_panel_task_rerun_runtime.py` keeps the tile set fixed, writes one selected-task TSV per tile from the offline replay summary, and reruns `legacy + deferred_exact_minimal_v3_task_rerun_budget{8,16}` without rediscovering micro-anchors.
+  - local checks:
+    - `make check-analyze-two-stage-task-ambiguity`
+    - `make check-replay-two-stage-task-level-rerun`
+    - `make check-two-stage-task-rerun-runtime`
 - Example quality-gated sweep:
 
 ```

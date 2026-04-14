@@ -568,6 +568,74 @@ int main()
                       "empty discovery flag") && ok;
   }
 
+  {
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN");
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET");
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH");
+
+    ExactSimTwoStageTaskRerunConfig config = exact_sim_two_stage_task_rerun_config_runtime();
+    ok = expect_false(config.enabled,"task rerun disabled by default") && ok;
+    ok = expect_equal_long(config.budget,0,"task rerun default budget") && ok;
+    ok = expect_true(config.selectedTasksPath.empty(),"task rerun default selected path empty") && ok;
+
+    setenv("LONGTARGET_TWO_STAGE_TASK_RERUN","1",1);
+    setenv("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET","16",1);
+    setenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH","/tmp/task_rerun_selected.tsv",1);
+    config = exact_sim_two_stage_task_rerun_config_runtime();
+    ok = expect_true(config.enabled,"task rerun env enables runtime lane") && ok;
+    ok = expect_equal_long(config.budget,16,"task rerun env budget") && ok;
+    ok = expect_equal_cstr(config.selectedTasksPath.c_str(),
+                           "/tmp/task_rerun_selected.tsv",
+                           "task rerun env selected path") && ok;
+
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN");
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET");
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH");
+  }
+
+  {
+    ExactSimDeferredTwoStagePrefilterResult result;
+    result.hadAnySeed = true;
+    result.hadAnyRefineWindowBeforeGate = true;
+    result.hadAnyRefineWindowAfterGate = true;
+    result.windowsBeforeGate = 3;
+    result.windowsAfterGate = 1;
+    result.windowsBeforeGateList.push_back(make_window(10,20,100,95,2));
+    result.windowsBeforeGateList.push_back(make_window(30,40,94,90,2));
+    result.windowsBeforeGateList.push_back(make_window(50,58,88,84,1));
+    result.windows.push_back(result.windowsBeforeGateList[0]);
+
+    ExactSimTwoStageTaskRerunStats stats;
+    const bool upgraded = exact_sim_apply_two_stage_task_rerun_in_place(result,true,&stats);
+    ok = expect_true(upgraded,"task rerun upgrades selected task") && ok;
+    ok = expect_equal_size(result.windows.size(),3u,"task rerun swaps in before-gate windows") && ok;
+    ok = expect_equal_long(stats.selectedTasks,1,"task rerun selected task count") && ok;
+    ok = expect_equal_long(stats.effectiveTasks,1,"task rerun effective task count") && ok;
+    ok = expect_equal_long(stats.addedWindowCount,2,"task rerun added windows") && ok;
+    ok = expect_equal_long(stats.addedBpTotal,20,"task rerun added bp total") && ok;
+  }
+
+  {
+    ExactSimDeferredTwoStagePrefilterResult result;
+    result.hadAnySeed = true;
+    result.hadAnyRefineWindowBeforeGate = true;
+    result.hadAnyRefineWindowAfterGate = true;
+    result.windowsBeforeGate = 2;
+    result.windowsAfterGate = 1;
+    result.windowsBeforeGateList.push_back(make_window(10,20,100,95,2));
+    result.windowsBeforeGateList.push_back(make_window(30,35,92,88,1));
+    result.windows.push_back(result.windowsBeforeGateList[0]);
+
+    ExactSimTwoStageTaskRerunStats stats;
+    const bool upgraded = exact_sim_apply_two_stage_task_rerun_in_place(result,false,&stats);
+    ok = expect_false(upgraded,"task rerun leaves unselected task unchanged") && ok;
+    ok = expect_equal_size(result.windows.size(),1u,"unselected task keeps after-gate windows") && ok;
+    ok = expect_equal_long(stats.selectedTasks,0,"unselected task selected count") && ok;
+    ok = expect_equal_long(stats.effectiveTasks,0,"unselected task effective count") && ok;
+    ok = expect_equal_long(stats.addedWindowCount,0,"unselected task added windows") && ok;
+    ok = expect_equal_long(stats.addedBpTotal,0,"unselected task added bp total") && ok;
+  }
+
   if(!ok)
   {
     return 1;

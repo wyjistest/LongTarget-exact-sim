@@ -27,6 +27,8 @@ RUN_LABELS = (
     "deferred_exact_minimal_v2",
     "deferred_exact_minimal_v2_selective_fallback",
     "deferred_exact_minimal_v3_scoreband_75_79",
+    "deferred_exact_minimal_v3_task_rerun_budget8",
+    "deferred_exact_minimal_v3_task_rerun_budget16",
 )
 DEFAULT_RUN_LABELS = ("legacy", "deferred_exact", "deferred_exact_minimal_v1")
 
@@ -70,6 +72,14 @@ class ThresholdModeRun:
     selective_fallback_non_empty_triggered_tasks: int
     selective_fallback_selected_windows: int
     selective_fallback_selected_bp_total: int
+    task_rerun_enabled: int
+    task_rerun_budget: int
+    task_rerun_selected_tasks: int
+    task_rerun_effective_tasks: int
+    task_rerun_added_windows: int
+    task_rerun_refine_bp_total: int
+    task_rerun_seconds: float
+    task_rerun_selected_tasks_path: str
     output_dir: str
     stderr_path: str
     output_mode: str
@@ -414,6 +424,42 @@ def main() -> int:
                 "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79": "1",
             },
         ),
+        (
+            "deferred_exact_minimal_v3_task_rerun_budget8",
+            {
+                "LONGTARGET_TWO_STAGE_THRESHOLD_MODE": "deferred_exact",
+                "LONGTARGET_TWO_STAGE_REJECT_MODE": "minimal_v2",
+                "LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE": str(args.min_peak_score),
+                "LONGTARGET_TWO_STAGE_MIN_SUPPORT": str(args.min_support),
+                "LONGTARGET_TWO_STAGE_MIN_MARGIN": str(args.min_margin),
+                "LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE": str(args.strong_score_override),
+                "LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK": str(args.max_windows_per_task),
+                "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK": "1",
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS": "2",
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79": "1",
+                "LONGTARGET_TWO_STAGE_TASK_RERUN": "1",
+                "LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET": "8",
+            },
+        ),
+        (
+            "deferred_exact_minimal_v3_task_rerun_budget16",
+            {
+                "LONGTARGET_TWO_STAGE_THRESHOLD_MODE": "deferred_exact",
+                "LONGTARGET_TWO_STAGE_REJECT_MODE": "minimal_v2",
+                "LONGTARGET_TWO_STAGE_MIN_PEAK_SCORE": str(args.min_peak_score),
+                "LONGTARGET_TWO_STAGE_MIN_SUPPORT": str(args.min_support),
+                "LONGTARGET_TWO_STAGE_MIN_MARGIN": str(args.min_margin),
+                "LONGTARGET_TWO_STAGE_STRONG_SCORE_OVERRIDE": str(args.strong_score_override),
+                "LONGTARGET_TWO_STAGE_MAX_WINDOWS_PER_TASK": str(args.max_windows_per_task),
+                "LONGTARGET_TWO_STAGE_MAX_BP_PER_TASK": str(args.max_bp_per_task),
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK": "1",
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS": "2",
+                "LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_SCORE_BAND_75_79": "1",
+                "LONGTARGET_TWO_STAGE_TASK_RERUN": "1",
+                "LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET": "16",
+            },
+        ),
     ]
     requested_run_labels = args.run_label or list(DEFAULT_RUN_LABELS)
     debug_window_run_labels = set(args.debug_window_run_label or [])
@@ -507,6 +553,14 @@ def main() -> int:
             selective_fallback_non_empty_triggered_tasks=_metric_int(metrics, "two_stage_selective_fallback_non_empty_triggered_tasks"),
             selective_fallback_selected_windows=_metric_int(metrics, "two_stage_selective_fallback_selected_windows"),
             selective_fallback_selected_bp_total=_metric_int(metrics, "two_stage_selective_fallback_selected_bp_total"),
+            task_rerun_enabled=_metric_int(metrics, "two_stage_task_rerun_enabled"),
+            task_rerun_budget=_metric_int(metrics, "two_stage_task_rerun_budget"),
+            task_rerun_selected_tasks=_metric_int(metrics, "two_stage_task_rerun_selected_tasks"),
+            task_rerun_effective_tasks=_metric_int(metrics, "two_stage_task_rerun_effective_tasks"),
+            task_rerun_added_windows=_metric_int(metrics, "two_stage_task_rerun_added_windows"),
+            task_rerun_refine_bp_total=_metric_int(metrics, "two_stage_task_rerun_refine_bp_total"),
+            task_rerun_seconds=_metric_float(metrics, "two_stage_task_rerun_seconds"),
+            task_rerun_selected_tasks_path=_metric_str(metrics, "two_stage_task_rerun_selected_tasks_path"),
             output_dir=str(out_dir),
             stderr_path=str(stderr_path),
             output_mode=args.compare_output_mode,
