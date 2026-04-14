@@ -557,6 +557,14 @@ check-rerun-two-stage-panel-with-candidate-env:
 	python3 ./scripts/rerun_two_stage_panel_with_candidate_env.py --help >/dev/null
 	bash ./scripts/check_rerun_two_stage_panel_with_candidate_env.sh
 
+check-analyze-two-stage-selector-candidate-classes:
+	python3 ./scripts/analyze_two_stage_selector_candidate_classes.py --help >/dev/null
+	bash ./scripts/check_analyze_two_stage_selector_candidate_classes.sh
+
+check-replay-two-stage-non-empty-candidate-classes:
+	python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py --help >/dev/null
+	bash ./scripts/check_replay_two_stage_non_empty_candidate_classes.sh
+
 check-summarize-two-stage-frontier:
 	python3 ./scripts/summarize_two_stage_frontier.py --help >/dev/null
 	bash ./scripts/check_summarize_two_stage_frontier.sh
@@ -602,4 +610,5 @@ check-longtarget-lite-output:
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
-		check-rerun-two-stage-panel-with-candidate-env
+		check-rerun-two-stage-panel-with-candidate-env check-analyze-two-stage-selector-candidate-classes \
+		check-replay-two-stage-non-empty-candidate-classes

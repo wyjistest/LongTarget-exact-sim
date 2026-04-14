@@ -867,6 +867,56 @@
   - 这轮刻意 **不修改默认 selector 行为**，而是先补齐 blocker telemetry 和定向 rerun 工具；下一次默认变更仍应先看 `dominant_selector_blocker`，只放宽真正卡住触发的那一条 selector 条件；
   - 因为 residual miss 仍由 `inside_rejected_window` 主导，下一步应继续扩 non-empty selector，而不是先做 `REFINE_PAD_BP / REFINE_MERGE_GAP_BP` sweep。
 
+## 2026-04-13（selector candidate-class attribution / offline replay）
+
+- 在 `max_kept_windows` 单变量 rerun 之后，把“下一枪该怎么扩 non-empty selector”进一步从 blocker telemetry 收紧到了 **candidate class**：
+  - `.tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_baseline_selector_telemetry/panel_decision/summary.json` 里，`dominant_selector_blocker=max_kept_windows`，`selector_candidate_tasks=4151`，其中 `rejected_by_max_kept_windows=2811`、`rejected_by_no_singleton_missing_margin=1314`；
+  - `.tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/panel_decision/summary.json` 里，把 `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK_NON_EMPTY_MAX_KEPT_WINDOWS` 从 `1` 放到 `2` 之后，`dominant_selector_blocker` 确实切到了 `no_singleton_missing_margin`，对应计数变成：
+    - `rejected_by_max_kept_windows=1610`
+    - `rejected_by_no_singleton_missing_margin=2444`
+    - `rejected_by_singleton_override=75`
+    - `rejected_by_score_gap=22`
+  - 同时 quality delta 仍然是 `top5/top10/score_weighted_recall/threshold_skipped_after_gate = 0.0`，说明这一步完成了 blocker 迁移，但还没有带来 shortlist 质量增益。
+- 为了不再盲调 runtime selector，这一轮新增了两个纯脚本侧工具，并已经在真实 panel 上落盘：
+  - `scripts/analyze_two_stage_selector_candidate_classes.py`
+    - 输入：固定 selected-tile 的 panel summary + debug TSV + 当前 selector 参数；
+    - 输出：`selector_candidate_classes/summary.json|md`，把 `no_singleton_missing_margin` task 再拆成 `support1_margin_present`、`support2`、`support3plus_low_support_or_margin`、`score_lt_85`、`covered_by_kept`、`other`，并进一步给 `score_lt_85` 补 `80_84 / 75_79 / lt_75` 三档 band breakdown；
+    - 真实 panel 结果在 `.tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/selector_candidate_classes/summary.json`：
+      - `recommended_next_candidate_class=score_lt_85`
+      - `recommended_score_lt_85_band=75_79`
+      - `task_count_by_class.score_lt_85=526`
+      - `missing_hit_contribution_by_class.overall.count_by_class.score_lt_85=1626`
+      - `score_weighted_missing.weight_by_class.score_lt_85≈2995.16`
+      - `score_lt_85_band_breakdown.task_count_by_band = {80_84:0, 75_79:286, lt_75:240}`
+      - `score_lt_85_band_breakdown.missing_hit_contribution_by_band.score_weighted_missing.weight_by_band = {80_84:0.0, 75_79:≈1731.33, lt_75:≈1263.83}`
+    - 这说明在当前代表 panel 上，真正解释 residual missing-hit weight 的“下一层候选”并不是 `support1/support2`，而是 **当前 `singleton_override=85` 之下的 rejected windows**。
+  - `scripts/replay_two_stage_non_empty_candidate_classes.py`
+    - 输入：同一 panel summary + selector 参数；
+    - 输出：`candidate_class_replay/summary.json|md`，既保留旧的 candidate-class replay，也新增 `score_band_80_84 / score_band_75_79 / score_band_lt_75 / score_band_dominant`；
+    - 真实 panel 结果在 `.tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/candidate_class_replay/summary.json`：
+      - `score_band_dominant` 解析到 `75_79`，且与 `score_band_75_79` 完全一致：
+        - `predicted_rescued_task_count=286`
+        - `predicted_rescued_window_count=286`
+        - `predicted_top10_retention: 0.6 -> 0.7`
+        - `predicted_score_weighted_recall: ≈0.5074 -> ≈0.5202`
+        - `delta_refine_total_bp_total=77856`
+      - `score_band_lt_75` 也能命中，但形态不同：
+        - `predicted_rescued_task_count=410`
+        - `predicted_top10_retention` 仍是 `0.6`
+        - `predicted_score_weighted_recall: ≈0.5074 -> ≈0.5239`
+        - `delta_refine_total_bp_total=98715`
+      - 旧的窄 candidate-class replay（`support1/support2/strongest_low_support_or_margin`）保持不变，仍然是 `predicted_rescued_task_count=0`
+    - 这说明当前真实 panel 上，**第一优先带不是 `80_84`，而是 `75_79`**；`lt_75` 更像一个“成本更高、只抬 weighted recall 的对照带”，不该先进入 runtime。
+- 验证入口：
+  - `make check-analyze-two-stage-selector-candidate-classes`
+  - `make check-replay-two-stage-non-empty-candidate-classes`
+- 当前结论：
+  - `max_kept_windows=2` 已经回答了第一个问题：non-empty selector 不是完全没机会，而是 **入口 blocker 已从稀疏度条件转移到候选类型**；
+  - 下一步不该回到 broad gate tuning，也不该先做 pad/merge，而应继续围绕 **candidate class 扩展**：
+    - 首先应围绕 `score_lt_85` 的 `75_79` 这层做 very narrow runtime 原型，而不是直接放开整个 `<85`；
+    - `lt_75` 暂时只保留为 offline 对照，因为它虽然还能抬 `score_weighted_recall`，但不会抬 `top10`，且成本更高；
+  - 在拿到新的 offline replay 正增益之前，不应把这类 selector 扩展直接写进默认 runtime 行为。
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`

@@ -433,6 +433,46 @@ python3 ./scripts/rerun_two_stage_panel_with_candidate_env.py \
 ```
 
 - `scripts/rerun_two_stage_panel_with_candidate_env.py` keeps the original tile selection fixed, reruns `legacy + candidate`, forwards candidate-only overrides through `--run-env`, and supports `--dry-run` for command preview before launching a real rerun.
+- 当真实 rerun 把 `dominant_selector_blocker` 从 `max_kept_windows` 推到 `no_singleton_missing_margin` 之后，下一步不是继续盲调 gate，而是先做 candidate-class attribution + offline replay：
+
+```
+make check-analyze-two-stage-selector-candidate-classes
+make check-replay-two-stage-non-empty-candidate-classes
+
+python3 ./scripts/analyze_two_stage_selector_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/summary.json \
+  --candidate-label deferred_exact_minimal_v2_selective_fallback \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --output-dir .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/selector_candidate_classes
+
+python3 ./scripts/replay_two_stage_non_empty_candidate_classes.py \
+  --panel-summary .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/summary.json \
+  --candidate-label deferred_exact_minimal_v2_selective_fallback \
+  --max-kept-windows 2 \
+  --non-empty-score-gap 6 \
+  --singleton-override 85 \
+  --strategy score_band_dominant \
+  --strategy score_band_75_79 \
+  --strategy score_band_lt_75 \
+  --output-dir .tmp/panel_minimal_v2_selective_fallback_2026-04-13_chr22_3anchor_fastlane_nonempty_rerun_max_kept_windows_2/candidate_class_replay
+```
+
+- `scripts/analyze_two_stage_selector_candidate_classes.py` reuses the panel summary + debug TSVs and reports:
+  - which `no_singleton_missing_margin` tasks are blocked by the next candidate class (`support1_margin_present`, `support2`, `support3plus_low_support_or_margin`, `score_lt_85`, `covered_by_kept`, `other`)
+  - a dedicated `score_lt_85_band_breakdown` for `80_84`, `75_79`, and `lt_75`
+  - which classes actually explain the remaining missing legacy hits via `overall`, `top5_missing`, `top10_missing`, and `score_weighted_missing`
+  - `recommended_next_candidate_class` plus `recommended_score_lt_85_band`, so the next selector expansion can stay evidence-driven instead of widening multiple clauses at once
+- In the current real panel, that breakdown resolves to:
+  - `recommended_next_candidate_class=score_lt_85`
+  - `recommended_score_lt_85_band=75_79`
+  - `80_84` currently contributes `0` representative tasks and `0` missing-hit weight on the fixed selected tiles
+- `scripts/replay_two_stage_non_empty_candidate_classes.py` keeps the same selected tiles and runs narrow offline ablations for candidate classes; by default it now focuses on the score-band follow-up (`score_band_dominant`, `score_band_75_79`, `score_band_lt_75`).
+  - `predicted_*` fields in its `summary.json` / `summary.md` are coverage proxies derived from kept/rescued windows against legacy hits; they are not runtime-measured threshold-mode outputs.
+  - On the current real panel, `score_band_dominant` resolves to `75_79` and matches `score_band_75_79`: `predicted_rescued_task_count=286`, `delta_top10_retention=+0.1`, `delta_score_weighted_recall≈+0.0128`, with `top_hit_retention` unchanged.
+  - `score_band_lt_75` improves only `score_weighted_recall` (`≈+0.0165`) while costing more rescued tasks/windows, so it should stay a comparison lane, not the first runtime expansion target.
+  - This lets us answer a narrower question before touching runtime semantics: if we admitted one more candidate class, would `top5/top10` or `score_weighted_recall` move enough to justify a real selector change?
 - Example quality-gated sweep:
 
 ```
