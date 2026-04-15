@@ -123,6 +123,13 @@ struct LongTargetExecutionMetrics
     twoStageTaskRerunRefineBpTotal(0),
     twoStageTaskRerunSeconds(0.0),
     twoStageTaskRerunSelectedTasksPath(""),
+    twoStageTaskRerunProfileTsv(""),
+    twoStageTaskRerunSelectedTasksLoadSeconds(0.0),
+    twoStageTaskRerunUpgradeSeconds(0.0),
+    twoStageTaskRerunEffectiveThresholdSeconds(0.0),
+    twoStageTaskRerunEffectiveSimSeconds(0.0),
+    twoStageTaskRerunEffectivePostProcessSeconds(0.0),
+    twoStageTaskRerunTotalSeconds(0.0),
     refineWindowCount(0),
     refineTotalBp(0),
     calcScoreTasksTotal(0),
@@ -201,6 +208,13 @@ struct LongTargetExecutionMetrics
   uint64_t twoStageTaskRerunRefineBpTotal;
   double twoStageTaskRerunSeconds;
   string twoStageTaskRerunSelectedTasksPath;
+  string twoStageTaskRerunProfileTsv;
+  double twoStageTaskRerunSelectedTasksLoadSeconds;
+  double twoStageTaskRerunUpgradeSeconds;
+  double twoStageTaskRerunEffectiveThresholdSeconds;
+  double twoStageTaskRerunEffectiveSimSeconds;
+  double twoStageTaskRerunEffectivePostProcessSeconds;
+  double twoStageTaskRerunTotalSeconds;
   uint64_t refineWindowCount;
   uint64_t refineTotalBp;
   uint64_t calcScoreTasksTotal;
@@ -223,6 +237,44 @@ struct LongTargetExecutionMetrics
   uint64_t simTracebackTieCount;
   vector<LongTargetCudaWorkerMetrics> simCudaWorkers;
   vector<LongTargetCudaDeviceMetrics> simCudaDevices;
+};
+
+struct LongTargetTaskRerunProfileRow
+{
+  LongTargetTaskRerunProfileRow():
+    selected(0),
+    effective(0),
+    fragmentLength(0),
+    rule(0),
+    targetLength(0),
+    baselineWindows(0),
+    rerunWindows(0),
+    addedWindows(0),
+    baselineBp(0),
+    rerunBp(0),
+    addedBp(0),
+    thresholdSeconds(0.0),
+    simSeconds(0.0),
+    postProcessSeconds(0.0),
+    rerunTotalSeconds(0.0) {}
+
+  uint64_t selected;
+  uint64_t effective;
+  string taskKey;
+  uint64_t fragmentLength;
+  int rule;
+  string strand;
+  uint64_t targetLength;
+  uint64_t baselineWindows;
+  uint64_t rerunWindows;
+  uint64_t addedWindows;
+  uint64_t baselineBp;
+  uint64_t rerunBp;
+  uint64_t addedBp;
+  double thresholdSeconds;
+  double simSeconds;
+  double postProcessSeconds;
+  double rerunTotalSeconds;
 };
 
 enum LongTargetCalcScoreFallbackReason
@@ -763,6 +815,52 @@ static inline void longtarget_write_two_stage_window_trace_row(ostream &out,
      <<(trace.strongScoreOk ? 1 : 0)<<"\t"
      <<(trace.selectiveFallbackSelected ? 1 : 0)<<"\t"
      <<exact_sim_two_stage_window_reject_reason_label(trace.rejectReason)
+     <<endl;
+}
+
+static inline void longtarget_write_two_stage_task_rerun_profile_header(ostream &out)
+{
+  out<<"task_key\t"
+     <<"selected\t"
+     <<"effective\t"
+     <<"fragment_length\t"
+     <<"rule\t"
+     <<"strand\t"
+     <<"target_length\t"
+     <<"baseline_windows\t"
+     <<"rerun_windows\t"
+     <<"added_windows\t"
+     <<"baseline_bp\t"
+     <<"rerun_bp\t"
+     <<"added_bp\t"
+     <<"threshold_seconds\t"
+     <<"sim_seconds\t"
+     <<"post_process_seconds\t"
+     <<"rerun_total_seconds"
+     <<endl;
+}
+
+static inline void longtarget_write_two_stage_task_rerun_profile_row(
+  ostream &out,
+  const LongTargetTaskRerunProfileRow &row)
+{
+  out<<row.taskKey<<"\t"
+     <<row.selected<<"\t"
+     <<row.effective<<"\t"
+     <<row.fragmentLength<<"\t"
+     <<row.rule<<"\t"
+     <<row.strand<<"\t"
+     <<row.targetLength<<"\t"
+     <<row.baselineWindows<<"\t"
+     <<row.rerunWindows<<"\t"
+     <<row.addedWindows<<"\t"
+     <<row.baselineBp<<"\t"
+     <<row.rerunBp<<"\t"
+     <<row.addedBp<<"\t"
+     <<row.thresholdSeconds<<"\t"
+     <<row.simSeconds<<"\t"
+     <<row.postProcessSeconds<<"\t"
+     <<row.rerunTotalSeconds
      <<endl;
 }
 
@@ -1914,6 +2012,13 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.two_stage_task_rerun_refine_bp_total="<<metrics.twoStageTaskRerunRefineBpTotal<<endl;
   cerr<<"benchmark.two_stage_task_rerun_seconds="<<metrics.twoStageTaskRerunSeconds<<endl;
   cerr<<"benchmark.two_stage_task_rerun_selected_tasks_path="<<metrics.twoStageTaskRerunSelectedTasksPath<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_profile_tsv="<<metrics.twoStageTaskRerunProfileTsv<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_selected_tasks_load_seconds="<<metrics.twoStageTaskRerunSelectedTasksLoadSeconds<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_upgrade_seconds="<<metrics.twoStageTaskRerunUpgradeSeconds<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_effective_threshold_seconds="<<metrics.twoStageTaskRerunEffectiveThresholdSeconds<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_effective_sim_seconds="<<metrics.twoStageTaskRerunEffectiveSimSeconds<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_effective_post_process_seconds="<<metrics.twoStageTaskRerunEffectivePostProcessSeconds<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_total_seconds="<<metrics.twoStageTaskRerunTotalSeconds<<endl;
   cerr<<"benchmark.refine_window_count="<<metrics.refineWindowCount<<endl;
   cerr<<"benchmark.refine_total_bp="<<metrics.refineTotalBp<<endl;
   cerr<<"benchmark.sim_scan_tasks="<<metrics.simScanTasks<<endl;
@@ -2646,7 +2751,9 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     twoStageTaskRerunConfig.enabled;
   vector<ExactSimDeferredTwoStagePrefilterResult> deferredPrefilterResults(tasks.size());
   vector<unsigned char> deferredTaskShouldRun(tasks.size(),0);
+  vector<unsigned char> taskRerunSelected(tasks.size(),0);
   vector<unsigned char> taskRerunEffective(tasks.size(),0);
+  vector<LongTargetTaskRerunProfileRow> taskRerunProfiles(tasks.size());
   uint64_t discoveryPrefilterFailedTasks = 0;
   const string twoStageDebugWindowsCsvPath =
     deferredExactTwoStage ? longtarget_two_stage_debug_windows_csv_path_runtime() : "";
@@ -2694,10 +2801,12 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     metrics->twoStageTaskRerunEnabled = twoStageTaskRerunEnabled ? 1u : 0u;
     metrics->twoStageTaskRerunBudget = static_cast<uint64_t>(twoStageTaskRerunConfig.budget);
     metrics->twoStageTaskRerunSelectedTasksPath = twoStageTaskRerunConfig.selectedTasksPath;
+    metrics->twoStageTaskRerunProfileTsv = twoStageTaskRerunConfig.profileTsvPath;
   }
 
   if(twoStageTaskRerunEnabled)
   {
+    const double loadSelectedTasksStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
     string loadError;
     if(!longtarget_load_two_stage_task_rerun_selected_task_keys(twoStageTaskRerunConfig.selectedTasksPath,
                                                                 twoStageTaskRerunSelectedTaskKeys,
@@ -2708,6 +2817,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
               twoStageTaskRerunConfig.selectedTasksPath.c_str(),
               loadError.c_str());
       exit(2);
+    }
+    if(metrics != NULL)
+    {
+      metrics->twoStageTaskRerunSelectedTasksLoadSeconds += longtarget_now_seconds() - loadSelectedTasksStart;
     }
   }
 
@@ -2781,13 +2894,40 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         const string taskKey = longtarget_two_stage_task_rerun_task_key(task,fragmentLength);
         if(twoStageTaskRerunSelectedTaskKeys.find(taskKey) != twoStageTaskRerunSelectedTaskKeys.end())
         {
+          taskRerunSelected[taskIndex] = 1;
+          LongTargetTaskRerunProfileRow &profileRow = taskRerunProfiles[taskIndex];
+          profileRow.selected = 1;
+          profileRow.taskKey = taskKey;
+          for(size_t charIndex = 0; charIndex < profileRow.taskKey.size(); ++charIndex)
+          {
+            if(profileRow.taskKey[charIndex] == '\t')
+            {
+              profileRow.taskKey[charIndex] = '|';
+            }
+          }
+          profileRow.fragmentLength = static_cast<uint64_t>(fragmentLength);
+          profileRow.rule = task.rule;
+          profileRow.strand = longtarget_task_strand_label(task.reverseMode,task.parallelMode);
+          profileRow.targetLength = static_cast<uint64_t>(task.transformedSequence.size());
+          profileRow.baselineWindows = static_cast<uint64_t>(deferredPrefilterResults[taskIndex].windows.size());
+          profileRow.baselineBp = exact_sim_total_refine_window_bp(deferredPrefilterResults[taskIndex].windows);
+          profileRow.rerunWindows = static_cast<uint64_t>(deferredPrefilterResults[taskIndex].windowsBeforeGateList.size());
+          profileRow.rerunBp = exact_sim_total_refine_window_bp(deferredPrefilterResults[taskIndex].windowsBeforeGateList);
           ExactSimTwoStageTaskRerunStats taskRerunStats;
+          const double taskRerunUpgradeStart = metrics != NULL ? longtarget_now_seconds() : 0.0;
           const bool upgraded =
             exact_sim_apply_two_stage_task_rerun_in_place(deferredPrefilterResults[taskIndex],true,&taskRerunStats);
+          if(metrics != NULL)
+          {
+            metrics->twoStageTaskRerunUpgradeSeconds += longtarget_now_seconds() - taskRerunUpgradeStart;
+          }
           if(taskRerunStats.selectedTasks > 0 && metrics != NULL)
           {
             metrics->twoStageTaskRerunSelectedTasks += taskRerunStats.selectedTasks;
           }
+          profileRow.effective = upgraded ? 1u : 0u;
+          profileRow.addedWindows = taskRerunStats.addedWindowCount;
+          profileRow.addedBp = taskRerunStats.addedBpTotal;
           if(upgraded)
           {
             taskRerunEffective[taskIndex] = 1;
@@ -3861,6 +4001,21 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
       metrics->prefilterHits += taskTimings[taskIndex].prefilterHits;
       metrics->refineWindowCount += taskTimings[taskIndex].refineWindowCount;
       metrics->refineTotalBp += taskTimings[taskIndex].refineTotalBp;
+      if(taskRerunSelected[taskIndex] != 0)
+      {
+        LongTargetTaskRerunProfileRow &profileRow = taskRerunProfiles[taskIndex];
+        if(taskRerunEffective[taskIndex] != 0)
+        {
+          profileRow.thresholdSeconds = taskTimings[taskIndex].thresholdSeconds;
+          profileRow.simSeconds = taskTimings[taskIndex].simSeconds;
+          profileRow.postProcessSeconds = taskFilterSeconds[taskIndex];
+          profileRow.rerunTotalSeconds =
+            profileRow.thresholdSeconds + profileRow.simSeconds + profileRow.postProcessSeconds;
+          metrics->twoStageTaskRerunEffectiveThresholdSeconds += profileRow.thresholdSeconds;
+          metrics->twoStageTaskRerunEffectiveSimSeconds += profileRow.simSeconds;
+          metrics->twoStageTaskRerunEffectivePostProcessSeconds += profileRow.postProcessSeconds;
+        }
+      }
       if(taskRerunEffective[taskIndex] != 0)
       {
         metrics->twoStageTaskRerunSeconds += taskTimings[taskIndex].simSeconds;
@@ -3881,6 +4036,37 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
   if(metrics != NULL && twoStage && !deferredExactTwoStage)
   {
     metrics->twoStageWindowsAfterGate = metrics->refineWindowCount;
+  }
+
+  if(metrics != NULL)
+  {
+    metrics->twoStageTaskRerunTotalSeconds =
+      metrics->twoStageTaskRerunSelectedTasksLoadSeconds +
+      metrics->twoStageTaskRerunUpgradeSeconds +
+      metrics->twoStageTaskRerunEffectiveThresholdSeconds +
+      metrics->twoStageTaskRerunEffectiveSimSeconds +
+      metrics->twoStageTaskRerunEffectivePostProcessSeconds;
+  }
+
+  if(twoStageTaskRerunEnabled && !twoStageTaskRerunConfig.profileTsvPath.empty())
+  {
+    ofstream taskRerunProfileTsv(twoStageTaskRerunConfig.profileTsvPath.c_str(),ios::trunc);
+    if(!taskRerunProfileTsv.is_open())
+    {
+      fprintf(stderr,
+              "failed to open LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV=%s\n",
+              twoStageTaskRerunConfig.profileTsvPath.c_str());
+      exit(2);
+    }
+    longtarget_write_two_stage_task_rerun_profile_header(taskRerunProfileTsv);
+    for(size_t taskIndex = 0; taskIndex < taskRerunProfiles.size(); ++taskIndex)
+    {
+      if(taskRerunSelected[taskIndex] == 0)
+      {
+        continue;
+      }
+      longtarget_write_two_stage_task_rerun_profile_row(taskRerunProfileTsv,taskRerunProfiles[taskIndex]);
+    }
   }
 
   if(metrics != NULL)

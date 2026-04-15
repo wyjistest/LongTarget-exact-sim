@@ -80,6 +80,13 @@ class ThresholdModeRun:
     task_rerun_refine_bp_total: int
     task_rerun_seconds: float
     task_rerun_selected_tasks_path: str
+    task_rerun_profile_tsv: str
+    task_rerun_selected_tasks_load_seconds: float
+    task_rerun_upgrade_seconds: float
+    task_rerun_effective_threshold_seconds: float
+    task_rerun_effective_sim_seconds: float
+    task_rerun_effective_post_process_seconds: float
+    task_rerun_total_seconds: float
     output_dir: str
     stderr_path: str
     output_mode: str
@@ -561,6 +568,13 @@ def main() -> int:
             task_rerun_refine_bp_total=_metric_int(metrics, "two_stage_task_rerun_refine_bp_total"),
             task_rerun_seconds=_metric_float(metrics, "two_stage_task_rerun_seconds"),
             task_rerun_selected_tasks_path=_metric_str(metrics, "two_stage_task_rerun_selected_tasks_path"),
+            task_rerun_profile_tsv=_metric_str(metrics, "two_stage_task_rerun_profile_tsv"),
+            task_rerun_selected_tasks_load_seconds=_metric_float(metrics, "two_stage_task_rerun_selected_tasks_load_seconds"),
+            task_rerun_upgrade_seconds=_metric_float(metrics, "two_stage_task_rerun_upgrade_seconds"),
+            task_rerun_effective_threshold_seconds=_metric_float(metrics, "two_stage_task_rerun_effective_threshold_seconds"),
+            task_rerun_effective_sim_seconds=_metric_float(metrics, "two_stage_task_rerun_effective_sim_seconds"),
+            task_rerun_effective_post_process_seconds=_metric_float(metrics, "two_stage_task_rerun_effective_post_process_seconds"),
+            task_rerun_total_seconds=_metric_float(metrics, "two_stage_task_rerun_total_seconds"),
             output_dir=str(out_dir),
             stderr_path=str(stderr_path),
             output_mode=args.compare_output_mode,

@@ -1208,6 +1208,90 @@
   - 不再继续扩 window-level selector family；
   - 应转向 **deployable task-level ambiguity trigger** 的 trigger-design / calibration，目标是在不依赖 oracle-selected task TSV 的前提下，尽量逼近 budget `8/16` 的 frontier。
 
+## 2026-04-15（task-rerun profiling harness and rerun-cost telemetry）
+
+- 在 oracle-free trigger search 触发 stop-rule 之后，这一轮把 two-stage 的下一枪正式收成 **rerun cost profiling**，不再继续发明新的 selector / trigger 名字：
+  - `exact_sim.h`
+    - `ExactSimTwoStageTaskRerunConfig` 新增：
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV`
+    - 该路径可选；未设置时，runtime lane 语义完全不变，只是不会写出 per-task profiling sidecar。
+  - `longtarget.cpp`
+    - 保留兼容字段：
+      - `benchmark.two_stage_task_rerun_seconds`
+      - 仍然表示 rerun-effective tasks 的 `sim_seconds`
+    - 新增 phase-level rerun telemetry：
+      - `benchmark.two_stage_task_rerun_profile_tsv`
+      - `benchmark.two_stage_task_rerun_selected_tasks_load_seconds`
+      - `benchmark.two_stage_task_rerun_upgrade_seconds`
+      - `benchmark.two_stage_task_rerun_effective_threshold_seconds`
+      - `benchmark.two_stage_task_rerun_effective_sim_seconds`
+      - `benchmark.two_stage_task_rerun_effective_post_process_seconds`
+      - `benchmark.two_stage_task_rerun_total_seconds`
+    - `LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV` 打开后，还会写出一个 **selected-task scoped** 的 TSV sidecar：
+      - 每行一个 selected task；
+      - 字段：
+        - `task_key`
+        - `selected`
+        - `effective`
+        - `fragment_length`
+        - `rule`
+        - `strand`
+        - `target_length`
+        - `baseline_windows`
+        - `rerun_windows`
+        - `added_windows`
+        - `baseline_bp`
+        - `rerun_bp`
+        - `added_bp`
+        - `threshold_seconds`
+        - `sim_seconds`
+        - `post_process_seconds`
+        - `rerun_total_seconds`
+    - 时间口径固定为：
+      - `selected_tasks_load_seconds`：读取 selected-task TSV 的时间；
+      - `upgrade_seconds`：在内存里判定/执行 `after_gate -> before_gate` 升级的时间；
+      - `effective_{threshold,sim,post_process}_seconds`：只统计 rerun-effective tasks；
+      - `total_seconds = load + upgrade + effective threshold + effective sim + effective post_process`。
+  - `scripts/benchmark_two_stage_threshold_modes.py`
+    - `report.json` 现已暴露上述新 telemetry 字段与 `task_rerun_profile_tsv` 路径。
+  - `scripts/check_two_stage_task_rerun_runtime.sh`
+    - 现在同时覆盖：
+      - 新 phase-level telemetry；
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV` sidecar 写出；
+      - good-task 有效 rerun 时的单行 profile；
+      - bad-strand task 不误命中时的空 profile。
+  - 新增 `scripts/profile_two_stage_panel_task_rerun_runtime.py`
+    - 输入：已冻结的 runtime panel summary；
+    - 输出：fixed-panel rerun-cost profiling summary；
+    - 行为：
+      - 复用已有 `selected_microanchors`；
+      - 复用每 tile 已选中的 selected-task TSV；
+      - 逐 tile 重跑：
+        - `deferred_exact_minimal_v3_scoreband_75_79`
+        - `deferred_exact_minimal_v3_task_rerun_budget16`
+      - 写出每 tile 的 task-rerun profile TSV，并汇总：
+        - phase totals
+        - per-task rerun seconds p50/p90/p99
+        - per-kbp normalized rerun cost
+        - `dominant_phase`
+    - 这一步的目标已经不再是“更聪明地选 task”，而是：
+      - **既然这些 task 已经要 rerun，就量化并压缩 rerun 本身的成本。**
+  - 新增 `scripts/check_profile_two_stage_panel_task_rerun_runtime.sh`
+    - 用 synthetic panel fixture 覆盖 profiling harness dry-run；
+    - 确保命令预览里同时注入：
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH`
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV`
+  - `Makefile`
+    - 新增：
+      - `check-profile-two-stage-panel-task-rerun-runtime`
+- 这也把 two-stage 的 stop-rule 再收紧了一步：
+  - 继续冻结：
+    - `deferred_exact_minimal_v3_scoreband_75_79`
+    - `deferred_exact_minimal_v3_task_rerun_budget16`
+  - 当前真正该回答的问题已经变成：
+    - rerun 增量时间主要落在哪个 phase；
+    - 这个 phase 是否足够主导，值得继续往 rescue kernel / exact-safe kernel 方向投入。
+
 ## 2026-04-15（oracle-free task trigger calibration v1）
 
 - 按上一轮结论，这一轮不再继续扩 selector，也不先改 runtime，而是把 **oracle-free task-level ambiguity trigger calibration** 落到现有 analysis/replay 链路上：

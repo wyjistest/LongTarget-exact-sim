@@ -368,6 +368,7 @@ make check-two-stage-threshold-modes
   - `benchmark.two_stage_singleton_rescued_windows`, `benchmark.two_stage_singleton_rescued_tasks`, `benchmark.two_stage_singleton_rescue_bp_total`
   - `benchmark.two_stage_selective_fallback_enabled`, `benchmark.two_stage_selective_fallback_triggered_tasks`, `benchmark.two_stage_selective_fallback_non_empty_candidate_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_max_kept_windows_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_no_singleton_missing_margin_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_singleton_override_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_as_covered_by_kept_tasks`, `benchmark.two_stage_selective_fallback_non_empty_rejected_by_score_gap_tasks`, `benchmark.two_stage_selective_fallback_non_empty_triggered_tasks`, `benchmark.two_stage_selective_fallback_selected_windows`, `benchmark.two_stage_selective_fallback_selected_bp_total`
   - `benchmark.two_stage_task_rerun_enabled`, `benchmark.two_stage_task_rerun_budget`, `benchmark.two_stage_task_rerun_selected_tasks`, `benchmark.two_stage_task_rerun_effective_tasks`, `benchmark.two_stage_task_rerun_added_windows`, `benchmark.two_stage_task_rerun_refine_bp_total`, `benchmark.two_stage_task_rerun_seconds`, `benchmark.two_stage_task_rerun_selected_tasks_path`
+  - rerun profiling fields: `benchmark.two_stage_task_rerun_profile_tsv`, `benchmark.two_stage_task_rerun_selected_tasks_load_seconds`, `benchmark.two_stage_task_rerun_upgrade_seconds`, `benchmark.two_stage_task_rerun_effective_threshold_seconds`, `benchmark.two_stage_task_rerun_effective_sim_seconds`, `benchmark.two_stage_task_rerun_effective_post_process_seconds`, `benchmark.two_stage_task_rerun_total_seconds`
   - report-level compare fields: `threshold_batch_size_mean`, `tolerant_equal`, `first_diff_examples`, `run_env_overrides_requested`
 - `--run-env LABEL:KEY=VALUE` lets one threshold-mode rerun inject a candidate-only env override without mutating the shared baseline lanes; use it for narrow selector ablations rather than broad global gate sweeps.
 - `LONGTARGET_TWO_STAGE_SELECTIVE_FALLBACK=1` enables the experimental shortlist rescue used by `deferred_exact_minimal_v2_selective_fallback` and the narrow `deferred_exact_minimal_v3_scoreband_75_79` runtime prototype:
@@ -396,6 +397,16 @@ make check-two-stage-threshold-modes
     - `deferred_exact_minimal_v3_task_rerun_budget8`
     - `deferred_exact_minimal_v3_task_rerun_budget16`
   - `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH` may be empty; in that case the runtime lane behaves like `minimal_v3` and reports zero selected/effective rerun tasks
+  - `LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV` is optional; when set, the runtime writes one TSV row per selected task with:
+    - task identity (`task_key`, `rule`, `strand`, `fragment_length`, `target_length`)
+    - rerun delta shape (`baseline_windows`, `rerun_windows`, `added_windows`, `baseline_bp`, `rerun_bp`, `added_bp`)
+    - effective rerun timing (`threshold_seconds`, `sim_seconds`, `post_process_seconds`, `rerun_total_seconds`)
+  - timing semantics are intentionally narrow:
+    - `task_rerun_seconds` stays backward-compatible and continues to mean effective rerun `sim_seconds`
+    - `task_rerun_selected_tasks_load_seconds` covers the selected-task TSV ingestion
+    - `task_rerun_upgrade_seconds` covers the in-memory `after_gate -> before_gate` window upgrade check
+    - `task_rerun_effective_{threshold,sim,post_process}_seconds` count only rerun-effective tasks
+    - `task_rerun_total_seconds` is the sum of `load + upgrade + effective threshold + effective sim + effective post_process`
   - current positioning:
     - keep `deferred_exact_minimal_v3_scoreband_75_79` as the experimental shortlist baseline
     - treat `deferred_exact_minimal_v3_task_rerun_budget16` as the current experimental runtime baseline for "candidate generator + targeted exact rescue"
@@ -726,6 +737,22 @@ python3 ./scripts/compare_two_stage_panel_summaries.py \
     - for both budgets, the runtime totals match the offline replay aggregate exactly on `rerun_task_count`, `added_window_count`, and `delta_refine_total_bp_total`
     - the compare summary above is a tile-mean view, while the offline replay summary is a panel-global aggregate; treat `task count / added windows / added bp` as the exact fidelity check, and treat `top10 / score_weighted_recall` as the primary quality-direction signal
     - with that caveat, the runtime prototype confirms the intended direction: `top_hit` stays stable, `top10` and `score_weighted_recall` improve, and skip/batch telemetry stays flat enough to keep the lane experimental-but-viable
+  - once the runtime baseline is frozen, the next step is to profile rerun cost directly rather than invent another trigger:
+
+```
+python3 ./scripts/profile_two_stage_panel_task_rerun_runtime.py \
+  --panel-summary .tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/summary.json \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_profile
+```
+
+  - `scripts/profile_two_stage_panel_task_rerun_runtime.py` keeps the selected tiles and selected-task TSVs fixed, reruns:
+    - `deferred_exact_minimal_v3_scoreband_75_79`
+    - `deferred_exact_minimal_v3_task_rerun_budget16`
+  - each tile writes a task-rerun profile TSV outside the per-tile benchmark `work-dir`, then the script aggregates:
+    - phase totals: `selected_tasks_load / upgrade / effective_threshold / effective_sim / effective_post_process`
+    - per-task `rerun_total_seconds` p50/p90/p99
+    - per-kbp normalized rerun cost
+    - `dominant_phase` for deciding whether the next optimization target is a rescue kernel or something cheaper/higher-level
   - local checks:
     - `make check-analyze-two-stage-task-ambiguity`
     - `make check-replay-two-stage-task-level-rerun`
