@@ -17,8 +17,11 @@ BASELINE_WORK="$WORK/baseline"
 SELECTED_TASKS="$WORK/selected_tasks.tsv"
 PANEL_SUMMARY="$WORK/panel_summary.json"
 FEASIBILITY_OUT="$WORK/feasibility"
-REPLAY_OUT="$WORK/replay"
-COMPARE_OUT="$WORK/compare"
+TASK_LIST="$WORK/task_list.tsv"
+REPLAY_SERIAL_OUT="$WORK/replay_serial"
+REPLAY_PARALLEL_OUT="$WORK/replay_parallel"
+COMPARE_SERIAL_OUT="$WORK/compare_serial"
+COMPARE_PARALLEL_OUT="$WORK/compare_parallel"
 
 (
   cd "$ROOT"
@@ -107,25 +110,62 @@ python3 "$ROOT/scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py" \
   --longtarget "$LONGTARGET_BIN" \
   --output-dir "$FEASIBILITY_OUT" >/dev/null
 
+python3 - "$FEASIBILITY_OUT/task_rerun_corpus_manifest.tsv" "$TASK_LIST" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+task_list_path = Path(sys.argv[2])
+with manifest_path.open("r", encoding="utf-8") as handle:
+    rows = list(csv.DictReader(handle, delimiter="\t"))
+
+task_keys = [row["task_key"] for row in rows]
+task_list_path.write_text(
+    "task_key\n" + "\n".join(task_keys) + "\n",
+    encoding="utf-8",
+)
+PY
+
 "$REPLAY_BIN" \
   --corpus-manifest "$FEASIBILITY_OUT/task_rerun_corpus_manifest.tsv" \
-  --output-dir "$REPLAY_OUT" >/dev/null
+  --task-list-tsv "$TASK_LIST" \
+  --output-dir "$REPLAY_SERIAL_OUT" >/dev/null
+
+"$REPLAY_BIN" \
+  --corpus-manifest "$FEASIBILITY_OUT/task_rerun_corpus_manifest.tsv" \
+  --task-list-tsv "$TASK_LIST" \
+  --threads 2 \
+  --output-dir "$REPLAY_PARALLEL_OUT" >/dev/null
 
 python3 "$ROOT/scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py" \
   --panel-summary "$PANEL_SUMMARY" \
   --longtarget "$LONGTARGET_BIN" \
-  --output-dir "$COMPARE_OUT" \
-  --compare-task-output-root "$REPLAY_OUT" >/dev/null
+  --output-dir "$COMPARE_SERIAL_OUT" \
+  --compare-task-output-root "$REPLAY_SERIAL_OUT" >/dev/null
 
-python3 - "$COMPARE_OUT/summary.json" <<'PY'
+python3 "$ROOT/scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py" \
+  --panel-summary "$PANEL_SUMMARY" \
+  --longtarget "$LONGTARGET_BIN" \
+  --output-dir "$COMPARE_PARALLEL_OUT" \
+  --compare-task-output-root "$REPLAY_PARALLEL_OUT" >/dev/null
+
+python3 - "$COMPARE_SERIAL_OUT/summary.json" "$COMPARE_PARALLEL_OUT/summary.json" "$REPLAY_SERIAL_OUT" "$REPLAY_PARALLEL_OUT" <<'PY'
 import json
 import sys
+from pathlib import Path
 
-summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
-comparison = summary["candidate_task_output_comparison"]
-assert comparison["semantic_equivalent"] is True
-assert comparison["mismatched_tile_count"] == 0
-assert comparison["compared_tile_count"] == 1
+serial_summary = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+parallel_summary = json.load(open(sys.argv[2], "r", encoding="utf-8"))
+for summary in (serial_summary, parallel_summary):
+    comparison = summary["candidate_task_output_comparison"]
+    assert comparison["semantic_equivalent"] is True
+    assert comparison["mismatched_tile_count"] == 0
+    assert comparison["compared_tile_count"] == 1
+
+serial_file = next(Path(sys.argv[3]).glob("*.tsv"))
+parallel_file = next(Path(sys.argv[4]).glob("*.tsv"))
+assert serial_file.read_text(encoding="utf-8") == parallel_file.read_text(encoding="utf-8")
 PY
 
 echo "ok"

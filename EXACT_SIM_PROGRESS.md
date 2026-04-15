@@ -1471,6 +1471,39 @@
   - `rerun_seconds=5.614620`
   - `rerun_bp=1397`
   - `seconds_per_kbp=4.019055`
+- 这一轮继续把“下一枪”需要的离线决策与 CPU 基线一起补齐：
+  - `scripts/analyze_two_stage_task_rerun_corpus_shapes.py`
+    - 现在除了单维 buckets，还会输出：
+      - `bp_target_buckets`
+      - `rule_strand_bp_buckets`
+      - `seconds_per_kbp_bins`
+      - `long_tail_coverage`
+      - `recommended_cpu_buckets`
+      - `recommended_gpu_buckets`
+    - bucket selection rule 已写死：
+      - CPU: `task_count>=2`、coverage `>=10%`、`seconds_per_kbp_p90 <= 2x p50`
+      - GPU: `task_count>=4`、coverage `>=20%`、`seconds_per_kbp_p90 <= 1.5x p50`
+  - `exact_sim_task_rerun_replay.cpp`
+    - `--threads` 不再只是占位参数，而是实际的 per-task parallel replay
+    - 新增 `--task-list-tsv`
+    - 输出仍按 manifest 原始 task 顺序稳定写回，保证 compare contract 不变
+  - 新增 `scripts/benchmark_two_stage_task_rerun_cpu_buckets.py`
+    - 直接消费：
+      - `task_rerun_corpus_manifest.tsv`
+      - `shape_audit/summary.json`
+      - `exact_sim_task_rerun_replay`
+    - 对 `recommended_cpu_buckets` 统一评估三类跑法：
+      - `isolated_serial`
+      - `bucket_serial`
+      - `bucket_parallel`
+    - continuation rule 也固定下来：
+      - 只有当某个 bucket 同时满足
+        - `speedup_vs_isolated_serial >= 1.25`
+        - `speedup_vs_bucket_serial >= 1.10`
+      - 才继续进入 CPU bucketed executor prototype
+  - 新增检查：
+    - `bash ./scripts/check_benchmark_two_stage_task_rerun_cpu_buckets.sh`
+    - `make check-benchmark-two-stage-task-rerun-cpu-buckets`
 
 ## 2026-04-15（oracle-free task trigger calibration v1）
 

@@ -64,6 +64,16 @@ def _output_row_bin(value: int) -> str:
     return ">16"
 
 
+def _seconds_per_kbp_bin(value: float) -> str:
+    if value <= 0.5:
+        return "<=0.5"
+    if value <= 1.0:
+        return "0.5-1.0"
+    if value <= 2.0:
+        return "1.0-2.0"
+    return ">2.0"
+
+
 def _bucket_summary(label: str, rows: list[dict[str, object]]) -> dict[str, object]:
     rerun_bp_values = [int(row["rerun_bp"]) for row in rows]
     rerun_seconds_values = [float(row["rerun_total_seconds"]) for row in rows]
@@ -79,6 +89,7 @@ def _bucket_summary(label: str, rows: list[dict[str, object]]) -> dict[str, obje
         "rerun_total_seconds_p90": _percentile(rerun_seconds_values, 0.9),
         "seconds_per_kbp_p50": _percentile(seconds_per_kbp_values, 0.5),
         "seconds_per_kbp_p90": _percentile(seconds_per_kbp_values, 0.9),
+        "task_keys": sorted(str(row["task_key"]) for row in rows),
     }
 
 
@@ -108,6 +119,83 @@ def _summarize_rule_strand(rows: list[dict[str, object]]) -> list[dict[str, obje
     return summaries
 
 
+def _summarize_dynamic_buckets(rows: list[dict[str, object]], key_fn) -> list[dict[str, object]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        label = str(key_fn(row))
+        grouped.setdefault(label, []).append(row)
+    summaries = [_bucket_summary(label, bucket_rows) for label, bucket_rows in grouped.items()]
+    return sorted(
+        summaries,
+        key=lambda item: (-float(item["rerun_seconds_total"]), -int(item["task_count"]), str(item["label"])),
+    )
+
+
+def _long_tail_coverage(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    ordered = sorted(rows, key=lambda row: (-float(row["rerun_total_seconds"]), str(row["task_key"])))
+    total = sum(float(row["rerun_total_seconds"]) for row in ordered)
+    if not ordered:
+      return []
+
+    requested = [1, 2, 4, 8, len(ordered)]
+    top_ks: list[int] = []
+    for value in requested:
+        if value <= 0:
+            continue
+        bounded = min(value, len(ordered))
+        if bounded not in top_ks:
+            top_ks.append(bounded)
+
+    coverage: list[dict[str, object]] = []
+    for top_k in top_ks:
+        bucket_rows = ordered[:top_k]
+        rerun_seconds_total = sum(float(row["rerun_total_seconds"]) for row in bucket_rows)
+        coverage.append(
+            {
+                "top_k": top_k,
+                "task_count": len(bucket_rows),
+                "rerun_seconds_total": rerun_seconds_total,
+                "coverage_ratio": 0.0 if total <= 0.0 else rerun_seconds_total / total,
+                "task_keys": [str(row["task_key"]) for row in bucket_rows],
+            }
+        )
+    return coverage
+
+
+def _recommended_buckets(
+    *,
+    bucket_family: str,
+    buckets: list[dict[str, object]],
+    total_rerun_seconds: float,
+    min_tasks: int,
+    min_ratio: float,
+    variability_factor: float,
+    limit: int,
+) -> list[dict[str, object]]:
+    selected: list[dict[str, object]] = []
+    for bucket in buckets:
+        task_count = int(bucket["task_count"])
+        rerun_seconds_total = float(bucket["rerun_seconds_total"])
+        rerun_seconds_ratio = 0.0 if total_rerun_seconds <= 0.0 else rerun_seconds_total / total_rerun_seconds
+        p50 = float(bucket["seconds_per_kbp_p50"])
+        p90 = float(bucket["seconds_per_kbp_p90"])
+        if task_count < min_tasks:
+            continue
+        if rerun_seconds_ratio < min_ratio:
+            continue
+        if p90 > variability_factor * max(p50, 1e-9):
+            continue
+        candidate = dict(bucket)
+        candidate["bucket_family"] = bucket_family
+        candidate["rerun_seconds_ratio"] = rerun_seconds_ratio
+        selected.append(candidate)
+
+    selected.sort(
+        key=lambda item: (-float(item["rerun_seconds_total"]), -float(item["rerun_seconds_ratio"]), str(item["label"]))
+    )
+    return selected[:limit]
+
+
 def _render_markdown(summary: dict[str, object]) -> str:
     aggregate = summary["aggregate"]
     lines = [
@@ -118,6 +206,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
         f"- rerun_seconds_total: {aggregate['rerun_seconds_total']:.6f}",
         f"- rerun_bp_total: {aggregate['rerun_bp_total']}",
         f"- gpu_batching_candidate: {aggregate['gpu_batching_candidate']}",
+        f"- gpu_candidate_seconds_total: {aggregate['gpu_candidate_seconds_total']:.6f}",
         "",
         "## Top Rerun Seconds",
         "",
@@ -126,6 +215,32 @@ def _render_markdown(summary: dict[str, object]) -> str:
         lines.append(
             f"- {row['task_key']}: seconds={row['rerun_total_seconds']:.6f}, "
             f"rerun_bp={row['rerun_bp']}, seconds_per_kbp={row['seconds_per_kbp']:.6f}"
+        )
+    lines.extend(["", "## Recommended CPU Buckets", ""])
+    if summary["recommended_cpu_buckets"]:
+        for row in summary["recommended_cpu_buckets"]:
+            lines.append(
+                f"- {row['bucket_family']}:{row['label']}: "
+                f"tasks={row['task_count']}, seconds={row['rerun_seconds_total']:.6f}, "
+                f"coverage={row['rerun_seconds_ratio']:.3f}"
+            )
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Recommended GPU Buckets", ""])
+    if summary["recommended_gpu_buckets"]:
+        for row in summary["recommended_gpu_buckets"]:
+            lines.append(
+                f"- {row['bucket_family']}:{row['label']}: "
+                f"tasks={row['task_count']}, seconds={row['rerun_seconds_total']:.6f}, "
+                f"coverage={row['rerun_seconds_ratio']:.3f}"
+            )
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Long Tail Coverage", ""])
+    for row in summary["long_tail_coverage"]:
+        lines.append(
+            f"- top-{row['top_k']}: seconds={row['rerun_seconds_total']:.6f}, "
+            f"coverage={row['coverage_ratio']:.3f}"
         )
     lines.append("")
     return "\n".join(lines)
@@ -180,7 +295,21 @@ def main() -> int:
         ["0", "1-4", "5-16", ">16"],
         lambda row: _output_row_bin(int(row["task_output_row_count"])),
     )
+    seconds_per_kbp_bins = _summarize_named_buckets(
+        rows,
+        ["<=0.5", "0.5-1.0", "1.0-2.0", ">2.0"],
+        lambda row: _seconds_per_kbp_bin(float(row["seconds_per_kbp"])),
+    )
     rule_strand_buckets = _summarize_rule_strand(rows)
+    bp_target_buckets = _summarize_dynamic_buckets(
+        rows,
+        lambda row: f"{_bp_bin(int(row['rerun_bp']))}|{_target_bin(int(row['target_length']))}",
+    )
+    rule_strand_bp_buckets = _summarize_dynamic_buckets(
+        rows,
+        lambda row: f"{row['rule']}|{row['strand']}|{_bp_bin(int(row['rerun_bp']))}",
+    )
+    long_tail_coverage = _long_tail_coverage(rows)
 
     gpu_candidate_seconds = 0.0
     for bucket in rule_strand_buckets:
@@ -190,6 +319,54 @@ def main() -> int:
         if len(bucket_rows) >= 4 and median_rerun_bp >= 512.0:
             gpu_candidate_seconds += sum(float(row["rerun_total_seconds"]) for row in bucket_rows)
     gpu_batching_candidate = total_rerun_seconds > 0.0 and (gpu_candidate_seconds / total_rerun_seconds) >= 0.8
+    recommended_cpu_buckets = (
+        _recommended_buckets(
+            bucket_family="bp_target",
+            buckets=bp_target_buckets,
+            total_rerun_seconds=total_rerun_seconds,
+            min_tasks=2,
+            min_ratio=0.10,
+            variability_factor=2.0,
+            limit=6,
+        )
+        + _recommended_buckets(
+            bucket_family="rule_strand_bp",
+            buckets=rule_strand_bp_buckets,
+            total_rerun_seconds=total_rerun_seconds,
+            min_tasks=2,
+            min_ratio=0.10,
+            variability_factor=2.0,
+            limit=6,
+        )
+    )
+    recommended_cpu_buckets = sorted(
+        recommended_cpu_buckets,
+        key=lambda item: (-float(item["rerun_seconds_total"]), -float(item["rerun_seconds_ratio"]), str(item["label"])),
+    )[:6]
+    recommended_gpu_buckets = (
+        _recommended_buckets(
+            bucket_family="bp_target",
+            buckets=bp_target_buckets,
+            total_rerun_seconds=total_rerun_seconds,
+            min_tasks=4,
+            min_ratio=0.20,
+            variability_factor=1.5,
+            limit=4,
+        )
+        + _recommended_buckets(
+            bucket_family="rule_strand_bp",
+            buckets=rule_strand_bp_buckets,
+            total_rerun_seconds=total_rerun_seconds,
+            min_tasks=4,
+            min_ratio=0.20,
+            variability_factor=1.5,
+            limit=4,
+        )
+    )
+    recommended_gpu_buckets = sorted(
+        recommended_gpu_buckets,
+        key=lambda item: (-float(item["rerun_seconds_total"]), -float(item["rerun_seconds_ratio"]), str(item["label"])),
+    )[:4]
 
     summary = {
         "corpus_manifest": str(manifest_path),
@@ -203,7 +380,13 @@ def main() -> int:
         "rerun_bp_bins": rerun_bp_bins,
         "target_length_bins": target_length_bins,
         "output_row_bins": output_row_bins,
+        "seconds_per_kbp_bins": seconds_per_kbp_bins,
         "rule_strand_buckets": rule_strand_buckets,
+        "bp_target_buckets": bp_target_buckets,
+        "rule_strand_bp_buckets": rule_strand_bp_buckets,
+        "long_tail_coverage": long_tail_coverage,
+        "recommended_cpu_buckets": recommended_cpu_buckets,
+        "recommended_gpu_buckets": recommended_gpu_buckets,
         "top_rerun_seconds_tasks": sorted(rows, key=lambda row: (-float(row["rerun_total_seconds"]), str(row["task_key"])))[:10],
         "top_rerun_bp_tasks": sorted(rows, key=lambda row: (-int(row["rerun_bp"]), str(row["task_key"])))[:10],
     }

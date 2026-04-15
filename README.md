@@ -821,7 +821,13 @@ python3 ./scripts/analyze_two_stage_task_rerun_corpus_shapes.py \
   --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/shape_audit
 ```
 
-  - the audit emits bucketed `rerun_bp / target_length / output_row_count / rule|strand` summaries, top cost contributors, and a conservative `gpu_batching_candidate` flag; it is intended to answer “is a GPU rerun kernel worth prototyping?” before touching CUDA code
+  - the audit now emits:
+    - fixed buckets for `rerun_bp / target_length / output_row_count / rule|strand / seconds_per_kbp`
+    - dynamic combined buckets for `rerun_bp|target_length` and `rule|strand|rerun_bp`
+    - top long-tail coverage
+    - `recommended_cpu_buckets`
+    - `recommended_gpu_buckets`
+    - conservative aggregate `gpu_batching_candidate`
   - current full fixed-panel result (12 selected tiles, 2026-04-15):
     - exported corpus tasks: `16 selected / 16 effective / 16 manifest rows`
     - exported replay windows: `71`
@@ -839,9 +845,28 @@ python3 ./scripts/analyze_two_stage_task_rerun_corpus_shapes.py \
 ```
 
   - the replay driver reconstructs each selected+effective task from the manifest, reuses the frozen `min_score + replay windows`, runs `runExactReferenceSIMTwoStageDeferredWithMinScore(...)`, reapplies the same post-filter as runtime, and writes task-output TSVs with the same schema/filenames as the exported gold corpus
+  - `--threads` is now a real per-task parallel replay control, and `--task-list-tsv` can feed a one-column `task_key` list to the same binary
+  - CPU-side bucket executor benchmarking now uses the same frozen corpus and replay binary:
+
+```
+python3 ./scripts/benchmark_two_stage_task_rerun_cpu_buckets.py \
+  --corpus-manifest .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/task_rerun_corpus_manifest.tsv \
+  --shape-summary .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/shape_audit/summary.json \
+  --replay-bin ./exact_sim_task_rerun_replay \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_cpu_buckets
+```
+
+  - it benchmarks:
+    - isolated per-task serial replay
+    - per-bucket serial replay
+    - per-bucket threaded replay
+  - current continuation rule is intentionally hard:
+    - only continue toward a CPU bucketed executor prototype when some recommended CPU bucket reaches `speedup_vs_isolated_serial >= 1.25` **and** `speedup_vs_bucket_serial >= 1.10`
+    - if no recommended GPU bucket is produced, do **not** jump to a GPU rescue kernel prototype
   - local verification for this stage is now:
     - `make check-two-stage-task-rerun-runtime`
     - `make check-benchmark-two-stage-task-rerun-kernel-feasibility`
+    - `make check-benchmark-two-stage-task-rerun-cpu-buckets`
     - `make check-analyze-two-stage-task-rerun-corpus-shapes`
     - `make check-exact-sim-task-rerun-replay`
 - Example quality-gated sweep:

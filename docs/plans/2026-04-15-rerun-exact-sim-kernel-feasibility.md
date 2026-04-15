@@ -1,7 +1,7 @@
 # Rerun Exact SIM Kernel Feasibility
 
-> **Status:** implemented feasibility baseline + frozen corpus / CPU replay
-> **Scope:** semantic audit + fixed-panel benchmark corpus/export harness + shape audit + isolated replay driver
+> **Status:** implemented feasibility baseline + frozen corpus / CPU replay + CPU bucket benchmark tooling
+> **Scope:** semantic audit + fixed-panel benchmark corpus/export harness + shape audit + isolated replay driver + CPU bucket executor micro-benchmark
 > **Runtime baseline:** `deferred_exact_minimal_v3_task_rerun_budget16`
 
 ## Goal
@@ -105,7 +105,12 @@ python3 ./scripts/analyze_two_stage_task_rerun_corpus_shapes.py \
 
 它只读取 frozen manifest，并输出：
 
-- `rerun_bp` / `target_length` / `output_row_count` / `rule|strand` buckets
+- `rerun_bp` / `target_length` / `output_row_count` / `rule|strand` / `seconds_per_kbp` buckets
+- dynamic `bp_target_buckets`
+- dynamic `rule_strand_bp_buckets`
+- `long_tail_coverage`
+- `recommended_cpu_buckets`
+- `recommended_gpu_buckets`
 - top rerun-seconds tasks
 - top rerun-bp tasks
 - conservative `gpu_batching_candidate`
@@ -158,6 +163,31 @@ shape audit 真实结果：
 - 每 task 调用 `runExactReferenceSIMTwoStageDeferredWithMinScore(...)`；
 - 再复用和 runtime 一致的 post-filter 与 task-output writer；
 - 输出 tile filename / TSV schema 与 exported gold 完全对齐。
+- `--threads` 现已变成真实的 per-task parallel replay 控制；
+- `--task-list-tsv` 可直接消费单列 `task_key` 列表。
+
+### CPU bucket benchmark
+
+新增脚本：
+
+```bash
+python3 ./scripts/benchmark_two_stage_task_rerun_cpu_buckets.py \
+  --corpus-manifest .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/task_rerun_corpus_manifest.tsv \
+  --shape-summary .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/shape_audit/summary.json \
+  --replay-bin ./exact_sim_task_rerun_replay \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_cpu_buckets
+```
+
+它会只对 `recommended_cpu_buckets` 评估三类执行形态：
+
+- `isolated_serial`
+- `bucket_serial`
+- `bucket_parallel`
+
+并固定用以下门槛决定是否继续进入 CPU bucketed executor prototype：
+
+- `speedup_vs_isolated_serial >= 1.25`
+- `speedup_vs_bucket_serial >= 1.10`
 
 ### Prototype compare contract
 
@@ -182,6 +212,7 @@ shape audit 真实结果：
 make check-exact-sim-two-stage-threshold
 make check-two-stage-task-rerun-runtime
 make check-benchmark-two-stage-task-rerun-kernel-feasibility
+make check-benchmark-two-stage-task-rerun-cpu-buckets
 make check-analyze-two-stage-task-rerun-corpus-shapes
 make check-exact-sim-task-rerun-replay
 ```
@@ -191,8 +222,7 @@ make check-exact-sim-task-rerun-replay
 如果下一轮要继续推进 kernel feasibility，应直接基于该 baseline 做：
 
 1. 不再重复“先跑 full fixed-panel audit”这一步，当前 full-panel 结果已经表明 `gpu_batching_candidate=False`；
-2. 先基于现有 corpus 继续做更细的 task-shape / batching strategy 审计，判断：
-   - 是不是存在更窄、但更稳定的 GPU-friendly bucket；
-   - 还是更适合先做 CPU-side bucketed rerun executor；
-3. 只有当新的 micro-benchmark / bucket 审计能把足够多的 wall-time 聚焦到更稳定的 batch 形态，才推进 task-level exact `SIM` GPU prototype；
-4. 无论走 CPU 还是 GPU prototype，都继续沿用同一 corpus 与 task-output semantic compare contract，并按 go/no-go（语义等价 + kernel speedup + integrated wall-time impact）决定是否继续。
+2. 直接基于现有 corpus 运行新的更细 shape audit，先看 `recommended_cpu_buckets` / `recommended_gpu_buckets` 是否稳定；
+3. 运行 `benchmark_two_stage_task_rerun_cpu_buckets.py`，如果没有任何 bucket 过 CPU continuation rule，则不进入 executor rewrite；
+4. 只有在 CPU benchmark 或更细 bucket 审计把足够多的 wall-time 收敛到稳定 batch 形态后，才重新考虑 task-level exact `SIM` GPU prototype；
+5. 无论走 CPU 还是 GPU prototype，都继续沿用同一 corpus 与 task-output semantic compare contract，并按 go/no-go（语义等价 + kernel speedup + integrated wall-time impact）决定是否继续。

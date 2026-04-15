@@ -1,12 +1,14 @@
 #include "exact_sim_task_rerun_replay.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 
 using namespace std;
@@ -26,6 +28,12 @@ struct ReplayManifestRow
   string strand;
   int rule;
   int minScore;
+};
+
+struct ReplayTaskResult
+{
+  string outputText;
+  string error;
 };
 
 static inline vector<string> splitTabLine(const string &line)
@@ -80,6 +88,58 @@ static inline string loadFastaSequence(const string &path)
     sequence += line;
   }
   return sequence;
+}
+
+static inline set<string> loadTaskListTsv(const string &path)
+{
+  ifstream in(path.c_str());
+  if(!in.is_open())
+  {
+    throw runtime_error("failed to open task list TSV: " + path);
+  }
+
+  string line;
+  if(!getline(in,line))
+  {
+    return set<string>();
+  }
+  const vector<string> header = splitTabLine(line);
+  int taskKeyColumn = -1;
+  for(size_t i = 0; i < header.size(); ++i)
+  {
+    if(header[i] == "task_key")
+    {
+      taskKeyColumn = static_cast<int>(i);
+      break;
+    }
+  }
+  if(taskKeyColumn < 0)
+  {
+    throw runtime_error("task list TSV missing required column: task_key");
+  }
+
+  set<string> taskKeys;
+  while(getline(in,line))
+  {
+    if(!line.empty() && line[line.size() - 1] == '\r')
+    {
+      line.erase(line.size() - 1);
+    }
+    if(line.empty())
+    {
+      continue;
+    }
+    const vector<string> values = splitTabLine(line);
+    if(static_cast<size_t>(taskKeyColumn) >= values.size())
+    {
+      continue;
+    }
+    if(!values[static_cast<size_t>(taskKeyColumn)].empty())
+    {
+      taskKeys.insert(values[static_cast<size_t>(taskKeyColumn)]);
+    }
+  }
+  return taskKeys;
 }
 
 static inline string resolveManifestRelativePath(const string &manifestDir,const string &rawPath)
@@ -251,12 +311,90 @@ static inline vector<ExactSimRefineWindow> loadReplayWindows(const string &path,
   return windows;
 }
 
+static inline string renderReplayTaskOutput(const ReplayManifestRow &row,
+                                            const unordered_map<string,string> &fastaCache,
+                                            const ExactSimConfig &exactSimConfig,
+                                            const ExactSimTaskRerunReplayConfig &replayConfig)
+{
+  const unordered_map<string,string>::const_iterator dnaFound = fastaCache.find(row.dnaFastaPath);
+  if(dnaFound == fastaCache.end())
+  {
+    throw runtime_error("DNA FASTA not preloaded for task: " + row.taskKey);
+  }
+  const unordered_map<string,string>::const_iterator rnaFound = fastaCache.find(row.rnaFastaPath);
+  if(rnaFound == fastaCache.end())
+  {
+    throw runtime_error("RNA FASTA not preloaded for task: " + row.taskKey);
+  }
+
+  const string &dnaSequence = dnaFound->second;
+  const string &cachedRnaSequence = rnaFound->second;
+  string rnaSequence = cachedRnaSequence;
+  if(row.fragmentStartInSeq < 1 || row.fragmentEndInSeq < row.fragmentStartInSeq)
+  {
+    throw runtime_error("invalid fragment span for task: " + row.taskKey);
+  }
+  const size_t fragmentStart = static_cast<size_t>(row.fragmentStartInSeq - 1);
+  const size_t fragmentLength = static_cast<size_t>(row.fragmentEndInSeq - row.fragmentStartInSeq + 1);
+  if(fragmentStart + fragmentLength > dnaSequence.size())
+  {
+    throw runtime_error("fragment span exceeds DNA length for task: " + row.taskKey);
+  }
+
+  const string fragmentSequence = dnaSequence.substr(fragmentStart,fragmentLength);
+  vector<ExactSimTaskSpec> tasks;
+  appendExactSimTask(tasks,
+                     row.fragmentIndex,
+                     fragmentSequence,
+                     row.fragmentStartInSeq - 1,
+                     row.reverseMode,
+                     row.parallelMode,
+                     row.rule);
+  if(tasks.empty())
+  {
+    throw runtime_error("failed to build replay task for: " + row.taskKey);
+  }
+
+  vector<ExactSimRefineWindow> windows = loadReplayWindows(row.replayWindowsPath,row.taskKey);
+  if(windows.empty())
+  {
+    throw runtime_error("replay windows TSV contained no windows for task: " + row.taskKey);
+  }
+
+  vector<struct triplex> triplexList;
+  runExactReferenceSIMTwoStageDeferredWithMinScore(rnaSequence,
+                                                   tasks[0].transformedSequence,
+                                                   fragmentSequence,
+                                                   tasks[0].dnaStartPos,
+                                                   tasks[0].reverseMode,
+                                                   tasks[0].parallelMode,
+                                                   tasks[0].rule,
+                                                   row.minScore,
+                                                   exactSimConfig,
+                                                   replayConfig.ntMin,
+                                                   replayConfig.ntMax,
+                                                   replayConfig.penaltyT,
+                                                   replayConfig.penaltyC,
+                                                   windows,
+                                                   triplexList,
+                                                   NULL);
+  exactSimTaskRerunFilterTriplexListInPlace(triplexList,replayConfig);
+
+  ostringstream out;
+  for(size_t triplexIndex = 0; triplexIndex < triplexList.size(); ++triplexIndex)
+  {
+    exactSimTaskRerunWriteTaskOutputRow(out,row.taskKey,triplexList[triplexIndex],1,1);
+  }
+  return out.str();
+}
+
 int main(int argc,char **argv)
 {
   string corpusManifestPath;
   string outputDirPath;
   set<string> tileFilters;
   set<string> taskFilters;
+  vector<string> taskListPaths;
   int threads = 1;
 
   for(int i = 1; i < argc; ++i)
@@ -282,6 +420,11 @@ int main(int argc,char **argv)
       taskFilters.insert(argv[++i]);
       continue;
     }
+    if(arg == "--task-list-tsv" && i + 1 < argc)
+    {
+      taskListPaths.push_back(argv[++i]);
+      continue;
+    }
     if(arg == "--threads" && i + 1 < argc)
     {
       threads = static_cast<int>(parseLongValue(argv[++i],"threads"));
@@ -289,7 +432,7 @@ int main(int argc,char **argv)
     }
     if(arg == "--help" || arg == "-h")
     {
-      cout<<"Usage: "<<argv[0]<<" --corpus-manifest <path> --output-dir <dir> [--tile <tile_filename>] [--task-key <task_key>] [--threads <n>]"<<endl;
+      cout<<"Usage: "<<argv[0]<<" --corpus-manifest <path> --output-dir <dir> [--tile <tile_filename>] [--task-key <task_key>] [--task-list-tsv <path>] [--threads <n>]"<<endl;
       return 0;
     }
     throw runtime_error("unknown argument: " + arg);
@@ -302,6 +445,11 @@ int main(int argc,char **argv)
   if(threads <= 0)
   {
     throw runtime_error("--threads must be > 0");
+  }
+  for(size_t i = 0; i < taskListPaths.size(); ++i)
+  {
+    const set<string> loaded = loadTaskListTsv(taskListPaths[i]);
+    taskFilters.insert(loaded.begin(),loaded.end());
   }
 
   const vector<ReplayManifestRow> manifestRows = loadManifestRows(corpusManifestPath,tileFilters,taskFilters);
@@ -320,6 +468,14 @@ int main(int argc,char **argv)
   for(size_t i = 0; i < manifestRows.size(); ++i)
   {
     const ReplayManifestRow &row = manifestRows[i];
+    if(fastaCache.find(row.dnaFastaPath) == fastaCache.end())
+    {
+      fastaCache[row.dnaFastaPath] = loadFastaSequence(row.dnaFastaPath);
+    }
+    if(fastaCache.find(row.rnaFastaPath) == fastaCache.end())
+    {
+      fastaCache[row.rnaFastaPath] = loadFastaSequence(row.rnaFastaPath);
+    }
     if(rowsByTile.find(row.tileFilename) == rowsByTile.end())
     {
       tileOrder.push_back(row.tileFilename);
@@ -339,73 +495,64 @@ int main(int argc,char **argv)
     exactSimTaskRerunWriteTaskOutputHeader(out);
 
     const vector<ReplayManifestRow> &tileRows = rowsByTile[tileFilename];
-    for(size_t rowIndex = 0; rowIndex < tileRows.size(); ++rowIndex)
+    vector<ReplayTaskResult> taskResults(tileRows.size());
+    if(threads == 1 || tileRows.size() <= 1)
     {
-      const ReplayManifestRow &row = tileRows[rowIndex];
-      if(fastaCache.find(row.dnaFastaPath) == fastaCache.end())
+      for(size_t rowIndex = 0; rowIndex < tileRows.size(); ++rowIndex)
       {
-        fastaCache[row.dnaFastaPath] = loadFastaSequence(row.dnaFastaPath);
+        try
+        {
+          taskResults[rowIndex].outputText =
+            renderReplayTaskOutput(tileRows[rowIndex],fastaCache,exactSimConfig,replayConfig);
+        }
+        catch(const exception &ex)
+        {
+          taskResults[rowIndex].error = ex.what();
+        }
       }
-      if(fastaCache.find(row.rnaFastaPath) == fastaCache.end())
+    }
+    else
+    {
+      atomic<size_t> nextRowIndex(0);
+      const size_t workerCount = std::min(static_cast<size_t>(threads),tileRows.size());
+      vector<thread> workers;
+      workers.reserve(workerCount);
+      for(size_t workerIndex = 0; workerIndex < workerCount; ++workerIndex)
       {
-        fastaCache[row.rnaFastaPath] = loadFastaSequence(row.rnaFastaPath);
+        workers.push_back(thread([&]()
+        {
+          while(true)
+          {
+            const size_t rowIndex = nextRowIndex.fetch_add(1);
+            if(rowIndex >= tileRows.size())
+            {
+              break;
+            }
+            try
+            {
+              taskResults[rowIndex].outputText =
+                renderReplayTaskOutput(tileRows[rowIndex],fastaCache,exactSimConfig,replayConfig);
+            }
+            catch(const exception &ex)
+            {
+              taskResults[rowIndex].error = ex.what();
+            }
+          }
+        }));
       }
+      for(size_t workerIndex = 0; workerIndex < workers.size(); ++workerIndex)
+      {
+        workers[workerIndex].join();
+      }
+    }
 
-      const string &dnaSequence = fastaCache[row.dnaFastaPath];
-      string &rnaSequence = fastaCache[row.rnaFastaPath];
-      if(row.fragmentStartInSeq < 1 || row.fragmentEndInSeq < row.fragmentStartInSeq)
+    for(size_t rowIndex = 0; rowIndex < taskResults.size(); ++rowIndex)
+    {
+      if(!taskResults[rowIndex].error.empty())
       {
-        throw runtime_error("invalid fragment span for task: " + row.taskKey);
+        throw runtime_error(taskResults[rowIndex].error);
       }
-      const size_t fragmentStart = static_cast<size_t>(row.fragmentStartInSeq - 1);
-      const size_t fragmentLength = static_cast<size_t>(row.fragmentEndInSeq - row.fragmentStartInSeq + 1);
-      if(fragmentStart + fragmentLength > dnaSequence.size())
-      {
-        throw runtime_error("fragment span exceeds DNA length for task: " + row.taskKey);
-      }
-
-      const string fragmentSequence = dnaSequence.substr(fragmentStart,fragmentLength);
-      vector<ExactSimTaskSpec> tasks;
-      appendExactSimTask(tasks,
-                         row.fragmentIndex,
-                         fragmentSequence,
-                         row.fragmentStartInSeq - 1,
-                         row.reverseMode,
-                         row.parallelMode,
-                         row.rule);
-      if(tasks.empty())
-      {
-        throw runtime_error("failed to build replay task for: " + row.taskKey);
-      }
-      const ExactSimTaskSpec &task = tasks[0];
-      vector<ExactSimRefineWindow> windows = loadReplayWindows(row.replayWindowsPath,row.taskKey);
-      if(windows.empty())
-      {
-        throw runtime_error("replay windows TSV contained no windows for task: " + row.taskKey);
-      }
-
-      vector<struct triplex> triplexList;
-      runExactReferenceSIMTwoStageDeferredWithMinScore(rnaSequence,
-                                                       tasks[0].transformedSequence,
-                                                       fragmentSequence,
-                                                       tasks[0].dnaStartPos,
-                                                       tasks[0].reverseMode,
-                                                       tasks[0].parallelMode,
-                                                       tasks[0].rule,
-                                                       row.minScore,
-                                                       exactSimConfig,
-                                                       replayConfig.ntMin,
-                                                       replayConfig.ntMax,
-                                                       replayConfig.penaltyT,
-                                                       replayConfig.penaltyC,
-                                                       windows,
-                                                       triplexList,
-                                                       NULL);
-      exactSimTaskRerunFilterTriplexListInPlace(triplexList,replayConfig);
-      for(size_t triplexIndex = 0; triplexIndex < triplexList.size(); ++triplexIndex)
-      {
-        exactSimTaskRerunWriteTaskOutputRow(out,row.taskKey,triplexList[triplexIndex],1,1);
-      }
+      out<<taskResults[rowIndex].outputText;
     }
   }
   return 0;
