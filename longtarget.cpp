@@ -124,6 +124,7 @@ struct LongTargetExecutionMetrics
     twoStageTaskRerunSeconds(0.0),
     twoStageTaskRerunSelectedTasksPath(""),
     twoStageTaskRerunProfileTsv(""),
+    twoStageTaskRerunTaskOutputTsv(""),
     twoStageTaskRerunSelectedTasksLoadSeconds(0.0),
     twoStageTaskRerunUpgradeSeconds(0.0),
     twoStageTaskRerunEffectiveThresholdSeconds(0.0),
@@ -209,6 +210,7 @@ struct LongTargetExecutionMetrics
   double twoStageTaskRerunSeconds;
   string twoStageTaskRerunSelectedTasksPath;
   string twoStageTaskRerunProfileTsv;
+  string twoStageTaskRerunTaskOutputTsv;
   double twoStageTaskRerunSelectedTasksLoadSeconds;
   double twoStageTaskRerunUpgradeSeconds;
   double twoStageTaskRerunEffectiveThresholdSeconds;
@@ -607,6 +609,23 @@ static inline string longtarget_two_stage_task_rerun_task_key(const ExactSimTask
   return out.str();
 }
 
+static inline string longtarget_two_stage_task_rerun_safe_task_key(const string &rawTaskKey)
+{
+  string safeTaskKey = rawTaskKey;
+  for(size_t charIndex = 0; charIndex < safeTaskKey.size(); ++charIndex)
+  {
+    if(safeTaskKey[charIndex] == '\t')
+    {
+      safeTaskKey[charIndex] = '|';
+    }
+    else if(safeTaskKey[charIndex] == '\n' || safeTaskKey[charIndex] == '\r')
+    {
+      safeTaskKey[charIndex] = ' ';
+    }
+  }
+  return safeTaskKey;
+}
+
 static inline bool longtarget_load_two_stage_task_rerun_selected_task_keys(
   const string &path,
   unordered_set<string> &selectedTaskKeys,
@@ -861,6 +880,56 @@ static inline void longtarget_write_two_stage_task_rerun_profile_row(
      <<row.simSeconds<<"\t"
      <<row.postProcessSeconds<<"\t"
      <<row.rerunTotalSeconds
+     <<endl;
+}
+
+static inline void longtarget_write_two_stage_task_rerun_task_output_header(ostream &out)
+{
+  out<<"task_key\t"
+     <<"selected\t"
+     <<"effective\t"
+     <<"Chr\t"
+     <<"StartInGenome\t"
+     <<"EndInGenome\t"
+     <<"Strand\t"
+     <<"Rule\t"
+     <<"QueryStart\t"
+     <<"QueryEnd\t"
+     <<"StartInSeq\t"
+     <<"EndInSeq\t"
+     <<"Direction\t"
+     <<"Score\t"
+     <<"Nt(bp)\t"
+     <<"MeanIdentity(%)\t"
+     <<"MeanStability"
+     <<endl;
+}
+
+static inline void longtarget_write_two_stage_task_rerun_task_output_row(
+  ostream &out,
+  const string &taskKey,
+  const triplex &atr)
+{
+  const bool forward = atr.starj < atr.endj;
+  const long genomeStart = forward ? atr.starj : atr.endj;
+  const long genomeEnd = forward ? atr.endj : atr.starj;
+  out<<longtarget_two_stage_task_rerun_safe_task_key(taskKey)<<"\t"
+     <<1<<"\t"
+     <<1<<"\t"
+     <<""<<"\t"
+     <<genomeStart<<"\t"
+     <<genomeEnd<<"\t"
+     <<longtarget_task_strand_label(atr.reverse,atr.strand)<<"\t"
+     <<atr.rule<<"\t"
+     <<atr.stari<<"\t"
+     <<atr.endi<<"\t"
+     <<atr.starj<<"\t"
+     <<atr.endj<<"\t"
+     <<(forward ? "R" : "L")<<"\t"
+     <<atr.score<<"\t"
+     <<atr.nt<<"\t"
+     <<atr.identity<<"\t"
+     <<atr.tri_score
      <<endl;
 }
 
@@ -2013,6 +2082,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.two_stage_task_rerun_seconds="<<metrics.twoStageTaskRerunSeconds<<endl;
   cerr<<"benchmark.two_stage_task_rerun_selected_tasks_path="<<metrics.twoStageTaskRerunSelectedTasksPath<<endl;
   cerr<<"benchmark.two_stage_task_rerun_profile_tsv="<<metrics.twoStageTaskRerunProfileTsv<<endl;
+  cerr<<"benchmark.two_stage_task_rerun_task_output_tsv="<<metrics.twoStageTaskRerunTaskOutputTsv<<endl;
   cerr<<"benchmark.two_stage_task_rerun_selected_tasks_load_seconds="<<metrics.twoStageTaskRerunSelectedTasksLoadSeconds<<endl;
   cerr<<"benchmark.two_stage_task_rerun_upgrade_seconds="<<metrics.twoStageTaskRerunUpgradeSeconds<<endl;
   cerr<<"benchmark.two_stage_task_rerun_effective_threshold_seconds="<<metrics.twoStageTaskRerunEffectiveThresholdSeconds<<endl;
@@ -2802,6 +2872,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
     metrics->twoStageTaskRerunBudget = static_cast<uint64_t>(twoStageTaskRerunConfig.budget);
     metrics->twoStageTaskRerunSelectedTasksPath = twoStageTaskRerunConfig.selectedTasksPath;
     metrics->twoStageTaskRerunProfileTsv = twoStageTaskRerunConfig.profileTsvPath;
+    metrics->twoStageTaskRerunTaskOutputTsv = twoStageTaskRerunConfig.taskOutputTsvPath;
   }
 
   if(twoStageTaskRerunEnabled)
@@ -2897,14 +2968,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
           taskRerunSelected[taskIndex] = 1;
           LongTargetTaskRerunProfileRow &profileRow = taskRerunProfiles[taskIndex];
           profileRow.selected = 1;
-          profileRow.taskKey = taskKey;
-          for(size_t charIndex = 0; charIndex < profileRow.taskKey.size(); ++charIndex)
-          {
-            if(profileRow.taskKey[charIndex] == '\t')
-            {
-              profileRow.taskKey[charIndex] = '|';
-            }
-          }
+          profileRow.taskKey = longtarget_two_stage_task_rerun_safe_task_key(taskKey);
           profileRow.fragmentLength = static_cast<uint64_t>(fragmentLength);
           profileRow.rule = task.rule;
           profileRow.strand = longtarget_task_strand_label(task.reverseMode,task.parallelMode);
@@ -4066,6 +4130,34 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
         continue;
       }
       longtarget_write_two_stage_task_rerun_profile_row(taskRerunProfileTsv,taskRerunProfiles[taskIndex]);
+    }
+  }
+
+  if(twoStageTaskRerunEnabled && !twoStageTaskRerunConfig.taskOutputTsvPath.empty())
+  {
+    ofstream taskRerunTaskOutputTsv(twoStageTaskRerunConfig.taskOutputTsvPath.c_str(),ios::trunc);
+    if(!taskRerunTaskOutputTsv.is_open())
+    {
+      fprintf(stderr,
+              "failed to open LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV=%s\n",
+              twoStageTaskRerunConfig.taskOutputTsvPath.c_str());
+      exit(2);
+    }
+    longtarget_write_two_stage_task_rerun_task_output_header(taskRerunTaskOutputTsv);
+    for(size_t taskIndex = 0; taskIndex < taskRerunProfiles.size(); ++taskIndex)
+    {
+      if(taskRerunSelected[taskIndex] == 0 || taskRerunEffective[taskIndex] == 0)
+      {
+        continue;
+      }
+      const string &taskKey = taskRerunProfiles[taskIndex].taskKey;
+      const vector<struct triplex> &taskTriplexList = taskTriplexLists[taskIndex];
+      for(size_t triplexIndex = 0; triplexIndex < taskTriplexList.size(); ++triplexIndex)
+      {
+        longtarget_write_two_stage_task_rerun_task_output_row(taskRerunTaskOutputTsv,
+                                                              taskKey,
+                                                              taskTriplexList[triplexIndex]);
+      }
     }
   }
 

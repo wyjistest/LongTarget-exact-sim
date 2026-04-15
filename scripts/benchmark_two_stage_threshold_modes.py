@@ -81,6 +81,7 @@ class ThresholdModeRun:
     task_rerun_seconds: float
     task_rerun_selected_tasks_path: str
     task_rerun_profile_tsv: str
+    task_rerun_task_output_tsv: str
     task_rerun_selected_tasks_load_seconds: float
     task_rerun_upgrade_seconds: float
     task_rerun_effective_threshold_seconds: float
@@ -569,6 +570,7 @@ def main() -> int:
             task_rerun_seconds=_metric_float(metrics, "two_stage_task_rerun_seconds"),
             task_rerun_selected_tasks_path=_metric_str(metrics, "two_stage_task_rerun_selected_tasks_path"),
             task_rerun_profile_tsv=_metric_str(metrics, "two_stage_task_rerun_profile_tsv"),
+            task_rerun_task_output_tsv=_metric_str(metrics, "two_stage_task_rerun_task_output_tsv"),
             task_rerun_selected_tasks_load_seconds=_metric_float(metrics, "two_stage_task_rerun_selected_tasks_load_seconds"),
             task_rerun_upgrade_seconds=_metric_float(metrics, "two_stage_task_rerun_upgrade_seconds"),
             task_rerun_effective_threshold_seconds=_metric_float(metrics, "two_stage_task_rerun_effective_threshold_seconds"),

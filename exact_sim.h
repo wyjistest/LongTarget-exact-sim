@@ -791,12 +791,14 @@ struct ExactSimTwoStageTaskRerunConfig
     enabled(false),
     budget(0),
     selectedTasksPath(""),
-    profileTsvPath("") {}
+    profileTsvPath(""),
+    taskOutputTsvPath("") {}
 
   bool enabled;
   long budget;
   string selectedTasksPath;
   string profileTsvPath;
+  string taskOutputTsvPath;
 };
 
 struct ExactSimTwoStageTaskRerunStats
@@ -875,6 +877,11 @@ inline ExactSimTwoStageTaskRerunConfig exact_sim_two_stage_task_rerun_config_run
   if(profileTsvPath != NULL && profileTsvPath[0] != '\0')
   {
     config.profileTsvPath = profileTsvPath;
+  }
+  const char *taskOutputTsvPath = getenv("LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV");
+  if(taskOutputTsvPath != NULL && taskOutputTsvPath[0] != '\0')
+  {
+    config.taskOutputTsvPath = taskOutputTsvPath;
   }
   if(config.budget < 0)
   {

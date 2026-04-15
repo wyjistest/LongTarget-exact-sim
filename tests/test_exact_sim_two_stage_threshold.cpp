@@ -572,25 +572,32 @@ int main()
     unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN");
     unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET");
     unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH");
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV");
 
     ExactSimTwoStageTaskRerunConfig config = exact_sim_two_stage_task_rerun_config_runtime();
     ok = expect_false(config.enabled,"task rerun disabled by default") && ok;
     ok = expect_equal_long(config.budget,0,"task rerun default budget") && ok;
     ok = expect_true(config.selectedTasksPath.empty(),"task rerun default selected path empty") && ok;
+    ok = expect_true(config.taskOutputTsvPath.empty(),"task rerun default task output path empty") && ok;
 
     setenv("LONGTARGET_TWO_STAGE_TASK_RERUN","1",1);
     setenv("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET","16",1);
     setenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH","/tmp/task_rerun_selected.tsv",1);
+    setenv("LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV","/tmp/task_rerun_task_output.tsv",1);
     config = exact_sim_two_stage_task_rerun_config_runtime();
     ok = expect_true(config.enabled,"task rerun env enables runtime lane") && ok;
     ok = expect_equal_long(config.budget,16,"task rerun env budget") && ok;
     ok = expect_equal_cstr(config.selectedTasksPath.c_str(),
                            "/tmp/task_rerun_selected.tsv",
                            "task rerun env selected path") && ok;
+    ok = expect_equal_cstr(config.taskOutputTsvPath.c_str(),
+                           "/tmp/task_rerun_task_output.tsv",
+                           "task rerun env task output path") && ok;
 
     unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN");
     unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_BUDGET");
     unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH");
+    unsetenv("LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV");
   }
 
   {

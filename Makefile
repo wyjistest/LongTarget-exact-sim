@@ -570,6 +570,10 @@ check-profile-two-stage-panel-task-rerun-runtime:
 	python3 ./scripts/profile_two_stage_panel_task_rerun_runtime.py --help >/dev/null
 	bash ./scripts/check_profile_two_stage_panel_task_rerun_runtime.sh
 
+check-benchmark-two-stage-task-rerun-kernel-feasibility:
+	python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py --help >/dev/null
+	bash ./scripts/check_benchmark_two_stage_task_rerun_kernel_feasibility.sh
+
 check-analyze-two-stage-selector-candidate-classes:
 	python3 ./scripts/analyze_two_stage_selector_candidate_classes.py --help >/dev/null
 	bash ./scripts/check_analyze_two_stage_selector_candidate_classes.sh
@@ -635,6 +639,6 @@ check-longtarget-lite-output:
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
-		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-profile-two-stage-panel-task-rerun-runtime check-analyze-two-stage-selector-candidate-classes \
+		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-profile-two-stage-panel-task-rerun-runtime check-benchmark-two-stage-task-rerun-kernel-feasibility check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \
 		check-replay-two-stage-task-level-rerun check-search-two-stage-task-trigger-rankings check-two-stage-task-rerun-runtime

@@ -1356,6 +1356,56 @@
     - 或者更窄的 task-level exact `SIM` GPU rewrite
   - exact-safe 主线仍继续独立推进，不和这条 experimental rerun-cost 线混在同一个 backlog。
 
+## 2026-04-15（rerun exact SIM kernel feasibility baseline）
+
+- 这轮没有再碰 selector / trigger，而是把 rerun-kernel feasibility 的基线设施直接落到项目内：
+  - `exact_sim.h`
+    - `ExactSimTwoStageTaskRerunConfig` 新增 `taskOutputTsvPath`
+    - 运行时新增 env：
+      - `LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV`
+  - `longtarget.cpp`
+    - rerun lane 现在可以为 **selected + effective** tasks 导出 task-scoped output TSV；
+    - TSV 列对齐现有 `.lite` 输出，并额外携带：
+      - `task_key`
+      - `selected`
+      - `effective`
+    - benchmark telemetry / stderr 新增：
+      - `benchmark.two_stage_task_rerun_task_output_tsv`
+  - `scripts/benchmark_two_stage_threshold_modes.py`
+    - `report.json` 现已暴露 `task_rerun_task_output_tsv`
+  - 新增 `scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py`
+    - 固定 selected tiles + selected-task TSV；
+    - 重跑：
+      - `deferred_exact_minimal_v3_scoreband_75_79`
+      - `deferred_exact_minimal_v3_task_rerun_budget16`
+    - 导出：
+      - `task_rerun_selected_tasks/*.tsv`
+      - `task_rerun_profiles/*.tsv`
+      - `task_rerun_task_outputs/*.tsv`
+      - `summary.json`
+      - `summary.md`
+    - 支持 `--compare-task-output-root`，用于后续 prototype 输出对拍
+  - 新增文档：
+    - `docs/plans/2026-04-15-rerun-exact-sim-kernel-feasibility.md`
+- semantic audit 结论也正式收紧了：
+  - 当前 rerun rescue **不** 视为直接等价于一个 off-the-shelf local-affine alignment；
+  - 根因不是 gap model 本身，而是输出语义仍依赖：
+    - `triplex_score + penaltyT/penaltyC`
+    - SIM-specific candidate maintenance / blocked-diagonal updates
+    - rerun window 级别 dedup
+  - 所以后续默认 prototype path 应是：
+    - **task-level exact `SIM` GPU rewrite**
+  - `local-affine rescue kernel` 只保留为探索分支，前提是接受更弱的等价目标。
+- 当前这轮的本地验证入口：
+  - `make check-exact-sim-two-stage-threshold`
+  - `make check-two-stage-task-rerun-runtime`
+  - `make check-benchmark-two-stage-task-rerun-kernel-feasibility`
+- 这轮完成后，two-stage 的 kernel feasibility 已经具备下一阶段所需的最小接口：
+  - CPU gold outputs
+  - fixed-panel selected-task corpus
+  - task-output semantic compare contract
+  - 不再需要重新设计 rerun benchmark I/O，就可以直接开始 prototype。
+
 ## 2026-04-15（oracle-free task trigger calibration v1）
 
 - 按上一轮结论，这一轮不再继续扩 selector，也不先改 runtime，而是把 **oracle-free task-level ambiguity trigger calibration** 落到现有 analysis/replay 链路上：

@@ -19,6 +19,8 @@ GOOD_TASKS="$WORK/selected_tasks_good.tsv"
 BAD_TASKS="$WORK/selected_tasks_bad_strand.tsv"
 GOOD_PROFILE="$GOOD_WORK/task_rerun_profile.tsv"
 BAD_PROFILE="$BAD_WORK/task_rerun_profile.tsv"
+GOOD_TASK_OUTPUT="$GOOD_WORK/task_rerun_task_output.tsv"
+BAD_TASK_OUTPUT="$BAD_WORK/task_rerun_task_output.tsv"
 
 (
   cd "$ROOT"
@@ -106,7 +108,8 @@ PY
     --run-label legacy \
     --run-label deferred_exact_minimal_v3_task_rerun_budget8 \
     --run-env deferred_exact_minimal_v3_task_rerun_budget8:LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH="$GOOD_TASKS" \
-    --run-env deferred_exact_minimal_v3_task_rerun_budget8:LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV="$GOOD_PROFILE" >/dev/null
+    --run-env deferred_exact_minimal_v3_task_rerun_budget8:LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV="$GOOD_PROFILE" \
+    --run-env deferred_exact_minimal_v3_task_rerun_budget8:LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV="$GOOD_TASK_OUTPUT" >/dev/null
 )
 
 (
@@ -123,10 +126,11 @@ PY
     --run-label legacy \
     --run-label deferred_exact_minimal_v3_task_rerun_budget16 \
     --run-env deferred_exact_minimal_v3_task_rerun_budget16:LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH="$BAD_TASKS" \
-    --run-env deferred_exact_minimal_v3_task_rerun_budget16:LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV="$BAD_PROFILE" >/dev/null
+    --run-env deferred_exact_minimal_v3_task_rerun_budget16:LONGTARGET_TWO_STAGE_TASK_RERUN_PROFILE_TSV="$BAD_PROFILE" \
+    --run-env deferred_exact_minimal_v3_task_rerun_budget16:LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV="$BAD_TASK_OUTPUT" >/dev/null
 )
 
-python3 - "$BASELINE_WORK/report.json" "$GOOD_WORK/report.json" "$BAD_WORK/report.json" "$GOOD_PROFILE" "$BAD_PROFILE" <<'PY'
+python3 - "$BASELINE_WORK/report.json" "$GOOD_WORK/report.json" "$BAD_WORK/report.json" "$GOOD_PROFILE" "$BAD_PROFILE" "$GOOD_TASK_OUTPUT" "$BAD_TASK_OUTPUT" <<'PY'
 import csv
 import json
 import sys
@@ -137,6 +141,8 @@ good = json.load(open(sys.argv[2], "r", encoding="utf-8"))
 bad = json.load(open(sys.argv[3], "r", encoding="utf-8"))
 good_profile = Path(sys.argv[4])
 bad_profile = Path(sys.argv[5])
+good_task_output = Path(sys.argv[6])
+bad_task_output = Path(sys.argv[7])
 
 baseline_run = baseline["runs"]["deferred_exact_minimal_v3_scoreband_75_79"]
 good_run = good["runs"]["deferred_exact_minimal_v3_task_rerun_budget8"]
@@ -150,6 +156,7 @@ assert good_run["task_rerun_added_windows"] > 0
 assert good_run["task_rerun_refine_bp_total"] > 0
 assert good_run["task_rerun_selected_tasks_path"].endswith("selected_tasks_good.tsv")
 assert good_run["task_rerun_profile_tsv"].endswith("task_rerun_profile.tsv")
+assert good_run["task_rerun_task_output_tsv"].endswith("task_rerun_task_output.tsv")
 assert good_run["task_rerun_selected_tasks_load_seconds"] >= 0.0
 assert good_run["task_rerun_upgrade_seconds"] >= 0.0
 assert good_run["task_rerun_effective_threshold_seconds"] >= 0.0
@@ -166,6 +173,7 @@ assert bad_run["task_rerun_added_windows"] == 0
 assert bad_run["task_rerun_refine_bp_total"] == 0
 assert bad_run["task_rerun_selected_tasks_path"].endswith("selected_tasks_bad_strand.tsv")
 assert bad_run["task_rerun_profile_tsv"].endswith("task_rerun_profile.tsv")
+assert bad_run["task_rerun_task_output_tsv"].endswith("task_rerun_task_output.tsv")
 assert bad_run["task_rerun_selected_tasks_load_seconds"] >= 0.0
 assert bad_run["task_rerun_upgrade_seconds"] >= 0.0
 assert bad_run["task_rerun_effective_threshold_seconds"] == 0.0
@@ -203,6 +211,33 @@ assert good_row["effective"] == "1"
 assert int(good_row["added_windows"]) > 0
 assert float(good_row["sim_seconds"]) > 0.0
 assert float(good_row["rerun_total_seconds"]) >= float(good_row["sim_seconds"])
+
+good_task_rows = list(csv.DictReader(good_task_output.open("r", encoding="utf-8"), delimiter="\t"))
+assert good_task_rows, "expected selected rerun task output rows"
+expected_task_columns = {
+    "task_key",
+    "effective",
+    "Chr",
+    "StartInGenome",
+    "EndInGenome",
+    "Strand",
+    "Rule",
+    "QueryStart",
+    "QueryEnd",
+    "StartInSeq",
+    "EndInSeq",
+    "Direction",
+    "Score",
+    "Nt(bp)",
+    "MeanIdentity(%)",
+    "MeanStability",
+}
+assert expected_task_columns.issubset(good_task_rows[0].keys())
+assert all(row["task_key"] == good_row["task_key"] for row in good_task_rows)
+assert all(row["effective"] == "1" for row in good_task_rows)
+
+bad_task_rows = list(csv.DictReader(bad_task_output.open("r", encoding="utf-8"), delimiter="\t"))
+assert bad_task_rows == []
 PY
 
 echo "ok"

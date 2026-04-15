@@ -780,6 +780,34 @@ python3 ./scripts/profile_two_stage_panel_task_rerun_runtime.py \
     - `make check-replay-two-stage-task-level-rerun`
     - `make check-search-two-stage-task-trigger-rankings`
     - `make check-two-stage-task-rerun-runtime`
+    - `make check-benchmark-two-stage-task-rerun-kernel-feasibility`
+  - semantic-audit update:
+    - rerun rescue now exposes `LONGTARGET_TWO_STAGE_TASK_RERUN_TASK_OUTPUT_TSV`, which writes task-scoped `.lite`-compatible outputs for selected+effective rerun tasks and is surfaced in `report.json` as `task_rerun_task_output_tsv`
+    - this output is intended as the semantic-equivalence contract for future rerun-kernel prototypes; comparing only `top1/top10` is no longer sufficient once kernel rewrite work starts
+    - the audit result is intentionally conservative: current rerun rescue is **not** treated as a direct local-affine equivalent because result-set semantics still depend on SIM-specific candidate maintenance, blocked-diagonal updates, window-level dedup, and triplex-specific `triplex_score + penaltyT/penaltyC` scoring
+    - therefore the default next prototype path is a **task-level exact `SIM` GPU rewrite**; a local-affine rescue kernel remains exploratory unless equivalence requirements are relaxed
+  - fixed-panel feasibility harness:
+
+```
+python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py \
+  --panel-summary .tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/summary.json \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_feasibility
+```
+
+  - the feasibility harness keeps selected tiles and selected-task TSVs fixed, reruns the runtime baseline, and exports:
+    - `task_rerun_profiles/*.tsv`
+    - `task_rerun_task_outputs/*.tsv`
+    - `summary.json` / `summary.md`
+  - optional prototype compare:
+
+```
+python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py \
+  --panel-summary .tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/summary.json \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_feasibility \
+  --compare-task-output-root .tmp/prototype_task_outputs
+```
+
+  - compare mode expects prototype task-output TSVs to mirror the exported tile filenames and enforces task-key/result-set/score equality instead of panel-level approximation metrics
 - Example quality-gated sweep:
 
 ```
