@@ -1504,6 +1504,35 @@
   - 新增检查：
     - `bash ./scripts/check_benchmark_two_stage_task_rerun_cpu_buckets.sh`
     - `make check-benchmark-two-stage-task-rerun-cpu-buckets`
+- 随后按当前 frozen corpus 实际跑完了第一轮 CPU bucket micro-benchmark：
+  - 输入基线固定在：
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_kernel_corpus_2026-04-15_16-53-56/task_rerun_corpus_manifest.tsv`
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_kernel_corpus_2026-04-15_16-53-56/shape_audit_v2/summary.json`
+  - 输出落在：
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_kernel_corpus_2026-04-15_16-53-56/cpu_bucket_benchmark_v1/summary.json`
+  - 真实结果把结论收得更紧了：
+    - `shape_audit_v2` 只产出 **1 个** `recommended_cpu_bucket`
+      - `bp_target:513-1024|4097-8192`
+      - `task_count=3`
+      - `rerun_bp_total=2388`
+      - `rerun_seconds_total=2.299444`
+      - `rerun_seconds_ratio≈0.1197`
+    - 三类跑法对这个 bucket 的实际表现是：
+      - `isolated_serial=1.118311s`
+      - `bucket_serial=0.898488s`
+      - 最佳 `bucket_parallel(thread=2)=0.920922s`
+    - 对应 speedup：
+      - `bucket_serial` 相对 `isolated_serial` 只有 `1.244658x`
+      - 最佳并行相对 `isolated_serial` 只有 `1.214338x`
+      - 最佳并行相对 `bucket_serial` 反而退回到 `0.975640x`
+    - 所以 `continue_cpu_executor_prototype=False`
+- 这意味着当前 two-stage rerun 线的 stop-rule 可以正式更新为：
+  - 先不进入 CPU bucketed executor prototype
+  - 也不因为 exact `SIM` 是主成本就直接跳到 GPU rewrite
+  - 当前最合理的状态是：
+    - 保留现有 frozen corpus / replay / shape-audit baseline
+    - 暂停 executor-level rewrite
+    - 只有当后续新的 shape audit 把更多 wall-time 收敛到更大、更稳定的 bucket，才重新打开 CPU 或 GPU executor feasibility
 
 ## 2026-04-15（oracle-free task trigger calibration v1）
 

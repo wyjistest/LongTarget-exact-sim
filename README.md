@@ -863,6 +863,13 @@ python3 ./scripts/benchmark_two_stage_task_rerun_cpu_buckets.py \
   - current continuation rule is intentionally hard:
     - only continue toward a CPU bucketed executor prototype when some recommended CPU bucket reaches `speedup_vs_isolated_serial >= 1.25` **and** `speedup_vs_bucket_serial >= 1.10`
     - if no recommended GPU bucket is produced, do **not** jump to a GPU rescue kernel prototype
+  - fixed-corpus CPU bucket benchmark result (`.tmp/panel_minimal_v3_task_rerun_budget16_kernel_corpus_2026-04-15_16-53-56/cpu_bucket_benchmark_v1/summary.json`):
+    - `shape_audit_v2` produced exactly one recommended CPU bucket: `bp_target:513-1024|4097-8192`
+    - that bucket only covers `3` tasks / `2388 bp` / `2.299444s` (`~11.97%` of rerun seconds)
+    - `bucket_serial` improved over `isolated_serial` but still stopped at `1.2447x`, below the hard `1.25x` gate
+    - `bucket_parallel` did not help: best was `thread=2`, `speedup_vs_isolated_serial≈1.2143`, `speedup_vs_bucket_serial≈0.9756`
+    - therefore `continue_cpu_executor_prototype=False`, and the next step is **not** a CPU bucketed executor rewrite
+    - practical stop-rule update: keep the frozen rerun corpus / replay harness as the current baseline, and only revisit executor-level optimization after a new shape audit surfaces a materially larger stable CPU bucket
   - local verification for this stage is now:
     - `make check-two-stage-task-rerun-runtime`
     - `make check-benchmark-two-stage-task-rerun-kernel-feasibility`

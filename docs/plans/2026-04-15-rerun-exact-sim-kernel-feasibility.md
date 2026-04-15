@@ -1,6 +1,6 @@
 # Rerun Exact SIM Kernel Feasibility
 
-> **Status:** implemented feasibility baseline + frozen corpus / CPU replay + CPU bucket benchmark tooling
+> **Status:** implemented feasibility baseline + frozen corpus / CPU replay + CPU bucket benchmark run (current decision: no CPU executor prototype)
 > **Scope:** semantic audit + fixed-panel benchmark corpus/export harness + shape audit + isolated replay driver + CPU bucket executor micro-benchmark
 > **Runtime baseline:** `deferred_exact_minimal_v3_task_rerun_budget16`
 
@@ -189,6 +189,29 @@ python3 ./scripts/benchmark_two_stage_task_rerun_cpu_buckets.py \
 - `speedup_vs_isolated_serial >= 1.25`
 - `speedup_vs_bucket_serial >= 1.10`
 
+### CPU bucket benchmark result
+
+当前 frozen corpus 上的真实结果已经跑完：
+
+- `shape_audit_v2` 只产出一个 `recommended_cpu_bucket`
+  - `bp_target:513-1024|4097-8192`
+  - `task_count=3`
+  - `rerun_bp_total=2388`
+  - `rerun_seconds_total=2.299444`
+  - `rerun_seconds_ratio≈0.1197`
+- benchmark 输出：
+  - `isolated_serial=1.118311s`
+  - `bucket_serial=0.898488s`
+  - best `bucket_parallel(thread=2)=0.920922s`
+- 对应 speedup：
+  - `bucket_serial vs isolated_serial = 1.244658x`
+  - best `bucket_parallel vs isolated_serial = 1.214338x`
+  - best `bucket_parallel vs bucket_serial = 0.975640x`
+- **Decision: fail for CPU executor continuation**
+  - 没有任何 bucket 同时达到 `1.25x / 1.10x`
+  - 当前结论是 `continue_cpu_executor_prototype=False`
+  - 因此这一阶段不进入 CPU bucketed executor rewrite
+
 ### Prototype compare contract
 
 同一脚本支持可选：
@@ -223,6 +246,6 @@ make check-exact-sim-task-rerun-replay
 
 1. 不再重复“先跑 full fixed-panel audit”这一步，当前 full-panel 结果已经表明 `gpu_batching_candidate=False`；
 2. 直接基于现有 corpus 运行新的更细 shape audit，先看 `recommended_cpu_buckets` / `recommended_gpu_buckets` 是否稳定；
-3. 运行 `benchmark_two_stage_task_rerun_cpu_buckets.py`，如果没有任何 bucket 过 CPU continuation rule，则不进入 executor rewrite；
-4. 只有在 CPU benchmark 或更细 bucket 审计把足够多的 wall-time 收敛到稳定 batch 形态后，才重新考虑 task-level exact `SIM` GPU prototype；
-5. 无论走 CPU 还是 GPU prototype，都继续沿用同一 corpus 与 task-output semantic compare contract，并按 go/no-go（语义等价 + kernel speedup + integrated wall-time impact）决定是否继续。
+3. 当前这轮 benchmark 已经表明：没有任何 bucket 过 CPU continuation rule，因此先不进入 executor rewrite；
+4. 下一轮只有在新的 shape audit 把更多 wall-time 收敛到更大、更稳定的 batch 形态后，才重新考虑 CPU executor 或 task-level exact `SIM` GPU prototype；
+5. 无论后续走 CPU 还是 GPU prototype，都继续沿用同一 corpus 与 task-output semantic compare contract，并按 go/no-go（语义等价 + kernel speedup + integrated wall-time impact）决定是否继续。
