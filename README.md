@@ -753,6 +753,28 @@ python3 ./scripts/profile_two_stage_panel_task_rerun_runtime.py \
     - per-task `rerun_total_seconds` p50/p90/p99
     - per-kbp normalized rerun cost
     - `dominant_phase` for deciding whether the next optimization target is a rescue kernel or something cheaper/higher-level
+  - fixed-panel `budget16` full profile result (`.tmp/panel_minimal_v3_task_rerun_budget16_profile_2026-04-15_full/summary.json`):
+    - aggregate totals match the runtime baseline exactly: `selected_tasks=16`, `effective_tasks=16`, `added_bp_total=8097`
+    - phase totals:
+      - `selected_tasks_load_seconds≈0.000622`
+      - `upgrade_seconds≈0.0000059`
+      - `effective_threshold_seconds=0.0`
+      - `effective_sim_seconds≈7.972646`
+      - `effective_post_process_seconds≈0.000039`
+    - phase shares:
+      - `effective_sim_seconds≈99.9916%`
+      - all non-sim phases combined `<0.01%`
+      - `dominant_phase=effective_sim_seconds`
+    - per-task distribution:
+      - `rerun_total_seconds p50≈0.4796s`, `p90≈0.7159s`, `p99≈0.8337s`
+      - `rerun_seconds_per_kbp p50≈1.143`, `p90≈2.376`, `p99≈3.598`
+    - long-tail signal:
+      - highest absolute-cost task: `AntiMinus / rule15 / added_bp=790`, `rerun_total_seconds≈0.8492s`
+      - highest per-kbp task: `AntiPlus / rule17 / fragment_length=1000 / added_bp=131`, `rerun_seconds_per_kbp≈3.79`
+      - the largest time bucket is `AntiPlus / rule1` (`4 tasks`, `≈2.15s`, `2287 bp`)
+  - practical conclusion:
+    - the rerun bottleneck is no longer ambiguous: it is the exact rescue `SIM` compute, not selected-task loading, not in-memory upgrade checks, and not post-process merge work
+    - since `effective_threshold_seconds=0` on the full fixed panel, the next optimization target should be a rerun-specific exact `SIM` kernel / local-affine rescue feasibility study, not threshold batching or another trigger search
   - local checks:
     - `make check-analyze-two-stage-task-ambiguity`
     - `make check-replay-two-stage-task-level-rerun`

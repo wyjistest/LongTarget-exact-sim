@@ -1292,6 +1292,70 @@
     - rerun 增量时间主要落在哪个 phase；
     - 这个 phase 是否足够主导，值得继续往 rescue kernel / exact-safe kernel 方向投入。
 
+## 2026-04-15（budget16 fixed-panel rerun cost profile complete）
+
+- 这轮把 `budget16` fixed-panel rerun cost profile 跑完整了：
+  - 输入：
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/summary.json`
+  - 输出：
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_profile_2026-04-15_full/summary.json`
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_profile_2026-04-15_full/summary.md`
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_profile_2026-04-15_full/task_rerun_profiles/*.tsv`
+- aggregate 对拍结果：
+  - `selected_tile_count=12`
+  - `selected_tasks=16`
+  - `effective_tasks=16`
+  - `added_bp_total=8097`
+  - 这和上一轮 runtime baseline 的 `budget16` totals 完全一致，说明 profiling harness 没有改变 rerun 语义，只是在做 phase 归因。
+- phase totals：
+  - `selected_tasks_load_seconds≈0.000622`
+  - `upgrade_seconds≈0.0000059`
+  - `effective_threshold_seconds=0.0`
+  - `effective_sim_seconds≈7.972646`
+  - `effective_post_process_seconds≈0.000039`
+- phase shares：
+  - `effective_sim_seconds≈99.9916%`
+  - `selected_tasks_load_seconds≈0.0078%`
+  - `effective_post_process_seconds≈0.00049%`
+  - `upgrade_seconds≈0.000074%`
+  - `effective_threshold_seconds=0%`
+  - `dominant_phase=effective_sim_seconds`
+- 结论非常硬：
+  - 当前 rerun 的主成本不是 selected-task 装载，不是 in-memory upgrade，也不是 post-process merge；
+  - 甚至不是 threshold；
+  - **它几乎全部落在 rerun-effective exact `SIM` 计算上。**
+- per-task 长尾：
+  - `rerun_total_seconds`
+    - `p50≈0.4796s`
+    - `p90≈0.7159s`
+    - `p99≈0.8337s`
+  - `rerun_seconds_per_kbp`
+    - `p50≈1.143`
+    - `p90≈2.376`
+    - `p99≈3.598`
+  - top absolute-cost task：
+    - `task_key=2|9801|14800|1|-1|AntiMinus|15`
+    - `added_bp=790`
+    - `rerun_total_seconds≈0.8492s`
+  - top per-kbp task：
+    - `task_key=10|49001|50000|0|-1|AntiPlus|17`
+    - `fragment_length=1000`
+    - `added_bp=131`
+    - `rerun_seconds_per_kbp≈3.79`
+  - `rule/strand` bucket 层面，当前累计 seconds 最高的是：
+    - `AntiPlus / rule1`
+    - `4 tasks`
+    - `≈2.15s`
+    - `2287 added bp`
+- 这轮 profiling 把 two-stage 的下一枪正式定下来：
+  - 不再继续磨 selector / trigger；
+  - 不做 `pad/merge sweep`；
+  - 不先做 threshold batching；
+  - 下一步应转向 **rerun-specific exact `SIM` kernel feasibility**，优先评估：
+    - local-affine rescue kernel
+    - 或者更窄的 task-level exact `SIM` GPU rewrite
+  - exact-safe 主线仍继续独立推进，不和这条 experimental rerun-cost 线混在同一个 backlog。
+
 ## 2026-04-15（oracle-free task trigger calibration v1）
 
 - 按上一轮结论，这一轮不再继续扩 selector，也不先改 runtime，而是把 **oracle-free task-level ambiguity trigger calibration** 落到现有 analysis/replay 链路上：
