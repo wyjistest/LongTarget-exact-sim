@@ -1369,6 +1369,7 @@
       - `task_key`
       - `selected`
       - `effective`
+    - rerun profile TSV 现也补上 `min_score`，后续 isolated replay 不再需要重新跑 threshold/min-score 计算
     - benchmark telemetry / stderr 新增：
       - `benchmark.two_stage_task_rerun_task_output_tsv`
   - `scripts/benchmark_two_stage_threshold_modes.py`
@@ -1382,9 +1383,33 @@
       - `task_rerun_selected_tasks/*.tsv`
       - `task_rerun_profiles/*.tsv`
       - `task_rerun_task_outputs/*.tsv`
+      - `task_rerun_window_traces/*.tsv`
+      - `task_rerun_windows/*.tsv`
+      - `task_rerun_corpus_manifest.tsv`
+      - `task_rerun_corpus_manifest.json`
       - `summary.json`
       - `summary.md`
     - 支持 `--compare-task-output-root`，用于后续 prototype 输出对拍
+  - 新增 `scripts/analyze_two_stage_task_rerun_corpus_shapes.py`
+    - 只吃 frozen `task_rerun_corpus_manifest.tsv`
+    - 输出：
+      - `shape_audit/summary.json`
+      - `shape_audit/summary.md`
+    - 汇总：
+      - `rerun_bp` buckets
+      - `target_length` buckets
+      - `output_row_count` buckets
+      - `rule|strand` buckets
+      - top rerun-seconds / top rerun-bp tasks
+      - `gpu_batching_candidate`
+  - 新增 `exact_sim_task_rerun_replay.cpp` + `exact_sim_task_rerun_replay.h`
+    - 把 task-spec construction、task-output writer、post-filter 变成可复用 helper；
+    - 新 binary `exact_sim_task_rerun_replay` 直接消费：
+      - frozen FASTA inputs
+      - `task_rerun_corpus_manifest.tsv`
+      - `task_rerun_windows/*.tsv`
+    - 每 task 直接调用 `runExactReferenceSIMTwoStageDeferredWithMinScore(...)`
+    - 输出沿用 exported gold 的 tile filename / TSV schema，便于和 feasibility harness 的 compare contract 直接对拍
   - 新增文档：
     - `docs/plans/2026-04-15-rerun-exact-sim-kernel-feasibility.md`
 - semantic audit 结论也正式收紧了：
@@ -1400,11 +1425,52 @@
   - `make check-exact-sim-two-stage-threshold`
   - `make check-two-stage-task-rerun-runtime`
   - `make check-benchmark-two-stage-task-rerun-kernel-feasibility`
+  - `make check-analyze-two-stage-task-rerun-corpus-shapes`
+  - `make check-exact-sim-task-rerun-replay`
 - 这轮完成后，two-stage 的 kernel feasibility 已经具备下一阶段所需的最小接口：
   - CPU gold outputs
-  - fixed-panel selected-task corpus
+  - fixed-panel selected-task corpus + frozen replay windows
+  - task-shape audit
+  - isolated CPU replay driver
   - task-output semantic compare contract
-  - 不再需要重新设计 rerun benchmark I/O，就可以直接开始 prototype。
+  - 不再需要重新设计 rerun benchmark I/O，就可以直接开始 prototype / micro-benchmark。
+
+## 2026-04-15（full fixed-panel frozen corpus + shape audit）
+
+- 在完整 fixed panel 上，`scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py` + `scripts/analyze_two_stage_task_rerun_corpus_shapes.py` 已经跑通：
+  - selected tiles: `12`
+  - selected tasks: `16`
+  - effective tasks: `16`
+  - frozen corpus manifest rows: `16`
+  - replay windows rows: `71`
+  - task-output rows: `468`
+  - rerun added bp total: `8097`
+  - rerun effective sim seconds total: `19.216958`
+- full-panel shape audit 的真实结果：
+  - `task_count=16`
+  - `rerun_seconds_total=19.216985`
+  - `rerun_bp_total=19631`
+  - `gpu_candidate_seconds_total=10.084305`
+  - `gpu_batching_candidate=False`
+- bucket 结果已经把当前阶段的判断收紧了：
+  - `rerun_bp` 几乎全部落在 `513-1024` / `1025-2048`，其中：
+    - `513-1024`: `4 tasks`, `2.809711s`
+    - `1025-2048`: `12 tasks`, `16.407274s`
+  - `target_length` 基本都在 `4097-8192`：
+    - `15/16 tasks`, `18.706718s`
+  - `output_row_count` 也明显偏向高输出 task：
+    - `>16 rows`: `12 tasks`, `16.897942s`
+- 这说明：
+  - current rerun corpus 的确以 exact `SIM` 本体为主要成本；
+  - 但按现有 **保守** batching 判据，full panel 还没有把足够多的秒数集中到“明显适合 GPU batching”的桶里；
+  - 所以下一枪不应直接跳到大规模 GPU rescue kernel rewrite，而应先继续做更细的 task-shape / batching strategy 审计，再决定是：
+    - 更窄的 task-level exact `SIM` GPU prototype
+    - 或者先做 CPU-side bucketed rerun executor / micro-benchmark
+- 当前最重的 long-tail task 也已经明确暴露在 `shape_audit/summary.md`：
+  - `6|29401|34400|0|-1|AntiPlus|1`
+  - `rerun_seconds=5.614620`
+  - `rerun_bp=1397`
+  - `seconds_per_kbp=4.019055`
 
 ## 2026-04-15（oracle-free task trigger calibration v1）
 

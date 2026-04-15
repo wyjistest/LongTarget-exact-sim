@@ -1,7 +1,7 @@
 # Rerun Exact SIM Kernel Feasibility
 
-> **Status:** implemented feasibility baseline  
-> **Scope:** semantic audit + fixed-panel benchmark corpus/export harness  
+> **Status:** implemented feasibility baseline + frozen corpus / CPU replay
+> **Scope:** semantic audit + fixed-panel benchmark corpus/export harness + shape audit + isolated replay driver
 > **Runtime baseline:** `deferred_exact_minimal_v3_task_rerun_budget16`
 
 ## Goal
@@ -11,6 +11,7 @@
 1. rerun rescue 语义审计；
 2. fixed-panel `budget16` selected-task corpus/export；
 3. prototype 可复用的 task-output semantic compare 入口。
+4. frozen corpus 上的 task-shape audit 与 isolated CPU replay。
 
 ## Semantic Audit
 
@@ -57,6 +58,7 @@
 同时 `benchmark.*` telemetry / `report.json` 新增：
 
 - `two_stage_task_rerun_task_output_tsv`
+- rerun profile TSV 也新增 `min_score`，供后续 isolated replay 直接复用
 
 ### Fixed-panel feasibility harness
 
@@ -78,8 +80,84 @@ python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py \
 - `task_rerun_selected_tasks/*.tsv`
 - `task_rerun_profiles/*.tsv`
 - `task_rerun_task_outputs/*.tsv`
+- `task_rerun_window_traces/*.tsv`
+- `task_rerun_windows/*.tsv`
+- `task_rerun_corpus_manifest.tsv`
+- `task_rerun_corpus_manifest.json`
 - `summary.json`
 - `summary.md`
+
+其中：
+
+- `task_rerun_window_traces/*.tsv` 保留 candidate lane 的原始 window trace；
+- `task_rerun_windows/*.tsv` 只保留 selected+effective task 的 replay-ready `before_gate` windows，并把 `min_score` 写回每行；
+- `task_rerun_corpus_manifest.tsv|json` 冻结 tile filename、FASTA 输入、task spec、replay window path、gold task-output path，供后续 isolated replay / GPU prototype 直接消费。
+
+### Task-shape audit
+
+新增脚本：
+
+```bash
+python3 ./scripts/analyze_two_stage_task_rerun_corpus_shapes.py \
+  --corpus-manifest .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/task_rerun_corpus_manifest.tsv \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/shape_audit
+```
+
+它只读取 frozen manifest，并输出：
+
+- `rerun_bp` / `target_length` / `output_row_count` / `rule|strand` buckets
+- top rerun-seconds tasks
+- top rerun-bp tasks
+- conservative `gpu_batching_candidate`
+
+### Full fixed-panel result
+
+已在完整 fixed panel 上实际跑完：
+
+- selected tiles: `12`
+- selected / effective / manifest tasks: `16 / 16 / 16`
+- replay windows rows: `71`
+- task-output rows: `468`
+- rerun added bp total: `8097`
+- rerun effective sim seconds total: `19.216958`
+
+shape audit 真实结果：
+
+- `task_count=16`
+- `rerun_seconds_total=19.216985`
+- `rerun_bp_total=19631`
+- `gpu_candidate_seconds_total=10.084305`
+- `gpu_batching_candidate=False`
+
+当前 full-panel bucket 结论：
+
+- `rerun_bp`
+  - `513-1024`: `4 tasks`, `2.809711s`
+  - `1025-2048`: `12 tasks`, `16.407274s`
+- `target_length`
+  - `4097-8192`: `15/16 tasks`, `18.706718s`
+- `output_row_count`
+  - `>16`: `12 tasks`, `16.897942s`
+
+这意味着 full-panel rerun corpus 虽然继续证明 exact `SIM` 是主成本，但按当前保守 heuristic，**还不足以直接把下一阶段定成“GPU batching rescue kernel rewrite”**。
+
+### Isolated CPU replay driver
+
+新增 binary：
+
+```bash
+./exact_sim_task_rerun_replay \
+  --corpus-manifest .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/task_rerun_corpus_manifest.tsv \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_replay_cpu
+```
+
+实现约束：
+
+- 不走 discovery / gate；
+- 直接读取 frozen FASTA、task spec、`min_score` 与 replay windows；
+- 每 task 调用 `runExactReferenceSIMTwoStageDeferredWithMinScore(...)`；
+- 再复用和 runtime 一致的 post-filter 与 task-output writer；
+- 输出 tile filename / TSV schema 与 exported gold 完全对齐。
 
 ### Prototype compare contract
 
@@ -104,13 +182,17 @@ python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py \
 make check-exact-sim-two-stage-threshold
 make check-two-stage-task-rerun-runtime
 make check-benchmark-two-stage-task-rerun-kernel-feasibility
+make check-analyze-two-stage-task-rerun-corpus-shapes
+make check-exact-sim-task-rerun-replay
 ```
 
 ## Next Step
 
 如果下一轮要继续推进 kernel feasibility，应直接基于该 baseline 做：
 
-1. fixed-panel `budget16` selected tasks 的 CPU gold export；
-2. task-level exact `SIM` GPU rewrite prototype；
-3. prototype task-output semantic compare；
-4. micro-benchmark go/no-go（语义等价 + kernel speedup + integrated wall-time impact）。
+1. 不再重复“先跑 full fixed-panel audit”这一步，当前 full-panel 结果已经表明 `gpu_batching_candidate=False`；
+2. 先基于现有 corpus 继续做更细的 task-shape / batching strategy 审计，判断：
+   - 是不是存在更窄、但更稳定的 GPU-friendly bucket；
+   - 还是更适合先做 CPU-side bucketed rerun executor；
+3. 只有当新的 micro-benchmark / bucket 审计能把足够多的 wall-time 聚焦到更稳定的 batch 形态，才推进 task-level exact `SIM` GPU prototype；
+4. 无论走 CPU 还是 GPU prototype，都继续沿用同一 corpus 与 task-output semantic compare contract，并按 go/no-go（语义等价 + kernel speedup + integrated wall-time impact）决定是否继续。

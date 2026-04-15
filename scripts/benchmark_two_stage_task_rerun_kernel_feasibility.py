@@ -23,6 +23,87 @@ import benchmark_sample_vs_fasim as sample_vs_fasim  # noqa: E402
 
 
 SCORE_TOLERANCE = 1e-6
+TASK_KEY_COLUMNS = [
+    "fragment_index",
+    "fragment_start_in_seq",
+    "fragment_end_in_seq",
+    "reverse_mode",
+    "parallel_mode",
+    "strand",
+    "rule",
+]
+REPLAY_WINDOW_FIELDNAMES = [
+    "task_key",
+    "fragment_index",
+    "fragment_start_in_seq",
+    "fragment_end_in_seq",
+    "reverse_mode",
+    "parallel_mode",
+    "strand",
+    "rule",
+    "min_score",
+    "window_id",
+    "sorted_rank",
+    "window_start_in_fragment",
+    "window_end_in_fragment",
+    "window_start_in_seq",
+    "window_end_in_seq",
+    "best_seed_score",
+    "second_best_seed_score",
+    "margin",
+    "support_count",
+    "window_bp",
+    "before_gate",
+    "after_gate",
+    "reject_reason",
+]
+CORPUS_MANIFEST_FIELDNAMES = [
+    "tile_key",
+    "tile_filename",
+    "anchor_label",
+    "selection_bucket_length_bp",
+    "selection_kind",
+    "selection_rank",
+    "start_bp",
+    "length_bp",
+    "report_path",
+    "tile_output_dir",
+    "dna_fasta_path",
+    "rna_fasta_path",
+    "selected_tasks_tsv",
+    "profile_tsv",
+    "window_trace_tsv",
+    "replay_windows_tsv",
+    "task_output_tsv",
+    "task_key",
+    "fragment_index",
+    "fragment_start_in_seq",
+    "fragment_end_in_seq",
+    "reverse_mode",
+    "parallel_mode",
+    "strand",
+    "rule",
+    "fragment_length",
+    "target_length",
+    "baseline_windows",
+    "rerun_windows",
+    "added_windows",
+    "baseline_bp",
+    "rerun_bp",
+    "added_bp",
+    "min_score",
+    "rerun_total_seconds",
+    "task_output_row_count",
+]
+DEFAULT_REPLAY_CONFIG = {
+    "nt_min": 20,
+    "nt_max": 100000,
+    "score_min": 0.0,
+    "min_identity": 60.0,
+    "min_stability": 1.0,
+    "penalty_t": -1000,
+    "penalty_c": 0,
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -74,6 +155,14 @@ def _profile_filename(item: dict[str, object]) -> str:
 
 
 def _task_output_filename(item: dict[str, object]) -> str:
+    return _selected_tasks_filename(item)
+
+
+def _window_trace_filename(item: dict[str, object]) -> str:
+    return _selected_tasks_filename(item)
+
+
+def _replay_windows_filename(item: dict[str, object]) -> str:
     return _selected_tasks_filename(item)
 
 
@@ -143,6 +232,8 @@ def _build_tile_command(
         baseline_run_label,
         "--run-label",
         candidate_run_label,
+        "--debug-window-run-label",
+        candidate_run_label,
         "--run-env",
         f"{candidate_run_label}:LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH={selected_tasks_path}",
         "--run-env",
@@ -157,11 +248,15 @@ def _build_tile_command(
 
 
 def _load_profile_rows(path: Path) -> list[dict[str, object]]:
+    return _load_tsv_rows(path)
+
+
+def _load_tsv_rows(path: Path) -> list[dict[str, str]]:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines:
         return []
     header = lines[0].split("\t")
-    rows: list[dict[str, object]] = []
+    rows: list[dict[str, str]] = []
     for line in lines[1:]:
         if not line:
             continue
@@ -182,17 +277,45 @@ def _task_output_key(row: dict[str, str]) -> tuple[int, int, int, int, str, int]
 
 
 def _load_task_output_rows(path: Path) -> list[dict[str, str]]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if not lines:
-        return []
-    header = lines[0].split("\t")
-    rows: list[dict[str, str]] = []
-    for line in lines[1:]:
-        if not line:
-            continue
-        values = line.split("\t")
-        rows.append(dict(zip(header, values)))
-    return rows
+    return _load_tsv_rows(path)
+
+
+def _write_tsv(path: Path, fieldnames: list[str], rows: list[dict[str, object]]) -> None:
+    lines = ["\t".join(fieldnames)]
+    for row in rows:
+        lines.append("\t".join(str(row.get(field, "")) for field in fieldnames))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _safe_task_key_from_parts(
+    fragment_index: object,
+    fragment_start_in_seq: object,
+    fragment_end_in_seq: object,
+    reverse_mode: object,
+    parallel_mode: object,
+    strand: object,
+    rule: object,
+) -> str:
+    return (
+        f"{fragment_index}|{fragment_start_in_seq}|{fragment_end_in_seq}|"
+        f"{reverse_mode}|{parallel_mode}|{strand}|{rule}"
+    )
+
+
+def _safe_task_key_from_window_row(row: dict[str, str]) -> str:
+    return _safe_task_key_from_parts(
+        row["fragment_index"],
+        row["fragment_start_in_seq"],
+        row["fragment_end_in_seq"],
+        row["reverse_mode"],
+        row["parallel_mode"],
+        row["strand"],
+        row["rule"],
+    )
+
+
+def _relative_to(root: Path, path: Path) -> str:
+    return str(path.resolve().relative_to(root.resolve()))
 
 
 def _sha256_text(text: str) -> str:
@@ -353,6 +476,116 @@ def _compare_task_output_files(baseline_path: Path, candidate_path: Path) -> dic
     }
 
 
+def _build_task_replay_windows(
+    *,
+    tile: dict[str, object],
+    output_dir: Path,
+    window_trace_rows: list[dict[str, str]],
+    profile_rows: list[dict[str, object]],
+    task_output_summaries: dict[str, TaskOutputSummary],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    profile_by_task = {str(row["task_key"]): row for row in profile_rows}
+    effective_task_keys = [
+        task_key
+        for task_key, row in profile_by_task.items()
+        if str(row.get("selected", "0")) == "1" and str(row.get("effective", "0")) == "1"
+    ]
+    effective_task_key_set = set(effective_task_keys)
+
+    replay_window_rows: list[dict[str, object]] = []
+    for row in window_trace_rows:
+        task_key = _safe_task_key_from_window_row(row)
+        if task_key not in effective_task_key_set or str(row.get("before_gate", "0")) != "1":
+            continue
+        profile = profile_by_task[task_key]
+        replay_window_rows.append(
+            {
+                "task_key": task_key,
+                "fragment_index": row["fragment_index"],
+                "fragment_start_in_seq": row["fragment_start_in_seq"],
+                "fragment_end_in_seq": row["fragment_end_in_seq"],
+                "reverse_mode": row["reverse_mode"],
+                "parallel_mode": row["parallel_mode"],
+                "strand": row["strand"],
+                "rule": row["rule"],
+                "min_score": profile.get("min_score", "0"),
+                "window_id": row["window_id"],
+                "sorted_rank": row["sorted_rank"],
+                "window_start_in_fragment": row["window_start_in_fragment"],
+                "window_end_in_fragment": row["window_end_in_fragment"],
+                "window_start_in_seq": row["window_start_in_seq"],
+                "window_end_in_seq": row["window_end_in_seq"],
+                "best_seed_score": row.get("best_seed_score", ""),
+                "second_best_seed_score": row.get("second_best_seed_score", ""),
+                "margin": row.get("margin", ""),
+                "support_count": row.get("support_count", ""),
+                "window_bp": row.get("window_bp", ""),
+                "before_gate": row.get("before_gate", ""),
+                "after_gate": row.get("after_gate", ""),
+                "reject_reason": row.get("reject_reason", ""),
+            }
+        )
+
+    replay_window_task_keys = {str(row["task_key"]) for row in replay_window_rows}
+    missing_task_keys = sorted(effective_task_key_set - replay_window_task_keys)
+    if missing_task_keys:
+        raise RuntimeError(
+            f"missing replay windows for effective task(s) in tile {_tile_key(tile)}: {', '.join(missing_task_keys[:5])}"
+        )
+
+    manifest_rows: list[dict[str, object]] = []
+    for task_key in effective_task_keys:
+        profile = profile_by_task[task_key]
+        task_output_summary = task_output_summaries.get(task_key)
+        if task_output_summary is None:
+            row_count = 0
+        else:
+            row_count = task_output_summary.row_count
+
+        fragment_index, fragment_start_in_seq, fragment_end_in_seq, reverse_mode, parallel_mode, strand, rule = task_key.split("|")
+        manifest_rows.append(
+            {
+                "tile_key": _tile_key(tile),
+                "tile_filename": _task_output_filename(tile),
+                "anchor_label": tile["anchor_label"],
+                "selection_bucket_length_bp": int(tile["selection_bucket_length_bp"]),
+                "selection_kind": tile["selection_kind"],
+                "selection_rank": int(tile.get("selection_rank", 0)),
+                "start_bp": int(tile["start_bp"]),
+                "length_bp": int(tile["length_bp"]),
+                "report_path": _relative_to(output_dir, Path(str(tile["report_path"]))),
+                "tile_output_dir": _relative_to(output_dir, Path(str(tile["tile_output_dir"]))),
+                "dna_fasta_path": _relative_to(output_dir, Path(str(tile["dna_fasta_path"]))),
+                "rna_fasta_path": _relative_to(output_dir, Path(str(tile["rna_fasta_path"]))),
+                "selected_tasks_tsv": _relative_to(output_dir, Path(str(tile["task_rerun_selected_tasks_path"]))),
+                "profile_tsv": _relative_to(output_dir, Path(str(tile["task_rerun_profile_tsv"]))),
+                "window_trace_tsv": _relative_to(output_dir, Path(str(tile["task_rerun_window_trace_tsv"]))),
+                "replay_windows_tsv": _relative_to(output_dir, Path(str(tile["task_rerun_windows_tsv"]))),
+                "task_output_tsv": _relative_to(output_dir, Path(str(tile["task_rerun_task_output_tsv"]))),
+                "task_key": task_key,
+                "fragment_index": int(fragment_index),
+                "fragment_start_in_seq": int(fragment_start_in_seq),
+                "fragment_end_in_seq": int(fragment_end_in_seq),
+                "reverse_mode": int(reverse_mode),
+                "parallel_mode": int(parallel_mode),
+                "strand": strand,
+                "rule": int(rule),
+                "fragment_length": int(profile.get("fragment_length", "0") or 0),
+                "target_length": int(profile.get("target_length", "0") or 0),
+                "baseline_windows": int(profile.get("baseline_windows", "0") or 0),
+                "rerun_windows": int(profile.get("rerun_windows", "0") or 0),
+                "added_windows": int(profile.get("added_windows", "0") or 0),
+                "baseline_bp": int(profile.get("baseline_bp", "0") or 0),
+                "rerun_bp": int(profile.get("rerun_bp", "0") or 0),
+                "added_bp": int(profile.get("added_bp", "0") or 0),
+                "min_score": int(profile.get("min_score", "0") or 0),
+                "rerun_total_seconds": float(profile.get("rerun_total_seconds", "0") or 0.0),
+                "task_output_row_count": row_count,
+            }
+        )
+    return replay_window_rows, manifest_rows
+
+
 def _render_dry_run_markdown(report: dict[str, object]) -> str:
     lines = [
         "# Two-Stage Task Rerun Kernel Feasibility (Dry Run)",
@@ -361,6 +594,10 @@ def _render_dry_run_markdown(report: dict[str, object]) -> str:
         f"- baseline_run_label: {report['baseline_run_label']}",
         f"- candidate_run_label: {report['candidate_run_label']}",
         f"- selected_tile_count: {report['selected_tile_count']}",
+        f"- task_rerun_window_trace_root: {report['task_rerun_window_trace_root']}",
+        f"- task_rerun_windows_root: {report['task_rerun_windows_root']}",
+        f"- task_rerun_corpus_manifest_tsv: {report['task_rerun_corpus_manifest_tsv']}",
+        f"- task_rerun_corpus_manifest_json: {report['task_rerun_corpus_manifest_json']}",
         "",
         "## Commands",
         "",
@@ -382,6 +619,7 @@ def _render_summary_markdown(summary: dict[str, object]) -> str:
         f"- selected_tile_count: {summary['selected_tile_count']}",
         f"- selected_task_count_total: {summary['selected_task_count_total']}",
         f"- effective_task_count_total: {aggregate['effective_task_count_total']}",
+        f"- corpus_task_count_total: {aggregate['corpus_task_count_total']}",
         f"- task_output_row_count_total: {aggregate['task_output_row_count_total']}",
         f"- task_output_task_count_total: {aggregate['task_output_task_count_total']}",
         "",
@@ -389,6 +627,8 @@ def _render_summary_markdown(summary: dict[str, object]) -> str:
         "",
         f"- task_rerun_effective_sim_seconds_total: {aggregate['task_rerun_effective_sim_seconds_total']:.6f}",
         f"- task_rerun_refine_bp_total: {aggregate['task_rerun_refine_bp_total']}",
+        f"- task_rerun_window_trace_row_count_total: {aggregate['task_rerun_window_trace_row_count_total']}",
+        f"- task_rerun_replay_window_row_count_total: {aggregate['task_rerun_replay_window_row_count_total']}",
         "",
     ]
     comparison = summary.get("candidate_task_output_comparison")
@@ -454,9 +694,15 @@ def main() -> int:
     selected_tasks_root = output_dir / "task_rerun_selected_tasks"
     profiles_root = output_dir / "task_rerun_profiles"
     task_outputs_root = output_dir / "task_rerun_task_outputs"
+    window_traces_root = output_dir / "task_rerun_window_traces"
+    replay_windows_root = output_dir / "task_rerun_windows"
+    corpus_manifest_tsv = output_dir / "task_rerun_corpus_manifest.tsv"
+    corpus_manifest_json = output_dir / "task_rerun_corpus_manifest.json"
     selected_tasks_root.mkdir(parents=True, exist_ok=True)
     profiles_root.mkdir(parents=True, exist_ok=True)
     task_outputs_root.mkdir(parents=True, exist_ok=True)
+    window_traces_root.mkdir(parents=True, exist_ok=True)
+    replay_windows_root.mkdir(parents=True, exist_ok=True)
 
     commands: list[list[str]] = []
     tiles: list[dict[str, object]] = []
@@ -497,6 +743,10 @@ def main() -> int:
             "candidate_run_label": candidate_run_label,
             "selected_tile_count": len(selected_microanchors),
             "selected_task_count_total": selected_task_count_total,
+            "task_rerun_window_trace_root": str(window_traces_root),
+            "task_rerun_windows_root": str(replay_windows_root),
+            "task_rerun_corpus_manifest_tsv": str(corpus_manifest_tsv),
+            "task_rerun_corpus_manifest_json": str(corpus_manifest_json),
             "commands": commands,
         }
         dry_run_path = output_dir / "dry_run.json"
@@ -523,10 +773,32 @@ def main() -> int:
         task_output_tsv_path = Path(str(tile["task_rerun_task_output_tsv"]))
         task_output_rows = _load_task_output_rows(task_output_tsv_path)
         task_output_summaries = _summarize_task_outputs(task_output_tsv_path)
+        debug_windows_raw_path = Path(str(candidate_run.get("debug_windows_csv", "")))
+        if not debug_windows_raw_path.exists():
+            raise RuntimeError(
+                f"candidate run missing debug windows CSV for tile {_tile_key(tile)}: {debug_windows_raw_path}"
+            )
+        debug_windows_dst = window_traces_root / _window_trace_filename(tile)
+        shutil.copyfile(debug_windows_raw_path, debug_windows_dst)
+        window_trace_rows = _load_tsv_rows(debug_windows_dst)
+        replay_windows_dst = replay_windows_root / _replay_windows_filename(tile)
         updated = dict(tile)
         updated["report_path"] = str(report_path)
         updated["runs"] = report["runs"]
         updated["comparisons_vs_legacy"] = report["comparisons_vs_legacy"]
+        updated["task_rerun_window_trace_tsv"] = str(debug_windows_dst)
+        updated["task_rerun_windows_tsv"] = str(replay_windows_dst)
+        updated["task_rerun_window_trace_row_count"] = len(window_trace_rows)
+        updated["dna_fasta_path"] = str((Path(str(tile["tile_output_dir"])) / "inputs" / str(report["inputs"]["dna_basename"])).resolve())
+        updated["rna_fasta_path"] = str((Path(str(tile["tile_output_dir"])) / "inputs" / str(report["inputs"]["rna_basename"])).resolve())
+        replay_window_rows, manifest_rows = _build_task_replay_windows(
+            tile=updated,
+            output_dir=output_dir,
+            window_trace_rows=window_trace_rows,
+            profile_rows=profile_rows,
+            task_output_summaries=task_output_summaries,
+        )
+        _write_tsv(replay_windows_dst, REPLAY_WINDOW_FIELDNAMES, replay_window_rows)
         updated["profile_row_count"] = len(profile_rows)
         updated["effective_task_count"] = int(candidate_run.get("task_rerun_effective_tasks", 0))
         updated["task_rerun_refine_bp_total"] = int(candidate_run.get("task_rerun_refine_bp_total", 0))
@@ -535,18 +807,49 @@ def main() -> int:
         updated["task_output_task_count"] = len(task_output_summaries)
         updated["task_output_task_keys"] = sorted(task_output_summaries.keys())
         updated["task_output_tsv_sha256"] = hashlib.sha256(task_output_tsv_path.read_bytes()).hexdigest()
+        updated["task_rerun_replay_window_row_count"] = len(replay_window_rows)
+        updated["task_rerun_manifest_rows"] = manifest_rows
         return updated
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         exported_tiles = list(executor.map(run_tile, range(len(tiles))))
 
+    manifest_rows: list[dict[str, object]] = []
+    for tile in exported_tiles:
+        manifest_rows.extend(list(tile.get("task_rerun_manifest_rows", [])))
+
+    manifest_json = {
+        "schema_version": 1,
+        "source_panel_summary": str(panel_summary_path),
+        "baseline_run_label": baseline_run_label,
+        "candidate_run_label": candidate_run_label,
+        "selected_tile_count": len(exported_tiles),
+        "selected_task_count_total": selected_task_count_total,
+        "effective_task_count_total": sum(int(tile["effective_task_count"]) for tile in exported_tiles),
+        "replay_defaults": DEFAULT_REPLAY_CONFIG,
+        "paths": {
+            "selected_tasks_root": _relative_to(output_dir, selected_tasks_root),
+            "profiles_root": _relative_to(output_dir, profiles_root),
+            "task_outputs_root": _relative_to(output_dir, task_outputs_root),
+            "window_traces_root": _relative_to(output_dir, window_traces_root),
+            "replay_windows_root": _relative_to(output_dir, replay_windows_root),
+            "corpus_manifest_tsv": _relative_to(output_dir, corpus_manifest_tsv),
+        },
+        "tasks": manifest_rows,
+    }
+    _write_tsv(corpus_manifest_tsv, CORPUS_MANIFEST_FIELDNAMES, manifest_rows)
+    corpus_manifest_json.write_text(json.dumps(manifest_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
     aggregate = {
         "selected_task_count_total": selected_task_count_total,
         "effective_task_count_total": sum(int(tile["effective_task_count"]) for tile in exported_tiles),
+        "corpus_task_count_total": len(manifest_rows),
         "task_rerun_refine_bp_total": sum(int(tile["task_rerun_refine_bp_total"]) for tile in exported_tiles),
         "task_rerun_effective_sim_seconds_total": sum(float(tile["task_rerun_effective_sim_seconds"]) for tile in exported_tiles),
         "task_output_row_count_total": sum(int(tile["task_output_row_count"]) for tile in exported_tiles),
         "task_output_task_count_total": sum(int(tile["task_output_task_count"]) for tile in exported_tiles),
+        "task_rerun_window_trace_row_count_total": sum(int(tile["task_rerun_window_trace_row_count"]) for tile in exported_tiles),
+        "task_rerun_replay_window_row_count_total": sum(int(tile["task_rerun_replay_window_row_count"]) for tile in exported_tiles),
     }
 
     compare_root = Path(args.compare_task_output_root).resolve() if args.compare_task_output_root else None
@@ -582,6 +885,10 @@ def main() -> int:
         "candidate_run_label": candidate_run_label,
         "selected_tile_count": len(exported_tiles),
         "selected_task_count_total": selected_task_count_total,
+        "task_rerun_window_trace_root": str(window_traces_root),
+        "task_rerun_windows_root": str(replay_windows_root),
+        "task_rerun_corpus_manifest_tsv": str(corpus_manifest_tsv),
+        "task_rerun_corpus_manifest_json": str(corpus_manifest_json),
         "selected_microanchors": exported_tiles,
         "aggregate": aggregate,
     }

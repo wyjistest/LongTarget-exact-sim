@@ -200,6 +200,7 @@ expected_columns = {
     "baseline_bp",
     "rerun_bp",
     "added_bp",
+    "min_score",
     "threshold_seconds",
     "sim_seconds",
     "post_process_seconds",
@@ -209,6 +210,7 @@ assert expected_columns.issubset(good_row.keys())
 assert good_row["selected"] == "1"
 assert good_row["effective"] == "1"
 assert int(good_row["added_windows"]) > 0
+assert int(good_row["min_score"]) > 0
 assert float(good_row["sim_seconds"]) > 0.0
 assert float(good_row["rerun_total_seconds"]) >= float(good_row["sim_seconds"])
 

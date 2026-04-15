@@ -1,31 +1,11 @@
 #include "exact_sim.h"
+#include "exact_sim_task_rerun_replay.h"
 #include "cuda/calc_score_cuda.h"
 #include <fstream>
 #include <future>
 #include <sstream>
 #include <thread>
 using namespace std;
-struct ExactFragmentInfo
-{
-  ExactFragmentInfo():dnaStartPos(0),skip(false) {}
-  ExactFragmentInfo(const string &s1,long n1,bool n2):sequence(s1),dnaStartPos(n1),skip(n2) {}
-  string sequence;
-  long dnaStartPos;
-  bool skip;
-};
-
-struct ExactSimTaskSpec
-{
-  ExactSimTaskSpec():fragmentIndex(0),dnaStartPos(0),reverseMode(0),parallelMode(0),rule(0) {}
-  ExactSimTaskSpec(size_t n1,long n2,long n3,long n4,int n5,const string &s1):
-    fragmentIndex(n1),dnaStartPos(n2),reverseMode(n3),parallelMode(n4),rule(n5),transformedSequence(s1) {}
-  size_t fragmentIndex;
-  long dnaStartPos;
-  long reverseMode;
-  long parallelMode;
-  int rule;
-  string transformedSequence;
-};
 
 struct LongTargetCudaWorkerMetrics
 {
@@ -255,6 +235,7 @@ struct LongTargetTaskRerunProfileRow
     baselineBp(0),
     rerunBp(0),
     addedBp(0),
+    minScore(0),
     thresholdSeconds(0.0),
     simSeconds(0.0),
     postProcessSeconds(0.0),
@@ -273,6 +254,7 @@ struct LongTargetTaskRerunProfileRow
   uint64_t baselineBp;
   uint64_t rerunBp;
   uint64_t addedBp;
+  int minScore;
   double thresholdSeconds;
   double simSeconds;
   double postProcessSeconds;
@@ -574,56 +556,18 @@ static inline string longtarget_two_stage_debug_windows_csv_path_runtime()
 
 static inline string longtarget_task_strand_label(long reverseMode,long parallelMode)
 {
-  if(reverseMode == 0 && parallelMode == 1)
-  {
-    return "ParaPlus";
-  }
-  if(reverseMode == 1 && parallelMode == 1)
-  {
-    return "ParaMinus";
-  }
-  if(reverseMode == 1 && parallelMode == -1)
-  {
-    return "AntiMinus";
-  }
-  if(reverseMode == 0 && parallelMode == -1)
-  {
-    return "AntiPlus";
-  }
-  return "";
+  return exactSimTaskStrandLabel(reverseMode,parallelMode);
 }
 
 static inline string longtarget_two_stage_task_rerun_task_key(const ExactSimTaskSpec &task,
                                                               size_t fragmentLength)
 {
-  const long fragmentStart = task.dnaStartPos + 1;
-  const long fragmentEnd = task.dnaStartPos + static_cast<long>(fragmentLength);
-  ostringstream out;
-  out<<task.fragmentIndex<<"\t"
-     <<fragmentStart<<"\t"
-     <<fragmentEnd<<"\t"
-     <<task.reverseMode<<"\t"
-     <<task.parallelMode<<"\t"
-     <<longtarget_task_strand_label(task.reverseMode,task.parallelMode)<<"\t"
-     <<task.rule;
-  return out.str();
+  return exactSimTaskRerunTaskKey(task,fragmentLength);
 }
 
 static inline string longtarget_two_stage_task_rerun_safe_task_key(const string &rawTaskKey)
 {
-  string safeTaskKey = rawTaskKey;
-  for(size_t charIndex = 0; charIndex < safeTaskKey.size(); ++charIndex)
-  {
-    if(safeTaskKey[charIndex] == '\t')
-    {
-      safeTaskKey[charIndex] = '|';
-    }
-    else if(safeTaskKey[charIndex] == '\n' || safeTaskKey[charIndex] == '\r')
-    {
-      safeTaskKey[charIndex] = ' ';
-    }
-  }
-  return safeTaskKey;
+  return exactSimTaskRerunSafeTaskKey(rawTaskKey);
 }
 
 static inline bool longtarget_load_two_stage_task_rerun_selected_task_keys(
@@ -852,6 +796,7 @@ static inline void longtarget_write_two_stage_task_rerun_profile_header(ostream 
      <<"baseline_bp\t"
      <<"rerun_bp\t"
      <<"added_bp\t"
+     <<"min_score\t"
      <<"threshold_seconds\t"
      <<"sim_seconds\t"
      <<"post_process_seconds\t"
@@ -876,6 +821,7 @@ static inline void longtarget_write_two_stage_task_rerun_profile_row(
      <<row.baselineBp<<"\t"
      <<row.rerunBp<<"\t"
      <<row.addedBp<<"\t"
+     <<row.minScore<<"\t"
      <<row.thresholdSeconds<<"\t"
      <<row.simSeconds<<"\t"
      <<row.postProcessSeconds<<"\t"
@@ -885,24 +831,7 @@ static inline void longtarget_write_two_stage_task_rerun_profile_row(
 
 static inline void longtarget_write_two_stage_task_rerun_task_output_header(ostream &out)
 {
-  out<<"task_key\t"
-     <<"selected\t"
-     <<"effective\t"
-     <<"Chr\t"
-     <<"StartInGenome\t"
-     <<"EndInGenome\t"
-     <<"Strand\t"
-     <<"Rule\t"
-     <<"QueryStart\t"
-     <<"QueryEnd\t"
-     <<"StartInSeq\t"
-     <<"EndInSeq\t"
-     <<"Direction\t"
-     <<"Score\t"
-     <<"Nt(bp)\t"
-     <<"MeanIdentity(%)\t"
-     <<"MeanStability"
-     <<endl;
+  exactSimTaskRerunWriteTaskOutputHeader(out);
 }
 
 static inline void longtarget_write_two_stage_task_rerun_task_output_row(
@@ -910,27 +839,7 @@ static inline void longtarget_write_two_stage_task_rerun_task_output_row(
   const string &taskKey,
   const triplex &atr)
 {
-  const bool forward = atr.starj < atr.endj;
-  const long genomeStart = forward ? atr.starj : atr.endj;
-  const long genomeEnd = forward ? atr.endj : atr.starj;
-  out<<longtarget_two_stage_task_rerun_safe_task_key(taskKey)<<"\t"
-     <<1<<"\t"
-     <<1<<"\t"
-     <<""<<"\t"
-     <<genomeStart<<"\t"
-     <<genomeEnd<<"\t"
-     <<longtarget_task_strand_label(atr.reverse,atr.strand)<<"\t"
-     <<atr.rule<<"\t"
-     <<atr.stari<<"\t"
-     <<atr.endi<<"\t"
-     <<atr.starj<<"\t"
-     <<atr.endj<<"\t"
-     <<(forward ? "R" : "L")<<"\t"
-     <<atr.score<<"\t"
-     <<atr.nt<<"\t"
-     <<atr.identity<<"\t"
-     <<atr.tri_score
-     <<endl;
+  exactSimTaskRerunWriteTaskOutputRow(out,taskKey,atr,1,1);
 }
 
 static inline void longtarget_run_exact_sim_single_stage_with_min_score(string &rnaSequence,
@@ -1179,53 +1088,17 @@ static inline LongTargetOutputMode longtarget_output_mode_runtime()
   return mode;
 }
 
-static inline void appendExactSimTask(vector<ExactSimTaskSpec> &tasks,
-                                      size_t fragmentIndex,
-                                      const string &fragmentSequence,
-                                      long dnaStartPos,
-                                      long reverseMode,
-                                      long parallelMode,
-                                      int rule)
-{
-  string transformedSequence = transferString(fragmentSequence,reverseMode,parallelMode,rule);
-  if(reverseMode == 1)
-  {
-    reverseSeq(transformedSequence);
-  }
-  tasks.push_back(ExactSimTaskSpec(fragmentIndex,dnaStartPos,reverseMode,parallelMode,rule,transformedSequence));
-}
-
-static inline void appendExactSimTaskRange(vector<ExactSimTaskSpec> &tasks,
-                                           size_t fragmentIndex,
-                                           const string &fragmentSequence,
-                                           long dnaStartPos,
-                                           long reverseMode,
-                                           long parallelMode,
-                                           int firstRule,
-                                           int lastRule)
-{
-  for(int rule = firstRule; rule <= lastRule; ++rule)
-  {
-    appendExactSimTask(tasks,fragmentIndex,fragmentSequence,dnaStartPos,reverseMode,parallelMode,rule);
-  }
-}
-
 static inline void filterTriplexListInPlace(vector<struct triplex> &triplexList,const struct para &paraList)
 {
-  size_t writeIndex = 0;
-  for(size_t readIndex = 0; readIndex < triplexList.size(); ++readIndex)
-  {
-    const triplex &candidate = triplexList[readIndex];
-    if(candidate.score>=paraList.scoreMin&&candidate.identity>=paraList.minIdentity&&candidate.tri_score>=paraList.minStability)
-    {
-      if(writeIndex != readIndex)
-      {
-        triplexList[writeIndex] = candidate;
-      }
-      ++writeIndex;
-    }
-  }
-  triplexList.resize(writeIndex);
+  ExactSimTaskRerunReplayConfig config;
+  config.ntMin = paraList.ntMin;
+  config.ntMax = paraList.ntMax;
+  config.scoreMin = paraList.scoreMin;
+  config.minIdentity = paraList.minIdentity;
+  config.minStability = paraList.minStability;
+  config.penaltyT = paraList.penaltyT;
+  config.penaltyC = paraList.penaltyC;
+  exactSimTaskRerunFilterTriplexListInPlace(triplexList,config);
 }
 
 static inline void longtarget_run_exact_sim_single_stage_with_min_score(string &rnaSequence,
@@ -4128,6 +4001,19 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
       if(taskRerunSelected[taskIndex] == 0)
       {
         continue;
+      }
+      if(taskMinScoreReady[taskIndex] != 0)
+      {
+        taskRerunProfiles[taskIndex].minScore = taskMinScores[taskIndex];
+      }
+      else if(taskRerunEffective[taskIndex] != 0)
+      {
+        CalcScoreWorkspace &workspace = default_exact_sim_calc_score_workspace();
+        taskRerunProfiles[taskIndex].minScore =
+          getExactReferenceMinScore(rnaSequence,
+                                    tasks[taskIndex].transformedSequence,
+                                    &runContext,
+                                    workspace);
       }
       longtarget_write_two_stage_task_rerun_profile_row(taskRerunProfileTsv,taskRerunProfiles[taskIndex]);
     }

@@ -93,8 +93,20 @@ assert report["commands"]
 expected_selected_root = work / "task_rerun_selected_tasks"
 expected_profile_root = work / "task_rerun_profiles"
 expected_output_root = work / "task_rerun_task_outputs"
+expected_window_trace_root = work / "task_rerun_window_traces"
+expected_replay_windows_root = work / "task_rerun_windows"
+expected_manifest_tsv = work / "task_rerun_corpus_manifest.tsv"
+expected_manifest_json = work / "task_rerun_corpus_manifest.json"
+
+assert report["task_rerun_window_trace_root"] == str(expected_window_trace_root)
+assert report["task_rerun_windows_root"] == str(expected_replay_windows_root)
+assert report["task_rerun_corpus_manifest_tsv"] == str(expected_manifest_tsv)
+assert report["task_rerun_corpus_manifest_json"] == str(expected_manifest_json)
 
 for command in report["commands"]:
+    assert command.count("--debug-window-run-label") == 1
+    debug_index = command.index("--debug-window-run-label")
+    assert command[debug_index + 1] == "deferred_exact_minimal_v3_task_rerun_budget16"
     selected_matches = [
         item
         for item in command

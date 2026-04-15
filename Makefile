@@ -14,7 +14,7 @@ SOURCES += cuda/sim_scan_cuda_stub.cpp
 SOURCES += cuda/prealign_cuda_stub.cpp
 SOURCES += cuda/sim_traceback_cuda_stub.cpp
 SOURCES += cuda/sim_locate_cuda_stub.cpp
-HEADERS := exact_sim.h sim.h stats.h rules.h cuda/calc_score_cuda.h cuda/sim_cuda_runtime.h cuda/sim_scan_cuda.h cuda/prealign_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h
+HEADERS := exact_sim.h exact_sim_task_rerun_replay.h sim.h stats.h rules.h cuda/calc_score_cuda.h cuda/sim_cuda_runtime.h cuda/sim_scan_cuda.h cuda/prealign_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h
 ENABLE_OPENMP ?= 0
 OPENMP_FLAGS ?=
 
@@ -394,6 +394,9 @@ SIM_RESIDENCY_FRONTIER_TEST_SOURCES := tests/test_sim_residency_frontier.cpp cud
 EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_TARGET ?= tests/test_exact_sim_two_stage_threshold
 EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_SOURCES := tests/test_exact_sim_two_stage_threshold.cpp cuda/prealign_cuda_stub.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+EXACT_SIM_TASK_RERUN_REPLAY_TARGET ?= exact_sim_task_rerun_replay
+EXACT_SIM_TASK_RERUN_REPLAY_SOURCES := exact_sim_task_rerun_replay.cpp cuda/prealign_cuda_stub.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 build-fasim-cigar-test: $(FASIM_CIGAR_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
@@ -415,6 +418,8 @@ build-sim-safe-workset-cuda-test: $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
 build-sim-residency-frontier-test: $(SIM_RESIDENCY_FRONTIER_TEST_TARGET)
 
 build-exact-sim-two-stage-threshold-test: $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_TARGET)
+
+build-exact-sim-task-rerun-replay: $(EXACT_SIM_TASK_RERUN_REPLAY_TARGET)
 
 $(FASIM_CIGAR_TEST_TARGET): $(FASIM_CIGAR_TEST_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_CIGAR_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -449,6 +454,9 @@ $(SIM_RESIDENCY_FRONTIER_TEST_TARGET): $(SIM_RESIDENCY_FRONTIER_TEST_SOURCES) si
 $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_TARGET): $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_SOURCES) exact_sim.h sim.h cuda/prealign_cuda.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
+$(EXACT_SIM_TASK_RERUN_REPLAY_TARGET): $(EXACT_SIM_TASK_RERUN_REPLAY_SOURCES) exact_sim.h exact_sim_task_rerun_replay.h sim.h cuda/prealign_cuda.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(EXACT_SIM_TASK_RERUN_REPLAY_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
 check-fasim-cigar: $(FASIM_CIGAR_TEST_TARGET)
 	./$(FASIM_CIGAR_TEST_TARGET)
 
@@ -481,6 +489,9 @@ check-sim-residency-frontier: $(SIM_RESIDENCY_FRONTIER_TEST_TARGET)
 
 check-exact-sim-two-stage-threshold: $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_TARGET)
 	./$(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_TARGET)
+
+check-exact-sim-task-rerun-replay: $(EXACT_SIM_TASK_RERUN_REPLAY_TARGET)
+	REPLAY_BIN=$(CURDIR)/$(EXACT_SIM_TASK_RERUN_REPLAY_TARGET) LONGTARGET_BIN=$(CURDIR)/$(CUDA_TARGET) bash ./scripts/check_exact_sim_task_rerun_replay.sh
 
 check-benchmark-telemetry:
 	$(MAKE) build-cuda
@@ -574,6 +585,10 @@ check-benchmark-two-stage-task-rerun-kernel-feasibility:
 	python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py --help >/dev/null
 	bash ./scripts/check_benchmark_two_stage_task_rerun_kernel_feasibility.sh
 
+check-analyze-two-stage-task-rerun-corpus-shapes:
+	python3 ./scripts/analyze_two_stage_task_rerun_corpus_shapes.py --help >/dev/null
+	bash ./scripts/check_analyze_two_stage_task_rerun_corpus_shapes.sh
+
 check-analyze-two-stage-selector-candidate-classes:
 	python3 ./scripts/analyze_two_stage_selector_candidate_classes.py --help >/dev/null
 	bash ./scripts/check_analyze_two_stage_selector_candidate_classes.sh
@@ -633,12 +648,12 @@ check-longtarget-lite-output:
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-locate-update-test check-sim-locate-update \
-		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
+		build-exact-sim-two-stage-threshold-test build-exact-sim-task-rerun-replay check-exact-sim-two-stage-threshold check-exact-sim-task-rerun-replay \
 			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
-		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-profile-two-stage-panel-task-rerun-runtime check-benchmark-two-stage-task-rerun-kernel-feasibility check-analyze-two-stage-selector-candidate-classes \
+		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-profile-two-stage-panel-task-rerun-runtime check-benchmark-two-stage-task-rerun-kernel-feasibility check-analyze-two-stage-task-rerun-corpus-shapes check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \
 		check-replay-two-stage-task-level-rerun check-search-two-stage-task-trigger-rankings check-two-stage-task-rerun-runtime

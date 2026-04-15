@@ -796,7 +796,12 @@ python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py \
 
   - the feasibility harness keeps selected tiles and selected-task TSVs fixed, reruns the runtime baseline, and exports:
     - `task_rerun_profiles/*.tsv`
+      - each selected task now carries a replay-ready `min_score` column, so isolated replay no longer needs to re-enter threshold discovery
     - `task_rerun_task_outputs/*.tsv`
+    - `task_rerun_window_traces/*.tsv`
+    - `task_rerun_windows/*.tsv`
+    - `task_rerun_corpus_manifest.tsv`
+    - `task_rerun_corpus_manifest.json`
     - `summary.json` / `summary.md`
   - optional prototype compare:
 
@@ -808,6 +813,37 @@ python3 ./scripts/benchmark_two_stage_task_rerun_kernel_feasibility.py \
 ```
 
   - compare mode expects prototype task-output TSVs to mirror the exported tile filenames and enforces task-key/result-set/score equality instead of panel-level approximation metrics
+  - task-shape audit now stays fully offline against the frozen corpus manifest:
+
+```
+python3 ./scripts/analyze_two_stage_task_rerun_corpus_shapes.py \
+  --corpus-manifest .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/task_rerun_corpus_manifest.tsv \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/shape_audit
+```
+
+  - the audit emits bucketed `rerun_bp / target_length / output_row_count / rule|strand` summaries, top cost contributors, and a conservative `gpu_batching_candidate` flag; it is intended to answer “is a GPU rerun kernel worth prototyping?” before touching CUDA code
+  - current full fixed-panel result (12 selected tiles, 2026-04-15):
+    - exported corpus tasks: `16 selected / 16 effective / 16 manifest rows`
+    - exported replay windows: `71`
+    - task-output rows: `468`
+    - rerun added bp total: `8097`
+    - rerun effective sim seconds total: `19.216958`
+    - shape audit: `rerun_seconds_total=19.216985`, `rerun_bp_total=19631`, `gpu_batching_candidate=False`
+    - dominant bucket remains `1025-2048 bp` rerun tasks (`12/16 tasks`, `16.407274s`), while the current conservative batching heuristic only accumulates `gpu_candidate_seconds_total=10.084305`; under this criterion the full panel does **not** yet justify directly committing to a GPU rescue kernel rewrite
+  - isolated CPU replay is now a separate executable that consumes the frozen corpus directly:
+
+```
+./exact_sim_task_rerun_replay \
+  --corpus-manifest .tmp/panel_minimal_v3_task_rerun_budget16_feasibility/task_rerun_corpus_manifest.tsv \
+  --output-dir .tmp/panel_minimal_v3_task_rerun_replay_cpu
+```
+
+  - the replay driver reconstructs each selected+effective task from the manifest, reuses the frozen `min_score + replay windows`, runs `runExactReferenceSIMTwoStageDeferredWithMinScore(...)`, reapplies the same post-filter as runtime, and writes task-output TSVs with the same schema/filenames as the exported gold corpus
+  - local verification for this stage is now:
+    - `make check-two-stage-task-rerun-runtime`
+    - `make check-benchmark-two-stage-task-rerun-kernel-feasibility`
+    - `make check-analyze-two-stage-task-rerun-corpus-shapes`
+    - `make check-exact-sim-task-rerun-replay`
 - Example quality-gated sweep:
 
 ```
