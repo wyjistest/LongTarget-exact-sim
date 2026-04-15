@@ -1208,6 +1208,102 @@
   - 不再继续扩 window-level selector family；
   - 应转向 **deployable task-level ambiguity trigger** 的 trigger-design / calibration，目标是在不依赖 oracle-selected task TSV 的前提下，尽量逼近 budget `8/16` 的 frontier。
 
+## 2026-04-15（oracle-free task trigger calibration v1）
+
+- 按上一轮结论，这一轮不再继续扩 selector，也不先改 runtime，而是把 **oracle-free task-level ambiguity trigger calibration** 落到现有 analysis/replay 链路上：
+  - `scripts/analyze_two_stage_task_ambiguity.py`
+    - 保留原有 oracle 字段：
+      - `baseline_inside_rejected_missing_count_*`
+      - `baseline_inside_rejected_missing_weight`
+      - `rescue_*`
+    - 同时为每个 task 新增 `deployable_features`，且这些特征 **只能** 来自 baseline `minimal_v3` debug TSV / report telemetry：
+      - `kept_window_count`
+      - `uncovered_rejected_window_count`
+      - `uncovered_rejected_bp_total`
+      - `max_uncovered_rejected_window_bp`
+      - `best_kept_score`
+      - `best_rejected_score`
+      - `best_score_gap`
+      - `score_band_counts` / `score_band_bp_totals`
+        - `ge85 / 80_84 / 75_79 / 70_74 / lt70`
+      - `support_bin_counts`
+        - `support1 / support2 / support3plus`
+      - `reject_reason_counts`
+      - `rule_diversity_count`
+      - `strand_diversity_count`
+      - `selective_fallback_selected_window_count`
+    - 这样 oracle-selected task TSV 现在可以被当成监督标签，而不是部署时输入。
+  - `scripts/replay_two_stage_task_level_rerun.py`
+    - 不再只保留 `rescue_gain > 0` 的 task；为了评估 false-positive trigger，replay 候选池扩成全部 eligible tasks。
+    - 新增 `--ranking`：
+      - `oracle_rescue_gain`
+      - `deployable_sparse_gap_v1`
+      - `deployable_support_pressure_v1`
+    - 每个 budget 新增 `oracle_overlap`：
+      - `oracle_selected_task_count`
+      - `candidate_selected_task_count`
+      - `overlap_task_count`
+      - `precision`
+      - `recall`
+      - `jaccard`
+    - 这样 replay summary 既能继续给 runtime helper 提供 `selected_tasks`，又能直接回答“oracle-free trigger 距离 oracle frontier 还有多远”。
+- 测试 / 契约：
+  - `scripts/check_analyze_two_stage_task_ambiguity.sh`
+    - 新增 `deployable_features` 的 schema 与聚合断言。
+  - `scripts/check_replay_two_stage_task_level_rerun.sh`
+    - 新增两条 heuristic ranking 的 fixture 校验；
+    - 同时验证 `oracle_overlap` 的 `precision / recall / jaccard`。
+  - helper 兼容性仍保持通过：
+    - `make check-rerun-two-stage-panel-task-rerun-runtime`
+- 真实 offline calibration：
+  - 分析产物：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact_deployable/summary.json`
+  - replay 产物：
+    - oracle：
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact_oracle/summary.json`
+    - heuristic：
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact_deployable_sparse_gap_v1/summary.json`
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact_deployable_support_pressure_v1/summary.json`
+  - 对比结果：
+    - oracle budget `16`
+      - `delta_top10_retention=+0.1`
+      - `delta_score_weighted_recall≈+0.00837`
+      - `delta_refine_total_bp_total=+8097`
+    - `deployable_sparse_gap_v1`
+      - budget `8`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00095`
+        - `delta_refine_total_bp_total=+7189`
+        - `oracle_overlap_jaccard=0.0`
+      - budget `16`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00142`
+        - `delta_refine_total_bp_total=+12093`
+        - `oracle_overlap_precision=0.0625`
+        - `oracle_overlap_recall=0.0625`
+        - `oracle_overlap_jaccard≈0.0323`
+    - `deployable_support_pressure_v1`
+      - budget `8`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00156`
+        - `delta_refine_total_bp_total=+9382`
+        - `oracle_overlap_jaccard=0.0`
+      - budget `16`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00273`
+        - `delta_refine_total_bp_total=+20015`
+        - `oracle_overlap_precision=0.0625`
+        - `oracle_overlap_recall=0.0625`
+        - `oracle_overlap_jaccard≈0.0323`
+- 结论：
+  - 第一版 naive deployable heuristics **没有**逼近 oracle `budget16` frontier；
+  - 它们不仅没抬动 `top10`，而且 overlap 极低、added bp 反而更大；
+  - 因此这一步不做 runtime confirm，也不新增 runtime lane。
+- 下一步方向进一步收紧成：
+  - 继续停在 offline calibration；
+  - 重点不再是“再写一个 heuristic 名字”，而是设计更有信息量的 deployable task features / calibrated trigger search；
+  - 在新的 oracle-free trigger 至少逼近 oracle budget `16` 大头之前，不推进新的 runtime task trigger。
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`

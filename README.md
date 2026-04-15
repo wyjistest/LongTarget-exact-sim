@@ -606,11 +606,22 @@ python3 ./scripts/replay_two_stage_task_level_rerun.py \
   - it reports both:
     - baseline ambiguity features (`inside_rejected_window` top5/top10 counts and score-weight mass by task)
     - rescue-gain features (which baseline-missing legacy hits would be recovered if that one task were rerun via `deferred_exact`)
+    - `deployable_features`, derived only from baseline `minimal_v3` debug TSV / report telemetry:
+      - `kept_window_count`, `uncovered_rejected_window_count`, `uncovered_rejected_bp_total`, `max_uncovered_rejected_window_bp`
+      - `best_kept_score`, `best_rejected_score`, `best_score_gap`
+      - `score_band_counts` / `score_band_bp_totals` over `ge85 / 80_84 / 75_79 / 70_74 / lt70`
+      - `support_bin_counts` over `support1 / support2 / support3plus`
+      - `reject_reason_counts`, `rule_diversity_count`, `strand_diversity_count`, `selective_fallback_selected_window_count`
   - on the current real `minimal_v3` panel, the task-level upper bound resolves to:
     - `eligible_task_count=4151`
     - `rescue_gain_task_count=355`
     - `false_positive_ambiguity_task_count=0`
-  - `scripts/replay_two_stage_task_level_rerun.py` then ranks tasks by `oracle_rescue_gain` and replays a small rerun-budget frontier without touching runtime semantics:
+  - `scripts/replay_two_stage_task_level_rerun.py` now supports:
+    - `--ranking oracle_rescue_gain`
+    - `--ranking deployable_sparse_gap_v1`
+    - `--ranking deployable_support_pressure_v1`
+  - every replay budget now also reports `oracle_overlap` (`precision / recall / jaccard`) against the same-budget `oracle_rescue_gain` task set.
+  - `oracle_rescue_gain` continues to define the offline upper bound and replays a small rerun-budget frontier without touching runtime semantics:
     - budget `8`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.00264`, `delta_refine_total_bp_total=+3735`
     - budget `16`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.00837`, `delta_refine_total_bp_total=+8097`
     - budget `32`: `top_hit_retention=1.0`, `top5=0.6` (flat), `top10=0.8` (`+0.1`), `score_weighted_recall≈+0.01583`, `delta_refine_total_bp_total=+19915`
@@ -619,7 +630,19 @@ python3 ./scripts/replay_two_stage_task_level_rerun.py \
   - practical implication:
     - do **not** go back to broader selector tuning or `pad/merge`
     - do **not** promote a new runtime lane from this result alone
-    - the next evidence-driven step is a deployable **task-level ambiguity trigger** that tries to approximate the budget-8/16 frontier from `minimal_v3` observables
+    - the next evidence-driven step is an oracle-free, deployable **task-level ambiguity trigger** that tries to approximate the budget-8/16 frontier from `minimal_v3` observables
+  - the first oracle-free heuristic calibration is now complete:
+    - outputs:
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact_deployable/summary.json`
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact_deployable_sparse_gap_v1/summary.json`
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_rerun_replay_deferred_exact_deployable_support_pressure_v1/summary.json`
+    - `deployable_sparse_gap_v1` fails to approximate the oracle frontier:
+      - budget `8`: `delta_top10=0`, `delta_score_weighted_recall≈+0.00095`, `delta_refine_total_bp_total=+7189`, `oracle_overlap_jaccard=0.0`
+      - budget `16`: `delta_top10=0`, `delta_score_weighted_recall≈+0.00142`, `delta_refine_total_bp_total=+12093`, `oracle_overlap_jaccard≈0.0323`
+    - `deployable_support_pressure_v1` also fails:
+      - budget `8`: `delta_top10=0`, `delta_score_weighted_recall≈+0.00156`, `delta_refine_total_bp_total=+9382`, `oracle_overlap_jaccard=0.0`
+      - budget `16`: `delta_top10=0`, `delta_score_weighted_recall≈+0.00273`, `delta_refine_total_bp_total=+20015`, `oracle_overlap_jaccard≈0.0323`
+    - because neither heuristic clears the budget-16 promotion gate, there is no runtime confirmation run for these oracle-free triggers yet; the correct next step is richer deployable feature design / calibrated trigger search, not another runtime lane.
   - once that offline frontier exists, the matching runtime prototype can be rerun on the identical fixed selected tiles by materializing per-tile task lists and injecting them into the new benchmark lanes:
 
 ```

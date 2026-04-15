@@ -17,6 +17,16 @@ if str(SCRIPTS_DIR) not in sys.path:
 import benchmark_sample_vs_fasim as sample_vs_fasim  # noqa: E402
 
 
+RANKING_ORACLE = "oracle_rescue_gain"
+RANKING_SPARSE_GAP = "deployable_sparse_gap_v1"
+RANKING_SUPPORT_PRESSURE = "deployable_support_pressure_v1"
+RANKING_CHOICES = (
+    RANKING_ORACLE,
+    RANKING_SPARSE_GAP,
+    RANKING_SUPPORT_PRESSURE,
+)
+
+
 def _load_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -71,7 +81,7 @@ def _task_key_tuple(task_key: dict[str, object]) -> tuple[int, int, int, int, in
     )
 
 
-def _rank_task(item: dict[str, object]) -> tuple[object, ...]:
+def _rank_task_oracle(item: dict[str, object]) -> tuple[object, ...]:
     return (
         -int(item["rescue_top5_gain_count"]),
         -int(item["rescue_top10_gain_count"]),
@@ -80,6 +90,109 @@ def _rank_task(item: dict[str, object]) -> tuple[object, ...]:
         item["tile_key"],
         _task_key_tuple(item["task_key"]),
     )
+
+
+def _task_identity(item: dict[str, object]) -> tuple[object, ...]:
+    return (item["tile_key"],) + _task_key_tuple(item["task_key"])
+
+
+def _get_deployable_features(item: dict[str, object]) -> dict[str, object]:
+    features = item.get("deployable_features")
+    if not isinstance(features, dict):
+        raise RuntimeError(
+            "selected ranking requires deployable_features in analysis summary; rerun analyze_two_stage_task_ambiguity.py"
+        )
+    return features
+
+
+def _feature_int(mapping: dict[str, object], key: str) -> int:
+    value = mapping.get(key)
+    if value is None:
+        return 0
+    return int(value)
+
+
+def _feature_nested_int(mapping: dict[str, object], key: str, nested_key: str) -> int:
+    nested = mapping.get(key)
+    if not isinstance(nested, dict):
+        return 0
+    value = nested.get(nested_key)
+    if value is None:
+        return 0
+    return int(value)
+
+
+def _feature_optional_int(mapping: dict[str, object], key: str) -> int | None:
+    value = mapping.get(key)
+    if value is None:
+        return None
+    return int(value)
+
+
+def _rank_task_sparse_gap(item: dict[str, object]) -> tuple[object, ...]:
+    features = _get_deployable_features(item)
+    best_rejected_score = _feature_optional_int(features, "best_rejected_score")
+    best_score_gap = _feature_optional_int(features, "best_score_gap")
+    return (
+        -(
+            _feature_nested_int(features, "score_band_counts", "ge85")
+            + _feature_nested_int(features, "score_band_counts", "80_84")
+            + _feature_nested_int(features, "score_band_counts", "75_79")
+        ),
+        10**18 if best_rejected_score is None else -best_rejected_score,
+        10**18 if best_score_gap is None else best_score_gap,
+        -_feature_int(features, "uncovered_rejected_bp_total"),
+        _feature_int(features, "kept_window_count"),
+        item["tile_key"],
+        _task_key_tuple(item["task_key"]),
+    )
+
+
+def _rank_task_support_pressure(item: dict[str, object]) -> tuple[object, ...]:
+    features = _get_deployable_features(item)
+    best_rejected_score = _feature_optional_int(features, "best_rejected_score")
+    best_score_gap = _feature_optional_int(features, "best_score_gap")
+    return (
+        -_feature_nested_int(features, "reject_reason_counts", "low_support_or_margin"),
+        -(
+            _feature_nested_int(features, "support_bin_counts", "support2")
+            + _feature_nested_int(features, "support_bin_counts", "support3plus")
+        ),
+        10**18 if best_rejected_score is None else -best_rejected_score,
+        10**18 if best_score_gap is None else best_score_gap,
+        -_feature_int(features, "uncovered_rejected_window_count"),
+        -_feature_int(features, "uncovered_rejected_bp_total"),
+        item["tile_key"],
+        _task_key_tuple(item["task_key"]),
+    )
+
+
+def _rank_task(item: dict[str, object], ranking: str) -> tuple[object, ...]:
+    if ranking == RANKING_ORACLE:
+        return _rank_task_oracle(item)
+    if ranking == RANKING_SPARSE_GAP:
+        return _rank_task_sparse_gap(item)
+    if ranking == RANKING_SUPPORT_PRESSURE:
+        return _rank_task_support_pressure(item)
+    raise RuntimeError(f"unsupported ranking: {ranking}")
+
+
+def _overlap_summary(selected_tasks: list[dict[str, object]], oracle_selected_tasks: list[dict[str, object]]) -> dict[str, object]:
+    selected_ids = {_task_identity(item) for item in selected_tasks}
+    oracle_ids = {_task_identity(item) for item in oracle_selected_tasks}
+    overlap = selected_ids & oracle_ids
+    precision = float(len(overlap)) / float(len(selected_ids)) if selected_ids else 1.0
+    recall = float(len(overlap)) / float(len(oracle_ids)) if oracle_ids else 1.0
+    union = selected_ids | oracle_ids
+    jaccard = float(len(overlap)) / float(len(union)) if union else 1.0
+    return {
+        "oracle_selected_task_count": len(oracle_ids),
+        "candidate_selected_task_count": len(selected_ids),
+        "overlap_task_count": len(overlap),
+        "precision": precision,
+        "recall": recall,
+        "jaccard": jaccard,
+    }
 
 
 def _render_markdown(summary: dict[str, object]) -> str:
@@ -102,6 +215,7 @@ def _render_markdown(summary: dict[str, object]) -> str:
                 f"- predicted_top5_retention: {aggregate['predicted_top5_retention']:.12g}",
                 f"- predicted_top10_retention: {aggregate['predicted_top10_retention']:.12g}",
                 f"- predicted_score_weighted_recall: {aggregate['predicted_score_weighted_recall']:.12g}",
+                f"- oracle_overlap_jaccard: {aggregate['oracle_overlap']['jaccard']:.12g}",
                 "",
                 "| tile | fragment_index | fragment_start | rescue_top5_gain | rescue_top10_gain | added_bp |",
                 "| --- | ---: | ---: | ---: | ---: | ---: |",
@@ -123,6 +237,7 @@ def replay_task_level_rerun(
     analysis_summary_path: Path | str,
     *,
     budgets: list[int],
+    ranking: str = RANKING_ORACLE,
 ) -> dict[str, object]:
     analysis_summary_path = Path(analysis_summary_path).resolve()
     analysis_summary = _load_json(analysis_summary_path)
@@ -156,8 +271,6 @@ def replay_task_level_rerun(
         baseline_refine_total_bp_total += int(tile.get("baseline_refine_total_bp", 0))
 
         for task in tile.get("tasks", []):
-            if int(task.get("rescue_gain_strict_key_count", 0)) <= 0:
-                continue
             payload = dict(task)
             payload["tile_key"] = tile_key
             payload["anchor_label"] = str(tile.get("anchor_label", ""))
@@ -166,13 +279,15 @@ def replay_task_level_rerun(
             ]
             candidate_tasks.append(payload)
 
-    ranked_tasks = sorted(candidate_tasks, key=_rank_task)
+    ranked_tasks = sorted(candidate_tasks, key=lambda item: _rank_task(item, ranking))
+    oracle_ranked_tasks = sorted(candidate_tasks, key=_rank_task_oracle)
     baseline_quality = _quality_summary(ref_scores_global, baseline_keys_global)
     normalized_budgets = sorted({int(value) for value in budgets if int(value) >= 0})
     budget_payloads: list[dict[str, object]] = []
 
     for budget in normalized_budgets:
         selected_tasks = ranked_tasks[:budget]
+        oracle_selected_tasks = oracle_ranked_tasks[:budget]
         predicted_keys_global = set(baseline_keys_global)
         rerun_added_window_count = 0
         rerun_added_bp_total = 0
@@ -237,6 +352,7 @@ def replay_task_level_rerun(
             "baseline_refine_total_bp_total": baseline_refine_total_bp_total,
             "predicted_refine_total_bp_total": predicted_refine_total_bp_total,
             "delta_refine_total_bp_total": predicted_refine_total_bp_total - baseline_refine_total_bp_total,
+            "oracle_overlap": _overlap_summary(selected_tasks, oracle_selected_tasks),
             "selected_tasks": [
                 {
                     "tile_key": task["tile_key"],
@@ -261,7 +377,7 @@ def replay_task_level_rerun(
 
     return {
         "analysis_summary": str(analysis_summary_path),
-        "ranking": "oracle_rescue_gain",
+        "ranking": ranking,
         "budgets": budget_payloads,
     }
 
@@ -278,13 +394,23 @@ def main() -> int:
         required=True,
         help="global task rerun budget to evaluate (repeatable)",
     )
+    parser.add_argument(
+        "--ranking",
+        choices=RANKING_CHOICES,
+        default=RANKING_ORACLE,
+        help="task ranking to replay (default: oracle_rescue_gain)",
+    )
     parser.add_argument("--output-dir", required=True, help="output directory for summary.json/summary.md")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = replay_task_level_rerun(args.analysis_summary, budgets=list(args.budget))
+    summary = replay_task_level_rerun(
+        args.analysis_summary,
+        budgets=list(args.budget),
+        ranking=str(args.ranking),
+    )
     (output_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

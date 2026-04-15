@@ -20,6 +20,10 @@ import analyze_two_stage_selector_candidate_classes as selector_classes  # noqa:
 import benchmark_sample_vs_fasim as sample_vs_fasim  # noqa: E402
 
 
+DEPLOYABLE_SCORE_BANDS = ("ge85", "80_84", "75_79", "70_74", "lt70")
+DEPLOYABLE_SUPPORT_BINS = ("support1", "support2", "support3plus")
+
+
 def _load_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -158,6 +162,71 @@ def _score_gap(kept_rows: list[dict[str, object]], rejected_rows: list[dict[str,
     if kept is None or rejected is None:
         return None
     return kept - rejected
+
+
+def _deployable_score_band(score: int) -> str:
+    if score >= 85:
+        return "ge85"
+    if score >= 80:
+        return "80_84"
+    if score >= 75:
+        return "75_79"
+    if score >= 70:
+        return "70_74"
+    return "lt70"
+
+
+def _deployable_support_bin(support_count: int) -> str:
+    if support_count <= 1:
+        return "support1"
+    if support_count == 2:
+        return "support2"
+    return "support3plus"
+
+
+def _deployable_features(
+    task_rows: list[dict[str, object]],
+    kept_rows: list[dict[str, object]],
+    uncovered_rejected_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    score_band_counts = {name: 0 for name in DEPLOYABLE_SCORE_BANDS}
+    score_band_bp_totals = {name: 0 for name in DEPLOYABLE_SCORE_BANDS}
+    support_bin_counts = {name: 0 for name in DEPLOYABLE_SUPPORT_BINS}
+    reject_reason_counts: dict[str, int] = {}
+
+    for row in uncovered_rejected_rows:
+        band = _deployable_score_band(int(row["best_seed_score"]))
+        score_band_counts[band] += 1
+        score_band_bp_totals[band] += int(row["window_bp"])
+
+        support_bin = _deployable_support_bin(int(row["support_count"]))
+        support_bin_counts[support_bin] += 1
+
+        reject_reason = str(row.get("reject_reason", ""))
+        if reject_reason:
+            reject_reason_counts[reject_reason] = reject_reason_counts.get(reject_reason, 0) + 1
+
+    return {
+        "kept_window_count": len(kept_rows),
+        "uncovered_rejected_window_count": len(uncovered_rejected_rows),
+        "uncovered_rejected_bp_total": sum(int(row["window_bp"]) for row in uncovered_rejected_rows),
+        "max_uncovered_rejected_window_bp": max(
+            (int(row["window_bp"]) for row in uncovered_rejected_rows),
+            default=0,
+        ),
+        "best_kept_score": _best_score(kept_rows),
+        "best_rejected_score": _best_score(uncovered_rejected_rows),
+        "best_score_gap": _score_gap(kept_rows, uncovered_rejected_rows),
+        "score_band_counts": score_band_counts,
+        "score_band_bp_totals": score_band_bp_totals,
+        "support_bin_counts": support_bin_counts,
+        "reject_reason_counts": reject_reason_counts,
+        "rule_diversity_count": len({int(row["rule"]) for row in uncovered_rejected_rows}),
+        "strand_diversity_count": len({str(row["strand"]) for row in uncovered_rejected_rows}),
+        "selective_fallback_selected_window_count": sum(
+            int(row.get("selective_fallback_selected", 0)) for row in task_rows
+        ),
+    }
 
 
 def _rank_ambiguity(item: dict[str, object]) -> tuple[object, ...]:
@@ -352,6 +421,11 @@ def analyze_task_ambiguity(
                 "rescue_top5_gain_count": 0,
                 "rescue_top10_gain_count": 0,
                 "rescue_score_weighted_gain": 0.0,
+                "deployable_features": _deployable_features(
+                    baseline_task["rows"],
+                    baseline_kept,
+                    list(baseline_task["uncovered_rejected_rows"]),
+                ),
             }
             ambiguity_state[task_key] = task_payload
 
