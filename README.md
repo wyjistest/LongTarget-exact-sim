@@ -396,6 +396,10 @@ make check-two-stage-threshold-modes
     - `deferred_exact_minimal_v3_task_rerun_budget8`
     - `deferred_exact_minimal_v3_task_rerun_budget16`
   - `LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH` may be empty; in that case the runtime lane behaves like `minimal_v3` and reports zero selected/effective rerun tasks
+  - current positioning:
+    - keep `deferred_exact_minimal_v3_scoreband_75_79` as the experimental shortlist baseline
+    - treat `deferred_exact_minimal_v3_task_rerun_budget16` as the current experimental runtime baseline for "candidate generator + targeted exact rescue"
+    - keep `deferred_exact_minimal_v3_task_rerun_budget8` as the cheaper control lane
 - Heavy-zone micro-anchor calibration uses coarse tiling plus the same 3-arm threshold-mode compare:
 
 ```
@@ -632,6 +636,25 @@ python3 ./scripts/compare_two_stage_panel_summaries.py \
 ```
 
   - `scripts/rerun_two_stage_panel_task_rerun_runtime.py` keeps the tile set fixed, writes one selected-task TSV per tile from the offline replay summary, and reruns `legacy + deferred_exact_minimal_v3_task_rerun_budget{8,16}` without rediscovering micro-anchors.
+  - implementation note:
+    - per-tile selected-task TSVs must live outside each tile `work-dir`; `benchmark_two_stage_threshold_modes.py` clears its per-tile work directory on startup, so writing TSVs inside `tiles/...` will delete the injected input before the candidate run starts
+  - the fixed-tile real runtime reruns are now complete:
+    - budget `8`
+      - outputs:
+        - `.tmp/panel_minimal_v3_task_rerun_budget8_runtime_2026-04-14/summary.json`
+        - `.tmp/panel_minimal_v3_task_rerun_budget8_runtime_2026-04-14/compare_vs_minimal_v3/summary.json`
+      - runtime totals: `selected/effective tasks=8/8`, `added_windows=14`, `added_bp=3735`, `task_rerun_seconds≈3.31`
+      - tile-mean deltas vs `minimal_v3`: `top_hit=+0.0`, `top5≈+0.0833`, `top10≈+0.0583`, `score_weighted_recall≈+0.00317`, `threshold_skipped_after_gate=+0.0`, `threshold_batch_size_mean=+0.0`
+    - budget `16`
+      - outputs:
+        - `.tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/summary.json`
+        - `.tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/compare_vs_minimal_v3/summary.json`
+      - runtime totals: `selected/effective tasks=16/16`, `added_windows=33`, `added_bp=8097`, `task_rerun_seconds≈8.23`
+      - tile-mean deltas vs `minimal_v3`: `top_hit=+0.0`, `top5≈+0.0833`, `top10≈+0.0667`, `score_weighted_recall≈+0.00760`, `threshold_skipped_after_gate=+0.0`, `threshold_batch_size_mean=+0.0`
+  - runtime-vs-offline replay conclusion:
+    - for both budgets, the runtime totals match the offline replay aggregate exactly on `rerun_task_count`, `added_window_count`, and `delta_refine_total_bp_total`
+    - the compare summary above is a tile-mean view, while the offline replay summary is a panel-global aggregate; treat `task count / added windows / added bp` as the exact fidelity check, and treat `top10 / score_weighted_recall` as the primary quality-direction signal
+    - with that caveat, the runtime prototype confirms the intended direction: `top_hit` stays stable, `top10` and `score_weighted_recall` improve, and skip/batch telemetry stays flat enough to keep the lane experimental-but-viable
   - local checks:
     - `make check-analyze-two-stage-task-ambiguity`
     - `make check-replay-two-stage-task-level-rerun`

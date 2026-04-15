@@ -1142,6 +1142,72 @@
       - `check-replay-two-stage-task-level-rerun`
       - `check-two-stage-task-rerun-runtime`
 
+## 2026-04-15（task-rerun runtime real-panel confirmation）
+
+- 在 `minimal_v3 + task-level rerun` runtime prototype 落地后，这一轮把 fixed selected tiles 的 **真实 runtime panel** 跑完，并补了一次 helper 输入路径的 root-cause 修正：
+  - 初始 helper 曾把 per-tile `selected_tasks.tsv` 写进 `tiles/...` 的 benchmark `work-dir`；
+  - 但 `scripts/benchmark_two_stage_threshold_modes.py` 启动时会先清空该 `work-dir`，导致 candidate lane 报：
+    - `failed to load LONGTARGET_TWO_STAGE_TASK_RERUN_SELECTED_TASKS_PATH=...: failed to open selected task list`
+  - 修正后，helper 改为把 TSV 写到：
+    - `.tmp/.../task_rerun_selected_tasks/*.tsv`
+    - 即每个 tile `work-dir` 之外，这样 runtime rerun 才能稳定读到外部选定的 task 列表。
+- 真实 runtime panel 产物：
+  - budget `8`
+    - `.tmp/panel_minimal_v3_task_rerun_budget8_runtime_2026-04-14/summary.json`
+    - `.tmp/panel_minimal_v3_task_rerun_budget8_runtime_2026-04-14/compare_vs_minimal_v3/summary.json`
+  - budget `16`
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/summary.json`
+    - `.tmp/panel_minimal_v3_task_rerun_budget16_runtime_2026-04-14/compare_vs_minimal_v3/summary.json`
+- 真实 runtime 结果：
+  - budget `8`
+    - `selected_tasks=8`
+    - `effective_tasks=8`
+    - `added_windows=14`
+    - `added_bp=3735`
+    - `task_rerun_seconds≈3.31`
+    - 相对 `minimal_v3` 的 tile-mean 增量：
+      - `top_hit_retention=+0.0`
+      - `top5_retention≈+0.0833`
+      - `top10_retention≈+0.0583`
+      - `score_weighted_recall≈+0.00317`
+      - `threshold_skipped_after_gate=+0.0`
+      - `threshold_batch_size_mean=+0.0`
+      - `threshold_batched_seconds≈+0.0574`
+      - `refine_total_bp≈+311.25`
+  - budget `16`
+    - `selected_tasks=16`
+    - `effective_tasks=16`
+    - `added_windows=33`
+    - `added_bp=8097`
+    - `task_rerun_seconds≈8.23`
+    - 相对 `minimal_v3` 的 tile-mean 增量：
+      - `top_hit_retention=+0.0`
+      - `top5_retention≈+0.0833`
+      - `top10_retention≈+0.0667`
+      - `score_weighted_recall≈+0.00760`
+      - `threshold_skipped_after_gate=+0.0`
+      - `threshold_batch_size_mean=+0.0`
+      - `threshold_batched_seconds≈+0.0406`
+      - `refine_total_bp≈+674.75`
+- runtime-vs-offline fidelity 结论：
+  - 两个 budget 的 runtime totals 都与 offline replay aggregate **精确对齐**：
+    - budget `8`：`rerun_task_count=8`、`rerun_added_window_count=14`、`delta_refine_total_bp_total=3735`
+    - budget `16`：`rerun_task_count=16`、`rerun_added_window_count=33`、`delta_refine_total_bp_total=8097`
+  - 注意：`compare_two_stage_panel_summaries.py` 给的是 **tile-mean** 视角，而 `replay_two_stage_task_level_rerun.py` 的 summary 是 **panel-global aggregate**；两者的 `top5/top10/score_weighted_recall` 不应逐项硬对齐。
+  - 因此最硬的 fidelity 证据是：
+    - runtime 选中的 task 数、added windows、added bp 总量与 offline 完全一致；
+    - 质量方向上，`top_hit` 保持稳定，`top10` 与 `score_weighted_recall` 在真实 runtime panel 上继续为正增量；
+    - `threshold_skipped_after_gate` 与 `threshold_batch_size_mean` 没被吃回，说明这条 lane 仍保留 two-stage 的 skip/batch 形态。
+- 这把 two-stage 的当前定位进一步收紧成：
+  - `deferred_exact_minimal_v3_scoreband_75_79`：当前 experimental shortlist baseline；
+  - `deferred_exact_minimal_v3_task_rerun_budget16`：当前 experimental runtime baseline；
+  - `deferred_exact_minimal_v3_task_rerun_budget8`：更便宜的控制组 / 对照 lane。
+- 下一步方向：
+  - 不回 broad selector tuning；
+  - 不做 `pad/merge sweep`；
+  - 不再继续扩 window-level selector family；
+  - 应转向 **deployable task-level ambiguity trigger** 的 trigger-design / calibration，目标是在不依赖 oracle-selected task TSV 的前提下，尽量逼近 budget `8/16` 的 frontier。
+
 ## 常用命令
 
 ## CUDA（GPU）阈值加速：`calc_score_with_workspace()`
