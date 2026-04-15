@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -184,6 +185,20 @@ def _deployable_support_bin(support_count: int) -> str:
     return "support3plus"
 
 
+def _rule_strand_entropy(rows: list[dict[str, object]]) -> float:
+    grouped: dict[tuple[int, str], int] = defaultdict(int)
+    for row in rows:
+        grouped[(int(row["rule"]), str(row["strand"]))] += 1
+    total = sum(grouped.values())
+    if total <= 0:
+        return 0.0
+    entropy = 0.0
+    for count in grouped.values():
+        probability = float(count) / float(total)
+        entropy -= probability * math.log(probability, 2)
+    return entropy
+
+
 def _deployable_features(
     task_rows: list[dict[str, object]],
     kept_rows: list[dict[str, object]],
@@ -193,18 +208,32 @@ def _deployable_features(
     score_band_bp_totals = {name: 0 for name in DEPLOYABLE_SCORE_BANDS}
     support_bin_counts = {name: 0 for name in DEPLOYABLE_SUPPORT_BINS}
     reject_reason_counts: dict[str, int] = {}
+    reject_reason_bp_totals: dict[str, int] = {}
+    rejected_scores: list[int] = []
+    rejected_score_x_bp_sum = 0
+    rejected_score_x_support_sum = 0
 
     for row in uncovered_rejected_rows:
-        band = _deployable_score_band(int(row["best_seed_score"]))
+        best_seed_score = int(row["best_seed_score"])
+        window_bp = int(row["window_bp"])
+        support_count = int(row["support_count"])
+        band = _deployable_score_band(best_seed_score)
         score_band_counts[band] += 1
-        score_band_bp_totals[band] += int(row["window_bp"])
+        score_band_bp_totals[band] += window_bp
 
-        support_bin = _deployable_support_bin(int(row["support_count"]))
+        support_bin = _deployable_support_bin(support_count)
         support_bin_counts[support_bin] += 1
 
         reject_reason = str(row.get("reject_reason", ""))
         if reject_reason:
             reject_reason_counts[reject_reason] = reject_reason_counts.get(reject_reason, 0) + 1
+            reject_reason_bp_totals[reject_reason] = reject_reason_bp_totals.get(reject_reason, 0) + window_bp
+
+        rejected_scores.append(best_seed_score)
+        rejected_score_x_bp_sum += best_seed_score * window_bp
+        rejected_score_x_support_sum += best_seed_score * support_count
+
+    rejected_scores.sort(reverse=True)
 
     return {
         "kept_window_count": len(kept_rows),
@@ -217,16 +246,51 @@ def _deployable_features(
         "best_kept_score": _best_score(kept_rows),
         "best_rejected_score": _best_score(uncovered_rejected_rows),
         "best_score_gap": _score_gap(kept_rows, uncovered_rejected_rows),
+        "rejected_score_sum": sum(rejected_scores),
+        "rejected_score_mean": (float(sum(rejected_scores)) / float(len(rejected_scores))) if rejected_scores else 0.0,
+        "rejected_score_top3_sum": sum(rejected_scores[:3]),
+        "rejected_score_x_bp_sum": rejected_score_x_bp_sum,
+        "rejected_score_x_support_sum": rejected_score_x_support_sum,
         "score_band_counts": score_band_counts,
         "score_band_bp_totals": score_band_bp_totals,
         "support_bin_counts": support_bin_counts,
         "reject_reason_counts": reject_reason_counts,
+        "reject_reason_bp_totals": reject_reason_bp_totals,
         "rule_diversity_count": len({int(row["rule"]) for row in uncovered_rejected_rows}),
         "strand_diversity_count": len({str(row["strand"]) for row in uncovered_rejected_rows}),
+        "rule_strand_object_count": len({(int(row["rule"]), str(row["strand"])) for row in uncovered_rejected_rows}),
+        "rule_strand_entropy": _rule_strand_entropy(uncovered_rejected_rows),
         "selective_fallback_selected_window_count": sum(
             int(row.get("selective_fallback_selected", 0)) for row in task_rows
         ),
+        "tile_rank_by_best_rejected_score": 0,
+        "tile_rank_by_rejected_score_x_bp_sum": 0,
     }
+
+
+def _assign_tile_feature_ranks(tile_tasks: list[dict[str, object]]) -> None:
+    best_rejected_ranked = sorted(
+        tile_tasks,
+        key=lambda item: (
+            10**18 if item["deployable_features"]["best_rejected_score"] is None else -int(item["deployable_features"]["best_rejected_score"]),
+            item["tile_key"],
+            _task_key_tuple(item["task_key"]),
+        ),
+    )
+    for index, task in enumerate(best_rejected_ranked, start=1):
+        task["deployable_features"]["tile_rank_by_best_rejected_score"] = index
+
+    score_x_bp_ranked = sorted(
+        tile_tasks,
+        key=lambda item: (
+            -int(item["deployable_features"]["rejected_score_x_bp_sum"]),
+            10**18 if item["deployable_features"]["best_rejected_score"] is None else -int(item["deployable_features"]["best_rejected_score"]),
+            item["tile_key"],
+            _task_key_tuple(item["task_key"]),
+        ),
+    )
+    for index, task in enumerate(score_x_bp_ranked, start=1):
+        task["deployable_features"]["tile_rank_by_rejected_score_x_bp_sum"] = index
 
 
 def _rank_ambiguity(item: dict[str, object]) -> tuple[object, ...]:
@@ -477,6 +541,7 @@ def analyze_task_ambiguity(
                 false_positive_ambiguity_task_count += 1
 
         tile_tasks = sorted(ambiguity_state.values(), key=_rank_ambiguity)
+        _assign_tile_feature_ranks(tile_tasks)
         tile_payload = {
             "tile_key": tile_key,
             "anchor_label": str(baseline_items[tile_key].get("anchor_label", "")),

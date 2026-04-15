@@ -609,9 +609,14 @@ python3 ./scripts/replay_two_stage_task_level_rerun.py \
     - `deployable_features`, derived only from baseline `minimal_v3` debug TSV / report telemetry:
       - `kept_window_count`, `uncovered_rejected_window_count`, `uncovered_rejected_bp_total`, `max_uncovered_rejected_window_bp`
       - `best_kept_score`, `best_rejected_score`, `best_score_gap`
+      - `rejected_score_sum`, `rejected_score_mean`, `rejected_score_top3_sum`
+      - `rejected_score_x_bp_sum`, `rejected_score_x_support_sum`
       - `score_band_counts` / `score_band_bp_totals` over `ge85 / 80_84 / 75_79 / 70_74 / lt70`
       - `support_bin_counts` over `support1 / support2 / support3plus`
-      - `reject_reason_counts`, `rule_diversity_count`, `strand_diversity_count`, `selective_fallback_selected_window_count`
+      - `reject_reason_counts`, `reject_reason_bp_totals`
+      - `rule_diversity_count`, `strand_diversity_count`, `rule_strand_object_count`, `rule_strand_entropy`
+      - `tile_rank_by_best_rejected_score`, `tile_rank_by_rejected_score_x_bp_sum`
+      - `selective_fallback_selected_window_count`
   - on the current real `minimal_v3` panel, the task-level upper bound resolves to:
     - `eligible_task_count=4151`
     - `rescue_gain_task_count=355`
@@ -643,6 +648,49 @@ python3 ./scripts/replay_two_stage_task_level_rerun.py \
       - budget `8`: `delta_top10=0`, `delta_score_weighted_recall≈+0.00156`, `delta_refine_total_bp_total=+9382`, `oracle_overlap_jaccard=0.0`
       - budget `16`: `delta_top10=0`, `delta_score_weighted_recall≈+0.00273`, `delta_refine_total_bp_total=+20015`, `oracle_overlap_jaccard≈0.0323`
     - because neither heuristic clears the budget-16 promotion gate, there is no runtime confirmation run for these oracle-free triggers yet; the correct next step is richer deployable feature design / calibrated trigger search, not another runtime lane.
+
+```
+python3 ./scripts/analyze_two_stage_task_ambiguity.py \
+  --baseline-panel-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/summary.json \
+  --rescue-panel-summary .tmp/panel_deferred_exact_2026-04-14_chr22_3anchor_task_level_rerun/summary.json \
+  --baseline-label deferred_exact_minimal_v3_scoreband_75_79 \
+  --rescue-label deferred_exact \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact_deployable_v2
+
+python3 ./scripts/search_two_stage_task_trigger_rankings.py \
+  --analysis-summary .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact_deployable_v2/summary.json \
+  --budget 8 --budget 16 \
+  --target-budget 16 \
+  --promotion-min-delta-top10 0.08 \
+  --promotion-min-delta-score-weighted-recall 0.006 \
+  --promotion-max-delta-refine-total-bp 10121.25 \
+  --output-dir .tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_trigger_ranking_search_v1
+```
+
+  - calibrated trigger search v1 is now complete:
+    - richer deployable analysis output:
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact_deployable_v2/summary.json`
+    - ranking search output:
+      - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_trigger_ranking_search_v1/summary.json`
+    - `scripts/search_two_stage_task_trigger_rankings.py` evaluates four oracle-free candidate libraries against the same `budget 8/16` offline replay frontier:
+      - rule-based: `rule_score_mass_gap_v2`, `rule_support_reason_pressure_v2`
+      - learned leave-anchor-out ranking: `lr_budget16_rank_v1`, `hgb_budget16_rank_v1`
+    - promotion gate:
+      - `delta_top_hit_retention == 0.0`
+      - `delta_top10_retention >= 0.08`
+      - `delta_score_weighted_recall >= 0.006`
+      - `delta_refine_total_bp_total <= 10121.25`
+    - real fixed-panel result:
+      - no candidate clears the budget-16 promotion gate, so `recommended_candidate=null` and there is no runtime confirm
+      - `rule_score_mass_gap_v2` gets the best oracle overlap (`jaccard≈0.0667`) but still has `delta_top10=0`, `delta_score_weighted_recall≈+0.00224`, `delta_refine_total_bp_total=+11242`
+      - `rule_support_reason_pressure_v2` gets the highest weighted-recall among this library (`≈+0.00224`) but with `delta_top10=0`, `delta_refine_total_bp_total=+20689`, `oracle_overlap_jaccard≈0.0323`
+      - `hgb_budget16_rank_v1` is the cheapest learned candidate (`delta_refine_total_bp_total=+6956`) but still only reaches `delta_score_weighted_recall≈+0.00169` and `delta_top10=0`
+      - `lr_budget16_rank_v1` stays below both the oracle overlap and the weighted-recall frontier (`delta_score_weighted_recall≈+0.00106`, `oracle_overlap_jaccard=0.0`)
+    - practical implication:
+      - calibrated ranking search confirms that the current deployable task-trigger surface still does **not** recover head quality (`top10`) without oracle task selection
+      - stop here rather than inventing more trigger names or another runtime lane
+      - freeze `minimal_v3` as the experimental shortlist baseline and `budget16 oracle rerun` as the offline/runtime upper bound
+      - next work should shift to stronger exact rescue design or the separate exact-safe mainline, not more oracle-free trigger tuning
   - once that offline frontier exists, the matching runtime prototype can be rerun on the identical fixed selected tiles by materializing per-tile task lists and injecting them into the new benchmark lanes:
 
 ```
@@ -681,6 +729,7 @@ python3 ./scripts/compare_two_stage_panel_summaries.py \
   - local checks:
     - `make check-analyze-two-stage-task-ambiguity`
     - `make check-replay-two-stage-task-level-rerun`
+    - `make check-search-two-stage-task-trigger-rankings`
     - `make check-two-stage-task-rerun-runtime`
 - Example quality-gated sweep:
 

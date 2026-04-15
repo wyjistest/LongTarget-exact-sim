@@ -582,6 +582,10 @@ check-replay-two-stage-task-level-rerun:
 	python3 ./scripts/replay_two_stage_task_level_rerun.py --help >/dev/null
 	bash ./scripts/check_replay_two_stage_task_level_rerun.sh
 
+check-search-two-stage-task-trigger-rankings:
+	python3 ./scripts/search_two_stage_task_trigger_rankings.py --help >/dev/null
+	bash ./scripts/check_search_two_stage_task_trigger_rankings.sh
+
 check-summarize-two-stage-frontier:
 	python3 ./scripts/summarize_two_stage_frontier.py --help >/dev/null
 	bash ./scripts/check_summarize_two_stage_frontier.sh
@@ -629,4 +633,4 @@ check-longtarget-lite-output:
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
 		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \
-		check-replay-two-stage-task-level-rerun check-two-stage-task-rerun-runtime
+		check-replay-two-stage-task-level-rerun check-search-two-stage-task-trigger-rankings check-two-stage-task-rerun-runtime

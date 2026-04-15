@@ -1224,15 +1224,41 @@
       - `best_kept_score`
       - `best_rejected_score`
       - `best_score_gap`
+      - `rejected_score_sum`
+      - `rejected_score_mean`
+      - `rejected_score_top3_sum`
+      - `rejected_score_x_bp_sum`
+      - `rejected_score_x_support_sum`
       - `score_band_counts` / `score_band_bp_totals`
         - `ge85 / 80_84 / 75_79 / 70_74 / lt70`
       - `support_bin_counts`
         - `support1 / support2 / support3plus`
       - `reject_reason_counts`
+      - `reject_reason_bp_totals`
       - `rule_diversity_count`
       - `strand_diversity_count`
+      - `rule_strand_object_count`
+      - `rule_strand_entropy`
+      - `tile_rank_by_best_rejected_score`
+      - `tile_rank_by_rejected_score_x_bp_sum`
       - `selective_fallback_selected_window_count`
     - 这样 oracle-selected task TSV 现在可以被当成监督标签，而不是部署时输入。
+  - `scripts/search_two_stage_task_trigger_rankings.py`
+    - 在固定 panel 的 task-level ambiguity summary 上做 calibrated ranking search；
+    - 候选库固定为：
+      - rule-based：
+        - `rule_score_mass_gap_v2`
+        - `rule_support_reason_pressure_v2`
+      - leave-anchor-out learned ranking：
+        - `lr_budget16_rank_v1`
+        - `hgb_budget16_rank_v1`
+    - 输出继续沿用 replay 口径：
+      - `delta_top_hit_retention`
+      - `delta_top10_retention`
+      - `delta_score_weighted_recall`
+      - `delta_refine_total_bp_total`
+      - `oracle_overlap`
+    - 只有真的过 gate，`recommended_candidate` 才非空，并允许进入 runtime confirm。
   - `scripts/replay_two_stage_task_level_rerun.py`
     - 不再只保留 `rescue_gain > 0` 的 task；为了评估 false-positive trigger，replay 候选池扩成全部 eligible tasks。
     - 新增 `--ranking`：
@@ -1249,10 +1275,12 @@
     - 这样 replay summary 既能继续给 runtime helper 提供 `selected_tasks`，又能直接回答“oracle-free trigger 距离 oracle frontier 还有多远”。
 - 测试 / 契约：
   - `scripts/check_analyze_two_stage_task_ambiguity.sh`
-    - 新增 `deployable_features` 的 schema 与聚合断言。
+    - 新增 richer `deployable_features` 的 schema、聚合值与 tile-rank 断言。
   - `scripts/check_replay_two_stage_task_level_rerun.sh`
     - 新增两条 heuristic ranking 的 fixture 校验；
     - 同时验证 `oracle_overlap` 的 `precision / recall / jaccard`。
+  - `scripts/check_search_two_stage_task_trigger_rankings.sh`
+    - 覆盖 rule-based / learned candidates、leave-anchor-out training 摘要与 promotion gate 输出。
   - helper 兼容性仍保持通过：
     - `make check-rerun-two-stage-panel-task-rerun-runtime`
 - 真实 offline calibration：
@@ -1295,14 +1323,82 @@
         - `oracle_overlap_precision=0.0625`
         - `oracle_overlap_recall=0.0625`
         - `oracle_overlap_jaccard≈0.0323`
+- calibrated trigger search v1：
+  - 新分析产物：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_level_ambiguity_deferred_exact_deployable_v2/summary.json`
+  - 新 search 产物：
+    - `.tmp/panel_minimal_v3_scoreband_75_79_2026-04-14_chr22_3anchor_fastlane_nonempty_rerun/task_trigger_ranking_search_v1/summary.json`
+  - 目标 gate（budget `16`）：
+    - `delta_top_hit_retention == 0.0`
+    - `delta_top10_retention >= 0.08`
+    - `delta_score_weighted_recall >= 0.006`
+    - `delta_refine_total_bp_total <= 10121.25`
+  - oracle 参考仍然不变：
+    - `delta_top10_retention=+0.1`
+    - `delta_score_weighted_recall≈+0.00837`
+    - `delta_refine_total_bp_total=+8097`
+  - candidate 结果：
+    - `rule_score_mass_gap_v2`
+      - budget `8`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00053`
+        - `delta_refine_total_bp_total=+5567`
+        - `oracle_overlap_jaccard≈0.0667`
+      - budget `16`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00224`
+        - `delta_refine_total_bp_total=+11242`
+        - `oracle_overlap_jaccard≈0.0667`
+    - `rule_support_reason_pressure_v2`
+      - budget `8`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00096`
+        - `delta_refine_total_bp_total=+10802`
+        - `oracle_overlap_jaccard=0.0`
+      - budget `16`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00224`
+        - `delta_refine_total_bp_total=+20689`
+        - `oracle_overlap_jaccard≈0.0323`
+    - `hgb_budget16_rank_v1`
+      - budget `8`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00144`
+        - `delta_refine_total_bp_total=+3301`
+        - `oracle_overlap_jaccard=0.0`
+      - budget `16`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00169`
+        - `delta_refine_total_bp_total=+6956`
+        - `oracle_overlap_jaccard≈0.0323`
+    - `lr_budget16_rank_v1`
+      - budget `8`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00026`
+        - `delta_refine_total_bp_total=+7932`
+        - `oracle_overlap_jaccard=0.0`
+      - budget `16`
+        - `delta_top10_retention=0`
+        - `delta_score_weighted_recall≈+0.00106`
+        - `delta_refine_total_bp_total=+14153`
+        - `oracle_overlap_jaccard=0.0`
+  - 结论：
+    - 没有一个 deployable trigger candidate 把 `top10` 从 `minimal_v3` baseline 拉起来；
+    - `best_candidate=rule_support_reason_pressure_v2` 只是当前 offline 排序下的“最不差”者，但仍然不过 gate；
+    - `recommended_candidate=null`，因此不做 runtime confirm。
 - 结论：
   - 第一版 naive deployable heuristics **没有**逼近 oracle `budget16` frontier；
   - 它们不仅没抬动 `top10`，而且 overlap 极低、added bp 反而更大；
-  - 因此这一步不做 runtime confirm，也不新增 runtime lane。
+  - calibrated ranking search v1 也没有把 deployable trigger 拉到可部署水平；
+  - 因此这一步仍然不做 runtime confirm，也不新增 runtime lane。
 - 下一步方向进一步收紧成：
-  - 继续停在 offline calibration；
-  - 重点不再是“再写一个 heuristic 名字”，而是设计更有信息量的 deployable task features / calibrated trigger search；
-  - 在新的 oracle-free trigger 至少逼近 oracle budget `16` 大头之前，不推进新的 runtime task trigger。
+  - 继续冻结：
+    - `deferred_exact_minimal_v3_scoreband_75_79` 作为 experimental shortlist baseline；
+    - `deferred_exact_minimal_v3_task_rerun_budget16` 作为 oracle runtime / offline upper bound；
+  - 这里先触发 stop-rule：
+    - 不再继续发明新的 oracle-free trigger 名字；
+    - 不把当前 calibrated ranking search 推进成 runtime lane；
+  - 后续主火力应转向更强的 exact rescue 设计，或独立的 exact-safe 主线，而不是继续磨 two-stage deployable trigger。
 
 ## 常用命令
 

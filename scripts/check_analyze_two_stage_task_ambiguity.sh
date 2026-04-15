@@ -187,13 +187,23 @@ assert features_b["max_uncovered_rejected_window_bp"] == 31
 assert features_b["best_kept_score"] == 100
 assert features_b["best_rejected_score"] == 95
 assert features_b["best_score_gap"] == 5
+assert features_b["rejected_score_sum"] == 95
+assert math.isclose(features_b["rejected_score_mean"], 95.0)
+assert features_b["rejected_score_top3_sum"] == 95
+assert features_b["rejected_score_x_bp_sum"] == 2945
+assert features_b["rejected_score_x_support_sum"] == 190
 assert features_b["score_band_counts"] == {"ge85": 1, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_b["score_band_bp_totals"] == {"ge85": 31, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_b["support_bin_counts"] == {"support1": 0, "support2": 1, "support3plus": 0}
 assert features_b["reject_reason_counts"] == {"low_support_or_margin": 1}
+assert features_b["reject_reason_bp_totals"] == {"low_support_or_margin": 31}
 assert features_b["rule_diversity_count"] == 1
 assert features_b["strand_diversity_count"] == 1
+assert features_b["rule_strand_object_count"] == 1
+assert math.isclose(features_b["rule_strand_entropy"], 0.0)
 assert features_b["selective_fallback_selected_window_count"] == 0
+assert features_b["tile_rank_by_best_rejected_score"] == 1
+assert features_b["tile_rank_by_rejected_score_x_bp_sum"] == 2
 
 task_shadow = tasks[(1, 5001, "AntiPlus", 2)]
 assert task_shadow["baseline_task_index"] == 21
@@ -208,12 +218,20 @@ assert features_shadow["max_uncovered_rejected_window_bp"] == 0
 assert features_shadow["best_kept_score"] == 98
 assert features_shadow["best_rejected_score"] is None
 assert features_shadow["best_score_gap"] is None
+assert features_shadow["rejected_score_sum"] == 0
+assert math.isclose(features_shadow["rejected_score_mean"], 0.0)
+assert features_shadow["rejected_score_top3_sum"] == 0
+assert features_shadow["rejected_score_x_bp_sum"] == 0
+assert features_shadow["rejected_score_x_support_sum"] == 0
 assert features_shadow["score_band_counts"] == {"ge85": 0, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_shadow["score_band_bp_totals"] == {"ge85": 0, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_shadow["support_bin_counts"] == {"support1": 0, "support2": 0, "support3plus": 0}
 assert features_shadow["reject_reason_counts"] == {}
+assert features_shadow["reject_reason_bp_totals"] == {}
 assert features_shadow["rule_diversity_count"] == 0
 assert features_shadow["strand_diversity_count"] == 0
+assert features_shadow["rule_strand_object_count"] == 0
+assert math.isclose(features_shadow["rule_strand_entropy"], 0.0)
 assert features_shadow["selective_fallback_selected_window_count"] == 0
 
 task_c = tasks[(2, 10001, "ParaPlus", 1)]
@@ -230,13 +248,23 @@ assert features_c["max_uncovered_rejected_window_bp"] == 36
 assert features_c["best_kept_score"] == 100
 assert features_c["best_rejected_score"] == 93
 assert features_c["best_score_gap"] == 7
+assert features_c["rejected_score_sum"] == 183
+assert math.isclose(features_c["rejected_score_mean"], 91.5)
+assert features_c["rejected_score_top3_sum"] == 183
+assert features_c["rejected_score_x_bp_sum"] == 6138
+assert features_c["rejected_score_x_support_sum"] == 366
 assert features_c["score_band_counts"] == {"ge85": 2, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_c["score_band_bp_totals"] == {"ge85": 67, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_c["support_bin_counts"] == {"support1": 0, "support2": 2, "support3plus": 0}
 assert features_c["reject_reason_counts"] == {"low_support_or_margin": 2}
+assert features_c["reject_reason_bp_totals"] == {"low_support_or_margin": 67}
 assert features_c["rule_diversity_count"] == 1
 assert features_c["strand_diversity_count"] == 1
+assert features_c["rule_strand_object_count"] == 1
+assert math.isclose(features_c["rule_strand_entropy"], 0.0)
 assert features_c["selective_fallback_selected_window_count"] == 0
+assert features_c["tile_rank_by_best_rejected_score"] == 2
+assert features_c["tile_rank_by_rejected_score_x_bp_sum"] == 1
 
 task_d = tasks[(3, 15001, "ParaPlus", 1)]
 assert task_d["baseline_inside_rejected_missing_count_overall"] == 1
@@ -245,6 +273,9 @@ features_d = task_d["deployable_features"]
 assert features_d["score_band_counts"] == {"ge85": 1, "80_84": 0, "75_79": 0, "70_74": 0, "lt70": 0}
 assert features_d["support_bin_counts"] == {"support1": 0, "support2": 1, "support3plus": 0}
 assert features_d["reject_reason_counts"] == {"low_support_or_margin": 1}
+assert features_d["reject_reason_bp_totals"] == {"low_support_or_margin": 31}
+assert features_d["tile_rank_by_best_rejected_score"] == 3
+assert features_d["tile_rank_by_rejected_score_x_bp_sum"] == 3
 
 top_ambiguous = summary["aggregate"]["top_ambiguity_tasks"]
 assert top_ambiguous[0]["task_key"]["fragment_index"] == 1
