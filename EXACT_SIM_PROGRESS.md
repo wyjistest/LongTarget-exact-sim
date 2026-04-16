@@ -1512,3 +1512,8 @@
     - `limit=20`: legacy `logical=0.9186 / materialized=0.8587`，coverage-weighted `logical=0.9581 / materialized=0.9610`
     - `limit=24`: legacy `logical=0.9887 / materialized=0.9775`，coverage-weighted `logical=0.9948 / materialized=0.9963`
   - 因此当前最值钱的下一步已经从“继续改 `store_materialize` / `store_prune` 算法”收敛为“先用 coverage-driven selector 选对 representative corpus，再决定 materialize/prune 的离线优化方向”。
+  - 随后在同一条 heavy real-shard 上做了真实 `coverage_weighted limit=16` bounded full dump + replay + analysis：
+    - 第二遍 runtime 只保留 `selected.tsv` 指定的 16 个 case 做 full dump；在 `16/16` 个 case 目录都落齐 `meta.json + summaries + expected_*` 后，主动中断 LongTarget 主流程，避免继续消耗与 host-merge replay 无关的后续 wall time。
+    - `full_run.time.log` 记录到中断前 runtime wall time `740.68s`；离线 replay summary 则正式过 gate：`covered_logical_event_share=0.8544`，`covered_store_materialized_share=0.8988`，`decision_status=ready`。
+    - phase-share 结果明确把下一刀指向 `store_materialize`：`store_materialize=63.7346s (46.69%)`，`store_other_merge=52.1729s (38.22%)`，`store_prune=20.5919s (15.09%)`，因此 `next_action=optimize_store_materialize`。
+    - 这意味着 selector 侧可以先冻结在 `coverage_weighted(logical=1, materialized=2, limit=16)` 这个代表性配置上；host-merge 主线的后续优化优先级更新为：先打 `store_materialize`，`store_other_merge` 作为第二热点继续保留观测，`store_prune` 暂不抢第一优先级。
