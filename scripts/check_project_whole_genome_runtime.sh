@@ -21,6 +21,12 @@ benchmark.sim_initial_scan_seconds=2
 benchmark.sim_initial_scan_cpu_merge_seconds=0.5
 benchmark.sim_initial_scan_cpu_merge_subtotal_seconds=0.4
 benchmark.sim_initial_run_summary_pipeline_seconds=0.25
+benchmark.sim_initial_ordered_replay_seconds=0.07
+benchmark.sim_initial_store_rebuild_seconds=0.3
+benchmark.sim_initial_store_materialize_seconds=0.2
+benchmark.sim_initial_store_prune_seconds=0.1
+benchmark.sim_initial_frontier_sync_seconds=0.05
+benchmark.sim_initial_store_other_merge_seconds=0.15
 benchmark.sim_seconds=3
 benchmark.postprocess_seconds=1
 benchmark.total_seconds=5
@@ -55,6 +61,12 @@ assert abs(data["projected_sim_initial_scan_seconds"] - 10.0) < 1e-9
 assert abs(data["projected_sim_initial_scan_cpu_merge_seconds"] - 2.5) < 1e-9
 assert abs(data["projected_sim_initial_scan_cpu_merge_subtotal_seconds"] - 2.0) < 1e-9
 assert abs(data["projected_sim_initial_run_summary_pipeline_seconds"] - 1.25) < 1e-9
+assert abs(data["projected_sim_initial_ordered_replay_seconds"] - 0.35) < 1e-9
+assert abs(data["projected_sim_initial_store_rebuild_seconds"] - 1.5) < 1e-9
+assert abs(data["projected_sim_initial_store_materialize_seconds"] - 1.0) < 1e-9
+assert abs(data["projected_sim_initial_store_prune_seconds"] - 0.5) < 1e-9
+assert abs(data["projected_sim_initial_frontier_sync_seconds"] - 0.25) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_seconds"] - 0.75) < 1e-9
 assert abs(data["window_pipeline_eligible_ratio"] - 0.8) < 1e-9
 assert abs(data["window_pipeline_fallback_ratio"] - 0.2) < 1e-9
 assert abs(data["calc_score_cuda_task_ratio"] - 0.7) < 1e-9
@@ -94,4 +106,10 @@ assert "projected_sim_initial_scan_seconds" not in data
 assert "projected_sim_initial_scan_cpu_merge_seconds" not in data
 assert "projected_sim_initial_scan_cpu_merge_subtotal_seconds" not in data
 assert "projected_sim_initial_run_summary_pipeline_seconds" not in data
+assert "projected_sim_initial_ordered_replay_seconds" not in data
+assert "projected_sim_initial_store_rebuild_seconds" not in data
+assert "projected_sim_initial_store_materialize_seconds" not in data
+assert "projected_sim_initial_store_prune_seconds" not in data
+assert "projected_sim_initial_frontier_sync_seconds" not in data
+assert "projected_sim_initial_store_other_merge_seconds" not in data
 PY

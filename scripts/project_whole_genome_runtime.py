@@ -109,6 +109,17 @@ def optional_projected_metric(metrics: dict[str, object], key: str, scale_factor
     return float(value) * scale_factor
 
 
+def add_optional_projected_metric(
+    report: dict[str, object],
+    metrics: dict[str, object],
+    key: str,
+    scale_factor: float,
+):
+    projected = optional_projected_metric(metrics, key, scale_factor)
+    if projected is not None:
+        report[f"projected_{key}"] = projected
+
+
 def main() -> int:
     args = parse_args()
     stderr_path = Path(args.stderr)
@@ -185,35 +196,19 @@ def main() -> int:
     if calc_score_cpu_fallback_ratio is not None:
         report["calc_score_cpu_fallback_ratio"] = calc_score_cpu_fallback_ratio
 
-    projected_sim_initial_scan_seconds = optional_projected_metric(
-        metrics, "sim_initial_scan_seconds", scale_factor
-    )
-    if projected_sim_initial_scan_seconds is not None:
-        report["projected_sim_initial_scan_seconds"] = projected_sim_initial_scan_seconds
-
-    projected_sim_initial_scan_cpu_merge_seconds = optional_projected_metric(
-        metrics, "sim_initial_scan_cpu_merge_seconds", scale_factor
-    )
-    if projected_sim_initial_scan_cpu_merge_seconds is not None:
-        report["projected_sim_initial_scan_cpu_merge_seconds"] = (
-            projected_sim_initial_scan_cpu_merge_seconds
-        )
-
-    projected_sim_initial_scan_cpu_merge_subtotal_seconds = optional_projected_metric(
-        metrics, "sim_initial_scan_cpu_merge_subtotal_seconds", scale_factor
-    )
-    if projected_sim_initial_scan_cpu_merge_subtotal_seconds is not None:
-        report["projected_sim_initial_scan_cpu_merge_subtotal_seconds"] = (
-            projected_sim_initial_scan_cpu_merge_subtotal_seconds
-        )
-
-    projected_sim_initial_run_summary_pipeline_seconds = optional_projected_metric(
-        metrics, "sim_initial_run_summary_pipeline_seconds", scale_factor
-    )
-    if projected_sim_initial_run_summary_pipeline_seconds is not None:
-        report["projected_sim_initial_run_summary_pipeline_seconds"] = (
-            projected_sim_initial_run_summary_pipeline_seconds
-        )
+    for projected_metric_key in (
+        "sim_initial_scan_seconds",
+        "sim_initial_scan_cpu_merge_seconds",
+        "sim_initial_scan_cpu_merge_subtotal_seconds",
+        "sim_initial_run_summary_pipeline_seconds",
+        "sim_initial_ordered_replay_seconds",
+        "sim_initial_store_rebuild_seconds",
+        "sim_initial_store_materialize_seconds",
+        "sim_initial_store_prune_seconds",
+        "sim_initial_frontier_sync_seconds",
+        "sim_initial_store_other_merge_seconds",
+    ):
+        add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
 
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -260,6 +255,36 @@ def main() -> int:
         print(
             "projected_sim_initial_run_summary_pipeline_seconds="
             f"{report['projected_sim_initial_run_summary_pipeline_seconds']:.6f}"
+        )
+    if "projected_sim_initial_ordered_replay_seconds" in report:
+        print(
+            "projected_sim_initial_ordered_replay_seconds="
+            f"{report['projected_sim_initial_ordered_replay_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_rebuild_seconds" in report:
+        print(
+            "projected_sim_initial_store_rebuild_seconds="
+            f"{report['projected_sim_initial_store_rebuild_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_materialize_seconds" in report:
+        print(
+            "projected_sim_initial_store_materialize_seconds="
+            f"{report['projected_sim_initial_store_materialize_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_prune_seconds" in report:
+        print(
+            "projected_sim_initial_store_prune_seconds="
+            f"{report['projected_sim_initial_store_prune_seconds']:.6f}"
+        )
+    if "projected_sim_initial_frontier_sync_seconds" in report:
+        print(
+            "projected_sim_initial_frontier_sync_seconds="
+            f"{report['projected_sim_initial_frontier_sync_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_other_merge_seconds" in report:
+        print(
+            "projected_sim_initial_store_other_merge_seconds="
+            f"{report['projected_sim_initial_store_other_merge_seconds']:.6f}"
         )
     print(
         "note=phase seconds are projected independently; use projected_total_hours as the wall-time estimate."

@@ -179,7 +179,10 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_scan_cpu_merge_seconds`: CPU time spent merging CUDA initial-scan events into exact candidate maintenance
 - `benchmark.sim_initial_scan_cpu_merge_subtotal_seconds`: explicit subtotal of the CPU-side merge subphases (`context_apply + safe_store_update + safe_store_prune + safe_store_upload`) so benchmark logs can check whether the detailed merge counters still close to the total
 - `benchmark.sim_initial_store_rebuild_seconds`: CPU-side safe-store rebuild subtotal (`safe_store_update + safe_store_prune`) so reducer work can separate rebuild cost from frontier sync cost
+- `benchmark.sim_initial_store_materialize_seconds`: CPU-side safe-store materialization/update subtotal before prune; this is the pre-prune portion of `sim_initial_store_rebuild_seconds`
+- `benchmark.sim_initial_store_prune_seconds`: CPU-side safe-store prune subtotal; this is the prune portion of `sim_initial_store_rebuild_seconds`
 - `benchmark.sim_initial_frontier_sync_seconds`: CPU-side frontier upload / sync time (`safe_store_upload`) for the summary-handoff safe-store mirror path
+- `benchmark.sim_initial_store_other_merge_seconds`: remaining CPU merge time after subtracting `store_rebuild` and `frontier_sync`; on the default exact-safe path this is primarily the candidate/context apply work
 - `benchmark.sim_initial_scan_sync_wait_seconds`: synchronization wait time currently attributed to the initial scan handoff path
 - `benchmark.sim_initial_reduce_chunks_total` / `benchmark.sim_initial_reduce_chunks_replayed_total` / `benchmark.sim_initial_reduce_chunks_skipped_total` / `benchmark.sim_initial_reduce_summaries_replayed_total`: ordered-replay chunk statistics from the experimental initial reducer
 - `benchmark.sim_initial_run_summary_pipeline_seconds`: subtotal of the run-summary grouping stages (`hash_reduce + segmented_reduce + segmented_compact + topk`) for profiler-guided initial-scan tuning
@@ -213,6 +216,12 @@ Current exact-safe mainline note: CUDA initial scan now keeps the row-run coales
 - `projected_sim_initial_scan_cpu_merge_seconds`
 - `projected_sim_initial_scan_cpu_merge_subtotal_seconds`
 - `projected_sim_initial_run_summary_pipeline_seconds`
+- `projected_sim_initial_ordered_replay_seconds`
+- `projected_sim_initial_store_rebuild_seconds`
+- `projected_sim_initial_store_materialize_seconds`
+- `projected_sim_initial_store_prune_seconds`
+- `projected_sim_initial_frontier_sync_seconds`
+- `projected_sim_initial_store_other_merge_seconds`
 
 These ratios are additive to the existing `projected_*` fields and remain optional so older benchmark logs still parse unchanged.
 
