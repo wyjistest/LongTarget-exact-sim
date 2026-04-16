@@ -1141,6 +1141,8 @@ int main()
                      "segmented reduce batch recorded reduce gpu seconds") && ok;
     ok = expect_true(segmentedBatchResult.initialTopKSeconds > 0.0,
                      "segmented reduce batch recorded top-k gpu seconds") && ok;
+    ok = expect_true(segmentedBatchResult.initialOrderedReplaySeconds > 0.0,
+                     "segmented reduce batch recorded ordered replay gpu seconds") && ok;
     ok = expect_true(segmentedBatchResult.initialSegmentedCompactSeconds > 0.0,
                      "segmented reduce batch recorded compact gpu seconds") && ok;
     ok = expect_true(segmentedBatchResult.initialSegmentedTileStateCount >=
@@ -1157,6 +1159,8 @@ int main()
                      "ordered_segmented_v3 batch recorded reduce gpu seconds") && ok;
     ok = expect_true(orderedSegmentedV3BatchResult.initialTopKSeconds > 0.0,
                      "ordered_segmented_v3 batch recorded top-k gpu seconds") && ok;
+    ok = expect_true(orderedSegmentedV3BatchResult.initialOrderedReplaySeconds > 0.0,
+                     "ordered_segmented_v3 batch recorded ordered replay gpu seconds") && ok;
     ok = expect_true(orderedSegmentedV3BatchResult.initialSegmentedCompactSeconds > 0.0,
                      "ordered_segmented_v3 batch recorded compact gpu seconds") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(orderedSegmentedV3BatchResults.size()),
@@ -1304,6 +1308,8 @@ int main()
                      "single segmented backend recorded reduce gpu seconds") && ok;
     ok = expect_true(singleSegmentedBatchResult.initialTopKSeconds > 0.0,
                      "single segmented backend recorded top-k gpu seconds") && ok;
+    ok = expect_true(singleSegmentedBatchResult.initialOrderedReplaySeconds > 0.0,
+                     "single segmented backend recorded ordered replay gpu seconds") && ok;
     ok = expect_true(singleSegmentedBatchResult.initialSegmentedCompactSeconds > 0.0,
                      "single segmented backend recorded compact gpu seconds") && ok;
     ok = expect_true(singleSegmentedBatchResult.initialSegmentedGroupedStateCount > 0,
@@ -1330,6 +1336,8 @@ int main()
                      "single ordered_segmented_v3 backend recorded reduce gpu seconds") && ok;
     ok = expect_true(singleOrderedSegmentedV3BatchResult.initialTopKSeconds > 0.0,
                      "single ordered_segmented_v3 backend recorded top-k gpu seconds") && ok;
+    ok = expect_true(singleOrderedSegmentedV3BatchResult.initialOrderedReplaySeconds > 0.0,
+                     "single ordered_segmented_v3 backend recorded ordered replay gpu seconds") && ok;
     ok = expect_true(singleOrderedSegmentedV3BatchResult.initialSegmentedCompactSeconds > 0.0,
                      "single ordered_segmented_v3 backend recorded compact gpu seconds") && ok;
     ok = expect_reduce_result_equal(singleOrderedSegmentedV3Result,

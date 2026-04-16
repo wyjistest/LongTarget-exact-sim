@@ -9551,9 +9551,13 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
             fprintf(stderr, "SIM CUDA initial safe-store mirror upload failed: %s\n", gpuStoreError.c_str());
           }
         }
-        else if(benchmarkEnabled)
+        else
         {
-          recordSimInitialStoreBytesH2D(storeBytesH2D);
+          markSimGpuFrontierCacheSynchronized(context);
+          if(benchmarkEnabled)
+          {
+            recordSimInitialStoreBytesH2D(storeBytesH2D);
+          }
         }
         if(benchmarkEnabled)
         {
@@ -10812,6 +10816,7 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
     {
       resetSimCandidateStateStore(context.safeCandidateStateStore,false);
       moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,persistentSafeStoreHandle);
+      markSimGpuFrontierCacheSynchronized(context);
     }
     else
     {
@@ -10827,6 +10832,7 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
     {
       resetSimCandidateStateStore(context.safeCandidateStateStore,false);
       moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,persistentSafeStoreHandle);
+      markSimGpuFrontierCacheSynchronized(context);
     }
     else
     {

@@ -531,6 +531,7 @@ struct SimScanCudaBatchResult
     initialHashReduceSeconds(0.0),
     initialSegmentedReduceSeconds(0.0),
     initialSegmentedCompactSeconds(0.0),
+    initialOrderedReplaySeconds(0.0),
     initialTopKSeconds(0.0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
@@ -577,6 +578,7 @@ struct SimScanCudaBatchResult
   double initialHashReduceSeconds;
   double initialSegmentedReduceSeconds;
   double initialSegmentedCompactSeconds;
+  double initialOrderedReplaySeconds;
   double initialTopKSeconds;
   bool usedCuda;
   bool usedRegionTrueBatchPath;

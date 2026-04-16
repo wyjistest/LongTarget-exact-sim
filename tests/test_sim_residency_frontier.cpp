@@ -84,6 +84,56 @@ static void set_required_residency_env()
     setenv("LONGTARGET_SIM_CUDA_LOCATE_MODE", "safe_workset", 1);
 }
 
+static bool set_frontier_cache(SimCudaPersistentSafeStoreHandle &handle,
+                               const std::vector<SimScanCudaCandidateState> &frontierStates,
+                               int runningMin,
+                               std::string *errorOut)
+{
+    if (handle.frontierStatesDevice != 0)
+    {
+        SimCudaPersistentSafeStoreHandle frontierReleaseHandle = handle;
+        frontierReleaseHandle.statesDevice = frontierReleaseHandle.frontierStatesDevice;
+        frontierReleaseHandle.stateCount = frontierReleaseHandle.frontierCount;
+        frontierReleaseHandle.frontierStatesDevice = 0;
+        frontierReleaseHandle.frontierCapacity = 0;
+        frontierReleaseHandle.frontierCount = 0;
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&frontierReleaseHandle);
+        handle.frontierStatesDevice = 0;
+        handle.frontierCapacity = 0;
+    }
+
+    handle.frontierValid = true;
+    handle.frontierRunningMin = runningMin;
+    handle.frontierCount = frontierStates.size();
+    if (frontierStates.empty())
+    {
+        if (errorOut != NULL)
+        {
+            errorOut->clear();
+        }
+        return true;
+    }
+
+    SimCudaPersistentSafeStoreHandle frontierUploadHandle;
+    if (!sim_scan_cuda_upload_persistent_safe_candidate_state_store(frontierStates.data(),
+                                                                    frontierStates.size(),
+                                                                    &frontierUploadHandle,
+                                                                    errorOut))
+    {
+        return false;
+    }
+    handle.frontierStatesDevice = frontierUploadHandle.statesDevice;
+    handle.frontierCapacity = frontierStates.size();
+    frontierUploadHandle.statesDevice = 0;
+    frontierUploadHandle.stateCount = 0;
+    sim_scan_cuda_release_persistent_safe_candidate_state_store(&frontierUploadHandle);
+    if (errorOut != NULL)
+    {
+        errorOut->clear();
+    }
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -117,16 +167,31 @@ int main()
 
     std::vector<SimScanCudaCandidateState> warehouseStates = frontierStates;
     warehouseStates.push_back(make_state(150, 20, 20, 25, 25, 20, 25, 20, 25));
-    resetSimCandidateStateStore(context.safeCandidateStateStore, true);
-    context.safeCandidateStateStore.states = warehouseStates;
-    rebuildSimCandidateStateStoreIndex(context.safeCandidateStateStore);
+    SimCudaPersistentSafeStoreHandle persistentSafeStoreHandle;
     if (!uploadSimCudaPersistentSafeCandidateStateStore(warehouseStates,
-                                                        context.gpuSafeCandidateStateStore,
+                                                        persistentSafeStoreHandle,
                                                         &error))
     {
         std::cerr << "uploadSimCudaPersistentSafeCandidateStateStore failed: " << error << "\n";
         return 2;
     }
+    if (!set_frontier_cache(persistentSafeStoreHandle,
+                            frontierStates,
+                            110,
+                            &error))
+    {
+        releaseSimCudaPersistentSafeCandidateStateStore(persistentSafeStoreHandle);
+        std::cerr << "set_frontier_cache failed: " << error << "\n";
+        return 2;
+    }
+    applySimCudaInitialReduceResults(frontierStates,
+                                     110,
+                                     warehouseStates,
+                                     persistentSafeStoreHandle,
+                                     static_cast<uint64_t>(warehouseStates.size()),
+                                     context,
+                                     false,
+                                     false);
 
     std::vector<SimScanCudaCandidateState> proposalStates;
     bool usedGpuSafeStore = false;
@@ -141,22 +206,28 @@ int main()
         return 2;
     }
 
-    releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
-
     ok = expect_equal_size(proposalStates.size(),
                            1,
                            "residency proposal count") && ok;
     if (!proposalStates.empty())
     {
         ok = expect_state_equal(proposalStates[0],
-                                warehouseStates[2],
-                                "residency proposal prefers gpu safe-store top candidate") && ok;
+                                frontierStates[0],
+                                "residency proposal prefers gpu frontier top candidate") && ok;
     }
     ok = expect_equal_bool(usedGpuSafeStore,
                            true,
                            "residency proposal uses gpu safe store") && ok;
     ok = expect_true(simCudaMainlineResidencyEnabledRuntime(),
                      "residency runtime enabled") && ok;
+    ok = expect_true(context.gpuSafeCandidateStateStore.valid,
+                     "residency preserves gpu safe store after handoff") && ok;
+    ok = expect_true(context.gpuFrontierCacheInSync,
+                     "residency marks gpu frontier cache synchronized") && ok;
+    ok = expect_true(simCanUseGpuFrontierCacheForResidency(context),
+                     "residency can use gpu frontier cache after handoff") && ok;
+
+    releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
 
     return ok ? 0 : 1;
 }
