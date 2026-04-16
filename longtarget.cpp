@@ -2588,6 +2588,19 @@ void initEnv(int argc,char * const *argv,struct para &paraList)
 }
 void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vector<struct triplex>&sort_triplex_list,LongTargetExecutionMetrics *metrics)
 {
+  struct LongTargetManifestCaptureGuard
+  {
+    LongTargetManifestCaptureGuard()
+    {
+      simInitialHostMergeManifestCaptureBeginIfNeeded();
+    }
+
+    ~LongTargetManifestCaptureGuard()
+    {
+      simInitialHostMergeManifestCaptureFinalizeForCurrentRun();
+    }
+  } manifestCaptureGuard;
+
 	vector< string> dnaSequencesVec;
 	vector< int> dnaSequencesStartPos;
   int cut_num=0;
@@ -3370,6 +3383,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
 
         while(true)
         {
+          if(simInitialHostMergeManifestStopRequestedRuntime())
+          {
+            break;
+          }
           const size_t taskOrderIndex = nextTask.fetch_add(1, std::memory_order_relaxed);
           if(taskOrderIndex >= taskExecutionOrder.size())
           {
@@ -3592,6 +3609,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
 #pragma omp for schedule(static)
     for(long taskIndex = 0; taskIndex < static_cast<long>(tasks.size()); ++taskIndex)
     {
+      if(simInitialHostMergeManifestStopRequestedRuntime())
+      {
+        continue;
+      }
       const ExactSimTaskSpec &task = tasks[static_cast<size_t>(taskIndex)];
       if(deferredExactTwoStage && deferredTaskShouldRun[static_cast<size_t>(taskIndex)] == 0)
       {
@@ -3721,6 +3742,10 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
   CalcScoreWorkspace calcScoreWorkspace;
   for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
   {
+    if(simInitialHostMergeManifestStopRequestedRuntime())
+    {
+      break;
+    }
     const ExactSimTaskSpec &task = tasks[taskIndex];
     if(deferredExactTwoStage && deferredTaskShouldRun[taskIndex] == 0)
     {

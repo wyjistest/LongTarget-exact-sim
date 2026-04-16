@@ -13,6 +13,17 @@ LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH="$WORK/manifest-only.tsv" \
 LONGTARGET_SIM_CUDA_LOCATE_MODE=safe_workset \
 "$TEST_BIN" manifest-only
 
+LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH="$WORK/manifest-progress.tsv" \
+LONGTARGET_SIM_INITIAL_HOST_MERGE_HEARTBEAT_SECONDS=0 \
+LONGTARGET_SIM_INITIAL_HOST_MERGE_HEARTBEAT_CASES=1 \
+LONGTARGET_SIM_CUDA_LOCATE_MODE=safe_workset \
+"$TEST_BIN" manifest-progress >"$WORK/manifest-progress.stdout.log" 2>"$WORK/manifest-progress.stderr.log"
+
+test -s "$WORK/manifest-progress.tsv"
+grep -q '^case_id' "$WORK/manifest-progress.tsv"
+grep -q 'SIM initial host-merge manifest heartbeat:' "$WORK/manifest-progress.stderr.log"
+grep -q 'processed_cases=1' "$WORK/manifest-progress.stderr.log"
+
 cat >"$WORK/case-list.tsv" <<'EOF'
 case_id
 case-00000002

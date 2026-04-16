@@ -86,7 +86,7 @@ int main(int argc, char **argv)
 {
     if (argc != 2)
     {
-        std::cerr << "Usage: " << argv[0] << " <manifest-only|case-list>\n";
+        std::cerr << "Usage: " << argv[0] << " <manifest-only|manifest-progress|case-list>\n";
         return 1;
     }
 
@@ -101,6 +101,7 @@ int main(int argc, char **argv)
         const char *manifestPath = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH");
         ok = expect_true(manifestPath != NULL && manifestPath[0] != '\0', "manifest path configured") && ok;
         apply_capture_case(summaries);
+        simInitialHostMergeManifestCaptureFinalizeForCurrentRun();
 
         std::string manifestText;
         ok = expect_true(read_text_file(manifestPath, manifestText), "manifest file written") && ok;
@@ -110,6 +111,36 @@ int main(int argc, char **argv)
         {
             ok = expect_true(lines[0].find("case_id") == 0, "manifest header present") && ok;
             ok = expect_true(lines[1].find("case-00000001\t") == 0, "manifest row uses case-00000001") && ok;
+        }
+    }
+    else if (mode == "manifest-progress")
+    {
+        const char *manifestPath = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH");
+        ok = expect_true(manifestPath != NULL && manifestPath[0] != '\0', "manifest path configured") && ok;
+
+        simInitialHostMergeManifestCaptureBeginIfNeeded();
+
+        std::string initialManifestText;
+        ok = expect_true(read_text_file(manifestPath, initialManifestText), "manifest file eagerly created") && ok;
+        const std::vector<std::string> initialLines = split_lines(initialManifestText);
+        ok = expect_equal_size(initialLines.size(), 1, "manifest eager header line count") && ok;
+        if (!initialLines.empty())
+        {
+            ok = expect_true(initialLines[0].find("case_id") == 0, "manifest eager header present") && ok;
+        }
+
+        apply_capture_case(summaries);
+        apply_capture_case(summaries);
+        simInitialHostMergeManifestCaptureFinalizeForCurrentRun();
+
+        std::string manifestText;
+        ok = expect_true(read_text_file(manifestPath, manifestText), "manifest file written after progress run") && ok;
+        const std::vector<std::string> lines = split_lines(manifestText);
+        ok = expect_equal_size(lines.size(), 3, "manifest progress line count") && ok;
+        if (lines.size() >= 3)
+        {
+            ok = expect_true(lines[1].find("case-00000001\t") == 0, "manifest progress first case id") && ok;
+            ok = expect_true(lines[2].find("case-00000002\t") == 0, "manifest progress second case id") && ok;
         }
     }
     else if (mode == "case-list")

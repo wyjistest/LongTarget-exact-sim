@@ -28,6 +28,9 @@
 #include <atomic>
 #include <chrono>
 #include <limits>
+#include <mutex>
+#include <thread>
+#include <signal.h>
 #if defined(__SSE2__) || defined(__AVX2__)
 #include <immintrin.h>
 #endif
@@ -2807,6 +2810,54 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			{
 			  return simInitialHostMergeCorpusEnabledRuntime() ||
 			         simInitialHostMergeManifestEnabledRuntime();
+			}
+
+			inline uint64_t simInitialHostMergeManifestHeartbeatSecondsRuntime()
+			{
+			  static const uint64_t seconds = []() -> uint64_t
+			  {
+			    const char *env = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_HEARTBEAT_SECONDS");
+			    if(env == NULL || env[0] == '\0')
+			    {
+			      return 10;
+			    }
+			    char *end = NULL;
+			    unsigned long long parsed = strtoull(env,&end,10);
+			    if(end == env)
+			    {
+			      return 10;
+			    }
+			    if(parsed > 3600ULL)
+			    {
+			      return 3600ULL;
+			    }
+			    return static_cast<uint64_t>(parsed);
+			  }();
+			  return seconds;
+			}
+
+			inline uint64_t simInitialHostMergeManifestHeartbeatCasesRuntime()
+			{
+			  static const uint64_t cases = []() -> uint64_t
+			  {
+			    const char *env = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_HEARTBEAT_CASES");
+			    if(env == NULL || env[0] == '\0')
+			    {
+			      return 16;
+			    }
+			    char *end = NULL;
+			    unsigned long long parsed = strtoull(env,&end,10);
+			    if(end == env)
+			    {
+			      return 16;
+			    }
+			    if(parsed > 1000000ULL)
+			    {
+			      return 1000000ULL;
+			    }
+			    return static_cast<uint64_t>(parsed);
+			  }();
+			  return cases;
 			}
 
 		inline bool simCudaInitialProposalResidencyEnabledRuntime()
@@ -7856,6 +7907,100 @@ inline std::atomic<uint64_t> &simInitialHostMergeCorpusSelectedPayloadCounter()
   return count;
 }
 
+struct SimInitialHostMergeManifestCaptureSnapshot
+{
+  SimInitialHostMergeManifestCaptureSnapshot():
+    processedCases(0),
+    summaryCount(0),
+    logicalEventCount(0),
+    storeMaterializedCount(0),
+    storePrunedCount(0),
+    elapsedSeconds(0.0),
+    stopRequested(false),
+    interruptedSignal(0) {}
+
+  string manifestPath;
+  string lastCaseId;
+  uint64_t processedCases;
+  uint64_t summaryCount;
+  uint64_t logicalEventCount;
+  uint64_t storeMaterializedCount;
+  uint64_t storePrunedCount;
+  double elapsedSeconds;
+  bool stopRequested;
+  int interruptedSignal;
+};
+
+struct SimInitialHostMergeManifestCaptureState
+{
+  SimInitialHostMergeManifestCaptureState():
+    started(false),
+    handlersInstalled(false),
+    interruptedSummaryEmitted(false),
+    heartbeatThreadStopRequested(0),
+    startedAt(),
+    processedCases(0),
+    summaryCount(0),
+    logicalEventCount(0),
+    storeMaterializedCount(0),
+    storePrunedCount(0)
+  {
+    memset(&oldSigintAction,0,sizeof(oldSigintAction));
+    memset(&oldSigtermAction,0,sizeof(oldSigtermAction));
+  }
+
+  mutex lock;
+  bool started;
+  bool handlersInstalled;
+  bool interruptedSummaryEmitted;
+  std::atomic<int> heartbeatThreadStopRequested;
+  string manifestPath;
+  string lastCaseId;
+  std::chrono::steady_clock::time_point startedAt;
+  uint64_t processedCases;
+  uint64_t summaryCount;
+  uint64_t logicalEventCount;
+  uint64_t storeMaterializedCount;
+  uint64_t storePrunedCount;
+  std::thread heartbeatThread;
+  struct sigaction oldSigintAction;
+  struct sigaction oldSigtermAction;
+};
+
+inline SimInitialHostMergeManifestCaptureState &simInitialHostMergeManifestCaptureStateRuntime()
+{
+  static SimInitialHostMergeManifestCaptureState state;
+  return state;
+}
+
+inline volatile sig_atomic_t &simInitialHostMergeManifestSignalCountRuntime()
+{
+  static volatile sig_atomic_t count = 0;
+  return count;
+}
+
+inline volatile sig_atomic_t &simInitialHostMergeManifestInterruptedSignalRuntime()
+{
+  static volatile sig_atomic_t signalNumber = 0;
+  return signalNumber;
+}
+
+inline void simInitialHostMergeManifestSignalHandler(int signalNumber)
+{
+  volatile sig_atomic_t &count = simInitialHostMergeManifestSignalCountRuntime();
+  if(count != 0)
+  {
+    _exit(128 + signalNumber);
+  }
+  simInitialHostMergeManifestInterruptedSignalRuntime() = signalNumber;
+  count = 1;
+}
+
+inline bool simInitialHostMergeManifestStopRequestedRuntime()
+{
+  return simInitialHostMergeManifestSignalCountRuntime() != 0;
+}
+
 inline bool simCandidateStateLess(const SimScanCudaCandidateState &lhs,
                                   const SimScanCudaCandidateState &rhs)
 {
@@ -8461,7 +8606,7 @@ inline bool appendSimInitialHostMergeManifestRow(const string &path,
   }
   struct stat st;
   const bool existed = stat(path.c_str(),&st) == 0;
-  if(!existed)
+  if(!existed || st.st_size == 0)
   {
     if(!simWriteInitialHostMergeCorpusTextFile(path,simFormatInitialHostMergeManifestHeader(),errorOut))
     {
@@ -8469,6 +8614,347 @@ inline bool appendSimInitialHostMergeManifestRow(const string &path,
     }
   }
   return simAppendInitialHostMergeCorpusTextFile(path,row,errorOut);
+}
+
+inline bool simEnsureInitialHostMergeManifestInitialized(const string &path,
+                                                         string *errorOut = NULL)
+{
+  if(path.empty())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,"initial host-merge manifest path is empty");
+    return false;
+  }
+  const string parentDir = simInitialHostMergeCorpusParentPath(path);
+  if(!parentDir.empty() && !simEnsureInitialHostMergeCorpusDirectory(parentDir,errorOut))
+  {
+    return false;
+  }
+  struct stat st;
+  const bool existed = stat(path.c_str(),&st) == 0;
+  if(existed && st.st_size > 0)
+  {
+    return true;
+  }
+  return simWriteInitialHostMergeCorpusTextFile(path,simFormatInitialHostMergeManifestHeader(),errorOut);
+}
+
+inline SimInitialHostMergeManifestCaptureSnapshot
+simSnapshotInitialHostMergeManifestCaptureLocked(const SimInitialHostMergeManifestCaptureState &state)
+{
+  SimInitialHostMergeManifestCaptureSnapshot snapshot;
+  snapshot.manifestPath = state.manifestPath;
+  snapshot.lastCaseId = state.lastCaseId;
+  snapshot.processedCases = state.processedCases;
+  snapshot.summaryCount = state.summaryCount;
+  snapshot.logicalEventCount = state.logicalEventCount;
+  snapshot.storeMaterializedCount = state.storeMaterializedCount;
+  snapshot.storePrunedCount = state.storePrunedCount;
+  if(state.startedAt != std::chrono::steady_clock::time_point())
+  {
+    snapshot.elapsedSeconds =
+      static_cast<double>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - state.startedAt).count()) / 1.0e9;
+  }
+  snapshot.stopRequested = simInitialHostMergeManifestStopRequestedRuntime();
+  snapshot.interruptedSignal = static_cast<int>(simInitialHostMergeManifestInterruptedSignalRuntime());
+  return snapshot;
+}
+
+inline void simEmitInitialHostMergeManifestCaptureMessage(
+  const char *kind,
+  const SimInitialHostMergeManifestCaptureSnapshot &snapshot)
+{
+  fprintf(stderr,
+          "SIM initial host-merge manifest %s: processed_cases=%llu summary_count=%llu logical_event_count=%llu store_materialized_count=%llu store_pruned_count=%llu elapsed_seconds=%.3f last_case_id=%s manifest_path=%s stop_requested=%d interrupted_signal=%d\n",
+          kind,
+          static_cast<unsigned long long>(snapshot.processedCases),
+          static_cast<unsigned long long>(snapshot.summaryCount),
+          static_cast<unsigned long long>(snapshot.logicalEventCount),
+          static_cast<unsigned long long>(snapshot.storeMaterializedCount),
+          static_cast<unsigned long long>(snapshot.storePrunedCount),
+          snapshot.elapsedSeconds,
+          snapshot.lastCaseId.empty() ? "-" : snapshot.lastCaseId.c_str(),
+          snapshot.manifestPath.empty() ? "-" : snapshot.manifestPath.c_str(),
+          snapshot.stopRequested ? 1 : 0,
+          snapshot.interruptedSignal);
+  fflush(stderr);
+}
+
+inline void simInitialHostMergeManifestHeartbeatThreadMain()
+{
+  SimInitialHostMergeManifestCaptureState &state = simInitialHostMergeManifestCaptureStateRuntime();
+  const uint64_t intervalSeconds = simInitialHostMergeManifestHeartbeatSecondsRuntime();
+  if(intervalSeconds == 0)
+  {
+    return;
+  }
+
+  while(state.heartbeatThreadStopRequested.load(std::memory_order_relaxed) == 0)
+  {
+    for(uint64_t second = 0; second < intervalSeconds; ++second)
+    {
+      if(state.heartbeatThreadStopRequested.load(std::memory_order_relaxed) != 0)
+      {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      if(simInitialHostMergeManifestStopRequestedRuntime())
+      {
+        break;
+      }
+    }
+    if(state.heartbeatThreadStopRequested.load(std::memory_order_relaxed) != 0)
+    {
+      break;
+    }
+
+    SimInitialHostMergeManifestCaptureSnapshot snapshot;
+    bool emitInterruptedSummary = false;
+    {
+      lock_guard<mutex> guard(state.lock);
+      if(!state.started)
+      {
+        break;
+      }
+      snapshot = simSnapshotInitialHostMergeManifestCaptureLocked(state);
+      if(snapshot.stopRequested && !state.interruptedSummaryEmitted)
+      {
+        state.interruptedSummaryEmitted = true;
+        emitInterruptedSummary = true;
+      }
+    }
+    simEmitInitialHostMergeManifestCaptureMessage("heartbeat",snapshot);
+    if(emitInterruptedSummary)
+    {
+      simEmitInitialHostMergeManifestCaptureMessage("capture_interrupted",snapshot);
+      break;
+    }
+  }
+}
+
+inline bool simInstallInitialHostMergeManifestSignalHandlers(string *errorOut = NULL)
+{
+  SimInitialHostMergeManifestCaptureState &state = simInitialHostMergeManifestCaptureStateRuntime();
+  if(state.handlersInstalled)
+  {
+    return true;
+  }
+  struct sigaction action;
+  memset(&action,0,sizeof(action));
+  action.sa_handler = simInitialHostMergeManifestSignalHandler;
+  sigemptyset(&action.sa_mask);
+  action.sa_flags = 0;
+  if(sigaction(SIGINT,&action,&state.oldSigintAction) != 0)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      string("failed to install SIGINT handler: ") + strerror(errno));
+    return false;
+  }
+  if(sigaction(SIGTERM,&action,&state.oldSigtermAction) != 0)
+  {
+    sigaction(SIGINT,&state.oldSigintAction,NULL);
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      string("failed to install SIGTERM handler: ") + strerror(errno));
+    return false;
+  }
+  state.handlersInstalled = true;
+  return true;
+}
+
+inline void simRestoreInitialHostMergeManifestSignalHandlers()
+{
+  SimInitialHostMergeManifestCaptureState &state = simInitialHostMergeManifestCaptureStateRuntime();
+  if(!state.handlersInstalled)
+  {
+    return;
+  }
+  sigaction(SIGINT,&state.oldSigintAction,NULL);
+  sigaction(SIGTERM,&state.oldSigtermAction,NULL);
+  state.handlersInstalled = false;
+}
+
+inline void simInitialHostMergeManifestCaptureBeginIfNeeded()
+{
+  if(!simInitialHostMergeManifestEnabledRuntime())
+  {
+    return;
+  }
+
+  SimInitialHostMergeManifestCaptureState &state = simInitialHostMergeManifestCaptureStateRuntime();
+  bool startHeartbeatThread = false;
+  {
+    lock_guard<mutex> guard(state.lock);
+    if(state.started)
+    {
+      return;
+    }
+
+    string error;
+    if(!simEnsureInitialHostMergeManifestInitialized(simInitialHostMergeManifestPathRuntime(),&error))
+    {
+      disableSimInitialHostMergeManifestCaptureRuntime();
+      if(simInitialHostMergeManifestCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
+      {
+        fprintf(stderr,
+                "SIM initial host-merge manifest capture disabled before run start: %s\n",
+                error.c_str());
+        fflush(stderr);
+      }
+      return;
+    }
+    if(!simInstallInitialHostMergeManifestSignalHandlers(&error))
+    {
+      disableSimInitialHostMergeManifestCaptureRuntime();
+      if(simInitialHostMergeManifestCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
+      {
+        fprintf(stderr,
+                "SIM initial host-merge manifest capture disabled before run start: %s\n",
+                error.c_str());
+        fflush(stderr);
+      }
+      return;
+    }
+
+    simInitialHostMergeManifestSignalCountRuntime() = 0;
+    simInitialHostMergeManifestInterruptedSignalRuntime() = 0;
+    state.started = true;
+    state.interruptedSummaryEmitted = false;
+    state.heartbeatThreadStopRequested.store(0,std::memory_order_relaxed);
+    state.manifestPath = simInitialHostMergeManifestPathRuntime();
+    state.lastCaseId.clear();
+    state.startedAt = std::chrono::steady_clock::now();
+    state.processedCases = 0;
+    state.summaryCount = 0;
+    state.logicalEventCount = 0;
+    state.storeMaterializedCount = 0;
+    state.storePrunedCount = 0;
+    startHeartbeatThread = simInitialHostMergeManifestHeartbeatSecondsRuntime() > 0;
+  }
+
+  if(startHeartbeatThread)
+  {
+    state.heartbeatThread = std::thread(simInitialHostMergeManifestHeartbeatThreadMain);
+  }
+}
+
+inline void simRecordInitialHostMergeManifestProgress(const string &caseId,
+                                                      uint64_t logicalEventCount,
+                                                      size_t summaryCount,
+                                                      size_t storeMaterializedCount,
+                                                      size_t storePrunedCount,
+                                                      const string &row)
+{
+  if(!simInitialHostMergeManifestEnabledRuntime())
+  {
+    return;
+  }
+
+  simInitialHostMergeManifestCaptureBeginIfNeeded();
+  if(!simInitialHostMergeManifestEnabledRuntime())
+  {
+    return;
+  }
+
+  SimInitialHostMergeManifestCaptureState &state = simInitialHostMergeManifestCaptureStateRuntime();
+  SimInitialHostMergeManifestCaptureSnapshot heartbeatSnapshot;
+  bool emitHeartbeat = false;
+  string error;
+
+  {
+    lock_guard<mutex> guard(state.lock);
+    if(!appendSimInitialHostMergeManifestRow(simInitialHostMergeManifestPathRuntime(),row,&error))
+    {
+      disableSimInitialHostMergeManifestCaptureRuntime();
+      state.heartbeatThreadStopRequested.store(1,std::memory_order_relaxed);
+      if(simInitialHostMergeManifestCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
+      {
+        fprintf(stderr,
+                "SIM initial host-merge manifest capture disabled after write failure: %s\n",
+                error.c_str());
+        fflush(stderr);
+      }
+      return;
+    }
+
+    state.processedCases += 1;
+    state.summaryCount += static_cast<uint64_t>(summaryCount);
+    state.logicalEventCount += logicalEventCount;
+    state.storeMaterializedCount += static_cast<uint64_t>(storeMaterializedCount);
+    state.storePrunedCount += static_cast<uint64_t>(storePrunedCount);
+    state.lastCaseId = caseId;
+
+    const uint64_t caseCadence = simInitialHostMergeManifestHeartbeatCasesRuntime();
+    if(caseCadence > 0 && (state.processedCases % caseCadence) == 0)
+    {
+      heartbeatSnapshot = simSnapshotInitialHostMergeManifestCaptureLocked(state);
+      emitHeartbeat = true;
+    }
+  }
+
+  if(emitHeartbeat)
+  {
+    simEmitInitialHostMergeManifestCaptureMessage("heartbeat",heartbeatSnapshot);
+  }
+}
+
+inline void simInitialHostMergeManifestCaptureFinalizeForCurrentRun()
+{
+  SimInitialHostMergeManifestCaptureState &state = simInitialHostMergeManifestCaptureStateRuntime();
+  bool shouldJoinHeartbeat = false;
+  bool shouldEmitSummary = false;
+  const bool interrupted = simInitialHostMergeManifestStopRequestedRuntime();
+  SimInitialHostMergeManifestCaptureSnapshot summarySnapshot;
+
+  {
+    lock_guard<mutex> guard(state.lock);
+    if(!state.started && !state.handlersInstalled)
+    {
+      simInitialHostMergeManifestSignalCountRuntime() = 0;
+      simInitialHostMergeManifestInterruptedSignalRuntime() = 0;
+      return;
+    }
+    state.heartbeatThreadStopRequested.store(1,std::memory_order_relaxed);
+    shouldJoinHeartbeat = state.heartbeatThread.joinable();
+  }
+
+  if(shouldJoinHeartbeat)
+  {
+    state.heartbeatThread.join();
+  }
+
+  {
+    lock_guard<mutex> guard(state.lock);
+    if(state.started)
+    {
+      summarySnapshot = simSnapshotInitialHostMergeManifestCaptureLocked(state);
+      shouldEmitSummary = !interrupted || !state.interruptedSummaryEmitted;
+      if(interrupted)
+      {
+        state.interruptedSummaryEmitted = true;
+      }
+      state.started = false;
+      state.manifestPath.clear();
+      state.lastCaseId.clear();
+      state.startedAt = std::chrono::steady_clock::time_point();
+      state.processedCases = 0;
+      state.summaryCount = 0;
+      state.logicalEventCount = 0;
+      state.storeMaterializedCount = 0;
+      state.storePrunedCount = 0;
+    }
+  }
+
+  simRestoreInitialHostMergeManifestSignalHandlers();
+  simInitialHostMergeManifestSignalCountRuntime() = 0;
+  simInitialHostMergeManifestInterruptedSignalRuntime() = 0;
+
+  if(shouldEmitSummary)
+  {
+    simEmitInitialHostMergeManifestCaptureMessage(
+      interrupted ? "capture_interrupted" : "capture_complete",
+      summarySnapshot);
+  }
 }
 
 inline bool listSimInitialHostMergeCorpusCases(const string &rootDir,
@@ -8933,29 +9419,22 @@ inline void captureSimInitialHostMergeArtifactsBestEffort(
 
   if(manifestEnabled)
   {
-    string error;
-    if(!appendSimInitialHostMergeManifestRow(
-         simInitialHostMergeManifestPathRuntime(),
-         simFormatInitialHostMergeManifestRow(caseId,
-                                             caseIndex,
-                                             queryLength,
-                                             targetLength,
-                                             logicalEventCount,
-                                             summaries.size(),
-                                             candidateCountAfterContextApply,
-                                             storeMaterializedCount,
-                                             storePrunedCount,
-                                             gpuMirrorRequested),
-         &error))
-    {
-      disableSimInitialHostMergeManifestCaptureRuntime();
-      if(simInitialHostMergeManifestCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
-      {
-        fprintf(stderr,
-                "SIM initial host-merge manifest capture disabled after write failure: %s\n",
-                error.c_str());
-      }
-    }
+    simRecordInitialHostMergeManifestProgress(
+      caseId,
+      logicalEventCount,
+      summaries.size(),
+      storeMaterializedCount,
+      storePrunedCount,
+      simFormatInitialHostMergeManifestRow(caseId,
+                                           caseIndex,
+                                           queryLength,
+                                           targetLength,
+                                           logicalEventCount,
+                                           summaries.size(),
+                                           candidateCountAfterContextApply,
+                                           storeMaterializedCount,
+                                           storePrunedCount,
+                                           gpuMirrorRequested));
   }
 
   if(!payloadEnabled)
@@ -8971,6 +9450,7 @@ inline void captureSimInitialHostMergeArtifactsBestEffort(
       fprintf(stderr,
               "SIM initial host-merge corpus capture disabled after case-list load failure: %s\n",
               selection.error.c_str());
+      fflush(stderr);
     }
     return;
   }
@@ -8997,6 +9477,7 @@ inline void captureSimInitialHostMergeArtifactsBestEffort(
     {
       fprintf(stderr,
               "SIM initial host-merge corpus capture disabled because payload vectors were unavailable\n");
+      fflush(stderr);
     }
     return;
   }
@@ -9026,6 +9507,7 @@ inline void captureSimInitialHostMergeArtifactsBestEffort(
       fprintf(stderr,
               "SIM initial host-merge corpus capture disabled after write failure: %s\n",
               error.c_str());
+      fflush(stderr);
     }
   }
 }
