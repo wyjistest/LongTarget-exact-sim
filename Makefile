@@ -382,6 +382,12 @@ SIM_TRACEBACK_CUDA_BATCH_TEST_SOURCES := tests/test_sim_traceback_cuda_batch.cpp
 SIM_INITIAL_CUDA_MERGE_TEST_TARGET ?= tests/test_sim_initial_cuda_merge
 SIM_INITIAL_CUDA_MERGE_TEST_SOURCES := tests/test_sim_initial_cuda_merge.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET ?= tests/test_sim_initial_host_merge_corpus
+SIM_INITIAL_HOST_MERGE_CORPUS_TEST_SOURCES := tests/test_sim_initial_host_merge_corpus.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_HOST_MERGE_REPLAY_TARGET ?= tests/sim_initial_host_merge_replay
+SIM_INITIAL_HOST_MERGE_REPLAY_SOURCES := tests/sim_initial_host_merge_replay.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_LOCATE_UPDATE_TEST_TARGET ?= tests/test_sim_locate_update
 SIM_LOCATE_UPDATE_TEST_SOURCES := tests/test_sim_locate_update.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -407,6 +413,10 @@ build-sim-cuda-proposal-select-test: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 build-sim-traceback-cuda-batch-test: $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET)
 
 build-sim-initial-cuda-merge-test: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
+
+build-sim-initial-host-merge-corpus-test: $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET)
+
+build-sim-initial-host-merge-replay: $(SIM_INITIAL_HOST_MERGE_REPLAY_TARGET)
 
 build-sim-locate-update-test: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 
@@ -436,6 +446,12 @@ $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET): $(SIM_TRACEBACK_CUDA_BATCH_TEST_SOURCES
 
 $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET): $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET): $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_HOST_MERGE_REPLAY_TARGET): $(SIM_INITIAL_HOST_MERGE_REPLAY_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_REPLAY_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_LOCATE_UPDATE_TEST_TARGET): $(SIM_LOCATE_UPDATE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_LOCATE_UPDATE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -469,6 +485,9 @@ check-sim-traceback-cuda-batch: $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET)
 
 check-sim-initial-cuda-merge: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 	./$(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
+
+check-sim-initial-host-merge-corpus: $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET) $(SIM_INITIAL_HOST_MERGE_REPLAY_TARGET)
+	./$(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET)
 
 check-sim-locate-update: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 	./$(SIM_LOCATE_UPDATE_TEST_TARGET)
@@ -624,6 +643,7 @@ check-longtarget-lite-output:
 		build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
+		build-sim-initial-host-merge-corpus-test build-sim-initial-host-merge-replay check-sim-initial-host-merge-corpus \
 		build-sim-locate-update-test check-sim-locate-update \
 		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
 			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
