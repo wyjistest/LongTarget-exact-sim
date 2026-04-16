@@ -1,6 +1,7 @@
 .git/
 .tmp/
 /.worktrees/
+__pycache__/
 
 *.o
 *.out
@@ -17,6 +18,7 @@ gmon.out
 
 /tests/test_*
 !/tests/*.cpp
+/tests/sim_initial_host_merge_replay
 
 /*-TFOclass*
 /*-TFOsorted*

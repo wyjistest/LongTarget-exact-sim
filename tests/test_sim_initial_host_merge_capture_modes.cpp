@@ -150,6 +150,11 @@ int main(int argc, char **argv)
         apply_capture_case(summaries);
         apply_capture_case(summaries);
 
+        const std::string outDir = std::string(corpusDir) + "/out";
+        ok = expect_true(simEnsureInitialHostMergeCorpusDirectory(outDir, NULL),
+                         "create non-case output directory") &&
+             ok;
+
         std::vector<std::string> listedCases;
         std::string error;
         ok = expect_true(listSimInitialHostMergeCorpusCases(corpusDir, listedCases, &error),

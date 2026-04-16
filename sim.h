@@ -8999,6 +8999,10 @@ inline bool listSimInitialHostMergeCorpusCases(const string &rootDir,
     }
     if(S_ISDIR(st.st_mode))
     {
+      if(name.compare(0,5,"case-") != 0)
+      {
+        continue;
+      }
       caseIds.push_back(name);
     }
   }
