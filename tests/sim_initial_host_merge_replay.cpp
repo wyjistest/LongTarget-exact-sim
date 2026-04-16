@@ -12,7 +12,8 @@ namespace
 static void print_usage(const char *argv0)
 {
     std::cerr << "Usage: " << argv0
-              << " [--corpus-dir DIR] [--case CASE_ID | --all] [--verify] [--output-tsv PATH]\n";
+              << " [--corpus-dir DIR] [--case CASE_ID | --all] [--verify] [--output-tsv PATH]"
+              << " [--warmup-iterations N] [--iterations N] [--aggregate-tsv PATH]\n";
 }
 
 static bool write_text_file(const std::string &path, const std::string &content)
@@ -33,8 +34,11 @@ int main(int argc, char **argv)
     std::string corpusDir(".");
     std::string caseId;
     std::string outputTsvPath;
+    std::string aggregateTsvPath;
     bool selectAll = false;
     bool verify = false;
+    size_t warmupIterations = 0;
+    size_t iterations = 1;
 
     for (int index = 1; index < argc; ++index)
     {
@@ -74,6 +78,33 @@ int main(int argc, char **argv)
             }
             outputTsvPath = argv[++index];
         }
+        else if (argument == "--warmup-iterations")
+        {
+            if (index + 1 >= argc)
+            {
+                print_usage(argv[0]);
+                return 1;
+            }
+            warmupIterations = static_cast<size_t>(strtoull(argv[++index], NULL, 10));
+        }
+        else if (argument == "--iterations")
+        {
+            if (index + 1 >= argc)
+            {
+                print_usage(argv[0]);
+                return 1;
+            }
+            iterations = static_cast<size_t>(strtoull(argv[++index], NULL, 10));
+        }
+        else if (argument == "--aggregate-tsv")
+        {
+            if (index + 1 >= argc)
+            {
+                print_usage(argv[0]);
+                return 1;
+            }
+            aggregateTsvPath = argv[++index];
+        }
         else if (argument == "--help" || argument == "-h")
         {
             print_usage(argv[0]);
@@ -90,6 +121,11 @@ int main(int argc, char **argv)
     if (selectAll && !caseId.empty())
     {
         std::cerr << "--case and --all are mutually exclusive\n";
+        return 1;
+    }
+    if ((warmupIterations > 0 || iterations != 1) && aggregateTsvPath.empty())
+    {
+        std::cerr << "--aggregate-tsv is required when benchmark iterations are requested\n";
         return 1;
     }
 
@@ -116,6 +152,17 @@ int main(int argc, char **argv)
 
     std::stringstream tsv;
     tsv << "case_id\tsummary_count\tlogical_event_count\tcontext_apply_seconds\tstore_materialize_seconds\tstore_prune_seconds\tfull_host_merge_seconds\tcandidate_count_after_context_apply\tstore_materialized_count\tstore_pruned_count\tstore_other_merge_seconds\tverify_ok\n";
+    std::stringstream aggregateTsv;
+    if (!aggregateTsvPath.empty())
+    {
+        aggregateTsv << "case_id\twarmup_iterations\titerations\tlogical_event_count\tstore_materialized_count\tstore_pruned_count"
+                     << "\tcontext_apply_mean_seconds\tcontext_apply_p50_seconds\tcontext_apply_p95_seconds"
+                     << "\tstore_materialize_mean_seconds\tstore_materialize_p50_seconds\tstore_materialize_p95_seconds"
+                     << "\tstore_prune_mean_seconds\tstore_prune_p50_seconds\tstore_prune_p95_seconds"
+                     << "\tstore_other_merge_mean_seconds\tstore_other_merge_p50_seconds\tstore_other_merge_p95_seconds"
+                     << "\tfull_host_merge_mean_seconds\tfull_host_merge_p50_seconds\tfull_host_merge_p95_seconds"
+                     << "\tns_per_logical_event\tns_per_materialized_record\tns_per_pruned_record\n";
+    }
 
     bool success = true;
     for (size_t caseIndex = 0; caseIndex < selectedCases.size(); ++caseIndex)
@@ -134,6 +181,20 @@ int main(int argc, char **argv)
         {
             std::cerr << error << "\n";
             return 1;
+        }
+
+        SimInitialHostMergeReplayBenchmarkResult benchmark;
+        if (!aggregateTsvPath.empty())
+        {
+            if (!benchmarkSimInitialHostMergeCorpusCase(corpus,
+                                                        warmupIterations,
+                                                        iterations,
+                                                        benchmark,
+                                                        &error))
+            {
+                std::cerr << error << "\n";
+                return 1;
+            }
         }
 
         bool verifyOk = true;
@@ -157,8 +218,36 @@ int main(int argc, char **argv)
             << replay.contextCandidates.size() << '\t'
             << replay.storeMaterialized.size() << '\t'
             << replay.storePruned.size() << '\t'
-            << replay.contextApplySeconds << '\t'
+            << replay.storeOtherMergeSeconds << '\t'
             << (verifyOk ? "true" : "false") << '\n';
+
+        if (!aggregateTsvPath.empty())
+        {
+            aggregateTsv << corpus.caseId << '\t'
+                         << benchmark.warmupIterations << '\t'
+                         << benchmark.iterations << '\t'
+                         << benchmark.logicalEventCount << '\t'
+                         << benchmark.storeMaterializedCount << '\t'
+                         << benchmark.storePrunedCount << '\t'
+                         << benchmark.contextApply.meanSeconds << '\t'
+                         << benchmark.contextApply.p50Seconds << '\t'
+                         << benchmark.contextApply.p95Seconds << '\t'
+                         << benchmark.storeMaterialize.meanSeconds << '\t'
+                         << benchmark.storeMaterialize.p50Seconds << '\t'
+                         << benchmark.storeMaterialize.p95Seconds << '\t'
+                         << benchmark.storePrune.meanSeconds << '\t'
+                         << benchmark.storePrune.p50Seconds << '\t'
+                         << benchmark.storePrune.p95Seconds << '\t'
+                         << benchmark.storeOtherMerge.meanSeconds << '\t'
+                         << benchmark.storeOtherMerge.p50Seconds << '\t'
+                         << benchmark.storeOtherMerge.p95Seconds << '\t'
+                         << benchmark.fullHostMerge.meanSeconds << '\t'
+                         << benchmark.fullHostMerge.p50Seconds << '\t'
+                         << benchmark.fullHostMerge.p95Seconds << '\t'
+                         << benchmark.nsPerLogicalEvent << '\t'
+                         << benchmark.nsPerMaterializedRecord << '\t'
+                         << benchmark.nsPerPrunedRecord << '\n';
+        }
     }
 
     if (!outputTsvPath.empty())
@@ -172,6 +261,15 @@ int main(int argc, char **argv)
     else
     {
         std::cout << tsv.str();
+    }
+
+    if (!aggregateTsvPath.empty())
+    {
+        if (!write_text_file(aggregateTsvPath, aggregateTsv.str()))
+        {
+            std::cerr << "Failed to write aggregate TSV: " << aggregateTsvPath << "\n";
+            return 1;
+        }
     }
 
     return success ? 0 : 1;

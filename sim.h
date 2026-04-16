@@ -652,6 +652,7 @@ struct SimInitialHostMergeReplayResult
     contextApplySeconds(0.0),
     storeMaterializeSeconds(0.0),
     storePruneSeconds(0.0),
+    storeOtherMergeSeconds(0.0),
     fullHostMergeSeconds(0.0),
     contextCandidates(),
     storeMaterialized(),
@@ -663,10 +664,59 @@ struct SimInitialHostMergeReplayResult
   double contextApplySeconds;
   double storeMaterializeSeconds;
   double storePruneSeconds;
+  double storeOtherMergeSeconds;
   double fullHostMergeSeconds;
   vector<SimScanCudaCandidateState> contextCandidates;
   vector<SimScanCudaCandidateState> storeMaterialized;
   vector<SimScanCudaCandidateState> storePruned;
+};
+
+struct SimInitialHostMergeReplayTimingSummary
+{
+  SimInitialHostMergeReplayTimingSummary():
+    meanSeconds(0.0),
+    p50Seconds(0.0),
+    p95Seconds(0.0)
+  {
+  }
+
+  double meanSeconds;
+  double p50Seconds;
+  double p95Seconds;
+};
+
+struct SimInitialHostMergeReplayBenchmarkResult
+{
+  SimInitialHostMergeReplayBenchmarkResult():
+    warmupIterations(0),
+    iterations(0),
+    logicalEventCount(0),
+    storeMaterializedCount(0),
+    storePrunedCount(0),
+    contextApply(),
+    storeMaterialize(),
+    storePrune(),
+    storeOtherMerge(),
+    fullHostMerge(),
+    nsPerLogicalEvent(0.0),
+    nsPerMaterializedRecord(0.0),
+    nsPerPrunedRecord(0.0)
+  {
+  }
+
+  size_t warmupIterations;
+  size_t iterations;
+  uint64_t logicalEventCount;
+  size_t storeMaterializedCount;
+  size_t storePrunedCount;
+  SimInitialHostMergeReplayTimingSummary contextApply;
+  SimInitialHostMergeReplayTimingSummary storeMaterialize;
+  SimInitialHostMergeReplayTimingSummary storePrune;
+  SimInitialHostMergeReplayTimingSummary storeOtherMerge;
+  SimInitialHostMergeReplayTimingSummary fullHostMerge;
+  double nsPerLogicalEvent;
+  double nsPerMaterializedRecord;
+  double nsPerPrunedRecord;
 };
 
 inline uint64_t simUpdateBandCellCount(const SimUpdateBand &band)
@@ -2661,9 +2711,9 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return dir;
 		}
 
-		inline uint64_t simInitialHostMergeCorpusMaxCasesRuntime()
-		{
-		  static const uint64_t maxCases = []() -> uint64_t
+			inline uint64_t simInitialHostMergeCorpusMaxCasesRuntime()
+			{
+			  static const uint64_t maxCases = []() -> uint64_t
 		  {
 		    const char *env = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_MAX_CASES");
 		    if(env == NULL || env[0] == '\0')
@@ -2678,30 +2728,86 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		    }
 		    return static_cast<uint64_t>(parsed);
 		  }();
-		  return maxCases;
-		}
+			  return maxCases;
+			}
 
-		inline std::atomic<int> &simInitialHostMergeCorpusCaptureDisabledFlagRuntime()
-		{
-		  static std::atomic<int> disabled(0);
-		  return disabled;
-		}
+			inline const string &simInitialHostMergeManifestPathRuntime()
+			{
+			  static const string path = []() -> string
+			  {
+			    const char *env = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH");
+			    if(env == NULL || env[0] == '\0')
+			    {
+			      return string();
+			    }
+			    return string(env);
+			  }();
+			  return path;
+			}
+
+			inline const string &simInitialHostMergeCorpusCaseListPathRuntime()
+			{
+			  static const string path = []() -> string
+			  {
+			    const char *env = getenv("LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST");
+			    if(env == NULL || env[0] == '\0')
+			    {
+			      return string();
+			    }
+			    return string(env);
+			  }();
+			  return path;
+			}
+
+			inline std::atomic<int> &simInitialHostMergeCorpusCaptureDisabledFlagRuntime()
+			{
+			  static std::atomic<int> disabled(0);
+			  return disabled;
+			}
 
 		inline bool simInitialHostMergeCorpusCaptureDisabledRuntime()
 		{
 		  return simInitialHostMergeCorpusCaptureDisabledFlagRuntime().load(std::memory_order_relaxed) != 0;
 		}
 
-		inline void disableSimInitialHostMergeCorpusCaptureRuntime()
-		{
-		  simInitialHostMergeCorpusCaptureDisabledFlagRuntime().store(1,std::memory_order_relaxed);
-		}
+			inline void disableSimInitialHostMergeCorpusCaptureRuntime()
+			{
+			  simInitialHostMergeCorpusCaptureDisabledFlagRuntime().store(1,std::memory_order_relaxed);
+			}
 
-		inline bool simInitialHostMergeCorpusEnabledRuntime()
-		{
-		  return !simInitialHostMergeCorpusDirRuntime().empty() &&
-		         !simInitialHostMergeCorpusCaptureDisabledRuntime();
-		}
+			inline std::atomic<int> &simInitialHostMergeManifestCaptureDisabledFlagRuntime()
+			{
+			  static std::atomic<int> disabled(0);
+			  return disabled;
+			}
+
+			inline bool simInitialHostMergeManifestCaptureDisabledRuntime()
+			{
+			  return simInitialHostMergeManifestCaptureDisabledFlagRuntime().load(std::memory_order_relaxed) != 0;
+			}
+
+			inline void disableSimInitialHostMergeManifestCaptureRuntime()
+			{
+			  simInitialHostMergeManifestCaptureDisabledFlagRuntime().store(1,std::memory_order_relaxed);
+			}
+
+			inline bool simInitialHostMergeCorpusEnabledRuntime()
+			{
+			  return !simInitialHostMergeCorpusDirRuntime().empty() &&
+			         !simInitialHostMergeCorpusCaptureDisabledRuntime();
+			}
+
+			inline bool simInitialHostMergeManifestEnabledRuntime()
+			{
+			  return !simInitialHostMergeManifestPathRuntime().empty() &&
+			         !simInitialHostMergeManifestCaptureDisabledRuntime();
+			}
+
+			inline bool simInitialHostMergeAnyCaptureEnabledRuntime()
+			{
+			  return simInitialHostMergeCorpusEnabledRuntime() ||
+			         simInitialHostMergeManifestEnabledRuntime();
+			}
 
 		inline bool simCudaInitialProposalResidencyEnabledRuntime()
 		{
@@ -7738,6 +7844,18 @@ inline std::atomic<uint64_t> &simInitialHostMergeCorpusCaptureErrorCount()
   return count;
 }
 
+inline std::atomic<uint64_t> &simInitialHostMergeManifestCaptureErrorCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simInitialHostMergeCorpusSelectedPayloadCounter()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
 inline bool simCandidateStateLess(const SimScanCudaCandidateState &lhs,
                                   const SimScanCudaCandidateState &rhs)
 {
@@ -7791,6 +7909,20 @@ inline string simJoinInitialHostMergeCorpusPath(const string &lhs,const string &
     return lhs + rhs;
   }
   return lhs + "/" + rhs;
+}
+
+inline string simInitialHostMergeCorpusParentPath(const string &path)
+{
+  const size_t slash = path.find_last_of('/');
+  if(slash == string::npos)
+  {
+    return string();
+  }
+  if(slash == 0)
+  {
+    return "/";
+  }
+  return path.substr(0,slash);
 }
 
 inline string simInitialHostMergeCorpusBaseName(const string &path)
@@ -7912,6 +8044,27 @@ inline bool simWriteInitialHostMergeCorpusTextFile(const string &path,
   {
     simSetInitialHostMergeCorpusError(errorOut,
                                       string("failed to write text file '") + path + "'");
+    return false;
+  }
+  return true;
+}
+
+inline bool simAppendInitialHostMergeCorpusTextFile(const string &path,
+                                                    const string &content,
+                                                    string *errorOut = NULL)
+{
+  ofstream output(path.c_str(),ios::out | ios::binary | ios::app);
+  if(!output)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      string("failed to open text file for append '") + path + "'");
+    return false;
+  }
+  output.write(content.data(),static_cast<std::streamsize>(content.size()));
+  if(!output.good())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      string("failed to append text file '") + path + "'");
     return false;
   }
   return true;
@@ -8175,6 +8328,147 @@ inline bool simParseInitialHostMergeCorpusFloat(const string &json,
   }
   valueOut = parsed;
   return true;
+}
+
+struct SimInitialHostMergeCaseListSelection
+{
+  SimInitialHostMergeCaseListSelection():
+    configured(false),
+    loadOk(true),
+    caseIds(),
+    error()
+  {
+  }
+
+  bool configured;
+  bool loadOk;
+  vector<string> caseIds;
+  string error;
+};
+
+inline SimInitialHostMergeCaseListSelection simLoadInitialHostMergeCaseListSelection(const string &path)
+{
+  SimInitialHostMergeCaseListSelection selection;
+  if(path.empty())
+  {
+    return selection;
+  }
+  selection.configured = true;
+  ifstream input(path.c_str(),ios::in | ios::binary);
+  if(!input)
+  {
+    selection.loadOk = false;
+    selection.error = string("failed to open host-merge case list '") + path + "'";
+    return selection;
+  }
+  string line;
+  while(std::getline(input,line))
+  {
+    if(!line.empty() && line[line.size() - 1] == '\r')
+    {
+      line.erase(line.size() - 1);
+    }
+    const string trimmed = simTrimInitialHostMergeCorpusValue(line);
+    if(trimmed.empty() || trimmed[0] == '#')
+    {
+      continue;
+    }
+    const size_t tab = trimmed.find('\t');
+    const string caseId = simTrimInitialHostMergeCorpusValue(
+      tab == string::npos ? trimmed : trimmed.substr(0,tab));
+    if(caseId.empty() || caseId == "case_id")
+    {
+      continue;
+    }
+    selection.caseIds.push_back(caseId);
+  }
+  sort(selection.caseIds.begin(),selection.caseIds.end());
+  selection.caseIds.erase(unique(selection.caseIds.begin(),selection.caseIds.end()),
+                          selection.caseIds.end());
+  return selection;
+}
+
+inline const SimInitialHostMergeCaseListSelection &simInitialHostMergeCaseListSelectionRuntime()
+{
+  static const SimInitialHostMergeCaseListSelection selection =
+    simLoadInitialHostMergeCaseListSelection(simInitialHostMergeCorpusCaseListPathRuntime());
+  return selection;
+}
+
+inline bool simInitialHostMergeCorpusCaseSelectedRuntime(const string &caseId)
+{
+  const SimInitialHostMergeCaseListSelection &selection = simInitialHostMergeCaseListSelectionRuntime();
+  if(!selection.configured)
+  {
+    return true;
+  }
+  if(!selection.loadOk)
+  {
+    return false;
+  }
+  return binary_search(selection.caseIds.begin(),selection.caseIds.end(),caseId);
+}
+
+inline string simFormatInitialHostMergeManifestHeader()
+{
+  return string("case_id\tcase_index\tquery_length\ttarget_length\tlogical_event_count\tsummary_count\t") +
+         "candidate_count_after_context_apply\tstore_materialized_count\tstore_pruned_count\tprune_ratio\t" +
+         "gpu_mirror_requested\n";
+}
+
+inline string simFormatInitialHostMergeManifestRow(const string &caseId,
+                                                   uint64_t caseIndex,
+                                                   long queryLength,
+                                                   long targetLength,
+                                                   uint64_t logicalEventCount,
+                                                   size_t summaryCount,
+                                                   size_t candidateCountAfterContextApply,
+                                                   size_t storeMaterializedCount,
+                                                   size_t storePrunedCount,
+                                                   bool gpuMirrorRequested)
+{
+  const double pruneRatio =
+    storeMaterializedCount == 0 ? 0.0 :
+    static_cast<double>(storePrunedCount) / static_cast<double>(storeMaterializedCount);
+  stringstream row;
+  row << caseId << '\t'
+      << caseIndex << '\t'
+      << queryLength << '\t'
+      << targetLength << '\t'
+      << logicalEventCount << '\t'
+      << summaryCount << '\t'
+      << candidateCountAfterContextApply << '\t'
+      << storeMaterializedCount << '\t'
+      << storePrunedCount << '\t'
+      << pruneRatio << '\t'
+      << (gpuMirrorRequested ? "true" : "false") << '\n';
+  return row.str();
+}
+
+inline bool appendSimInitialHostMergeManifestRow(const string &path,
+                                                 const string &row,
+                                                 string *errorOut = NULL)
+{
+  if(path.empty())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,"initial host-merge manifest path is empty");
+    return false;
+  }
+  const string parentDir = simInitialHostMergeCorpusParentPath(path);
+  if(!parentDir.empty() && !simEnsureInitialHostMergeCorpusDirectory(parentDir,errorOut))
+  {
+    return false;
+  }
+  struct stat st;
+  const bool existed = stat(path.c_str(),&st) == 0;
+  if(!existed)
+  {
+    if(!simWriteInitialHostMergeCorpusTextFile(path,simFormatInitialHostMergeManifestHeader(),errorOut))
+    {
+      return false;
+    }
+  }
+  return simAppendInitialHostMergeCorpusTextFile(path,row,errorOut);
 }
 
 inline bool listSimInitialHostMergeCorpusCases(const string &rootDir,
@@ -8459,6 +8753,106 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
   replay.storePruneSeconds = static_cast<double>(simElapsedNanoseconds(storePruneStart)) / 1.0e9;
   replay.storePruned = context.safeCandidateStateStore.states;
   replay.fullHostMergeSeconds = static_cast<double>(simElapsedNanoseconds(fullStart)) / 1.0e9;
+  replay.storeOtherMergeSeconds = replay.fullHostMergeSeconds -
+                                  replay.storeMaterializeSeconds -
+                                  replay.storePruneSeconds;
+  if(replay.storeOtherMergeSeconds < 0.0)
+  {
+    replay.storeOtherMergeSeconds = 0.0;
+  }
+  return true;
+}
+
+inline SimInitialHostMergeReplayTimingSummary summarizeSimInitialHostMergeReplaySamples(
+  const vector<double> &samples)
+{
+  SimInitialHostMergeReplayTimingSummary summary;
+  if(samples.empty())
+  {
+    return summary;
+  }
+  vector<double> sorted(samples);
+  sort(sorted.begin(),sorted.end());
+  double total = 0.0;
+  for(size_t index = 0; index < sorted.size(); ++index)
+  {
+    total += sorted[index];
+  }
+  summary.meanSeconds = total / static_cast<double>(sorted.size());
+  summary.p50Seconds = sorted[(sorted.size() - 1) / 2];
+  summary.p95Seconds = sorted[(sorted.size() - 1) * 95 / 100];
+  return summary;
+}
+
+inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusCase &corpus,
+                                                   size_t warmupIterations,
+                                                   size_t iterations,
+                                                   SimInitialHostMergeReplayBenchmarkResult &result,
+                                                   string *errorOut = NULL)
+{
+  result = SimInitialHostMergeReplayBenchmarkResult();
+  if(iterations == 0)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,"host-merge replay benchmark iterations must be > 0");
+    return false;
+  }
+  SimInitialHostMergeReplayResult replay;
+  for(size_t iteration = 0; iteration < warmupIterations; ++iteration)
+  {
+    if(!replaySimInitialHostMergeCorpusCase(corpus,replay,errorOut))
+    {
+      return false;
+    }
+  }
+
+  vector<double> contextApplySamples;
+  vector<double> storeMaterializeSamples;
+  vector<double> storePruneSamples;
+  vector<double> storeOtherMergeSamples;
+  vector<double> fullHostMergeSamples;
+  contextApplySamples.reserve(iterations);
+  storeMaterializeSamples.reserve(iterations);
+  storePruneSamples.reserve(iterations);
+  storeOtherMergeSamples.reserve(iterations);
+  fullHostMergeSamples.reserve(iterations);
+  for(size_t iteration = 0; iteration < iterations; ++iteration)
+  {
+    if(!replaySimInitialHostMergeCorpusCase(corpus,replay,errorOut))
+    {
+      return false;
+    }
+    contextApplySamples.push_back(replay.contextApplySeconds);
+    storeMaterializeSamples.push_back(replay.storeMaterializeSeconds);
+    storePruneSamples.push_back(replay.storePruneSeconds);
+    storeOtherMergeSamples.push_back(replay.storeOtherMergeSeconds);
+    fullHostMergeSamples.push_back(replay.fullHostMergeSeconds);
+  }
+
+  result.warmupIterations = warmupIterations;
+  result.iterations = iterations;
+  result.logicalEventCount = corpus.logicalEventCount;
+  result.storeMaterializedCount = replay.storeMaterialized.size();
+  result.storePrunedCount = replay.storePruned.size();
+  result.contextApply = summarizeSimInitialHostMergeReplaySamples(contextApplySamples);
+  result.storeMaterialize = summarizeSimInitialHostMergeReplaySamples(storeMaterializeSamples);
+  result.storePrune = summarizeSimInitialHostMergeReplaySamples(storePruneSamples);
+  result.storeOtherMerge = summarizeSimInitialHostMergeReplaySamples(storeOtherMergeSamples);
+  result.fullHostMerge = summarizeSimInitialHostMergeReplaySamples(fullHostMergeSamples);
+  if(result.logicalEventCount > 0)
+  {
+    result.nsPerLogicalEvent =
+      result.fullHostMerge.meanSeconds * 1.0e9 / static_cast<double>(result.logicalEventCount);
+  }
+  if(result.storeMaterializedCount > 0)
+  {
+    result.nsPerMaterializedRecord =
+      result.fullHostMerge.meanSeconds * 1.0e9 / static_cast<double>(result.storeMaterializedCount);
+  }
+  if(result.storePrunedCount > 0)
+  {
+    result.nsPerPrunedRecord =
+      result.fullHostMerge.meanSeconds * 1.0e9 / static_cast<double>(result.storePrunedCount);
+  }
   return true;
 }
 
@@ -8510,7 +8904,7 @@ inline bool verifySimInitialHostMergeReplay(const SimInitialHostMergeCorpusCase 
   return true;
 }
 
-inline void captureSimInitialHostMergeCorpusCaseBestEffort(
+inline void captureSimInitialHostMergeArtifactsBestEffort(
   const vector<SimScanCudaInitialRunSummary> &summaries,
   uint64_t logicalEventCount,
   long queryLength,
@@ -8520,27 +8914,95 @@ inline void captureSimInitialHostMergeCorpusCaseBestEffort(
   float parmO,
   float parmE,
   bool gpuMirrorRequested,
+  uint64_t caseIndex,
+  const string &caseId,
   int runningMinAfterContextApply,
-  const vector<SimScanCudaCandidateState> &contextCandidates,
-  const vector<SimScanCudaCandidateState> &storeMaterialized,
-  const vector<SimScanCudaCandidateState> &storePruned)
+  size_t candidateCountAfterContextApply,
+  size_t storeMaterializedCount,
+  size_t storePrunedCount,
+  const vector<SimScanCudaCandidateState> *contextCandidates,
+  const vector<SimScanCudaCandidateState> *storeMaterialized,
+  const vector<SimScanCudaCandidateState> *storePruned)
 {
-  if(!simInitialHostMergeCorpusEnabledRuntime())
-  {
-    return;
-  }
-  const uint64_t nextCase = simInitialHostMergeCorpusCaseCounter().fetch_add(1,std::memory_order_relaxed) + 1;
-  const uint64_t maxCases = simInitialHostMergeCorpusMaxCasesRuntime();
-  if(maxCases > 0 && nextCase > maxCases)
+  const bool manifestEnabled = simInitialHostMergeManifestEnabledRuntime();
+  const bool payloadEnabled = simInitialHostMergeCorpusEnabledRuntime();
+  if(!manifestEnabled && !payloadEnabled)
   {
     return;
   }
 
-  char caseIdBuffer[32];
-  snprintf(caseIdBuffer,sizeof(caseIdBuffer),"case-%08llu",
-           static_cast<unsigned long long>(nextCase));
+  if(manifestEnabled)
+  {
+    string error;
+    if(!appendSimInitialHostMergeManifestRow(
+         simInitialHostMergeManifestPathRuntime(),
+         simFormatInitialHostMergeManifestRow(caseId,
+                                             caseIndex,
+                                             queryLength,
+                                             targetLength,
+                                             logicalEventCount,
+                                             summaries.size(),
+                                             candidateCountAfterContextApply,
+                                             storeMaterializedCount,
+                                             storePrunedCount,
+                                             gpuMirrorRequested),
+         &error))
+    {
+      disableSimInitialHostMergeManifestCaptureRuntime();
+      if(simInitialHostMergeManifestCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
+      {
+        fprintf(stderr,
+                "SIM initial host-merge manifest capture disabled after write failure: %s\n",
+                error.c_str());
+      }
+    }
+  }
+
+  if(!payloadEnabled)
+  {
+    return;
+  }
+  const SimInitialHostMergeCaseListSelection &selection = simInitialHostMergeCaseListSelectionRuntime();
+  if(selection.configured && !selection.loadOk)
+  {
+    disableSimInitialHostMergeCorpusCaptureRuntime();
+    if(simInitialHostMergeCorpusCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
+    {
+      fprintf(stderr,
+              "SIM initial host-merge corpus capture disabled after case-list load failure: %s\n",
+              selection.error.c_str());
+    }
+    return;
+  }
+  if(!simInitialHostMergeCorpusCaseSelectedRuntime(caseId))
+  {
+    return;
+  }
+
+  const uint64_t maxCases = simInitialHostMergeCorpusMaxCasesRuntime();
+  if(maxCases > 0)
+  {
+    const uint64_t captureOrdinal = selection.configured ?
+      (simInitialHostMergeCorpusSelectedPayloadCounter().fetch_add(1,std::memory_order_relaxed) + 1) :
+      caseIndex;
+    if(captureOrdinal > maxCases)
+    {
+      return;
+    }
+  }
+  if(contextCandidates == NULL || storeMaterialized == NULL || storePruned == NULL)
+  {
+    disableSimInitialHostMergeCorpusCaptureRuntime();
+    if(simInitialHostMergeCorpusCaptureErrorCount().fetch_add(1,std::memory_order_relaxed) == 0)
+    {
+      fprintf(stderr,
+              "SIM initial host-merge corpus capture disabled because payload vectors were unavailable\n");
+    }
+    return;
+  }
+
   SimInitialHostMergeCorpusCase corpus;
-  corpus.caseId = caseIdBuffer;
+  corpus.caseId = caseId;
   corpus.queryLength = queryLength;
   corpus.targetLength = targetLength;
   corpus.parmM = parmM;
@@ -8551,9 +9013,9 @@ inline void captureSimInitialHostMergeCorpusCaseBestEffort(
   corpus.gpuMirrorRequested = gpuMirrorRequested;
   corpus.runningMinAfterContextApply = runningMinAfterContextApply;
   corpus.summaries = summaries;
-  corpus.expectedContextCandidates = contextCandidates;
-  corpus.expectedStoreMaterialized = storeMaterialized;
-  corpus.expectedStorePruned = storePruned;
+  corpus.expectedContextCandidates = *contextCandidates;
+  corpus.expectedStoreMaterialized = *storeMaterialized;
+  corpus.expectedStorePruned = *storePruned;
 
   string error;
   if(!writeSimInitialHostMergeCorpusCase(simInitialHostMergeCorpusDirRuntime(),corpus,&error))
@@ -10419,15 +10881,21 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   const bool maintainSafeStore =
     simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
     simCudaProposalLoopEnabledRuntime();
-  const bool captureHostMergeCorpus =
+  const bool captureHostMergeArtifacts =
     maintainSafeStore &&
     !simCudaProposalLoopEnabledRuntime() &&
     !simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime() &&
+    simInitialHostMergeAnyCaptureEnabledRuntime();
+  const bool captureHostMergeCorpusPayload =
+    captureHostMergeArtifacts &&
     simInitialHostMergeCorpusEnabledRuntime();
   vector<SimScanCudaCandidateState> capturedContextCandidates;
   vector<SimScanCudaCandidateState> capturedStoreMaterialized;
   vector<SimScanCudaCandidateState> capturedStorePruned;
   int capturedRunningMinAfterContextApply = 0;
+  size_t capturedCandidateCountAfterContextApply = 0;
+  size_t capturedStoreMaterializedCount = 0;
+  size_t capturedStorePrunedCount = 0;
   const std::chrono::steady_clock::time_point cpuMergeStart =
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   const std::chrono::steady_clock::time_point contextApplyStart =
@@ -10437,9 +10905,15 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   {
     recordSimInitialScanCpuContextApplyNanoseconds(simElapsedNanoseconds(contextApplyStart));
   }
-  if(captureHostMergeCorpus)
+  if(captureHostMergeArtifacts)
   {
-    collectSimContextCandidateStates(context,capturedContextCandidates);
+    vector<SimScanCudaCandidateState> contextCandidates;
+    collectSimContextCandidateStates(context,contextCandidates);
+    capturedCandidateCountAfterContextApply = contextCandidates.size();
+    if(captureHostMergeCorpusPayload)
+    {
+      capturedContextCandidates.swap(contextCandidates);
+    }
     capturedRunningMinAfterContextApply = static_cast<int>(context.runningMin);
   }
   if(maintainSafeStore)
@@ -10501,7 +10975,8 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
       {
         recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
       }
-      if(captureHostMergeCorpus)
+      capturedStoreMaterializedCount = context.safeCandidateStateStore.states.size();
+      if(captureHostMergeCorpusPayload)
       {
         capturedStoreMaterialized = context.safeCandidateStateStore.states;
       }
@@ -10512,7 +10987,8 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
       {
         recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
       }
-      if(captureHostMergeCorpus)
+      capturedStorePrunedCount = context.safeCandidateStateStore.states.size();
+      if(captureHostMergeCorpusPayload)
       {
         capturedStorePruned = context.safeCandidateStateStore.states;
       }
@@ -10555,11 +11031,16 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
       {
         releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
       }
-      if(captureHostMergeCorpus)
+      if(captureHostMergeArtifacts)
       {
         const long queryLength = static_cast<long>(context.workspace.HH.size()) - 1;
         const long targetLength = static_cast<long>(context.workspace.CC.size()) - 1;
-        captureSimInitialHostMergeCorpusCaseBestEffort(
+        const uint64_t nextCase =
+          simInitialHostMergeCorpusCaseCounter().fetch_add(1,std::memory_order_relaxed) + 1;
+        char caseIdBuffer[32];
+        snprintf(caseIdBuffer,sizeof(caseIdBuffer),"case-%08llu",
+                 static_cast<unsigned long long>(nextCase));
+        captureSimInitialHostMergeArtifactsBestEffort(
           summaries,
           eventCount,
           queryLength,
@@ -10569,10 +11050,15 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
           static_cast<float>(-context.gapOpen) / 10.0f,
           static_cast<float>(-context.gapExtend) / 10.0f,
           wantSafeWorksetGpuMirror,
+          nextCase,
+          string(caseIdBuffer),
           capturedRunningMinAfterContextApply,
-          capturedContextCandidates,
-          capturedStoreMaterialized,
-          capturedStorePruned);
+          capturedCandidateCountAfterContextApply,
+          capturedStoreMaterializedCount,
+          capturedStorePrunedCount,
+          captureHostMergeCorpusPayload ? &capturedContextCandidates : NULL,
+          captureHostMergeCorpusPayload ? &capturedStoreMaterialized : NULL,
+          captureHostMergeCorpusPayload ? &capturedStorePruned : NULL);
       }
     }
   }

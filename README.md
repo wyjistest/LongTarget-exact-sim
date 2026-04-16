@@ -79,7 +79,9 @@ Optional CUDA builds can also accelerate SIM candidate scanning (both initial sc
 - `LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1`: enable the post-traceback update accelerator; the default exact-safe mainline now uses `safe_workset`, while `exact` remains available as a force-on fallback/debug mode
 - `LONGTARGET_SIM_CUDA_LOCATE_MODE=safe_workset`: exact-safe default when locate acceleration is enabled; skips the old locate-first reverse-DP expansion, derives a sparse rescan workset from the materialized traceback script plus the persisted safe candidate-state store, and falls back to exact locate/update whenever the workset is not provably safe
 - `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_DIR=/abs/path`: best-effort dump the default exact-safe summary-handoff host-merge inputs/expected outputs (`meta.json`, summaries, context candidates, pre/post-prune safe-store states) so `store_materialize` / `store_prune` can be replayed offline without rerunning the full CUDA initial scan
-- `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_MAX_CASES=N`: optional cap on how many host-merge corpus cases a run will dump before capture stops (default: unlimited)
+- `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_MAX_CASES=N`: optional cap on how many host-merge full-payload corpus cases a run will dump before capture stops (default: unlimited; when `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` is set, the cap applies to selected payload cases rather than raw case index)
+- `LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH=/abs/path.tsv`: append a lightweight per-case manifest row (`case_id`, counts, `prune_ratio`, lengths, mirror flag) without writing the heavy payload files; use this first on real shards before doing any targeted full dump
+- `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST=/abs/path.tsv`: optional TSV of `case_id` values to full-dump; intended for a second pass after manifest census selects a small representative set
 - `LONGTARGET_ENABLE_SIM_CUDA_SAFE_WINDOW=0`: disable the GPU safe-window planner for exact-safe `safe_workset` locate; by default it is enabled whenever the locate path has a mirrored GPU safe-store to plan against
 - `LONGTARGET_SIM_CUDA_SAFE_WINDOW_MAX_COUNT=N`: maximum number of safe windows the GPU planner may materialize before it reports overflow and falls back to the builder/exact path (default: 128)
 - `LONGTARGET_SIM_CUDA_SAFE_WINDOW_PLANNER=dense|sparse_v1`: choose the GPU safe-window planner backend; `dense` keeps the original per-row single-range planner (default), while `sparse_v1` preserves multiple disjoint row-local islands before execution coarsening
@@ -233,6 +235,8 @@ Validation helpers:
 - `make check-sim-cuda-region-docs`: verify this README and `EXACT_SIM_PROGRESS.md` still document the SIM CUDA region exactness constraints
 - `make check-sim-initial-cuda-merge`: verify the coalesced CUDA initial-scan host merge matches per-event replay while reducing logical host updates
 - `make check-sim-initial-host-merge-corpus`: verify the default exact-safe summary-handoff host-merge corpus writer, loader, and offline replay agree on context candidates plus pre/post-prune safe-store states
+- `make check-sim-initial-host-merge-capture-modes`: verify manifest-only capture works without payload files and `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` restricts full dump to the requested case IDs
+- `make check-select-sim-initial-host-merge-cases`: verify the manifest selection script emits a deterministic `case_id` TSV from a small census fixture
 - `make check-project-whole-genome-runtime`: verify the projection script preserves backward compatibility and emits the optional whole-genome ratios when the source telemetry is present
 
 The offline replay helper for those dumped corpora is `tests/sim_initial_host_merge_replay`. Typical usage:
@@ -244,6 +248,21 @@ The offline replay helper for those dumped corpora is `tests/sim_initial_host_me
   --verify \
   --output-tsv /tmp/host-merge-corpus/replay.tsv
 ```
+
+To microbenchmark a frozen case without rerunning the CUDA initial scan, add `--warmup-iterations`, `--iterations`, and `--aggregate-tsv`:
+
+```bash
+./tests/sim_initial_host_merge_replay \
+  --corpus-dir /tmp/host-merge-corpus \
+  --case case-00000001 \
+  --verify \
+  --output-tsv /tmp/host-merge-corpus/replay.tsv \
+  --warmup-iterations 1 \
+  --iterations 10 \
+  --aggregate-tsv /tmp/host-merge-corpus/replay-aggregate.tsv
+```
+
+On real shards, do not run unbounded full-payload capture. Start with `LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH`, select a small set of `case_id`s, and then rerun with `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` plus a bounded `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_MAX_CASES`. In these capture-only modes it is expected that LongTarget's normal `output/` directory may stay empty.
 
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 

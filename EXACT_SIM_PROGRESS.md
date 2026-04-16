@@ -1497,3 +1497,6 @@
 - 当前重点已经分成两条：
   - **exact-safe 主线**：继续保住 `exact SIM` / `exact threshold` 的结果一致性，避免实验路径回流污染默认语义；
   - **实验性 two-stage lane**：围绕 `minimal_v2`、heavy micro-anchor、coverage attribution 与 panel summary 做质量门控校准，暂不提升为默认路径。
+- exact-safe host-merge profiling 现在补齐了两类离线基建：
+  - `tests/sim_initial_host_merge_replay` 可以对 frozen corpus case 做 `warmup + iterations` 的离线 microbenchmark，并输出 aggregate TSV（含 `store_materialize / store_prune / store_other_merge` 与归一化 `ns/*` 指标）；
+  - runtime 侧除了 full-payload corpus dump，还支持 manifest-only census 与 `case_id` 定向二次 full dump，因此 real-shard 流程应先做 manifest census，再做小规模 representative corpus，而不是继续直接开 unbounded full dump。

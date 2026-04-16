@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -23,6 +24,16 @@ static bool expect_true(bool value, const char *label)
 static bool expect_equal_size(size_t actual, size_t expected, const char *label)
 {
     if (actual == expected)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+    return false;
+}
+
+static bool expect_near(double actual, double expected, double epsilon, const char *label)
+{
+    if (std::fabs(actual - expected) <= epsilon)
     {
         return true;
     }
@@ -235,9 +246,38 @@ int main()
     ok = expect_true(replay.contextApplySeconds >= 0.0, "contextApplySeconds recorded") && ok;
     ok = expect_true(replay.storeMaterializeSeconds >= 0.0, "storeMaterializeSeconds recorded") && ok;
     ok = expect_true(replay.storePruneSeconds >= 0.0, "storePruneSeconds recorded") && ok;
+    ok = expect_true(replay.storeOtherMergeSeconds >= 0.0, "storeOtherMergeSeconds recorded") && ok;
     ok = expect_true(replay.fullHostMergeSeconds >= replay.contextApplySeconds,
                      "fullHostMergeSeconds covers contextApply") &&
          ok;
+    ok = expect_near(replay.storeOtherMergeSeconds,
+                     std::max(replay.fullHostMergeSeconds - replay.storeMaterializeSeconds - replay.storePruneSeconds,
+                              0.0),
+                     1e-9,
+                     "storeOtherMergeSeconds residual") &&
+         ok;
+
+    SimInitialHostMergeReplayBenchmarkResult benchmark;
+    ok = expect_true(benchmarkSimInitialHostMergeCorpusCase(loaded, 1, 3, benchmark, &error),
+                     error.empty() ? "benchmarkSimInitialHostMergeCorpusCase" : error.c_str()) &&
+         ok;
+    ok = expect_equal_size(benchmark.iterations, 3, "benchmark iterations") && ok;
+    ok = expect_true(benchmark.contextApply.meanSeconds >= 0.0, "benchmark contextApply mean recorded") && ok;
+    ok = expect_true(benchmark.storeMaterialize.meanSeconds >= 0.0,
+                     "benchmark storeMaterialize mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storePrune.meanSeconds >= 0.0, "benchmark storePrune mean recorded") && ok;
+    ok = expect_true(benchmark.storeOtherMerge.meanSeconds >= 0.0,
+                     "benchmark storeOtherMerge mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.fullHostMerge.meanSeconds >= benchmark.storeMaterialize.meanSeconds,
+                     "benchmark fullHostMerge mean covers materialize") &&
+         ok;
+    ok = expect_true(benchmark.nsPerLogicalEvent >= 0.0, "benchmark nsPerLogicalEvent recorded") && ok;
+    ok = expect_true(benchmark.nsPerMaterializedRecord >= 0.0,
+                     "benchmark nsPerMaterializedRecord recorded") &&
+         ok;
+    ok = expect_true(benchmark.nsPerPrunedRecord >= 0.0, "benchmark nsPerPrunedRecord recorded") && ok;
 
     if (!ok)
     {
