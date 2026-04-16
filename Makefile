@@ -503,6 +503,9 @@ check-sim-initial-host-merge-capture-modes: $(SIM_INITIAL_HOST_MERGE_CAPTURE_MOD
 check-select-sim-initial-host-merge-cases:
 	./scripts/check_select_sim_initial_host_merge_cases.sh
 
+check-analyze-sim-initial-host-merge-phase-shares:
+	./scripts/check_analyze_sim_initial_host_merge_phase_shares.sh
+
 check-sim-locate-update: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 	./$(SIM_LOCATE_UPDATE_TEST_TARGET)
 

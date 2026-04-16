@@ -1500,3 +1500,8 @@
 - exact-safe host-merge profiling 现在补齐了两类离线基建：
   - `tests/sim_initial_host_merge_replay` 可以对 frozen corpus case 做 `warmup + iterations` 的离线 microbenchmark，并输出 aggregate TSV（含 `store_materialize / store_prune / store_other_merge` 与归一化 `ns/*` 指标）；
   - runtime 侧除了 full-payload corpus dump，还支持 manifest-only census 与 `case_id` 定向二次 full dump，因此 real-shard 流程应先做 manifest census，再做小规模 representative corpus，而不是继续直接开 unbounded full dump。
+- host-merge representative corpus 现在还有一层脚本化决策护栏：
+  - `scripts/select_sim_initial_host_merge_cases.py` 输出的 `selected.tsv` 仍以 `case_id` 为首列，可直接作为 `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST`，同时补齐 `bucket_key`、三维 tertile bin、原始计数和 `selection_rank` / `selection_reason`；
+  - `scripts/analyze_sim_initial_host_merge_phase_shares.py` 会把 manifest census、selected corpus 与 replay aggregate TSV 拼起来，产出 `selected_joined.tsv`、`bucket_rollup.tsv`、`summary.json`、`summary.md`；
+  - 只有当 `covered_logical_event_share >= 0.80` 且 `covered_store_materialized_share >= 0.80` 时，summary 才会给出 `optimize_store_materialize` / `optimize_store_prune` / `split_materialize_and_prune` 这类下一刀建议；否则固定返回 `decision_status=insufficient_coverage` 与 `next_action=expand_corpus`，避免用覆盖不足的小 corpus 直接下算法结论。
+  - 当前 heavy real-shard (`hg38_chr22_21500001_200000_100001_50000.fa` vs `H19.fa`) 的 manifest-only census 仍存在 runtime observability blocker：`LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH=... ./longtarget_cuda ...` 连续运行约 27 分钟仍无 heartbeat、无 `manifest.tsv`、无 stderr flush，因此 representative corpus 的 real-shard 闭环还不能算完成；下一步应优先补运行期 heartbeat / flush，再继续这条真实 shard 流程。

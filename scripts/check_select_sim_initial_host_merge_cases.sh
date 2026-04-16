@@ -33,4 +33,26 @@ with open(path, newline="", encoding="utf-8") as handle:
 actual = [row["case_id"] for row in rows]
 expected = ["case-00000006", "case-00000005", "case-00000004", "case-00000003"]
 assert actual == expected, (actual, expected)
+expected_fields = [
+    "case_id",
+    "bucket_key",
+    "summary_bin",
+    "materialized_bin",
+    "prune_bin",
+    "logical_event_count",
+    "summary_count",
+    "store_materialized_count",
+    "store_pruned_count",
+    "prune_ratio",
+    "selection_rank",
+    "selection_reason",
+]
+assert rows, "expected selected rows"
+assert list(rows[0].keys()) == expected_fields, rows[0].keys()
+assert rows[0]["bucket_key"] == "s2|m2|p1"
+assert rows[0]["summary_bin"] == "2"
+assert rows[0]["materialized_bin"] == "2"
+assert rows[0]["prune_bin"] == "1"
+assert rows[0]["selection_rank"] == "1"
+assert rows[0]["selection_reason"] == "bucket_representative"
 PY

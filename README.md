@@ -236,7 +236,8 @@ Validation helpers:
 - `make check-sim-initial-cuda-merge`: verify the coalesced CUDA initial-scan host merge matches per-event replay while reducing logical host updates
 - `make check-sim-initial-host-merge-corpus`: verify the default exact-safe summary-handoff host-merge corpus writer, loader, and offline replay agree on context candidates plus pre/post-prune safe-store states
 - `make check-sim-initial-host-merge-capture-modes`: verify manifest-only capture works without payload files and `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` restricts full dump to the requested case IDs
-- `make check-select-sim-initial-host-merge-cases`: verify the manifest selection script emits a deterministic `case_id` TSV from a small census fixture
+- `make check-select-sim-initial-host-merge-cases`: verify the manifest selection script emits a deterministic case-list-compatible TSV with bucket metadata from a small census fixture
+- `make check-analyze-sim-initial-host-merge-phase-shares`: verify the host-merge phase-share helper enforces the coverage gate and emits the expected decision summary
 - `make check-project-whole-genome-runtime`: verify the projection script preserves backward compatibility and emits the optional whole-genome ratios when the source telemetry is present
 
 The offline replay helper for those dumped corpora is `tests/sim_initial_host_merge_replay`. Typical usage:
@@ -263,6 +264,16 @@ To microbenchmark a frozen case without rerunning the CUDA initial scan, add `--
 ```
 
 On real shards, do not run unbounded full-payload capture. Start with `LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH`, select a small set of `case_id`s, and then rerun with `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` plus a bounded `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_MAX_CASES`. In these capture-only modes it is expected that LongTarget's normal `output/` directory may stay empty.
+
+`scripts/select_sim_initial_host_merge_cases.py` keeps `case_id` as the first column so the generated TSV remains directly usable as `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST`, while also adding `bucket_key`, tertile bins, counts, and `selection_rank` / `selection_reason` metadata for later attribution.
+
+After replay benchmarking, use `scripts/analyze_sim_initial_host_merge_phase_shares.py` to join the manifest census, selected case list, and aggregate replay TSV into:
+
+- `selected_joined.tsv`: selected cases with replay phase timings
+- `bucket_rollup.tsv`: manifest bucket totals plus the representative case used for each covered bucket
+- `summary.json` / `summary.md`: coverage-gated decision output
+
+The helper only promotes a materialize/prune decision when both `covered_logical_event_share` and `covered_store_materialized_share` reach `0.80`; otherwise it reports `decision_status=insufficient_coverage` and `next_action=expand_corpus`.
 
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 
