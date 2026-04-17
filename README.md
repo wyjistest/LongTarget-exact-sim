@@ -189,6 +189,8 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_store_prune_seconds`: CPU-side safe-store prune subtotal; this is the prune portion of `sim_initial_store_rebuild_seconds`
 - `benchmark.sim_initial_frontier_sync_seconds`: CPU-side frontier upload / sync time (`safe_store_upload`) for the summary-handoff safe-store mirror path
 - `benchmark.sim_initial_store_other_merge_seconds`: remaining CPU merge time after subtracting `store_rebuild` and `frontier_sync`; on the default exact-safe path this is primarily the candidate/context apply work
+- `benchmark.sim_initial_store_other_merge_context_apply_seconds`: portion of `sim_initial_store_other_merge_seconds` attributable to the existing CPU `context_apply` stage
+- `benchmark.sim_initial_store_other_merge_residual_seconds`: remaining unattributed portion of `sim_initial_store_other_merge_seconds` after carving out `context_apply`
 - `benchmark.sim_initial_scan_sync_wait_seconds`: synchronization wait time currently attributed to the initial scan handoff path
 - `benchmark.sim_initial_reduce_chunks_total` / `benchmark.sim_initial_reduce_chunks_replayed_total` / `benchmark.sim_initial_reduce_chunks_skipped_total` / `benchmark.sim_initial_reduce_summaries_replayed_total`: ordered-replay chunk statistics from the experimental initial reducer
 - `benchmark.sim_initial_run_summary_pipeline_seconds`: subtotal of the run-summary grouping stages (`hash_reduce + segmented_reduce + segmented_compact + topk`) for profiler-guided initial-scan tuning
@@ -266,6 +268,8 @@ To microbenchmark a frozen case without rerunning the CUDA initial scan, add `--
 ```
 
 The aggregate TSV now also splits `store_materialize` into `store_materialize_reset_*`, `store_materialize_insert_*`, `store_materialize_update_*`, and `store_materialize_snapshot_copy_*` timing columns, plus per-case `store_materialize_inserted_count` / `store_materialize_updated_count` and `store_materialize_peak_size` / `store_materialize_rehash_count`, so the frozen-corpus microbenchmark can separate safe-store setup, new-record append/materialization, in-place update bookkeeping, replay-only snapshot copy cost, and whether hash-map growth stayed bounded after upfront `reserve()`.
+
+`store_other_merge` remains as the top-level residual phase in both runtime telemetry and frozen-corpus replay, but replay aggregate TSVs now further split it into `store_other_merge_context_apply_*`, `store_other_merge_context_snapshot_*`, `store_other_merge_state_snapshot_*`, and `store_other_merge_residual_*` so the same 16-case corpus can distinguish real `context_apply` work from replay-only snapshot/copy overhead before choosing the next optimization target.
 
 On real shards, do not run unbounded full-payload capture. Start with `LONGTARGET_SIM_INITIAL_HOST_MERGE_MANIFEST_PATH`, select a small set of `case_id`s, and then rerun with `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` plus a bounded `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_MAX_CASES`. In these capture-only modes it is expected that LongTarget's normal `output/` directory may stay empty. If you need to observe a long census in flight, set `LONGTARGET_SIM_INITIAL_HOST_MERGE_HEARTBEAT_SECONDS` / `LONGTARGET_SIM_INITIAL_HOST_MERGE_HEARTBEAT_CASES`; `SIGINT`/`SIGTERM` now stop scheduling new work and preserve the partial manifest that has already been written.
 

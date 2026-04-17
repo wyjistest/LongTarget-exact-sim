@@ -156,6 +156,10 @@ int main(int argc, char **argv)
         << "\tstore_materialize_update_seconds\tstore_materialize_snapshot_copy_seconds"
         << "\tstore_materialize_inserted_count\tstore_materialize_updated_count"
         << "\tstore_materialize_peak_size\tstore_materialize_rehash_count"
+        << "\tstore_other_merge_context_apply_seconds"
+        << "\tstore_other_merge_context_snapshot_seconds"
+        << "\tstore_other_merge_state_snapshot_seconds"
+        << "\tstore_other_merge_residual_seconds"
         << "\tstore_prune_seconds\tfull_host_merge_seconds\tcandidate_count_after_context_apply"
         << "\tstore_materialized_count\tstore_pruned_count\tstore_other_merge_seconds\tverify_ok\n";
     std::stringstream aggregateTsv;
@@ -172,6 +176,10 @@ int main(int argc, char **argv)
                      << "\tstore_materialize_snapshot_copy_mean_seconds\tstore_materialize_snapshot_copy_p50_seconds\tstore_materialize_snapshot_copy_p95_seconds"
                      << "\tstore_prune_mean_seconds\tstore_prune_p50_seconds\tstore_prune_p95_seconds"
                      << "\tstore_other_merge_mean_seconds\tstore_other_merge_p50_seconds\tstore_other_merge_p95_seconds"
+                     << "\tstore_other_merge_context_apply_mean_seconds\tstore_other_merge_context_apply_p50_seconds\tstore_other_merge_context_apply_p95_seconds"
+                     << "\tstore_other_merge_context_snapshot_mean_seconds\tstore_other_merge_context_snapshot_p50_seconds\tstore_other_merge_context_snapshot_p95_seconds"
+                     << "\tstore_other_merge_state_snapshot_mean_seconds\tstore_other_merge_state_snapshot_p50_seconds\tstore_other_merge_state_snapshot_p95_seconds"
+                     << "\tstore_other_merge_residual_mean_seconds\tstore_other_merge_residual_p50_seconds\tstore_other_merge_residual_p95_seconds"
                      << "\tfull_host_merge_mean_seconds\tfull_host_merge_p50_seconds\tfull_host_merge_p95_seconds"
                      << "\tns_per_logical_event\tns_per_materialized_record\tns_per_pruned_record\n";
     }
@@ -233,6 +241,10 @@ int main(int argc, char **argv)
             << replay.storeMaterializeUpdatedCount << '\t'
             << replay.storeMaterializePeakSize << '\t'
             << replay.storeMaterializeRehashCount << '\t'
+            << replay.storeOtherMergeContextApplySeconds << '\t'
+            << replay.storeOtherMergeContextSnapshotSeconds << '\t'
+            << replay.storeOtherMergeStateSnapshotSeconds << '\t'
+            << replay.storeOtherMergeResidualSeconds << '\t'
             << replay.storePruneSeconds << '\t'
             << replay.fullHostMergeSeconds << '\t'
             << replay.contextCandidates.size() << '\t'
@@ -277,6 +289,18 @@ int main(int argc, char **argv)
                          << benchmark.storeOtherMerge.meanSeconds << '\t'
                          << benchmark.storeOtherMerge.p50Seconds << '\t'
                          << benchmark.storeOtherMerge.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApply.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApply.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApply.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextSnapshot.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextSnapshot.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextSnapshot.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeStateSnapshot.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeStateSnapshot.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeStateSnapshot.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeResidual.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeResidual.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeResidual.p95Seconds << '\t'
                          << benchmark.fullHostMerge.meanSeconds << '\t'
                          << benchmark.fullHostMerge.p50Seconds << '\t'
                          << benchmark.fullHostMerge.p95Seconds << '\t'

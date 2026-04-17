@@ -207,6 +207,8 @@ def main() -> int:
         "sim_initial_store_prune_seconds",
         "sim_initial_frontier_sync_seconds",
         "sim_initial_store_other_merge_seconds",
+        "sim_initial_store_other_merge_context_apply_seconds",
+        "sim_initial_store_other_merge_residual_seconds",
     ):
         add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
 
@@ -285,6 +287,16 @@ def main() -> int:
         print(
             "projected_sim_initial_store_other_merge_seconds="
             f"{report['projected_sim_initial_store_other_merge_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_other_merge_context_apply_seconds" in report:
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_other_merge_residual_seconds" in report:
+        print(
+            "projected_sim_initial_store_other_merge_residual_seconds="
+            f"{report['projected_sim_initial_store_other_merge_residual_seconds']:.6f}"
         )
     print(
         "note=phase seconds are projected independently; use projected_total_hours as the wall-time estimate."

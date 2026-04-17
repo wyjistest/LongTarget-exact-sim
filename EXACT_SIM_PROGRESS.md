@@ -1526,3 +1526,10 @@
     - 改善几乎全部来自 insert/materialize 侧：`insert_total` 从 `1.7502s` 降到 `0.5636s`，`insert` 单记录成本从约 `261.3 ns` 降到 `84.2 ns`；与此同时 `update_total` 从 `1.9119s` 小幅升到 `2.0415s`，`update` 单记录成本从约 `46.6 ns` 升到 `49.8 ns`，说明这一刀已经把“insert 代价不低”压下去，但还没有真正打到“update 次数太多”的核心矛盾。
     - 新增的 `store_materialize_peak_size / rehash_count` 也给出了明确反馈：16 个 case 全部只发生 `1` 次 rehash，`rehash_total=16`、`rehash_max=1`，说明 upfront `reserve()` 已把 `startCoordToIndex` 的增长收敛到每 case 一次前置 rehash；因此下一刀更值得继续盯 `update` bookkeeping，而不是再回去磨 snapshot copy 或反复扩容。
     - 基于这组结果，`store_materialize` 这条线暂时不需要回到 selector 或 corpus 选择；下一步应优先做更窄的 update-focused microbenchmark / 优化。如果下一轮 update-focused 改动拿不到新的实质收益，再把主火力切回 `store_other_merge`。
+  - `5aef41d` 已作为 `store_materialize` 第一刀基线推上远端；随后用同一份 16-case frozen corpus 重跑 coverage-gated phase-share，结果确认主瓶颈已经从 `store_materialize` 切到 `store_other_merge`：
+    - 新的 `analysis_other_merge_split/summary.json` 给出 `store_materialize=62.8632s (42.75%)`、`store_other_merge=74.5294s (50.69%)`、`store_prune=9.6502s (6.56%)`，`dominant_phase=store_other_merge`，`next_action=revisit_store_other_merge`。
+    - 因此这一步不应该回滚 `5aef41d`，也不应该直接继续假设“下一刀先打 update”；更值钱的是先把新的第一大块 `store_other_merge` 从 residual 黑箱拆开。
+  - 针对同一份 16-case frozen corpus，`replay_other_merge_split.aggregate.tsv` 现已把 `store_other_merge` 再拆成 `context_apply / context_snapshot / state_snapshot / residual` 四个子阶段，并保持 replay aggregate 的加和守恒：
+    - 16-case aggregate 直接求和后，`store_other_merge=3.0619s`，其中 `context_apply=1.9366s (63.25%)`、`context_snapshot=0.000031s (~0%)`、`state_snapshot=0.1087s (3.55%)`、`residual=1.0166s (33.20%)`。
+    - 这说明 replay-only `context_snapshot` 基本可以忽略，`state_snapshot` 也不是主矛盾；当前 `store_other_merge` 的第一大真实子阶段是 `context_apply`，但 residual 仍有约三分之一，暂时还不值得在没有进一步 split/trace 的情况下直接做更大的结构改写。
+    - runtime benchmark stderr 也同步新增 `benchmark.sim_initial_store_other_merge_context_apply_seconds` 与 `benchmark.sim_initial_store_other_merge_residual_seconds`，这样 whole-genome 投影和真实 shard profile 都能在保留顶层 `sim_initial_store_other_merge_seconds` 的前提下，继续观察 `context_apply` 与 residual 的相对占比。

@@ -276,8 +276,28 @@ int main()
          ok;
     ok = expect_true(replay.storePruneSeconds >= 0.0, "storePruneSeconds recorded") && ok;
     ok = expect_true(replay.storeOtherMergeSeconds >= 0.0, "storeOtherMergeSeconds recorded") && ok;
+    ok = expect_true(replay.storeOtherMergeContextApplySeconds >= 0.0,
+                     "storeOtherMergeContextApplySeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextSnapshotSeconds >= 0.0,
+                     "storeOtherMergeContextSnapshotSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeStateSnapshotSeconds >= 0.0,
+                     "storeOtherMergeStateSnapshotSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeResidualSeconds >= 0.0,
+                     "storeOtherMergeResidualSeconds recorded") &&
+         ok;
     ok = expect_true(replay.fullHostMergeSeconds >= replay.contextApplySeconds,
                      "fullHostMergeSeconds covers contextApply") &&
+         ok;
+    ok = expect_near(replay.storeOtherMergeSeconds,
+                     replay.storeOtherMergeContextApplySeconds +
+                         replay.storeOtherMergeContextSnapshotSeconds +
+                         replay.storeOtherMergeStateSnapshotSeconds +
+                         replay.storeOtherMergeResidualSeconds,
+                     1e-9,
+                     "storeOtherMergeSeconds subphase total") &&
          ok;
     ok = expect_near(replay.storeOtherMergeSeconds,
                      std::max(replay.fullHostMergeSeconds - replay.storeMaterializeSeconds - replay.storePruneSeconds,
@@ -333,6 +353,26 @@ int main()
     ok = expect_true(benchmark.storePrune.meanSeconds >= 0.0, "benchmark storePrune mean recorded") && ok;
     ok = expect_true(benchmark.storeOtherMerge.meanSeconds >= 0.0,
                      "benchmark storeOtherMerge mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApply.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApply mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextSnapshot.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextSnapshot mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeStateSnapshot.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeStateSnapshot mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeResidual.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeResidual mean recorded") &&
+         ok;
+    ok = expect_near(benchmark.storeOtherMerge.meanSeconds,
+                     benchmark.storeOtherMergeContextApply.meanSeconds +
+                         benchmark.storeOtherMergeContextSnapshot.meanSeconds +
+                         benchmark.storeOtherMergeStateSnapshot.meanSeconds +
+                         benchmark.storeOtherMergeResidual.meanSeconds,
+                     1e-9,
+                     "benchmark storeOtherMerge subphase total") &&
          ok;
     ok = expect_true(benchmark.fullHostMerge.meanSeconds >= benchmark.storeMaterialize.meanSeconds,
                      "benchmark fullHostMerge mean covers materialize") &&

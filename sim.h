@@ -664,6 +664,10 @@ struct SimInitialHostMergeReplayResult
     storeMaterializeRehashCount(0),
     storePruneSeconds(0.0),
     storeOtherMergeSeconds(0.0),
+    storeOtherMergeContextApplySeconds(0.0),
+    storeOtherMergeContextSnapshotSeconds(0.0),
+    storeOtherMergeStateSnapshotSeconds(0.0),
+    storeOtherMergeResidualSeconds(0.0),
     fullHostMergeSeconds(0.0),
     contextCandidates(),
     storeMaterialized(),
@@ -684,6 +688,10 @@ struct SimInitialHostMergeReplayResult
   size_t storeMaterializeRehashCount;
   double storePruneSeconds;
   double storeOtherMergeSeconds;
+  double storeOtherMergeContextApplySeconds;
+  double storeOtherMergeContextSnapshotSeconds;
+  double storeOtherMergeStateSnapshotSeconds;
+  double storeOtherMergeResidualSeconds;
   double fullHostMergeSeconds;
   vector<SimScanCudaCandidateState> contextCandidates;
   vector<SimScanCudaCandidateState> storeMaterialized;
@@ -724,6 +732,10 @@ struct SimInitialHostMergeReplayBenchmarkResult
     storeMaterializeSnapshotCopy(),
     storePrune(),
     storeOtherMerge(),
+    storeOtherMergeContextApply(),
+    storeOtherMergeContextSnapshot(),
+    storeOtherMergeStateSnapshot(),
+    storeOtherMergeResidual(),
     fullHostMerge(),
     nsPerLogicalEvent(0.0),
     nsPerMaterializedRecord(0.0),
@@ -748,6 +760,10 @@ struct SimInitialHostMergeReplayBenchmarkResult
   SimInitialHostMergeReplayTimingSummary storeMaterializeSnapshotCopy;
   SimInitialHostMergeReplayTimingSummary storePrune;
   SimInitialHostMergeReplayTimingSummary storeOtherMerge;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApply;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextSnapshot;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeStateSnapshot;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeResidual;
   SimInitialHostMergeReplayTimingSummary fullHostMerge;
   double nsPerLogicalEvent;
   double nsPerMaterializedRecord;
@@ -9356,8 +9372,13 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
   const std::chrono::steady_clock::time_point contextApplyStart = std::chrono::steady_clock::now();
   mergeSimCudaInitialRunSummaries(corpus.summaries,corpus.logicalEventCount,context);
   replay.contextApplySeconds = static_cast<double>(simElapsedNanoseconds(contextApplyStart)) / 1.0e9;
+  replay.storeOtherMergeContextApplySeconds = replay.contextApplySeconds;
   replay.runningMinAfterContextApply = static_cast<int>(context.runningMin);
+  const std::chrono::steady_clock::time_point contextSnapshotStart =
+    std::chrono::steady_clock::now();
   collectSimContextCandidateStates(context,replay.contextCandidates);
+  replay.storeOtherMergeContextSnapshotSeconds =
+    static_cast<double>(simElapsedNanoseconds(contextSnapshotStart)) / 1.0e9;
 
   mergeSimCudaInitialRunSummariesIntoSafeStore(corpus.summaries,
                                                context,
@@ -9375,11 +9396,15 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
   replay.storeMaterialized = context.safeCandidateStateStore.states;
   replay.storeMaterializeSnapshotCopySeconds =
     static_cast<double>(simElapsedNanoseconds(storeCopyStart)) / 1.0e9;
+  replay.storeOtherMergeStateSnapshotSeconds = replay.storeMaterializeSnapshotCopySeconds;
 
   const std::chrono::steady_clock::time_point storePruneStart = std::chrono::steady_clock::now();
   pruneSimSafeCandidateStateStore(context);
   replay.storePruneSeconds = static_cast<double>(simElapsedNanoseconds(storePruneStart)) / 1.0e9;
+  const std::chrono::steady_clock::time_point prunedStoreCopyStart = std::chrono::steady_clock::now();
   replay.storePruned = context.safeCandidateStateStore.states;
+  replay.storeOtherMergeStateSnapshotSeconds +=
+    static_cast<double>(simElapsedNanoseconds(prunedStoreCopyStart)) / 1.0e9;
   replay.fullHostMergeSeconds = static_cast<double>(simElapsedNanoseconds(fullStart)) / 1.0e9;
   replay.storeOtherMergeSeconds = replay.fullHostMergeSeconds -
                                   replay.storeMaterializeSeconds -
@@ -9387,6 +9412,17 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
   if(replay.storeOtherMergeSeconds < 0.0)
   {
     replay.storeOtherMergeSeconds = 0.0;
+  }
+  replay.storeOtherMergeResidualSeconds = replay.storeOtherMergeSeconds -
+                                          replay.storeOtherMergeContextApplySeconds -
+                                          replay.storeOtherMergeContextSnapshotSeconds -
+                                          replay.storeOtherMergeStateSnapshotSeconds;
+  if(replay.storeOtherMergeResidualSeconds < 0.0)
+  {
+    replay.storeOtherMergeResidualSeconds = 0.0;
+    replay.storeOtherMergeSeconds = replay.storeOtherMergeContextApplySeconds +
+                                    replay.storeOtherMergeContextSnapshotSeconds +
+                                    replay.storeOtherMergeStateSnapshotSeconds;
   }
   return true;
 }
@@ -9441,6 +9477,10 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   vector<double> storeMaterializeSnapshotCopySamples;
   vector<double> storePruneSamples;
   vector<double> storeOtherMergeSamples;
+  vector<double> storeOtherMergeContextApplySamples;
+  vector<double> storeOtherMergeContextSnapshotSamples;
+  vector<double> storeOtherMergeStateSnapshotSamples;
+  vector<double> storeOtherMergeResidualSamples;
   vector<double> fullHostMergeSamples;
   contextApplySamples.reserve(iterations);
   storeMaterializeSamples.reserve(iterations);
@@ -9450,6 +9490,10 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   storeMaterializeSnapshotCopySamples.reserve(iterations);
   storePruneSamples.reserve(iterations);
   storeOtherMergeSamples.reserve(iterations);
+  storeOtherMergeContextApplySamples.reserve(iterations);
+  storeOtherMergeContextSnapshotSamples.reserve(iterations);
+  storeOtherMergeStateSnapshotSamples.reserve(iterations);
+  storeOtherMergeResidualSamples.reserve(iterations);
   fullHostMergeSamples.reserve(iterations);
   for(size_t iteration = 0; iteration < iterations; ++iteration)
   {
@@ -9465,6 +9509,10 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
     storeMaterializeSnapshotCopySamples.push_back(replay.storeMaterializeSnapshotCopySeconds);
     storePruneSamples.push_back(replay.storePruneSeconds);
     storeOtherMergeSamples.push_back(replay.storeOtherMergeSeconds);
+    storeOtherMergeContextApplySamples.push_back(replay.storeOtherMergeContextApplySeconds);
+    storeOtherMergeContextSnapshotSamples.push_back(replay.storeOtherMergeContextSnapshotSeconds);
+    storeOtherMergeStateSnapshotSamples.push_back(replay.storeOtherMergeStateSnapshotSeconds);
+    storeOtherMergeResidualSamples.push_back(replay.storeOtherMergeResidualSeconds);
     fullHostMergeSamples.push_back(replay.fullHostMergeSeconds);
   }
 
@@ -9489,6 +9537,14 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
     summarizeSimInitialHostMergeReplaySamples(storeMaterializeSnapshotCopySamples);
   result.storePrune = summarizeSimInitialHostMergeReplaySamples(storePruneSamples);
   result.storeOtherMerge = summarizeSimInitialHostMergeReplaySamples(storeOtherMergeSamples);
+  result.storeOtherMergeContextApply =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplySamples);
+  result.storeOtherMergeContextSnapshot =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextSnapshotSamples);
+  result.storeOtherMergeStateSnapshot =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeStateSnapshotSamples);
+  result.storeOtherMergeResidual =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeResidualSamples);
   result.fullHostMerge = summarizeSimInitialHostMergeReplaySamples(fullHostMergeSamples);
   if(result.logicalEventCount > 0)
   {

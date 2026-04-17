@@ -2247,6 +2247,15 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   {
     simInitialStoreOtherMergeSeconds = 0.0;
   }
+  double simInitialStoreOtherMergeContextApplySeconds =
+    simInitialScanCpuContextApplySeconds;
+  if(simInitialStoreOtherMergeContextApplySeconds > simInitialStoreOtherMergeSeconds)
+  {
+    simInitialStoreOtherMergeContextApplySeconds = simInitialStoreOtherMergeSeconds;
+  }
+  double simInitialStoreOtherMergeResidualSeconds =
+    simInitialStoreOtherMergeSeconds -
+    simInitialStoreOtherMergeContextApplySeconds;
   const double simInitialRunSummaryPipelineSeconds =
     simInitialHashReduceSeconds +
     simInitialSegmentedReduceSeconds +
@@ -2266,6 +2275,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_store_prune_seconds="<<simInitialStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_frontier_sync_seconds="<<simInitialFrontierSyncSeconds<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_seconds="<<simInitialStoreOtherMergeSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_seconds="
+      <<simInitialStoreOtherMergeContextApplySeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_residual_seconds="
+      <<simInitialStoreOtherMergeResidualSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
