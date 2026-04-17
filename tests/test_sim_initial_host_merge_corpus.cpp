@@ -369,6 +369,22 @@ int main()
     ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds >= 0.0,
                      "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds recorded") &&
          ok;
+    ok = expect_true(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingSeconds >= 0.0,
+             "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingSeconds recorded") &&
+         ok;
+    ok = expect_true(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordSeconds >= 0.0,
+             "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordSeconds recorded") &&
+         ok;
+    ok = expect_true(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordSeconds >= 0.0,
+             "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordSeconds recorded") &&
+         ok;
+    ok = expect_true(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualResidualSeconds >= 0.0,
+             "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualResidualSeconds recorded") &&
+         ok;
     ok = expect_equal_size(replay.storeOtherMergeContextApplySlotCreatedCount,
                            replay.storeOtherMergeContextApplyLookupMissCount,
                            "storeOtherMergeContextApply slot_created matches miss count for small corpus") &&
@@ -424,6 +440,21 @@ int main()
     ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount,
                            0,
                            "storeOtherMergeContextApply reuse_writeback aux_other trace_finalize count for small corpus") &&
+         ok;
+    ok = expect_equal_size(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingCount,
+             0,
+             "storeOtherMergeContextApply reuse_writeback aux_other residual heap_build_accounting count for small corpus") &&
+         ok;
+    ok = expect_equal_size(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount,
+             0,
+             "storeOtherMergeContextApply reuse_writeback aux_other residual heap_update_trace_record count for small corpus") &&
+         ok;
+    ok = expect_equal_size(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount,
+             0,
+             "storeOtherMergeContextApply reuse_writeback aux_other residual start_index_rebuild_trace_record count for small corpus") &&
          ok;
     ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal,
                            0,
@@ -494,6 +525,15 @@ int main()
                          replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds,
                      1e-9,
                      "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds subphase total") &&
+         ok;
+    ok = expect_near(
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds,
+             replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingSeconds +
+                 replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordSeconds +
+                 replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordSeconds +
+                 replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualResidualSeconds,
+             1e-9,
+             "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds subphase total") &&
          ok;
 
     SimInitialHostMergeReplayBenchmarkResult benchmark;

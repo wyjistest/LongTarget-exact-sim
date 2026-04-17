@@ -223,6 +223,10 @@ def main() -> int:
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_start_index_rebuild_accounting_seconds",
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_trace_finalize_seconds",
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_build_accounting_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_update_trace_record_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds",
         "sim_initial_store_other_merge_residual_seconds",
     ):
         add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
@@ -418,6 +422,38 @@ def main() -> int:
         print(
             "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_seconds="
             f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_build_accounting_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_build_accounting_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_build_accounting_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_update_trace_record_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_update_trace_record_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_heap_update_trace_record_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds']:.6f}"
         )
     if "projected_sim_initial_store_other_merge_residual_seconds" in report:
         print(
