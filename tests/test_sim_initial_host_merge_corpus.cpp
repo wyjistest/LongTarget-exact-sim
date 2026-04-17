@@ -357,6 +357,18 @@ int main()
     ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds >= 0.0,
                      "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds recorded") &&
          ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds recorded") &&
+         ok;
     ok = expect_equal_size(replay.storeOtherMergeContextApplySlotCreatedCount,
                            replay.storeOtherMergeContextApplyLookupMissCount,
                            "storeOtherMergeContextApply slot_created matches miss count for small corpus") &&
@@ -400,6 +412,18 @@ int main()
     ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount,
                            0,
                            "storeOtherMergeContextApply reuse_writeback aux_start_index_rebuild count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_other heap_update_accounting count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_other start_index_rebuild_accounting count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_other trace_finalize count for small corpus") &&
          ok;
     ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal,
                            0,
@@ -462,6 +486,14 @@ int main()
                          replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds,
                      1e-9,
                      "storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds subphase total") &&
+         ok;
+    ok = expect_near(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds,
+                     replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds,
+                     1e-9,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds subphase total") &&
          ok;
 
     SimInitialHostMergeReplayBenchmarkResult benchmark;
@@ -600,6 +632,30 @@ int main()
     ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissReuseWriteback.meanSeconds >= 0.0,
                      "benchmark storeOtherMergeContextApplyLookupMissReuseWriteback mean recorded") &&
          ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccounting.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccounting mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccounting.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccounting mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalize.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalize mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidual.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidual mean recorded") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount,
+                           replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount,
+                           "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount,
+                           replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount,
+                           "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount,
+                           replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount,
+                           "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount") &&
+         ok;
     ok = expect_true(benchmark.storeOtherMergeContextApplyLookupNsPerAttempt >= 0.0,
                      "benchmark storeOtherMergeContextApplyLookupNsPerAttempt recorded") &&
          ok;
@@ -608,6 +664,14 @@ int main()
          ok;
     ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissNsPerEvent >= 0.0,
                      "benchmark storeOtherMergeContextApplyLookupMissNsPerEvent recorded") &&
+         ok;
+    ok = expect_near(benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther.meanSeconds,
+                     benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccounting.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccounting.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalize.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidual.meanSeconds,
+                     1e-9,
+                     "benchmark storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther subphase total") &&
          ok;
     ok = expect_near(benchmark.storeOtherMerge.meanSeconds,
                      benchmark.storeOtherMergeContextApply.meanSeconds +

@@ -666,6 +666,10 @@ struct SimInitialContextApplyTelemetry
     lookupMissReuseWritebackAuxHeapUpdateNanoseconds(0),
     lookupMissReuseWritebackAuxStartIndexRebuildNanoseconds(0),
     lookupMissReuseWritebackAuxOtherNanoseconds(0),
+    lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds(0),
+    lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds(0),
+    lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds(0),
+    lookupMissReuseWritebackAuxOtherResidualNanoseconds(0),
     mutateNanoseconds(0),
     finalizeNanoseconds(0),
     attemptedCount(0),
@@ -686,6 +690,9 @@ struct SimInitialContextApplyTelemetry
     lookupMissReuseWritebackAuxHeapBuildCount(0),
     lookupMissReuseWritebackAuxHeapUpdateCount(0),
     lookupMissReuseWritebackAuxStartIndexRebuildCount(0),
+    lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount(0),
+    lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount(0),
+    lookupMissReuseWritebackAuxOtherTraceFinalizeCount(0),
     lookupMissReuseWritebackPayloadBytesTotal(0),
     lookupMissReuseWritebackAuxUpdatesTotal(0)
   {
@@ -711,6 +718,10 @@ struct SimInitialContextApplyTelemetry
   uint64_t lookupMissReuseWritebackAuxHeapUpdateNanoseconds;
   uint64_t lookupMissReuseWritebackAuxStartIndexRebuildNanoseconds;
   uint64_t lookupMissReuseWritebackAuxOtherNanoseconds;
+  uint64_t lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds;
+  uint64_t lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds;
+  uint64_t lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds;
+  uint64_t lookupMissReuseWritebackAuxOtherResidualNanoseconds;
   uint64_t mutateNanoseconds;
   uint64_t finalizeNanoseconds;
   uint64_t attemptedCount;
@@ -731,6 +742,9 @@ struct SimInitialContextApplyTelemetry
   uint64_t lookupMissReuseWritebackAuxHeapBuildCount;
   uint64_t lookupMissReuseWritebackAuxHeapUpdateCount;
   uint64_t lookupMissReuseWritebackAuxStartIndexRebuildCount;
+  uint64_t lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount;
+  uint64_t lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+  uint64_t lookupMissReuseWritebackAuxOtherTraceFinalizeCount;
   uint64_t lookupMissReuseWritebackPayloadBytesTotal;
   uint64_t lookupMissReuseWritebackAuxUpdatesTotal;
 };
@@ -767,6 +781,10 @@ struct SimInitialHostMergeReplayResult
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds(0.0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds(0.0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds(0.0),
     storeOtherMergeContextApplyMutateSeconds(0.0),
     storeOtherMergeContextApplyFinalizeSeconds(0.0),
     storeOtherMergeContextApplyAttemptedCount(0),
@@ -787,6 +805,9 @@ struct SimInitialHostMergeReplayResult
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal(0),
     storeOtherMergeContextApplyLookupNsPerAttempt(0.0),
@@ -831,6 +852,10 @@ struct SimInitialHostMergeReplayResult
   double storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds;
   double storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds;
   double storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds;
   double storeOtherMergeContextApplyMutateSeconds;
   double storeOtherMergeContextApplyFinalizeSeconds;
   size_t storeOtherMergeContextApplyAttemptedCount;
@@ -851,6 +876,9 @@ struct SimInitialHostMergeReplayResult
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal;
   double storeOtherMergeContextApplyLookupNsPerAttempt;
@@ -914,6 +942,10 @@ struct SimInitialHostMergeReplayBenchmarkResult
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdate(),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuild(),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccounting(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccounting(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalize(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidual(),
     storeOtherMergeContextApplyMutate(),
     storeOtherMergeContextApplyFinalize(),
     storeOtherMergeContextApplyAttemptedCount(0),
@@ -934,6 +966,9 @@ struct SimInitialHostMergeReplayBenchmarkResult
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal(0),
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal(0),
     storeOtherMergeContextApplyLookupNsPerAttempt(0.0),
@@ -981,6 +1016,10 @@ struct SimInitialHostMergeReplayBenchmarkResult
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdate;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuild;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccounting;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccounting;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalize;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidual;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyMutate;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyFinalize;
   size_t storeOtherMergeContextApplyAttemptedCount;
@@ -1001,6 +1040,9 @@ struct SimInitialHostMergeReplayBenchmarkResult
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal;
   size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal;
   double storeOtherMergeContextApplyLookupNsPerAttempt;
@@ -5550,6 +5592,30 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5605,6 +5671,24 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		}
 
 		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount()
 		{
 		  static std::atomic<uint64_t> count(0);
 		  return count;
@@ -6211,6 +6295,18 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherNanoseconds().fetch_add(
 			    telemetry.lookupMissReuseWritebackAuxOtherNanoseconds,
 			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherResidualNanoseconds,
+			    std::memory_order_relaxed);
 			  simInitialStoreOtherMergeContextApplyMutateNanoseconds().fetch_add(
 			    telemetry.mutateNanoseconds,
 			    std::memory_order_relaxed);
@@ -6269,6 +6365,15 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			    std::memory_order_relaxed);
 			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount().fetch_add(
 			    telemetry.lookupMissReuseWritebackAuxStartIndexRebuildCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxOtherTraceFinalizeCount,
 			    std::memory_order_relaxed);
 			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal().fetch_add(
 			    telemetry.lookupMissReuseWritebackPayloadBytesTotal,
@@ -6814,6 +6919,34 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			    1.0e9;
 			}
 
+			inline void getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTimingStats(
+			  double &auxOtherHeapUpdateAccountingSeconds,
+			  double &auxOtherStartIndexRebuildAccountingSeconds,
+			  double &auxOtherTraceFinalizeSeconds,
+			  double &auxOtherResidualSeconds)
+			{
+			  auxOtherHeapUpdateAccountingSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  auxOtherStartIndexRebuildAccountingSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  auxOtherTraceFinalizeSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  auxOtherResidualSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			}
+
 			inline void getSimInitialStoreOtherMergeContextApplyCountStats(uint64_t &attemptedCount,
 			                                                               uint64_t &modifiedCount,
 			                                                               uint64_t &noopCount,
@@ -6891,6 +7024,22 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			      std::memory_order_relaxed);
 			  auxStartIndexRebuildCount =
 			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount().load(
+			      std::memory_order_relaxed);
+			}
+
+			inline void getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherCountStats(
+			  uint64_t &auxOtherHeapUpdateAccountingCount,
+			  uint64_t &auxOtherStartIndexRebuildAccountingCount,
+			  uint64_t &auxOtherTraceFinalizeCount)
+			{
+			  auxOtherHeapUpdateAccountingCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount().load(
+			      std::memory_order_relaxed);
+			  auxOtherStartIndexRebuildAccountingCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount().load(
+			      std::memory_order_relaxed);
+			  auxOtherTraceFinalizeCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount().load(
 			      std::memory_order_relaxed);
 			}
 
@@ -7438,12 +7587,18 @@ struct SimCandidateIndexLookupTrace
     missReuseWritebackAuxHeapBuildNanoseconds(0),
     missReuseWritebackAuxHeapUpdateNanoseconds(0),
     missReuseWritebackAuxStartIndexRebuildNanoseconds(0),
+    missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds(0),
+    missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds(0),
+    missReuseWritebackAuxOtherTraceFinalizeNanoseconds(0),
     missReuseWritebackVictimResetCount(0),
     missReuseWritebackCandidateCopyCount(0),
     missReuseWritebackAuxBookkeepingCount(0),
     missReuseWritebackAuxHeapBuildCount(0),
     missReuseWritebackAuxHeapUpdateCount(0),
     missReuseWritebackAuxStartIndexRebuildCount(0),
+    missReuseWritebackAuxOtherHeapUpdateAccountingCount(0),
+    missReuseWritebackAuxOtherStartIndexRebuildAccountingCount(0),
+    missReuseWritebackAuxOtherTraceFinalizeCount(0),
     missReuseWritebackPayloadBytesTotal(0),
     missReuseWritebackAuxUpdatesTotal(0)
   {
@@ -7461,12 +7616,18 @@ struct SimCandidateIndexLookupTrace
   uint64_t missReuseWritebackAuxHeapBuildNanoseconds;
   uint64_t missReuseWritebackAuxHeapUpdateNanoseconds;
   uint64_t missReuseWritebackAuxStartIndexRebuildNanoseconds;
+  uint64_t missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds;
+  uint64_t missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds;
+  uint64_t missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
   uint64_t missReuseWritebackVictimResetCount;
   uint64_t missReuseWritebackCandidateCopyCount;
   uint64_t missReuseWritebackAuxBookkeepingCount;
   uint64_t missReuseWritebackAuxHeapBuildCount;
   uint64_t missReuseWritebackAuxHeapUpdateCount;
   uint64_t missReuseWritebackAuxStartIndexRebuildCount;
+  uint64_t missReuseWritebackAuxOtherHeapUpdateAccountingCount;
+  uint64_t missReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+  uint64_t missReuseWritebackAuxOtherTraceFinalizeCount;
   uint64_t missReuseWritebackPayloadBytesTotal;
   uint64_t missReuseWritebackAuxUpdatesTotal;
 };
@@ -8227,8 +8388,17 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	        simElapsedNanoseconds(auxHeapUpdateStart);
 	      ++lookupTrace->missReuseWritebackAuxHeapUpdateCount;
 	    }
+	    const std::chrono::steady_clock::time_point auxOtherHeapUpdateAccountingStart =
+	      (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	                                              std::chrono::steady_clock::time_point();
 	    if(stats) ++stats->heapUpdates;
 	    if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
+	    if(lookupTrace && candidateSetFullMiss)
+	    {
+	      lookupTrace->missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +=
+	        simElapsedNanoseconds(auxOtherHeapUpdateAccountingStart);
+	      ++lookupTrace->missReuseWritebackAuxOtherHeapUpdateAccountingCount;
+	    }
 	  }
 	  if(index.tombstoneCount > static_cast<size_t>(K))
 	  {
@@ -8242,12 +8412,26 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	        simElapsedNanoseconds(auxStartIndexRebuildStart);
 	      ++lookupTrace->missReuseWritebackAuxStartIndexRebuildCount;
 	    }
+	    const std::chrono::steady_clock::time_point auxOtherStartIndexRebuildAccountingStart =
+	      (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	                                              std::chrono::steady_clock::time_point();
 	    if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
+	    if(lookupTrace && candidateSetFullMiss)
+	    {
+	      lookupTrace->missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +=
+	        simElapsedNanoseconds(auxOtherStartIndexRebuildAccountingStart);
+	      ++lookupTrace->missReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+	    }
 	  }
 	  if(lookupTrace && candidateSetFullMiss)
 	  {
+	    const std::chrono::steady_clock::time_point auxOtherTraceFinalizeStart =
+	      std::chrono::steady_clock::now();
 	    lookupTrace->missReuseWritebackAuxBookkeepingCount = 1;
 	    lookupTrace->missReuseWritebackAuxUpdatesTotal = reuseWritebackAuxUpdatesTotal;
+	    lookupTrace->missReuseWritebackAuxOtherTraceFinalizeNanoseconds =
+	      simElapsedNanoseconds(auxOtherTraceFinalizeStart);
+	    lookupTrace->missReuseWritebackAuxOtherTraceFinalizeCount = 1;
 	  }
 	  return slotIndex;
 	}
@@ -8810,9 +8994,24 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
 	          lookupTrace.missReuseWritebackAuxHeapBuildNanoseconds +
 	          lookupTrace.missReuseWritebackAuxHeapUpdateNanoseconds +
 	          lookupTrace.missReuseWritebackAuxStartIndexRebuildNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherNanoseconds +=
+	        const uint64_t auxOtherNanoseconds =
 	          (auxBookkeepingNanoseconds > auxBookkeepingAccountedNanoseconds) ?
 	            (auxBookkeepingNanoseconds - auxBookkeepingAccountedNanoseconds) : 0;
+	        telemetry->lookupMissReuseWritebackAuxOtherNanoseconds +=
+	          auxOtherNanoseconds;
+	        telemetry->lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +=
+	          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds;
+	        telemetry->lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +=
+	          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds;
+	        telemetry->lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds +=
+	          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
+	        const uint64_t auxOtherAccountedNanoseconds =
+	          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +
+	          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +
+	          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
+	        telemetry->lookupMissReuseWritebackAuxOtherResidualNanoseconds +=
+	          (auxOtherNanoseconds > auxOtherAccountedNanoseconds) ?
+	            (auxOtherNanoseconds - auxOtherAccountedNanoseconds) : 0;
 	        telemetry->lookupMissReuseWritebackVictimResetCount +=
 	          lookupTrace.missReuseWritebackVictimResetCount;
 	        telemetry->lookupMissReuseWritebackCandidateCopyCount +=
@@ -8825,6 +9024,12 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
 	          lookupTrace.missReuseWritebackAuxHeapUpdateCount;
 	        telemetry->lookupMissReuseWritebackAuxStartIndexRebuildCount +=
 	          lookupTrace.missReuseWritebackAuxStartIndexRebuildCount;
+	        telemetry->lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount +=
+	          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingCount;
+	        telemetry->lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount +=
+	          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+	        telemetry->lookupMissReuseWritebackAuxOtherTraceFinalizeCount +=
+	          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeCount;
 	        telemetry->lookupMissReuseWritebackPayloadBytesTotal +=
 	          lookupTrace.missReuseWritebackPayloadBytesTotal;
         telemetry->lookupMissReuseWritebackAuxUpdatesTotal +=
@@ -10498,6 +10703,16 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
     static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxStartIndexRebuildNanoseconds) / 1.0e9;
   replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds =
     static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualNanoseconds) / 1.0e9;
   replay.storeOtherMergeContextApplyMutateSeconds =
     static_cast<double>(contextApplyTelemetry.mutateNanoseconds) / 1.0e9;
   replay.storeOtherMergeContextApplyFinalizeSeconds =
@@ -10540,6 +10755,12 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
     static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxHeapUpdateCount);
   replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount =
     static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxStartIndexRebuildCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherTraceFinalizeCount);
   replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal =
     static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackPayloadBytesTotal);
   replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal =
@@ -10682,6 +10903,10 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSamples;
   vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSamples;
   vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSamples;
   vector<double> storeOtherMergeContextApplyMutateSamples;
   vector<double> storeOtherMergeContextApplyFinalizeSamples;
   vector<double> storeOtherMergeContextSnapshotSamples;
@@ -10712,6 +10937,10 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSamples.reserve(iterations);
   storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSamples.reserve(iterations);
   storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSamples.reserve(iterations);
   storeOtherMergeContextApplyMutateSamples.reserve(iterations);
   storeOtherMergeContextApplyFinalizeSamples.reserve(iterations);
   storeOtherMergeContextSnapshotSamples.reserve(iterations);
@@ -10763,6 +10992,14 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
       replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds);
     storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSamples.push_back(
       replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds);
     storeOtherMergeContextApplyMutateSamples.push_back(
       replay.storeOtherMergeContextApplyMutateSeconds);
     storeOtherMergeContextApplyFinalizeSamples.push_back(
@@ -10818,6 +11055,12 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
     replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount;
   result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount =
     replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount;
   result.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal =
     replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal;
   result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal =
@@ -10878,6 +11121,18 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther =
     summarizeSimInitialHostMergeReplaySamples(
       storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccounting =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccounting =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalize =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidual =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSamples);
   result.storeOtherMergeContextApplyMutate =
     summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyMutateSamples);
   result.storeOtherMergeContextApplyFinalize =
