@@ -28,6 +28,18 @@ benchmark.sim_initial_store_prune_seconds=0.1
 benchmark.sim_initial_frontier_sync_seconds=0.05
 benchmark.sim_initial_store_other_merge_seconds=0.15
 benchmark.sim_initial_store_other_merge_context_apply_seconds=0.12
+benchmark.sim_initial_store_other_merge_context_apply_lookup_seconds=0.07
+benchmark.sim_initial_store_other_merge_context_apply_mutate_seconds=0.04
+benchmark.sim_initial_store_other_merge_context_apply_finalize_seconds=0.01
+benchmark.sim_initial_store_other_merge_context_apply_attempted_count=30
+benchmark.sim_initial_store_other_merge_context_apply_modified_count=18
+benchmark.sim_initial_store_other_merge_context_apply_noop_count=12
+benchmark.sim_initial_store_other_merge_context_apply_lookup_hit_count=20
+benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_count=10
+benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds=0.02
+benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds=0.01
+benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds=0.005
+benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds=0.015
 benchmark.sim_initial_store_other_merge_residual_seconds=0.03
 benchmark.sim_seconds=3
 benchmark.postprocess_seconds=1
@@ -70,6 +82,13 @@ assert abs(data["projected_sim_initial_store_prune_seconds"] - 0.5) < 1e-9
 assert abs(data["projected_sim_initial_frontier_sync_seconds"] - 0.25) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_seconds"] - 0.75) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_context_apply_seconds"] - 0.6) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_seconds"] - 0.35) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_mutate_seconds"] - 0.2) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_finalize_seconds"] - 0.05) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds"] - 0.1) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds"] - 0.05) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds"] - 0.025) < 1e-9
+assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds"] - 0.075) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_residual_seconds"] - 0.15) < 1e-9
 assert abs(data["window_pipeline_eligible_ratio"] - 0.8) < 1e-9
 assert abs(data["window_pipeline_fallback_ratio"] - 0.2) < 1e-9
@@ -117,5 +136,12 @@ assert "projected_sim_initial_store_prune_seconds" not in data
 assert "projected_sim_initial_frontier_sync_seconds" not in data
 assert "projected_sim_initial_store_other_merge_seconds" not in data
 assert "projected_sim_initial_store_other_merge_context_apply_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_lookup_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_mutate_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_finalize_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds" not in data
+assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds" not in data
 assert "projected_sim_initial_store_other_merge_residual_seconds" not in data
 PY

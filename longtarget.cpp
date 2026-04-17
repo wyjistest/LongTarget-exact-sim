@@ -2247,12 +2247,71 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   {
     simInitialStoreOtherMergeSeconds = 0.0;
   }
-  double simInitialStoreOtherMergeContextApplySeconds =
-    simInitialScanCpuContextApplySeconds;
-  if(simInitialStoreOtherMergeContextApplySeconds > simInitialStoreOtherMergeSeconds)
-  {
-    simInitialStoreOtherMergeContextApplySeconds = simInitialStoreOtherMergeSeconds;
-  }
+  double simInitialStoreOtherMergeContextApplyLookupSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissOpenSlotSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissEvictionSelectSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyMutateSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyFinalizeSeconds = 0.0;
+  uint64_t simInitialStoreOtherMergeContextApplyAttemptedCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyModifiedCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyNoopCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupHitCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplySlotCreatedCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupProbeStepsTotal = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupProbeStepsMax = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyEvictionSelectedCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyReusedSlotCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal = 0;
+  getSimInitialStoreOtherMergeContextApplyTimingStats(
+    simInitialStoreOtherMergeContextApplyLookupSeconds,
+    simInitialStoreOtherMergeContextApplyMutateSeconds,
+    simInitialStoreOtherMergeContextApplyFinalizeSeconds);
+  getSimInitialStoreOtherMergeContextApplyLookupMissTimingStats(
+    simInitialStoreOtherMergeContextApplyLookupMissOpenSlotSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissEvictionSelectSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackSeconds);
+  getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackTimingStats(
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds);
+  getSimInitialStoreOtherMergeContextApplyCountStats(
+    simInitialStoreOtherMergeContextApplyAttemptedCount,
+    simInitialStoreOtherMergeContextApplyModifiedCount,
+    simInitialStoreOtherMergeContextApplyNoopCount,
+    simInitialStoreOtherMergeContextApplyLookupHitCount,
+    simInitialStoreOtherMergeContextApplyLookupMissCount,
+    simInitialStoreOtherMergeContextApplySlotCreatedCount,
+    simInitialStoreOtherMergeContextApplyLookupProbeStepsTotal,
+    simInitialStoreOtherMergeContextApplyLookupProbeStepsMax,
+    simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount,
+    simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount,
+    simInitialStoreOtherMergeContextApplyEvictionSelectedCount,
+    simInitialStoreOtherMergeContextApplyReusedSlotCount);
+  getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCountStats(
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal);
+  const double simInitialStoreOtherMergeContextApplySeconds =
+    simInitialStoreOtherMergeContextApplyLookupSeconds +
+    simInitialStoreOtherMergeContextApplyMutateSeconds +
+    simInitialStoreOtherMergeContextApplyFinalizeSeconds;
   double simInitialStoreOtherMergeResidualSeconds =
     simInitialStoreOtherMergeSeconds -
     simInitialStoreOtherMergeContextApplySeconds;
@@ -2277,6 +2336,62 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_store_other_merge_seconds="<<simInitialStoreOtherMergeSeconds<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_seconds="
       <<simInitialStoreOtherMergeContextApplySeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_mutate_seconds="
+      <<simInitialStoreOtherMergeContextApplyMutateSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_finalize_seconds="
+      <<simInitialStoreOtherMergeContextApplyFinalizeSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_attempted_count="
+      <<simInitialStoreOtherMergeContextApplyAttemptedCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_modified_count="
+      <<simInitialStoreOtherMergeContextApplyModifiedCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_noop_count="
+      <<simInitialStoreOtherMergeContextApplyNoopCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_hit_count="
+      <<simInitialStoreOtherMergeContextApplyLookupHitCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_slot_created_count="
+      <<simInitialStoreOtherMergeContextApplySlotCreatedCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_probe_steps_total="
+      <<simInitialStoreOtherMergeContextApplyLookupProbeStepsTotal<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_probe_steps_max="
+      <<simInitialStoreOtherMergeContextApplyLookupProbeStepsMax<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_open_slot_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_candidate_set_full_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_eviction_selected_count="
+      <<simInitialStoreOtherMergeContextApplyEvictionSelectedCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_reused_slot_count="
+      <<simInitialStoreOtherMergeContextApplyReusedSlotCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_open_slot_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissOpenSlotSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_candidate_set_full_probe_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_eviction_select_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissEvictionSelectSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_payload_bytes_total="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_updates_total="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_residual_seconds="
       <<simInitialStoreOtherMergeResidualSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;

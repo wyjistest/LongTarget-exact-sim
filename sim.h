@@ -648,6 +648,79 @@ struct SimInitialHostMergeCorpusCase
   vector<SimScanCudaCandidateState> expectedStorePruned;
 };
 
+struct SimInitialContextApplyTelemetry
+{
+  SimInitialContextApplyTelemetry():
+    lookupNanoseconds(0),
+    lookupHitNanoseconds(0),
+    lookupMissNanoseconds(0),
+    lookupMissOpenSlotNanoseconds(0),
+    lookupMissCandidateSetFullProbeNanoseconds(0),
+    lookupMissEvictionSelectNanoseconds(0),
+    lookupMissReuseWritebackNanoseconds(0),
+    lookupMissReuseWritebackVictimResetNanoseconds(0),
+    lookupMissReuseWritebackKeyRebindNanoseconds(0),
+    lookupMissReuseWritebackCandidateCopyNanoseconds(0),
+    lookupMissReuseWritebackAuxBookkeepingNanoseconds(0),
+    mutateNanoseconds(0),
+    finalizeNanoseconds(0),
+    attemptedCount(0),
+    modifiedCount(0),
+    noopCount(0),
+    lookupHitCount(0),
+    lookupMissCount(0),
+    slotCreatedCount(0),
+    lookupProbeStepsTotal(0),
+    lookupProbeStepsMax(0),
+    lookupMissOpenSlotCount(0),
+    lookupMissCandidateSetFullCount(0),
+    evictionSelectedCount(0),
+    reusedSlotCount(0),
+    lookupMissReuseWritebackVictimResetCount(0),
+    lookupMissReuseWritebackCandidateCopyCount(0),
+    lookupMissReuseWritebackAuxBookkeepingCount(0),
+    lookupMissReuseWritebackPayloadBytesTotal(0),
+    lookupMissReuseWritebackAuxUpdatesTotal(0)
+  {
+  }
+
+  uint64_t totalNanoseconds() const
+  {
+    return lookupNanoseconds + mutateNanoseconds + finalizeNanoseconds;
+  }
+
+  uint64_t lookupNanoseconds;
+  uint64_t lookupHitNanoseconds;
+  uint64_t lookupMissNanoseconds;
+  uint64_t lookupMissOpenSlotNanoseconds;
+  uint64_t lookupMissCandidateSetFullProbeNanoseconds;
+  uint64_t lookupMissEvictionSelectNanoseconds;
+  uint64_t lookupMissReuseWritebackNanoseconds;
+  uint64_t lookupMissReuseWritebackVictimResetNanoseconds;
+  uint64_t lookupMissReuseWritebackKeyRebindNanoseconds;
+  uint64_t lookupMissReuseWritebackCandidateCopyNanoseconds;
+  uint64_t lookupMissReuseWritebackAuxBookkeepingNanoseconds;
+  uint64_t mutateNanoseconds;
+  uint64_t finalizeNanoseconds;
+  uint64_t attemptedCount;
+  uint64_t modifiedCount;
+  uint64_t noopCount;
+  uint64_t lookupHitCount;
+  uint64_t lookupMissCount;
+  uint64_t slotCreatedCount;
+  uint64_t lookupProbeStepsTotal;
+  uint64_t lookupProbeStepsMax;
+  uint64_t lookupMissOpenSlotCount;
+  uint64_t lookupMissCandidateSetFullCount;
+  uint64_t evictionSelectedCount;
+  uint64_t reusedSlotCount;
+  uint64_t lookupMissReuseWritebackVictimResetCount;
+  uint64_t lookupMissReuseWritebackCandidateCopyCount;
+  uint64_t lookupMissReuseWritebackAuxBookkeepingCount;
+  uint64_t lookupMissReuseWritebackPayloadBytesTotal;
+  uint64_t lookupMissReuseWritebackAuxUpdatesTotal;
+};
+
 struct SimInitialHostMergeReplayResult
 {
   SimInitialHostMergeReplayResult():
@@ -665,6 +738,39 @@ struct SimInitialHostMergeReplayResult
     storePruneSeconds(0.0),
     storeOtherMergeSeconds(0.0),
     storeOtherMergeContextApplySeconds(0.0),
+    storeOtherMergeContextApplyLookupSeconds(0.0),
+    storeOtherMergeContextApplyLookupHitSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissOpenSlotSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissEvictionSelectSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds(0.0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds(0.0),
+    storeOtherMergeContextApplyMutateSeconds(0.0),
+    storeOtherMergeContextApplyFinalizeSeconds(0.0),
+    storeOtherMergeContextApplyAttemptedCount(0),
+    storeOtherMergeContextApplyModifiedCount(0),
+    storeOtherMergeContextApplyNoopCount(0),
+    storeOtherMergeContextApplyLookupHitCount(0),
+    storeOtherMergeContextApplyLookupMissCount(0),
+    storeOtherMergeContextApplySlotCreatedCount(0),
+    storeOtherMergeContextApplyLookupProbeStepsTotal(0),
+    storeOtherMergeContextApplyLookupProbeStepsMax(0),
+    storeOtherMergeContextApplyLookupMissOpenSlotCount(0),
+    storeOtherMergeContextApplyLookupMissCandidateSetFullCount(0),
+    storeOtherMergeContextApplyEvictionSelectedCount(0),
+    storeOtherMergeContextApplyReusedSlotCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal(0),
+    storeOtherMergeContextApplyLookupNsPerAttempt(0.0),
+    storeOtherMergeContextApplyLookupHitNsPerEvent(0.0),
+    storeOtherMergeContextApplyLookupMissNsPerEvent(0.0),
     storeOtherMergeContextSnapshotSeconds(0.0),
     storeOtherMergeStateSnapshotSeconds(0.0),
     storeOtherMergeResidualSeconds(0.0),
@@ -689,6 +795,39 @@ struct SimInitialHostMergeReplayResult
   double storePruneSeconds;
   double storeOtherMergeSeconds;
   double storeOtherMergeContextApplySeconds;
+  double storeOtherMergeContextApplyLookupSeconds;
+  double storeOtherMergeContextApplyLookupHitSeconds;
+  double storeOtherMergeContextApplyLookupMissSeconds;
+  double storeOtherMergeContextApplyLookupMissOpenSlotSeconds;
+  double storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds;
+  double storeOtherMergeContextApplyLookupMissEvictionSelectSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds;
+  double storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds;
+  double storeOtherMergeContextApplyMutateSeconds;
+  double storeOtherMergeContextApplyFinalizeSeconds;
+  size_t storeOtherMergeContextApplyAttemptedCount;
+  size_t storeOtherMergeContextApplyModifiedCount;
+  size_t storeOtherMergeContextApplyNoopCount;
+  size_t storeOtherMergeContextApplyLookupHitCount;
+  size_t storeOtherMergeContextApplyLookupMissCount;
+  size_t storeOtherMergeContextApplySlotCreatedCount;
+  size_t storeOtherMergeContextApplyLookupProbeStepsTotal;
+  size_t storeOtherMergeContextApplyLookupProbeStepsMax;
+  size_t storeOtherMergeContextApplyLookupMissOpenSlotCount;
+  size_t storeOtherMergeContextApplyLookupMissCandidateSetFullCount;
+  size_t storeOtherMergeContextApplyEvictionSelectedCount;
+  size_t storeOtherMergeContextApplyReusedSlotCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal;
+  double storeOtherMergeContextApplyLookupNsPerAttempt;
+  double storeOtherMergeContextApplyLookupHitNsPerEvent;
+  double storeOtherMergeContextApplyLookupMissNsPerEvent;
   double storeOtherMergeContextSnapshotSeconds;
   double storeOtherMergeStateSnapshotSeconds;
   double storeOtherMergeResidualSeconds;
@@ -733,6 +872,38 @@ struct SimInitialHostMergeReplayBenchmarkResult
     storePrune(),
     storeOtherMerge(),
     storeOtherMergeContextApply(),
+    storeOtherMergeContextApplyLookup(),
+    storeOtherMergeContextApplyLookupMiss(),
+    storeOtherMergeContextApplyLookupMissOpenSlot(),
+    storeOtherMergeContextApplyLookupMissCandidateSetFullProbe(),
+    storeOtherMergeContextApplyLookupMissEvictionSelect(),
+    storeOtherMergeContextApplyLookupMissReuseWriteback(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackVictimReset(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebind(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopy(),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping(),
+    storeOtherMergeContextApplyMutate(),
+    storeOtherMergeContextApplyFinalize(),
+    storeOtherMergeContextApplyAttemptedCount(0),
+    storeOtherMergeContextApplyModifiedCount(0),
+    storeOtherMergeContextApplyNoopCount(0),
+    storeOtherMergeContextApplyLookupHitCount(0),
+    storeOtherMergeContextApplyLookupMissCount(0),
+    storeOtherMergeContextApplySlotCreatedCount(0),
+    storeOtherMergeContextApplyLookupProbeStepsTotal(0),
+    storeOtherMergeContextApplyLookupProbeStepsMax(0),
+    storeOtherMergeContextApplyLookupMissOpenSlotCount(0),
+    storeOtherMergeContextApplyLookupMissCandidateSetFullCount(0),
+    storeOtherMergeContextApplyEvictionSelectedCount(0),
+    storeOtherMergeContextApplyReusedSlotCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal(0),
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal(0),
+    storeOtherMergeContextApplyLookupNsPerAttempt(0.0),
+    storeOtherMergeContextApplyLookupHitNsPerEvent(0.0),
+    storeOtherMergeContextApplyLookupMissNsPerEvent(0.0),
     storeOtherMergeContextSnapshot(),
     storeOtherMergeStateSnapshot(),
     storeOtherMergeResidual(),
@@ -761,6 +932,38 @@ struct SimInitialHostMergeReplayBenchmarkResult
   SimInitialHostMergeReplayTimingSummary storePrune;
   SimInitialHostMergeReplayTimingSummary storeOtherMerge;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApply;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookup;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMiss;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissOpenSlot;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissCandidateSetFullProbe;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissEvictionSelect;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWriteback;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackVictimReset;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebind;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopy;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyMutate;
+  SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyFinalize;
+  size_t storeOtherMergeContextApplyAttemptedCount;
+  size_t storeOtherMergeContextApplyModifiedCount;
+  size_t storeOtherMergeContextApplyNoopCount;
+  size_t storeOtherMergeContextApplyLookupHitCount;
+  size_t storeOtherMergeContextApplyLookupMissCount;
+  size_t storeOtherMergeContextApplySlotCreatedCount;
+  size_t storeOtherMergeContextApplyLookupProbeStepsTotal;
+  size_t storeOtherMergeContextApplyLookupProbeStepsMax;
+  size_t storeOtherMergeContextApplyLookupMissOpenSlotCount;
+  size_t storeOtherMergeContextApplyLookupMissCandidateSetFullCount;
+  size_t storeOtherMergeContextApplyEvictionSelectedCount;
+  size_t storeOtherMergeContextApplyReusedSlotCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal;
+  size_t storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal;
+  double storeOtherMergeContextApplyLookupNsPerAttempt;
+  double storeOtherMergeContextApplyLookupHitNsPerEvent;
+  double storeOtherMergeContextApplyLookupMissNsPerEvent;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeContextSnapshot;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeStateSnapshot;
   SimInitialHostMergeReplayTimingSummary storeOtherMergeResidual;
@@ -5167,6 +5370,174 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyMutateNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyFinalizeNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyAttemptedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyModifiedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyNoopCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupHitCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplySlotCreatedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupProbeStepsTotal()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupProbeStepsMax()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissOpenSlotNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullProbeNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissEvictionSelectNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyEvictionSelectedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyReusedSlotCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simInitialScanCpuSafeStoreUpdateNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5714,6 +6085,94 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simInitialScanCpuContextApplyNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
 		}
 
+			inline void recordSimInitialStoreOtherMergeContextApplyTelemetry(
+			  const SimInitialContextApplyTelemetry &telemetry)
+			{
+			  simInitialStoreOtherMergeContextApplyLookupNanoseconds().fetch_add(
+			    telemetry.lookupNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissOpenSlotNanoseconds().fetch_add(
+			    telemetry.lookupMissOpenSlotNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullProbeNanoseconds().fetch_add(
+			    telemetry.lookupMissCandidateSetFullProbeNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissEvictionSelectNanoseconds().fetch_add(
+			    telemetry.lookupMissEvictionSelectNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackVictimResetNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackKeyRebindNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackCandidateCopyNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingNanoseconds().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxBookkeepingNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyMutateNanoseconds().fetch_add(
+			    telemetry.mutateNanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyFinalizeNanoseconds().fetch_add(
+			    telemetry.finalizeNanoseconds,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyAttemptedCount().fetch_add(
+		    telemetry.attemptedCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyModifiedCount().fetch_add(
+		    telemetry.modifiedCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyNoopCount().fetch_add(
+		    telemetry.noopCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyLookupHitCount().fetch_add(
+		    telemetry.lookupHitCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyLookupMissCount().fetch_add(
+		    telemetry.lookupMissCount,
+		    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplySlotCreatedCount().fetch_add(
+			    telemetry.slotCreatedCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupProbeStepsTotal().fetch_add(
+			    telemetry.lookupProbeStepsTotal,
+			    std::memory_order_relaxed);
+			  updateSimTelemetryMax(simInitialStoreOtherMergeContextApplyLookupProbeStepsMax(),
+			                       telemetry.lookupProbeStepsMax);
+			  simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount().fetch_add(
+			    telemetry.lookupMissOpenSlotCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount().fetch_add(
+			    telemetry.lookupMissCandidateSetFullCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyEvictionSelectedCount().fetch_add(
+			    telemetry.evictionSelectedCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyReusedSlotCount().fetch_add(
+			    telemetry.reusedSlotCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount().fetch_add(
+			    telemetry.lookupMissReuseWritebackVictimResetCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount().fetch_add(
+			    telemetry.lookupMissReuseWritebackCandidateCopyCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxBookkeepingCount,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal().fetch_add(
+			    telemetry.lookupMissReuseWritebackPayloadBytesTotal,
+			    std::memory_order_relaxed);
+			  simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal().fetch_add(
+			    telemetry.lookupMissReuseWritebackAuxUpdatesTotal,
+			    std::memory_order_relaxed);
+			}
+
 		inline void recordSimInitialScanCpuSafeStoreUpdateNanoseconds(uint64_t nanoseconds)
 		{
 		  simInitialScanCpuSafeStoreUpdateNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -6148,6 +6607,143 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  safeStorePruneSeconds = static_cast<double>(safeStorePruneNanoseconds) / 1.0e9;
 		  safeStoreUploadSeconds = static_cast<double>(safeStoreUploadNanoseconds) / 1.0e9;
 		}
+
+			inline void getSimInitialStoreOtherMergeContextApplyTimingStats(double &lookupSeconds,
+			                                                                double &mutateSeconds,
+			                                                                double &finalizeSeconds)
+			{
+			  lookupSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  mutateSeconds =
+		    static_cast<double>(
+		      simInitialStoreOtherMergeContextApplyMutateNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  finalizeSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyFinalizeNanoseconds().load(std::memory_order_relaxed)) /
+			    1.0e9;
+			}
+
+			inline void getSimInitialStoreOtherMergeContextApplyLookupMissTimingStats(
+			  double &openSlotSeconds,
+			  double &candidateSetFullProbeSeconds,
+			  double &evictionSelectSeconds,
+			  double &reuseWritebackSeconds)
+			{
+			  openSlotSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissOpenSlotNanoseconds().load(std::memory_order_relaxed)) /
+			    1.0e9;
+			  candidateSetFullProbeSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullProbeNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  evictionSelectSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissEvictionSelectNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  reuseWritebackSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			}
+
+			inline void getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackTimingStats(
+			  double &victimResetSeconds,
+			  double &keyRebindSeconds,
+			  double &candidateCopySeconds,
+			  double &auxBookkeepingSeconds)
+			{
+			  victimResetSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  keyRebindSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  candidateCopySeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			  auxBookkeepingSeconds =
+			    static_cast<double>(
+			      simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingNanoseconds().load(
+			        std::memory_order_relaxed)) /
+			    1.0e9;
+			}
+
+			inline void getSimInitialStoreOtherMergeContextApplyCountStats(uint64_t &attemptedCount,
+			                                                               uint64_t &modifiedCount,
+			                                                               uint64_t &noopCount,
+			                                                               uint64_t &lookupHitCount,
+			                                                               uint64_t &lookupMissCount,
+			                                                               uint64_t &slotCreatedCount,
+			                                                               uint64_t &lookupProbeStepsTotal,
+			                                                               uint64_t &lookupProbeStepsMax,
+			                                                               uint64_t &lookupMissOpenSlotCount,
+			                                                               uint64_t &lookupMissCandidateSetFullCount,
+			                                                               uint64_t &evictionSelectedCount,
+			                                                               uint64_t &reusedSlotCount)
+			{
+			  attemptedCount =
+			    simInitialStoreOtherMergeContextApplyAttemptedCount().load(std::memory_order_relaxed);
+		  modifiedCount =
+		    simInitialStoreOtherMergeContextApplyModifiedCount().load(std::memory_order_relaxed);
+		  noopCount =
+		    simInitialStoreOtherMergeContextApplyNoopCount().load(std::memory_order_relaxed);
+		  lookupHitCount =
+		    simInitialStoreOtherMergeContextApplyLookupHitCount().load(std::memory_order_relaxed);
+			  lookupMissCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissCount().load(std::memory_order_relaxed);
+			  slotCreatedCount =
+			    simInitialStoreOtherMergeContextApplySlotCreatedCount().load(std::memory_order_relaxed);
+			  lookupProbeStepsTotal =
+			    simInitialStoreOtherMergeContextApplyLookupProbeStepsTotal().load(std::memory_order_relaxed);
+			  lookupProbeStepsMax =
+			    simInitialStoreOtherMergeContextApplyLookupProbeStepsMax().load(std::memory_order_relaxed);
+			  lookupMissOpenSlotCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissOpenSlotCount().load(std::memory_order_relaxed);
+			  lookupMissCandidateSetFullCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount().load(
+			      std::memory_order_relaxed);
+			  evictionSelectedCount =
+			    simInitialStoreOtherMergeContextApplyEvictionSelectedCount().load(std::memory_order_relaxed);
+			  reusedSlotCount =
+			    simInitialStoreOtherMergeContextApplyReusedSlotCount().load(std::memory_order_relaxed);
+			}
+
+			inline void getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCountStats(
+			  uint64_t &victimResetCount,
+			  uint64_t &candidateCopyCount,
+			  uint64_t &auxBookkeepingCount,
+			  uint64_t &payloadBytesTotal,
+			  uint64_t &auxUpdatesTotal)
+			{
+			  victimResetCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount().load(
+			      std::memory_order_relaxed);
+			  candidateCopyCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount().load(
+			      std::memory_order_relaxed);
+			  auxBookkeepingCount =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount().load(
+			      std::memory_order_relaxed);
+			  payloadBytesTotal =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal().load(
+			      std::memory_order_relaxed);
+			  auxUpdatesTotal =
+			    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal().load(
+			      std::memory_order_relaxed);
+			}
 
 		inline void getSimPhaseTimingStats(double &initialScanSeconds,
 		                                   double &initialScanGpuSeconds,
@@ -6662,70 +7258,117 @@ inline size_t simCandidateIndexHash(long startI,long startJ)
   return static_cast<size_t>(((i * 11400714819323198485ull) ^ (j + 0x9e3779b97f4a7c15ull + (i << 6) + (i >> 2))) & (SIM_CANDIDATE_INDEX_CAPACITY - 1));
 }
 
+struct SimCandidateIndexProbeResult
+{
+  SimCandidateIndexProbeResult():
+    found(false),
+    candidateIndex(-1),
+    slot(0),
+    probes(0)
+  {
+  }
+
+  bool found;
+  long candidateIndex;
+  size_t slot;
+  uint64_t probes;
+};
+
+struct SimCandidateIndexLookupTrace
+{
+  SimCandidateIndexLookupTrace():
+    hit(false),
+    slotCreated(false),
+    candidateSetFullMiss(false),
+    probeSteps(0),
+    missCandidateSetFullProbeNanoseconds(0),
+    missEvictionSelectNanoseconds(0),
+    missReuseWritebackVictimResetNanoseconds(0),
+    missReuseWritebackKeyRebindNanoseconds(0),
+    missReuseWritebackCandidateCopyNanoseconds(0),
+    missReuseWritebackVictimResetCount(0),
+    missReuseWritebackCandidateCopyCount(0),
+    missReuseWritebackAuxBookkeepingCount(0),
+    missReuseWritebackPayloadBytesTotal(0),
+    missReuseWritebackAuxUpdatesTotal(0)
+  {
+  }
+
+  bool hit;
+  bool slotCreated;
+  bool candidateSetFullMiss;
+  uint64_t probeSteps;
+  uint64_t missCandidateSetFullProbeNanoseconds;
+  uint64_t missEvictionSelectNanoseconds;
+  uint64_t missReuseWritebackVictimResetNanoseconds;
+  uint64_t missReuseWritebackKeyRebindNanoseconds;
+  uint64_t missReuseWritebackCandidateCopyNanoseconds;
+  uint64_t missReuseWritebackVictimResetCount;
+  uint64_t missReuseWritebackCandidateCopyCount;
+  uint64_t missReuseWritebackAuxBookkeepingCount;
+  uint64_t missReuseWritebackPayloadBytesTotal;
+  uint64_t missReuseWritebackAuxUpdatesTotal;
+};
+
 inline void clearSimCandidateStartIndex(SimCandidateStartIndex &index)
 {
   index.clear();
 }
 
-inline long findSimCandidateIndex(const SimCandidateStartIndex &index,long startI,long startJ)
+inline SimCandidateIndexProbeResult probeSimCandidateIndexSlot(const SimCandidateStartIndex &index,
+                                                               long startI,
+                                                               long startJ)
 {
-  size_t slot = simCandidateIndexHash(startI,startJ);
-  for(size_t probe = 0; probe < SIM_CANDIDATE_INDEX_CAPACITY; ++probe)
-  {
-    if(index.slotState[slot] == 0)
-    {
-      return -1;
-    }
-    if(index.slotState[slot] == 1 && index.startI[slot] == startI && index.startJ[slot] == startJ)
-    {
-      return index.candidateIndex[slot];
-    }
-    slot = (slot + 1) & (SIM_CANDIDATE_INDEX_CAPACITY - 1);
-  }
-  return -1;
-}
-
-inline long findSimCandidateIndexStats(const SimCandidateStartIndex &index,long startI,long startJ,SimCandidateStats &stats)
-{
-  size_t slot = simCandidateIndexHash(startI,startJ);
-  uint64_t probes = 0;
-  for(size_t probe = 0; probe < SIM_CANDIDATE_INDEX_CAPACITY; ++probe)
-  {
-    ++probes;
-    if(index.slotState[slot] == 0)
-    {
-      stats.hashProbesTotal += probes;
-      if(probes > stats.hashProbesMax) stats.hashProbesMax = probes;
-      return -1;
-    }
-    if(index.slotState[slot] == 1 && index.startI[slot] == startI && index.startJ[slot] == startJ)
-    {
-      stats.hashProbesTotal += probes;
-      if(probes > stats.hashProbesMax) stats.hashProbesMax = probes;
-      return index.candidateIndex[slot];
-    }
-    slot = (slot + 1) & (SIM_CANDIDATE_INDEX_CAPACITY - 1);
-  }
-  stats.hashProbesTotal += probes;
-  if(probes > stats.hashProbesMax) stats.hashProbesMax = probes;
-  return -1;
-}
-
-inline void insertSimCandidateIndexEntry(SimCandidateStartIndex &index,long startI,long startJ,long candidateIndex)
-{
+  SimCandidateIndexProbeResult result;
   size_t slot = simCandidateIndexHash(startI,startJ);
   size_t firstTombstone = SIM_CANDIDATE_INDEX_CAPACITY;
-  while(index.slotState[slot] != 0)
+  for(size_t probe = 0; probe < SIM_CANDIDATE_INDEX_CAPACITY; ++probe)
   {
+    ++result.probes;
+    if(index.slotState[slot] == 0)
+    {
+      result.slot = (firstTombstone != SIM_CANDIDATE_INDEX_CAPACITY) ? firstTombstone : slot;
+      return result;
+    }
+    if(index.slotState[slot] == 1 && index.startI[slot] == startI && index.startJ[slot] == startJ)
+    {
+      result.found = true;
+      result.candidateIndex = index.candidateIndex[slot];
+      result.slot = slot;
+      return result;
+    }
     if(index.slotState[slot] == 2 && firstTombstone == SIM_CANDIDATE_INDEX_CAPACITY)
     {
       firstTombstone = slot;
     }
     slot = (slot + 1) & (SIM_CANDIDATE_INDEX_CAPACITY - 1);
   }
-  if(firstTombstone != SIM_CANDIDATE_INDEX_CAPACITY)
+  result.slot = (firstTombstone != SIM_CANDIDATE_INDEX_CAPACITY) ? firstTombstone : 0;
+  return result;
+}
+
+inline long findSimCandidateIndex(const SimCandidateStartIndex &index,long startI,long startJ)
+{
+  const SimCandidateIndexProbeResult probeResult = probeSimCandidateIndexSlot(index,startI,startJ);
+  return probeResult.found ? probeResult.candidateIndex : -1;
+}
+
+inline long findSimCandidateIndexStats(const SimCandidateStartIndex &index,long startI,long startJ,SimCandidateStats &stats)
+{
+  const SimCandidateIndexProbeResult probeResult = probeSimCandidateIndexSlot(index,startI,startJ);
+  stats.hashProbesTotal += probeResult.probes;
+  if(probeResult.probes > stats.hashProbesMax) stats.hashProbesMax = probeResult.probes;
+  return probeResult.found ? probeResult.candidateIndex : -1;
+}
+
+inline void insertSimCandidateIndexEntryAtSlot(SimCandidateStartIndex &index,
+                                               size_t slot,
+                                               long startI,
+                                               long startJ,
+                                               long candidateIndex)
+{
+  if(index.slotState[slot] == 2)
   {
-    slot = firstTombstone;
     --index.tombstoneCount;
   }
   index.slotState[slot] = 1;
@@ -6733,6 +7376,12 @@ inline void insertSimCandidateIndexEntry(SimCandidateStartIndex &index,long star
   index.startJ[slot] = startJ;
   index.candidateIndex[slot] = static_cast<int>(candidateIndex);
   index.candidateSlot[candidateIndex] = static_cast<int>(slot);
+}
+
+inline void insertSimCandidateIndexEntry(SimCandidateStartIndex &index,long startI,long startJ,long candidateIndex)
+{
+  const SimCandidateIndexProbeResult probeResult = probeSimCandidateIndexSlot(index,startI,startJ);
+  insertSimCandidateIndexEntryAtSlot(index,probeResult.slot,startI,startJ,candidateIndex);
 }
 
 inline void eraseSimCandidateIndexEntry(SimCandidateStartIndex &index,long candidateIndex)
@@ -7271,21 +7920,54 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	                                         long startJ,
 	                                         long score,
 	                                         long endI,
-	                                         long endJ)
+	                                         long endJ,
+	                                         bool *reusedExisting = NULL,
+	                                         bool *slotCreated = NULL,
+	                                         SimCandidateIndexLookupTrace *lookupTrace = NULL)
 	{
+	  if(lookupTrace) *lookupTrace = SimCandidateIndexLookupTrace();
 	  SimCandidateStartIndex &index = context.candidateStartIndex;
 	  SimCandidateStats *stats = context.statsEnabled ? &context.stats : NULL;
-	  long foundIndex = stats ? findSimCandidateIndexStats(index,startI,startJ,*stats) : findSimCandidateIndex(index,startI,startJ);
-	  if(foundIndex >= 0 && foundIndex < context.candidateCount)
+	  const std::chrono::steady_clock::time_point probeStart =
+	    lookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	  const SimCandidateIndexProbeResult probeResult = probeSimCandidateIndexSlot(index,startI,startJ);
+	  const uint64_t probeNanoseconds =
+	    lookupTrace ? simElapsedNanoseconds(probeStart) : 0;
+	  if(lookupTrace)
 	  {
-	    if(stats) ++stats->indexHits;
-	    return static_cast<int>(foundIndex);
+	    lookupTrace->probeSteps = probeResult.probes;
 	  }
+	  if(stats)
+	  {
+	    stats->hashProbesTotal += probeResult.probes;
+	    if(probeResult.probes > stats->hashProbesMax) stats->hashProbesMax = probeResult.probes;
+	  }
+	  if(probeResult.found && probeResult.candidateIndex >= 0 && probeResult.candidateIndex < context.candidateCount)
+	  {
+	    if(reusedExisting) *reusedExisting = true;
+	    if(slotCreated) *slotCreated = false;
+	    if(lookupTrace)
+	    {
+	      lookupTrace->hit = true;
+	    }
+	    if(stats) ++stats->indexHits;
+	    return static_cast<int>(probeResult.candidateIndex);
+	  }
+	  if(reusedExisting) *reusedExisting = false;
+	  if(slotCreated) *slotCreated = false;
 	  if(stats) ++stats->indexMisses;
 
 	  int slotIndex = 0;
-	  if(context.candidateCount == K)
+	  const bool candidateSetFullMiss = (context.candidateCount == K);
+	  if(candidateSetFullMiss)
 	  {
+	    if(lookupTrace)
+	    {
+	      lookupTrace->candidateSetFullMiss = true;
+	      lookupTrace->missCandidateSetFullProbeNanoseconds = probeNanoseconds;
+	    }
+	    const std::chrono::steady_clock::time_point evictionSelectStart =
+	      lookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 	    if(stats) ++stats->fullEvictions;
 	    if(!context.candidateMinHeap.valid)
 	    {
@@ -7297,14 +7979,40 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	    {
 	      slotIndex = 0;
 	    }
-	    eraseSimCandidateIndexEntry(index,slotIndex);
+	    if(lookupTrace)
+	    {
+	      lookupTrace->missEvictionSelectNanoseconds = simElapsedNanoseconds(evictionSelectStart);
+	    }
 	  }
 	  else
 	  {
 	    slotIndex = static_cast<int>(context.candidateCount++);
+	    if(slotCreated) *slotCreated = true;
+	    if(lookupTrace)
+	    {
+	      lookupTrace->slotCreated = true;
+	    }
 	  }
 
 	  SimCandidate &candidate = context.candidates[slotIndex];
+	  uint64_t reuseWritebackAuxUpdatesTotal = 0;
+	  if(candidateSetFullMiss)
+	  {
+	    const std::chrono::steady_clock::time_point victimResetStart =
+	      lookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	    eraseSimCandidateIndexEntry(index,slotIndex);
+	    if(lookupTrace)
+	    {
+	      lookupTrace->missReuseWritebackVictimResetNanoseconds =
+	        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+	                                 std::chrono::steady_clock::now() - victimResetStart).count());
+	      lookupTrace->missReuseWritebackVictimResetCount = 1;
+	    }
+	  }
+
+	  const std::chrono::steady_clock::time_point candidateCopyStart =
+	    (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	                                            std::chrono::steady_clock::time_point();
 	  candidate.SCORE = score;
 	  candidate.STARI = startI;
 	  candidate.STARJ = startJ;
@@ -7312,20 +8020,46 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  candidate.ENDJ = endJ;
 	  candidate.TOP = candidate.BOT = endI;
 	  candidate.LEFT = candidate.RIGHT = endJ;
-	  insertSimCandidateIndexEntry(index,startI,startJ,slotIndex);
+	  if(lookupTrace && candidateSetFullMiss)
+	  {
+	    lookupTrace->missReuseWritebackCandidateCopyNanoseconds =
+	      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+	                               std::chrono::steady_clock::now() - candidateCopyStart).count());
+	    lookupTrace->missReuseWritebackCandidateCopyCount = 1;
+	    lookupTrace->missReuseWritebackPayloadBytesTotal = sizeof(SimCandidate);
+	  }
+
+	  const std::chrono::steady_clock::time_point keyRebindStart =
+	    (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	                                            std::chrono::steady_clock::time_point();
+	  insertSimCandidateIndexEntryAtSlot(index,probeResult.slot,startI,startJ,slotIndex);
+	  if(lookupTrace && candidateSetFullMiss)
+	  {
+	    lookupTrace->missReuseWritebackKeyRebindNanoseconds =
+	      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+	                               std::chrono::steady_clock::now() - keyRebindStart).count());
+	  }
 	  if(context.candidateCount == K)
 	  {
 	    if(!context.candidateMinHeap.valid)
 	    {
 	      buildSimCandidateMinHeap(context);
 	      if(stats) ++stats->heapBuilds;
+	      if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
 	    }
 	    updateSimCandidateMinHeapIndex(context, slotIndex);
 	    if(stats) ++stats->heapUpdates;
+	    if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
 	  }
 	  if(index.tombstoneCount > static_cast<size_t>(K))
 	  {
 	    rebuildSimCandidateStartIndex(context);
+	    if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
+	  }
+	  if(lookupTrace && candidateSetFullMiss)
+	  {
+	    lookupTrace->missReuseWritebackAuxBookkeepingCount = 1;
+	    lookupTrace->missReuseWritebackAuxUpdatesTotal = reuseWritebackAuxUpdatesTotal;
 	  }
 	  return slotIndex;
 	}
@@ -7809,18 +8543,132 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
                                            long maxScore,
                                            long maxScoreEndJ,
                                            SimKernelContext &context,
-                                           SimCandidateStats *stats)
+                                           SimCandidateStats *stats,
+                                           SimInitialContextApplyTelemetry *telemetry = NULL)
 {
   const long startI = static_cast<long>(unpackSimCoordI(startCoord));
   const long startJ = static_cast<long>(unpackSimCoordJ(startCoord));
   if(stats) ++stats->addnodeCalls;
+  if(telemetry) ++telemetry->attemptedCount;
+  bool lookupHit = false;
+  bool slotCreated = false;
+  SimCandidateIndexLookupTrace lookupTrace;
+  const std::chrono::steady_clock::time_point lookupStart =
+    telemetry ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   const int candidateIndex = ensureSimCandidateIndexForRun(context,
                                                            startI,
                                                            startJ,
                                                            maxScore,
                                                            endI,
-                                                           maxScoreEndJ);
+                                                           maxScoreEndJ,
+                                                           &lookupHit,
+                                                           &slotCreated,
+                                                           telemetry ? &lookupTrace : NULL);
+  if(telemetry)
+  {
+    const uint64_t lookupNanoseconds = simElapsedNanoseconds(lookupStart);
+    telemetry->lookupNanoseconds += lookupNanoseconds;
+    telemetry->lookupProbeStepsTotal += lookupTrace.probeSteps;
+    if(lookupTrace.probeSteps > telemetry->lookupProbeStepsMax)
+    {
+      telemetry->lookupProbeStepsMax = lookupTrace.probeSteps;
+    }
+    if(lookupHit)
+    {
+      telemetry->lookupHitNanoseconds += lookupNanoseconds;
+      ++telemetry->lookupHitCount;
+    }
+    else
+    {
+      telemetry->lookupMissNanoseconds += lookupNanoseconds;
+      ++telemetry->lookupMissCount;
+      if(lookupTrace.candidateSetFullMiss)
+      {
+        ++telemetry->lookupMissCandidateSetFullCount;
+        ++telemetry->evictionSelectedCount;
+        ++telemetry->reusedSlotCount;
+        telemetry->lookupMissCandidateSetFullProbeNanoseconds +=
+          lookupTrace.missCandidateSetFullProbeNanoseconds;
+        telemetry->lookupMissEvictionSelectNanoseconds +=
+          lookupTrace.missEvictionSelectNanoseconds;
+        const uint64_t accountedNanoseconds =
+          lookupTrace.missCandidateSetFullProbeNanoseconds +
+          lookupTrace.missEvictionSelectNanoseconds;
+        const uint64_t reuseWritebackNanoseconds =
+          (lookupNanoseconds > accountedNanoseconds) ? (lookupNanoseconds - accountedNanoseconds) : 0;
+        telemetry->lookupMissReuseWritebackNanoseconds += reuseWritebackNanoseconds;
+        telemetry->lookupMissReuseWritebackVictimResetNanoseconds +=
+          lookupTrace.missReuseWritebackVictimResetNanoseconds;
+        telemetry->lookupMissReuseWritebackKeyRebindNanoseconds +=
+          lookupTrace.missReuseWritebackKeyRebindNanoseconds;
+        telemetry->lookupMissReuseWritebackCandidateCopyNanoseconds +=
+          lookupTrace.missReuseWritebackCandidateCopyNanoseconds;
+        const uint64_t reuseWritebackAccountedNanoseconds =
+          lookupTrace.missReuseWritebackVictimResetNanoseconds +
+          lookupTrace.missReuseWritebackKeyRebindNanoseconds +
+          lookupTrace.missReuseWritebackCandidateCopyNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxBookkeepingNanoseconds +=
+          (reuseWritebackNanoseconds > reuseWritebackAccountedNanoseconds) ?
+            (reuseWritebackNanoseconds - reuseWritebackAccountedNanoseconds) : 0;
+        telemetry->lookupMissReuseWritebackVictimResetCount +=
+          lookupTrace.missReuseWritebackVictimResetCount;
+        telemetry->lookupMissReuseWritebackCandidateCopyCount +=
+          lookupTrace.missReuseWritebackCandidateCopyCount;
+        telemetry->lookupMissReuseWritebackAuxBookkeepingCount +=
+          lookupTrace.missReuseWritebackAuxBookkeepingCount;
+        telemetry->lookupMissReuseWritebackPayloadBytesTotal +=
+          lookupTrace.missReuseWritebackPayloadBytesTotal;
+        telemetry->lookupMissReuseWritebackAuxUpdatesTotal +=
+          lookupTrace.missReuseWritebackAuxUpdatesTotal;
+      }
+      else
+      {
+        ++telemetry->lookupMissOpenSlotCount;
+        telemetry->lookupMissOpenSlotNanoseconds += lookupNanoseconds;
+        if(slotCreated)
+        {
+          ++telemetry->slotCreatedCount;
+        }
+      }
+    }
+  }
   SimCandidate &candidate = context.candidates[candidateIndex];
+  const std::chrono::steady_clock::time_point mutateStart =
+    telemetry ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  if(!lookupHit)
+  {
+    candidate.SCORE = maxScore;
+    candidate.ENDI = endI;
+    candidate.ENDJ = maxScoreEndJ;
+    candidate.TOP = endI;
+    candidate.BOT = endI;
+    candidate.LEFT = minEndJ;
+    candidate.RIGHT = maxEndJ;
+    if(telemetry)
+    {
+      telemetry->mutateNanoseconds += simElapsedNanoseconds(mutateStart);
+      ++telemetry->modifiedCount;
+    }
+    return;
+  }
+  bool modified = false;
+  long beforeScore = 0;
+  long beforeEndI = 0;
+  long beforeEndJ = 0;
+  long beforeTop = 0;
+  long beforeBot = 0;
+  long beforeLeft = 0;
+  long beforeRight = 0;
+  if(telemetry)
+  {
+    beforeScore = candidate.SCORE;
+    beforeEndI = candidate.ENDI;
+    beforeEndJ = candidate.ENDJ;
+    beforeTop = candidate.TOP;
+    beforeBot = candidate.BOT;
+    beforeLeft = candidate.LEFT;
+    beforeRight = candidate.RIGHT;
+  }
   if(candidate.SCORE < maxScore)
   {
     candidate.SCORE = maxScore;
@@ -7836,11 +8684,32 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
   if(candidate.BOT < endI) candidate.BOT = endI;
   if(candidate.LEFT > minEndJ) candidate.LEFT = minEndJ;
   if(candidate.RIGHT < maxEndJ) candidate.RIGHT = maxEndJ;
+  if(telemetry)
+  {
+    telemetry->mutateNanoseconds += simElapsedNanoseconds(mutateStart);
+    modified =
+      beforeScore != candidate.SCORE ||
+      beforeEndI != candidate.ENDI ||
+      beforeEndJ != candidate.ENDJ ||
+      beforeTop != candidate.TOP ||
+      beforeBot != candidate.BOT ||
+      beforeLeft != candidate.LEFT ||
+      beforeRight != candidate.RIGHT;
+    if(modified)
+    {
+      ++telemetry->modifiedCount;
+    }
+    else
+    {
+      ++telemetry->noopCount;
+    }
+  }
 }
 
 inline void applySimCudaInitialRunSummary(const SimScanCudaInitialRunSummary &summary,
                                           SimKernelContext &context,
-                                          SimCandidateStats *stats)
+                                          SimCandidateStats *stats,
+                                          SimInitialContextApplyTelemetry *telemetry = NULL)
 {
   applySimCudaInitialRowEventRun(summary.startCoord,
                                  static_cast<long>(summary.endI),
@@ -7849,7 +8718,8 @@ inline void applySimCudaInitialRunSummary(const SimScanCudaInitialRunSummary &su
                                  static_cast<long>(summary.score),
                                  static_cast<long>(summary.scoreEndJ),
                                  context,
-                                 stats);
+                                 stats,
+                                 telemetry);
 }
 
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
@@ -8009,15 +8879,26 @@ inline void summarizeSimCudaInitialRowEventRuns(const vector<SimScanCudaRowEvent
 
 inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSummary> &summaries,
                                             uint64_t logicalEventCount,
-                                            SimKernelContext &context)
+                                            SimKernelContext &context,
+                                            SimInitialContextApplyTelemetry *telemetry = NULL)
 {
+  if(telemetry)
+  {
+    *telemetry = SimInitialContextApplyTelemetry();
+  }
   SimCandidateStats *stats = context.statsEnabled ? &context.stats : NULL;
   if(stats) stats->eventsSeen += logicalEventCount;
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
   {
-    applySimCudaInitialRunSummary(summaries[summaryIndex],context,stats);
+    applySimCudaInitialRunSummary(summaries[summaryIndex],context,stats,telemetry);
   }
+  const std::chrono::steady_clock::time_point finalizeStart =
+    telemetry ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   refreshSimRunningMin(context);
+  if(telemetry)
+  {
+    telemetry->finalizeNanoseconds += simElapsedNanoseconds(finalizeStart);
+  }
 }
 
 inline const char *simInitialHostMergeCorpusPathKind()
@@ -9354,6 +10235,8 @@ inline bool loadSimInitialHostMergeCorpusCase(const string &caseDir,
   return true;
 }
 
+inline double simReplayNanosecondsPerEvent(double seconds,size_t count);
+
 inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusCase &corpus,
                                                 SimInitialHostMergeReplayResult &replay,
                                                 string *errorOut = NULL)
@@ -9370,9 +10253,83 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
 
   const std::chrono::steady_clock::time_point fullStart = std::chrono::steady_clock::now();
   const std::chrono::steady_clock::time_point contextApplyStart = std::chrono::steady_clock::now();
-  mergeSimCudaInitialRunSummaries(corpus.summaries,corpus.logicalEventCount,context);
+  SimInitialContextApplyTelemetry contextApplyTelemetry;
+  mergeSimCudaInitialRunSummaries(corpus.summaries,
+                                  corpus.logicalEventCount,
+                                  context,
+                                  &contextApplyTelemetry);
   replay.contextApplySeconds = static_cast<double>(simElapsedNanoseconds(contextApplyStart)) / 1.0e9;
-  replay.storeOtherMergeContextApplySeconds = replay.contextApplySeconds;
+  replay.storeOtherMergeContextApplyLookupSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupHitSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupHitNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissOpenSlotSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissOpenSlotNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissCandidateSetFullProbeNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissEvictionSelectSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissEvictionSelectNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackVictimResetNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackKeyRebindNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackCandidateCopyNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxBookkeepingNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyMutateSeconds =
+    static_cast<double>(contextApplyTelemetry.mutateNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyFinalizeSeconds =
+    static_cast<double>(contextApplyTelemetry.finalizeNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplySeconds =
+    static_cast<double>(contextApplyTelemetry.totalNanoseconds()) / 1.0e9;
+  replay.storeOtherMergeContextApplyAttemptedCount =
+    static_cast<size_t>(contextApplyTelemetry.attemptedCount);
+  replay.storeOtherMergeContextApplyModifiedCount =
+    static_cast<size_t>(contextApplyTelemetry.modifiedCount);
+  replay.storeOtherMergeContextApplyNoopCount =
+    static_cast<size_t>(contextApplyTelemetry.noopCount);
+  replay.storeOtherMergeContextApplyLookupHitCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupHitCount);
+  replay.storeOtherMergeContextApplyLookupMissCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissCount);
+  replay.storeOtherMergeContextApplySlotCreatedCount =
+    static_cast<size_t>(contextApplyTelemetry.slotCreatedCount);
+  replay.storeOtherMergeContextApplyLookupProbeStepsTotal =
+    static_cast<size_t>(contextApplyTelemetry.lookupProbeStepsTotal);
+  replay.storeOtherMergeContextApplyLookupProbeStepsMax =
+    static_cast<size_t>(contextApplyTelemetry.lookupProbeStepsMax);
+  replay.storeOtherMergeContextApplyLookupMissOpenSlotCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissOpenSlotCount);
+  replay.storeOtherMergeContextApplyLookupMissCandidateSetFullCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissCandidateSetFullCount);
+  replay.storeOtherMergeContextApplyEvictionSelectedCount =
+    static_cast<size_t>(contextApplyTelemetry.evictionSelectedCount);
+  replay.storeOtherMergeContextApplyReusedSlotCount =
+    static_cast<size_t>(contextApplyTelemetry.reusedSlotCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackVictimResetCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackCandidateCopyCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxBookkeepingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackPayloadBytesTotal);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxUpdatesTotal);
+  replay.storeOtherMergeContextApplyLookupNsPerAttempt =
+    simReplayNanosecondsPerEvent(replay.storeOtherMergeContextApplyLookupSeconds,
+                                 replay.storeOtherMergeContextApplyAttemptedCount);
+  replay.storeOtherMergeContextApplyLookupHitNsPerEvent =
+    simReplayNanosecondsPerEvent(replay.storeOtherMergeContextApplyLookupHitSeconds,
+                                 replay.storeOtherMergeContextApplyLookupHitCount);
+  replay.storeOtherMergeContextApplyLookupMissNsPerEvent =
+    simReplayNanosecondsPerEvent(replay.storeOtherMergeContextApplyLookupMissSeconds,
+                                 replay.storeOtherMergeContextApplyLookupMissCount);
   replay.runningMinAfterContextApply = static_cast<int>(context.runningMin);
   const std::chrono::steady_clock::time_point contextSnapshotStart =
     std::chrono::steady_clock::now();
@@ -9448,6 +10405,15 @@ inline SimInitialHostMergeReplayTimingSummary summarizeSimInitialHostMergeReplay
   return summary;
 }
 
+inline double simReplayNanosecondsPerEvent(double seconds,size_t count)
+{
+  if(count == 0)
+  {
+    return 0.0;
+  }
+  return seconds * 1.0e9 / static_cast<double>(count);
+}
+
 inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusCase &corpus,
                                                    size_t warmupIterations,
                                                    size_t iterations,
@@ -9478,6 +10444,19 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   vector<double> storePruneSamples;
   vector<double> storeOtherMergeSamples;
   vector<double> storeOtherMergeContextApplySamples;
+  vector<double> storeOtherMergeContextApplyLookupSamples;
+  vector<double> storeOtherMergeContextApplyLookupHitSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissOpenSlotSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissEvictionSelectSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySamples;
+  vector<double> storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSamples;
+  vector<double> storeOtherMergeContextApplyMutateSamples;
+  vector<double> storeOtherMergeContextApplyFinalizeSamples;
   vector<double> storeOtherMergeContextSnapshotSamples;
   vector<double> storeOtherMergeStateSnapshotSamples;
   vector<double> storeOtherMergeResidualSamples;
@@ -9491,6 +10470,19 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   storePruneSamples.reserve(iterations);
   storeOtherMergeSamples.reserve(iterations);
   storeOtherMergeContextApplySamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupHitSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissOpenSlotSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissEvictionSelectSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySamples.reserve(iterations);
+  storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSamples.reserve(iterations);
+  storeOtherMergeContextApplyMutateSamples.reserve(iterations);
+  storeOtherMergeContextApplyFinalizeSamples.reserve(iterations);
   storeOtherMergeContextSnapshotSamples.reserve(iterations);
   storeOtherMergeStateSnapshotSamples.reserve(iterations);
   storeOtherMergeResidualSamples.reserve(iterations);
@@ -9510,6 +10502,32 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
     storePruneSamples.push_back(replay.storePruneSeconds);
     storeOtherMergeSamples.push_back(replay.storeOtherMergeSeconds);
     storeOtherMergeContextApplySamples.push_back(replay.storeOtherMergeContextApplySeconds);
+    storeOtherMergeContextApplyLookupSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupSeconds);
+    storeOtherMergeContextApplyLookupHitSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupHitSeconds);
+    storeOtherMergeContextApplyLookupMissSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissSeconds);
+    storeOtherMergeContextApplyLookupMissOpenSlotSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissOpenSlotSeconds);
+    storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds);
+    storeOtherMergeContextApplyLookupMissEvictionSelectSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissEvictionSelectSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds);
+    storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSamples.push_back(
+      replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds);
+    storeOtherMergeContextApplyMutateSamples.push_back(
+      replay.storeOtherMergeContextApplyMutateSeconds);
+    storeOtherMergeContextApplyFinalizeSamples.push_back(
+      replay.storeOtherMergeContextApplyFinalizeSeconds);
     storeOtherMergeContextSnapshotSamples.push_back(replay.storeOtherMergeContextSnapshotSeconds);
     storeOtherMergeStateSnapshotSamples.push_back(replay.storeOtherMergeStateSnapshotSeconds);
     storeOtherMergeResidualSamples.push_back(replay.storeOtherMergeResidualSeconds);
@@ -9525,6 +10543,40 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   result.storeMaterializeUpdatedCount = replay.storeMaterializeUpdatedCount;
   result.storeMaterializePeakSize = replay.storeMaterializePeakSize;
   result.storeMaterializeRehashCount = replay.storeMaterializeRehashCount;
+  result.storeOtherMergeContextApplyAttemptedCount =
+    replay.storeOtherMergeContextApplyAttemptedCount;
+  result.storeOtherMergeContextApplyModifiedCount =
+    replay.storeOtherMergeContextApplyModifiedCount;
+  result.storeOtherMergeContextApplyNoopCount =
+    replay.storeOtherMergeContextApplyNoopCount;
+  result.storeOtherMergeContextApplyLookupHitCount =
+    replay.storeOtherMergeContextApplyLookupHitCount;
+  result.storeOtherMergeContextApplyLookupMissCount =
+    replay.storeOtherMergeContextApplyLookupMissCount;
+  result.storeOtherMergeContextApplySlotCreatedCount =
+    replay.storeOtherMergeContextApplySlotCreatedCount;
+  result.storeOtherMergeContextApplyLookupProbeStepsTotal =
+    replay.storeOtherMergeContextApplyLookupProbeStepsTotal;
+  result.storeOtherMergeContextApplyLookupProbeStepsMax =
+    replay.storeOtherMergeContextApplyLookupProbeStepsMax;
+  result.storeOtherMergeContextApplyLookupMissOpenSlotCount =
+    replay.storeOtherMergeContextApplyLookupMissOpenSlotCount;
+  result.storeOtherMergeContextApplyLookupMissCandidateSetFullCount =
+    replay.storeOtherMergeContextApplyLookupMissCandidateSetFullCount;
+  result.storeOtherMergeContextApplyEvictionSelectedCount =
+    replay.storeOtherMergeContextApplyEvictionSelectedCount;
+  result.storeOtherMergeContextApplyReusedSlotCount =
+    replay.storeOtherMergeContextApplyReusedSlotCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal;
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal =
+    replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal;
   result.contextApply = summarizeSimInitialHostMergeReplaySamples(contextApplySamples);
   result.storeMaterialize = summarizeSimInitialHostMergeReplaySamples(storeMaterializeSamples);
   result.storeMaterializeReset =
@@ -9539,6 +10591,40 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   result.storeOtherMerge = summarizeSimInitialHostMergeReplaySamples(storeOtherMergeSamples);
   result.storeOtherMergeContextApply =
     summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplySamples);
+  result.storeOtherMergeContextApplyLookup =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyLookupSamples);
+  const SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupHit =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyLookupHitSamples);
+  const SimInitialHostMergeReplayTimingSummary storeOtherMergeContextApplyLookupMiss =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyLookupMissSamples);
+  result.storeOtherMergeContextApplyLookupMiss = storeOtherMergeContextApplyLookupMiss;
+  result.storeOtherMergeContextApplyLookupMissOpenSlot =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyLookupMissOpenSlotSamples);
+  result.storeOtherMergeContextApplyLookupMissCandidateSetFullProbe =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSamples);
+  result.storeOtherMergeContextApplyLookupMissEvictionSelect =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissEvictionSelectSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWriteback =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackVictimReset =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebind =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopy =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySamples);
+  result.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping =
+    summarizeSimInitialHostMergeReplaySamples(
+      storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSamples);
+  result.storeOtherMergeContextApplyMutate =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyMutateSamples);
+  result.storeOtherMergeContextApplyFinalize =
+    summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextApplyFinalizeSamples);
   result.storeOtherMergeContextSnapshot =
     summarizeSimInitialHostMergeReplaySamples(storeOtherMergeContextSnapshotSamples);
   result.storeOtherMergeStateSnapshot =
@@ -9546,6 +10632,15 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   result.storeOtherMergeResidual =
     summarizeSimInitialHostMergeReplaySamples(storeOtherMergeResidualSamples);
   result.fullHostMerge = summarizeSimInitialHostMergeReplaySamples(fullHostMergeSamples);
+  result.storeOtherMergeContextApplyLookupNsPerAttempt =
+    simReplayNanosecondsPerEvent(result.storeOtherMergeContextApplyLookup.meanSeconds,
+                                 result.storeOtherMergeContextApplyAttemptedCount);
+  result.storeOtherMergeContextApplyLookupHitNsPerEvent =
+    simReplayNanosecondsPerEvent(storeOtherMergeContextApplyLookupHit.meanSeconds,
+                                 result.storeOtherMergeContextApplyLookupHitCount);
+  result.storeOtherMergeContextApplyLookupMissNsPerEvent =
+    simReplayNanosecondsPerEvent(storeOtherMergeContextApplyLookupMiss.meanSeconds,
+                                 result.storeOtherMergeContextApplyLookupMissCount);
   if(result.logicalEventCount > 0)
   {
     result.nsPerLogicalEvent =
@@ -11604,10 +12699,15 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   const std::chrono::steady_clock::time_point contextApplyStart =
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-  mergeSimCudaInitialRunSummaries(summaries,eventCount,context);
+  SimInitialContextApplyTelemetry contextApplyTelemetry;
+  mergeSimCudaInitialRunSummaries(summaries,
+                                  eventCount,
+                                  context,
+                                  benchmarkEnabled ? &contextApplyTelemetry : NULL);
   if(benchmarkEnabled)
   {
     recordSimInitialScanCpuContextApplyNanoseconds(simElapsedNanoseconds(contextApplyStart));
+    recordSimInitialStoreOtherMergeContextApplyTelemetry(contextApplyTelemetry);
   }
   if(captureHostMergeArtifacts)
   {

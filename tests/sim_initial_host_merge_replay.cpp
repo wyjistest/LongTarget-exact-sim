@@ -157,6 +157,38 @@ int main(int argc, char **argv)
         << "\tstore_materialize_inserted_count\tstore_materialize_updated_count"
         << "\tstore_materialize_peak_size\tstore_materialize_rehash_count"
         << "\tstore_other_merge_context_apply_seconds"
+        << "\tstore_other_merge_context_apply_lookup_seconds"
+        << "\tstore_other_merge_context_apply_mutate_seconds"
+        << "\tstore_other_merge_context_apply_finalize_seconds"
+        << "\tstore_other_merge_context_apply_attempted_count"
+        << "\tstore_other_merge_context_apply_modified_count"
+        << "\tstore_other_merge_context_apply_noop_count"
+        << "\tstore_other_merge_context_apply_lookup_hit_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_count"
+        << "\tstore_other_merge_context_apply_slot_created_count"
+        << "\tstore_other_merge_context_apply_lookup_probe_steps_total"
+        << "\tstore_other_merge_context_apply_lookup_probe_steps_max"
+        << "\tstore_other_merge_context_apply_lookup_miss_open_slot_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_candidate_set_full_count"
+        << "\tstore_other_merge_context_apply_eviction_selected_count"
+        << "\tstore_other_merge_context_apply_reused_slot_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_open_slot_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_candidate_set_full_probe_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_eviction_select_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_payload_bytes_total"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_updates_total"
+        << "\tstore_other_merge_context_apply_lookup_ns_per_attempt"
+        << "\tstore_other_merge_context_apply_lookup_hit_ns_per_event"
+        << "\tstore_other_merge_context_apply_lookup_miss_ns_per_event"
         << "\tstore_other_merge_context_snapshot_seconds"
         << "\tstore_other_merge_state_snapshot_seconds"
         << "\tstore_other_merge_residual_seconds"
@@ -168,6 +200,26 @@ int main(int argc, char **argv)
         aggregateTsv << "case_id\twarmup_iterations\titerations\tlogical_event_count\tstore_materialized_count\tstore_pruned_count"
                      << "\tstore_materialize_inserted_count\tstore_materialize_updated_count"
                      << "\tstore_materialize_peak_size\tstore_materialize_rehash_count"
+                     << "\tstore_other_merge_context_apply_attempted_count"
+                     << "\tstore_other_merge_context_apply_modified_count"
+                     << "\tstore_other_merge_context_apply_noop_count"
+                     << "\tstore_other_merge_context_apply_lookup_hit_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_count"
+                     << "\tstore_other_merge_context_apply_slot_created_count"
+                     << "\tstore_other_merge_context_apply_lookup_probe_steps_total"
+                     << "\tstore_other_merge_context_apply_lookup_probe_steps_max"
+                     << "\tstore_other_merge_context_apply_lookup_miss_open_slot_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_candidate_set_full_count"
+                     << "\tstore_other_merge_context_apply_eviction_selected_count"
+                     << "\tstore_other_merge_context_apply_reused_slot_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_payload_bytes_total"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_updates_total"
+                     << "\tstore_other_merge_context_apply_lookup_ns_per_attempt"
+                     << "\tstore_other_merge_context_apply_lookup_hit_ns_per_event"
+                     << "\tstore_other_merge_context_apply_lookup_miss_ns_per_event"
                      << "\tcontext_apply_mean_seconds\tcontext_apply_p50_seconds\tcontext_apply_p95_seconds"
                      << "\tstore_materialize_mean_seconds\tstore_materialize_p50_seconds\tstore_materialize_p95_seconds"
                      << "\tstore_materialize_reset_mean_seconds\tstore_materialize_reset_p50_seconds\tstore_materialize_reset_p95_seconds"
@@ -177,6 +229,18 @@ int main(int argc, char **argv)
                      << "\tstore_prune_mean_seconds\tstore_prune_p50_seconds\tstore_prune_p95_seconds"
                      << "\tstore_other_merge_mean_seconds\tstore_other_merge_p50_seconds\tstore_other_merge_p95_seconds"
                      << "\tstore_other_merge_context_apply_mean_seconds\tstore_other_merge_context_apply_p50_seconds\tstore_other_merge_context_apply_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_mean_seconds\tstore_other_merge_context_apply_lookup_p50_seconds\tstore_other_merge_context_apply_lookup_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_mean_seconds\tstore_other_merge_context_apply_lookup_miss_p50_seconds\tstore_other_merge_context_apply_lookup_miss_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_open_slot_mean_seconds\tstore_other_merge_context_apply_lookup_miss_open_slot_p50_seconds\tstore_other_merge_context_apply_lookup_miss_open_slot_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_candidate_set_full_probe_mean_seconds\tstore_other_merge_context_apply_lookup_miss_candidate_set_full_probe_p50_seconds\tstore_other_merge_context_apply_lookup_miss_candidate_set_full_probe_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_eviction_select_mean_seconds\tstore_other_merge_context_apply_lookup_miss_eviction_select_p50_seconds\tstore_other_merge_context_apply_lookup_miss_eviction_select_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_p95_seconds"
+                     << "\tstore_other_merge_context_apply_mutate_mean_seconds\tstore_other_merge_context_apply_mutate_p50_seconds\tstore_other_merge_context_apply_mutate_p95_seconds"
+                     << "\tstore_other_merge_context_apply_finalize_mean_seconds\tstore_other_merge_context_apply_finalize_p50_seconds\tstore_other_merge_context_apply_finalize_p95_seconds"
                      << "\tstore_other_merge_context_snapshot_mean_seconds\tstore_other_merge_context_snapshot_p50_seconds\tstore_other_merge_context_snapshot_p95_seconds"
                      << "\tstore_other_merge_state_snapshot_mean_seconds\tstore_other_merge_state_snapshot_p50_seconds\tstore_other_merge_state_snapshot_p95_seconds"
                      << "\tstore_other_merge_residual_mean_seconds\tstore_other_merge_residual_p50_seconds\tstore_other_merge_residual_p95_seconds"
@@ -242,6 +306,38 @@ int main(int argc, char **argv)
             << replay.storeMaterializePeakSize << '\t'
             << replay.storeMaterializeRehashCount << '\t'
             << replay.storeOtherMergeContextApplySeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupSeconds << '\t'
+            << replay.storeOtherMergeContextApplyMutateSeconds << '\t'
+            << replay.storeOtherMergeContextApplyFinalizeSeconds << '\t'
+            << replay.storeOtherMergeContextApplyAttemptedCount << '\t'
+            << replay.storeOtherMergeContextApplyModifiedCount << '\t'
+            << replay.storeOtherMergeContextApplyNoopCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupHitCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissCount << '\t'
+            << replay.storeOtherMergeContextApplySlotCreatedCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupProbeStepsTotal << '\t'
+            << replay.storeOtherMergeContextApplyLookupProbeStepsMax << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissOpenSlotCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissCandidateSetFullCount << '\t'
+            << replay.storeOtherMergeContextApplyEvictionSelectedCount << '\t'
+            << replay.storeOtherMergeContextApplyReusedSlotCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissOpenSlotSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissEvictionSelectSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal << '\t'
+            << replay.storeOtherMergeContextApplyLookupNsPerAttempt << '\t'
+            << replay.storeOtherMergeContextApplyLookupHitNsPerEvent << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissNsPerEvent << '\t'
             << replay.storeOtherMergeContextSnapshotSeconds << '\t'
             << replay.storeOtherMergeStateSnapshotSeconds << '\t'
             << replay.storeOtherMergeResidualSeconds << '\t'
@@ -265,6 +361,26 @@ int main(int argc, char **argv)
                          << benchmark.storeMaterializeUpdatedCount << '\t'
                          << benchmark.storeMaterializePeakSize << '\t'
                          << benchmark.storeMaterializeRehashCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyAttemptedCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyModifiedCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyNoopCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupHitCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissCount << '\t'
+                         << benchmark.storeOtherMergeContextApplySlotCreatedCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupProbeStepsTotal << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupProbeStepsMax << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissOpenSlotCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyEvictionSelectedCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyReusedSlotCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupNsPerAttempt << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupHitNsPerEvent << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissNsPerEvent << '\t'
                          << benchmark.contextApply.meanSeconds << '\t'
                          << benchmark.contextApply.p50Seconds << '\t'
                          << benchmark.contextApply.p95Seconds << '\t'
@@ -292,6 +408,42 @@ int main(int argc, char **argv)
                          << benchmark.storeOtherMergeContextApply.meanSeconds << '\t'
                          << benchmark.storeOtherMergeContextApply.p50Seconds << '\t'
                          << benchmark.storeOtherMergeContextApply.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookup.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookup.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookup.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMiss.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMiss.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMiss.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissOpenSlot.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissOpenSlot.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissOpenSlot.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullProbe.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullProbe.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullProbe.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissEvictionSelect.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissEvictionSelect.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissEvictionSelect.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWriteback.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWriteback.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWriteback.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackVictimReset.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackVictimReset.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackVictimReset.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebind.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebind.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebind.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopy.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopy.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopy.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyMutate.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyMutate.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyMutate.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyFinalize.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyFinalize.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyFinalize.p95Seconds << '\t'
                          << benchmark.storeOtherMergeContextSnapshot.meanSeconds << '\t'
                          << benchmark.storeOtherMergeContextSnapshot.p50Seconds << '\t'
                          << benchmark.storeOtherMergeContextSnapshot.p95Seconds << '\t'

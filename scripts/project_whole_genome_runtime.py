@@ -208,6 +208,13 @@ def main() -> int:
         "sim_initial_frontier_sync_seconds",
         "sim_initial_store_other_merge_seconds",
         "sim_initial_store_other_merge_context_apply_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_seconds",
+        "sim_initial_store_other_merge_context_apply_mutate_seconds",
+        "sim_initial_store_other_merge_context_apply_finalize_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds",
+        "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds",
         "sim_initial_store_other_merge_residual_seconds",
     ):
         add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
@@ -292,6 +299,53 @@ def main() -> int:
         print(
             "projected_sim_initial_store_other_merge_context_apply_seconds="
             f"{report['projected_sim_initial_store_other_merge_context_apply_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_other_merge_context_apply_lookup_seconds" in report:
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_other_merge_context_apply_mutate_seconds" in report:
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_mutate_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_mutate_seconds']:.6f}"
+        )
+    if "projected_sim_initial_store_other_merge_context_apply_finalize_seconds" in report:
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_finalize_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_finalize_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds']:.6f}"
+        )
+    if (
+        "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds"
+        in report
+    ):
+        print(
+            "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds="
+            f"{report['projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds']:.6f}"
         )
     if "projected_sim_initial_store_other_merge_residual_seconds" in report:
         print(

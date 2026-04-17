@@ -279,6 +279,15 @@ int main()
     ok = expect_true(replay.storeOtherMergeContextApplySeconds >= 0.0,
                      "storeOtherMergeContextApplySeconds recorded") &&
          ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyMutateSeconds >= 0.0,
+                     "storeOtherMergeContextApplyMutateSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyFinalizeSeconds >= 0.0,
+                     "storeOtherMergeContextApplyFinalizeSeconds recorded") &&
+         ok;
     ok = expect_true(replay.storeOtherMergeContextSnapshotSeconds >= 0.0,
                      "storeOtherMergeContextSnapshotSeconds recorded") &&
          ok;
@@ -290,6 +299,107 @@ int main()
          ok;
     ok = expect_true(replay.fullHostMergeSeconds >= replay.contextApplySeconds,
                      "fullHostMergeSeconds covers contextApply") &&
+         ok;
+    ok = expect_near(replay.storeOtherMergeContextApplySeconds,
+                     replay.storeOtherMergeContextApplyLookupSeconds +
+                         replay.storeOtherMergeContextApplyMutateSeconds +
+                         replay.storeOtherMergeContextApplyFinalizeSeconds,
+                     1e-9,
+                     "storeOtherMergeContextApplySeconds subphase total") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyAttemptedCount,
+                           summaries.size(),
+                           "storeOtherMergeContextApplyAttemptedCount") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyModifiedCount +
+                               replay.storeOtherMergeContextApplyNoopCount,
+                           replay.storeOtherMergeContextApplyAttemptedCount,
+                           "storeOtherMergeContextApply modified/noop accounting") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupHitCount +
+                               replay.storeOtherMergeContextApplyLookupMissCount,
+                           replay.storeOtherMergeContextApplyAttemptedCount,
+                           "storeOtherMergeContextApply lookup accounting") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissOpenSlotSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissOpenSlotSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissEvictionSelectSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissEvictionSelectSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds recorded") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplySlotCreatedCount,
+                           replay.storeOtherMergeContextApplyLookupMissCount,
+                           "storeOtherMergeContextApply slot_created matches miss count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissOpenSlotCount,
+                           replay.storeOtherMergeContextApplyLookupMissCount,
+                           "storeOtherMergeContextApply open-slot miss count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissCandidateSetFullCount,
+                           0,
+                           "storeOtherMergeContextApply candidate-set-full miss count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyEvictionSelectedCount,
+                           0,
+                           "storeOtherMergeContextApply eviction selected count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyReusedSlotCount,
+                           0,
+                           "storeOtherMergeContextApply reused slot count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback victim_reset count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback candidate_copy count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_bookkeeping count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback payload bytes total for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux updates total for small corpus") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupProbeStepsTotal >=
+                         replay.storeOtherMergeContextApplyAttemptedCount,
+                     "storeOtherMergeContextApplyLookupProbeStepsTotal recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupProbeStepsMax > 0,
+                     "storeOtherMergeContextApplyLookupProbeStepsMax recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupNsPerAttempt >= 0.0,
+                     "storeOtherMergeContextApplyLookupNsPerAttempt recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupHitNsPerEvent >= 0.0,
+                     "storeOtherMergeContextApplyLookupHitNsPerEvent recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissNsPerEvent >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissNsPerEvent recorded") &&
          ok;
     ok = expect_near(replay.storeOtherMergeSeconds,
                      replay.storeOtherMergeContextApplySeconds +
@@ -304,6 +414,22 @@ int main()
                               0.0),
                      1e-9,
                      "storeOtherMergeSeconds residual") &&
+         ok;
+    ok = expect_near(replay.storeOtherMergeContextApplyLookupMissSeconds,
+                     replay.storeOtherMergeContextApplyLookupMissOpenSlotSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissEvictionSelectSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds,
+                     1e-9,
+                     "storeOtherMergeContextApplyLookupMissSeconds subphase total") &&
+         ok;
+    ok = expect_near(replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds,
+                     replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds,
+                     1e-9,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackSeconds subphase total") &&
          ok;
 
     SimInitialHostMergeReplayBenchmarkResult benchmark;
@@ -357,6 +483,15 @@ int main()
     ok = expect_true(benchmark.storeOtherMergeContextApply.meanSeconds >= 0.0,
                      "benchmark storeOtherMergeContextApply mean recorded") &&
          ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookup.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookup mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyMutate.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyMutate mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyFinalize.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyFinalize mean recorded") &&
+         ok;
     ok = expect_true(benchmark.storeOtherMergeContextSnapshot.meanSeconds >= 0.0,
                      "benchmark storeOtherMergeContextSnapshot mean recorded") &&
          ok;
@@ -365,6 +500,82 @@ int main()
          ok;
     ok = expect_true(benchmark.storeOtherMergeResidual.meanSeconds >= 0.0,
                      "benchmark storeOtherMergeResidual mean recorded") &&
+         ok;
+    ok = expect_near(benchmark.storeOtherMergeContextApply.meanSeconds,
+                     benchmark.storeOtherMergeContextApplyLookup.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyMutate.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyFinalize.meanSeconds,
+                     1e-9,
+                     "benchmark storeOtherMergeContextApply subphase total") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyAttemptedCount,
+                           replay.storeOtherMergeContextApplyAttemptedCount,
+                           "benchmark storeOtherMergeContextApplyAttemptedCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyModifiedCount,
+                           replay.storeOtherMergeContextApplyModifiedCount,
+                           "benchmark storeOtherMergeContextApplyModifiedCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyNoopCount,
+                           replay.storeOtherMergeContextApplyNoopCount,
+                           "benchmark storeOtherMergeContextApplyNoopCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupHitCount,
+                           replay.storeOtherMergeContextApplyLookupHitCount,
+                           "benchmark storeOtherMergeContextApplyLookupHitCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupMissCount,
+                           replay.storeOtherMergeContextApplyLookupMissCount,
+                           "benchmark storeOtherMergeContextApplyLookupMissCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplySlotCreatedCount,
+                           replay.storeOtherMergeContextApplySlotCreatedCount,
+                           "benchmark storeOtherMergeContextApplySlotCreatedCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupMissOpenSlotCount,
+                           replay.storeOtherMergeContextApplyLookupMissOpenSlotCount,
+                           "benchmark storeOtherMergeContextApplyLookupMissOpenSlotCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullCount,
+                           replay.storeOtherMergeContextApplyLookupMissCandidateSetFullCount,
+                           "benchmark storeOtherMergeContextApplyLookupMissCandidateSetFullCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyEvictionSelectedCount,
+                           replay.storeOtherMergeContextApplyEvictionSelectedCount,
+                           "benchmark storeOtherMergeContextApplyEvictionSelectedCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyReusedSlotCount,
+                           replay.storeOtherMergeContextApplyReusedSlotCount,
+                           "benchmark storeOtherMergeContextApplyReusedSlotCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupProbeStepsTotal,
+                           replay.storeOtherMergeContextApplyLookupProbeStepsTotal,
+                           "benchmark storeOtherMergeContextApplyLookupProbeStepsTotal") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeOtherMergeContextApplyLookupProbeStepsMax,
+                           replay.storeOtherMergeContextApplyLookupProbeStepsMax,
+                           "benchmark storeOtherMergeContextApplyLookupProbeStepsMax") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissOpenSlot.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissOpenSlot mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullProbe.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissCandidateSetFullProbe mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissEvictionSelect.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissEvictionSelect mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissReuseWriteback.meanSeconds >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissReuseWriteback mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupNsPerAttempt >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupNsPerAttempt recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupHitNsPerEvent >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupHitNsPerEvent recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeOtherMergeContextApplyLookupMissNsPerEvent >= 0.0,
+                     "benchmark storeOtherMergeContextApplyLookupMissNsPerEvent recorded") &&
          ok;
     ok = expect_near(benchmark.storeOtherMerge.meanSeconds,
                      benchmark.storeOtherMergeContextApply.meanSeconds +
@@ -376,6 +587,14 @@ int main()
          ok;
     ok = expect_true(benchmark.fullHostMerge.meanSeconds >= benchmark.storeMaterialize.meanSeconds,
                      "benchmark fullHostMerge mean covers materialize") &&
+         ok;
+    ok = expect_near(benchmark.storeOtherMergeContextApplyLookupMiss.meanSeconds,
+                     benchmark.storeOtherMergeContextApplyLookupMissOpenSlot.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyLookupMissCandidateSetFullProbe.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyLookupMissEvictionSelect.meanSeconds +
+                         benchmark.storeOtherMergeContextApplyLookupMissReuseWriteback.meanSeconds,
+                     1e-9,
+                     "benchmark storeOtherMergeContextApplyLookupMiss subphase total") &&
          ok;
     ok = expect_true(benchmark.nsPerLogicalEvent >= 0.0, "benchmark nsPerLogicalEvent recorded") && ok;
     ok = expect_true(benchmark.nsPerMaterializedRecord >= 0.0,
