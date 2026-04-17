@@ -762,6 +762,15 @@ struct SimInitialContextApplyTelemetry
   uint64_t lookupMissReuseWritebackPayloadBytesTotal;
   uint64_t lookupMissReuseWritebackAuxUpdatesTotal;
 };
+static inline bool simInitialFineGrainedProfilerTelemetryEnabled()
+{
+#if defined(LONGTARGET_PROFILER_DISABLE_FINE_GRAINED_TELEMETRY)
+  return false;
+#else
+  return true;
+#endif
+}
+
 
 struct SimInitialHostMergeReplayResult
 {
@@ -8409,13 +8418,15 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	                                         SimCandidateIndexLookupTrace *lookupTrace = NULL)
 	{
 	  if(lookupTrace) *lookupTrace = SimCandidateIndexLookupTrace();
+	  const bool recordFineLookupTrace =
+	    (lookupTrace == NULL) ? false : simInitialFineGrainedProfilerTelemetryEnabled();
 	  SimCandidateStartIndex &index = context.candidateStartIndex;
 	  SimCandidateStats *stats = context.statsEnabled ? &context.stats : NULL;
 	  const std::chrono::steady_clock::time_point probeStart =
-	    lookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	    recordFineLookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 	  const SimCandidateIndexProbeResult probeResult = probeSimCandidateIndexSlot(index,startI,startJ);
 	  const uint64_t probeNanoseconds =
-	    lookupTrace ? simElapsedNanoseconds(probeStart) : 0;
+	    recordFineLookupTrace ? simElapsedNanoseconds(probeStart) : 0;
 	  if(lookupTrace)
 	  {
 	    lookupTrace->probeSteps = probeResult.probes;
@@ -8447,10 +8458,13 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	    if(lookupTrace)
 	    {
 	      lookupTrace->candidateSetFullMiss = true;
+	    }
+	    if(recordFineLookupTrace)
+	    {
 	      lookupTrace->missCandidateSetFullProbeNanoseconds = probeNanoseconds;
 	    }
 	    const std::chrono::steady_clock::time_point evictionSelectStart =
-	      lookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	      recordFineLookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 	    if(stats) ++stats->fullEvictions;
 	    if(!context.candidateMinHeap.valid)
 	    {
@@ -8462,7 +8476,7 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	    {
 	      slotIndex = 0;
 	    }
-	    if(lookupTrace)
+	    if(recordFineLookupTrace)
 	    {
 	      lookupTrace->missEvictionSelectNanoseconds = simElapsedNanoseconds(evictionSelectStart);
 	    }
@@ -8482,9 +8496,9 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  if(candidateSetFullMiss)
 	  {
 	    const std::chrono::steady_clock::time_point victimResetStart =
-	      lookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	      recordFineLookupTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 	    eraseSimCandidateIndexEntry(index,slotIndex);
-	    if(lookupTrace)
+	    if(recordFineLookupTrace)
 	    {
 	      lookupTrace->missReuseWritebackVictimResetNanoseconds =
 	        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -8494,7 +8508,7 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  }
 
 	  const std::chrono::steady_clock::time_point candidateCopyStart =
-	    (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	    (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                            std::chrono::steady_clock::time_point();
 	  candidate.SCORE = score;
 	  candidate.STARI = startI;
@@ -8503,7 +8517,7 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  candidate.ENDJ = endJ;
 	  candidate.TOP = candidate.BOT = endI;
 	  candidate.LEFT = candidate.RIGHT = endJ;
-	  if(lookupTrace && candidateSetFullMiss)
+	  if(recordFineLookupTrace && candidateSetFullMiss)
 	  {
 	    lookupTrace->missReuseWritebackCandidateCopyNanoseconds =
 	      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -8513,10 +8527,10 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  }
 
 	  const std::chrono::steady_clock::time_point keyRebindStart =
-	    (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	    (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                            std::chrono::steady_clock::time_point();
 	  insertSimCandidateIndexEntryAtSlot(index,probeResult.slot,startI,startJ,slotIndex);
-	  if(lookupTrace && candidateSetFullMiss)
+	  if(recordFineLookupTrace && candidateSetFullMiss)
 	  {
 	    lookupTrace->missReuseWritebackKeyRebindNanoseconds =
 	      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -8527,16 +8541,16 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	    if(!context.candidateMinHeap.valid)
 	    {
 	      const std::chrono::steady_clock::time_point auxHeapBuildStart =
-	        (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	        (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                                std::chrono::steady_clock::time_point();
 	      buildSimCandidateMinHeap(context);
-	      if(lookupTrace && candidateSetFullMiss)
+	      if(recordFineLookupTrace && candidateSetFullMiss)
 	      {
 	        lookupTrace->missReuseWritebackAuxHeapBuildNanoseconds +=
 	          simElapsedNanoseconds(auxHeapBuildStart);
 	        ++lookupTrace->missReuseWritebackAuxHeapBuildCount;
 	      }
-	      if(lookupTrace && candidateSetFullMiss)
+	      if(recordFineLookupTrace && candidateSetFullMiss)
 	      {
 	        const std::chrono::steady_clock::time_point auxOtherResidualHeapBuildAccountingStart =
 	          std::chrono::steady_clock::now();
@@ -8553,10 +8567,10 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	      }
 	    }
 	    const std::chrono::steady_clock::time_point auxHeapUpdateStart =
-	      (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	      (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                              std::chrono::steady_clock::time_point();
 	    updateSimCandidateMinHeapIndex(context, slotIndex);
-	    if(lookupTrace && candidateSetFullMiss)
+	    if(recordFineLookupTrace && candidateSetFullMiss)
 	    {
 	      const std::chrono::steady_clock::time_point auxOtherResidualHeapUpdateTraceRecordStart =
 	        std::chrono::steady_clock::now();
@@ -8568,11 +8582,11 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	      ++lookupTrace->missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount;
 	    }
 	    const std::chrono::steady_clock::time_point auxOtherHeapUpdateAccountingStart =
-	      (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	      (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                              std::chrono::steady_clock::time_point();
 	    if(stats) ++stats->heapUpdates;
 	    if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
-	    if(lookupTrace && candidateSetFullMiss)
+	    if(recordFineLookupTrace && candidateSetFullMiss)
 	    {
 	      lookupTrace->missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +=
 	        simElapsedNanoseconds(auxOtherHeapUpdateAccountingStart);
@@ -8582,10 +8596,10 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  if(index.tombstoneCount > static_cast<size_t>(K))
 	  {
 	    const std::chrono::steady_clock::time_point auxStartIndexRebuildStart =
-	      (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	      (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                              std::chrono::steady_clock::time_point();
 	    rebuildSimCandidateStartIndex(context);
-	    if(lookupTrace && candidateSetFullMiss)
+	    if(recordFineLookupTrace && candidateSetFullMiss)
 	    {
 	      const std::chrono::steady_clock::time_point auxOtherResidualStartIndexRebuildTraceRecordStart =
 	        std::chrono::steady_clock::now();
@@ -8597,17 +8611,17 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	      ++lookupTrace->missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount;
 	    }
 	    const std::chrono::steady_clock::time_point auxOtherStartIndexRebuildAccountingStart =
-	      (lookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
+	      (recordFineLookupTrace && candidateSetFullMiss) ? std::chrono::steady_clock::now() :
 	                                              std::chrono::steady_clock::time_point();
 	    if(candidateSetFullMiss) ++reuseWritebackAuxUpdatesTotal;
-	    if(lookupTrace && candidateSetFullMiss)
+	    if(recordFineLookupTrace && candidateSetFullMiss)
 	    {
 	      lookupTrace->missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +=
 	        simElapsedNanoseconds(auxOtherStartIndexRebuildAccountingStart);
 	      ++lookupTrace->missReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
 	    }
 	  }
-	  if(lookupTrace && candidateSetFullMiss)
+	  if(recordFineLookupTrace && candidateSetFullMiss)
 	  {
 	    const std::chrono::steady_clock::time_point auxOtherTraceFinalizeStart =
 	      std::chrono::steady_clock::now();
@@ -9108,7 +9122,10 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
   if(telemetry) ++telemetry->attemptedCount;
   bool lookupHit = false;
   bool slotCreated = false;
+#if defined(LONGTARGET_PROFILER_DISABLE_FINE_GRAINED_TELEMETRY)
+#else
   SimCandidateIndexLookupTrace lookupTrace;
+#endif
   const std::chrono::steady_clock::time_point lookupStart =
     telemetry ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   const int candidateIndex = ensureSimCandidateIndexForRun(context,
@@ -9119,16 +9136,23 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
                                                            maxScoreEndJ,
                                                            &lookupHit,
                                                            &slotCreated,
+#if defined(LONGTARGET_PROFILER_DISABLE_FINE_GRAINED_TELEMETRY)
+                                                           NULL);
+#else
                                                            telemetry ? &lookupTrace : NULL);
+#endif
   if(telemetry)
   {
     const uint64_t lookupNanoseconds = simElapsedNanoseconds(lookupStart);
     telemetry->lookupNanoseconds += lookupNanoseconds;
+#if defined(LONGTARGET_PROFILER_DISABLE_FINE_GRAINED_TELEMETRY)
+#else
     telemetry->lookupProbeStepsTotal += lookupTrace.probeSteps;
     if(lookupTrace.probeSteps > telemetry->lookupProbeStepsMax)
     {
       telemetry->lookupProbeStepsMax = lookupTrace.probeSteps;
     }
+#endif
     if(lookupHit)
     {
       telemetry->lookupHitNanoseconds += lookupNanoseconds;
@@ -9138,11 +9162,19 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
     {
       telemetry->lookupMissNanoseconds += lookupNanoseconds;
       ++telemetry->lookupMissCount;
-      if(lookupTrace.candidateSetFullMiss)
+      if(slotCreated)
+      {
+        ++telemetry->lookupMissOpenSlotCount;
+        telemetry->lookupMissOpenSlotNanoseconds += lookupNanoseconds;
+        ++telemetry->slotCreatedCount;
+      }
+      else
       {
         ++telemetry->lookupMissCandidateSetFullCount;
         ++telemetry->evictionSelectedCount;
         ++telemetry->reusedSlotCount;
+#if defined(LONGTARGET_PROFILER_DISABLE_FINE_GRAINED_TELEMETRY)
+#else
         telemetry->lookupMissCandidateSetFullProbeNanoseconds +=
           lookupTrace.missCandidateSetFullProbeNanoseconds;
         telemetry->lookupMissEvictionSelectNanoseconds +=
@@ -9159,95 +9191,87 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
           lookupTrace.missReuseWritebackKeyRebindNanoseconds;
         telemetry->lookupMissReuseWritebackCandidateCopyNanoseconds +=
           lookupTrace.missReuseWritebackCandidateCopyNanoseconds;
-	        const uint64_t reuseWritebackAccountedNanoseconds =
-	          lookupTrace.missReuseWritebackVictimResetNanoseconds +
-	          lookupTrace.missReuseWritebackKeyRebindNanoseconds +
-	          lookupTrace.missReuseWritebackCandidateCopyNanoseconds;
-	        const uint64_t auxBookkeepingNanoseconds =
-	          (reuseWritebackNanoseconds > reuseWritebackAccountedNanoseconds) ?
-	            (reuseWritebackNanoseconds - reuseWritebackAccountedNanoseconds) : 0;
-	        telemetry->lookupMissReuseWritebackAuxBookkeepingNanoseconds +=
-	          auxBookkeepingNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxHeapBuildNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxHeapBuildNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxHeapUpdateNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxHeapUpdateNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxStartIndexRebuildNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxStartIndexRebuildNanoseconds;
-	        const uint64_t auxBookkeepingAccountedNanoseconds =
-	          lookupTrace.missReuseWritebackAuxHeapBuildNanoseconds +
-	          lookupTrace.missReuseWritebackAuxHeapUpdateNanoseconds +
-	          lookupTrace.missReuseWritebackAuxStartIndexRebuildNanoseconds;
-	        const uint64_t auxOtherNanoseconds =
-	          (auxBookkeepingNanoseconds > auxBookkeepingAccountedNanoseconds) ?
-	            (auxBookkeepingNanoseconds - auxBookkeepingAccountedNanoseconds) : 0;
-	        telemetry->lookupMissReuseWritebackAuxOtherNanoseconds +=
-	          auxOtherNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
-	        const uint64_t auxOtherAccountedNanoseconds =
-	          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +
-	          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +
-	          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
-	        const uint64_t auxOtherResidualNanoseconds =
-	          (auxOtherNanoseconds > auxOtherAccountedNanoseconds) ?
-	            (auxOtherNanoseconds - auxOtherAccountedNanoseconds) : 0;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualNanoseconds +=
-	          auxOtherResidualNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds +=
-	          lookupTrace.missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds;
-	        const uint64_t auxOtherResidualAccountedNanoseconds =
-	          lookupTrace.missReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds +
-	          lookupTrace.missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds +
-	          lookupTrace.missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualResidualNanoseconds +=
-	          (auxOtherResidualNanoseconds > auxOtherResidualAccountedNanoseconds) ?
-	            (auxOtherResidualNanoseconds - auxOtherResidualAccountedNanoseconds) : 0;
-	        telemetry->lookupMissReuseWritebackVictimResetCount +=
-	          lookupTrace.missReuseWritebackVictimResetCount;
-	        telemetry->lookupMissReuseWritebackCandidateCopyCount +=
-	          lookupTrace.missReuseWritebackCandidateCopyCount;
-	        telemetry->lookupMissReuseWritebackAuxBookkeepingCount +=
-	          lookupTrace.missReuseWritebackAuxBookkeepingCount;
-	        telemetry->lookupMissReuseWritebackAuxHeapBuildCount +=
-	          lookupTrace.missReuseWritebackAuxHeapBuildCount;
-	        telemetry->lookupMissReuseWritebackAuxHeapUpdateCount +=
-	          lookupTrace.missReuseWritebackAuxHeapUpdateCount;
-	        telemetry->lookupMissReuseWritebackAuxStartIndexRebuildCount +=
-	          lookupTrace.missReuseWritebackAuxStartIndexRebuildCount;
-	        telemetry->lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount +=
-	          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingCount;
-	        telemetry->lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount +=
-	          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
-	        telemetry->lookupMissReuseWritebackAuxOtherTraceFinalizeCount +=
-	          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeCount;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingCount +=
-	          lookupTrace.missReuseWritebackAuxOtherResidualHeapBuildAccountingCount;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount +=
-	          lookupTrace.missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount;
-	        telemetry->lookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount +=
-	          lookupTrace.missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount;
-	        telemetry->lookupMissReuseWritebackPayloadBytesTotal +=
-	          lookupTrace.missReuseWritebackPayloadBytesTotal;
+        const uint64_t reuseWritebackAccountedNanoseconds =
+          lookupTrace.missReuseWritebackVictimResetNanoseconds +
+          lookupTrace.missReuseWritebackKeyRebindNanoseconds +
+          lookupTrace.missReuseWritebackCandidateCopyNanoseconds;
+        const uint64_t auxBookkeepingNanoseconds =
+          (reuseWritebackNanoseconds > reuseWritebackAccountedNanoseconds) ?
+            (reuseWritebackNanoseconds - reuseWritebackAccountedNanoseconds) : 0;
+        telemetry->lookupMissReuseWritebackAuxBookkeepingNanoseconds +=
+          auxBookkeepingNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxHeapBuildNanoseconds +=
+          lookupTrace.missReuseWritebackAuxHeapBuildNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxHeapUpdateNanoseconds +=
+          lookupTrace.missReuseWritebackAuxHeapUpdateNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxStartIndexRebuildNanoseconds +=
+          lookupTrace.missReuseWritebackAuxStartIndexRebuildNanoseconds;
+        const uint64_t auxBookkeepingAccountedNanoseconds =
+          lookupTrace.missReuseWritebackAuxHeapBuildNanoseconds +
+          lookupTrace.missReuseWritebackAuxHeapUpdateNanoseconds +
+          lookupTrace.missReuseWritebackAuxStartIndexRebuildNanoseconds;
+        const uint64_t auxOtherNanoseconds =
+          (auxBookkeepingNanoseconds > auxBookkeepingAccountedNanoseconds) ?
+            (auxBookkeepingNanoseconds - auxBookkeepingAccountedNanoseconds) : 0;
+        telemetry->lookupMissReuseWritebackAuxOtherNanoseconds +=
+          auxOtherNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +=
+          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +=
+          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds +=
+          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
+        const uint64_t auxOtherAccountedNanoseconds =
+          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds +
+          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds +
+          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeNanoseconds;
+        const uint64_t auxOtherResidualNanoseconds =
+          (auxOtherNanoseconds > auxOtherAccountedNanoseconds) ?
+            (auxOtherNanoseconds - auxOtherAccountedNanoseconds) : 0;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualNanoseconds +=
+          auxOtherResidualNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds +=
+          lookupTrace.missReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds +=
+          lookupTrace.missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds +=
+          lookupTrace.missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds;
+        const uint64_t auxOtherResidualAccountedNanoseconds =
+          lookupTrace.missReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds +
+          lookupTrace.missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds +
+          lookupTrace.missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualResidualNanoseconds +=
+          (auxOtherResidualNanoseconds > auxOtherResidualAccountedNanoseconds) ?
+            (auxOtherResidualNanoseconds - auxOtherResidualAccountedNanoseconds) : 0;
+        telemetry->lookupMissReuseWritebackVictimResetCount +=
+          lookupTrace.missReuseWritebackVictimResetCount;
+        telemetry->lookupMissReuseWritebackCandidateCopyCount +=
+          lookupTrace.missReuseWritebackCandidateCopyCount;
+        telemetry->lookupMissReuseWritebackAuxBookkeepingCount +=
+          lookupTrace.missReuseWritebackAuxBookkeepingCount;
+        telemetry->lookupMissReuseWritebackAuxHeapBuildCount +=
+          lookupTrace.missReuseWritebackAuxHeapBuildCount;
+        telemetry->lookupMissReuseWritebackAuxHeapUpdateCount +=
+          lookupTrace.missReuseWritebackAuxHeapUpdateCount;
+        telemetry->lookupMissReuseWritebackAuxStartIndexRebuildCount +=
+          lookupTrace.missReuseWritebackAuxStartIndexRebuildCount;
+        telemetry->lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount +=
+          lookupTrace.missReuseWritebackAuxOtherHeapUpdateAccountingCount;
+        telemetry->lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount +=
+          lookupTrace.missReuseWritebackAuxOtherStartIndexRebuildAccountingCount;
+        telemetry->lookupMissReuseWritebackAuxOtherTraceFinalizeCount +=
+          lookupTrace.missReuseWritebackAuxOtherTraceFinalizeCount;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingCount +=
+          lookupTrace.missReuseWritebackAuxOtherResidualHeapBuildAccountingCount;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount +=
+          lookupTrace.missReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount;
+        telemetry->lookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount +=
+          lookupTrace.missReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount;
+        telemetry->lookupMissReuseWritebackPayloadBytesTotal +=
+          lookupTrace.missReuseWritebackPayloadBytesTotal;
         telemetry->lookupMissReuseWritebackAuxUpdatesTotal +=
           lookupTrace.missReuseWritebackAuxUpdatesTotal;
-      }
-      else
-      {
-        ++telemetry->lookupMissOpenSlotCount;
-        telemetry->lookupMissOpenSlotNanoseconds += lookupNanoseconds;
-        if(slotCreated)
-        {
-          ++telemetry->slotCreatedCount;
-        }
+#endif
       }
     }
   }
