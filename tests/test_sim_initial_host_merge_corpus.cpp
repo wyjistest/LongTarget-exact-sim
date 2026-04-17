@@ -345,6 +345,18 @@ int main()
     ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds >= 0.0,
                      "storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds recorded") &&
          ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds >= 0.0,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds recorded") &&
+         ok;
     ok = expect_equal_size(replay.storeOtherMergeContextApplySlotCreatedCount,
                            replay.storeOtherMergeContextApplyLookupMissCount,
                            "storeOtherMergeContextApply slot_created matches miss count for small corpus") &&
@@ -376,6 +388,18 @@ int main()
     ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount,
                            0,
                            "storeOtherMergeContextApply reuse_writeback aux_bookkeeping count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_heap_build count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_heap_update count for small corpus") &&
+         ok;
+    ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount,
+                           0,
+                           "storeOtherMergeContextApply reuse_writeback aux_start_index_rebuild count for small corpus") &&
          ok;
     ok = expect_equal_size(replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal,
                            0,
@@ -430,6 +454,14 @@ int main()
                          replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds,
                      1e-9,
                      "storeOtherMergeContextApplyLookupMissReuseWritebackSeconds subphase total") &&
+         ok;
+    ok = expect_near(replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds,
+                     replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds +
+                         replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds,
+                     1e-9,
+                     "storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds subphase total") &&
          ok;
 
     SimInitialHostMergeReplayBenchmarkResult benchmark;

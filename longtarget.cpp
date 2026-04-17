@@ -2256,6 +2256,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds = 0.0;
   double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds = 0.0;
   double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds = 0.0;
+  double simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds = 0.0;
   double simInitialStoreOtherMergeContextApplyMutateSeconds = 0.0;
   double simInitialStoreOtherMergeContextApplyFinalizeSeconds = 0.0;
   uint64_t simInitialStoreOtherMergeContextApplyAttemptedCount = 0;
@@ -2273,6 +2277,9 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal = 0;
   getSimInitialStoreOtherMergeContextApplyTimingStats(
@@ -2289,6 +2296,11 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds,
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds,
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds);
+  getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxTimingStats(
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds);
   getSimInitialStoreOtherMergeContextApplyCountStats(
     simInitialStoreOtherMergeContextApplyAttemptedCount,
     simInitialStoreOtherMergeContextApplyModifiedCount,
@@ -2308,6 +2320,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount,
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal,
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal);
+  getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxCountStats(
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount,
+    simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount);
   const double simInitialStoreOtherMergeContextApplySeconds =
     simInitialStoreOtherMergeContextApplyLookupSeconds +
     simInitialStoreOtherMergeContextApplyMutateSeconds +
@@ -2382,12 +2398,26 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds="
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_seconds="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_count="
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_count="
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_count="
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount<<endl;
+  cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_count="
+      <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_payload_bytes_total="
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_updates_total="

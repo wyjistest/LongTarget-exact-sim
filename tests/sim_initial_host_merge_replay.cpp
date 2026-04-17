@@ -181,9 +181,16 @@ int main(int argc, char **argv)
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_seconds"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_seconds"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_seconds"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_seconds"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_count"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_count"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_count"
+        << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_count"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_payload_bytes_total"
         << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_updates_total"
         << "\tstore_other_merge_context_apply_lookup_ns_per_attempt"
@@ -215,6 +222,9 @@ int main(int argc, char **argv)
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_victim_reset_count"
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_count"
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_count"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_count"
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_payload_bytes_total"
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_updates_total"
                      << "\tstore_other_merge_context_apply_lookup_ns_per_attempt"
@@ -239,6 +249,10 @@ int main(int argc, char **argv)
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_key_rebind_p95_seconds"
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_candidate_copy_p95_seconds"
                      << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_bookkeeping_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_build_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_heap_update_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_start_index_rebuild_p95_seconds"
+                     << "\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_mean_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_p50_seconds\tstore_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_p95_seconds"
                      << "\tstore_other_merge_context_apply_mutate_mean_seconds\tstore_other_merge_context_apply_mutate_p50_seconds\tstore_other_merge_context_apply_mutate_p95_seconds"
                      << "\tstore_other_merge_context_apply_finalize_mean_seconds\tstore_other_merge_context_apply_finalize_p50_seconds\tstore_other_merge_context_apply_finalize_p95_seconds"
                      << "\tstore_other_merge_context_snapshot_mean_seconds\tstore_other_merge_context_snapshot_p50_seconds\tstore_other_merge_context_snapshot_p95_seconds"
@@ -330,9 +344,16 @@ int main(int argc, char **argv)
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount << '\t'
+            << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal << '\t'
             << replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal << '\t'
             << replay.storeOtherMergeContextApplyLookupNsPerAttempt << '\t'
@@ -376,6 +397,9 @@ int main(int argc, char **argv)
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupNsPerAttempt << '\t'
@@ -438,6 +462,18 @@ int main(int argc, char **argv)
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping.meanSeconds << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping.p50Seconds << '\t'
                          << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeeping.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuild.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuild.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuild.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdate.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdate.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdate.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuild.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuild.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuild.p95Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther.meanSeconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther.p50Seconds << '\t'
+                         << benchmark.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOther.p95Seconds << '\t'
                          << benchmark.storeOtherMergeContextApplyMutate.meanSeconds << '\t'
                          << benchmark.storeOtherMergeContextApplyMutate.p50Seconds << '\t'
                          << benchmark.storeOtherMergeContextApplyMutate.p95Seconds << '\t'
