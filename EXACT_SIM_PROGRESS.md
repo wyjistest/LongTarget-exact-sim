@@ -1517,3 +1517,12 @@
     - `full_run.time.log` 记录到中断前 runtime wall time `740.68s`；离线 replay summary 则正式过 gate：`covered_logical_event_share=0.8544`，`covered_store_materialized_share=0.8988`，`decision_status=ready`。
     - phase-share 结果明确把下一刀指向 `store_materialize`：`store_materialize=63.7346s (46.69%)`，`store_other_merge=52.1729s (38.22%)`，`store_prune=20.5919s (15.09%)`，因此 `next_action=optimize_store_materialize`。
     - 这意味着 selector 侧可以先冻结在 `coverage_weighted(logical=1, materialized=2, limit=16)` 这个代表性配置上；host-merge 主线的后续优化优先级更新为：先打 `store_materialize`，`store_other_merge` 作为第二热点继续保留观测，`store_prune` 暂不抢第一优先级。
+  - 针对同一份 16-case frozen corpus，replay microbenchmark 现已把 `store_materialize` 再拆成 `reset / insert / update / snapshot_copy` 四个子阶段，并把 `store_materialize_inserted_count / updated_count` 落进 aggregate TSV：
+    - 16-case 直接求和：`store_materialize=3.6621s`，其中 `insert=1.7502s`、`update=1.9119s`、`snapshot_copy=0.0698s`、`reset≈0`。
+    - 按 `logical_event_count` 加权看 `store_materialize` 内部构成，`update` 约占 `56.64%`，`insert` 约占 `43.36%`，`snapshot_copy` 仅约为 `1.55%` 的 replay-side 额外成本，不是主矛盾。
+    - 计数侧也印证了这个方向：16-case 合计约 `6.70M` inserted records 对 `41.04M` updated records；折算后 `insert` 单记录成本约 `261 ns`，`update` 单记录成本约 `46.6 ns`，但 `update` 总量更大，因此当前 `store_materialize` 的第一刀应优先落在 safe-store upsert/update bookkeeping，而不是 replay 输出拷贝。
+  - 针对同一份 frozen corpus 的第一轮低风险 upsert/materialize 优化（`reserve()`、热路径单次 `emplace()` + 原位 insert/update、无 instrumentation 时的 fast path、`emplace_back()` 去临时对象）已经完成并回放到新的 `replay_materialize_optimized*.tsv`：
+    - 16-case aggregate 直接求和后，`store_materialize` 从 `3.6621s` 降到 `2.6052s`，绝对减少 `1.0570s`，相对改善约 `28.86%`，已明显超过原先为 `store_materialize` 设的 `15–20%` continuation 门槛。
+    - 改善几乎全部来自 insert/materialize 侧：`insert_total` 从 `1.7502s` 降到 `0.5636s`，`insert` 单记录成本从约 `261.3 ns` 降到 `84.2 ns`；与此同时 `update_total` 从 `1.9119s` 小幅升到 `2.0415s`，`update` 单记录成本从约 `46.6 ns` 升到 `49.8 ns`，说明这一刀已经把“insert 代价不低”压下去，但还没有真正打到“update 次数太多”的核心矛盾。
+    - 新增的 `store_materialize_peak_size / rehash_count` 也给出了明确反馈：16 个 case 全部只发生 `1` 次 rehash，`rehash_total=16`、`rehash_max=1`，说明 upfront `reserve()` 已把 `startCoordToIndex` 的增长收敛到每 case 一次前置 rehash；因此下一刀更值得继续盯 `update` bookkeeping，而不是再回去磨 snapshot copy 或反复扩容。
+    - 基于这组结果，`store_materialize` 这条线暂时不需要回到 selector 或 corpus 选择；下一步应优先做更窄的 update-focused microbenchmark / 优化。如果下一轮 update-focused 改动拿不到新的实质收益，再把主火力切回 `store_other_merge`。

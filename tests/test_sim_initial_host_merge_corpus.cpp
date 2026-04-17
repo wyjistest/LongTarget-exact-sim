@@ -245,6 +245,35 @@ int main()
          ok;
     ok = expect_true(replay.contextApplySeconds >= 0.0, "contextApplySeconds recorded") && ok;
     ok = expect_true(replay.storeMaterializeSeconds >= 0.0, "storeMaterializeSeconds recorded") && ok;
+    ok = expect_true(replay.storeMaterializeResetSeconds >= 0.0,
+                     "storeMaterializeResetSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeMaterializeInsertSeconds >= 0.0,
+                     "storeMaterializeInsertSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeMaterializeUpdateSeconds >= 0.0,
+                     "storeMaterializeUpdateSeconds recorded") &&
+         ok;
+    ok = expect_true(replay.storeMaterializeSnapshotCopySeconds >= 0.0,
+                     "storeMaterializeSnapshotCopySeconds recorded") &&
+         ok;
+    ok = expect_equal_size(replay.storeMaterializeInsertedCount + replay.storeMaterializeUpdatedCount,
+                           summaries.size(),
+                           "storeMaterialize summary accounting") &&
+         ok;
+    ok = expect_equal_size(replay.storeMaterializePeakSize,
+                           replay.storeMaterialized.size(),
+                           "storeMaterializePeakSize matches final store") &&
+         ok;
+    ok = expect_true(replay.storeMaterializeRehashCount >= 0,
+                     "storeMaterializeRehashCount recorded") &&
+         ok;
+    ok = expect_near(replay.storeMaterializeSeconds,
+                     replay.storeMaterializeResetSeconds + replay.storeMaterializeInsertSeconds +
+                         replay.storeMaterializeUpdateSeconds,
+                     1e-9,
+                     "storeMaterializeSeconds subphase total") &&
+         ok;
     ok = expect_true(replay.storePruneSeconds >= 0.0, "storePruneSeconds recorded") && ok;
     ok = expect_true(replay.storeOtherMergeSeconds >= 0.0, "storeOtherMergeSeconds recorded") && ok;
     ok = expect_true(replay.fullHostMergeSeconds >= replay.contextApplySeconds,
@@ -266,6 +295,41 @@ int main()
     ok = expect_true(benchmark.storeMaterialize.meanSeconds >= 0.0,
                      "benchmark storeMaterialize mean recorded") &&
          ok;
+    ok = expect_true(benchmark.storeMaterializeReset.meanSeconds >= 0.0,
+                     "benchmark storeMaterializeReset mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeMaterializeInsert.meanSeconds >= 0.0,
+                     "benchmark storeMaterializeInsert mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeMaterializeUpdate.meanSeconds >= 0.0,
+                     "benchmark storeMaterializeUpdate mean recorded") &&
+         ok;
+    ok = expect_true(benchmark.storeMaterializeSnapshotCopy.meanSeconds >= 0.0,
+                     "benchmark storeMaterializeSnapshotCopy mean recorded") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeMaterializeInsertedCount,
+                           replay.storeMaterializeInsertedCount,
+                           "benchmark storeMaterializeInsertedCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeMaterializeUpdatedCount,
+                           replay.storeMaterializeUpdatedCount,
+                           "benchmark storeMaterializeUpdatedCount") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeMaterializePeakSize,
+                           replay.storeMaterializePeakSize,
+                           "benchmark storeMaterializePeakSize") &&
+         ok;
+    ok = expect_equal_size(benchmark.storeMaterializeRehashCount,
+                           replay.storeMaterializeRehashCount,
+                           "benchmark storeMaterializeRehashCount") &&
+         ok;
+    ok = expect_near(benchmark.storeMaterialize.meanSeconds,
+                     benchmark.storeMaterializeReset.meanSeconds +
+                         benchmark.storeMaterializeInsert.meanSeconds +
+                         benchmark.storeMaterializeUpdate.meanSeconds,
+                     1e-9,
+                     "benchmark storeMaterialize subphase total") &&
+         ok;
     ok = expect_true(benchmark.storePrune.meanSeconds >= 0.0, "benchmark storePrune mean recorded") && ok;
     ok = expect_true(benchmark.storeOtherMerge.meanSeconds >= 0.0,
                      "benchmark storeOtherMerge mean recorded") &&
@@ -278,6 +342,38 @@ int main()
                      "benchmark nsPerMaterializedRecord recorded") &&
          ok;
     ok = expect_true(benchmark.nsPerPrunedRecord >= 0.0, "benchmark nsPerPrunedRecord recorded") && ok;
+
+    SimKernelContext invalidStoreContext(64, 128);
+    initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, invalidStoreContext);
+    invalidStoreContext.safeCandidateStateStore.valid = false;
+    invalidStoreContext.safeCandidateStateStore.states.push_back(expectedStoreMaterialized.front());
+    invalidStoreContext.safeCandidateStateStore.startCoordToIndex
+        [simScanCudaCandidateStateStartCoord(expectedStoreMaterialized.front())] = 0;
+    double invalidResetSeconds = 0.0;
+    double invalidInsertSeconds = 0.0;
+    double invalidUpdateSeconds = 0.0;
+    size_t invalidInsertedCount = 0;
+    size_t invalidUpdatedCount = 0;
+    size_t invalidPeakSize = 0;
+    size_t invalidRehashCount = 0;
+    mergeSimCudaInitialRunSummariesIntoSafeStore({},
+                                                 invalidStoreContext,
+                                                 &invalidResetSeconds,
+                                                 &invalidInsertSeconds,
+                                                 &invalidUpdateSeconds,
+                                                 &invalidInsertedCount,
+                                                 &invalidUpdatedCount,
+                                                 &invalidPeakSize,
+                                                 &invalidRehashCount);
+    ok = expect_true(invalidStoreContext.safeCandidateStateStore.valid, "invalid store reset to valid") && ok;
+    ok = expect_equal_size(invalidStoreContext.safeCandidateStateStore.states.size(),
+                           0,
+                           "invalid store reset clears states") &&
+         ok;
+    ok = expect_equal_size(invalidPeakSize, 0, "invalid store empty merge peak size resets to zero") && ok;
+    ok = expect_equal_size(invalidInsertedCount, 0, "invalid store empty merge inserted count") && ok;
+    ok = expect_equal_size(invalidUpdatedCount, 0, "invalid store empty merge updated count") && ok;
+    ok = expect_true(invalidResetSeconds >= 0.0, "invalid store empty merge reset seconds recorded") && ok;
 
     if (!ok)
     {

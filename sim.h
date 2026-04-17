@@ -654,6 +654,14 @@ struct SimInitialHostMergeReplayResult
     runningMinAfterContextApply(0),
     contextApplySeconds(0.0),
     storeMaterializeSeconds(0.0),
+    storeMaterializeResetSeconds(0.0),
+    storeMaterializeInsertSeconds(0.0),
+    storeMaterializeUpdateSeconds(0.0),
+    storeMaterializeSnapshotCopySeconds(0.0),
+    storeMaterializeInsertedCount(0),
+    storeMaterializeUpdatedCount(0),
+    storeMaterializePeakSize(0),
+    storeMaterializeRehashCount(0),
     storePruneSeconds(0.0),
     storeOtherMergeSeconds(0.0),
     fullHostMergeSeconds(0.0),
@@ -666,6 +674,14 @@ struct SimInitialHostMergeReplayResult
   int runningMinAfterContextApply;
   double contextApplySeconds;
   double storeMaterializeSeconds;
+  double storeMaterializeResetSeconds;
+  double storeMaterializeInsertSeconds;
+  double storeMaterializeUpdateSeconds;
+  double storeMaterializeSnapshotCopySeconds;
+  size_t storeMaterializeInsertedCount;
+  size_t storeMaterializeUpdatedCount;
+  size_t storeMaterializePeakSize;
+  size_t storeMaterializeRehashCount;
   double storePruneSeconds;
   double storeOtherMergeSeconds;
   double fullHostMergeSeconds;
@@ -696,8 +712,16 @@ struct SimInitialHostMergeReplayBenchmarkResult
     logicalEventCount(0),
     storeMaterializedCount(0),
     storePrunedCount(0),
+    storeMaterializeInsertedCount(0),
+    storeMaterializeUpdatedCount(0),
+    storeMaterializePeakSize(0),
+    storeMaterializeRehashCount(0),
     contextApply(),
     storeMaterialize(),
+    storeMaterializeReset(),
+    storeMaterializeInsert(),
+    storeMaterializeUpdate(),
+    storeMaterializeSnapshotCopy(),
     storePrune(),
     storeOtherMerge(),
     fullHostMerge(),
@@ -712,8 +736,16 @@ struct SimInitialHostMergeReplayBenchmarkResult
   uint64_t logicalEventCount;
   size_t storeMaterializedCount;
   size_t storePrunedCount;
+  size_t storeMaterializeInsertedCount;
+  size_t storeMaterializeUpdatedCount;
+  size_t storeMaterializePeakSize;
+  size_t storeMaterializeRehashCount;
   SimInitialHostMergeReplayTimingSummary contextApply;
   SimInitialHostMergeReplayTimingSummary storeMaterialize;
+  SimInitialHostMergeReplayTimingSummary storeMaterializeReset;
+  SimInitialHostMergeReplayTimingSummary storeMaterializeInsert;
+  SimInitialHostMergeReplayTimingSummary storeMaterializeUpdate;
+  SimInitialHostMergeReplayTimingSummary storeMaterializeSnapshotCopy;
   SimInitialHostMergeReplayTimingSummary storePrune;
   SimInitialHostMergeReplayTimingSummary storeOtherMerge;
   SimInitialHostMergeReplayTimingSummary fullHostMerge;
@@ -6403,7 +6435,14 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
                                              bool proposalCandidates);
 inline void invalidateSimSafeCandidateStateStore(SimKernelContext &context);
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
-                                                         SimKernelContext &context);
+                                                         SimKernelContext &context,
+                                                         double *resetSeconds = NULL,
+                                                         double *insertSeconds = NULL,
+                                                         double *updateSeconds = NULL,
+                                                         size_t *insertedCount = NULL,
+                                                         size_t *updatedCount = NULL,
+                                                         size_t *peakSize = NULL,
+                                                         size_t *rehashCount = NULL);
 inline void pruneSimSafeCandidateStateStore(SimKernelContext &context);
 inline void eraseSimSafeCandidateStateStoreStartCoords(const vector<uint64_t> &startCoords,
                                                        SimKernelContext &context);
@@ -6542,10 +6581,9 @@ inline void upsertSimCandidateStateStoreSummary(const SimScanCudaInitialRunSumma
   unordered_map<uint64_t,size_t>::iterator found = store.startCoordToIndex.find(summary.startCoord);
   if(found == store.startCoordToIndex.end())
   {
-    SimScanCudaCandidateState state;
-    initSimScanCudaCandidateStateFromInitialRunSummary(summary,state);
     store.startCoordToIndex[summary.startCoord] = store.states.size();
-    store.states.push_back(state);
+    store.states.emplace_back();
+    initSimScanCudaCandidateStateFromInitialRunSummary(summary,store.states.back());
     return;
   }
   updateSimScanCudaCandidateStateFromInitialRunSummary(summary,store.states[found->second]);
@@ -7799,16 +7837,104 @@ inline void applySimCudaInitialRunSummary(const SimScanCudaInitialRunSummary &su
 }
 
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
-                                                         SimKernelContext &context)
+                                                         SimKernelContext &context,
+                                                         double *resetSeconds,
+                                                         double *insertSeconds,
+                                                         double *updateSeconds,
+                                                         size_t *insertedCount,
+                                                         size_t *updatedCount,
+                                                         size_t *peakSize,
+                                                         size_t *rehashCount)
 {
   SimCandidateStateStore &store = context.safeCandidateStateStore;
+  const bool recordSubphases = resetSeconds || insertSeconds || updateSeconds || insertedCount ||
+                               updatedCount || peakSize || rehashCount;
+  if(resetSeconds) *resetSeconds = 0.0;
+  if(insertSeconds) *insertSeconds = 0.0;
+  if(updateSeconds) *updateSeconds = 0.0;
+  if(insertedCount) *insertedCount = 0;
+  if(updatedCount) *updatedCount = 0;
+  if(rehashCount) *rehashCount = 0;
   if(!store.valid)
   {
+    const std::chrono::steady_clock::time_point resetStart =
+      recordSubphases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     resetSimCandidateStateStore(store,true);
+    if(resetSeconds)
+    {
+      (*resetSeconds) += static_cast<double>(simElapsedNanoseconds(resetStart)) / 1.0e9;
+    }
+  }
+  if(peakSize) *peakSize = store.states.size();
+  const size_t expectedStateUpperBound = store.states.size() + summaries.size();
+  if(store.states.capacity() < expectedStateUpperBound)
+  {
+    store.states.reserve(expectedStateUpperBound);
+  }
+  const size_t bucketCountBeforeReserve = store.startCoordToIndex.bucket_count();
+  store.startCoordToIndex.reserve(expectedStateUpperBound);
+  if(rehashCount && store.startCoordToIndex.bucket_count() != bucketCountBeforeReserve)
+  {
+    ++(*rehashCount);
+  }
+  if(!recordSubphases)
+  {
+    for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
+    {
+      const SimScanCudaInitialRunSummary &summary = summaries[summaryIndex];
+      const pair<unordered_map<uint64_t,size_t>::iterator,bool> insertResult =
+        store.startCoordToIndex.emplace(summary.startCoord,store.states.size());
+      if(insertResult.second)
+      {
+        store.states.emplace_back();
+        initSimScanCudaCandidateStateFromInitialRunSummary(summary,store.states.back());
+        continue;
+      }
+      updateSimScanCudaCandidateStateFromInitialRunSummary(summary,
+                                                           store.states[insertResult.first->second]);
+    }
+    return;
   }
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
   {
-    upsertSimCandidateStateStoreSummary(summaries[summaryIndex],store);
+    const SimScanCudaInitialRunSummary &summary = summaries[summaryIndex];
+    const std::chrono::steady_clock::time_point upsertStart =
+      std::chrono::steady_clock::now();
+    const size_t bucketCountBeforeInsert = store.startCoordToIndex.bucket_count();
+    const pair<unordered_map<uint64_t,size_t>::iterator,bool> insertResult =
+      store.startCoordToIndex.emplace(summary.startCoord,store.states.size());
+    if(insertResult.second)
+    {
+      store.states.emplace_back();
+      initSimScanCudaCandidateStateFromInitialRunSummary(summary,store.states.back());
+      if(insertSeconds)
+      {
+        (*insertSeconds) += static_cast<double>(simElapsedNanoseconds(upsertStart)) / 1.0e9;
+      }
+      if(insertedCount)
+      {
+        ++(*insertedCount);
+      }
+      if(peakSize && store.states.size() > *peakSize)
+      {
+        *peakSize = store.states.size();
+      }
+      if(rehashCount && store.startCoordToIndex.bucket_count() != bucketCountBeforeInsert)
+      {
+        ++(*rehashCount);
+      }
+      continue;
+    }
+    updateSimScanCudaCandidateStateFromInitialRunSummary(summary,
+                                                         store.states[insertResult.first->second]);
+    if(updateSeconds)
+    {
+      (*updateSeconds) += static_cast<double>(simElapsedNanoseconds(upsertStart)) / 1.0e9;
+    }
+    if(updatedCount)
+    {
+      ++(*updatedCount);
+    }
   }
 }
 
@@ -9233,10 +9359,22 @@ inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusC
   replay.runningMinAfterContextApply = static_cast<int>(context.runningMin);
   collectSimContextCandidateStates(context,replay.contextCandidates);
 
-  const std::chrono::steady_clock::time_point storeMaterializeStart = std::chrono::steady_clock::now();
-  mergeSimCudaInitialRunSummariesIntoSafeStore(corpus.summaries,context);
-  replay.storeMaterializeSeconds = static_cast<double>(simElapsedNanoseconds(storeMaterializeStart)) / 1.0e9;
+  mergeSimCudaInitialRunSummariesIntoSafeStore(corpus.summaries,
+                                               context,
+                                               &replay.storeMaterializeResetSeconds,
+                                               &replay.storeMaterializeInsertSeconds,
+                                               &replay.storeMaterializeUpdateSeconds,
+                                               &replay.storeMaterializeInsertedCount,
+                                               &replay.storeMaterializeUpdatedCount,
+                                               &replay.storeMaterializePeakSize,
+                                               &replay.storeMaterializeRehashCount);
+  replay.storeMaterializeSeconds = replay.storeMaterializeResetSeconds +
+                                   replay.storeMaterializeInsertSeconds +
+                                   replay.storeMaterializeUpdateSeconds;
+  const std::chrono::steady_clock::time_point storeCopyStart = std::chrono::steady_clock::now();
   replay.storeMaterialized = context.safeCandidateStateStore.states;
+  replay.storeMaterializeSnapshotCopySeconds =
+    static_cast<double>(simElapsedNanoseconds(storeCopyStart)) / 1.0e9;
 
   const std::chrono::steady_clock::time_point storePruneStart = std::chrono::steady_clock::now();
   pruneSimSafeCandidateStateStore(context);
@@ -9297,11 +9435,19 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
 
   vector<double> contextApplySamples;
   vector<double> storeMaterializeSamples;
+  vector<double> storeMaterializeResetSamples;
+  vector<double> storeMaterializeInsertSamples;
+  vector<double> storeMaterializeUpdateSamples;
+  vector<double> storeMaterializeSnapshotCopySamples;
   vector<double> storePruneSamples;
   vector<double> storeOtherMergeSamples;
   vector<double> fullHostMergeSamples;
   contextApplySamples.reserve(iterations);
   storeMaterializeSamples.reserve(iterations);
+  storeMaterializeResetSamples.reserve(iterations);
+  storeMaterializeInsertSamples.reserve(iterations);
+  storeMaterializeUpdateSamples.reserve(iterations);
+  storeMaterializeSnapshotCopySamples.reserve(iterations);
   storePruneSamples.reserve(iterations);
   storeOtherMergeSamples.reserve(iterations);
   fullHostMergeSamples.reserve(iterations);
@@ -9313,6 +9459,10 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
     }
     contextApplySamples.push_back(replay.contextApplySeconds);
     storeMaterializeSamples.push_back(replay.storeMaterializeSeconds);
+    storeMaterializeResetSamples.push_back(replay.storeMaterializeResetSeconds);
+    storeMaterializeInsertSamples.push_back(replay.storeMaterializeInsertSeconds);
+    storeMaterializeUpdateSamples.push_back(replay.storeMaterializeUpdateSeconds);
+    storeMaterializeSnapshotCopySamples.push_back(replay.storeMaterializeSnapshotCopySeconds);
     storePruneSamples.push_back(replay.storePruneSeconds);
     storeOtherMergeSamples.push_back(replay.storeOtherMergeSeconds);
     fullHostMergeSamples.push_back(replay.fullHostMergeSeconds);
@@ -9323,8 +9473,20 @@ inline bool benchmarkSimInitialHostMergeCorpusCase(const SimInitialHostMergeCorp
   result.logicalEventCount = corpus.logicalEventCount;
   result.storeMaterializedCount = replay.storeMaterialized.size();
   result.storePrunedCount = replay.storePruned.size();
+  result.storeMaterializeInsertedCount = replay.storeMaterializeInsertedCount;
+  result.storeMaterializeUpdatedCount = replay.storeMaterializeUpdatedCount;
+  result.storeMaterializePeakSize = replay.storeMaterializePeakSize;
+  result.storeMaterializeRehashCount = replay.storeMaterializeRehashCount;
   result.contextApply = summarizeSimInitialHostMergeReplaySamples(contextApplySamples);
   result.storeMaterialize = summarizeSimInitialHostMergeReplaySamples(storeMaterializeSamples);
+  result.storeMaterializeReset =
+    summarizeSimInitialHostMergeReplaySamples(storeMaterializeResetSamples);
+  result.storeMaterializeInsert =
+    summarizeSimInitialHostMergeReplaySamples(storeMaterializeInsertSamples);
+  result.storeMaterializeUpdate =
+    summarizeSimInitialHostMergeReplaySamples(storeMaterializeUpdateSamples);
+  result.storeMaterializeSnapshotCopy =
+    summarizeSimInitialHostMergeReplaySamples(storeMaterializeSnapshotCopySamples);
   result.storePrune = summarizeSimInitialHostMergeReplaySamples(storePruneSamples);
   result.storeOtherMerge = summarizeSimInitialHostMergeReplaySamples(storeOtherMergeSamples);
   result.fullHostMerge = summarizeSimInitialHostMergeReplaySamples(fullHostMergeSamples);
