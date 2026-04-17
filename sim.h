@@ -10880,6 +10880,190 @@ inline bool loadSimInitialHostMergeCorpusCase(const string &caseDir,
 
 inline double simReplayNanosecondsPerEvent(double seconds,size_t count);
 
+inline bool simSortedCandidateStateVectorsEqual(const vector<SimScanCudaCandidateState> &lhsInput,
+                                                  const vector<SimScanCudaCandidateState> &rhsInput);
+
+inline void populateSimInitialHostMergeContextApplyReplayResult(
+  const SimInitialContextApplyTelemetry &contextApplyTelemetry,
+  SimInitialHostMergeReplayResult &replay)
+{
+  replay.storeOtherMergeContextApplyLookupSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupHitSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupHitNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissOpenSlotSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissOpenSlotNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissCandidateSetFullProbeSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissCandidateSetFullProbeNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissEvictionSelectSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissEvictionSelectNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackVictimResetNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackKeyRebindSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackKeyRebindNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopySeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackCandidateCopyNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxBookkeepingNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxHeapBuildNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxHeapUpdateNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxStartIndexRebuildNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherHeapUpdateAccountingNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherTraceFinalizeNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualResidualSeconds =
+    static_cast<double>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualResidualNanoseconds) /
+    1.0e9;
+  replay.storeOtherMergeContextApplyMutateSeconds =
+    static_cast<double>(contextApplyTelemetry.mutateNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplyFinalizeSeconds =
+    static_cast<double>(contextApplyTelemetry.finalizeNanoseconds) / 1.0e9;
+  replay.storeOtherMergeContextApplySeconds =
+    static_cast<double>(contextApplyTelemetry.totalNanoseconds()) / 1.0e9;
+  replay.storeOtherMergeContextApplyAttemptedCount =
+    static_cast<size_t>(contextApplyTelemetry.attemptedCount);
+  replay.storeOtherMergeContextApplyModifiedCount =
+    static_cast<size_t>(contextApplyTelemetry.modifiedCount);
+  replay.storeOtherMergeContextApplyNoopCount =
+    static_cast<size_t>(contextApplyTelemetry.noopCount);
+  replay.storeOtherMergeContextApplyLookupHitCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupHitCount);
+  replay.storeOtherMergeContextApplyLookupMissCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissCount);
+  replay.storeOtherMergeContextApplySlotCreatedCount =
+    static_cast<size_t>(contextApplyTelemetry.slotCreatedCount);
+  replay.storeOtherMergeContextApplyLookupProbeStepsTotal =
+    static_cast<size_t>(contextApplyTelemetry.lookupProbeStepsTotal);
+  replay.storeOtherMergeContextApplyLookupProbeStepsMax =
+    static_cast<size_t>(contextApplyTelemetry.lookupProbeStepsMax);
+  replay.storeOtherMergeContextApplyLookupMissOpenSlotCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissOpenSlotCount);
+  replay.storeOtherMergeContextApplyLookupMissCandidateSetFullCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissCandidateSetFullCount);
+  replay.storeOtherMergeContextApplyEvictionSelectedCount =
+    static_cast<size_t>(contextApplyTelemetry.evictionSelectedCount);
+  replay.storeOtherMergeContextApplyReusedSlotCount =
+    static_cast<size_t>(contextApplyTelemetry.reusedSlotCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackVictimResetCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackCandidateCopyCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxBookkeepingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapBuildCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxHeapBuildCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxHeapUpdateCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxHeapUpdateCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxStartIndexRebuildCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxStartIndexRebuildCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherHeapUpdateAccountingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherStartIndexRebuildAccountingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherTraceFinalizeCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherTraceFinalizeCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualHeapBuildAccountingCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualHeapUpdateTraceRecordCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxOtherResidualStartIndexRebuildTraceRecordCount);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackPayloadBytesTotal =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackPayloadBytesTotal);
+  replay.storeOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal =
+    static_cast<size_t>(contextApplyTelemetry.lookupMissReuseWritebackAuxUpdatesTotal);
+  replay.storeOtherMergeContextApplyLookupNsPerAttempt =
+    simReplayNanosecondsPerEvent(replay.storeOtherMergeContextApplyLookupSeconds,
+                                 replay.storeOtherMergeContextApplyAttemptedCount);
+  replay.storeOtherMergeContextApplyLookupHitNsPerEvent =
+    simReplayNanosecondsPerEvent(replay.storeOtherMergeContextApplyLookupHitSeconds,
+                                 replay.storeOtherMergeContextApplyLookupHitCount);
+  replay.storeOtherMergeContextApplyLookupMissNsPerEvent =
+    simReplayNanosecondsPerEvent(replay.storeOtherMergeContextApplyLookupMissSeconds,
+                                 replay.storeOtherMergeContextApplyLookupMissCount);
+}
+
+inline bool replaySimInitialHostMergeContextApplyPhase(const SimInitialHostMergeCorpusCase &corpus,
+                                                       bool captureContextCandidates,
+                                                       SimInitialHostMergeReplayResult &replay,
+                                                       string *errorOut = NULL)
+{
+  replay = SimInitialHostMergeReplayResult();
+  if(corpus.queryLength <= 0 || corpus.targetLength <= 0)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,"invalid query/target lengths for context-apply replay");
+    return false;
+  }
+
+  SimKernelContext context(corpus.queryLength,corpus.targetLength);
+  initializeSimKernel(corpus.parmM,corpus.parmI,corpus.parmO,corpus.parmE,context);
+
+  SimInitialContextApplyTelemetry contextApplyTelemetry;
+  mergeSimCudaInitialRunSummaries(corpus.summaries,
+                                  corpus.logicalEventCount,
+                                  context,
+                                  &contextApplyTelemetry);
+  populateSimInitialHostMergeContextApplyReplayResult(contextApplyTelemetry,replay);
+  replay.contextApplySeconds = replay.storeOtherMergeContextApplySeconds;
+  replay.runningMinAfterContextApply = static_cast<int>(context.runningMin);
+  if(captureContextCandidates)
+  {
+    collectSimContextCandidateStates(context,replay.contextCandidates);
+  }
+  replay.storeOtherMergeSeconds = replay.storeOtherMergeContextApplySeconds;
+  replay.fullHostMergeSeconds = replay.storeOtherMergeContextApplySeconds;
+  return true;
+}
+
+inline bool replaySimInitialHostMergeContextApplyCorpusCase(const SimInitialHostMergeCorpusCase &corpus,
+                                                            SimInitialHostMergeReplayResult &replay,
+                                                            string *errorOut = NULL)
+{
+  return replaySimInitialHostMergeContextApplyPhase(corpus,true,replay,errorOut);
+}
+
+inline bool verifySimInitialHostMergeContextApplyReplay(const SimInitialHostMergeCorpusCase &corpus,
+                                                        const SimInitialHostMergeReplayResult &replay,
+                                                        string *errorOut = NULL)
+{
+  if(replay.runningMinAfterContextApply != corpus.runningMinAfterContextApply)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,"runningMinAfterContextApply mismatch");
+    return false;
+  }
+  if(!simSortedCandidateStateVectorsEqual(replay.contextCandidates,corpus.expectedContextCandidates))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,"context candidate replay mismatch");
+    return false;
+  }
+  return true;
+}
+
 inline bool replaySimInitialHostMergeCorpusCase(const SimInitialHostMergeCorpusCase &corpus,
                                                 SimInitialHostMergeReplayResult &replay,
                                                 string *errorOut = NULL)

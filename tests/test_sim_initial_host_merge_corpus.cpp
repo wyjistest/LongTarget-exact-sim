@@ -536,6 +536,40 @@ int main()
              "storeOtherMergeContextApplyLookupMissReuseWritebackAuxOtherResidualSeconds subphase total") &&
          ok;
 
+    SimInitialHostMergeReplayResult contextApplyReplay;
+    ok = expect_true(replaySimInitialHostMergeContextApplyCorpusCase(loaded, contextApplyReplay, &error),
+                     error.empty() ? "replaySimInitialHostMergeContextApplyCorpusCase" : error.c_str()) &&
+         ok;
+    ok = expect_true(verifySimInitialHostMergeContextApplyReplay(loaded, contextApplyReplay, &error),
+                     error.empty() ? "verifySimInitialHostMergeContextApplyReplay" : error.c_str()) &&
+         ok;
+    ok = expect_near(contextApplyReplay.contextApplySeconds,
+                     contextApplyReplay.storeOtherMergeContextApplySeconds,
+                     1e-9,
+                     "isolated contextApply equals context_apply subtotal") &&
+         ok;
+    ok = expect_true(contextApplyReplay.storeMaterializeSeconds == 0.0,
+                     "isolated contextApply excludes storeMaterialize") &&
+         ok;
+    ok = expect_true(contextApplyReplay.storePruneSeconds == 0.0,
+                     "isolated contextApply excludes storePrune") &&
+         ok;
+    ok = expect_true(contextApplyReplay.fullHostMergeSeconds >= contextApplyReplay.contextApplySeconds,
+                     "isolated contextApply fullHostMergeSeconds covers profiled phase") &&
+         ok;
+    ok = expect_equal_size(contextApplyReplay.contextCandidates.size(),
+                           loaded.expectedContextCandidates.size(),
+                           "isolated contextApply candidate count") &&
+         ok;
+    ok = expect_equal_size(contextApplyReplay.storeMaterialized.size(),
+                           0,
+                           "isolated contextApply does not materialize store") &&
+         ok;
+    ok = expect_equal_size(contextApplyReplay.storePruned.size(),
+                           0,
+                           "isolated contextApply does not prune store") &&
+         ok;
+
     SimInitialHostMergeReplayBenchmarkResult benchmark;
     ok = expect_true(benchmarkSimInitialHostMergeCorpusCase(loaded, 1, 3, benchmark, &error),
                      error.empty() ? "benchmarkSimInitialHostMergeCorpusCase" : error.c_str()) &&
