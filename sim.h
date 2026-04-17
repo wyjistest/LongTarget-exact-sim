@@ -18559,3 +18559,745 @@ void print_cluster(int c_level,map<size_t,size_t> class1[],int start_genome,stri
   }
 }
 
+
+enum SimInitialHostMergeSteadyStateTraceEventKind
+{
+  SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE = 0,
+  SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP = 1,
+  SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS = 2
+};
+
+struct SimInitialHostMergeSteadyStateTraceEvent
+{
+  SimInitialHostMergeSteadyStateTraceEvent():
+    summary(),
+    referenceEventKind(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE),
+    victimCandidateIndexBefore(-1),
+    victimStartCoordBefore(0),
+    victimScoreBefore(0)
+  {
+  }
+
+  SimScanCudaInitialRunSummary summary;
+  SimInitialHostMergeSteadyStateTraceEventKind referenceEventKind;
+  int victimCandidateIndexBefore;
+  uint64_t victimStartCoordBefore;
+  int victimScoreBefore;
+};
+
+struct SimInitialHostMergeSteadyStateTraceCase
+{
+  SimInitialHostMergeSteadyStateTraceCase():
+    caseId(),
+    queryLength(0),
+    targetLength(0),
+    parmM(0.0f),
+    parmI(0.0f),
+    parmO(0.0f),
+    parmE(0.0f),
+    logicalEventCount(0),
+    gpuMirrorRequested(false),
+    seedRunningMin(0),
+    expectedFinalRunningMin(0),
+    postFillFullSetMissCount(0),
+    seedContextCandidates(),
+    events(),
+    expectedFinalContextCandidates()
+  {
+  }
+
+  string caseId;
+  long queryLength;
+  long targetLength;
+  float parmM;
+  float parmI;
+  float parmO;
+  float parmE;
+  uint64_t logicalEventCount;
+  bool gpuMirrorRequested;
+  int seedRunningMin;
+  int expectedFinalRunningMin;
+  uint64_t postFillFullSetMissCount;
+  vector<SimScanCudaCandidateState> seedContextCandidates;
+  vector<SimInitialHostMergeSteadyStateTraceEvent> events;
+  vector<SimScanCudaCandidateState> expectedFinalContextCandidates;
+};
+
+enum SimInitialHostMergeSteadyStateReplayBackend
+{
+  SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_REFERENCE = 0,
+  SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_SPECIALIZED = 1
+};
+
+struct SimInitialHostMergeSteadyStateReplayResult
+{
+  SimInitialHostMergeSteadyStateReplayResult():
+    finalRunningMin(0),
+    totalSeconds(0.0),
+    fullSetMissSeconds(0.0),
+    hitUpdateCount(0),
+    hitNoopCount(0),
+    fullSetMissCount(0),
+    finalContextCandidates()
+  {
+  }
+
+  int finalRunningMin;
+  double totalSeconds;
+  double fullSetMissSeconds;
+  size_t hitUpdateCount;
+  size_t hitNoopCount;
+  size_t fullSetMissCount;
+  vector<SimScanCudaCandidateState> finalContextCandidates;
+};
+
+inline const char *simInitialHostMergeSteadyStateTracePathKind()
+{
+  return "steady_state_full_set_miss_trace";
+}
+
+inline const char *simInitialHostMergeSteadyStateTraceEventKindName(
+  SimInitialHostMergeSteadyStateTraceEventKind kind)
+{
+  switch(kind)
+  {
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE:
+      return "hit_update";
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP:
+      return "hit_noop";
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS:
+      return "full_set_miss";
+  }
+  return "unknown";
+}
+
+struct SimInitialHostMergeSteadyStateActiveSet
+{
+  SimInitialHostMergeSteadyStateActiveSet():
+    candidates(),
+    slotByStartCoord(),
+    runningMin(0)
+  {
+  }
+
+  SimCandidate candidates[K];
+  unordered_map<uint64_t,uint8_t> slotByStartCoord;
+  long runningMin;
+};
+
+inline long simInitialHostMergeSteadyStateRunningMin(
+  const SimInitialHostMergeSteadyStateActiveSet &activeSet)
+{
+  long minScore = activeSet.candidates[0].SCORE;
+  for(int slot = 1; slot < K; ++slot)
+  {
+    if(activeSet.candidates[slot].SCORE < minScore)
+    {
+      minScore = activeSet.candidates[slot].SCORE;
+    }
+  }
+  return minScore;
+}
+
+inline void collectSimInitialHostMergeSteadyStateCandidateStates(
+  const SimInitialHostMergeSteadyStateActiveSet &activeSet,
+  vector<SimScanCudaCandidateState> &outStates)
+{
+  outStates.clear();
+  outStates.reserve(static_cast<size_t>(K));
+  for(int slot = 0; slot < K; ++slot)
+  {
+    outStates.push_back(makeSimScanCudaCandidateState(activeSet.candidates[slot]));
+  }
+}
+
+inline bool initializeSimInitialHostMergeSteadyStateActiveSet(
+  const SimInitialHostMergeSteadyStateTraceCase &trace,
+  SimInitialHostMergeSteadyStateActiveSet &activeSet,
+  string *errorOut = NULL)
+{
+  if(trace.seedContextCandidates.size() != static_cast<size_t>(K))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace seedContextCandidates must contain exactly K states");
+    return false;
+  }
+  activeSet = SimInitialHostMergeSteadyStateActiveSet();
+  activeSet.slotByStartCoord.reserve(trace.seedContextCandidates.size() * 2);
+  for(int slot = 0; slot < K; ++slot)
+  {
+    activeSet.candidates[slot] = makeSimCandidateFromCudaState(trace.seedContextCandidates[static_cast<size_t>(slot)]);
+    activeSet.slotByStartCoord[simScanCudaCandidateStateStartCoord(
+      trace.seedContextCandidates[static_cast<size_t>(slot)])] = static_cast<uint8_t>(slot);
+  }
+  if(activeSet.slotByStartCoord.size() != static_cast<size_t>(K))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace seedContextCandidates contain duplicate start coordinates");
+    return false;
+  }
+  activeSet.runningMin = simInitialHostMergeSteadyStateRunningMin(activeSet);
+  return true;
+}
+
+inline int selectSimInitialHostMergeSteadyStateVictimSlot(
+  const SimInitialHostMergeSteadyStateActiveSet &activeSet)
+{
+  int victimSlot = 0;
+  long victimScore = activeSet.candidates[0].SCORE;
+  for(int slot = 1; slot < K; ++slot)
+  {
+    if(activeSet.candidates[slot].SCORE < victimScore)
+    {
+      victimSlot = slot;
+      victimScore = activeSet.candidates[slot].SCORE;
+    }
+  }
+  return victimSlot;
+}
+
+inline void recordSimInitialHostMergeSteadyStateReplayEventKind(
+  SimInitialHostMergeSteadyStateTraceEventKind kind,
+  SimInitialHostMergeSteadyStateReplayResult &result)
+{
+  switch(kind)
+  {
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE:
+      ++result.hitUpdateCount;
+      return;
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP:
+      ++result.hitNoopCount;
+      return;
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS:
+      ++result.fullSetMissCount;
+      return;
+  }
+}
+
+inline bool captureSimInitialHostMergeSteadyStateTraceCase(
+  const SimInitialHostMergeCorpusCase &corpus,
+  SimInitialHostMergeSteadyStateTraceCase &trace,
+  string *errorOut = NULL)
+{
+  trace = SimInitialHostMergeSteadyStateTraceCase();
+  trace.caseId = corpus.caseId;
+  trace.queryLength = corpus.queryLength;
+  trace.targetLength = corpus.targetLength;
+  trace.parmM = corpus.parmM;
+  trace.parmI = corpus.parmI;
+  trace.parmO = corpus.parmO;
+  trace.parmE = corpus.parmE;
+  trace.logicalEventCount = corpus.logicalEventCount;
+  trace.gpuMirrorRequested = corpus.gpuMirrorRequested;
+
+  if(trace.caseId.empty())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace capture requires non-empty caseId");
+    return false;
+  }
+  if(trace.queryLength <= 0 || trace.targetLength <= 0)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace capture requires positive query/target lengths");
+    return false;
+  }
+
+  SimKernelContext context(trace.queryLength,trace.targetLength);
+  initializeSimKernel(trace.parmM,trace.parmI,trace.parmO,trace.parmE,context);
+
+  bool seedCaptured = false;
+  for(size_t summaryIndex = 0; summaryIndex < corpus.summaries.size(); ++summaryIndex)
+  {
+    const SimScanCudaInitialRunSummary &summary = corpus.summaries[summaryIndex];
+    bool shouldRecordEvent = false;
+    SimInitialHostMergeSteadyStateTraceEvent event;
+    event.summary = summary;
+    if(seedCaptured)
+    {
+      const long startI = static_cast<long>(unpackSimCoordI(summary.startCoord));
+      const long startJ = static_cast<long>(unpackSimCoordJ(summary.startCoord));
+      const long foundIndex = findSimCandidateIndex(context.candidateStartIndex,startI,startJ);
+      if(foundIndex >= 0 && foundIndex < context.candidateCount)
+      {
+        SimScanCudaCandidateState candidateState = makeSimScanCudaCandidateState(context.candidates[foundIndex]);
+        event.referenceEventKind = updateSimScanCudaCandidateStateFromInitialRunSummary(summary,candidateState) ?
+          SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE :
+          SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP;
+      }
+      else if(context.candidateCount == K)
+      {
+        event.referenceEventKind = SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS;
+        if(!context.candidateMinHeap.valid)
+        {
+          buildSimCandidateMinHeap(context);
+        }
+        const int victimIndex = peekMinSimCandidateIndex(context.candidateMinHeap);
+        if(victimIndex < 0 || victimIndex >= context.candidateCount)
+        {
+          simSetInitialHostMergeCorpusError(errorOut,
+                                            "steady-state trace capture failed to select full-set miss victim");
+          return false;
+        }
+        const SimCandidate &victim = context.candidates[victimIndex];
+        event.victimCandidateIndexBefore = victimIndex;
+        event.victimStartCoordBefore = packSimCoord(victim.STARI,victim.STARJ);
+        event.victimScoreBefore = static_cast<int>(victim.SCORE);
+      }
+      else
+      {
+        simSetInitialHostMergeCorpusError(errorOut,
+                                          "steady-state trace capture encountered post-fill event before candidate set was full");
+        return false;
+      }
+      shouldRecordEvent = true;
+    }
+
+    applySimCudaInitialRunSummary(summary,context,NULL);
+    if(!seedCaptured && context.candidateCount == K)
+    {
+      trace.seedRunningMin = static_cast<int>(refreshSimRunningMin(context));
+      collectSimContextCandidateStates(context,trace.seedContextCandidates);
+      seedCaptured = true;
+      continue;
+    }
+    if(shouldRecordEvent)
+    {
+      if(event.referenceEventKind == SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS)
+      {
+        ++trace.postFillFullSetMissCount;
+      }
+      trace.events.push_back(event);
+    }
+  }
+
+  if(!seedCaptured)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace capture never reached candidateCount == K");
+    return false;
+  }
+
+  trace.expectedFinalRunningMin = static_cast<int>(refreshSimRunningMin(context));
+  collectSimContextCandidateStates(context,trace.expectedFinalContextCandidates);
+  if(!corpus.expectedContextCandidates.empty() &&
+     !simSortedCandidateStateVectorsEqual(trace.expectedFinalContextCandidates,
+                                          corpus.expectedContextCandidates))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace capture final context candidates mismatch corpus expectation");
+    return false;
+  }
+  return true;
+}
+
+
+inline bool writeSimInitialHostMergeSteadyStateTraceCase(
+  const string &rootDir,
+  const SimInitialHostMergeSteadyStateTraceCase &trace,
+  string *errorOut = NULL)
+{
+  if(trace.caseId.empty())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace caseId is empty");
+    return false;
+  }
+  if(!simEnsureInitialHostMergeCorpusDirectory(rootDir,errorOut))
+  {
+    return false;
+  }
+  const string caseDir = simJoinInitialHostMergeCorpusPath(rootDir,trace.caseId);
+  if(!simEnsureInitialHostMergeCorpusDirectory(caseDir,errorOut))
+  {
+    return false;
+  }
+
+  stringstream meta;
+  meta << "{\n";
+  meta << "  \"schema_version\": 1,\n";
+  meta << "  \"path_kind\": \"" << simInitialHostMergeSteadyStateTracePathKind() << "\",\n";
+  meta << "  \"query_length\": " << trace.queryLength << ",\n";
+  meta << "  \"target_length\": " << trace.targetLength << ",\n";
+  meta << "  \"parm_M\": " << trace.parmM << ",\n";
+  meta << "  \"parm_I\": " << trace.parmI << ",\n";
+  meta << "  \"parm_O\": " << trace.parmO << ",\n";
+  meta << "  \"parm_E\": " << trace.parmE << ",\n";
+  meta << "  \"logical_event_count\": " << trace.logicalEventCount << ",\n";
+  meta << "  \"seed_running_min\": " << trace.seedRunningMin << ",\n";
+  meta << "  \"expected_final_running_min\": " << trace.expectedFinalRunningMin << ",\n";
+  meta << "  \"post_fill_event_count\": " << trace.events.size() << ",\n";
+  meta << "  \"post_fill_full_set_miss_count\": " << trace.postFillFullSetMissCount << ",\n";
+  meta << "  \"seed_candidate_count\": " << trace.seedContextCandidates.size() << ",\n";
+  meta << "  \"expected_final_candidate_count\": " << trace.expectedFinalContextCandidates.size() << ",\n";
+  meta << "  \"gpu_mirror_requested\": " << (trace.gpuMirrorRequested ? "true" : "false") << "\n";
+  meta << "}\n";
+  if(!simWriteInitialHostMergeCorpusTextFile(simJoinInitialHostMergeCorpusPath(caseDir,"meta.json"),
+                                             meta.str(),
+                                             errorOut))
+  {
+    return false;
+  }
+
+  const char eventMagic[8] = {'L','T','H','M','S','S','E','1'};
+  const char stateMagic[8] = {'L','T','H','M','S','S','T','1'};
+  if(!simWriteInitialHostMergeCorpusBinaryFile(
+       simJoinInitialHostMergeCorpusPath(caseDir,"seed_context_candidates.bin"),
+       stateMagic,
+       trace.seedContextCandidates,
+       errorOut) ||
+     !simWriteInitialHostMergeCorpusBinaryFile(
+       simJoinInitialHostMergeCorpusPath(caseDir,"events.bin"),
+       eventMagic,
+       trace.events,
+       errorOut) ||
+     !simWriteInitialHostMergeCorpusBinaryFile(
+       simJoinInitialHostMergeCorpusPath(caseDir,"expected_final_context_candidates.bin"),
+       stateMagic,
+       trace.expectedFinalContextCandidates,
+       errorOut))
+  {
+    return false;
+  }
+  return true;
+}
+
+inline bool loadSimInitialHostMergeSteadyStateTraceCase(
+
+  const string &caseDir,
+  SimInitialHostMergeSteadyStateTraceCase &trace,
+  string *errorOut = NULL)
+{
+  trace = SimInitialHostMergeSteadyStateTraceCase();
+  trace.caseId = simInitialHostMergeCorpusBaseName(caseDir);
+
+  string metaJson;
+  if(!simReadInitialHostMergeCorpusTextFile(simJoinInitialHostMergeCorpusPath(caseDir,"meta.json"),
+                                            metaJson,
+                                            errorOut))
+  {
+    return false;
+  }
+  int schemaVersion = 0;
+  if(!simParseInitialHostMergeCorpusInt(metaJson,"schema_version",schemaVersion,errorOut))
+  {
+    return false;
+  }
+  if(schemaVersion != 1)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "unsupported steady-state trace schema_version");
+    return false;
+  }
+  string pathKind;
+  if(!simExtractInitialHostMergeCorpusJsonValue(metaJson,"path_kind",pathKind,errorOut))
+  {
+    return false;
+  }
+  if(pathKind != simInitialHostMergeSteadyStateTracePathKind())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "unsupported steady-state trace path_kind");
+    return false;
+  }
+  if(!simParseInitialHostMergeCorpusLong(metaJson,"query_length",trace.queryLength,errorOut) ||
+     !simParseInitialHostMergeCorpusLong(metaJson,"target_length",trace.targetLength,errorOut) ||
+     !simParseInitialHostMergeCorpusFloat(metaJson,"parm_M",trace.parmM,errorOut) ||
+     !simParseInitialHostMergeCorpusFloat(metaJson,"parm_I",trace.parmI,errorOut) ||
+     !simParseInitialHostMergeCorpusFloat(metaJson,"parm_O",trace.parmO,errorOut) ||
+     !simParseInitialHostMergeCorpusFloat(metaJson,"parm_E",trace.parmE,errorOut) ||
+     !simParseInitialHostMergeCorpusUint64(metaJson,"logical_event_count",trace.logicalEventCount,errorOut) ||
+     !simParseInitialHostMergeCorpusInt(metaJson,"seed_running_min",trace.seedRunningMin,errorOut) ||
+     !simParseInitialHostMergeCorpusInt(metaJson,
+                                        "expected_final_running_min",
+                                        trace.expectedFinalRunningMin,
+                                        errorOut) ||
+     !simParseInitialHostMergeCorpusUint64(metaJson,
+                                           "post_fill_full_set_miss_count",
+                                           trace.postFillFullSetMissCount,
+                                           errorOut) ||
+     !simParseInitialHostMergeCorpusBool(metaJson,
+                                         "gpu_mirror_requested",
+                                         trace.gpuMirrorRequested,
+                                         errorOut))
+  {
+    return false;
+  }
+
+  const char eventMagic[8] = {'L','T','H','M','S','S','E','1'};
+  const char stateMagic[8] = {'L','T','H','M','S','S','T','1'};
+  if(!simReadInitialHostMergeCorpusBinaryFile(
+       simJoinInitialHostMergeCorpusPath(caseDir,"seed_context_candidates.bin"),
+       stateMagic,
+       trace.seedContextCandidates,
+       errorOut) ||
+     !simReadInitialHostMergeCorpusBinaryFile(
+       simJoinInitialHostMergeCorpusPath(caseDir,"events.bin"),
+       eventMagic,
+       trace.events,
+       errorOut) ||
+     !simReadInitialHostMergeCorpusBinaryFile(
+       simJoinInitialHostMergeCorpusPath(caseDir,"expected_final_context_candidates.bin"),
+       stateMagic,
+       trace.expectedFinalContextCandidates,
+       errorOut))
+  {
+    return false;
+  }
+
+  uint64_t expectedCount = 0;
+  if(!simParseInitialHostMergeCorpusUint64(metaJson,"post_fill_event_count",expectedCount,errorOut))
+  {
+    return false;
+  }
+  if(expectedCount != static_cast<uint64_t>(trace.events.size()))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "post_fill_event_count mismatch while loading steady-state trace");
+    return false;
+  }
+  if(!simParseInitialHostMergeCorpusUint64(metaJson,"seed_candidate_count",expectedCount,errorOut))
+  {
+    return false;
+  }
+  if(expectedCount != static_cast<uint64_t>(trace.seedContextCandidates.size()))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "seed_candidate_count mismatch while loading steady-state trace");
+    return false;
+  }
+  if(!simParseInitialHostMergeCorpusUint64(metaJson,
+                                           "expected_final_candidate_count",
+                                           expectedCount,
+                                           errorOut))
+  {
+    return false;
+  }
+  if(expectedCount != static_cast<uint64_t>(trace.expectedFinalContextCandidates.size()))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "expected_final_candidate_count mismatch while loading steady-state trace");
+    return false;
+  }
+  return true;
+}
+
+inline bool replaySimInitialHostMergeSteadyStateTraceCaseReference(
+  const SimInitialHostMergeSteadyStateTraceCase &trace,
+  SimInitialHostMergeSteadyStateReplayResult &result,
+  string *errorOut = NULL)
+{
+  SimKernelContext context(trace.queryLength,trace.targetLength);
+  initializeSimKernel(trace.parmM,trace.parmI,trace.parmO,trace.parmE,context);
+  mergeSimCudaCandidateStatesIntoContext(trace.seedContextCandidates,context);
+  if(context.candidateCount != K)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state reference replay expected seeded context candidateCount == K");
+    return false;
+  }
+
+  const std::chrono::steady_clock::time_point replayStart = std::chrono::steady_clock::now();
+  for(size_t eventIndex = 0; eventIndex < trace.events.size(); ++eventIndex)
+  {
+    const SimInitialHostMergeSteadyStateTraceEvent &event = trace.events[eventIndex];
+    const long startI = static_cast<long>(unpackSimCoordI(event.summary.startCoord));
+    const long startJ = static_cast<long>(unpackSimCoordJ(event.summary.startCoord));
+    const long foundIndex = findSimCandidateIndex(context.candidateStartIndex,startI,startJ);
+    SimInitialHostMergeSteadyStateTraceEventKind actualKind =
+      SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS;
+    if(foundIndex >= 0 && foundIndex < context.candidateCount)
+    {
+      SimScanCudaCandidateState candidateState = makeSimScanCudaCandidateState(context.candidates[foundIndex]);
+      actualKind = updateSimScanCudaCandidateStateFromInitialRunSummary(event.summary,candidateState) ?
+        SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE :
+        SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP;
+    }
+    else
+    {
+      if(context.candidateCount != K)
+      {
+        simSetInitialHostMergeCorpusError(errorOut,
+                                          "steady-state reference replay observed miss before candidateCount == K");
+        return false;
+      }
+      if(!context.candidateMinHeap.valid)
+      {
+        buildSimCandidateMinHeap(context);
+      }
+      const int victimIndex = peekMinSimCandidateIndex(context.candidateMinHeap);
+      if(victimIndex < 0 || victimIndex >= context.candidateCount)
+      {
+        simSetInitialHostMergeCorpusError(errorOut,
+                                          "steady-state reference replay failed to select full-set miss victim");
+        return false;
+      }
+      const SimCandidate &victim = context.candidates[victimIndex];
+      if(event.victimCandidateIndexBefore != victimIndex ||
+         event.victimStartCoordBefore != packSimCoord(victim.STARI,victim.STARJ) ||
+         event.victimScoreBefore != static_cast<int>(victim.SCORE))
+      {
+        simSetInitialHostMergeCorpusError(errorOut,
+                                          "steady-state reference replay victim metadata mismatch");
+        return false;
+      }
+    }
+    if(actualKind != event.referenceEventKind)
+    {
+      stringstream message;
+      message << "steady-state reference replay event kind mismatch at index " << eventIndex
+              << ": expected " << simInitialHostMergeSteadyStateTraceEventKindName(event.referenceEventKind)
+              << ", got " << simInitialHostMergeSteadyStateTraceEventKindName(actualKind);
+      simSetInitialHostMergeCorpusError(errorOut,message.str());
+      return false;
+    }
+
+    const std::chrono::steady_clock::time_point eventStart = std::chrono::steady_clock::now();
+    applySimCudaInitialRunSummary(event.summary,context,NULL);
+    const double eventSeconds = static_cast<double>(simElapsedNanoseconds(eventStart)) / 1.0e9;
+    if(actualKind == SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS)
+    {
+      result.fullSetMissSeconds += eventSeconds;
+    }
+    recordSimInitialHostMergeSteadyStateReplayEventKind(actualKind,result);
+  }
+  result.totalSeconds = static_cast<double>(simElapsedNanoseconds(replayStart)) / 1.0e9;
+  result.finalRunningMin = static_cast<int>(refreshSimRunningMin(context));
+  collectSimContextCandidateStates(context,result.finalContextCandidates);
+  return true;
+}
+
+inline bool replaySimInitialHostMergeSteadyStateTraceCaseSpecialized(
+  const SimInitialHostMergeSteadyStateTraceCase &trace,
+  SimInitialHostMergeSteadyStateReplayResult &result,
+  string *errorOut = NULL)
+{
+  SimInitialHostMergeSteadyStateActiveSet activeSet;
+  if(!initializeSimInitialHostMergeSteadyStateActiveSet(trace,activeSet,errorOut))
+  {
+    return false;
+  }
+
+  const std::chrono::steady_clock::time_point replayStart = std::chrono::steady_clock::now();
+  for(size_t eventIndex = 0; eventIndex < trace.events.size(); ++eventIndex)
+  {
+    const SimInitialHostMergeSteadyStateTraceEvent &event = trace.events[eventIndex];
+    SimInitialHostMergeSteadyStateTraceEventKind actualKind =
+      SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS;
+    const std::chrono::steady_clock::time_point eventStart = std::chrono::steady_clock::now();
+    const unordered_map<uint64_t,uint8_t>::iterator found = activeSet.slotByStartCoord.find(event.summary.startCoord);
+    if(found != activeSet.slotByStartCoord.end())
+    {
+      const int slot = static_cast<int>(found->second);
+      SimScanCudaCandidateState candidateState = makeSimScanCudaCandidateState(activeSet.candidates[slot]);
+      actualKind = updateSimScanCudaCandidateStateFromInitialRunSummary(event.summary,candidateState) ?
+        SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE :
+        SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP;
+      activeSet.candidates[slot] = makeSimCandidateFromCudaState(candidateState);
+    }
+    else
+    {
+      const int victimSlot = selectSimInitialHostMergeSteadyStateVictimSlot(activeSet);
+      const SimCandidate &victim = activeSet.candidates[victimSlot];
+      if(event.victimCandidateIndexBefore != victimSlot ||
+         event.victimStartCoordBefore != packSimCoord(victim.STARI,victim.STARJ) ||
+         event.victimScoreBefore != static_cast<int>(victim.SCORE))
+      {
+        simSetInitialHostMergeCorpusError(errorOut,
+                                          "steady-state specialized replay victim metadata mismatch");
+        return false;
+      }
+      actualKind = SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS;
+      activeSet.slotByStartCoord.erase(packSimCoord(victim.STARI,victim.STARJ));
+      SimScanCudaCandidateState candidateState;
+      initSimScanCudaCandidateStateFromInitialRunSummary(event.summary,candidateState);
+      activeSet.candidates[victimSlot] = makeSimCandidateFromCudaState(candidateState);
+      activeSet.slotByStartCoord[event.summary.startCoord] = static_cast<uint8_t>(victimSlot);
+    }
+    if(actualKind != event.referenceEventKind)
+    {
+      stringstream message;
+      message << "steady-state specialized replay event kind mismatch at index " << eventIndex
+              << ": expected " << simInitialHostMergeSteadyStateTraceEventKindName(event.referenceEventKind)
+              << ", got " << simInitialHostMergeSteadyStateTraceEventKindName(actualKind);
+      simSetInitialHostMergeCorpusError(errorOut,message.str());
+      return false;
+    }
+
+    const double eventSeconds = static_cast<double>(simElapsedNanoseconds(eventStart)) / 1.0e9;
+    if(actualKind == SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS)
+    {
+      result.fullSetMissSeconds += eventSeconds;
+    }
+    recordSimInitialHostMergeSteadyStateReplayEventKind(actualKind,result);
+    activeSet.runningMin = simInitialHostMergeSteadyStateRunningMin(activeSet);
+  }
+  result.totalSeconds = static_cast<double>(simElapsedNanoseconds(replayStart)) / 1.0e9;
+  result.finalRunningMin = static_cast<int>(activeSet.runningMin);
+  collectSimInitialHostMergeSteadyStateCandidateStates(activeSet,result.finalContextCandidates);
+  return true;
+}
+
+inline bool replaySimInitialHostMergeSteadyStateTraceCase(
+  const SimInitialHostMergeSteadyStateTraceCase &trace,
+  SimInitialHostMergeSteadyStateReplayBackend backend,
+  SimInitialHostMergeSteadyStateReplayResult &result,
+  string *errorOut = NULL)
+{
+  result = SimInitialHostMergeSteadyStateReplayResult();
+  if(trace.queryLength <= 0 || trace.targetLength <= 0)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace replay requires positive query/target lengths");
+    return false;
+  }
+  if(trace.seedContextCandidates.size() != static_cast<size_t>(K))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace replay requires exactly K seeded context candidates");
+    return false;
+  }
+  switch(backend)
+  {
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_REFERENCE:
+      return replaySimInitialHostMergeSteadyStateTraceCaseReference(trace,result,errorOut);
+    case SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_SPECIALIZED:
+      return replaySimInitialHostMergeSteadyStateTraceCaseSpecialized(trace,result,errorOut);
+  }
+  simSetInitialHostMergeCorpusError(errorOut,
+                                    "unsupported steady-state trace replay backend");
+  return false;
+}
+
+inline bool verifySimInitialHostMergeSteadyStateTraceReplay(
+  const SimInitialHostMergeSteadyStateTraceCase &trace,
+  const SimInitialHostMergeSteadyStateReplayResult &result,
+  string *errorOut = NULL)
+{
+  if(result.finalRunningMin != trace.expectedFinalRunningMin)
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace replay runningMin mismatch");
+    return false;
+  }
+  if(!simSortedCandidateStateVectorsEqual(result.finalContextCandidates,
+                                          trace.expectedFinalContextCandidates))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace replay context candidate mismatch");
+    return false;
+  }
+  if(result.fullSetMissCount != static_cast<size_t>(trace.postFillFullSetMissCount))
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace replay fullSetMissCount mismatch");
+    return false;
+  }
+  if(result.hitUpdateCount + result.hitNoopCount + result.fullSetMissCount != trace.events.size())
+  {
+    simSetInitialHostMergeCorpusError(errorOut,
+                                      "steady-state trace replay event count mismatch");
+    return false;
+  }
+  return true;
+}

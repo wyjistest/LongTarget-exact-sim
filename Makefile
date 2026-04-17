@@ -388,11 +388,17 @@ SIM_INITIAL_HOST_MERGE_CORPUS_TEST_SOURCES := tests/test_sim_initial_host_merge_
 SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_TARGET ?= tests/test_sim_initial_host_merge_capture_modes
 SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_SOURCES := tests/test_sim_initial_host_merge_capture_modes.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_TEST_TARGET ?= tests/test_sim_initial_host_merge_steady_state_trace
+SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_TEST_SOURCES := tests/test_sim_initial_host_merge_steady_state_trace.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_INITIAL_HOST_MERGE_REPLAY_TARGET ?= tests/sim_initial_host_merge_replay
 SIM_INITIAL_HOST_MERGE_REPLAY_SOURCES := tests/sim_initial_host_merge_replay.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
 SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_TARGET ?= tests/sim_initial_host_merge_context_apply_profile
 SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_SOURCES := tests/sim_initial_host_merge_context_apply_profile.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_TARGET ?= tests/sim_initial_host_merge_steady_state_miss_profile
+SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_SOURCES := tests/sim_initial_host_merge_steady_state_miss_profile.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
 SIM_LOCATE_UPDATE_TEST_TARGET ?= tests/test_sim_locate_update
 SIM_LOCATE_UPDATE_TEST_SOURCES := tests/test_sim_locate_update.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
@@ -424,9 +430,13 @@ build-sim-initial-host-merge-corpus-test: $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_T
 
 build-sim-initial-host-merge-capture-modes-test: $(SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_TARGET)
 
+build-sim-initial-host-merge-steady-state-trace-test: $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_TEST_TARGET)
+
 build-sim-initial-host-merge-replay: $(SIM_INITIAL_HOST_MERGE_REPLAY_TARGET)
 
 build-sim-initial-host-merge-context-apply-profile: $(SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_TARGET)
+
+build-sim-initial-host-merge-steady-state-miss-profile: $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_TARGET)
 
 build-sim-locate-update-test: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 
@@ -463,11 +473,17 @@ $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET): $(SIM_INITIAL_HOST_MERGE_CORPUS_TE
 $(SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_TARGET): $(SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
+$(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_TEST_TARGET): $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
 $(SIM_INITIAL_HOST_MERGE_REPLAY_TARGET): $(SIM_INITIAL_HOST_MERGE_REPLAY_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_REPLAY_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_TARGET): $(SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_TARGET): $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_LOCATE_UPDATE_TEST_TARGET): $(SIM_LOCATE_UPDATE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_LOCATE_UPDATE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
