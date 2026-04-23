@@ -320,6 +320,8 @@ The helper only promotes a materialize/prune decision when both `covered_logical
 
 Once the isolated `context_apply` profiler harness has emitted `context_apply.tsv`, per-case reference replay aggregates, and anchor/heavy-case gprof flat profiles, use `scripts/analyze_sim_initial_host_merge_reference_profile.py` to summarize the reference-only hotspot families into `selected_cases.tsv`, `summary.json`, and `summary.md`. The helper groups stable gprof symbols into `candidate_index_map_path`, `heap_maintenance_path`, `other_reference_path`, and `setup_or_materialize_noise`, then recommends whether the next step should target the candidate-index map path, the heap path, or whether the profile signal is still too weak.
 
+The sampled candidate-index leaf-profiling line is now formally stopped; see `docs/plans/2026-04-23-candidate-index-leaf-profiling-stop-summary.md` for the authoritative stop summary and `docs/plans/2026-04-23-candidate-index-structural-profiling.md` for the Phase 2 structural-profiling handoff. Further work on this path should proceed as structural profiling rather than deeper leaf splitting.
+
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 
 ```

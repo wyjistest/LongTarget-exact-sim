@@ -51,6 +51,12 @@ If work continues, it should proceed as structural profiling rather than deeper 
 - branch-agnostic operation census roll-up
 - coarser hardware or memory-behavior observation
 
+The concrete Phase 2 execution handoff is captured in:
+
+- `docs/plans/2026-04-23-candidate-index-structural-profiling.md`
+
+That plan keeps the top-level authority at roll-up / phase level, keeps `runtime_prototype_allowed = false`, and adds an explicit structural stop rule so this line does not fall back into deeper leaf splitting.
+
 ## Artifact Reading Rule
 
 Branch-local summaries remain useful, but they are not authoritative for the top-level next action:
