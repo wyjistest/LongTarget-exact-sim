@@ -8,6 +8,24 @@
 
 **Tech Stack:** C++, Python 3, Bash, existing sampled profiler harness, TSV/JSON/Markdown summarizers, Linux hardware-counter tooling (`perf` or equivalent).
 
+## Current Status
+
+Phase 2 has now started in a deliberately narrow first batch:
+
+- `branch_rollup_decision.json` can route the leaf-level stop state into `candidate_index_structural_profiling`
+- `candidate_index_operation_rollup` is implemented as a summarizer-only aggregation over existing lifecycle outputs
+- `candidate_index_common_memory_behavior` v0 is implemented as a summarizer-only pass over existing terminal write-path fields
+- `candidate_index_structural_phase` is implemented as the phase-local context artifact
+- CI covers the new structural summarizers with dedicated `check_*.sh` regressions
+
+This means the Phase 2 entry point is real, but it is still intentionally conservative:
+
+- no new `sim.h` hot-path instrumentation landed in this batch
+- no hardware observation harness landed in this batch
+- `runtime_prototype_allowed` remains `false`
+
+The remaining tasks below should therefore be read as the broader roadmap, not as a claim that every workstream in this document has already been implemented.
+
 ### Task 1: Freeze the Phase 2 contract and authoritative rules
 
 **Files:**

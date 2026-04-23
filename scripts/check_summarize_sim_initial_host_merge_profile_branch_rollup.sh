@@ -106,13 +106,14 @@ from pathlib import Path
 decision = json.loads((Path(sys.argv[1]) / "branch_rollup_decision.json").read_text(encoding="utf-8"))
 summary = json.loads((Path(sys.argv[1]) / "branch_rollup.json").read_text(encoding="utf-8"))
 assert decision["current_exhausted_subtree"] == sys.argv[2], decision
-assert decision["next_candidate_branch"] == sys.argv[3], decision
+expected_next = None if sys.argv[3] == "none" else sys.argv[3]
+assert decision["next_candidate_branch"] == expected_next, decision
 expected_branch_decision = None if sys.argv[4] == "none" else sys.argv[4]
 assert decision["next_candidate_branch_decision"] == expected_branch_decision, decision
 assert decision["recommended_next_action"] == sys.argv[5], decision
 assert decision["runtime_prototype_allowed"] is False, decision
 assert summary["current_exhausted_subtree"] == sys.argv[2], summary
-assert summary["next_candidate_branch"] == sys.argv[3], summary
+assert summary["next_candidate_branch"] == expected_next, summary
 assert summary["next_candidate_branch_decision"] == expected_branch_decision, summary
 assert summary["recommended_next_action"] == sys.argv[5], summary
 assert summary["runtime_prototype_allowed"] is False, summary
@@ -536,10 +537,12 @@ assert decision["current_exhausted_subtree"] == "gap_before_a00_span_0_alt_right
 assert "terminal_path_state_update" in decision["current_exhausted_subtrees"], decision
 assert decision["next_candidate_branch"] is None, decision
 assert decision["next_candidate_branch_decision"] is None, decision
-assert (
-    decision["recommended_next_action"]
-    == "no_single_stable_leaf_found_under_current_profiler"
-), decision
+assert decision["leaf_level_candidate_index_profiling_status"] == "stopped", decision
+assert decision["current_phase"] == "candidate_index_structural_profiling", decision
+assert decision["current_phase_status"] == "active", decision
+assert decision["current_focus"] == "operation_rollup", decision
+assert decision["recommended_next_action"] == "profile_candidate_index_operation_rollup", decision
+assert decision["phase_transition_reason"] == "leaf_level_candidate_index_profiling_stopped", decision
 assert decision["runtime_prototype_allowed"] is False, decision
 PY
 
@@ -657,7 +660,7 @@ assert_rollup_decision \
   "gap_before_a00_span_0_alt_right" \
   "lookup_miss_candidate_set_full_probe" \
   "no_single_stable_leaf_found_under_current_profiler" \
-  "stop_leaf_level_candidate_index_profiling"
+  "profile_candidate_index_operation_rollup"
 python3 - <<'PY' "$OUT_DIR/branch_rollup_decision.json" "$AB_SUMMARY" "$LIFECYCLE_SUMMARY" "$TERMINAL_TELEMETRY_CLASSIFICATION_DECISION"
 import json
 import sys
@@ -671,6 +674,14 @@ assert (
     == "candidate_index_material_but_no_single_stable_leaf_found"
 ), decision
 assert decision["active_frontier"] is None, decision
+assert decision["current_phase"] == "candidate_index_structural_profiling", decision
+assert decision["current_phase_status"] == "active", decision
+assert decision["current_focus"] == "operation_rollup", decision
+assert (
+    decision["phase_transition_reason"]
+    == "leaf_level_candidate_index_profiling_stopped"
+), decision
+assert decision["structural_phase_decision_context_status"] == "ready", decision
 assert (
     decision["stop_reason"]
     == "no_single_stable_leaf_found_under_current_profiler"

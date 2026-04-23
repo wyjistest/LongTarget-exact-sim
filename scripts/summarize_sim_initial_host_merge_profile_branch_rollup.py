@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument("--candidate-index-lifecycle-summary", required=True)
     parser.add_argument("--terminal-telemetry-classification-decision")
     parser.add_argument("--state-update-bookkeeping-classification-decision")
+    parser.add_argument("--candidate-index-structural-phase-decision")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
         "--share-threshold-of-total-seconds",
@@ -496,6 +497,7 @@ def build_rows(
     threshold,
     terminal_telemetry_classification,
     state_update_bookkeeping_classification,
+    structural_phase_decision,
 ):
     candidate = lifecycle_summary.get("candidate_index", None)
     if not isinstance(candidate, dict):
@@ -821,6 +823,33 @@ def build_rows(
         active_frontier = None
         stop_reason = next_candidate_branch_decision or recommended_next_action
 
+    current_phase = "leaf_level_candidate_index_profiling"
+    current_phase_status = "active"
+    current_focus = next_candidate_branch
+    phase_transition_reason = None
+    structural_context_status = "missing"
+    if leaf_level_candidate_index_profiling_status == "stopped":
+        current_phase = "candidate_index_structural_profiling"
+        current_phase_status = "active"
+        current_focus = "operation_rollup"
+        phase_transition_reason = "leaf_level_candidate_index_profiling_stopped"
+        recommended_next_action = "profile_candidate_index_operation_rollup"
+        structural_context_status = "ready"
+        if isinstance(structural_phase_decision, dict) and structural_phase_decision.get(
+            "decision_status"
+        ) == "ready":
+            current_phase_status = optional_str(
+                structural_phase_decision, "phase_status", "active"
+            )
+            focus_value = structural_phase_decision.get("current_focus")
+            current_focus = focus_value if focus_value not in {"", "unknown"} else None
+            recommended_next_action = optional_str(
+                structural_phase_decision,
+                "recommended_next_action",
+                recommended_next_action,
+            )
+            structural_context_status = "provided"
+
     current_classified_branch = (
         terminal_telemetry_override["current_classified_branch"]
         if terminal_telemetry_override
@@ -857,6 +886,11 @@ def build_rows(
         "leaf_level_candidate_index_profiling_detail": (
             leaf_level_candidate_index_profiling_detail
         ),
+        "current_phase": current_phase,
+        "current_phase_status": current_phase_status,
+        "current_focus": current_focus,
+        "phase_transition_reason": phase_transition_reason,
+        "structural_phase_decision_context_status": structural_context_status,
         "selection_threshold_share_of_total_seconds": threshold,
         "candidate_index_materiality_status": optional_str(
             ab_summary, "candidate_index_materiality_status", "unknown"
@@ -879,6 +913,10 @@ def render_markdown(summary):
         f"- next_candidate_branch_decision: `{summary.get('next_candidate_branch_decision') or 'none'}`",
         f"- active_frontier: `{summary.get('active_frontier') or 'none'}`",
         f"- stop_reason: `{summary.get('stop_reason') or 'none'}`",
+        f"- current_phase: `{summary.get('current_phase') or 'unknown'}`",
+        f"- current_phase_status: `{summary.get('current_phase_status') or 'unknown'}`",
+        f"- current_focus: `{summary.get('current_focus') or 'none'}`",
+        f"- phase_transition_reason: `{summary.get('phase_transition_reason') or 'none'}`",
         f"- exhausted_or_non_actionable_branches: `{', '.join(summary.get('exhausted_or_non_actionable_branches', [])) or 'none'}`",
         f"- recommended_next_action: `{summary['recommended_next_action']}`",
         f"- leaf_level_candidate_index_profiling_status: `{summary.get('leaf_level_candidate_index_profiling_status') or 'unknown'}`",
@@ -924,6 +962,11 @@ def main():
         if args.state_update_bookkeeping_classification_decision
         else ({}, None)
     )
+    structural_phase_decision, structural_phase_decision_path = (
+        read_json(args.candidate_index_structural_phase_decision)
+        if args.candidate_index_structural_phase_decision
+        else ({}, None)
+    )
 
     summary = build_rows(
         ab_summary,
@@ -931,6 +974,7 @@ def main():
         args.share_threshold_of_total_seconds,
         terminal_telemetry_classification,
         state_update_bookkeeping_classification,
+        structural_phase_decision,
     )
     summary["decision_status"] = "ready"
     summary["source_profile_mode_ab_summary"] = str(ab_path)
@@ -953,6 +997,13 @@ def main():
         authoritative_sources["state_update_bookkeeping_classification_decision"] = str(
             state_update_bookkeeping_classification_path
         )
+    if structural_phase_decision_path is not None:
+        summary["source_candidate_index_structural_phase_decision"] = str(
+            structural_phase_decision_path
+        )
+        authoritative_sources["candidate_index_structural_phase_decision"] = str(
+            structural_phase_decision_path
+        )
     summary["authoritative_sources"] = authoritative_sources
 
     decision = {
@@ -966,6 +1017,13 @@ def main():
         "stop_reason": summary["stop_reason"],
         "exhausted_or_non_actionable_branches": summary[
             "exhausted_or_non_actionable_branches"
+        ],
+        "current_phase": summary["current_phase"],
+        "current_phase_status": summary["current_phase_status"],
+        "current_focus": summary["current_focus"],
+        "phase_transition_reason": summary["phase_transition_reason"],
+        "structural_phase_decision_context_status": summary[
+            "structural_phase_decision_context_status"
         ],
         "recommended_next_action": summary["recommended_next_action"],
         "optional_next_action": summary["optional_next_action"],

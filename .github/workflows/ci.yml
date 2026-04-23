@@ -43,5 +43,8 @@ jobs:
       - name: Run profiling summarizer checks
         run: |
           bash scripts/check_summarize_sim_initial_host_merge_candidate_index_lifecycle.sh
+          bash scripts/check_summarize_sim_initial_host_merge_candidate_index_structural_phase.sh
+          bash scripts/check_summarize_sim_initial_host_merge_candidate_index_operation_rollup.sh
+          bash scripts/check_summarize_sim_initial_host_merge_candidate_index_common_memory_behavior.sh
           bash scripts/check_summarize_sim_initial_host_merge_state_update_bookkeeping_classification.sh
           bash scripts/check_summarize_sim_initial_host_merge_profile_branch_rollup.sh
