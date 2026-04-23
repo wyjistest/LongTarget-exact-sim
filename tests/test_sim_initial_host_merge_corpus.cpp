@@ -113,6 +113,24 @@ static std::string make_temp_dir()
     return std::string(created);
 }
 
+static SimScanCudaInitialRunSummary make_summary(int score,
+                                                 long startI,
+                                                 long startJ,
+                                                 uint32_t endI,
+                                                 uint32_t minEndJ,
+                                                 uint32_t maxEndJ,
+                                                 uint32_t scoreEndJ)
+{
+    SimScanCudaInitialRunSummary summary;
+    summary.score = score;
+    summary.startCoord = packSimCoord(startI, startJ);
+    summary.endI = endI;
+    summary.minEndJ = minEndJ;
+    summary.maxEndJ = maxEndJ;
+    summary.scoreEndJ = scoreEndJ;
+    return summary;
+}
+
 } // namespace
 
 int main()
@@ -543,6 +561,34 @@ int main()
     ok = expect_true(verifySimInitialHostMergeContextApplyReplay(loaded, contextApplyReplay, &error),
                      error.empty() ? "verifySimInitialHostMergeContextApplyReplay" : error.c_str()) &&
          ok;
+
+    SimInitialHostMergeReplayResult backwardShiftContextApplyReplay;
+    ok = expect_true(replaySimInitialHostMergeContextApplyCorpusCase(
+                         loaded,
+                         SIM_CANDIDATE_INDEX_BACKEND_BACKWARD_SHIFT,
+                         backwardShiftContextApplyReplay,
+                         &error),
+                     error.empty() ? "replaySimInitialHostMergeContextApplyCorpusCase backward_shift"
+                                   : error.c_str()) &&
+         ok;
+    ok = expect_true(verifySimInitialHostMergeContextApplyReplay(loaded,
+                                                                 backwardShiftContextApplyReplay,
+                                                                 &error),
+                     error.empty() ? "verifySimInitialHostMergeContextApplyReplay backward_shift"
+                                   : error.c_str()) &&
+         ok;
+    ok = expect_candidate_states_equal(backwardShiftContextApplyReplay.contextCandidates,
+                                       contextApplyReplay.contextCandidates,
+                                       "isolated contextApply backward_shift candidate states") &&
+         ok;
+    ok = expect_equal_size(backwardShiftContextApplyReplay.storeOtherMergeContextApplyLookupHitCount,
+                           contextApplyReplay.storeOtherMergeContextApplyLookupHitCount,
+                           "isolated contextApply backward_shift lookup hits") &&
+         ok;
+    ok = expect_equal_size(backwardShiftContextApplyReplay.storeOtherMergeContextApplyLookupMissCount,
+                           contextApplyReplay.storeOtherMergeContextApplyLookupMissCount,
+                           "isolated contextApply backward_shift lookup misses") &&
+         ok;
     ok = expect_near(contextApplyReplay.contextApplySeconds,
                      contextApplyReplay.storeOtherMergeContextApplySeconds,
                      1e-9,
@@ -568,6 +614,187 @@ int main()
     ok = expect_equal_size(contextApplyReplay.storePruned.size(),
                            0,
                            "isolated contextApply does not prune store") &&
+         ok;
+
+    std::vector<SimScanCudaInitialRunSummary> steadyStateSummaries;
+    steadyStateSummaries.reserve(static_cast<size_t>(K) + 3);
+    for (int candidateIndex = 0; candidateIndex < K; ++candidateIndex)
+    {
+        steadyStateSummaries.push_back(make_summary(100 + candidateIndex,
+                                                    1000 + candidateIndex,
+                                                    2000 + candidateIndex,
+                                                    static_cast<uint32_t>(10 + candidateIndex),
+                                                    static_cast<uint32_t>(20 + candidateIndex),
+                                                    static_cast<uint32_t>(20 + candidateIndex),
+                                                    static_cast<uint32_t>(20 + candidateIndex)));
+    }
+    steadyStateSummaries.push_back(make_summary(250, 1010, 2010, 1000, 400, 420, 415));
+    steadyStateSummaries.push_back(make_summary(200, 1010, 2010, 500, 405, 410, 408));
+    steadyStateSummaries.push_back(make_summary(300, 9000, 9001, 800, 100, 160, 140));
+
+    SimInitialHostMergeCorpusCase steadyStateCorpus;
+    steadyStateCorpus.caseId = "case-00000417";
+    steadyStateCorpus.queryLength = 4096;
+    steadyStateCorpus.targetLength = 8192;
+    steadyStateCorpus.parmM = 1.0f;
+    steadyStateCorpus.parmI = -1.0f;
+    steadyStateCorpus.parmO = 1.0f;
+    steadyStateCorpus.parmE = 1.0f;
+    steadyStateCorpus.logicalEventCount = static_cast<uint64_t>(steadyStateSummaries.size());
+    steadyStateCorpus.gpuMirrorRequested = false;
+    steadyStateCorpus.summaries = steadyStateSummaries;
+
+    SimInitialHostMergeReplayResult steadyStateContextApplyReplay;
+    ok = expect_true(replaySimInitialHostMergeContextApplyPhase(steadyStateCorpus,
+                                                                false,
+                                                                steadyStateContextApplyReplay,
+                                                                &error),
+                     error.empty() ? "steady-state replaySimInitialHostMergeContextApplyPhase"
+                                   : error.c_str()) &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyFullSetMissCount,
+                           1,
+                           "steady-state full-set miss count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyFloorChangedCount,
+                           1,
+                           "steady-state floor changed count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyVictimWasRunningMinCount,
+                           1,
+                           "steady-state victim was running min count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyRunningMinSlotChangedCount,
+                           1,
+                           "steady-state running min slot changed count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinCalls,
+                           1,
+                           "steady-state refresh min calls") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinSlotsScanned,
+                           static_cast<size_t>(K),
+                           "steady-state refresh min slots scanned") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexLookupCount,
+                           steadyStateSummaries.size(),
+                           "steady-state candidate index lookup count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexHitCount,
+                           2,
+                           "steady-state candidate index hit count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexMissCount,
+                           static_cast<size_t>(K) + 1,
+                           "steady-state candidate index miss count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexEraseCount,
+                           1,
+                           "steady-state candidate index erase count") &&
+         ok;
+    ok = expect_equal_size(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexInsertCount,
+                           static_cast<size_t>(K) + 1,
+                           "steady-state candidate index insert count") &&
+         ok;
+    ok = expect_true(steadyStateContextApplyReplay.storeOtherMergeContextApplyFullSetMissSeconds >= 0.0,
+                     "steady-state full-set miss seconds recorded") &&
+         ok;
+    ok = expect_true(steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinSeconds >= 0.0,
+                     "steady-state refresh min seconds recorded") &&
+         ok;
+    ok = expect_true(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexSeconds >= 0.0,
+                     "steady-state candidate index seconds recorded") &&
+         ok;
+    ok = expect_true(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexEraseSeconds >= 0.0,
+                     "steady-state candidate index erase seconds recorded") &&
+         ok;
+    ok = expect_true(steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexInsertSeconds >= 0.0,
+                     "steady-state candidate index insert seconds recorded") &&
+         ok;
+    ok = expect_near(steadyStateContextApplyReplay.storeOtherMergeContextApplyFloorChangedShare,
+                     1.0,
+                     1e-9,
+                     "steady-state floor changed share") &&
+         ok;
+    ok = expect_near(steadyStateContextApplyReplay.storeOtherMergeContextApplyVictimWasRunningMinShare,
+                     1.0,
+                     1e-9,
+                     "steady-state victim was running min share") &&
+         ok;
+    ok = expect_near(steadyStateContextApplyReplay.storeOtherMergeContextApplyRunningMinSlotChangedShare,
+                     1.0,
+                     1e-9,
+                     "steady-state running min slot changed share") &&
+         ok;
+    ok = expect_near(steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinSlotsScannedPerCall,
+                     static_cast<double>(K),
+                     1e-9,
+                     "steady-state refresh min slots scanned per call") &&
+         ok;
+
+    SimInitialHostMergeReplayBenchmarkResult steadyStateBenchmark;
+    ok = expect_true(benchmarkSimInitialHostMergeCorpusCase(steadyStateCorpus,
+                                                            1,
+                                                            3,
+                                                            steadyStateBenchmark,
+                                                            &error),
+                     error.empty() ? "steady-state benchmarkSimInitialHostMergeCorpusCase"
+                                   : error.c_str()) &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyFullSetMissCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyFullSetMissCount,
+                           "steady-state benchmark full-set miss count") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyFloorChangedCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyFloorChangedCount,
+                           "steady-state benchmark floor changed count") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyVictimWasRunningMinCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyVictimWasRunningMinCount,
+                           "steady-state benchmark victim was running min count") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyRunningMinSlotChangedCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyRunningMinSlotChangedCount,
+                           "steady-state benchmark running min slot changed count") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyRefreshMinCalls,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinCalls,
+                           "steady-state benchmark refresh min calls") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyRefreshMinSlotsScanned,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinSlotsScanned,
+                           "steady-state benchmark refresh min slots scanned") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyCandidateIndexLookupCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexLookupCount,
+                           "steady-state benchmark candidate index lookup count") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyCandidateIndexEraseCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexEraseCount,
+                           "steady-state benchmark candidate index erase count") &&
+         ok;
+    ok = expect_equal_size(steadyStateBenchmark.storeOtherMergeContextApplyCandidateIndexInsertCount,
+                           steadyStateContextApplyReplay.storeOtherMergeContextApplyCandidateIndexInsertCount,
+                           "steady-state benchmark candidate index insert count") &&
+         ok;
+    ok = expect_true(steadyStateBenchmark.storeOtherMergeContextApplyRefreshMin.meanSeconds >= 0.0,
+                     "steady-state benchmark refresh min mean recorded") &&
+         ok;
+    ok = expect_true(steadyStateBenchmark.storeOtherMergeContextApplyFullSetMiss.meanSeconds >= 0.0,
+                     "steady-state benchmark full-set miss mean recorded") &&
+         ok;
+    ok = expect_true(steadyStateBenchmark.storeOtherMergeContextApplyCandidateIndex.meanSeconds >= 0.0,
+                     "steady-state benchmark candidate index mean recorded") &&
+         ok;
+    ok = expect_near(steadyStateBenchmark.storeOtherMergeContextApplyFloorChangedShare,
+                     steadyStateContextApplyReplay.storeOtherMergeContextApplyFloorChangedShare,
+                     1e-9,
+                     "steady-state benchmark floor changed share") &&
+         ok;
+    ok = expect_near(steadyStateBenchmark.storeOtherMergeContextApplyRefreshMinSlotsScannedPerCall,
+                     steadyStateContextApplyReplay.storeOtherMergeContextApplyRefreshMinSlotsScannedPerCall,
+                     1e-9,
+                     "steady-state benchmark refresh min slots scanned per call") &&
          ok;
 
     SimInitialHostMergeReplayBenchmarkResult benchmark;

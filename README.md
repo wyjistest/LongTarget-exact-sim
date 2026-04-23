@@ -22,7 +22,7 @@
 - [Citation](#citation)
 
 # Overview
-Since the pioneering genome-wide discovery of mouse lncRNAs in the FANTOM consortium, experimental studies have identified abundant lncRNAs in humans, mice, and other mammals. Many lncRNAs can bind to both DNA sequences and DNA- and histone-modifying enzymes, thus recruiting these enzymes to specific genomic sites to epigenetically regulate the expression of genes at these sites. Genomic imprinting is a specific kind of epigeneticregulation. 
+Since the pioneering genome-wide discovery of mouse lncRNAs in the FANTOM consortium, experimental studies have identified abundant lncRNAs in humans, mice, and other mammals. Many lncRNAs can bind to both DNA sequences and DNA- and histone-modifying enzymes, thus recruiting these enzymes to specific genomic sites to epigenetically regulate the expression of genes at these sites. Genomic imprinting is a specific kind of epigeneticregulation.
 
 LongTarget was developed to predict one or many lncRNA’s DNA binding motifs and binding sites in one or many genome regions based on all known ncRNA/DNA base pairing rules (Hoogsteen and reverse Hoogsteen base pairing rules). LongTarget consists of a few C/C++ programs, and is distributed under the AGPLv3 license. It can be used as a standalone program, and we have also integrated it into the lncRNA database LongMan at the website http://lncRNA.smu.edu.cn, making it a web service. Our use of LongTarget indicates that it can satisfactorily predict lncRNAs’ DNA binding motifs and binding sites, and multiple pipelines have been developed to seamless bridge database search and lncRNA/DNA binding prediction.
 
@@ -31,15 +31,15 @@ LongTarget was developed to predict one or many lncRNA’s DNA binding motifs an
 - [rules.h](./rules.h): Base-pairing rules and codes for handling these rules.
 - [sim.h](./sim.h):   The SIM program for local alignment.
 - [stats.h](./stats.h): Michael Farrar's code (with SSE2) for local alignment.
-- [H19.fa](./H19.fa):  A sample lncRNA sequence.  
-- [testDNA.fa](./testDNA.fa): A sample DNA sequence. 
+- [H19.fa](./H19.fa):  A sample lncRNA sequence.
+- [testDNA.fa](./testDNA.fa): A sample DNA sequence.
 
 # System Requirements
-- OS: Linux, we compile and run the LongTarget under CentOS 6.0. 
+- OS: Linux, we compile and run the LongTarget under CentOS 6.0.
 - System software:	g++.
 - RAM: 16G or above, depending on the number of lncRNAs and length of genome region.
 - CPU: 4 cores or above, depending on the number of lncRNAs and length of genome region.
-- To use our web service, Google Chrome and Mozilla Firefox are recommended, because functions were tested under these browsers. 
+- To use our web service, Google Chrome and Mozilla Firefox are recommended, because functions were tested under these browsers.
 
 # Installation Guide
 ## Compilation
@@ -250,6 +250,7 @@ Validation helpers:
 - `make check-sim-initial-host-merge-capture-modes`: verify manifest-only capture works without payload files and `LONGTARGET_SIM_INITIAL_HOST_MERGE_CORPUS_CASE_LIST` restricts full dump to the requested case IDs
 - `make check-select-sim-initial-host-merge-cases`: verify the manifest selection script emits a deterministic case-list-compatible TSV with bucket metadata from a small census fixture
 - `make check-analyze-sim-initial-host-merge-phase-shares`: verify the host-merge phase-share helper enforces the coverage gate and emits the expected decision summary
+- `make check-analyze-sim-initial-host-merge-reference-profile`: verify the reference-only host-merge profile helper selects the anchor plus heavy cases and emits a stable hotspot-family recommendation from fixture gprof reports
 - `make check-project-whole-genome-runtime`: verify the projection script preserves backward compatibility and emits the optional whole-genome ratios when the source telemetry is present
 
 The offline replay helper for those dumped corpora is `tests/sim_initial_host_merge_replay`. Typical usage:
@@ -316,6 +317,8 @@ After replay benchmarking, use `scripts/analyze_sim_initial_host_merge_phase_sha
 - `summary.json` / `summary.md`: coverage-gated decision output
 
 The helper only promotes a materialize/prune decision when both `covered_logical_event_share` and `covered_store_materialized_share` reach `0.80`; otherwise it reports `decision_status=insufficient_coverage` and `next_action=expand_corpus`.
+
+Once the isolated `context_apply` profiler harness has emitted `context_apply.tsv`, per-case reference replay aggregates, and anchor/heavy-case gprof flat profiles, use `scripts/analyze_sim_initial_host_merge_reference_profile.py` to summarize the reference-only hotspot families into `selected_cases.tsv`, `summary.json`, and `summary.md`. The helper groups stable gprof symbols into `candidate_index_map_path`, `heap_maintenance_path`, `other_reference_path`, and `setup_or_materialize_noise`, then recommends whether the next step should target the candidate-index map path, the heap path, or whether the profile signal is still too weak.
 
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 
@@ -877,7 +880,7 @@ Here is a brief explanation of the command line arguments:
 Options   Parameters      Functions
 f1   DNA sequence file  A string, indicate the DNA sequence file name.
 f2   RNA sequence file  A string, indicate the RNA sequence file name.
-r    rules              An integer, indicate base-pairing rules, "0" indicates all rules. 
+r    rules              An integer, indicate base-pairing rules, "0" indicates all rules.
 O    Output path        A string, indicate the directory into which the results are outputted.
 c    Cutlength          An integer, indicate the length of each segment, the default value is 5000.
 i    identity           An integer, indicate the criterion of alignment output, the default value is 60.
@@ -891,7 +894,7 @@ lg   c_length           An integer, indicate the min length of triplexes, the de
 ```
 
 ## Time consumption
-This depends on the number and length of lncRNAs and the length of genome regions. The expected running time for the H19 demo should be no more than ten minutes even on a normal desktop computer. 
+This depends on the number and length of lncRNAs and the length of genome regions. The expected running time for the H19 demo should be no more than ten minutes even on a normal desktop computer.
 
 # Demo
 ## Inputs and their formats
@@ -902,16 +905,16 @@ The H19.fa indicates that the lncRNA sequence file should have a title line in t
 The testDNA.fa indicates that the DNA sequence file should have a title line in the format ">species|chr|start-end" without any space between letters, and the DNA sequence should be in a new line.
 
 ## Results
-The results include three files whose filenames ending with: (1)*TFOsorted, (2)*TFOclass1, 
-(3)*TFOclass2. The TFOsorted file contains the details of all triplexes, the TFOclass1 file contains the TTS distribution of TFO1 in the genome region, and the TFOclass2 file contains the TTS distribution of TFO2. 
+The results include three files whose filenames ending with: (1)*TFOsorted, (2)*TFOclass1,
+(3)*TFOclass2. The TFOsorted file contains the details of all triplexes, the TFOclass1 file contains the TTS distribution of TFO1 in the genome region, and the TFOclass2 file contains the TTS distribution of TFO2.
 
 ## Example datasets
 An example dataset giving detailed results of examples is given in the subdirectory "examples".
 
 # Instructions for use
 ## How to run LongTarget on your data
-To run LongTarget using the web service, both lncRNAs and genome sequences are available in the database LongMan. To run it as a standalone program, you should obtain lncRNAs and genome sequences from websites such as https://www.gencodegenes.org/ , http://genome.ucsc.edu/ , http://www.noncode.org/ , and http://asia.ensembl.org/index.html . 
-  
+To run LongTarget using the web service, both lncRNAs and genome sequences are available in the database LongMan. To run it as a standalone program, you should obtain lncRNAs and genome sequences from websites such as https://www.gencodegenes.org/ , http://genome.ucsc.edu/ , http://www.noncode.org/ , and http://asia.ensembl.org/index.html .
+
 ## Bug reports
 Please send comments and bug reports to: zhuhao@smu.edu.cn.
 

@@ -174,17 +174,52 @@ int main()
 
     if (trace.events.size() == 3)
     {
+        ok = expect_equal_u64(trace.events[0].summaryOrdinal, 50, "event[0] summaryOrdinal") && ok;
+        ok = expect_equal_u64(trace.events[1].summaryOrdinal, 51, "event[1] summaryOrdinal") && ok;
+        ok = expect_equal_u64(trace.events[2].summaryOrdinal, 52, "event[2] summaryOrdinal") && ok;
         ok = expect_equal_int(static_cast<int>(trace.events[0].referenceEventKind),
                               static_cast<int>(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_UPDATE),
                               "event[0] kind") &&
+             ok;
+        ok = expect_equal_int(trace.events[0].observedCandidateIndexBefore,
+                              10,
+                              "event[0] observedCandidateIndexBefore") &&
+             ok;
+        ok = expect_equal_int(trace.events[0].runningMinBefore, 100, "event[0] runningMinBefore") && ok;
+        ok = expect_equal_int(trace.events[0].runningMinAfter, 100, "event[0] runningMinAfter") && ok;
+        ok = expect_equal_int(trace.events[0].runningMinSlotBefore,
+                              0,
+                              "event[0] runningMinSlotBefore") &&
+             ok;
+        ok = expect_equal_int(trace.events[0].runningMinSlotAfter,
+                              0,
+                              "event[0] runningMinSlotAfter") &&
              ok;
         ok = expect_equal_int(static_cast<int>(trace.events[1].referenceEventKind),
                               static_cast<int>(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_HIT_NOOP),
                               "event[1] kind") &&
              ok;
+        ok = expect_equal_int(trace.events[1].observedCandidateIndexBefore,
+                              10,
+                              "event[1] observedCandidateIndexBefore") &&
+             ok;
+        ok = expect_equal_int(trace.events[1].runningMinBefore, 100, "event[1] runningMinBefore") && ok;
+        ok = expect_equal_int(trace.events[1].runningMinAfter, 100, "event[1] runningMinAfter") && ok;
+        ok = expect_equal_int(trace.events[1].runningMinSlotBefore,
+                              0,
+                              "event[1] runningMinSlotBefore") &&
+             ok;
+        ok = expect_equal_int(trace.events[1].runningMinSlotAfter,
+                              0,
+                              "event[1] runningMinSlotAfter") &&
+             ok;
         ok = expect_equal_int(static_cast<int>(trace.events[2].referenceEventKind),
                               static_cast<int>(SIM_INITIAL_HOST_MERGE_STEADY_STATE_TRACE_EVENT_FULL_SET_MISS),
                               "event[2] kind") &&
+             ok;
+        ok = expect_equal_int(trace.events[2].observedCandidateIndexBefore,
+                              0,
+                              "event[2] observedCandidateIndexBefore") &&
              ok;
         ok = expect_equal_int(trace.events[2].victimCandidateIndexBefore,
                               0,
@@ -197,6 +232,16 @@ int main()
         ok = expect_equal_int(trace.events[2].victimScoreBefore,
                               100,
                               "full-set miss victimScoreBefore") &&
+             ok;
+        ok = expect_equal_int(trace.events[2].runningMinBefore, 100, "event[2] runningMinBefore") && ok;
+        ok = expect_equal_int(trace.events[2].runningMinAfter, 101, "event[2] runningMinAfter") && ok;
+        ok = expect_equal_int(trace.events[2].runningMinSlotBefore,
+                              0,
+                              "event[2] runningMinSlotBefore") &&
+             ok;
+        ok = expect_equal_int(trace.events[2].runningMinSlotAfter,
+                              1,
+                              "event[2] runningMinSlotAfter") &&
              ok;
     }
 
@@ -239,6 +284,42 @@ int main()
     ok = expect_equal_size(referenceReplay.fullSetMissCount, 1, "reference fullSetMissCount") && ok;
     ok = expect_equal_size(referenceReplay.hitUpdateCount, 1, "reference hitUpdateCount") && ok;
     ok = expect_equal_size(referenceReplay.hitNoopCount, 1, "reference hitNoopCount") && ok;
+
+    SimInitialHostMergeSteadyStateReplayResult backwardShiftReferenceReplay;
+    ok = expect_true(replaySimInitialHostMergeSteadyStateTraceCase(
+                         loaded,
+                         SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_REFERENCE,
+                         SIM_CANDIDATE_INDEX_BACKEND_BACKWARD_SHIFT,
+                         backwardShiftReferenceReplay,
+                         &error),
+                     error.empty() ? "reference backward-shift steady-state replay" : error.c_str()) &&
+         ok;
+    ok = expect_true(verifySimInitialHostMergeSteadyStateTraceReplay(loaded,
+                                                                     backwardShiftReferenceReplay,
+                                                                     &error),
+                     error.empty() ? "verify reference backward-shift steady-state replay"
+                                   : error.c_str()) &&
+         ok;
+    ok = expect_equal_size(backwardShiftReferenceReplay.fullSetMissCount,
+                           referenceReplay.fullSetMissCount,
+                           "reference backward-shift fullSetMissCount") &&
+         ok;
+    ok = expect_equal_size(backwardShiftReferenceReplay.hitUpdateCount,
+                           referenceReplay.hitUpdateCount,
+                           "reference backward-shift hitUpdateCount") &&
+         ok;
+    ok = expect_equal_size(backwardShiftReferenceReplay.hitNoopCount,
+                           referenceReplay.hitNoopCount,
+                           "reference backward-shift hitNoopCount") &&
+         ok;
+    ok = expect_candidate_states_equal(backwardShiftReferenceReplay.finalContextCandidates,
+                                       referenceReplay.finalContextCandidates,
+                                       "reference backward-shift finalContextCandidates") &&
+         ok;
+    ok = expect_equal_int(backwardShiftReferenceReplay.finalRunningMin,
+                          referenceReplay.finalRunningMin,
+                          "reference backward-shift finalRunningMin") &&
+         ok;
 
     SimInitialHostMergeSteadyStateReplayResult specializedReplay;
     ok = expect_true(replaySimInitialHostMergeSteadyStateTraceCase(

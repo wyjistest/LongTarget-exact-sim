@@ -18,6 +18,7 @@ static void print_usage(const char *argv0)
     std::cerr << "Usage: " << argv0
               << " (--capture-trace --corpus-dir DIR --trace-dir DIR | --replay-trace --trace-dir DIR --backend reference|specialized)"
               << " [--case CASE_ID | --all] [--verify] [--output-tsv PATH]"
+              << " [--candidate-index-backend tombstone|backward_shift]"
               << " [--warmup-iterations N] [--iterations N] [--aggregate-tsv PATH]\n";
 }
 
@@ -56,6 +57,34 @@ static const char *backend_name(SimInitialHostMergeSteadyStateReplayBackend back
     return "unknown";
 }
 
+
+static const char *candidate_index_backend_name(SimCandidateIndexBackend backend)
+{
+    switch (backend)
+    {
+    case SIM_CANDIDATE_INDEX_BACKEND_TOMBSTONE:
+        return "tombstone";
+    case SIM_CANDIDATE_INDEX_BACKEND_BACKWARD_SHIFT:
+        return "backward_shift";
+    }
+    return "unknown";
+}
+
+static bool parse_candidate_index_backend(const std::string &argument,
+                                          SimCandidateIndexBackend &backend)
+{
+    if (argument == "tombstone")
+    {
+        backend = SIM_CANDIDATE_INDEX_BACKEND_TOMBSTONE;
+        return true;
+    }
+    if (argument == "backward_shift")
+    {
+        backend = SIM_CANDIDATE_INDEX_BACKEND_BACKWARD_SHIFT;
+        return true;
+    }
+    return false;
+}
 } // namespace
 
 int main(int argc, char **argv)
@@ -72,6 +101,7 @@ int main(int argc, char **argv)
     std::string aggregateTsvPath;
     size_t warmupIterations = 0;
     size_t iterations = 1;
+    SimCandidateIndexBackend candidateIndexBackend = SIM_CANDIDATE_INDEX_BACKEND_TOMBSTONE;
     SimInitialHostMergeSteadyStateReplayBackend backend =
         SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_SPECIALIZED;
 
@@ -126,6 +156,19 @@ int main(int argc, char **argv)
                 return 1;
             }
             backendExplicit = true;
+        }
+        else if (argument == "--candidate-index-backend")
+        {
+            if (index + 1 >= argc)
+            {
+                print_usage(argv[0]);
+                return 1;
+            }
+            if (!parse_candidate_index_backend(argv[++index], candidateIndexBackend))
+            {
+                std::cerr << "Unsupported candidate-index backend: " << argv[index] << "\n";
+                return 1;
+            }
         }
         else if (argument == "--case")
         {
@@ -223,6 +266,12 @@ int main(int argc, char **argv)
         std::cerr << "benchmark iteration flags are only valid for --replay-trace\n";
         return 1;
     }
+    if (replayTrace && backend == SIM_INITIAL_HOST_MERGE_STEADY_STATE_REPLAY_BACKEND_SPECIALIZED &&
+        candidateIndexBackend != SIM_CANDIDATE_INDEX_BACKEND_TOMBSTONE)
+    {
+        std::cerr << "--candidate-index-backend only supports --backend reference\n";
+        return 1;
+    }
 
     std::vector<std::string> selectedCases;
     std::string error;
@@ -255,12 +304,12 @@ int main(int argc, char **argv)
     }
     else
     {
-        tsv << "case_id\tbackend\tpost_fill_event_count\tfull_set_miss_count\thit_update_count"
+        tsv << "case_id\tbackend\tcandidate_index_backend\tpost_fill_event_count\tfull_set_miss_count\thit_update_count"
             << "\thit_noop_count\tseed_candidate_count\texpected_final_candidate_count"
             << "\ttotal_seconds\tfull_set_miss_seconds\tverify_ok\n";
         if (!aggregateTsvPath.empty())
         {
-            aggregateTsv << "case_id\tbackend\twarmup_iterations\titerations\tpost_fill_event_count"
+            aggregateTsv << "case_id\tbackend\tcandidate_index_backend\twarmup_iterations\titerations\tpost_fill_event_count"
                          << "\tfull_set_miss_count\ttotal_mean_seconds\ttotal_p50_seconds"
                          << "\ttotal_p95_seconds\tfull_set_miss_mean_seconds"
                          << "\tfull_set_miss_p50_seconds\tfull_set_miss_p95_seconds\tverify_ok\n";
@@ -321,7 +370,7 @@ int main(int argc, char **argv)
         for (size_t iteration = 0; iteration < warmupIterations; ++iteration)
         {
             error.clear();
-            if (!replaySimInitialHostMergeSteadyStateTraceCase(trace, backend, replay, &error))
+            if (!replaySimInitialHostMergeSteadyStateTraceCase(trace, backend, candidateIndexBackend, replay, &error))
             {
                 std::cerr << error << "\n";
                 return 1;
@@ -337,7 +386,7 @@ int main(int argc, char **argv)
         for (size_t iteration = 0; iteration < iterations; ++iteration)
         {
             error.clear();
-            if (!replaySimInitialHostMergeSteadyStateTraceCase(trace, backend, replay, &error))
+            if (!replaySimInitialHostMergeSteadyStateTraceCase(trace, backend, candidateIndexBackend, replay, &error))
             {
                 set_gprof_sampling_enabled(false);
                 std::cerr << error << "\n";
@@ -362,6 +411,7 @@ int main(int argc, char **argv)
 
         tsv << trace.caseId << '\t'
             << backend_name(backend) << '\t'
+            << candidate_index_backend_name(candidateIndexBackend) << '\t'
             << trace.events.size() << '\t'
             << replay.fullSetMissCount << '\t'
             << replay.hitUpdateCount << '\t'
@@ -380,6 +430,7 @@ int main(int argc, char **argv)
                 summarizeSimInitialHostMergeReplaySamples(fullSetMissSamples);
             aggregateTsv << trace.caseId << '\t'
                          << backend_name(backend) << '\t'
+                         << candidate_index_backend_name(candidateIndexBackend) << '\t'
                          << warmupIterations << '\t'
                          << iterations << '\t'
                          << trace.events.size() << '\t'

@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  candidate-index-profiling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Show toolchain
+        run: |
+          g++ --version
+          make --version
+          python3 --version
+
+      - name: Build CPU targets
+        run: |
+          make -j2 \
+            build \
+            build-sim-initial-host-merge-context-apply-profile \
+            build-sim-initial-host-merge-steady-state-miss-profile \
+            build-sim-initial-host-merge-corpus-test \
+            build-sim-initial-host-merge-steady-state-trace-test \
+            build-sim-candidate-index-probe-test
+
+      - name: Run candidate-index runtime tests
+        run: |
+          ./tests/test_sim_initial_host_merge_corpus
+          ./tests/test_sim_initial_host_merge_steady_state_trace
+          ./tests/test_sim_candidate_index_probe
+
+      - name: Run profiling summarizer checks
+        run: |
+          bash scripts/check_summarize_sim_initial_host_merge_candidate_index_lifecycle.sh
+          bash scripts/check_summarize_sim_initial_host_merge_state_update_bookkeeping_classification.sh
+          bash scripts/check_summarize_sim_initial_host_merge_profile_branch_rollup.sh
