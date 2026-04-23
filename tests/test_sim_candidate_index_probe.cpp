@@ -159,10 +159,11 @@ int main()
     ok = expect_equal_int(ensuredCandidateIndex, 0, "full-set miss reuses heap min candidate index") && ok;
     ok = expect_true(!reusedExisting, "full-set miss does not report reusedExisting hit") && ok;
     ok = expect_true(!slotCreated, "full-set miss does not create a new slot") && ok;
-    ok = expect_equal_int(context.candidateStartIndex.candidateSlot[0], victimSlot,
-                          "full-set miss reuses victim index slot") && ok;
-    ok = expect_equal_size(context.candidateStartIndex.tombstoneCount, 0,
-                           "victim slot reuse avoids tombstone growth") && ok;
+    ok = expect_equal_int(context.candidateStartIndex.candidateSlot[0],
+                          static_cast<int>(beforeProbe.slot),
+                          "full-set miss rebinds candidate index to the probed miss slot") && ok;
+    ok = expect_equal_size(context.candidateStartIndex.tombstoneCount, 1,
+                           "full-set miss leaves one tombstone when victim slot is not reprobed") && ok;
     ok = expect_equal_size(lookupTrace.missReuseWritebackVictimResetCount,
                            1,
                            "full-set miss records victim-slot reuse via victim reset") && ok;
