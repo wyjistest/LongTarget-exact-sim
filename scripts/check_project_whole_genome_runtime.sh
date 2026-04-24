@@ -18,8 +18,16 @@ benchmark.calc_score_cpu_fallback_query_gt_8192=1
 benchmark.calc_score_cpu_fallback_target_gt_8192=1
 benchmark.calc_score_cpu_fallback_target_gt_65535=1
 benchmark.sim_initial_scan_seconds=2
+benchmark.sim_initial_scan_gpu_seconds=0.6
+benchmark.sim_initial_scan_d2h_seconds=0.2
 benchmark.sim_initial_scan_cpu_merge_seconds=0.5
 benchmark.sim_initial_scan_cpu_merge_subtotal_seconds=0.4
+benchmark.sim_initial_summary_count=40
+benchmark.sim_initial_summary_bytes_d2h=4000
+benchmark.sim_initial_candidate_state_bytes_d2h=1000
+benchmark.sim_initial_d2h_transfer_count=4
+benchmark.sim_initial_host_rebuild_seconds=0.11
+benchmark.sim_initial_state_handoff_seconds=0.09
 benchmark.sim_initial_run_summary_pipeline_seconds=0.25
 benchmark.sim_initial_ordered_replay_seconds=0.07
 benchmark.sim_initial_store_rebuild_seconds=0.3
@@ -53,6 +61,11 @@ benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writebac
 benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds=0.0001
 benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds=0.0004
 benchmark.sim_initial_store_other_merge_residual_seconds=0.03
+benchmark.sim_initial_scan_sync_wait_seconds=0.08
+benchmark.sim_locate_seconds=0.13
+benchmark.sim_traceback_seconds=0.17
+benchmark.sim_safe_store_seconds=0.19
+benchmark.sim_output_materialization_seconds=0.23
 benchmark.sim_seconds=3
 benchmark.postprocess_seconds=1
 benchmark.total_seconds=5
@@ -84,8 +97,16 @@ assert abs(data["projected_calc_score_seconds"] - 5.0) < 1e-9
 assert abs(data["projected_sim_seconds"] - 15.0) < 1e-9
 assert abs(data["projected_postprocess_seconds"] - 5.0) < 1e-9
 assert abs(data["projected_sim_initial_scan_seconds"] - 10.0) < 1e-9
+assert abs(data["projected_sim_initial_scan_gpu_seconds"] - 3.0) < 1e-9
+assert abs(data["projected_sim_initial_scan_d2h_seconds"] - 1.0) < 1e-9
 assert abs(data["projected_sim_initial_scan_cpu_merge_seconds"] - 2.5) < 1e-9
 assert abs(data["projected_sim_initial_scan_cpu_merge_subtotal_seconds"] - 2.0) < 1e-9
+assert abs(data["projected_sim_initial_summary_count"] - 200.0) < 1e-9
+assert abs(data["projected_sim_initial_summary_bytes_d2h"] - 20000.0) < 1e-9
+assert abs(data["projected_sim_initial_candidate_state_bytes_d2h"] - 5000.0) < 1e-9
+assert abs(data["projected_sim_initial_d2h_transfer_count"] - 20.0) < 1e-9
+assert abs(data["projected_sim_initial_host_rebuild_seconds"] - 0.55) < 1e-9
+assert abs(data["projected_sim_initial_state_handoff_seconds"] - 0.45) < 1e-9
 assert abs(data["projected_sim_initial_run_summary_pipeline_seconds"] - 1.25) < 1e-9
 assert abs(data["projected_sim_initial_ordered_replay_seconds"] - 0.35) < 1e-9
 assert abs(data["projected_sim_initial_store_rebuild_seconds"] - 1.5) < 1e-9
@@ -114,6 +135,11 @@ assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_mi
 assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds"] - 0.0005) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds"] - 0.002) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_residual_seconds"] - 0.15) < 1e-9
+assert abs(data["projected_sim_initial_scan_sync_wait_seconds"] - 0.4) < 1e-9
+assert abs(data["projected_sim_locate_seconds"] - 0.65) < 1e-9
+assert abs(data["projected_sim_traceback_seconds"] - 0.85) < 1e-9
+assert abs(data["projected_sim_safe_store_seconds"] - 0.95) < 1e-9
+assert abs(data["projected_sim_output_materialization_seconds"] - 1.15) < 1e-9
 assert abs(data["window_pipeline_eligible_ratio"] - 0.8) < 1e-9
 assert abs(data["window_pipeline_fallback_ratio"] - 0.2) < 1e-9
 assert abs(data["calc_score_cuda_task_ratio"] - 0.7) < 1e-9
@@ -150,8 +176,16 @@ assert "window_pipeline_fallback_ratio" not in data
 assert "calc_score_cuda_task_ratio" not in data
 assert "calc_score_cpu_fallback_ratio" not in data
 assert "projected_sim_initial_scan_seconds" not in data
+assert "projected_sim_initial_scan_gpu_seconds" not in data
+assert "projected_sim_initial_scan_d2h_seconds" not in data
 assert "projected_sim_initial_scan_cpu_merge_seconds" not in data
 assert "projected_sim_initial_scan_cpu_merge_subtotal_seconds" not in data
+assert "projected_sim_initial_summary_count" not in data
+assert "projected_sim_initial_summary_bytes_d2h" not in data
+assert "projected_sim_initial_candidate_state_bytes_d2h" not in data
+assert "projected_sim_initial_d2h_transfer_count" not in data
+assert "projected_sim_initial_host_rebuild_seconds" not in data
+assert "projected_sim_initial_state_handoff_seconds" not in data
 assert "projected_sim_initial_run_summary_pipeline_seconds" not in data
 assert "projected_sim_initial_ordered_replay_seconds" not in data
 assert "projected_sim_initial_store_rebuild_seconds" not in data
@@ -180,4 +214,9 @@ assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_
 assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds" not in data
 assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds" not in data
 assert "projected_sim_initial_store_other_merge_residual_seconds" not in data
+assert "projected_sim_initial_scan_sync_wait_seconds" not in data
+assert "projected_sim_locate_seconds" not in data
+assert "projected_sim_traceback_seconds" not in data
+assert "projected_sim_safe_store_seconds" not in data
+assert "projected_sim_output_materialization_seconds" not in data
 PY

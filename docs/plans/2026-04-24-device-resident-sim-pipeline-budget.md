@@ -35,11 +35,12 @@ If the top-level decision did not select `sim -> profile_device_resident_sim_pip
 
 The only active next actions are:
 
-1. `profile_device_resident_state_handoff`
-2. `profile_device_side_ordered_candidate_maintenance`
-3. `profile_sim_initial_scan_kernel`
-4. `profile_locate_traceback_pipeline`
-5. `stop_sim_pipeline_work`
+1. `collect_sim_substage_telemetry`
+2. `profile_device_resident_state_handoff`
+3. `profile_device_side_ordered_candidate_maintenance`
+4. `profile_sim_initial_scan_kernel`
+5. `profile_locate_traceback_pipeline`
+6. `stop_sim_pipeline_work`
 
 `runtime_prototype_allowed` remains `false`. A selected subcomponent means “profile this subpath next,” not “implement the optimization.”
 
@@ -57,4 +58,4 @@ sim_safe_store_handoff_seconds
 
 `host_cpu_merge` uses `sim_initial_scan_cpu_merge_seconds`. `gpu_compute` uses `sim_initial_scan_gpu_seconds` or `gpu_kernel_seconds`. `locate_traceback` aggregates locate, traceback, and output materialization seconds.
 
-Missing fields are reported as missing evidence rather than inferred. If no subcomponent clears the dominance threshold, the decision is `stop_sim_pipeline_work`.
+Missing fields are reported as `insufficient_sim_substage_telemetry` with `recommended_next_action=collect_sim_substage_telemetry`, not as evidence that the SIM pipeline lacks a stable subcomponent. If substage fields are present but no subcomponent clears the dominance threshold, the decision is `stop_sim_pipeline_work`.

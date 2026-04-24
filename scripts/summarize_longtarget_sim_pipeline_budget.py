@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 ALLOWED_NEXT_ACTIONS = [
+    "collect_sim_substage_telemetry",
     "profile_device_resident_state_handoff",
     "profile_device_side_ordered_candidate_maintenance",
     "profile_sim_initial_scan_kernel",
@@ -263,7 +264,11 @@ def build_summary(top_level_decision, top_level_path, data, input_path, threshol
 
     provided = [row for row in subcomponents if row["evidence_status"] == "provided"]
     selected = provided[0] if provided and provided[0]["share_of_sim_seconds"] >= threshold else None
-    if selected is None:
+    if not provided:
+        selected_subcomponent = None
+        recommended_next_action = "collect_sim_substage_telemetry"
+        selection_status = "insufficient_sim_substage_telemetry"
+    elif selected is None:
         selected_subcomponent = None
         recommended_next_action = "stop_sim_pipeline_work"
         selection_status = "no_stable_subcomponent"
@@ -280,6 +285,7 @@ def build_summary(top_level_decision, top_level_path, data, input_path, threshol
         "total_seconds": total_seconds,
         "sim_seconds": sim_seconds,
         "dominance_share_threshold": threshold,
+        "provided_subcomponent_count": len(provided),
         "selected_subcomponent": selected_subcomponent,
         "recommended_next_action": recommended_next_action,
         "allowed_next_actions": ALLOWED_NEXT_ACTIONS,

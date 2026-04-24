@@ -49,6 +49,7 @@ assert decision["recommended_next_action"] == expected_action, decision
 assert decision["selected_subcomponent"] == expected_component, decision
 assert cases[0].split("\t")[:4] == ["case_id", "subcomponent", "seconds", "share_of_sim_seconds"], cases
 assert budget["allowed_next_actions"] == [
+    "collect_sim_substage_telemetry",
     "profile_device_resident_state_handoff",
     "profile_device_side_ordered_candidate_maintenance",
     "profile_sim_initial_scan_kernel",
@@ -58,7 +59,42 @@ assert budget["allowed_next_actions"] == [
 PY
 }
 
+assert_insufficient_telemetry() {
+  python3 - "$OUT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+out_dir = Path(sys.argv[1])
+budget = json.loads((out_dir / "sim_pipeline_budget.json").read_text(encoding="utf-8"))
+decision = json.loads((out_dir / "sim_pipeline_budget_decision.json").read_text(encoding="utf-8"))
+
+assert budget["decision_status"] == "ready", budget
+assert budget["selection_status"] == "insufficient_sim_substage_telemetry", budget
+assert budget["recommended_next_action"] == "collect_sim_substage_telemetry", budget
+assert budget["selected_subcomponent"] is None, budget
+assert budget["provided_subcomponent_count"] == 0, budget
+assert decision["selection_status"] == "insufficient_sim_substage_telemetry", decision
+assert decision["recommended_next_action"] == "collect_sim_substage_telemetry", decision
+assert decision["runtime_prototype_allowed"] is False, decision
+PY
+}
+
 write_top_level_decision "sim" "profile_device_resident_sim_pipeline"
+
+cat >"$SIM_BUDGET" <<'EOF'
+{
+  "projected_total_seconds": 200.0,
+  "projected_sim_seconds": 100.0
+}
+EOF
+
+python3 ./scripts/summarize_longtarget_sim_pipeline_budget.py \
+  --top-level-budget-decision "$TOP_LEVEL_DECISION" \
+  --input-budget "$SIM_BUDGET" \
+  --output-dir "$OUT_DIR"
+
+assert_insufficient_telemetry
 
 cat >"$SIM_BUDGET" <<'EOF'
 {

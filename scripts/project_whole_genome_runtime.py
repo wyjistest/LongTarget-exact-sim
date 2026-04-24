@@ -198,8 +198,16 @@ def main() -> int:
 
     for projected_metric_key in (
         "sim_initial_scan_seconds",
+        "sim_initial_scan_gpu_seconds",
+        "sim_initial_scan_d2h_seconds",
         "sim_initial_scan_cpu_merge_seconds",
         "sim_initial_scan_cpu_merge_subtotal_seconds",
+        "sim_initial_summary_count",
+        "sim_initial_summary_bytes_d2h",
+        "sim_initial_candidate_state_bytes_d2h",
+        "sim_initial_d2h_transfer_count",
+        "sim_initial_host_rebuild_seconds",
+        "sim_initial_state_handoff_seconds",
         "sim_initial_run_summary_pipeline_seconds",
         "sim_initial_ordered_replay_seconds",
         "sim_initial_store_rebuild_seconds",
@@ -228,6 +236,11 @@ def main() -> int:
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds",
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds",
         "sim_initial_store_other_merge_residual_seconds",
+        "sim_initial_scan_sync_wait_seconds",
+        "sim_locate_seconds",
+        "sim_traceback_seconds",
+        "sim_safe_store_seconds",
+        "sim_output_materialization_seconds",
     ):
         add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
 
