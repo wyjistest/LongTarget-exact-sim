@@ -49,3 +49,4 @@ jobs:
           bash scripts/check_refresh_sim_initial_host_merge_candidate_index_structural_phase.sh
           bash scripts/check_summarize_sim_initial_host_merge_state_update_bookkeeping_classification.sh
           bash scripts/check_summarize_sim_initial_host_merge_profile_branch_rollup.sh
+          bash scripts/check_summarize_longtarget_top_level_perf_budget.sh
