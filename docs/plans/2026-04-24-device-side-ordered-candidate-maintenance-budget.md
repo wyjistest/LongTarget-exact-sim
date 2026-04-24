@@ -44,6 +44,23 @@ sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable
 
 `projected_` prefixes are also accepted. Missing required fields keep the phase at `collect_ordered_candidate_maintenance_telemetry`.
 
+## Current Telemetry Producer
+
+The benchmark stderr producer now emits `benchmark.sim_ordered_maintenance_*` fields from the existing host merge/context-apply path. The first implementation is deliberately conservative:
+
+```text
+candidate_event_count = context_apply_attempted_count, falling back to run_summaries_total
+ordered_segment_count = initial_reduce_chunks_replayed_total, falling back to one serial segment
+parallel_segment_count = ordered_segment_count
+serial_dependency_event_count = min(candidate_event_count, full_set_miss + floor_change + running_min_slot_change + victim_was_running_min)
+parallelizable_event_count = candidate_event_count - serial_dependency_event_count
+estimated_d2h_bytes_avoided = sim_initial_store_bytes_d2h
+estimated_host_rebuild_seconds_avoided = sim_initial_store_rebuild_seconds
+estimated_cpu_merge_seconds_avoidable = sim_initial_scan_cpu_merge_seconds
+```
+
+Projection scales counts, bytes, and seconds, but keeps segment lengths and dependency shares unscaled. These fields are evidence for Phase 3b feasibility only; they do not authorize a runtime prototype.
+
 ## Decision Gate
 
 ```text

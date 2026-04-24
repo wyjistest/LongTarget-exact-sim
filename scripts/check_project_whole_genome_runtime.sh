@@ -60,6 +60,25 @@ benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writebac
 benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds=0.0001
 benchmark.sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds=0.0004
 benchmark.sim_initial_store_other_merge_residual_seconds=0.03
+benchmark.sim_ordered_maintenance_candidate_event_count=30
+benchmark.sim_ordered_maintenance_ordered_segment_count=2
+benchmark.sim_ordered_maintenance_parallel_segment_count=2
+benchmark.sim_ordered_maintenance_mean_segment_length=15
+benchmark.sim_ordered_maintenance_p90_segment_length=20
+benchmark.sim_ordered_maintenance_full_set_miss_count=5
+benchmark.sim_ordered_maintenance_existing_candidate_hit_count=20
+benchmark.sim_ordered_maintenance_candidate_replacement_count=3
+benchmark.sim_ordered_maintenance_state_update_count=18
+benchmark.sim_ordered_maintenance_floor_change_count=4
+benchmark.sim_ordered_maintenance_running_min_slot_change_count=2
+benchmark.sim_ordered_maintenance_candidate_replacement_dependency_count=1
+benchmark.sim_ordered_maintenance_serial_dependency_event_count=12
+benchmark.sim_ordered_maintenance_serial_dependency_share=0.4
+benchmark.sim_ordered_maintenance_parallelizable_event_count=18
+benchmark.sim_ordered_maintenance_parallelizable_event_share=0.6
+benchmark.sim_ordered_maintenance_estimated_d2h_bytes_avoided=1000
+benchmark.sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided=0.3
+benchmark.sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable=0.5
 benchmark.sim_initial_scan_sync_wait_seconds=0.08
 benchmark.sim_locate_seconds=0.13
 benchmark.sim_traceback_seconds=0.17
@@ -137,6 +156,25 @@ assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_mi
 assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds"] - 0.0005) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds"] - 0.002) < 1e-9
 assert abs(data["projected_sim_initial_store_other_merge_residual_seconds"] - 0.15) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_candidate_event_count"] - 150.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_ordered_segment_count"] - 10.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_parallel_segment_count"] - 10.0) < 1e-9
+assert abs(data["sim_ordered_maintenance_mean_segment_length"] - 15.0) < 1e-9
+assert abs(data["sim_ordered_maintenance_p90_segment_length"] - 20.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_full_set_miss_count"] - 25.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_existing_candidate_hit_count"] - 100.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_candidate_replacement_count"] - 15.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_state_update_count"] - 90.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_floor_change_count"] - 20.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_running_min_slot_change_count"] - 10.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_candidate_replacement_dependency_count"] - 5.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_serial_dependency_event_count"] - 60.0) < 1e-9
+assert abs(data["sim_ordered_maintenance_serial_dependency_share"] - 0.4) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_parallelizable_event_count"] - 90.0) < 1e-9
+assert abs(data["sim_ordered_maintenance_parallelizable_event_share"] - 0.6) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_estimated_d2h_bytes_avoided"] - 5000.0) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided"] - 1.5) < 1e-9
+assert abs(data["projected_sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable"] - 2.5) < 1e-9
 assert abs(data["projected_sim_initial_scan_sync_wait_seconds"] - 0.4) < 1e-9
 assert abs(data["projected_sim_locate_seconds"] - 0.65) < 1e-9
 assert abs(data["projected_sim_traceback_seconds"] - 0.85) < 1e-9
@@ -216,6 +254,25 @@ assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_
 assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds" not in data
 assert "projected_sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds" not in data
 assert "projected_sim_initial_store_other_merge_residual_seconds" not in data
+assert "projected_sim_ordered_maintenance_candidate_event_count" not in data
+assert "projected_sim_ordered_maintenance_ordered_segment_count" not in data
+assert "projected_sim_ordered_maintenance_parallel_segment_count" not in data
+assert "sim_ordered_maintenance_mean_segment_length" not in data
+assert "sim_ordered_maintenance_p90_segment_length" not in data
+assert "projected_sim_ordered_maintenance_full_set_miss_count" not in data
+assert "projected_sim_ordered_maintenance_existing_candidate_hit_count" not in data
+assert "projected_sim_ordered_maintenance_candidate_replacement_count" not in data
+assert "projected_sim_ordered_maintenance_state_update_count" not in data
+assert "projected_sim_ordered_maintenance_floor_change_count" not in data
+assert "projected_sim_ordered_maintenance_running_min_slot_change_count" not in data
+assert "projected_sim_ordered_maintenance_candidate_replacement_dependency_count" not in data
+assert "projected_sim_ordered_maintenance_serial_dependency_event_count" not in data
+assert "sim_ordered_maintenance_serial_dependency_share" not in data
+assert "projected_sim_ordered_maintenance_parallelizable_event_count" not in data
+assert "sim_ordered_maintenance_parallelizable_event_share" not in data
+assert "projected_sim_ordered_maintenance_estimated_d2h_bytes_avoided" not in data
+assert "projected_sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided" not in data
+assert "projected_sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable" not in data
 assert "projected_sim_initial_scan_sync_wait_seconds" not in data
 assert "projected_sim_locate_seconds" not in data
 assert "projected_sim_traceback_seconds" not in data

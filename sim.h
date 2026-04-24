@@ -6440,6 +6440,30 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyFullSetMissCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyFloorChangedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyVictimWasRunningMinCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simInitialStoreOtherMergeContextApplyLookupHitCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -7326,6 +7350,18 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simInitialStoreOtherMergeContextApplyNoopCount().fetch_add(
 		    telemetry.noopCount,
 		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyFullSetMissCount().fetch_add(
+		    telemetry.fullSetMissCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyFloorChangedCount().fetch_add(
+		    telemetry.floorChangedCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount().fetch_add(
+		    telemetry.runningMinSlotChangedCount,
+		    std::memory_order_relaxed);
+		  simInitialStoreOtherMergeContextApplyVictimWasRunningMinCount().fetch_add(
+		    telemetry.victimWasRunningMinCount,
+		    std::memory_order_relaxed);
 		  simInitialStoreOtherMergeContextApplyLookupHitCount().fetch_add(
 		    telemetry.lookupHitCount,
 		    std::memory_order_relaxed);
@@ -8026,6 +8062,22 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			    simInitialStoreOtherMergeContextApplyEvictionSelectedCount().load(std::memory_order_relaxed);
 			  reusedSlotCount =
 			    simInitialStoreOtherMergeContextApplyReusedSlotCount().load(std::memory_order_relaxed);
+			}
+
+			inline void getSimInitialStoreOtherMergeContextApplyDependencyStats(
+			  uint64_t &fullSetMissCount,
+			  uint64_t &floorChangedCount,
+			  uint64_t &runningMinSlotChangedCount,
+			  uint64_t &victimWasRunningMinCount)
+			{
+			  fullSetMissCount =
+			    simInitialStoreOtherMergeContextApplyFullSetMissCount().load(std::memory_order_relaxed);
+			  floorChangedCount =
+			    simInitialStoreOtherMergeContextApplyFloorChangedCount().load(std::memory_order_relaxed);
+			  runningMinSlotChangedCount =
+			    simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount().load(std::memory_order_relaxed);
+			  victimWasRunningMinCount =
+			    simInitialStoreOtherMergeContextApplyVictimWasRunningMinCount().load(std::memory_order_relaxed);
 			}
 
 			inline void getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCountStats(

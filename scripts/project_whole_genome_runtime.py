@@ -120,6 +120,19 @@ def add_optional_projected_metric(
         report[f"projected_{key}"] = projected
 
 
+def add_optional_unscaled_metric(
+    report: dict[str, object],
+    metrics: dict[str, object],
+    key: str,
+):
+    value = metrics.get(key)
+    if value is None:
+        return
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"benchmark.{key} is not numeric: {value!r}")
+    report[key] = float(value)
+
+
 def add_optional_projected_alias(
     report: dict[str, object],
     metrics: dict[str, object],
@@ -253,6 +266,21 @@ def main() -> int:
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_start_index_rebuild_trace_record_seconds",
         "sim_initial_store_other_merge_context_apply_lookup_miss_reuse_writeback_aux_other_residual_residual_seconds",
         "sim_initial_store_other_merge_residual_seconds",
+        "sim_ordered_maintenance_candidate_event_count",
+        "sim_ordered_maintenance_ordered_segment_count",
+        "sim_ordered_maintenance_parallel_segment_count",
+        "sim_ordered_maintenance_full_set_miss_count",
+        "sim_ordered_maintenance_existing_candidate_hit_count",
+        "sim_ordered_maintenance_candidate_replacement_count",
+        "sim_ordered_maintenance_state_update_count",
+        "sim_ordered_maintenance_floor_change_count",
+        "sim_ordered_maintenance_running_min_slot_change_count",
+        "sim_ordered_maintenance_candidate_replacement_dependency_count",
+        "sim_ordered_maintenance_serial_dependency_event_count",
+        "sim_ordered_maintenance_parallelizable_event_count",
+        "sim_ordered_maintenance_estimated_d2h_bytes_avoided",
+        "sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided",
+        "sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable",
         "sim_initial_scan_sync_wait_seconds",
         "sim_locate_seconds",
         "sim_traceback_seconds",
@@ -260,6 +288,14 @@ def main() -> int:
         "sim_output_materialization_seconds",
     ):
         add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
+
+    for unscaled_metric_key in (
+        "sim_ordered_maintenance_mean_segment_length",
+        "sim_ordered_maintenance_p90_segment_length",
+        "sim_ordered_maintenance_serial_dependency_share",
+        "sim_ordered_maintenance_parallelizable_event_share",
+    ):
+        add_optional_unscaled_metric(report, metrics, unscaled_metric_key)
 
     for source_key, output_key in (
         ("sim_initial_run_summaries_total", "sim_initial_summary_count"),

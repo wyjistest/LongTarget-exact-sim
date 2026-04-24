@@ -2282,6 +2282,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyEvictionSelectedCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyReusedSlotCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyFullSetMissCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyFloorChangedCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount = 0;
+  uint64_t simInitialStoreOtherMergeContextApplyVictimWasRunningMinCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount = 0;
   uint64_t simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxBookkeepingCount = 0;
@@ -2338,6 +2342,11 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialStoreOtherMergeContextApplyLookupMissCandidateSetFullCount,
     simInitialStoreOtherMergeContextApplyEvictionSelectedCount,
     simInitialStoreOtherMergeContextApplyReusedSlotCount);
+  getSimInitialStoreOtherMergeContextApplyDependencyStats(
+    simInitialStoreOtherMergeContextApplyFullSetMissCount,
+    simInitialStoreOtherMergeContextApplyFloorChangedCount,
+    simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount,
+    simInitialStoreOtherMergeContextApplyVictimWasRunningMinCount);
   getSimInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCountStats(
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackVictimResetCount,
     simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackCandidateCopyCount,
@@ -2363,6 +2372,57 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simInitialStoreOtherMergeResidualSeconds =
     simInitialStoreOtherMergeSeconds -
     simInitialStoreOtherMergeContextApplySeconds;
+  const uint64_t simOrderedMaintenanceCandidateEventCount =
+    (simInitialStoreOtherMergeContextApplyAttemptedCount > 0) ?
+    simInitialStoreOtherMergeContextApplyAttemptedCount :
+    simInitialRunSummariesTotal;
+  const uint64_t simOrderedMaintenanceOrderedSegmentCount =
+    (simInitialReduceChunkReplayedTotal > 0) ?
+    simInitialReduceChunkReplayedTotal :
+    ((simOrderedMaintenanceCandidateEventCount > 0) ? 1 : 0);
+  const uint64_t simOrderedMaintenanceParallelSegmentCount =
+    simOrderedMaintenanceOrderedSegmentCount;
+  const double simOrderedMaintenanceMeanSegmentLength =
+    (simOrderedMaintenanceOrderedSegmentCount > 0) ?
+    (static_cast<double>(simOrderedMaintenanceCandidateEventCount) /
+     static_cast<double>(simOrderedMaintenanceOrderedSegmentCount)) :
+    0.0;
+  const double simOrderedMaintenanceP90SegmentLength =
+    (simOrderedMaintenanceOrderedSegmentCount > 1) ?
+    simOrderedMaintenanceMeanSegmentLength :
+    static_cast<double>(simOrderedMaintenanceCandidateEventCount);
+  const uint64_t simOrderedMaintenanceCandidateReplacementDependencyCount =
+    simInitialStoreOtherMergeContextApplyVictimWasRunningMinCount;
+  uint64_t simOrderedMaintenanceSerialDependencyEventCount =
+    simInitialStoreOtherMergeContextApplyFullSetMissCount +
+    simInitialStoreOtherMergeContextApplyFloorChangedCount +
+    simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount +
+    simOrderedMaintenanceCandidateReplacementDependencyCount;
+  if(simOrderedMaintenanceSerialDependencyEventCount >
+     simOrderedMaintenanceCandidateEventCount)
+  {
+    simOrderedMaintenanceSerialDependencyEventCount =
+      simOrderedMaintenanceCandidateEventCount;
+  }
+  const uint64_t simOrderedMaintenanceParallelizableEventCount =
+    simOrderedMaintenanceCandidateEventCount -
+    simOrderedMaintenanceSerialDependencyEventCount;
+  const double simOrderedMaintenanceSerialDependencyShare =
+    (simOrderedMaintenanceCandidateEventCount > 0) ?
+    (static_cast<double>(simOrderedMaintenanceSerialDependencyEventCount) /
+     static_cast<double>(simOrderedMaintenanceCandidateEventCount)) :
+    0.0;
+  const double simOrderedMaintenanceParallelizableEventShare =
+    (simOrderedMaintenanceCandidateEventCount > 0) ?
+    (static_cast<double>(simOrderedMaintenanceParallelizableEventCount) /
+     static_cast<double>(simOrderedMaintenanceCandidateEventCount)) :
+    0.0;
+  const uint64_t simOrderedMaintenanceEstimatedD2HBytesAvoided =
+    simInitialStoreBytesD2H;
+  const double simOrderedMaintenanceEstimatedHostRebuildSecondsAvoided =
+    simInitialStoreRebuildSeconds;
+  const double simOrderedMaintenanceEstimatedCpuMergeSecondsAvoidable =
+    simInitialScanCpuMergeSeconds;
   const double simInitialRunSummaryPipelineSeconds =
     simInitialHashReduceSeconds +
     simInitialSegmentedReduceSeconds +
@@ -2484,6 +2544,44 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialStoreOtherMergeContextApplyLookupMissReuseWritebackAuxUpdatesTotal<<endl;
   cerr<<"benchmark.sim_initial_store_other_merge_residual_seconds="
       <<simInitialStoreOtherMergeResidualSeconds<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_candidate_event_count="
+      <<simOrderedMaintenanceCandidateEventCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_ordered_segment_count="
+      <<simOrderedMaintenanceOrderedSegmentCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_parallel_segment_count="
+      <<simOrderedMaintenanceParallelSegmentCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_mean_segment_length="
+      <<simOrderedMaintenanceMeanSegmentLength<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_p90_segment_length="
+      <<simOrderedMaintenanceP90SegmentLength<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_full_set_miss_count="
+      <<simInitialStoreOtherMergeContextApplyFullSetMissCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_existing_candidate_hit_count="
+      <<simInitialStoreOtherMergeContextApplyLookupHitCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_candidate_replacement_count="
+      <<simInitialStoreOtherMergeContextApplyEvictionSelectedCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_update_count="
+      <<simInitialStoreOtherMergeContextApplyModifiedCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_floor_change_count="
+      <<simInitialStoreOtherMergeContextApplyFloorChangedCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_running_min_slot_change_count="
+      <<simInitialStoreOtherMergeContextApplyRunningMinSlotChangedCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_candidate_replacement_dependency_count="
+      <<simOrderedMaintenanceCandidateReplacementDependencyCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_serial_dependency_event_count="
+      <<simOrderedMaintenanceSerialDependencyEventCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_serial_dependency_share="
+      <<simOrderedMaintenanceSerialDependencyShare<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_parallelizable_event_count="
+      <<simOrderedMaintenanceParallelizableEventCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_parallelizable_event_share="
+      <<simOrderedMaintenanceParallelizableEventShare<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_estimated_d2h_bytes_avoided="
+      <<simOrderedMaintenanceEstimatedD2HBytesAvoided<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided="
+      <<simOrderedMaintenanceEstimatedHostRebuildSecondsAvoided<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable="
+      <<simOrderedMaintenanceEstimatedCpuMergeSecondsAvoidable<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
