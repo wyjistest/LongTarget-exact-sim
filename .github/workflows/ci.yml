@@ -54,3 +54,4 @@ jobs:
           bash scripts/check_refresh_longtarget_sim_pipeline_budget.sh
           bash scripts/check_summarize_longtarget_sim_pipeline_budget_rollup.sh
           bash scripts/check_summarize_longtarget_sim_ordered_candidate_maintenance_budget.sh
+          bash scripts/check_summarize_longtarget_device_ordered_maintenance_shadow_design.sh
