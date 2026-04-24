@@ -110,6 +110,9 @@ write_projection_complete() {
   local ordered_segment_source="${8:-event_level_ordered_segment}"
   local serial_dependency_source="${9:-floor_running_min_event_level}"
   local parallelizable_event_source="${10:-event_level_estimate}"
+  local state_machine_source="${11:-independent_state_machine}"
+  local inter_parallelism="${12:-${segment_count}}"
+  local intra_serial_share="${13:-${serial_share}}"
   cat >"$path" <<EOF
 {
   "projected_total_seconds": 100.0,
@@ -129,6 +132,7 @@ write_projection_complete() {
   "sim_ordered_maintenance_serial_dependency_source": "${serial_dependency_source}",
   "sim_ordered_maintenance_parallelizable_event_source": "${parallelizable_event_source}",
   "sim_ordered_maintenance_ordered_shape_confidence": "${ordered_shape_confidence}",
+  "sim_ordered_maintenance_state_machine_source": "${state_machine_source}",
   "projected_sim_ordered_maintenance_state_machine_count": ${segment_count},
   "projected_sim_ordered_maintenance_state_machine_nonempty_count": ${segment_count},
   "projected_sim_ordered_maintenance_state_machine_event_count_total": ${event_count},
@@ -137,7 +141,11 @@ write_projection_complete() {
   "sim_ordered_maintenance_state_machine_event_count_p99": 32.0,
   "sim_ordered_maintenance_state_machine_event_count_max": 32.0,
   "sim_ordered_maintenance_state_machine_work_imbalance_ratio": 1.0,
-  "sim_ordered_maintenance_state_machine_ideal_parallelism": ${segment_count}
+  "sim_ordered_maintenance_state_machine_ideal_parallelism": ${inter_parallelism},
+  "sim_ordered_maintenance_work_imbalance_ratio": 1.0,
+  "sim_ordered_maintenance_ideal_parallelism": ${inter_parallelism},
+  "sim_ordered_maintenance_intra_state_machine_serial_dependency_share": ${intra_serial_share},
+  "sim_ordered_maintenance_inter_state_machine_parallelism": ${inter_parallelism}
 }
 EOF
 }
@@ -183,10 +191,10 @@ FALLBACK_B="$WORK/fallback_b/projected_report.json"
 mkdir -p "$(dirname "$FALLBACK_A")" "$(dirname "$FALLBACK_B")"
 write_projection_complete \
   "$FALLBACK_A" 12000 1 1.0 0.0 38.0 \
-  fallback_conservative fallback_single_segment conservative_all_serial conservative_zero
+  fallback_conservative fallback_single_segment conservative_all_serial conservative_zero fallback_single_segment 1 1.0
 write_projection_complete \
   "$FALLBACK_B" 18000 1 1.0 0.0 42.0 \
-  fallback_conservative fallback_single_segment conservative_all_serial conservative_zero
+  fallback_conservative fallback_single_segment conservative_all_serial conservative_zero fallback_single_segment 1 1.0
 write_pipeline_budget "$WORK/fallback_a/sim_pipeline_budget" "sample" "$FALLBACK_A" 100.0 80.0 50.0 0.625
 write_pipeline_budget "$WORK/fallback_b/sim_pipeline_budget" "heavy" "$FALLBACK_B" 120.0 90.0 60.0 0.667
 write_rollup \
@@ -210,6 +218,41 @@ assert decision["recommended_next_action"] == "refine_ordered_maintenance_shape_
 assert decision["runtime_prototype_allowed"] is False, decision
 assert summary["aggregate"]["ordered_shape_confidence"] == "fallback_conservative", summary
 assert summary["aggregate"]["ordered_segment_sources"] == ["fallback_single_segment"], summary
+PY
+
+COARSE_PARALLEL_A="$WORK/coarse_parallel_a/projected_report.json"
+COARSE_PARALLEL_B="$WORK/coarse_parallel_b/projected_report.json"
+mkdir -p "$(dirname "$COARSE_PARALLEL_A")" "$(dirname "$COARSE_PARALLEL_B")"
+write_projection_complete \
+  "$COARSE_PARALLEL_A" 12000 16 1.0 0.0 38.0 \
+  coarse case_rule_region_state_machine conservative_all_serial conservative_zero case_rule_region_state_machine 16 1.0
+write_projection_complete \
+  "$COARSE_PARALLEL_B" 18000 24 1.0 0.0 42.0 \
+  coarse case_rule_region_state_machine conservative_all_serial conservative_zero case_rule_region_state_machine 24 1.0
+write_pipeline_budget "$WORK/coarse_parallel_a/sim_pipeline_budget" "sample" "$COARSE_PARALLEL_A" 100.0 80.0 50.0 0.625
+write_pipeline_budget "$WORK/coarse_parallel_b/sim_pipeline_budget" "heavy" "$COARSE_PARALLEL_B" 120.0 90.0 60.0 0.667
+write_rollup \
+  "$WORK/coarse_parallel_a/sim_pipeline_budget/sim_pipeline_budget.json" \
+  "$WORK/coarse_parallel_b/sim_pipeline_budget/sim_pipeline_budget.json"
+
+python3 scripts/summarize_longtarget_sim_ordered_candidate_maintenance_budget.py \
+  --sim-pipeline-budget-rollup-decision "$ROLLUP_DECISION" \
+  --output-dir "$OUT_DIR"
+
+python3 - <<'PY' "$OUT_DIR/ordered_candidate_maintenance_budget_decision.json" "$OUT_DIR/ordered_candidate_maintenance_budget_summary.json"
+import json
+import sys
+from pathlib import Path
+
+decision = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+summary = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+assert decision["telemetry_status"] == "closed", decision
+assert decision["device_side_ordered_candidate_maintenance_feasibility"] == "plausible", decision
+assert decision["recommended_next_action"] == "design_device_side_ordered_candidate_maintenance_shadow", decision
+assert decision["runtime_prototype_allowed"] is False, decision
+assert summary["aggregate"]["ordered_shape_confidence"] == "coarse", summary
+assert summary["aggregate"]["state_machine_sources"] == ["case_rule_region_state_machine"], summary
+assert summary["aggregate"]["inter_state_machine_parallelism"] >= 8.0, summary
 PY
 
 COMPLETE_A="$WORK/complete_a/projected_report.json"

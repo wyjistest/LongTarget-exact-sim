@@ -44,6 +44,7 @@ sim_ordered_maintenance_ordered_segment_source
 sim_ordered_maintenance_serial_dependency_source
 sim_ordered_maintenance_parallelizable_event_source
 sim_ordered_maintenance_ordered_shape_confidence
+sim_ordered_maintenance_state_machine_source
 sim_ordered_maintenance_state_machine_count
 sim_ordered_maintenance_state_machine_nonempty_count
 sim_ordered_maintenance_state_machine_event_count_total
@@ -53,6 +54,8 @@ sim_ordered_maintenance_state_machine_event_count_p99
 sim_ordered_maintenance_state_machine_event_count_max
 sim_ordered_maintenance_state_machine_work_imbalance_ratio
 sim_ordered_maintenance_state_machine_ideal_parallelism
+sim_ordered_maintenance_intra_state_machine_serial_dependency_share
+sim_ordered_maintenance_inter_state_machine_parallelism
 ```
 
 `projected_` prefixes are also accepted for numeric counts, bytes, and seconds. Source/confidence fields are string metadata and are passed through unscaled. Missing required fields keep the phase at `collect_ordered_candidate_maintenance_telemetry`.
@@ -63,7 +66,8 @@ The benchmark stderr producer now emits `benchmark.sim_ordered_maintenance_*` fi
 
 ```text
 candidate_event_count = context_apply_attempted_count, falling back to run_summaries_total
-ordered_segment_count = initial_reduce_chunks_replayed_total, falling back to one serial segment
+state_machine_count = executed exact-SIM task count, falling back to one serial segment
+ordered_segment_count = initial_reduce_chunks_replayed_total, falling back to state_machine_count
 parallel_segment_count = ordered_segment_count
 serial_dependency_event_count = min(candidate_event_count, full_set_miss + floor_change + running_min_slot_change + victim_was_running_min)
 parallelizable_event_count = candidate_event_count - serial_dependency_event_count
@@ -71,8 +75,10 @@ estimated_d2h_bytes_avoided = sim_initial_store_bytes_d2h
 estimated_host_rebuild_seconds_avoided = sim_initial_store_rebuild_seconds
 estimated_cpu_merge_seconds_avoidable = sim_initial_scan_cpu_merge_seconds
 ordered_shape_confidence = fallback_conservative or coarse for the current producer
-state_machine_count = ordered_segment_count as a conservative independent-machine proxy
+state_machine_source = case_rule_region_state_machine when executed task count is available
 state_machine_ideal_parallelism = total_events / max_events_per_state_machine
+intra_state_machine_serial_dependency_share = serial_dependency_share
+inter_state_machine_parallelism = state_machine_ideal_parallelism
 ```
 
 Projection scales counts, bytes, and seconds, but keeps segment lengths, dependency shares, source strings, confidence, and ratios unscaled. These fields are evidence for Phase 3b feasibility only; they do not authorize a runtime prototype.
@@ -86,17 +92,20 @@ if required ordered-maintenance fields missing:
 elif host_cpu_merge_share_of_sim < 0.30:
     recommended_next_action = stop_host_cpu_merge_work
 
-elif ordered_shape_confidence in {fallback_conservative, coarse}:
+elif ordered_shape_confidence == fallback_conservative:
     recommended_next_action = refine_ordered_maintenance_shape_telemetry
-
-elif ordered_shape_confidence in {event_level, validated}
-     and serial_dependency_share >= 0.90
-     and parallelizable_event_share <= 0.10:
-    recommended_next_action = stop_or_rethink_device_side_ordered_candidate_maintenance
 
 elif parallelizable_event_share >= 0.50
      and estimated_cpu_merge_seconds_avoidable is material:
     recommended_next_action = design_device_side_ordered_candidate_maintenance_shadow
+
+elif inter_state_machine_parallelism >= 8
+     and estimated_cpu_merge_seconds_avoidable is material:
+    recommended_next_action = design_device_side_ordered_candidate_maintenance_shadow
+
+elif intra_state_machine_serial_dependency_share >= 0.90
+     and inter_state_machine_parallelism < 2:
+    recommended_next_action = stop_or_rethink_device_side_ordered_candidate_maintenance
 
 elif d2h_or_state_handoff bytes also material:
     recommended_next_action = profile_device_resident_state_handoff_with_ordered_maintenance

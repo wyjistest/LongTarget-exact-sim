@@ -316,6 +316,10 @@ def main() -> int:
         "sim_ordered_maintenance_state_machine_event_count_max",
         "sim_ordered_maintenance_state_machine_work_imbalance_ratio",
         "sim_ordered_maintenance_state_machine_ideal_parallelism",
+        "sim_ordered_maintenance_work_imbalance_ratio",
+        "sim_ordered_maintenance_ideal_parallelism",
+        "sim_ordered_maintenance_intra_state_machine_serial_dependency_share",
+        "sim_ordered_maintenance_inter_state_machine_parallelism",
     ):
         add_optional_unscaled_metric(report, metrics, unscaled_metric_key)
 
@@ -324,6 +328,7 @@ def main() -> int:
         "sim_ordered_maintenance_serial_dependency_source",
         "sim_ordered_maintenance_parallelizable_event_source",
         "sim_ordered_maintenance_ordered_shape_confidence",
+        "sim_ordered_maintenance_state_machine_source",
     ):
         add_optional_string_metric(report, metrics, string_metric_key)
 

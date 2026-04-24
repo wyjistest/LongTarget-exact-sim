@@ -98,10 +98,22 @@ REQUIRED_SHAPE_KEYS = {
     "state_machine_work_imbalance_ratio": (
         "projected_sim_ordered_maintenance_state_machine_work_imbalance_ratio",
         "sim_ordered_maintenance_state_machine_work_imbalance_ratio",
+        "projected_sim_ordered_maintenance_work_imbalance_ratio",
+        "sim_ordered_maintenance_work_imbalance_ratio",
     ),
     "state_machine_ideal_parallelism": (
         "projected_sim_ordered_maintenance_state_machine_ideal_parallelism",
         "sim_ordered_maintenance_state_machine_ideal_parallelism",
+        "projected_sim_ordered_maintenance_ideal_parallelism",
+        "sim_ordered_maintenance_ideal_parallelism",
+    ),
+    "intra_state_machine_serial_dependency_share": (
+        "projected_sim_ordered_maintenance_intra_state_machine_serial_dependency_share",
+        "sim_ordered_maintenance_intra_state_machine_serial_dependency_share",
+    ),
+    "inter_state_machine_parallelism": (
+        "projected_sim_ordered_maintenance_inter_state_machine_parallelism",
+        "sim_ordered_maintenance_inter_state_machine_parallelism",
     ),
 }
 
@@ -117,6 +129,9 @@ REQUIRED_SOURCE_KEYS = {
     ),
     "ordered_shape_confidence": (
         "sim_ordered_maintenance_ordered_shape_confidence",
+    ),
+    "state_machine_source": (
+        "sim_ordered_maintenance_state_machine_source",
     ),
 }
 
@@ -149,6 +164,7 @@ CASE_FIELDS = [
     "serial_dependency_source",
     "parallelizable_event_source",
     "ordered_shape_confidence",
+    "state_machine_source",
     "mean_segment_length",
     "p90_segment_length",
     "serial_dependency_share",
@@ -165,6 +181,8 @@ CASE_FIELDS = [
     "state_machine_event_count_max",
     "state_machine_work_imbalance_ratio",
     "state_machine_ideal_parallelism",
+    "intra_state_machine_serial_dependency_share",
+    "inter_state_machine_parallelism",
     "candidate_state_bytes_d2h",
     "missing_required_field_count",
 ]
@@ -438,6 +456,7 @@ def aggregate_rows(rows):
         "ordered_segment_sources": unique_strings(rows, "ordered_segment_source"),
         "serial_dependency_sources": unique_strings(rows, "serial_dependency_source"),
         "parallelizable_event_sources": unique_strings(rows, "parallelizable_event_source"),
+        "state_machine_sources": unique_strings(rows, "state_machine_source"),
         "ordered_shape_confidence": aggregate_shape_confidence(rows),
         "mean_segment_length": weighted_average(rows, "mean_segment_length", "candidate_event_count"),
         "p90_segment_length": max(
@@ -486,6 +505,17 @@ def aggregate_rows(rows):
         "state_machine_event_count_max": state_machine_event_count_max,
         "state_machine_work_imbalance_ratio": state_machine_work_imbalance_ratio,
         "state_machine_ideal_parallelism": state_machine_ideal_parallelism,
+        "intra_state_machine_serial_dependency_share": weighted_average(
+            rows, "intra_state_machine_serial_dependency_share", "candidate_event_count"
+        ),
+        "inter_state_machine_parallelism": max(
+            (
+                row["shape"].get("inter_state_machine_parallelism")
+                for row in rows
+                if row["shape"].get("inter_state_machine_parallelism") is not None
+            ),
+            default=state_machine_ideal_parallelism,
+        ),
         "candidate_state_bytes_d2h": sum_shape(rows, "candidate_state_bytes_d2h"),
         "missing_required_field_count": sum(
             row["shape"]["missing_required_field_count"] for row in rows
@@ -542,7 +572,7 @@ def decide(rows, aggregate, args):
     ):
         return ("closed", "weak", "stop_host_cpu_merge_work")
     shape_confidence = aggregate.get("ordered_shape_confidence")
-    if shape_confidence in {"fallback_conservative", "coarse"}:
+    if shape_confidence == "fallback_conservative":
         return (
             "closed",
             "weak",
@@ -550,18 +580,12 @@ def decide(rows, aggregate, args):
         )
     serial_share = aggregate.get("serial_dependency_share")
     parallel_share = aggregate.get("parallelizable_event_share")
-    if (
-        shape_confidence in {"event_level", "validated"}
-        and serial_share is not None
-        and serial_share >= args.serial_dependency_stop_threshold
-        and parallel_share is not None
-        and parallel_share <= args.parallelizable_stop_threshold
-    ):
-        return (
-            "closed",
-            "blocked_by_order_dependency",
-            "stop_or_rethink_device_side_ordered_candidate_maintenance",
-        )
+    intra_serial_share = aggregate.get("intra_state_machine_serial_dependency_share")
+    if intra_serial_share is None:
+        intra_serial_share = serial_share
+    inter_parallelism = aggregate.get("inter_state_machine_parallelism")
+    if inter_parallelism is None:
+        inter_parallelism = aggregate.get("state_machine_ideal_parallelism")
     avoidable = aggregate.get("estimated_cpu_merge_seconds_avoidable")
     if (
         parallel_share is not None
@@ -574,6 +598,28 @@ def decide(rows, aggregate, args):
             "closed",
             feasibility,
             "design_device_side_ordered_candidate_maintenance_shadow",
+        )
+    if (
+        inter_parallelism is not None
+        and inter_parallelism >= 8.0
+        and avoidable is not None
+        and avoidable > 0.0
+    ):
+        return (
+            "closed",
+            "plausible",
+            "design_device_side_ordered_candidate_maintenance_shadow",
+        )
+    if (
+        shape_confidence in {"coarse", "event_level", "validated"}
+        and intra_serial_share is not None
+        and intra_serial_share >= args.serial_dependency_stop_threshold
+        and (inter_parallelism is None or inter_parallelism < 2.0)
+    ):
+        return (
+            "closed",
+            "blocked_by_order_dependency",
+            "stop_or_rethink_device_side_ordered_candidate_maintenance",
         )
     if aggregate.get("estimated_d2h_bytes_avoided"):
         return (

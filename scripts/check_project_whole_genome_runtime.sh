@@ -83,6 +83,7 @@ benchmark.sim_ordered_maintenance_ordered_segment_source=reducer_chunk
 benchmark.sim_ordered_maintenance_serial_dependency_source=floor_running_min_event_level
 benchmark.sim_ordered_maintenance_parallelizable_event_source=segment_based_estimate
 benchmark.sim_ordered_maintenance_ordered_shape_confidence=coarse
+benchmark.sim_ordered_maintenance_state_machine_source=case_rule_region_state_machine
 benchmark.sim_ordered_maintenance_state_machine_count=2
 benchmark.sim_ordered_maintenance_state_machine_nonempty_count=2
 benchmark.sim_ordered_maintenance_state_machine_event_count_total=30
@@ -92,6 +93,10 @@ benchmark.sim_ordered_maintenance_state_machine_event_count_p99=20
 benchmark.sim_ordered_maintenance_state_machine_event_count_max=20
 benchmark.sim_ordered_maintenance_state_machine_work_imbalance_ratio=1.333333333333
 benchmark.sim_ordered_maintenance_state_machine_ideal_parallelism=1.5
+benchmark.sim_ordered_maintenance_work_imbalance_ratio=1.333333333333
+benchmark.sim_ordered_maintenance_ideal_parallelism=1.5
+benchmark.sim_ordered_maintenance_intra_state_machine_serial_dependency_share=0.4
+benchmark.sim_ordered_maintenance_inter_state_machine_parallelism=1.5
 benchmark.sim_initial_scan_sync_wait_seconds=0.08
 benchmark.sim_locate_seconds=0.13
 benchmark.sim_traceback_seconds=0.17
@@ -192,6 +197,7 @@ assert data["sim_ordered_maintenance_ordered_segment_source"] == "reducer_chunk"
 assert data["sim_ordered_maintenance_serial_dependency_source"] == "floor_running_min_event_level"
 assert data["sim_ordered_maintenance_parallelizable_event_source"] == "segment_based_estimate"
 assert data["sim_ordered_maintenance_ordered_shape_confidence"] == "coarse"
+assert data["sim_ordered_maintenance_state_machine_source"] == "case_rule_region_state_machine"
 assert abs(data["projected_sim_ordered_maintenance_state_machine_count"] - 10.0) < 1e-9
 assert abs(data["projected_sim_ordered_maintenance_state_machine_nonempty_count"] - 10.0) < 1e-9
 assert abs(data["projected_sim_ordered_maintenance_state_machine_event_count_total"] - 150.0) < 1e-9
@@ -201,6 +207,10 @@ assert abs(data["sim_ordered_maintenance_state_machine_event_count_p99"] - 20.0)
 assert abs(data["sim_ordered_maintenance_state_machine_event_count_max"] - 20.0) < 1e-9
 assert abs(data["sim_ordered_maintenance_state_machine_work_imbalance_ratio"] - 1.333333333333) < 1e-9
 assert abs(data["sim_ordered_maintenance_state_machine_ideal_parallelism"] - 1.5) < 1e-9
+assert abs(data["sim_ordered_maintenance_work_imbalance_ratio"] - 1.333333333333) < 1e-9
+assert abs(data["sim_ordered_maintenance_ideal_parallelism"] - 1.5) < 1e-9
+assert abs(data["sim_ordered_maintenance_intra_state_machine_serial_dependency_share"] - 0.4) < 1e-9
+assert abs(data["sim_ordered_maintenance_inter_state_machine_parallelism"] - 1.5) < 1e-9
 assert abs(data["projected_sim_initial_scan_sync_wait_seconds"] - 0.4) < 1e-9
 assert abs(data["projected_sim_locate_seconds"] - 0.65) < 1e-9
 assert abs(data["projected_sim_traceback_seconds"] - 0.85) < 1e-9
@@ -303,6 +313,7 @@ assert "sim_ordered_maintenance_ordered_segment_source" not in data
 assert "sim_ordered_maintenance_serial_dependency_source" not in data
 assert "sim_ordered_maintenance_parallelizable_event_source" not in data
 assert "sim_ordered_maintenance_ordered_shape_confidence" not in data
+assert "sim_ordered_maintenance_state_machine_source" not in data
 assert "projected_sim_ordered_maintenance_state_machine_count" not in data
 assert "projected_sim_ordered_maintenance_state_machine_nonempty_count" not in data
 assert "projected_sim_ordered_maintenance_state_machine_event_count_total" not in data
@@ -312,6 +323,10 @@ assert "sim_ordered_maintenance_state_machine_event_count_p99" not in data
 assert "sim_ordered_maintenance_state_machine_event_count_max" not in data
 assert "sim_ordered_maintenance_state_machine_work_imbalance_ratio" not in data
 assert "sim_ordered_maintenance_state_machine_ideal_parallelism" not in data
+assert "sim_ordered_maintenance_work_imbalance_ratio" not in data
+assert "sim_ordered_maintenance_ideal_parallelism" not in data
+assert "sim_ordered_maintenance_intra_state_machine_serial_dependency_share" not in data
+assert "sim_ordered_maintenance_inter_state_machine_parallelism" not in data
 assert "projected_sim_initial_scan_sync_wait_seconds" not in data
 assert "projected_sim_locate_seconds" not in data
 assert "projected_sim_traceback_seconds" not in data

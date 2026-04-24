@@ -2376,10 +2376,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     (simInitialStoreOtherMergeContextApplyAttemptedCount > 0) ?
     simInitialStoreOtherMergeContextApplyAttemptedCount :
     simInitialRunSummariesTotal;
+  const uint64_t simOrderedMaintenanceTaskStateMachineCount =
+    (metrics.calcScoreTasksTotal > 0) ?
+    metrics.calcScoreTasksTotal :
+    simWindowPipelineTasksConsidered;
+  const uint64_t simOrderedMaintenanceCoarseStateMachineCount =
+    (simOrderedMaintenanceTaskStateMachineCount > 0) ?
+    simOrderedMaintenanceTaskStateMachineCount :
+    ((simOrderedMaintenanceCandidateEventCount > 0) ? 1 : 0);
   const uint64_t simOrderedMaintenanceOrderedSegmentCount =
     (simInitialReduceChunkReplayedTotal > 0) ?
     simInitialReduceChunkReplayedTotal :
-    ((simOrderedMaintenanceCandidateEventCount > 0) ? 1 : 0);
+    simOrderedMaintenanceCoarseStateMachineCount;
   const uint64_t simOrderedMaintenanceParallelSegmentCount =
     simOrderedMaintenanceOrderedSegmentCount;
   const double simOrderedMaintenanceMeanSegmentLength =
@@ -2426,7 +2434,9 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   const char *simOrderedMaintenanceOrderedSegmentSource =
     (simInitialReduceChunkReplayedTotal > 0) ?
     "reducer_chunk" :
-    "fallback_single_segment";
+    ((simOrderedMaintenanceTaskStateMachineCount > 0) ?
+     "case_rule_region_state_machine" :
+     "fallback_single_segment");
   const char *simOrderedMaintenanceSerialDependencySource =
     (simOrderedMaintenanceCandidateEventCount > 0 &&
      simOrderedMaintenanceSerialDependencyEventCount ==
@@ -2439,9 +2449,16 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     "conservative_zero" :
     "segment_based_estimate";
   const char *simOrderedMaintenanceOrderedShapeConfidence =
-    (simInitialReduceChunkReplayedTotal > 0) ? "coarse" : "fallback_conservative";
+    (simOrderedMaintenanceTaskStateMachineCount > 0 ||
+     simInitialReduceChunkReplayedTotal > 0) ?
+    "coarse" :
+    "fallback_conservative";
+  const char *simOrderedMaintenanceStateMachineSource =
+    (simOrderedMaintenanceTaskStateMachineCount > 0) ?
+    "case_rule_region_state_machine" :
+    "fallback_single_segment";
   const uint64_t simOrderedMaintenanceStateMachineCount =
-    simOrderedMaintenanceOrderedSegmentCount;
+    simOrderedMaintenanceCoarseStateMachineCount;
   const uint64_t simOrderedMaintenanceStateMachineNonemptyCount =
     (simOrderedMaintenanceCandidateEventCount > 0) ?
     simOrderedMaintenanceStateMachineCount :
@@ -2467,6 +2484,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     (static_cast<double>(simOrderedMaintenanceStateMachineEventCountTotal) /
      simOrderedMaintenanceStateMachineEventCountMax) :
     0.0;
+  const double simOrderedMaintenanceIntraStateMachineSerialDependencyShare =
+    simOrderedMaintenanceSerialDependencyShare;
+  const double simOrderedMaintenanceInterStateMachineParallelism =
+    simOrderedMaintenanceStateMachineIdealParallelism;
   const double simInitialRunSummaryPipelineSeconds =
     simInitialHashReduceSeconds +
     simInitialSegmentedReduceSeconds +
@@ -2634,6 +2655,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simOrderedMaintenanceParallelizableEventSource<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_ordered_shape_confidence="
       <<simOrderedMaintenanceOrderedShapeConfidence<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_source="
+      <<simOrderedMaintenanceStateMachineSource<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_state_machine_count="
       <<simOrderedMaintenanceStateMachineCount<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_state_machine_nonempty_count="
@@ -2652,6 +2675,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simOrderedMaintenanceStateMachineWorkImbalanceRatio<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_state_machine_ideal_parallelism="
       <<simOrderedMaintenanceStateMachineIdealParallelism<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_work_imbalance_ratio="
+      <<simOrderedMaintenanceStateMachineWorkImbalanceRatio<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_ideal_parallelism="
+      <<simOrderedMaintenanceStateMachineIdealParallelism<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_intra_state_machine_serial_dependency_share="
+      <<simOrderedMaintenanceIntraStateMachineSerialDependencyShare<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_inter_state_machine_parallelism="
+      <<simOrderedMaintenanceInterStateMachineParallelism<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
