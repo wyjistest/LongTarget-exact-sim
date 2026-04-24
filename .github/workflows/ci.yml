@@ -32,12 +32,14 @@ jobs:
             build-sim-initial-host-merge-steady-state-miss-profile \
             build-sim-initial-host-merge-corpus-test \
             build-sim-initial-host-merge-steady-state-trace-test \
+            build-sim-ordered-maintenance-shadow-digest-test \
             build-sim-candidate-index-probe-test
 
       - name: Run candidate-index runtime tests
         run: |
           ./tests/test_sim_initial_host_merge_corpus
           ./tests/test_sim_initial_host_merge_steady_state_trace
+          ./tests/test_sim_ordered_maintenance_shadow_digest
           ./tests/test_sim_candidate_index_probe
 
       - name: Run profiling summarizer checks

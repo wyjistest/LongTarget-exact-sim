@@ -400,6 +400,9 @@ SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_SOURCES := tests/sim_initial_host_m
 SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_TARGET ?= tests/sim_initial_host_merge_steady_state_miss_profile
 SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_SOURCES := tests/sim_initial_host_merge_steady_state_miss_profile.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET ?= tests/test_sim_ordered_maintenance_shadow_digest
+SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_SOURCES := tests/test_sim_ordered_maintenance_shadow_digest.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET ?= tests/test_sim_candidate_index_probe
 SIM_CANDIDATE_INDEX_PROBE_TEST_SOURCES := tests/test_sim_candidate_index_probe.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -440,6 +443,8 @@ build-sim-initial-host-merge-replay: $(SIM_INITIAL_HOST_MERGE_REPLAY_TARGET)
 build-sim-initial-host-merge-context-apply-profile: $(SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_TARGET)
 
 build-sim-initial-host-merge-steady-state-miss-profile: $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_TARGET)
+
+build-sim-ordered-maintenance-shadow-digest-test: $(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET)
 
 build-sim-candidate-index-probe-test: $(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET)
 
@@ -490,6 +495,9 @@ $(SIM_INITIAL_HOST_MERGE_CONTEXT_APPLY_PROFILE_TARGET): $(SIM_INITIAL_HOST_MERGE
 $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_TARGET): $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_HOST_MERGE_STEADY_STATE_MISS_PROFILE_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
+$(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET): $(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
 $(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET): $(SIM_CANDIDATE_INDEX_PROBE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_CANDIDATE_INDEX_PROBE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -531,6 +539,9 @@ check-sim-initial-host-merge-corpus: $(SIM_INITIAL_HOST_MERGE_CORPUS_TEST_TARGET
 
 check-sim-initial-host-merge-capture-modes: $(SIM_INITIAL_HOST_MERGE_CAPTURE_MODES_TEST_TARGET)
 	./scripts/check_sim_initial_host_merge_capture_modes.sh
+
+check-sim-ordered-maintenance-shadow-digest: $(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET)
+	./$(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET)
 
 check-sim-candidate-index-probe: $(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET)
 	./$(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET)
@@ -699,6 +710,7 @@ check-longtarget-lite-output:
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-initial-host-merge-corpus-test build-sim-initial-host-merge-replay check-sim-initial-host-merge-corpus \
+		build-sim-ordered-maintenance-shadow-digest-test check-sim-ordered-maintenance-shadow-digest \
 		build-sim-locate-update-test check-sim-locate-update \
 		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
 			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
