@@ -52,3 +52,4 @@ jobs:
           bash scripts/check_summarize_longtarget_top_level_perf_budget.sh
           bash scripts/check_summarize_longtarget_sim_pipeline_budget.sh
           bash scripts/check_refresh_longtarget_sim_pipeline_budget.sh
+          bash scripts/check_summarize_longtarget_sim_pipeline_budget_rollup.sh

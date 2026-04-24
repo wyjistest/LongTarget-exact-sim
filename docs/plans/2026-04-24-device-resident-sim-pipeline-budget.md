@@ -31,6 +31,14 @@ It emits:
 
 `scripts/refresh_longtarget_sim_pipeline_budget.sh` wraps this post-processing step and writes the same files under `sim_pipeline_budget/` in the requested output root. The wrapper consumes existing artifacts only; it does not run a workload and does not enable a runtime prototype.
 
+`scripts/summarize_longtarget_sim_pipeline_budget_rollup.py` aggregates multiple real workload `sim_pipeline_budget_decision.json` files and emits:
+
+1. `sim_pipeline_budget_rollup.json`
+2. `sim_pipeline_budget_rollup_decision.json`
+3. `sim_pipeline_budget_rollup.md`
+
+The roll-up is the authority for cross-workload Phase 3a interpretation. A single workload selection is not enough to start runtime work.
+
 If the top-level decision did not select `sim -> profile_device_resident_sim_pipeline`, the summarizer returns `decision_status=inactive` and `recommended_next_action=return_to_top_level_budget`.
 
 ## Decision Gate
@@ -63,3 +71,27 @@ For existing benchmark logs, `scripts/project_whole_genome_runtime.py` normalize
 `host_cpu_merge` uses `sim_initial_scan_cpu_merge_seconds`. `gpu_compute` uses `sim_initial_scan_gpu_seconds` or `gpu_kernel_seconds`. `locate_traceback` aggregates locate, traceback, and output materialization seconds.
 
 Missing fields are reported as `insufficient_sim_substage_telemetry` with `recommended_next_action=collect_sim_substage_telemetry`, not as evidence that the SIM pipeline lacks a stable subcomponent. If substage fields are present but no subcomponent clears the dominance threshold, the decision is `stop_sim_pipeline_work`.
+
+## Multi-Workload Roll-Up Gate
+
+Real workload decisions must be aggregated before treating a SIM subcomponent as stable:
+
+```text
+if any workload has insufficient_sim_substage_telemetry:
+    selection_status = insufficient_sim_substage_telemetry
+    recommended_next_action = collect_sim_substage_telemetry
+
+elif all ready workloads select the same subcomponent and action:
+    selection_status = stable_selected
+    recommended_next_action = that action
+
+elif all ready workloads report no_stable_subcomponent:
+    selection_status = no_stable_subcomponent
+    recommended_next_action = stop_sim_pipeline_work
+
+else:
+    selection_status = workload_dependent_subcomponent
+    recommended_next_action = expand_or_stratify_sim_pipeline_budget
+```
+
+`runtime_prototype_allowed` remains `false` in all roll-up outcomes. `workload_dependent_subcomponent` means the current corpus is not yet a single authoritative optimization target; expand or stratify the budget instead of implementing a GPU/runtime prototype.
