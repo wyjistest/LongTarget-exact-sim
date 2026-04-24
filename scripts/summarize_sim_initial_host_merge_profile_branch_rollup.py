@@ -848,6 +848,17 @@ def build_rows(
                 "recommended_next_action",
                 recommended_next_action,
             )
+            optional_value = structural_phase_decision.get("optional_next_action")
+            optional_next_action = (
+                str(optional_value).strip()
+                if optional_value is not None and str(optional_value).strip() != ""
+                else None
+            )
+            structural_stop_reason = structural_phase_decision.get("stop_reason")
+            if structural_stop_reason is not None and str(structural_stop_reason).strip() != "":
+                stop_reason = str(structural_stop_reason).strip()
+            if current_phase_status == "stopped":
+                active_frontier = None
             structural_context_status = "provided"
 
     current_classified_branch = (

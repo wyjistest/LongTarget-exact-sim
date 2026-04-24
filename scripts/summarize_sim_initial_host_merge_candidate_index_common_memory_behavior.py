@@ -99,15 +99,29 @@ def build_summary(lifecycle_summary, lifecycle_path, operation_rollup_decision, 
     operation_rollup_action = optional_str(
         operation_rollup_decision, "recommended_next_action", "unknown"
     )
-    if (
-        operation_rollup_action == "profile_candidate_index_common_memory_behavior"
-        and covered_share_of_candidate_index < MEMORY_COVERAGE_THRESHOLD
-    ):
-        recommended_next_action = "instrument_candidate_index_state_update_memory_counters"
-    elif same_cacheline_rewrite_share >= SAME_CACHELINE_REWRITE_SIGNAL_THRESHOLD:
-        recommended_next_action = "profile_candidate_index_common_store_layout"
-    else:
+    operation_rollup_optional_next_action = optional_str(
+        operation_rollup_decision, "optional_next_action", ""
+    )
+    if operation_rollup_action != "profile_candidate_index_common_memory_behavior":
+        selection_status = "inactive"
         recommended_next_action = "stop_candidate_index_structural_profiling"
+        optional_next_action = (
+            operation_rollup_optional_next_action
+            if operation_rollup_optional_next_action
+            else None
+        )
+    elif covered_share_of_candidate_index < MEMORY_COVERAGE_THRESHOLD:
+        selection_status = "active"
+        recommended_next_action = "instrument_candidate_index_state_update_memory_counters"
+        optional_next_action = None
+    elif same_cacheline_rewrite_share >= SAME_CACHELINE_REWRITE_SIGNAL_THRESHOLD:
+        selection_status = "active"
+        recommended_next_action = "profile_candidate_index_common_store_layout"
+        optional_next_action = None
+    else:
+        selection_status = "active"
+        recommended_next_action = "stop_candidate_index_structural_profiling"
+        optional_next_action = None
 
     rows = [
         {
@@ -126,6 +140,7 @@ def build_summary(lifecycle_summary, lifecycle_path, operation_rollup_decision, 
 
     return {
         "decision_status": "ready",
+        "selection_status": selection_status,
         "memory_coverage_scope": "terminal_write_paths_only",
         "coverage_status": coverage_status,
         "covered_share_of_candidate_index": covered_share_of_candidate_index,
@@ -136,6 +151,7 @@ def build_summary(lifecycle_summary, lifecycle_path, operation_rollup_decision, 
         "bytes_per_unique_entry": bytes_per_unique_entry,
         "missing_major_components": missing_major_components,
         "recommended_next_action": recommended_next_action,
+        "optional_next_action": optional_next_action,
         "runtime_prototype_allowed": False,
         "source_candidate_index_lifecycle_summary": str(lifecycle_path),
         "source_candidate_index_operation_rollup_decision": (
@@ -149,6 +165,7 @@ def render_markdown(summary):
     lines = [
         "# Candidate-Index Common Memory Behavior",
         "",
+        f"- selection_status: `{summary['selection_status']}`",
         f"- memory_coverage_scope: `{summary['memory_coverage_scope']}`",
         f"- coverage_status: `{summary['coverage_status']}`",
         f"- covered_share_of_candidate_index: `{summary['covered_share_of_candidate_index']:.6f}`",
@@ -156,6 +173,7 @@ def render_markdown(summary):
         f"- bytes_per_event: `{summary['bytes_per_event']:.6f}`",
         f"- bytes_per_unique_entry: `{summary['bytes_per_unique_entry']:.6f}`",
         f"- recommended_next_action: `{summary['recommended_next_action']}`",
+        f"- optional_next_action: `{summary.get('optional_next_action') or 'none'}`",
         "",
     ]
     return "\n".join(lines)
@@ -178,7 +196,9 @@ def main():
     )
     decision = {
         "decision_status": "ready",
+        "selection_status": summary["selection_status"],
         "recommended_next_action": summary["recommended_next_action"],
+        "optional_next_action": summary["optional_next_action"],
         "runtime_prototype_allowed": False,
     }
 

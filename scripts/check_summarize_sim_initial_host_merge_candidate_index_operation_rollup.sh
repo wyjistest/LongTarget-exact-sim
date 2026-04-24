@@ -144,7 +144,8 @@ EOF
 assert_action() {
   local out_dir="$1"
   local expected="$2"
-  python3 - "$out_dir" "$expected" <<'PY'
+  local expected_optional="${3:-}"
+  python3 - "$out_dir" "$expected" "$expected_optional" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -155,6 +156,10 @@ summary = json.loads((out_dir / "candidate_index_operation_rollup.json").read_te
 assert decision["recommended_next_action"] == sys.argv[2], decision
 assert decision["runtime_prototype_allowed"] is False, decision
 assert summary["recommended_next_action"] == sys.argv[2], summary
+expected_optional = sys.argv[3]
+expected_optional = expected_optional if expected_optional else None
+assert decision.get("optional_next_action") == expected_optional, decision
+assert summary.get("optional_next_action") == expected_optional, summary
 PY
 }
 
@@ -202,10 +207,22 @@ python3 ./scripts/summarize_sim_initial_host_merge_candidate_index_operation_rol
   --candidate-index-lifecycle-summary "$LIFECYCLE_SUMMARY" \
   --terminal-telemetry-classification-decision "$TERMINAL_TELEMETRY_DECISION" \
   --output-dir "$OUT_DIR"
-assert_action "$OUT_DIR" "profile_candidate_index_common_control_flow_behavior"
+assert_action \
+  "$OUT_DIR" \
+  "stop_candidate_index_structural_profiling" \
+  "profile_candidate_index_common_control_flow_behavior"
 assert_row "$OUT_DIR" "scan"
 assert_row "$OUT_DIR" "compare"
 assert_row "$OUT_DIR" "branch_or_guard"
+python3 - <<'PY' "$OUT_DIR"
+import json
+import sys
+from pathlib import Path
+
+summary = json.loads((Path(sys.argv[1]) / "candidate_index_operation_rollup.json").read_text(encoding="utf-8"))
+assert summary["dominant_operation_group"] == "control_flow", summary
+assert summary["dominance_status"] == "stable", summary
+PY
 
 write_near_tie_lifecycle_summary "$LIFECYCLE_SUMMARY"
 python3 ./scripts/summarize_sim_initial_host_merge_candidate_index_operation_rollup.py \

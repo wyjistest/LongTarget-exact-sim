@@ -322,7 +322,16 @@ Once the isolated `context_apply` profiler harness has emitted `context_apply.ts
 
 The sampled candidate-index leaf-profiling line is now formally stopped; see `docs/plans/2026-04-23-candidate-index-leaf-profiling-stop-summary.md` for the authoritative stop summary and `docs/plans/2026-04-23-candidate-index-structural-profiling.md` for the Phase 2 structural-profiling handoff. Further work on this path should proceed as structural profiling rather than deeper leaf splitting.
 
-The first Phase 2 batch is now wired into the repo as a summarizer-only structural lane: `scripts/summarize_sim_initial_host_merge_candidate_index_operation_rollup.py`, `scripts/summarize_sim_initial_host_merge_candidate_index_common_memory_behavior.py`, and `scripts/summarize_sim_initial_host_merge_candidate_index_structural_phase.py`, plus their matching `check_*.sh` regressions. In this batch, top-level roll-up can advance from the leaf-level stop state into structural profiling, operation roll-up can recommend common-memory follow-up, and common-memory behavior v0 reuses existing lifecycle write-path fields. New `sim.h` hot-path counters and hardware-observation harnesses are intentionally deferred, and `runtime_prototype_allowed` remains `false`.
+The first Phase 2 batch is now wired into the repo as a summarizer-only structural lane: `scripts/summarize_sim_initial_host_merge_candidate_index_operation_rollup.py`, `scripts/summarize_sim_initial_host_merge_candidate_index_common_memory_behavior.py`, and `scripts/summarize_sim_initial_host_merge_candidate_index_structural_phase.py`, plus their matching `check_*.sh` regressions. In this batch, top-level roll-up can advance from the leaf-level stop state into structural profiling, operation roll-up can recommend common-memory follow-up, and common-memory behavior v0 reuses existing lifecycle write-path fields. New `sim.h` hot-path counters and hardware-observation harnesses are intentionally deferred, control-flow is recorded only as an optional structural hypothesis, and `runtime_prototype_allowed` remains `false`.
+
+To refresh the authoritative Phase 2a structural artifacts from an already-completed sampled campaign, run `scripts/refresh_sim_initial_host_merge_candidate_index_structural_phase.sh` against the existing `profile_mode_ab_summary.json`, `candidate_index_lifecycle_summary.json`, the leaf-stop `branch_rollup_decision.json`, and the existing telemetry/state-update classification decisions. The wrapper emits:
+
+- `candidate_index_operation_rollup/`
+- `candidate_index_common_memory_behavior/`
+- `candidate_index_structural_phase/`
+- refreshed `branch_rollup/`
+
+This wrapper is post-processing only: it does not rerun the profiler, does not reopen any leaf frontier, and does not enable runtime prototypes.
 
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 

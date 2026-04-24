@@ -227,17 +227,20 @@ def build_summary(
         and memory_pressure_share - control_pressure_share >= DOMINANCE_MARGIN_THRESHOLD
     ):
         recommended_next_action = "profile_candidate_index_common_memory_behavior"
+        optional_next_action = None
         dominant_operation_group = "memory"
         dominance_status = "stable"
     elif (
         control_pressure_share >= CONTROL_DOMINANCE_THRESHOLD
         and control_pressure_share - memory_pressure_share >= DOMINANCE_MARGIN_THRESHOLD
     ):
-        recommended_next_action = "profile_candidate_index_common_control_flow_behavior"
+        recommended_next_action = "stop_candidate_index_structural_profiling"
+        optional_next_action = "profile_candidate_index_common_control_flow_behavior"
         dominant_operation_group = "control_flow"
         dominance_status = "stable"
     else:
         recommended_next_action = "stop_candidate_index_structural_profiling"
+        optional_next_action = None
         dominant_operation_group = "none"
         dominance_status = "near_tie"
 
@@ -248,6 +251,7 @@ def build_summary(
         ),
         "profile_mode_overhead_status": profile_mode_overhead_status,
         "recommended_next_action": recommended_next_action,
+        "optional_next_action": optional_next_action,
         "runtime_prototype_allowed": False,
         "dominant_operation_group": dominant_operation_group,
         "dominance_status": dominance_status,
@@ -269,6 +273,7 @@ def render_markdown(summary):
         "# Candidate-Index Operation Rollup",
         "",
         f"- recommended_next_action: `{summary['recommended_next_action']}`",
+        f"- optional_next_action: `{summary.get('optional_next_action') or 'none'}`",
         f"- dominant_operation_group: `{summary['dominant_operation_group']}`",
         f"- dominance_status: `{summary['dominance_status']}`",
         f"- memory_pressure_share_of_candidate_index: `{summary['memory_pressure_share_of_candidate_index']:.6f}`",
@@ -319,6 +324,7 @@ def main():
     decision = {
         "decision_status": "ready",
         "recommended_next_action": summary["recommended_next_action"],
+        "optional_next_action": summary["optional_next_action"],
         "runtime_prototype_allowed": False,
         "dominant_operation_group": summary["dominant_operation_group"],
         "dominance_status": summary["dominance_status"],

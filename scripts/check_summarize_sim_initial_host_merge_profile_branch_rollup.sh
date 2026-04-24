@@ -92,6 +92,39 @@ write_state_update_bookkeeping_classification_decision() {
 EOF
 }
 
+write_structural_phase_decision() {
+  local path="$1"
+  local phase_status="$2"
+  local current_focus="$3"
+  local recommended_next_action="$4"
+  local stop_reason="${5:-}"
+  local optional_next_action="${6:-}"
+  local current_focus_json="null"
+  local optional_json="null"
+  local stop_reason_json="null"
+  if [[ -n "${current_focus}" ]]; then
+    current_focus_json="\"${current_focus}\""
+  fi
+  if [[ -n "${optional_next_action}" ]]; then
+    optional_json="\"${optional_next_action}\""
+  fi
+  if [[ -n "${stop_reason}" ]]; then
+    stop_reason_json="\"${stop_reason}\""
+  fi
+  cat >"$path" <<EOF
+{
+  "decision_status": "ready",
+  "phase": "candidate_index_structural_profiling",
+  "phase_status": "${phase_status}",
+  "current_focus": ${current_focus_json},
+  "recommended_next_action": "${recommended_next_action}",
+  "optional_next_action": ${optional_json},
+  "stop_reason": ${stop_reason_json},
+  "runtime_prototype_allowed": false
+}
+EOF
+}
+
 assert_rollup_decision() {
   local output_dir="$1"
   local expected_exhausted="$2"
@@ -153,6 +186,7 @@ AB_SUMMARY="$WORK/profile_mode_ab_summary.json"
 LIFECYCLE_SUMMARY="$WORK/candidate_index_lifecycle_summary.json"
 TERMINAL_TELEMETRY_CLASSIFICATION_DECISION="$WORK/terminal_telemetry_classification_decision.json"
 STATE_UPDATE_BOOKKEEPING_CLASSIFICATION_DECISION="$WORK/state_update_bookkeeping_classification_decision.json"
+STRUCTURAL_PHASE_DECISION="$WORK/candidate_index_structural_phase_decision.json"
 OUT_DIR="$WORK/out"
 
 write_ab_summary "$AB_SUMMARY"
@@ -697,6 +731,69 @@ assert decision["authoritative_sources"] == {
     "sampled_lifecycle_summary": sys.argv[3],
     "terminal_telemetry_classification_decision": sys.argv[4],
 }, decision
+PY
+
+write_structural_phase_decision \
+  "$STRUCTURAL_PHASE_DECISION" \
+  "stopped" \
+  "" \
+  "stop_candidate_index_structural_profiling" \
+  "no_stable_structural_signal" \
+  "profile_candidate_index_common_control_flow_behavior"
+
+python3 ./scripts/summarize_sim_initial_host_merge_profile_branch_rollup.py \
+  --profile-mode-ab-summary "$AB_SUMMARY" \
+  --candidate-index-lifecycle-summary "$LIFECYCLE_SUMMARY" \
+  --terminal-telemetry-classification-decision "$TERMINAL_TELEMETRY_CLASSIFICATION_DECISION" \
+  --candidate-index-structural-phase-decision "$STRUCTURAL_PHASE_DECISION" \
+  --output-dir "$OUT_DIR"
+
+python3 - <<'PY' "$OUT_DIR/branch_rollup_decision.json" "$STRUCTURAL_PHASE_DECISION"
+import json
+import sys
+from pathlib import Path
+
+decision = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert decision["current_phase"] == "candidate_index_structural_profiling", decision
+assert decision["current_phase_status"] == "stopped", decision
+assert decision["current_focus"] is None, decision
+assert decision["recommended_next_action"] == "stop_candidate_index_structural_profiling", decision
+assert decision["optional_next_action"] == "profile_candidate_index_common_control_flow_behavior", decision
+assert decision["stop_reason"] == "no_stable_structural_signal", decision
+assert decision["structural_phase_decision_context_status"] == "provided", decision
+assert decision["runtime_prototype_allowed"] is False, decision
+assert decision["authoritative_sources"]["candidate_index_structural_phase_decision"] == sys.argv[2], decision
+PY
+
+write_structural_phase_decision \
+  "$STRUCTURAL_PHASE_DECISION" \
+  "stopped" \
+  "" \
+  "stop_candidate_index_structural_profiling" \
+  "no_stable_structural_signal"
+
+python3 ./scripts/summarize_sim_initial_host_merge_profile_branch_rollup.py \
+  --profile-mode-ab-summary "$AB_SUMMARY" \
+  --candidate-index-lifecycle-summary "$LIFECYCLE_SUMMARY" \
+  --terminal-telemetry-classification-decision "$TERMINAL_TELEMETRY_CLASSIFICATION_DECISION" \
+  --candidate-index-structural-phase-decision "$STRUCTURAL_PHASE_DECISION" \
+  --output-dir "$OUT_DIR"
+
+python3 - <<'PY' "$OUT_DIR/branch_rollup_decision.json" "$STRUCTURAL_PHASE_DECISION"
+import json
+import sys
+from pathlib import Path
+
+decision = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert decision["current_phase"] == "candidate_index_structural_profiling", decision
+assert decision["current_phase_status"] == "stopped", decision
+assert decision["current_focus"] is None, decision
+assert decision["recommended_next_action"] == "stop_candidate_index_structural_profiling", decision
+assert decision["optional_next_action"] is None, decision
+assert decision["stop_reason"] == "no_stable_structural_signal", decision
+assert decision["structural_phase_decision_context_status"] == "provided", decision
+assert decision["runtime_prototype_allowed"] is False, decision
+assert decision["authoritative_sources"]["candidate_index_structural_phase_decision"] == sys.argv[2], decision
 PY
 
 echo "check_summarize_sim_initial_host_merge_profile_branch_rollup: PASS"

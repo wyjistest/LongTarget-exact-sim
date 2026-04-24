@@ -76,7 +76,8 @@ EOF
 assert_action() {
   local out_dir="$1"
   local expected="$2"
-  python3 - "$out_dir" "$expected" <<'PY'
+  local expected_selection_status="${3:-}"
+  python3 - "$out_dir" "$expected" "$expected_selection_status" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -87,6 +88,24 @@ summary = json.loads((out_dir / "candidate_index_common_memory_behavior_summary.
 assert decision["recommended_next_action"] == sys.argv[2], decision
 assert decision["runtime_prototype_allowed"] is False, decision
 assert summary["recommended_next_action"] == sys.argv[2], summary
+expected_selection_status = sys.argv[3]
+if expected_selection_status:
+    assert decision["selection_status"] == expected_selection_status, decision
+    assert summary["selection_status"] == expected_selection_status, summary
+PY
+}
+
+assert_inactive_selection() {
+  local out_dir="$1"
+  python3 - "$out_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+summary = json.loads((Path(sys.argv[1]) / "candidate_index_common_memory_behavior_summary.json").read_text(encoding="utf-8"))
+assert summary["selection_status"] == "inactive", summary
+assert summary["coverage_status"] == "partial", summary
+assert summary["memory_coverage_scope"] == "terminal_write_paths_only", summary
 PY
 }
 
@@ -123,6 +142,15 @@ LIFECYCLE_SUMMARY="$WORK/candidate_index_lifecycle_summary.json"
 OPERATION_ROLLUP_DECISION="$WORK/candidate_index_operation_rollup_decision.json"
 OUT_DIR="$WORK/out"
 
+write_operation_rollup_decision "$OPERATION_ROLLUP_DECISION" "stop_candidate_index_structural_profiling"
+write_partial_coverage_lifecycle_summary "$LIFECYCLE_SUMMARY"
+python3 ./scripts/summarize_sim_initial_host_merge_candidate_index_common_memory_behavior.py \
+  --candidate-index-lifecycle-summary "$LIFECYCLE_SUMMARY" \
+  --candidate-index-operation-rollup-decision "$OPERATION_ROLLUP_DECISION" \
+  --output-dir "$OUT_DIR"
+assert_action "$OUT_DIR" "stop_candidate_index_structural_profiling" "inactive"
+assert_inactive_selection "$OUT_DIR"
+
 write_operation_rollup_decision "$OPERATION_ROLLUP_DECISION" "profile_candidate_index_common_memory_behavior"
 
 write_partial_coverage_lifecycle_summary "$LIFECYCLE_SUMMARY"
@@ -130,7 +158,7 @@ python3 ./scripts/summarize_sim_initial_host_merge_candidate_index_common_memory
   --candidate-index-lifecycle-summary "$LIFECYCLE_SUMMARY" \
   --candidate-index-operation-rollup-decision "$OPERATION_ROLLUP_DECISION" \
   --output-dir "$OUT_DIR"
-assert_action "$OUT_DIR" "instrument_candidate_index_state_update_memory_counters"
+assert_action "$OUT_DIR" "instrument_candidate_index_state_update_memory_counters" "active"
 assert_partial_coverage "$OUT_DIR"
 
 write_sufficient_coverage_lifecycle_summary "$LIFECYCLE_SUMMARY"
@@ -138,7 +166,7 @@ python3 ./scripts/summarize_sim_initial_host_merge_candidate_index_common_memory
   --candidate-index-lifecycle-summary "$LIFECYCLE_SUMMARY" \
   --candidate-index-operation-rollup-decision "$OPERATION_ROLLUP_DECISION" \
   --output-dir "$OUT_DIR"
-assert_action "$OUT_DIR" "profile_candidate_index_common_store_layout"
+assert_action "$OUT_DIR" "profile_candidate_index_common_store_layout" "active"
 assert_layout_signal "$OUT_DIR"
 
 echo "check_summarize_sim_initial_host_merge_candidate_index_common_memory_behavior: PASS"

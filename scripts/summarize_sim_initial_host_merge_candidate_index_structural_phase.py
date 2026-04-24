@@ -55,9 +55,16 @@ def build_summary(
     current_focus = "operation_rollup"
     phase_status = "active"
     recommended_next_action = "profile_candidate_index_operation_rollup"
+    optional_next_action = None
     stop_reason = None
 
     if common_memory_decision:
+        optional_value = common_memory_decision.get("optional_next_action")
+        optional_next_action = (
+            str(optional_value).strip()
+            if optional_value is not None and str(optional_value).strip() != ""
+            else None
+        )
         common_memory_action = optional_str(
             common_memory_decision, "recommended_next_action", "unknown"
         )
@@ -70,6 +77,12 @@ def build_summary(
             current_focus = "common_memory_behavior"
             recommended_next_action = common_memory_action
     elif operation_rollup_decision:
+        optional_value = operation_rollup_decision.get("optional_next_action")
+        optional_next_action = (
+            str(optional_value).strip()
+            if optional_value is not None and str(optional_value).strip() != ""
+            else None
+        )
         operation_action = optional_str(
             operation_rollup_decision, "recommended_next_action", "unknown"
         )
@@ -114,6 +127,7 @@ def build_summary(
         "phase_status": phase_status,
         "current_focus": current_focus,
         "recommended_next_action": recommended_next_action,
+        "optional_next_action": optional_next_action,
         "stop_reason": stop_reason,
         "runtime_prototype_allowed": False,
         "authoritative_next_action_source": "branch_rollup_decision",
@@ -131,6 +145,7 @@ def render_markdown(summary):
         f"- phase_status: `{summary['phase_status']}`",
         f"- current_focus: `{summary.get('current_focus') or 'none'}`",
         f"- recommended_next_action: `{summary['recommended_next_action']}`",
+        f"- optional_next_action: `{summary.get('optional_next_action') or 'none'}`",
         f"- stop_reason: `{summary.get('stop_reason') or 'none'}`",
         f"- runtime_prototype_allowed: `{str(summary['runtime_prototype_allowed']).lower()}`",
         f"- authoritative_next_action_source: `{summary['authoritative_next_action_source']}`",

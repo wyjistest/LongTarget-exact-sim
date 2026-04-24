@@ -16,15 +16,40 @@ Phase 2 has now started in a deliberately narrow first batch:
 - `candidate_index_operation_rollup` is implemented as a summarizer-only aggregation over existing lifecycle outputs
 - `candidate_index_common_memory_behavior` v0 is implemented as a summarizer-only pass over existing terminal write-path fields
 - `candidate_index_structural_phase` is implemented as the phase-local context artifact
+- `refresh_sim_initial_host_merge_candidate_index_structural_phase.sh` can refresh real structural artifacts from existing authoritative sampled outputs
 - CI covers the new structural summarizers with dedicated `check_*.sh` regressions
 
 This means the Phase 2 entry point is real, but it is still intentionally conservative:
 
 - no new `sim.h` hot-path instrumentation landed in this batch
 - no hardware observation harness landed in this batch
+- control-flow remains deferred as an optional hypothesis rather than an active lane
 - `runtime_prototype_allowed` remains `false`
 
 The remaining tasks below should therefore be read as the broader roadmap, not as a claim that every workstream in this document has already been implemented.
+
+## Phase 2a Refresh Contract
+
+The current authoritative refresh path is post-processing only:
+
+1. consume existing `profile_mode_ab_summary.json`
+2. consume existing `candidate_index_lifecycle_summary.json`
+3. consume existing telemetry/state-update classification decisions
+4. consume the leaf-stop `branch_rollup_decision.json`
+5. run `scripts/refresh_sim_initial_host_merge_candidate_index_structural_phase.sh`
+
+The wrapper emits:
+
+- `candidate_index_operation_rollup/`
+- `candidate_index_common_memory_behavior/`
+- `candidate_index_structural_phase/`
+- refreshed `branch_rollup/`
+
+Phase 2a lane policy is intentionally narrow:
+
+- active lane: `operation_rollup -> common_memory_behavior -> structural_phase/stop`
+- control-flow result: deferred into `optional_next_action`, not promoted to a dedicated lane
+- hardware observation: deferred to a later batch
 
 ### Task 1: Freeze the Phase 2 contract and authoritative rules
 
