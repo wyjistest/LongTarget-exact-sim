@@ -35,9 +35,12 @@ It emits:
 
 1. `sim_pipeline_budget_rollup.json`
 2. `sim_pipeline_budget_rollup_decision.json`
-3. `sim_pipeline_budget_rollup.md`
+3. `sim_pipeline_budget_rollup_cases.tsv`
+4. `sim_pipeline_budget_rollup.md`
 
 The roll-up is the authority for cross-workload Phase 3a interpretation. A single workload selection is not enough to start runtime work.
+
+When the sibling `sim_pipeline_budget.json` is available next to each decision, the cases TSV records `workload_class`, SIM/total seconds, subcomponent shares of SIM/total seconds, and `missing_required_field_count`. Missing sibling summaries are allowed for backward compatibility, but they keep the stratification evidence incomplete.
 
 If the top-level decision did not select `sim -> profile_device_resident_sim_pipeline`, the summarizer returns `decision_status=inactive` and `recommended_next_action=return_to_top_level_budget`.
 
@@ -91,7 +94,17 @@ elif all ready workloads report no_stable_subcomponent:
 
 else:
     selection_status = workload_dependent_subcomponent
+    stratification_status = needed
     recommended_next_action = expand_or_stratify_sim_pipeline_budget
 ```
 
 `runtime_prototype_allowed` remains `false` in all roll-up outcomes. `workload_dependent_subcomponent` means the current corpus is not yet a single authoritative optimization target; expand or stratify the budget instead of implementing a GPU/runtime prototype.
+
+For `workload_dependent_subcomponent`, the decision also records:
+
+1. `sim_seconds_weighted_selected_subcomponent`
+2. `selected_subcomponent_share_of_sim_seconds`
+3. `stable_subcomponents_by_workload_class`
+4. `minimum_next_workloads`
+
+These fields are evidence for planning the next real workloads. They do not override the global decision gate unless a later roll-up establishes a stable workload class or stable weighted population.
