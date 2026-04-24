@@ -40,9 +40,22 @@ sim_ordered_maintenance_parallelizable_event_share
 sim_ordered_maintenance_estimated_d2h_bytes_avoided
 sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided
 sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable
+sim_ordered_maintenance_ordered_segment_source
+sim_ordered_maintenance_serial_dependency_source
+sim_ordered_maintenance_parallelizable_event_source
+sim_ordered_maintenance_ordered_shape_confidence
+sim_ordered_maintenance_state_machine_count
+sim_ordered_maintenance_state_machine_nonempty_count
+sim_ordered_maintenance_state_machine_event_count_total
+sim_ordered_maintenance_state_machine_event_count_p50
+sim_ordered_maintenance_state_machine_event_count_p90
+sim_ordered_maintenance_state_machine_event_count_p99
+sim_ordered_maintenance_state_machine_event_count_max
+sim_ordered_maintenance_state_machine_work_imbalance_ratio
+sim_ordered_maintenance_state_machine_ideal_parallelism
 ```
 
-`projected_` prefixes are also accepted. Missing required fields keep the phase at `collect_ordered_candidate_maintenance_telemetry`.
+`projected_` prefixes are also accepted for numeric counts, bytes, and seconds. Source/confidence fields are string metadata and are passed through unscaled. Missing required fields keep the phase at `collect_ordered_candidate_maintenance_telemetry`.
 
 ## Current Telemetry Producer
 
@@ -57,9 +70,12 @@ parallelizable_event_count = candidate_event_count - serial_dependency_event_cou
 estimated_d2h_bytes_avoided = sim_initial_store_bytes_d2h
 estimated_host_rebuild_seconds_avoided = sim_initial_store_rebuild_seconds
 estimated_cpu_merge_seconds_avoidable = sim_initial_scan_cpu_merge_seconds
+ordered_shape_confidence = fallback_conservative or coarse for the current producer
+state_machine_count = ordered_segment_count as a conservative independent-machine proxy
+state_machine_ideal_parallelism = total_events / max_events_per_state_machine
 ```
 
-Projection scales counts, bytes, and seconds, but keeps segment lengths and dependency shares unscaled. These fields are evidence for Phase 3b feasibility only; they do not authorize a runtime prototype.
+Projection scales counts, bytes, and seconds, but keeps segment lengths, dependency shares, source strings, confidence, and ratios unscaled. These fields are evidence for Phase 3b feasibility only; they do not authorize a runtime prototype.
 
 ## Decision Gate
 
@@ -70,8 +86,13 @@ if required ordered-maintenance fields missing:
 elif host_cpu_merge_share_of_sim < 0.30:
     recommended_next_action = stop_host_cpu_merge_work
 
-elif serial_dependency_share is high and parallel_segment_count is low:
-    recommended_next_action = stop_or_rethink_device_side_ordered_maintenance
+elif ordered_shape_confidence in {fallback_conservative, coarse}:
+    recommended_next_action = refine_ordered_maintenance_shape_telemetry
+
+elif ordered_shape_confidence in {event_level, validated}
+     and serial_dependency_share >= 0.90
+     and parallelizable_event_share <= 0.10:
+    recommended_next_action = stop_or_rethink_device_side_ordered_candidate_maintenance
 
 elif parallelizable_event_share >= 0.50
      and estimated_cpu_merge_seconds_avoidable is material:

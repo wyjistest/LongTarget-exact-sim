@@ -133,6 +133,19 @@ def add_optional_unscaled_metric(
     report[key] = float(value)
 
 
+def add_optional_string_metric(
+    report: dict[str, object],
+    metrics: dict[str, object],
+    key: str,
+):
+    value = metrics.get(key)
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise ValueError(f"benchmark.{key} is not a string: {value!r}")
+    report[key] = value
+
+
 def add_optional_projected_alias(
     report: dict[str, object],
     metrics: dict[str, object],
@@ -281,6 +294,9 @@ def main() -> int:
         "sim_ordered_maintenance_estimated_d2h_bytes_avoided",
         "sim_ordered_maintenance_estimated_host_rebuild_seconds_avoided",
         "sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable",
+        "sim_ordered_maintenance_state_machine_count",
+        "sim_ordered_maintenance_state_machine_nonempty_count",
+        "sim_ordered_maintenance_state_machine_event_count_total",
         "sim_initial_scan_sync_wait_seconds",
         "sim_locate_seconds",
         "sim_traceback_seconds",
@@ -294,8 +310,22 @@ def main() -> int:
         "sim_ordered_maintenance_p90_segment_length",
         "sim_ordered_maintenance_serial_dependency_share",
         "sim_ordered_maintenance_parallelizable_event_share",
+        "sim_ordered_maintenance_state_machine_event_count_p50",
+        "sim_ordered_maintenance_state_machine_event_count_p90",
+        "sim_ordered_maintenance_state_machine_event_count_p99",
+        "sim_ordered_maintenance_state_machine_event_count_max",
+        "sim_ordered_maintenance_state_machine_work_imbalance_ratio",
+        "sim_ordered_maintenance_state_machine_ideal_parallelism",
     ):
         add_optional_unscaled_metric(report, metrics, unscaled_metric_key)
+
+    for string_metric_key in (
+        "sim_ordered_maintenance_ordered_segment_source",
+        "sim_ordered_maintenance_serial_dependency_source",
+        "sim_ordered_maintenance_parallelizable_event_source",
+        "sim_ordered_maintenance_ordered_shape_confidence",
+    ):
+        add_optional_string_metric(report, metrics, string_metric_key)
 
     for source_key, output_key in (
         ("sim_initial_run_summaries_total", "sim_initial_summary_count"),

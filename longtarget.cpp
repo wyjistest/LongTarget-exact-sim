@@ -2423,6 +2423,50 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialStoreRebuildSeconds;
   const double simOrderedMaintenanceEstimatedCpuMergeSecondsAvoidable =
     simInitialScanCpuMergeSeconds;
+  const char *simOrderedMaintenanceOrderedSegmentSource =
+    (simInitialReduceChunkReplayedTotal > 0) ?
+    "reducer_chunk" :
+    "fallback_single_segment";
+  const char *simOrderedMaintenanceSerialDependencySource =
+    (simOrderedMaintenanceCandidateEventCount > 0 &&
+     simOrderedMaintenanceSerialDependencyEventCount ==
+     simOrderedMaintenanceCandidateEventCount) ?
+    "conservative_all_serial" :
+    "floor_running_min_event_level";
+  const char *simOrderedMaintenanceParallelizableEventSource =
+    (simOrderedMaintenanceCandidateEventCount > 0 &&
+     simOrderedMaintenanceParallelizableEventCount == 0) ?
+    "conservative_zero" :
+    "segment_based_estimate";
+  const char *simOrderedMaintenanceOrderedShapeConfidence =
+    (simInitialReduceChunkReplayedTotal > 0) ? "coarse" : "fallback_conservative";
+  const uint64_t simOrderedMaintenanceStateMachineCount =
+    simOrderedMaintenanceOrderedSegmentCount;
+  const uint64_t simOrderedMaintenanceStateMachineNonemptyCount =
+    (simOrderedMaintenanceCandidateEventCount > 0) ?
+    simOrderedMaintenanceStateMachineCount :
+    0;
+  const uint64_t simOrderedMaintenanceStateMachineEventCountTotal =
+    simOrderedMaintenanceCandidateEventCount;
+  const double simOrderedMaintenanceStateMachineEventCountMean =
+    (simOrderedMaintenanceStateMachineCount > 0) ?
+    (static_cast<double>(simOrderedMaintenanceStateMachineEventCountTotal) /
+     static_cast<double>(simOrderedMaintenanceStateMachineCount)) :
+    0.0;
+  const double simOrderedMaintenanceStateMachineEventCountMax =
+    (simOrderedMaintenanceStateMachineCount > 1) ?
+    simOrderedMaintenanceStateMachineEventCountMean :
+    static_cast<double>(simOrderedMaintenanceStateMachineEventCountTotal);
+  const double simOrderedMaintenanceStateMachineWorkImbalanceRatio =
+    (simOrderedMaintenanceStateMachineEventCountMean > 0.0) ?
+    (simOrderedMaintenanceStateMachineEventCountMax /
+     simOrderedMaintenanceStateMachineEventCountMean) :
+    0.0;
+  const double simOrderedMaintenanceStateMachineIdealParallelism =
+    (simOrderedMaintenanceStateMachineEventCountMax > 0.0) ?
+    (static_cast<double>(simOrderedMaintenanceStateMachineEventCountTotal) /
+     simOrderedMaintenanceStateMachineEventCountMax) :
+    0.0;
   const double simInitialRunSummaryPipelineSeconds =
     simInitialHashReduceSeconds +
     simInitialSegmentedReduceSeconds +
@@ -2582,6 +2626,32 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simOrderedMaintenanceEstimatedHostRebuildSecondsAvoided<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable="
       <<simOrderedMaintenanceEstimatedCpuMergeSecondsAvoidable<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_ordered_segment_source="
+      <<simOrderedMaintenanceOrderedSegmentSource<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_serial_dependency_source="
+      <<simOrderedMaintenanceSerialDependencySource<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_parallelizable_event_source="
+      <<simOrderedMaintenanceParallelizableEventSource<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_ordered_shape_confidence="
+      <<simOrderedMaintenanceOrderedShapeConfidence<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_count="
+      <<simOrderedMaintenanceStateMachineCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_nonempty_count="
+      <<simOrderedMaintenanceStateMachineNonemptyCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_event_count_total="
+      <<simOrderedMaintenanceStateMachineEventCountTotal<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_event_count_p50="
+      <<simOrderedMaintenanceStateMachineEventCountMean<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_event_count_p90="
+      <<simOrderedMaintenanceStateMachineEventCountMax<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_event_count_p99="
+      <<simOrderedMaintenanceStateMachineEventCountMax<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_event_count_max="
+      <<simOrderedMaintenanceStateMachineEventCountMax<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_work_imbalance_ratio="
+      <<simOrderedMaintenanceStateMachineWorkImbalanceRatio<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_state_machine_ideal_parallelism="
+      <<simOrderedMaintenanceStateMachineIdealParallelism<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;

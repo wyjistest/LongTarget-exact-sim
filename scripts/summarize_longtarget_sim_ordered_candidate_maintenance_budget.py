@@ -13,8 +13,17 @@ ALLOWED_NEXT_ACTIONS = [
     "profile_device_resident_state_handoff_with_ordered_maintenance",
     "stop_host_cpu_merge_work",
     "stop_or_rethink_device_side_ordered_maintenance",
+    "stop_or_rethink_device_side_ordered_candidate_maintenance",
     "collect_more_ordered_maintenance_shape",
+    "refine_ordered_maintenance_shape_telemetry",
     "return_to_sim_pipeline_budget_rollup",
+]
+
+ORDERED_SHAPE_CONFIDENCE_ORDER = [
+    "fallback_conservative",
+    "coarse",
+    "event_level",
+    "validated",
 ]
 
 REQUIRED_SHAPE_KEYS = {
@@ -58,6 +67,57 @@ REQUIRED_SHAPE_KEYS = {
         "projected_sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable",
         "sim_ordered_maintenance_estimated_cpu_merge_seconds_avoidable",
     ),
+    "state_machine_count": (
+        "projected_sim_ordered_maintenance_state_machine_count",
+        "sim_ordered_maintenance_state_machine_count",
+    ),
+    "state_machine_nonempty_count": (
+        "projected_sim_ordered_maintenance_state_machine_nonempty_count",
+        "sim_ordered_maintenance_state_machine_nonempty_count",
+    ),
+    "state_machine_event_count_total": (
+        "projected_sim_ordered_maintenance_state_machine_event_count_total",
+        "sim_ordered_maintenance_state_machine_event_count_total",
+    ),
+    "state_machine_event_count_p50": (
+        "projected_sim_ordered_maintenance_state_machine_event_count_p50",
+        "sim_ordered_maintenance_state_machine_event_count_p50",
+    ),
+    "state_machine_event_count_p90": (
+        "projected_sim_ordered_maintenance_state_machine_event_count_p90",
+        "sim_ordered_maintenance_state_machine_event_count_p90",
+    ),
+    "state_machine_event_count_p99": (
+        "projected_sim_ordered_maintenance_state_machine_event_count_p99",
+        "sim_ordered_maintenance_state_machine_event_count_p99",
+    ),
+    "state_machine_event_count_max": (
+        "projected_sim_ordered_maintenance_state_machine_event_count_max",
+        "sim_ordered_maintenance_state_machine_event_count_max",
+    ),
+    "state_machine_work_imbalance_ratio": (
+        "projected_sim_ordered_maintenance_state_machine_work_imbalance_ratio",
+        "sim_ordered_maintenance_state_machine_work_imbalance_ratio",
+    ),
+    "state_machine_ideal_parallelism": (
+        "projected_sim_ordered_maintenance_state_machine_ideal_parallelism",
+        "sim_ordered_maintenance_state_machine_ideal_parallelism",
+    ),
+}
+
+REQUIRED_SOURCE_KEYS = {
+    "ordered_segment_source": (
+        "sim_ordered_maintenance_ordered_segment_source",
+    ),
+    "serial_dependency_source": (
+        "sim_ordered_maintenance_serial_dependency_source",
+    ),
+    "parallelizable_event_source": (
+        "sim_ordered_maintenance_parallelizable_event_source",
+    ),
+    "ordered_shape_confidence": (
+        "sim_ordered_maintenance_ordered_shape_confidence",
+    ),
 }
 
 OPTIONAL_SHAPE_KEYS = {
@@ -85,6 +145,10 @@ CASE_FIELDS = [
     "summary_count",
     "ordered_segment_count",
     "parallel_segment_count",
+    "ordered_segment_source",
+    "serial_dependency_source",
+    "parallelizable_event_source",
+    "ordered_shape_confidence",
     "mean_segment_length",
     "p90_segment_length",
     "serial_dependency_share",
@@ -92,6 +156,15 @@ CASE_FIELDS = [
     "estimated_d2h_bytes_avoided",
     "estimated_host_rebuild_seconds_avoided",
     "estimated_cpu_merge_seconds_avoidable",
+    "state_machine_count",
+    "state_machine_nonempty_count",
+    "state_machine_event_count_total",
+    "state_machine_event_count_p50",
+    "state_machine_event_count_p90",
+    "state_machine_event_count_p99",
+    "state_machine_event_count_max",
+    "state_machine_work_imbalance_ratio",
+    "state_machine_ideal_parallelism",
     "candidate_state_bytes_d2h",
     "missing_required_field_count",
 ]
@@ -122,8 +195,14 @@ def parse_args():
     parser.add_argument(
         "--serial-dependency-stop-threshold",
         type=float,
-        default=0.70,
+        default=0.90,
         help="Serial dependency share that blocks device-side ordered maintenance.",
+    )
+    parser.add_argument(
+        "--parallelizable-stop-threshold",
+        type=float,
+        default=0.10,
+        help="Maximum parallelizable event share when declaring an event-level serial blocker.",
     )
     return parser.parse_args()
 
@@ -148,6 +227,16 @@ def first_number(data, keys):
     for key in keys:
         value = number_or_none(data.get(key))
         if value is not None:
+            return value
+    return None
+
+
+def first_string(data, keys):
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str) and value:
             return value
     return None
 
@@ -190,6 +279,11 @@ def shape_values_from(projection):
     missing = []
     for name, keys in REQUIRED_SHAPE_KEYS.items():
         value = first_number(projection, keys)
+        values[name] = value
+        if value is None:
+            missing.append(name)
+    for name, keys in REQUIRED_SOURCE_KEYS.items():
+        value = first_string(projection, keys)
         values[name] = value
         if value is None:
             missing.append(name)
@@ -269,10 +363,64 @@ def min_value(rows, key):
     return min(values) if values else None
 
 
+def unique_strings(rows, key):
+    values = {
+        row["shape"].get(key)
+        for row in rows
+        if isinstance(row["shape"].get(key), str) and row["shape"].get(key)
+    }
+    return sorted(values)
+
+
+def aggregate_shape_confidence(rows):
+    values = unique_strings(rows, "ordered_shape_confidence")
+    if not values:
+        return None
+    ranks = {
+        value: index
+        for index, value in enumerate(ORDERED_SHAPE_CONFIDENCE_ORDER)
+    }
+    known = [value for value in values if value in ranks]
+    if not known:
+        return values[0]
+    return min(known, key=lambda value: ranks[value])
+
+
 def aggregate_rows(rows):
     host_seconds = sum(
         row["host_cpu_merge_seconds"] or 0.0 for row in rows
     )
+    state_machine_event_count_total = sum_shape(rows, "state_machine_event_count_total")
+    state_machine_event_count_max = max(
+        (
+            row["shape"].get("state_machine_event_count_max")
+            for row in rows
+            if row["shape"].get("state_machine_event_count_max") is not None
+        ),
+        default=None,
+    )
+    state_machine_count = sum_shape(rows, "state_machine_count")
+    state_machine_ideal_parallelism = None
+    if (
+        state_machine_event_count_total is not None
+        and state_machine_event_count_max is not None
+        and state_machine_event_count_max > 0.0
+    ):
+        state_machine_ideal_parallelism = (
+            state_machine_event_count_total / state_machine_event_count_max
+        )
+    state_machine_work_imbalance_ratio = None
+    if (
+        state_machine_count is not None
+        and state_machine_count > 0.0
+        and state_machine_event_count_total is not None
+        and state_machine_event_count_total > 0.0
+        and state_machine_event_count_max is not None
+    ):
+        state_machine_work_imbalance_ratio = (
+            state_machine_event_count_max /
+            (state_machine_event_count_total / state_machine_count)
+        )
     aggregate = {
         "host_cpu_merge_seconds": host_seconds,
         "host_cpu_merge_share_of_sim_min": min(
@@ -287,6 +435,10 @@ def aggregate_rows(rows):
         "summary_count": sum_shape(rows, "summary_count"),
         "ordered_segment_count": sum_shape(rows, "ordered_segment_count"),
         "parallel_segment_count": sum_shape(rows, "parallel_segment_count"),
+        "ordered_segment_sources": unique_strings(rows, "ordered_segment_source"),
+        "serial_dependency_sources": unique_strings(rows, "serial_dependency_source"),
+        "parallelizable_event_sources": unique_strings(rows, "parallelizable_event_source"),
+        "ordered_shape_confidence": aggregate_shape_confidence(rows),
         "mean_segment_length": weighted_average(rows, "mean_segment_length", "candidate_event_count"),
         "p90_segment_length": max(
             (
@@ -309,6 +461,31 @@ def aggregate_rows(rows):
         "estimated_cpu_merge_seconds_avoidable": sum_shape(
             rows, "estimated_cpu_merge_seconds_avoidable"
         ),
+        "state_machine_count": state_machine_count,
+        "state_machine_nonempty_count": sum_shape(rows, "state_machine_nonempty_count"),
+        "state_machine_event_count_total": state_machine_event_count_total,
+        "state_machine_event_count_p50": weighted_average(
+            rows, "state_machine_event_count_p50", "state_machine_count"
+        ),
+        "state_machine_event_count_p90": max(
+            (
+                row["shape"].get("state_machine_event_count_p90")
+                for row in rows
+                if row["shape"].get("state_machine_event_count_p90") is not None
+            ),
+            default=None,
+        ),
+        "state_machine_event_count_p99": max(
+            (
+                row["shape"].get("state_machine_event_count_p99")
+                for row in rows
+                if row["shape"].get("state_machine_event_count_p99") is not None
+            ),
+            default=None,
+        ),
+        "state_machine_event_count_max": state_machine_event_count_max,
+        "state_machine_work_imbalance_ratio": state_machine_work_imbalance_ratio,
+        "state_machine_ideal_parallelism": state_machine_ideal_parallelism,
         "candidate_state_bytes_d2h": sum_shape(rows, "candidate_state_bytes_d2h"),
         "missing_required_field_count": sum(
             row["shape"]["missing_required_field_count"] for row in rows
@@ -364,19 +541,27 @@ def decide(rows, aggregate, args):
         < args.host_merge_share_threshold
     ):
         return ("closed", "weak", "stop_host_cpu_merge_work")
+    shape_confidence = aggregate.get("ordered_shape_confidence")
+    if shape_confidence in {"fallback_conservative", "coarse"}:
+        return (
+            "closed",
+            "weak",
+            "refine_ordered_maintenance_shape_telemetry",
+        )
     serial_share = aggregate.get("serial_dependency_share")
-    parallel_segments = aggregate.get("parallel_segment_count")
+    parallel_share = aggregate.get("parallelizable_event_share")
     if (
-        serial_share is not None
+        shape_confidence in {"event_level", "validated"}
+        and serial_share is not None
         and serial_share >= args.serial_dependency_stop_threshold
-        and (parallel_segments is None or parallel_segments < 2.0)
+        and parallel_share is not None
+        and parallel_share <= args.parallelizable_stop_threshold
     ):
         return (
             "closed",
             "blocked_by_order_dependency",
-            "stop_or_rethink_device_side_ordered_maintenance",
+            "stop_or_rethink_device_side_ordered_candidate_maintenance",
         )
-    parallel_share = aggregate.get("parallelizable_event_share")
     avoidable = aggregate.get("estimated_cpu_merge_seconds_avoidable")
     if (
         parallel_share is not None
@@ -440,7 +625,11 @@ def case_row_for(row):
     for key in CASE_FIELDS:
         if key in values:
             continue
-        values[key] = format_number(shape.get(key))
+        value = shape.get(key)
+        if isinstance(value, str):
+            values[key] = value
+        else:
+            values[key] = format_number(value)
     return values
 
 
