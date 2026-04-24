@@ -58,6 +58,8 @@ sim_initial_candidate_state_rebuild_seconds
 sim_safe_store_handoff_seconds
 ```
 
+For existing benchmark logs, `scripts/project_whole_genome_runtime.py` normalizes the current runtime field names into those Phase 3a names: `sim_initial_run_summaries_total -> sim_initial_summary_count`, `sim_initial_store_bytes_d2h -> sim_initial_candidate_state_bytes_d2h`, `sim_initial_store_rebuild_seconds -> sim_initial_host_rebuild_seconds`, and `sim_initial_store_upload_seconds -> sim_initial_state_handoff_seconds`.
+
 `host_cpu_merge` uses `sim_initial_scan_cpu_merge_seconds`. `gpu_compute` uses `sim_initial_scan_gpu_seconds` or `gpu_kernel_seconds`. `locate_traceback` aggregates locate, traceback, and output materialization seconds.
 
 Missing fields are reported as `insufficient_sim_substage_telemetry` with `recommended_next_action=collect_sim_substage_telemetry`, not as evidence that the SIM pipeline lacks a stable subcomponent. If substage fields are present but no subcomponent clears the dominance threshold, the decision is `stop_sim_pipeline_work`.

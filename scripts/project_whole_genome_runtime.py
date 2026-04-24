@@ -120,6 +120,20 @@ def add_optional_projected_metric(
         report[f"projected_{key}"] = projected
 
 
+def add_optional_projected_alias(
+    report: dict[str, object],
+    metrics: dict[str, object],
+    source_key: str,
+    output_key: str,
+    scale_factor: float,
+):
+    if f"projected_{output_key}" in report:
+        return
+    projected = optional_projected_metric(metrics, source_key, scale_factor)
+    if projected is not None:
+        report[f"projected_{output_key}"] = projected
+
+
 def main() -> int:
     args = parse_args()
     stderr_path = Path(args.stderr)
@@ -203,11 +217,14 @@ def main() -> int:
         "sim_initial_scan_cpu_merge_seconds",
         "sim_initial_scan_cpu_merge_subtotal_seconds",
         "sim_initial_summary_count",
+        "sim_initial_run_summaries_total",
         "sim_initial_summary_bytes_d2h",
         "sim_initial_candidate_state_bytes_d2h",
+        "sim_initial_store_bytes_d2h",
         "sim_initial_d2h_transfer_count",
         "sim_initial_host_rebuild_seconds",
         "sim_initial_state_handoff_seconds",
+        "sim_initial_store_upload_seconds",
         "sim_initial_run_summary_pipeline_seconds",
         "sim_initial_ordered_replay_seconds",
         "sim_initial_store_rebuild_seconds",
@@ -243,6 +260,16 @@ def main() -> int:
         "sim_output_materialization_seconds",
     ):
         add_optional_projected_metric(report, metrics, projected_metric_key, scale_factor)
+
+    for source_key, output_key in (
+        ("sim_initial_run_summaries_total", "sim_initial_summary_count"),
+        ("sim_initial_store_bytes_d2h", "sim_initial_candidate_state_bytes_d2h"),
+        ("sim_initial_store_rebuild_seconds", "sim_initial_host_rebuild_seconds"),
+        ("sim_initial_store_upload_seconds", "sim_initial_state_handoff_seconds"),
+    ):
+        add_optional_projected_alias(
+            report, metrics, source_key, output_key, scale_factor
+        )
 
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))

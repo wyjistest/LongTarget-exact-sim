@@ -22,12 +22,11 @@ benchmark.sim_initial_scan_gpu_seconds=0.6
 benchmark.sim_initial_scan_d2h_seconds=0.2
 benchmark.sim_initial_scan_cpu_merge_seconds=0.5
 benchmark.sim_initial_scan_cpu_merge_subtotal_seconds=0.4
-benchmark.sim_initial_summary_count=40
+benchmark.sim_initial_run_summaries_total=40
 benchmark.sim_initial_summary_bytes_d2h=4000
-benchmark.sim_initial_candidate_state_bytes_d2h=1000
+benchmark.sim_initial_store_bytes_d2h=1000
 benchmark.sim_initial_d2h_transfer_count=4
-benchmark.sim_initial_host_rebuild_seconds=0.11
-benchmark.sim_initial_state_handoff_seconds=0.09
+benchmark.sim_initial_store_upload_seconds=0.09
 benchmark.sim_initial_run_summary_pipeline_seconds=0.25
 benchmark.sim_initial_ordered_replay_seconds=0.07
 benchmark.sim_initial_store_rebuild_seconds=0.3
@@ -105,7 +104,10 @@ assert abs(data["projected_sim_initial_summary_count"] - 200.0) < 1e-9
 assert abs(data["projected_sim_initial_summary_bytes_d2h"] - 20000.0) < 1e-9
 assert abs(data["projected_sim_initial_candidate_state_bytes_d2h"] - 5000.0) < 1e-9
 assert abs(data["projected_sim_initial_d2h_transfer_count"] - 20.0) < 1e-9
-assert abs(data["projected_sim_initial_host_rebuild_seconds"] - 0.55) < 1e-9
+assert abs(data["projected_sim_initial_run_summaries_total"] - 200.0) < 1e-9
+assert abs(data["projected_sim_initial_store_bytes_d2h"] - 5000.0) < 1e-9
+assert abs(data["projected_sim_initial_store_upload_seconds"] - 0.45) < 1e-9
+assert abs(data["projected_sim_initial_host_rebuild_seconds"] - 1.5) < 1e-9
 assert abs(data["projected_sim_initial_state_handoff_seconds"] - 0.45) < 1e-9
 assert abs(data["projected_sim_initial_run_summary_pipeline_seconds"] - 1.25) < 1e-9
 assert abs(data["projected_sim_initial_ordered_replay_seconds"] - 0.35) < 1e-9

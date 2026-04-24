@@ -339,6 +339,8 @@ When the top-level budget selects `sim`, `scripts/summarize_longtarget_sim_pipel
 
 To refresh the Phase 3a SIM pipeline budget from existing artifacts, run `scripts/refresh_longtarget_sim_pipeline_budget.sh --top-level-budget-decision <top_level_perf_budget_decision.json> --sim-telemetry-budget <projection-or-telemetry.json> --output-root <dir>`. The wrapper emits `sim_pipeline_budget/` under the output root and is post-processing only; it does not run a workload or enable a runtime prototype.
 
+`scripts/project_whole_genome_runtime.py` also normalizes the current benchmark field names needed by Phase 3a, including `sim_initial_run_summaries_total` to `projected_sim_initial_summary_count`, `sim_initial_store_bytes_d2h` to `projected_sim_initial_candidate_state_bytes_d2h`, `sim_initial_store_rebuild_seconds` to `projected_sim_initial_host_rebuild_seconds`, and `sim_initial_store_upload_seconds` to `projected_sim_initial_state_handoff_seconds`.
+
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 
 ```
