@@ -337,6 +337,8 @@ After the candidate-index leaf and structural phases have both stopped, reset op
 
 When the top-level budget selects `sim`, `scripts/summarize_longtarget_sim_pipeline_budget.py` performs the next post-processing step for Phase 3a. It consumes the top-level budget decision plus a SIM telemetry/projection JSON and emits `sim_pipeline_budget.json`, `sim_pipeline_budget_decision.json`, `sim_pipeline_budget_cases.tsv`, and `sim_pipeline_budget.md`. Its only active next actions are `collect_sim_substage_telemetry`, `profile_device_resident_state_handoff`, `profile_device_side_ordered_candidate_maintenance`, `profile_sim_initial_scan_kernel`, `profile_locate_traceback_pipeline`, or `stop_sim_pipeline_work`; it keeps `runtime_prototype_allowed=false` and does not start a GPU implementation. Missing SIM substage fields are reported as `insufficient_sim_substage_telemetry`, not as evidence that no SIM subcomponent is stable.
 
+To refresh the Phase 3a SIM pipeline budget from existing artifacts, run `scripts/refresh_longtarget_sim_pipeline_budget.sh --top-level-budget-decision <top_level_perf_budget_decision.json> --sim-telemetry-budget <projection-or-telemetry.json> --output-root <dir>`. The wrapper emits `sim_pipeline_budget/` under the output root and is post-processing only; it does not run a workload or enable a runtime prototype.
+
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:
 
 ```

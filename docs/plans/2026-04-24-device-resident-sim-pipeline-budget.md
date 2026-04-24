@@ -29,6 +29,8 @@ It emits:
 3. `sim_pipeline_budget_cases.tsv`
 4. `sim_pipeline_budget.md`
 
+`scripts/refresh_longtarget_sim_pipeline_budget.sh` wraps this post-processing step and writes the same files under `sim_pipeline_budget/` in the requested output root. The wrapper consumes existing artifacts only; it does not run a workload and does not enable a runtime prototype.
+
 If the top-level decision did not select `sim -> profile_device_resident_sim_pipeline`, the summarizer returns `decision_status=inactive` and `recommended_next_action=return_to_top_level_budget`.
 
 ## Decision Gate
