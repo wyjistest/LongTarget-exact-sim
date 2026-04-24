@@ -764,7 +764,10 @@ struct SimDeviceOrderedMaintenanceShadowValidationSnapshot
     hostSafeStoreStateHash(0),
     shadowSafeStoreStateHash(0),
     hostObservedCandidateIndexHash(0),
-    shadowObservedCandidateIndexHash(0)
+    shadowObservedCandidateIndexHash(0),
+    firstMismatchCaseId(),
+    firstMismatchSummaryOrdinal(0),
+    firstMismatchKind()
   {
   }
 
@@ -789,6 +792,27 @@ struct SimDeviceOrderedMaintenanceShadowValidationSnapshot
   uint64_t shadowSafeStoreStateHash;
   uint64_t hostObservedCandidateIndexHash;
   uint64_t shadowObservedCandidateIndexHash;
+  string firstMismatchCaseId;
+  uint64_t firstMismatchSummaryOrdinal;
+  string firstMismatchKind;
+};
+
+struct SimOrderedMaintenanceShadowReplayComparison
+{
+  SimOrderedMaintenanceShadowReplayComparison():
+    shadowStatus("ran"),
+    mismatchCount(0),
+    firstMismatchCaseId(),
+    firstMismatchSummaryOrdinal(0),
+    firstMismatchKind()
+  {
+  }
+
+  string shadowStatus;
+  uint64_t mismatchCount;
+  string firstMismatchCaseId;
+  uint64_t firstMismatchSummaryOrdinal;
+  string firstMismatchKind;
 };
 
 struct SimInitialContextApplyTelemetry
@@ -7084,6 +7108,12 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simDeviceOrderedMaintenanceShadowRanCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simDeviceOrderedMaintenanceShadowNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -7168,6 +7198,28 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return value;
 		}
 
+		struct SimDeviceOrderedMaintenanceShadowMismatchState
+		{
+		  SimDeviceOrderedMaintenanceShadowMismatchState():
+		    firstMismatchSummaryOrdinal(0),
+		    firstMismatchRecorded(false)
+		  {
+		  }
+
+		  mutex lock;
+		  string firstMismatchCaseId;
+		  uint64_t firstMismatchSummaryOrdinal;
+		  string firstMismatchKind;
+		  bool firstMismatchRecorded;
+		};
+
+		inline SimDeviceOrderedMaintenanceShadowMismatchState &
+		simDeviceOrderedMaintenanceShadowMismatchStateRuntime()
+		{
+		  static SimDeviceOrderedMaintenanceShadowMismatchState state;
+		  return state;
+		}
+
 		inline SimDeviceOrderedMaintenanceShadowValidationSnapshot
 		currentSimDeviceOrderedMaintenanceShadowValidationSnapshot()
 		{
@@ -7214,6 +7266,14 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		    simDeviceOrderedMaintenanceHostObservedCandidateIndexHash().load(std::memory_order_relaxed);
 		  snapshot.shadowObservedCandidateIndexHash =
 		    simDeviceOrderedMaintenanceShadowObservedCandidateIndexHash().load(std::memory_order_relaxed);
+		  {
+		    SimDeviceOrderedMaintenanceShadowMismatchState &mismatchState =
+		      simDeviceOrderedMaintenanceShadowMismatchStateRuntime();
+		    std::lock_guard<std::mutex> guard(mismatchState.lock);
+		    snapshot.firstMismatchCaseId = mismatchState.firstMismatchCaseId;
+		    snapshot.firstMismatchSummaryOrdinal = mismatchState.firstMismatchSummaryOrdinal;
+		    snapshot.firstMismatchKind = mismatchState.firstMismatchKind;
+		  }
 		  if(!snapshot.shadowEnabled)
 		  {
 		    snapshot.shadowStatus = "disabled";
@@ -7221,6 +7281,10 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  else if(snapshot.shadowMismatchCount > 0)
 		  {
 		    snapshot.shadowStatus = "mismatch";
+		  }
+		  else if(simDeviceOrderedMaintenanceShadowRanCount().load(std::memory_order_relaxed) > 0)
+		  {
+		    snapshot.shadowStatus = "ran";
 		  }
 		  else
 		  {
@@ -7253,6 +7317,54 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		    digest.safeStoreStateHash,std::memory_order_relaxed);
 		  simDeviceOrderedMaintenanceHostObservedCandidateIndexHash().store(
 		    digest.observedCandidateIndexHash,std::memory_order_relaxed);
+		}
+
+		inline void recordSimDeviceOrderedMaintenanceShadowComparison(
+		  const SimOrderedMaintenanceShadowReplayComparison &comparison,
+		  const SimOrderedMaintenanceHostDigest &hostDigest,
+		  const SimOrderedMaintenanceHostDigest &shadowDigest,
+		  uint64_t summaryCount,
+		  uint64_t eventCount,
+		  double hostCpuMergeSeconds,
+		  double shadowSeconds)
+		{
+		  recordSimDeviceOrderedMaintenanceShadowHostDigest(hostDigest,
+		                                                    summaryCount,
+		                                                    eventCount,
+		                                                    hostCpuMergeSeconds);
+		  simDeviceOrderedMaintenanceShadowRanCount().fetch_add(1,std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(shadowSeconds),
+		    std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowMismatchCount().fetch_add(
+		    comparison.mismatchCount,
+		    std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowFinalCandidateStateHash().store(
+		    shadowDigest.finalCandidateStateHash,std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowReplacementSequenceHash().store(
+		    shadowDigest.replacementSequenceHash,std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowRunningMinUpdateSequenceHash().store(
+		    shadowDigest.runningMinUpdateSequenceHash,std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowCandidateIndexVisibilityHash().store(
+		    shadowDigest.candidateIndexVisibilityHash,std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowSafeStoreStateHash().store(
+		    shadowDigest.safeStoreStateHash,std::memory_order_relaxed);
+		  simDeviceOrderedMaintenanceShadowObservedCandidateIndexHash().store(
+		    shadowDigest.observedCandidateIndexHash,std::memory_order_relaxed);
+		  if(comparison.mismatchCount > 0)
+		  {
+		    SimDeviceOrderedMaintenanceShadowMismatchState &mismatchState =
+		      simDeviceOrderedMaintenanceShadowMismatchStateRuntime();
+		    std::lock_guard<std::mutex> guard(mismatchState.lock);
+		    if(!mismatchState.firstMismatchRecorded)
+		    {
+		      mismatchState.firstMismatchCaseId = comparison.firstMismatchCaseId;
+		      mismatchState.firstMismatchSummaryOrdinal =
+		        comparison.firstMismatchSummaryOrdinal;
+		      mismatchState.firstMismatchKind = comparison.firstMismatchKind;
+		      mismatchState.firstMismatchRecorded = true;
+		    }
+		  }
 		}
 
 		inline void updateSimTelemetryMax(std::atomic<uint64_t> &target,uint64_t candidate)
@@ -12591,6 +12703,177 @@ inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSu
   }
 }
 
+inline SimOrderedMaintenanceHostDigest replaySimOrderedMaintenanceIndependentShadowDigest(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  uint64_t logicalEventCount,
+  const SimKernelContext &initialContext,
+  bool maintainSafeStore)
+{
+  SimKernelContext shadowContext(initialContext);
+  SimOrderedMaintenanceHostDigest digest;
+  mergeSimCudaInitialRunSummaries(summaries,
+                                  logicalEventCount,
+                                  shadowContext,
+                                  NULL,
+                                  &digest);
+  if(maintainSafeStore)
+  {
+    mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,shadowContext);
+    pruneSimSafeCandidateStateStore(shadowContext);
+  }
+  finalizeSimOrderedMaintenanceHostDigest(shadowContext,digest);
+  return digest;
+}
+
+inline void markSimOrderedMaintenanceShadowMismatch(
+  SimOrderedMaintenanceShadowReplayComparison &comparison,
+  const string &caseId,
+  uint64_t firstMismatchSummaryOrdinal,
+  const string &kind)
+{
+  if(comparison.mismatchCount == 0)
+  {
+    comparison.firstMismatchCaseId = caseId;
+    comparison.firstMismatchSummaryOrdinal = firstMismatchSummaryOrdinal;
+    comparison.firstMismatchKind = kind;
+  }
+  ++comparison.mismatchCount;
+  comparison.shadowStatus = "mismatch";
+}
+
+inline void compareSimOrderedMaintenanceShadowU64(
+  SimOrderedMaintenanceShadowReplayComparison &comparison,
+  const string &caseId,
+  uint64_t firstMismatchSummaryOrdinal,
+  const char *kind,
+  uint64_t hostValue,
+  uint64_t shadowValue)
+{
+  if(hostValue != shadowValue)
+  {
+    markSimOrderedMaintenanceShadowMismatch(comparison,
+                                            caseId,
+                                            firstMismatchSummaryOrdinal,
+                                            kind);
+  }
+}
+
+inline void compareSimOrderedMaintenanceShadowLong(
+  SimOrderedMaintenanceShadowReplayComparison &comparison,
+  const string &caseId,
+  uint64_t firstMismatchSummaryOrdinal,
+  const char *kind,
+  long hostValue,
+  long shadowValue)
+{
+  if(hostValue != shadowValue)
+  {
+    markSimOrderedMaintenanceShadowMismatch(comparison,
+                                            caseId,
+                                            firstMismatchSummaryOrdinal,
+                                            kind);
+  }
+}
+
+inline SimOrderedMaintenanceShadowReplayComparison
+compareSimOrderedMaintenanceShadowDigests(
+  const string &caseId,
+  uint64_t firstMismatchSummaryOrdinal,
+  const SimOrderedMaintenanceHostDigest &hostDigest,
+  const SimOrderedMaintenanceHostDigest &shadowDigest)
+{
+  SimOrderedMaintenanceShadowReplayComparison comparison;
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_count",
+                                        hostDigest.candidateCount,
+                                        shadowDigest.candidateCount);
+  compareSimOrderedMaintenanceShadowLong(comparison,caseId,firstMismatchSummaryOrdinal,
+                                         "running_min",
+                                         hostDigest.runningMin,
+                                         shadowDigest.runningMin);
+  compareSimOrderedMaintenanceShadowLong(comparison,caseId,firstMismatchSummaryOrdinal,
+                                         "running_min_slot",
+                                         hostDigest.runningMinSlot,
+                                         shadowDigest.runningMinSlot);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "final_candidate_state_hash",
+                                        hostDigest.finalCandidateStateHash,
+                                        shadowDigest.finalCandidateStateHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_slot_key_hash",
+                                        hostDigest.candidateSlotKeyHash,
+                                        shadowDigest.candidateSlotKeyHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_slot_score_hash",
+                                        hostDigest.candidateSlotScoreHash,
+                                        shadowDigest.candidateSlotScoreHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_slot_generation_hash",
+                                        hostDigest.candidateSlotGenerationHash,
+                                        shadowDigest.candidateSlotGenerationHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_index_visibility_hash",
+                                        hostDigest.candidateIndexVisibilityHash,
+                                        shadowDigest.candidateIndexVisibilityHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "replacement_sequence_hash",
+                                        hostDigest.replacementSequenceHash,
+                                        shadowDigest.replacementSequenceHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "running_min_update_sequence_hash",
+                                        hostDigest.runningMinUpdateSequenceHash,
+                                        shadowDigest.runningMinUpdateSequenceHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "running_min_slot_update_sequence_hash",
+                                        hostDigest.runningMinSlotUpdateSequenceHash,
+                                        shadowDigest.runningMinSlotUpdateSequenceHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "floor_change_sequence_hash",
+                                        hostDigest.floorChangeSequenceHash,
+                                        shadowDigest.floorChangeSequenceHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "safe_store_state_hash",
+                                        hostDigest.safeStoreStateHash,
+                                        shadowDigest.safeStoreStateHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_state_handoff_hash",
+                                        hostDigest.candidateStateHandoffHash,
+                                        shadowDigest.candidateStateHandoffHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "summary_ordinal_hash",
+                                        hostDigest.summaryOrdinalHash,
+                                        shadowDigest.summaryOrdinalHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "observed_candidate_index_hash",
+                                        hostDigest.observedCandidateIndexHash,
+                                        shadowDigest.observedCandidateIndexHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "summary_count",
+                                        hostDigest.summaryCount,
+                                        shadowDigest.summaryCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "event_count",
+                                        hostDigest.eventCount,
+                                        shadowDigest.eventCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "full_set_miss_count",
+                                        hostDigest.fullSetMissCount,
+                                        shadowDigest.fullSetMissCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "existing_candidate_hit_count",
+                                        hostDigest.existingCandidateHitCount,
+                                        shadowDigest.existingCandidateHitCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_replacement_count",
+                                        hostDigest.candidateReplacementCount,
+                                        shadowDigest.candidateReplacementCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "state_update_count",
+                                        hostDigest.stateUpdateCount,
+                                        shadowDigest.stateUpdateCount);
+  return comparison;
+}
+
 inline const char *simInitialHostMergeCorpusPathKind()
 {
   return "default_summary_handoff_host_merge";
@@ -17126,6 +17409,8 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   const bool collectOrderedMaintenanceShadowDigest =
     simDeviceOrderedMaintenanceShadowEnabledRuntime() ||
     simDeviceOrderedMaintenanceShadowValidateEnabledRuntime();
+  SimKernelContext *orderedMaintenanceShadowInitialContext =
+    collectOrderedMaintenanceShadowDigest ? new SimKernelContext(context) : NULL;
   SimOrderedMaintenanceHostDigest orderedMaintenanceHostDigest;
   const std::chrono::steady_clock::time_point cpuMergeStart =
     (benchmarkEnabled || collectOrderedMaintenanceShadowDigest) ?
@@ -17156,9 +17441,9 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
     }
     capturedRunningMinAfterContextApply = static_cast<int>(context.runningMin);
   }
+  bool maintainedSafeStoreOnDevice = false;
   if(maintainSafeStore)
   {
-    bool maintainedSafeStoreOnDevice = false;
     if(simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime())
     {
       vector<SimScanCudaCandidateState> finalCandidateStates;
@@ -17309,12 +17594,45 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   if(collectOrderedMaintenanceShadowDigest)
   {
     finalizeSimOrderedMaintenanceHostDigest(context,orderedMaintenanceHostDigest);
-    recordSimDeviceOrderedMaintenanceShadowHostDigest(
+    const std::chrono::steady_clock::time_point shadowReplayStart =
+      std::chrono::steady_clock::now();
+    const bool shadowShouldMaintainHostSafeStore =
+      maintainSafeStore && !maintainedSafeStoreOnDevice;
+    const SimOrderedMaintenanceHostDigest orderedMaintenanceShadowDigest =
+      replaySimOrderedMaintenanceIndependentShadowDigest(
+        summaries,
+        eventCount,
+        *orderedMaintenanceShadowInitialContext,
+        shadowShouldMaintainHostSafeStore);
+    const double shadowReplaySeconds =
+      static_cast<double>(simElapsedNanoseconds(shadowReplayStart)) / 1.0e9;
+    const SimOrderedMaintenanceShadowReplayComparison shadowComparison =
+      compareSimOrderedMaintenanceShadowDigests(
+        "initial_run_summary_ordered_maintenance",
+        static_cast<uint64_t>(summaries.size()),
+        orderedMaintenanceHostDigest,
+        orderedMaintenanceShadowDigest);
+    recordSimDeviceOrderedMaintenanceShadowComparison(
+      shadowComparison,
       orderedMaintenanceHostDigest,
+      orderedMaintenanceShadowDigest,
       static_cast<uint64_t>(summaries.size()),
       eventCount,
-      static_cast<double>(cpuMergeNanoseconds) / 1.0e9);
+      static_cast<double>(cpuMergeNanoseconds) / 1.0e9,
+      shadowReplaySeconds);
+    if(simDeviceOrderedMaintenanceShadowValidateEnabledRuntime() &&
+       shadowComparison.mismatchCount > 0)
+    {
+      fprintf(stderr,
+              "SIM ordered maintenance shadow mismatch: case=%s ordinal=%llu kind=%s mismatches=%llu\n",
+              shadowComparison.firstMismatchCaseId.c_str(),
+              static_cast<unsigned long long>(shadowComparison.firstMismatchSummaryOrdinal),
+              shadowComparison.firstMismatchKind.c_str(),
+              static_cast<unsigned long long>(shadowComparison.mismatchCount));
+      abort();
+    }
   }
+  delete orderedMaintenanceShadowInitialContext;
   if(benchmarkEnabled)
   {
     recordSimInitialScanCpuMergeNanoseconds(cpuMergeNanoseconds);

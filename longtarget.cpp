@@ -2728,6 +2728,68 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simDeviceOrderedMaintenanceShadowSnapshot.hostObservedCandidateIndexHash<<endl;
   cerr<<"benchmark.sim_device_ordered_maintenance_shadow_observed_candidate_index_hash="
       <<simDeviceOrderedMaintenanceShadowSnapshot.shadowObservedCandidateIndexHash<<endl;
+  cerr<<"benchmark.sim_device_ordered_maintenance_shadow_first_mismatch_case_id="
+      <<(simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchCaseId.empty() ?
+         "none" :
+         simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchCaseId)<<endl;
+  cerr<<"benchmark.sim_device_ordered_maintenance_shadow_first_mismatch_summary_ordinal="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchSummaryOrdinal<<endl;
+  cerr<<"benchmark.sim_device_ordered_maintenance_shadow_first_mismatch_kind="
+      <<(simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchKind.empty() ?
+         "none" :
+         simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchKind)<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_enabled="
+      <<(simDeviceOrderedMaintenanceShadowSnapshot.shadowEnabled ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_validate_enabled="
+      <<(simDeviceOrderedMaintenanceShadowSnapshot.shadowValidateEnabled ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_status="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowStatus<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_case_count="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowCaseCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_summary_count="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowSummaryCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_event_count="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowEventCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_mismatch_count="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowMismatchCount<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_first_mismatch_case_id="
+      <<(simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchCaseId.empty() ?
+         "none" :
+         simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchCaseId)<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_first_mismatch_summary_ordinal="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchSummaryOrdinal<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_first_mismatch_kind="
+      <<(simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchKind.empty() ?
+         "none" :
+         simDeviceOrderedMaintenanceShadowSnapshot.firstMismatchKind)<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_seconds="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowSeconds<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_host_cpu_merge_seconds="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostCpuMergeSeconds<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_host_final_candidate_state_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostFinalCandidateStateHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_final_candidate_state_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowFinalCandidateStateHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_host_replacement_sequence_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostReplacementSequenceHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_replacement_sequence_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowReplacementSequenceHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_host_running_min_sequence_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostRunningMinUpdateSequenceHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_running_min_sequence_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowRunningMinUpdateSequenceHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_host_candidate_index_visibility_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostCandidateIndexVisibilityHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_candidate_index_visibility_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowCandidateIndexVisibilityHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_host_safe_store_state_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostSafeStoreStateHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_safe_store_state_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowSafeStoreStateHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_host_observed_candidate_index_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.hostObservedCandidateIndexHash<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_observed_candidate_index_hash="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowObservedCandidateIndexHash<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;

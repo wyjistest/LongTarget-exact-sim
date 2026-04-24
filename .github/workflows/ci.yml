@@ -33,6 +33,7 @@ jobs:
             build-sim-initial-host-merge-corpus-test \
             build-sim-initial-host-merge-steady-state-trace-test \
             build-sim-ordered-maintenance-shadow-digest-test \
+            build-sim-ordered-maintenance-shadow-replay-test \
             build-sim-candidate-index-probe-test
 
       - name: Run candidate-index runtime tests
@@ -40,6 +41,7 @@ jobs:
           ./tests/test_sim_initial_host_merge_corpus
           ./tests/test_sim_initial_host_merge_steady_state_trace
           ./tests/test_sim_ordered_maintenance_shadow_digest
+          ./tests/test_sim_ordered_maintenance_shadow_replay
           ./tests/test_sim_candidate_index_probe
 
       - name: Run profiling summarizer checks
@@ -57,3 +59,4 @@ jobs:
           bash scripts/check_summarize_longtarget_sim_pipeline_budget_rollup.sh
           bash scripts/check_summarize_longtarget_sim_ordered_candidate_maintenance_budget.sh
           bash scripts/check_summarize_longtarget_device_ordered_maintenance_shadow_design.sh
+          bash scripts/check_summarize_longtarget_device_ordered_maintenance_shadow_validation.sh
