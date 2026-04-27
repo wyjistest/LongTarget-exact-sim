@@ -706,6 +706,8 @@ struct SimOrderedMaintenanceHostDigest
     floorChangeSequenceHash(1469598103934665603ULL),
     safeStoreStateHash(0),
     candidateStateHandoffHash(0),
+    safeStoreStateCount(0),
+    candidateStateHandoffCount(0),
     summaryOrdinalHash(1469598103934665603ULL),
     observedCandidateIndexHash(1469598103934665603ULL),
     summaryCount(0),
@@ -739,6 +741,8 @@ struct SimOrderedMaintenanceHostDigest
   uint64_t floorChangeSequenceHash;
   uint64_t safeStoreStateHash;
   uint64_t candidateStateHandoffHash;
+  uint64_t safeStoreStateCount;
+  uint64_t candidateStateHandoffCount;
   uint64_t summaryOrdinalHash;
   uint64_t observedCandidateIndexHash;
   uint64_t summaryCount;
@@ -9308,6 +9312,23 @@ inline uint64_t simDigestFinalizeCandidateIndexVisibilityHash(
   return hash;
 }
 
+inline uint64_t simHashOrderedMaintenanceHandoff(uint64_t finalCandidateStateHash,
+                                                 uint64_t safeStoreStateHash,
+                                                 long runningMin,
+                                                 uint64_t candidateCount,
+                                                 uint64_t safeStoreStateCount,
+                                                 uint64_t candidateStateHandoffCount)
+{
+  uint64_t handoffHash = simDigestFnvOffset();
+  handoffHash = simDigestMixU64(handoffHash,finalCandidateStateHash);
+  handoffHash = simDigestMixU64(handoffHash,safeStoreStateHash);
+  handoffHash = simDigestMixLong(handoffHash,runningMin);
+  handoffHash = simDigestMixU64(handoffHash,candidateCount);
+  handoffHash = simDigestMixU64(handoffHash,safeStoreStateCount);
+  handoffHash = simDigestMixU64(handoffHash,candidateStateHandoffCount);
+  return handoffHash;
+}
+
 inline int simDigestCandidateStateFloorSlot(const vector<SimScanCudaCandidateState> &states)
 {
   if(states.empty())
@@ -9329,6 +9350,7 @@ inline void populateSimOrderedMaintenanceCandidateStateDigestFromCudaStates(
   const vector<SimScanCudaInitialRunSummary> &summaries,
   uint64_t logicalEventCount,
   const vector<SimScanCudaCandidateState> &candidateStates,
+  const vector<SimScanCudaCandidateState> &safeStoreStates,
   int runningMin,
   SimOrderedMaintenanceHostDigest &digest)
 {
@@ -9373,12 +9395,16 @@ inline void populateSimOrderedMaintenanceCandidateStateDigestFromCudaStates(
   digest.candidateSlotKeyHash = keyHash;
   digest.candidateSlotScoreHash = scoreHash;
   digest.candidateSlotGenerationHash = generationHash;
-  digest.safeStoreStateHash = simDigestMixU64(simDigestFnvOffset(),0);
-  uint64_t handoffHash = simDigestFnvOffset();
-  handoffHash = simDigestMixU64(handoffHash,digest.finalCandidateStateHash);
-  handoffHash = simDigestMixU64(handoffHash,digest.safeStoreStateHash);
-  handoffHash = simDigestMixLong(handoffHash,digest.runningMin);
-  digest.candidateStateHandoffHash = handoffHash;
+  digest.safeStoreStateHash = simHashCandidateStateVector(safeStoreStates);
+  digest.safeStoreStateCount = static_cast<uint64_t>(safeStoreStates.size());
+  digest.candidateStateHandoffCount = digest.candidateCount + digest.safeStoreStateCount;
+  digest.candidateStateHandoffHash =
+    simHashOrderedMaintenanceHandoff(digest.finalCandidateStateHash,
+                                     digest.safeStoreStateHash,
+                                     digest.runningMin,
+                                     digest.candidateCount,
+                                     digest.safeStoreStateCount,
+                                     digest.candidateStateHandoffCount);
 }
 
 inline void finalizeSimOrderedMaintenanceHostDigest(const SimKernelContext &context,
@@ -9418,11 +9444,17 @@ inline void finalizeSimOrderedMaintenanceHostDigest(const SimKernelContext &cont
     context.safeCandidateStateStore.valid ?
     simHashCandidateStateVector(context.safeCandidateStateStore.states) :
     simDigestMixU64(simDigestFnvOffset(),0);
-  uint64_t handoffHash = simDigestFnvOffset();
-  handoffHash = simDigestMixU64(handoffHash,digest.finalCandidateStateHash);
-  handoffHash = simDigestMixU64(handoffHash,digest.safeStoreStateHash);
-  handoffHash = simDigestMixLong(handoffHash,digest.runningMin);
-  digest.candidateStateHandoffHash = handoffHash;
+  digest.safeStoreStateCount =
+    context.safeCandidateStateStore.valid ?
+    static_cast<uint64_t>(context.safeCandidateStateStore.states.size()) : 0;
+  digest.candidateStateHandoffCount = digest.candidateCount + digest.safeStoreStateCount;
+  digest.candidateStateHandoffHash =
+    simHashOrderedMaintenanceHandoff(digest.finalCandidateStateHash,
+                                     digest.safeStoreStateHash,
+                                     digest.runningMin,
+                                     digest.candidateCount,
+                                     digest.safeStoreStateCount,
+                                     digest.candidateStateHandoffCount);
 }
 
 inline bool writeSimOrderedMaintenanceHostDigestJson(
@@ -9454,6 +9486,8 @@ inline bool writeSimOrderedMaintenanceHostDigestJson(
   output << "  \"floor_change_sequence_hash\": " << digest.floorChangeSequenceHash << ",\n";
   output << "  \"safe_store_state_hash\": " << digest.safeStoreStateHash << ",\n";
   output << "  \"candidate_state_handoff_hash\": " << digest.candidateStateHandoffHash << ",\n";
+  output << "  \"safe_store_state_count\": " << digest.safeStoreStateCount << ",\n";
+  output << "  \"candidate_state_handoff_count\": " << digest.candidateStateHandoffCount << ",\n";
   output << "  \"summary_ordinal_hash\": " << digest.summaryOrdinalHash << ",\n";
   output << "  \"observed_candidate_index_hash\": " << digest.observedCandidateIndexHash << ",\n";
   output << "  \"summary_count\": " << digest.summaryCount << ",\n";
@@ -12899,6 +12933,7 @@ inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
     return false;
   }
   vector<SimScanCudaCandidateState> candidateStates;
+  vector<SimScanCudaCandidateState> safeStoreStates;
   int runningMin = 0;
   SimScanCudaInitialReduceReplayStats replayStats;
   SimScanCudaOrderedMaintenanceReplayDigestStats digestStats;
@@ -12907,13 +12942,15 @@ inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
                                                           &runningMin,
                                                           &replayStats,
                                                           errorOut,
-                                                          &digestStats))
+                                                          &digestStats,
+                                                          &safeStoreStates))
   {
     return false;
   }
   populateSimOrderedMaintenanceCandidateStateDigestFromCudaStates(summaries,
                                                                   logicalEventCount,
                                                                   candidateStates,
+                                                                  safeStoreStates,
                                                                   runningMin,
                                                                   *digest);
   digest->replacementSequenceHash = digestStats.replacementSequenceHash;
@@ -13053,6 +13090,14 @@ compareSimOrderedMaintenanceShadowDigests(
                                         "candidate_state_handoff_hash",
                                         hostDigest.candidateStateHandoffHash,
                                         shadowDigest.candidateStateHandoffHash);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "safe_store_state_count",
+                                        hostDigest.safeStoreStateCount,
+                                        shadowDigest.safeStoreStateCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "candidate_state_handoff_count",
+                                        hostDigest.candidateStateHandoffCount,
+                                        shadowDigest.candidateStateHandoffCount);
   compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
                                         "summary_ordinal_hash",
                                         hostDigest.summaryOrdinalHash,

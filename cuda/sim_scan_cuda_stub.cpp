@@ -573,12 +573,17 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          string *errorOut,
-                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats)
+                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats,
+                                                         vector<SimScanCudaCandidateState> *outSafeStoreStates)
 {
   (void)summaries;
   if(outCandidateStates != NULL)
   {
     outCandidateStates->clear();
+  }
+  if(outSafeStoreStates != NULL)
+  {
+    outSafeStoreStates->clear();
   }
   if(outRunningMin != NULL)
   {

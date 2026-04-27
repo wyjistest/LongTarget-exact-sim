@@ -83,6 +83,8 @@ static SimOrderedMaintenanceHostDigest host_digest_for_summaries(
                                     context,
                                     NULL,
                                     &digest);
+    mergeSimCudaInitialRunSummariesIntoSafeStore(summaries, context);
+    pruneSimSafeCandidateStateStore(context);
     finalizeSimOrderedMaintenanceHostDigest(context, digest);
     return digest;
 }
@@ -270,7 +272,7 @@ static bool expect_device_candidate_digest_matches(
         replaySimOrderedMaintenanceIndependentShadowDigest(summaries,
                                                            logicalEventCount,
                                                            initialContext,
-                                                           false);
+                                                           true);
     SimOrderedMaintenanceHostDigest deviceShadowDigest;
     std::string error;
     bool ok = expect_true(
@@ -339,6 +341,22 @@ static bool expect_device_candidate_digest_matches(
     ok = expect_equal_u64(cpuShadowDigest.candidateIndexVisibilityCheckCount,
                           hostDigest.candidateIndexVisibilityCheckCount,
                           (caseId + " CPU shadow candidate-index visibility check count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.safeStoreStateHash,
+                          hostDigest.safeStoreStateHash,
+                          (caseId + " CPU shadow safe-store hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateStateHandoffHash,
+                          hostDigest.candidateStateHandoffHash,
+                          (caseId + " CPU shadow handoff hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.safeStoreStateCount,
+                          hostDigest.safeStoreStateCount,
+                          (caseId + " CPU shadow safe-store count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateStateHandoffCount,
+                          hostDigest.candidateStateHandoffCount,
+                          (caseId + " CPU shadow handoff count").c_str()) &&
          ok;
     ok = expect_ge_u64(hostDigest.runningMinUpdateCount,
                        minRunningMinUpdateCount,
@@ -456,9 +474,21 @@ static bool expect_device_candidate_digest_matches(
                           hostDigest.candidateIndexVisibilityCheckCount,
                           (caseId + " device candidate-index visibility check count").c_str()) &&
          ok;
+    ok = expect_equal_u64(deviceShadowDigest.safeStoreStateHash,
+                          hostDigest.safeStoreStateHash,
+                          (caseId + " device safe-store hash").c_str()) &&
+         ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateStateHandoffHash,
                           hostDigest.candidateStateHandoffHash,
                           (caseId + " device handoff hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.safeStoreStateCount,
+                          hostDigest.safeStoreStateCount,
+                          (caseId + " device safe-store count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateStateHandoffCount,
+                          hostDigest.candidateStateHandoffCount,
+                          (caseId + " device handoff count").c_str()) &&
          ok;
     return ok;
 }
@@ -556,6 +586,26 @@ int main()
              3,
              3,
              0) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "safe_store_empty",
+             std::vector<SimScanCudaInitialRunSummary>()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "safe_store_single_candidate",
+             std::vector<SimScanCudaInitialRunSummary>{
+                 make_summary(19, 1700, 1701, 30, 17, 31, 30)}) &&
+         ok;
+    ok = expect_device_candidate_digest_matches("safe_store_after_replacement",
+                                                make_single_replacement_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "safe_store_after_victim_reappears",
+             make_victim_reappears_replacement_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "safe_store_handoff_order",
+             make_hit_miss_interleaving_sequence()) &&
          ok;
     ok = expect_device_candidate_digest_matches(
              "empty_summaries",

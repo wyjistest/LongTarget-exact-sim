@@ -178,6 +178,12 @@ int main()
     ok = expect_true(digestJson.find("\"safe_store_state_hash\"") != std::string::npos,
                      "digest json safe_store_state_hash") &&
          ok;
+    ok = expect_true(digestJson.find("\"safe_store_state_count\"") != std::string::npos,
+                     "digest json safe_store_state_count") &&
+         ok;
+    ok = expect_true(digestJson.find("\"candidate_state_handoff_count\"") != std::string::npos,
+                     "digest json candidate_state_handoff_count") &&
+         ok;
 
     SimDeviceOrderedMaintenanceShadowValidationSnapshot snapshot =
         currentSimDeviceOrderedMaintenanceShadowValidationSnapshot();

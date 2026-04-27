@@ -5760,7 +5760,9 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
                                                                 const int *chunkMaxScores,
                                                                 int chunkSize,
                                                                 unsigned long long *replayStats,
-                                                                unsigned long long *orderedMaintenanceDigestStats)
+                                                                unsigned long long *orderedMaintenanceDigestStats,
+                                                                SimScanCudaCandidateState *safeStoreStatesOut,
+                                                                int *safeStoreCountOut)
 {
   if(blockIdx.x != 0 || threadIdx.x >= sim_scan_initial_reduce_threads)
   {
@@ -5770,10 +5772,17 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
   __shared__ SimScanCudaCandidateState sharedCandidates[sim_scan_cuda_max_candidates];
   __shared__ uint64_t sharedHashCoords[sim_scan_candidate_hash_capacity];
   __shared__ int sharedHashSlots[sim_scan_candidate_hash_capacity];
+  __shared__ SimScanCudaCandidateState sharedSafeStoreStates[sim_scan_candidate_hash_capacity];
+  __shared__ uint64_t sharedSafeStoreHashCoords[sim_scan_candidate_hash_capacity];
+  __shared__ int sharedSafeStoreHashSlots[sim_scan_candidate_hash_capacity];
   __shared__ int sharedCandidateCount;
   __shared__ int sharedRunningMin;
   __shared__ int sharedMinIndex;
   __shared__ int sharedHashTombstones;
+  __shared__ int sharedSafeStoreCount;
+  __shared__ int sharedSafeStoreHashTombstones;
+  __shared__ int sharedSafeStoreInsertIndex;
+  __shared__ int sharedSafeStorePrunedCount;
   __shared__ SimScanCudaInitialRunSummary sharedSummary;
   __shared__ int sharedInsertIndex;
   __shared__ int sharedNeedErase;
@@ -5814,6 +5823,10 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
     sharedRunningMin = 0;
     sharedMinIndex = -1;
     sharedHashTombstones = 0;
+    sharedSafeStoreCount = 0;
+    sharedSafeStoreHashTombstones = 0;
+    sharedSafeStoreInsertIndex = -1;
+    sharedSafeStorePrunedCount = 0;
   }
   __syncwarp();
 
@@ -5844,6 +5857,14 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
                                        sharedHashCoords,
                                        sharedHashSlots,
                                        sharedHashTombstones);
+  if(safeStoreStatesOut != NULL)
+  {
+    sim_scan_candidate_hash_rebuild_warp(sharedSafeStoreStates,
+                                         sharedSafeStoreCount,
+                                         sharedSafeStoreHashCoords,
+                                         sharedSafeStoreHashSlots,
+                                         sharedSafeStoreHashTombstones);
+  }
 
   // Preserve exact summary stream order while parallelizing the hot bookkeeping within a warp.
   const int effectiveChunkSize = chunkSize > 0 ? chunkSize : (summaryCount > 0 ? summaryCount : 1);
@@ -5865,7 +5886,7 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       }
     }
     const int chunkNeedsReplay =
-      orderedMaintenanceDigestStats != NULL ? 1 :
+      (orderedMaintenanceDigestStats != NULL || safeStoreStatesOut != NULL) ? 1 :
       (__any_sync(0xffffffffu, localNeedsReplay != 0) ? 1 : 0);
     if(tid == 0)
     {
@@ -5893,6 +5914,59 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       __syncwarp();
 
       const SimScanCudaInitialRunSummary summary = sharedSummary;
+      if(safeStoreStatesOut != NULL)
+      {
+        const int safeStoreIndex =
+          sim_scan_candidate_hash_find_warp(summary.startCoord,
+                                            sharedSafeStoreHashCoords,
+                                            sharedSafeStoreHashSlots);
+        if(safeStoreIndex < 0)
+        {
+          if(tid == 0)
+          {
+            if(sharedSafeStoreCount < sim_scan_candidate_hash_capacity)
+            {
+              sharedSafeStoreInsertIndex = sharedSafeStoreCount++;
+              initSimScanCudaCandidateStateFromInitialRunSummary(
+                summary,sharedSafeStoreStates[sharedSafeStoreInsertIndex]);
+            }
+            else
+            {
+              sharedSafeStoreInsertIndex = -1;
+            }
+          }
+          __syncwarp();
+          if(sharedSafeStoreInsertIndex >= 0)
+          {
+            if(!sim_scan_candidate_hash_insert_warp(summary.startCoord,
+                                                    sharedSafeStoreInsertIndex,
+                                                    sharedSafeStoreHashCoords,
+                                                    sharedSafeStoreHashSlots,
+                                                    sharedSafeStoreHashTombstones))
+            {
+              sim_scan_candidate_hash_rebuild_warp(sharedSafeStoreStates,
+                                                   sharedSafeStoreCount,
+                                                   sharedSafeStoreHashCoords,
+                                                   sharedSafeStoreHashSlots,
+                                                   sharedSafeStoreHashTombstones);
+              sim_scan_candidate_hash_insert_warp(summary.startCoord,
+                                                  sharedSafeStoreInsertIndex,
+                                                  sharedSafeStoreHashCoords,
+                                                  sharedSafeStoreHashSlots,
+                                                  sharedSafeStoreHashTombstones);
+            }
+          }
+        }
+        else
+        {
+          if(tid == 0)
+          {
+            updateSimScanCudaCandidateStateFromInitialRunSummary(
+              summary,sharedSafeStoreStates[safeStoreIndex]);
+          }
+          __syncwarp();
+        }
+      }
       const int targetIndex = sim_scan_candidate_hash_find_warp(summary.startCoord,
                                                                 sharedHashCoords,
                                                                 sharedHashSlots);
@@ -6153,6 +6227,35 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       orderedMaintenanceDigestStats[
         sim_scan_ordered_maintenance_digest_candidate_index_visibility_check_count_index] =
         localCandidateIndexVisibilityCheckCount;
+    }
+  }
+
+  if(safeStoreStatesOut != NULL)
+  {
+    if(tid == 0)
+    {
+      sharedSafeStorePrunedCount = 0;
+    }
+    __syncwarp();
+    for(int safeStoreIndex = tid;
+        safeStoreIndex < sharedSafeStoreCount;
+        safeStoreIndex += sim_scan_initial_reduce_threads)
+    {
+      const SimScanCudaCandidateState state = sharedSafeStoreStates[safeStoreIndex];
+      const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+      const bool keepState =
+        state.score > sharedRunningMin ||
+        sim_scan_candidate_hash_find(startCoord,sharedHashCoords,sharedHashSlots) >= 0;
+      if(keepState)
+      {
+        const int outputIndex = atomicAdd(&sharedSafeStorePrunedCount,1);
+        safeStoreStatesOut[outputIndex] = state;
+      }
+    }
+    __syncwarp();
+    if(tid == 0 && safeStoreCountOut != NULL)
+    {
+      *safeStoreCountOut = sharedSafeStorePrunedCount;
     }
   }
 
@@ -12988,6 +13091,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                                                 NULL,
                                                                                                 reduceChunkSize,
                                                                                                 context->initialReduceReplayStatsDevice,
+                                                                                                NULL,
+                                                                                                NULL,
                                                                                                 NULL);
         status = cudaGetLastError();
         if(status != cudaSuccess)
@@ -14551,7 +14656,8 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          string *errorOut,
-                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats)
+                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats,
+                                                         vector<SimScanCudaCandidateState> *outSafeStoreStates)
 {
   if(outCandidateStates == NULL || outRunningMin == NULL || outReplayStats == NULL)
   {
@@ -14562,6 +14668,10 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     return false;
   }
   outCandidateStates->clear();
+  if(outSafeStoreStates != NULL)
+  {
+    outSafeStoreStates->clear();
+  }
   *outRunningMin = 0;
   *outReplayStats = SimScanCudaInitialReduceReplayStats();
   if(outDigestStats != NULL)
@@ -14628,6 +14738,17 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
   }
 
   const bool collectDigestStats = outDigestStats != NULL;
+  const bool collectSafeStoreStates = outSafeStoreStates != NULL;
+  if(collectSafeStoreStates)
+  {
+    if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                    &context->outputCandidateStatesCapacity,
+                                    static_cast<size_t>(max(summaryCount,1)),
+                                    errorOut))
+    {
+      return false;
+    }
+  }
   const size_t replayStatsDeviceCount =
     static_cast<size_t>(sim_scan_initial_reduce_chunk_stats_count) +
     (collectDigestStats ?
@@ -14677,6 +14798,18 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     }
     return false;
   }
+  if(collectSafeStoreStates)
+  {
+    status = cudaMemset(context->filteredCandidateCountDevice,0,sizeof(int));
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+  }
 
   const int reduceChunkSize = sim_scan_cuda_initial_reduce_chunk_size_runtime();
   unsigned long long *orderedMaintenanceDigestStatsDevice =
@@ -14693,7 +14826,11 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
                                                                                             NULL,
                                                                                             reduceChunkSize,
                                                                                             context->initialReduceReplayStatsDevice,
-                                                                                            orderedMaintenanceDigestStatsDevice);
+                                                                                            orderedMaintenanceDigestStatsDevice,
+                                                                                            collectSafeStoreStates ?
+                                                                                              context->outputCandidateStatesDevice : NULL,
+                                                                                            collectSafeStoreStates ?
+                                                                                              context->filteredCandidateCountDevice : NULL);
     status = cudaGetLastError();
     if(status != cudaSuccess)
     {
@@ -14849,6 +14986,48 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
         *errorOut = cuda_error_string(status);
       }
       return false;
+    }
+  }
+  if(collectSafeStoreStates)
+  {
+    int safeStoreStateCount = 0;
+    status = cudaMemcpy(&safeStoreStateCount,
+                        context->filteredCandidateCountDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(safeStoreStateCount < 0)
+    {
+      safeStoreStateCount = 0;
+    }
+    if(safeStoreStateCount > summaryCount)
+    {
+      safeStoreStateCount = summaryCount;
+    }
+    if(safeStoreStateCount > 0)
+    {
+      outSafeStoreStates->resize(static_cast<size_t>(safeStoreStateCount));
+      status = cudaMemcpy(outSafeStoreStates->data(),
+                          context->outputCandidateStatesDevice,
+                          static_cast<size_t>(safeStoreStateCount) *
+                            sizeof(SimScanCudaCandidateState),
+                          cudaMemcpyDeviceToHost);
+      if(status != cudaSuccess)
+      {
+        outSafeStoreStates->clear();
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
     }
   }
 
