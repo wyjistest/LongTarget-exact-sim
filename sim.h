@@ -9237,6 +9237,78 @@ inline uint64_t simHashCandidateStateVector(vector<SimScanCudaCandidateState> st
   return hash;
 }
 
+inline int simDigestCandidateStateFloorSlot(const vector<SimScanCudaCandidateState> &states)
+{
+  if(states.empty())
+  {
+    return -1;
+  }
+  int floorSlot = 0;
+  for(size_t stateIndex = 1; stateIndex < states.size(); ++stateIndex)
+  {
+    if(states[stateIndex].score < states[static_cast<size_t>(floorSlot)].score)
+    {
+      floorSlot = static_cast<int>(stateIndex);
+    }
+  }
+  return floorSlot;
+}
+
+inline void populateSimOrderedMaintenanceCandidateStateDigestFromCudaStates(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  uint64_t logicalEventCount,
+  const vector<SimScanCudaCandidateState> &candidateStates,
+  int runningMin,
+  SimOrderedMaintenanceHostDigest &digest)
+{
+  digest = SimOrderedMaintenanceHostDigest();
+  digest.summaryCount = static_cast<uint64_t>(summaries.size());
+  digest.eventCount = logicalEventCount;
+  digest.candidateCount = static_cast<uint64_t>(candidateStates.size());
+  digest.runningMin = runningMin;
+  digest.runningMinSlot = simDigestCandidateStateFloorSlot(candidateStates);
+  digest.runningMinUpdateSequenceHash =
+    simDigestMixLong(digest.runningMinUpdateSequenceHash,digest.runningMin);
+
+  uint64_t summaryHash = simDigestFnvOffset();
+  for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
+  {
+    const SimScanCudaInitialRunSummary &summary = summaries[summaryIndex];
+    summaryHash = simDigestMixU64(summaryHash,static_cast<uint64_t>(summaryIndex));
+    summaryHash = simDigestMixLong(summaryHash,summary.score);
+    summaryHash = simDigestMixU64(summaryHash,summary.startCoord);
+    summaryHash = simDigestMixLong(summaryHash,summary.endI);
+    summaryHash = simDigestMixLong(summaryHash,summary.minEndJ);
+    summaryHash = simDigestMixLong(summaryHash,summary.maxEndJ);
+    summaryHash = simDigestMixLong(summaryHash,summary.scoreEndJ);
+  }
+  digest.summaryOrdinalHash = summaryHash;
+
+  digest.finalCandidateStateHash = simHashCandidateStateVector(candidateStates);
+  uint64_t keyHash = simDigestFnvOffset();
+  uint64_t scoreHash = simDigestFnvOffset();
+  uint64_t generationHash = simDigestFnvOffset();
+  for(size_t candidateIndex = 0; candidateIndex < candidateStates.size(); ++candidateIndex)
+  {
+    const SimScanCudaCandidateState &candidate = candidateStates[candidateIndex];
+    keyHash = simDigestMixLong(keyHash,candidate.startI);
+    keyHash = simDigestMixLong(keyHash,candidate.startJ);
+    scoreHash = simDigestMixLong(scoreHash,candidate.score);
+    generationHash = simDigestMixLong(generationHash,static_cast<long>(candidateIndex));
+    generationHash = simDigestMixLong(generationHash,candidate.startI);
+    generationHash = simDigestMixLong(generationHash,candidate.startJ);
+  }
+  digest.candidateSlotKeyHash = keyHash;
+  digest.candidateSlotScoreHash = scoreHash;
+  digest.candidateSlotGenerationHash = generationHash;
+  digest.safeStoreStateHash = simDigestMixU64(simDigestFnvOffset(),0);
+  uint64_t handoffHash = simDigestFnvOffset();
+  handoffHash = simDigestMixU64(handoffHash,digest.finalCandidateStateHash);
+  handoffHash = simDigestMixU64(handoffHash,digest.safeStoreStateHash);
+  handoffHash = simDigestMixLong(handoffHash,digest.runningMin);
+  digest.candidateStateHandoffHash = handoffHash;
+}
+
 inline void finalizeSimOrderedMaintenanceHostDigest(const SimKernelContext &context,
                                                     SimOrderedMaintenanceHostDigest &digest)
 {
@@ -12746,6 +12818,43 @@ inline SimOrderedMaintenanceHostDigest replaySimOrderedMaintenanceIndependentSha
   }
   finalizeSimOrderedMaintenanceHostDigest(shadowContext,digest);
   return digest;
+}
+
+inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  uint64_t logicalEventCount,
+  SimOrderedMaintenanceHostDigest *digest,
+  string *errorOut)
+{
+  if(digest == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing device shadow digest output";
+    }
+    return false;
+  }
+  vector<SimScanCudaCandidateState> candidateStates;
+  int runningMin = 0;
+  SimScanCudaInitialReduceReplayStats replayStats;
+  if(!sim_scan_cuda_reduce_initial_run_summaries_for_test(summaries,
+                                                          &candidateStates,
+                                                          &runningMin,
+                                                          &replayStats,
+                                                          errorOut))
+  {
+    return false;
+  }
+  populateSimOrderedMaintenanceCandidateStateDigestFromCudaStates(summaries,
+                                                                  logicalEventCount,
+                                                                  candidateStates,
+                                                                  runningMin,
+                                                                  *digest);
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return true;
 }
 
 inline void markSimOrderedMaintenanceShadowMismatch(

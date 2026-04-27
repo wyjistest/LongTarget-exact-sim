@@ -16,6 +16,10 @@ Phase 3d.1 adds an independent CPU shadow replay that is still validation-only. 
 
 Phase 3d.2 starts only with a backend interface for the future device-shadow lane. `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=cpu` preserves the existing CPU shadow validation path. `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=device` currently records the authoritative host digest and exposes schema/status only; it returns `shadow_status=not_supported` until a digest-only device shadow kernel exists.
 
+The first CUDA regression for Phase 3d.2 is deliberately narrower than the full validation gate. `make check-sim-ordered-maintenance-device-shadow` runs synthetic ordered row-run summaries through the existing ordered initial-replay CUDA kernel and checks the device candidate-state digest subset against host and CPU-shadow digests. Covered fields include final candidate state, runningMin, runningMinSlot, slot key/score/generation hashes, summary ordinal hash, and handoff hash.
+
+This is not sufficient for real device shadow validation. Device backend promotion still requires replacement-sequence, running-min slot sequence, candidate-index visibility, and safe-store digest coverage before `shadow_backend=device` can report anything other than `not_supported` on benchmark telemetry.
+
 ## Opt-In Contract
 
 Only explicit shadow flags may activate host digest recording for this lane:

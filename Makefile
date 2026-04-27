@@ -406,6 +406,9 @@ SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_SOURCES := tests/test_sim_ordered_mai
 SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_TARGET ?= tests/test_sim_ordered_maintenance_shadow_replay
 SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_SOURCES := tests/test_sim_ordered_maintenance_shadow_replay.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_TARGET ?= tests/test_sim_ordered_maintenance_device_shadow
+SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_SOURCES := tests/test_sim_ordered_maintenance_device_shadow.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET ?= tests/test_sim_candidate_index_probe
 SIM_CANDIDATE_INDEX_PROBE_TEST_SOURCES := tests/test_sim_candidate_index_probe.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -450,6 +453,8 @@ build-sim-initial-host-merge-steady-state-miss-profile: $(SIM_INITIAL_HOST_MERGE
 build-sim-ordered-maintenance-shadow-digest-test: $(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET)
 
 build-sim-ordered-maintenance-shadow-replay-test: $(SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_TARGET)
+
+build-sim-ordered-maintenance-device-shadow-test: $(SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_TARGET)
 
 build-sim-candidate-index-probe-test: $(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET)
 
@@ -506,6 +511,9 @@ $(SIM_ORDERED_MAINTENANCE_SHADOW_DIGEST_TEST_TARGET): $(SIM_ORDERED_MAINTENANCE_
 $(SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_TARGET): $(SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
+$(SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_TARGET): $(SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
 $(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET): $(SIM_CANDIDATE_INDEX_PROBE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_CANDIDATE_INDEX_PROBE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -553,6 +561,9 @@ check-sim-ordered-maintenance-shadow-digest: $(SIM_ORDERED_MAINTENANCE_SHADOW_DI
 
 check-sim-ordered-maintenance-shadow-replay: $(SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_TARGET)
 	./$(SIM_ORDERED_MAINTENANCE_SHADOW_REPLAY_TEST_TARGET)
+
+check-sim-ordered-maintenance-device-shadow: $(SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_TARGET)
+	./$(SIM_ORDERED_MAINTENANCE_DEVICE_SHADOW_TEST_TARGET)
 
 check-sim-candidate-index-probe: $(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET)
 	./$(SIM_CANDIDATE_INDEX_PROBE_TEST_TARGET)
@@ -727,6 +738,7 @@ check-longtarget-lite-output:
 		build-sim-initial-host-merge-corpus-test build-sim-initial-host-merge-replay check-sim-initial-host-merge-corpus \
 		build-sim-ordered-maintenance-shadow-digest-test check-sim-ordered-maintenance-shadow-digest \
 		build-sim-ordered-maintenance-shadow-replay-test check-sim-ordered-maintenance-shadow-replay \
+		build-sim-ordered-maintenance-device-shadow-test check-sim-ordered-maintenance-device-shadow \
 		build-sim-locate-update-test check-sim-locate-update \
 		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
 			check-benchmark-telemetry check-benchmark-telemetry-device-shadow-backend check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
