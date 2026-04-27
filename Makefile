@@ -582,6 +582,10 @@ check-benchmark-telemetry:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) sh ./scripts/check_benchmark_telemetry.sh
 
+check-benchmark-telemetry-device-shadow-backend:
+	$(MAKE) build-cuda
+	LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW=1 LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=device TARGET=$(CURDIR)/$(CUDA_TARGET) sh ./scripts/check_benchmark_telemetry.sh
+
 check-benchmark-worker-telemetry:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) sh ./scripts/check_benchmark_worker_telemetry.sh
@@ -725,7 +729,7 @@ check-longtarget-lite-output:
 		build-sim-ordered-maintenance-shadow-replay-test check-sim-ordered-maintenance-shadow-replay \
 		build-sim-locate-update-test check-sim-locate-update \
 		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
-			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
+			check-benchmark-telemetry check-benchmark-telemetry-device-shadow-backend check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \

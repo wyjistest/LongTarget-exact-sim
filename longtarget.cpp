@@ -2690,6 +2690,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(simDeviceOrderedMaintenanceShadowSnapshot.shadowEnabled ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_device_ordered_maintenance_shadow_validate_enabled="
       <<(simDeviceOrderedMaintenanceShadowSnapshot.shadowValidateEnabled ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_device_ordered_maintenance_shadow_backend="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowBackend<<endl;
   cerr<<"benchmark.sim_device_ordered_maintenance_shadow_status="
       <<simDeviceOrderedMaintenanceShadowSnapshot.shadowStatus<<endl;
   cerr<<"benchmark.sim_device_ordered_maintenance_shadow_case_count="
@@ -2742,6 +2744,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(simDeviceOrderedMaintenanceShadowSnapshot.shadowEnabled ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_shadow_validate_enabled="
       <<(simDeviceOrderedMaintenanceShadowSnapshot.shadowValidateEnabled ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_ordered_maintenance_shadow_backend="
+      <<simDeviceOrderedMaintenanceShadowSnapshot.shadowBackend<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_shadow_status="
       <<simDeviceOrderedMaintenanceShadowSnapshot.shadowStatus<<endl;
   cerr<<"benchmark.sim_ordered_maintenance_shadow_case_count="

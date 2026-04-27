@@ -12,6 +12,7 @@ CASE_FIELDS = [
     "workload_class",
     "shadow_enabled",
     "shadow_validate_enabled",
+    "shadow_backend",
     "shadow_status",
     "shadow_case_count",
     "shadow_summary_count",
@@ -110,6 +111,10 @@ REQUIRED_KEYS = {
 }
 
 OPTIONAL_KEYS = {
+    "shadow_backend": (
+        "sim_ordered_maintenance_shadow_backend",
+        "sim_device_ordered_maintenance_shadow_backend",
+    ),
     "shadow_first_mismatch_case_id": (
         "sim_ordered_maintenance_shadow_first_mismatch_case_id",
         "sim_device_ordered_maintenance_shadow_first_mismatch_case_id",
@@ -221,10 +226,18 @@ def normalize_case(payload, source_path):
             value = ""
         case[field] = value
     for field, aliases in OPTIONAL_KEYS.items():
-        case[field] = lookup(payload, aliases, "none" if "kind" in field or "case_id" in field else 0)
+        if field == "shadow_backend":
+            default = "cpu"
+        else:
+            default = "none" if "kind" in field or "case_id" in field else 0
+        case[field] = lookup(payload, aliases, default)
 
     case["shadow_enabled"] = to_bool(case["shadow_enabled"])
     case["shadow_validate_enabled"] = to_bool(case["shadow_validate_enabled"])
+    case["shadow_backend"] = str(case["shadow_backend"]).strip().lower() or "cpu"
+    if case["shadow_backend"] not in {"cpu", "device"}:
+        case["shadow_backend"] = "unknown"
+    case["shadow_status"] = str(case["shadow_status"]).strip().lower()
     for field in [
         "shadow_case_count",
         "shadow_summary_count",
@@ -280,17 +293,25 @@ def build_summary(cases):
     enabled_cases = [case for case in cases if case["shadow_enabled"]]
     mismatch_cases = [case for case in cases if case["shadow_mismatch_count"] > 0]
     incomplete_cases = [case for case in cases if case["missing_required_field_count"] > 0]
+    unsupported_cases = [
+        case for case in enabled_cases if case["shadow_status"] == "not_supported"
+    ]
     digest_match_cases = [case for case in enabled_cases if digest_pairs_match(case)]
     digest_mismatch_cases = [
         case
         for case in enabled_cases
         if case["missing_required_field_count"] == 0 and not digest_pairs_match(case)
+        and case["shadow_status"] != "not_supported"
     ]
     return {
         "phase": PHASE,
         "workload_count": len(cases),
         "enabled_workload_count": len(enabled_cases),
         "incomplete_workload_count": len(incomplete_cases),
+        "unsupported_workload_count": len(unsupported_cases),
+        "device_unsupported_workload_count": sum(
+            1 for case in unsupported_cases if case["shadow_backend"] == "device"
+        ),
         "mismatch_workload_count": len(mismatch_cases),
         "digest_match_workload_count": len(digest_match_cases),
         "digest_mismatch_workload_count": len(digest_mismatch_cases),
@@ -333,6 +354,17 @@ def build_decision(summary, minimum_case_count, minimum_summary_count):
             {
                 "shadow_validation_status": "incomplete",
                 "recommended_next_action": "collect_shadow_validation_telemetry",
+            }
+        )
+    elif summary["unsupported_workload_count"] > 0:
+        decision.update(
+            {
+                "shadow_validation_status": "incomplete",
+                "recommended_next_action": (
+                    "expand_device_shadow_coverage"
+                    if summary["device_unsupported_workload_count"] > 0
+                    else "collect_shadow_validation_telemetry"
+                ),
             }
         )
     elif (
@@ -389,7 +421,8 @@ def render_markdown(summary, decision):
     for case in summary["cases"]:
         lines.append(
             "- "
-            f"{case['workload_id']}: status=`{case['shadow_status']}`, "
+            f"{case['workload_id']}: backend=`{case['shadow_backend']}`, "
+            f"status=`{case['shadow_status']}`, "
             f"mismatches=`{case['shadow_mismatch_count']}`"
         )
     lines.append("")

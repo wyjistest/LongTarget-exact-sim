@@ -14,6 +14,8 @@ Phase 3d starts with validation contracts only. The first implementation step is
 
 Phase 3d.1 adds an independent CPU shadow replay that is still validation-only. It copies the pre-merge host context only when the explicit shadow flag is enabled, replays the ordered row-run summaries into a shadow context, finalizes a shadow digest, and compares it against the authoritative host digest. The default path does not run the shadow replay.
 
+Phase 3d.2 starts only with a backend interface for the future device-shadow lane. `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=cpu` preserves the existing CPU shadow validation path. `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=device` currently records the authoritative host digest and exposes schema/status only; it returns `shadow_status=not_supported` until a digest-only device shadow kernel exists.
+
 ## Opt-In Contract
 
 Only explicit shadow flags may activate host digest recording for this lane:
@@ -21,9 +23,19 @@ Only explicit shadow flags may activate host digest recording for this lane:
 ```bash
 LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW=1
 LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_VALIDATE=1
+LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=cpu
 ```
 
 Do not introduce or use `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE=1`; that name reads like a runtime replacement rather than a shadow-only validation mode.
+
+The backend flag is constrained to:
+
+```text
+cpu
+device
+```
+
+`device` does not imply runtime replacement. In the current interface commit, it is a not-supported validation backend placeholder only.
 
 ## Host Digest Contract
 
@@ -57,6 +69,7 @@ Benchmark output exposes the disabled/default schema even when shadow is not ena
 ```text
 benchmark.sim_device_ordered_maintenance_shadow_enabled
 benchmark.sim_device_ordered_maintenance_shadow_validate_enabled
+benchmark.sim_device_ordered_maintenance_shadow_backend
 benchmark.sim_device_ordered_maintenance_shadow_status
 benchmark.sim_device_ordered_maintenance_shadow_case_count
 benchmark.sim_device_ordered_maintenance_shadow_summary_count
@@ -66,7 +79,7 @@ benchmark.sim_device_ordered_maintenance_shadow_seconds
 benchmark.sim_device_ordered_maintenance_shadow_host_cpu_merge_seconds
 ```
 
-Host and shadow digest hash fields are also exposed. In the default disabled path, shadow fields are zero and `shadow_status=disabled`.
+Host and shadow digest hash fields are also exposed. In the default disabled path, shadow fields are zero, `shadow_backend=cpu`, and `shadow_status=disabled`. With `shadow_backend=device`, the current implementation records host digest fields but leaves shadow digest fields unset and reports `shadow_status=not_supported`.
 
 ## Validation Summarizer
 
@@ -84,6 +97,7 @@ The decision gate is:
 ```text
 disabled -> enable_shadow_validation
 incomplete -> collect_shadow_validation_telemetry
+device_not_supported -> expand_device_shadow_coverage
 mismatch -> debug_shadow_mismatch
 insufficient_coverage -> expand_shadow_coverage
 passed -> profile_shadow_cost

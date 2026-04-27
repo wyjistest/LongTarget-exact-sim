@@ -14,6 +14,7 @@ cat >"$PASSED_TELEMETRY" <<'EOF'
   "workload_class": "synthetic",
   "sim_ordered_maintenance_shadow_enabled": 1,
   "sim_ordered_maintenance_shadow_validate_enabled": 1,
+  "sim_ordered_maintenance_shadow_backend": "cpu",
   "sim_ordered_maintenance_shadow_status": "ran",
   "sim_ordered_maintenance_shadow_case_count": 4,
   "sim_ordered_maintenance_shadow_summary_count": 128,
@@ -63,8 +64,60 @@ assert decision["default_path_changes_allowed"] is False, decision
 assert summary["enabled_workload_count"] == 1, summary
 assert summary["total_shadow_mismatch_count"] == 0, summary
 assert rows[0]["workload_id"] == "synthetic_shadow_pass", rows
+assert rows[0]["shadow_backend"] == "cpu", rows
 assert rows[0]["shadow_status"] == "ran", rows
 assert "shadow_validation_status: `passed`" in markdown, markdown
+PY
+
+DEVICE_UNSUPPORTED_TELEMETRY="$WORK/device_unsupported_shadow_telemetry.json"
+cat >"$DEVICE_UNSUPPORTED_TELEMETRY" <<'EOF'
+{
+  "workload_id": "synthetic_device_shadow_not_supported",
+  "workload_class": "synthetic",
+  "sim_ordered_maintenance_shadow_enabled": 1,
+  "sim_ordered_maintenance_shadow_validate_enabled": 1,
+  "sim_ordered_maintenance_shadow_backend": "device",
+  "sim_ordered_maintenance_shadow_status": "not_supported",
+  "sim_ordered_maintenance_shadow_case_count": 1,
+  "sim_ordered_maintenance_shadow_summary_count": 16,
+  "sim_ordered_maintenance_shadow_event_count": 48,
+  "sim_ordered_maintenance_shadow_mismatch_count": 0,
+  "sim_ordered_maintenance_shadow_first_mismatch_case_id": "none",
+  "sim_ordered_maintenance_shadow_first_mismatch_summary_ordinal": 0,
+  "sim_ordered_maintenance_shadow_first_mismatch_kind": "none",
+  "sim_ordered_maintenance_shadow_seconds": 0.0,
+  "sim_ordered_maintenance_shadow_host_cpu_merge_seconds": 0.02,
+  "sim_ordered_maintenance_host_final_candidate_state_hash": 101,
+  "sim_ordered_maintenance_shadow_final_candidate_state_hash": 0,
+  "sim_ordered_maintenance_host_replacement_sequence_hash": 202,
+  "sim_ordered_maintenance_shadow_replacement_sequence_hash": 0,
+  "sim_ordered_maintenance_host_running_min_sequence_hash": 303,
+  "sim_ordered_maintenance_shadow_running_min_sequence_hash": 0,
+  "sim_ordered_maintenance_host_candidate_index_visibility_hash": 404,
+  "sim_ordered_maintenance_shadow_candidate_index_visibility_hash": 0,
+  "sim_ordered_maintenance_host_safe_store_state_hash": 505,
+  "sim_ordered_maintenance_shadow_safe_store_state_hash": 0
+}
+EOF
+
+python3 scripts/summarize_longtarget_device_ordered_maintenance_shadow_validation.py \
+  --shadow-telemetry "$DEVICE_UNSUPPORTED_TELEMETRY" \
+  --output-dir "$WORK/device_unsupported"
+
+python3 - <<'PY' "$WORK/device_unsupported/device_ordered_maintenance_shadow_validation_decision.json" "$WORK/device_unsupported/device_ordered_maintenance_shadow_validation_cases.tsv"
+import csv
+import json
+import sys
+from pathlib import Path
+
+decision = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+rows = list(csv.DictReader(Path(sys.argv[2]).open(encoding="utf-8"), delimiter="\t"))
+
+assert rows[0]["shadow_backend"] == "device", rows
+assert rows[0]["shadow_status"] == "not_supported", rows
+assert decision["shadow_validation_status"] == "incomplete", decision
+assert decision["recommended_next_action"] == "expand_device_shadow_coverage", decision
+assert decision["runtime_prototype_allowed"] is False, decision
 PY
 
 MISMATCH_TELEMETRY="$WORK/mismatch_shadow_telemetry.json"

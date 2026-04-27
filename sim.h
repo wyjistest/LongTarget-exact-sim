@@ -746,6 +746,7 @@ struct SimDeviceOrderedMaintenanceShadowValidationSnapshot
   SimDeviceOrderedMaintenanceShadowValidationSnapshot():
     shadowEnabled(false),
     shadowValidateEnabled(false),
+    shadowBackend("cpu"),
     shadowStatus("disabled"),
     shadowCaseCount(0),
     shadowSummaryCount(0),
@@ -773,6 +774,7 @@ struct SimDeviceOrderedMaintenanceShadowValidationSnapshot
 
   bool shadowEnabled;
   bool shadowValidateEnabled;
+  string shadowBackend;
   string shadowStatus;
   uint64_t shadowCaseCount;
   uint64_t shadowSummaryCount;
@@ -3723,6 +3725,26 @@ struct SimCandidateMinHeap
 	    return env[0] != '0';
 	  }();
 	  return simDeviceOrderedMaintenanceShadowEnabledRuntime() && enabled;
+	}
+
+	inline const string &simDeviceOrderedMaintenanceShadowBackendRuntime()
+	{
+	  static const string backend = []()
+	  {
+	    const char *env =
+	      getenv("LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND");
+	    if(env != NULL && string(env) == "device")
+	    {
+	      return string("device");
+	    }
+	    return string("cpu");
+	  }();
+	  return backend;
+	}
+
+	inline bool simDeviceOrderedMaintenanceShadowDeviceBackendEnabledRuntime()
+	{
+	  return simDeviceOrderedMaintenanceShadowBackendRuntime() == "device";
 	}
 
 	inline bool simCandidateRunUpdaterEnabledRuntime()
@@ -7226,6 +7248,7 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  SimDeviceOrderedMaintenanceShadowValidationSnapshot snapshot;
 		  snapshot.shadowEnabled = simDeviceOrderedMaintenanceShadowEnabledRuntime();
 		  snapshot.shadowValidateEnabled = simDeviceOrderedMaintenanceShadowValidateEnabledRuntime();
+		  snapshot.shadowBackend = simDeviceOrderedMaintenanceShadowBackendRuntime();
 		  snapshot.shadowCaseCount =
 		    simDeviceOrderedMaintenanceShadowCaseCount().load(std::memory_order_relaxed);
 		  snapshot.shadowSummaryCount =
@@ -17409,8 +17432,12 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   const bool collectOrderedMaintenanceShadowDigest =
     simDeviceOrderedMaintenanceShadowEnabledRuntime() ||
     simDeviceOrderedMaintenanceShadowValidateEnabledRuntime();
+  const bool useDeviceOrderedMaintenanceShadowBackend =
+    simDeviceOrderedMaintenanceShadowDeviceBackendEnabledRuntime();
+  const bool runCpuOrderedMaintenanceShadowReplay =
+    collectOrderedMaintenanceShadowDigest && !useDeviceOrderedMaintenanceShadowBackend;
   SimKernelContext *orderedMaintenanceShadowInitialContext =
-    collectOrderedMaintenanceShadowDigest ? new SimKernelContext(context) : NULL;
+    runCpuOrderedMaintenanceShadowReplay ? new SimKernelContext(context) : NULL;
   SimOrderedMaintenanceHostDigest orderedMaintenanceHostDigest;
   const std::chrono::steady_clock::time_point cpuMergeStart =
     (benchmarkEnabled || collectOrderedMaintenanceShadowDigest) ?
@@ -17594,42 +17621,53 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   if(collectOrderedMaintenanceShadowDigest)
   {
     finalizeSimOrderedMaintenanceHostDigest(context,orderedMaintenanceHostDigest);
-    const std::chrono::steady_clock::time_point shadowReplayStart =
-      std::chrono::steady_clock::now();
-    const bool shadowShouldMaintainHostSafeStore =
-      maintainSafeStore && !maintainedSafeStoreOnDevice;
-    const SimOrderedMaintenanceHostDigest orderedMaintenanceShadowDigest =
-      replaySimOrderedMaintenanceIndependentShadowDigest(
-        summaries,
-        eventCount,
-        *orderedMaintenanceShadowInitialContext,
-        shadowShouldMaintainHostSafeStore);
-    const double shadowReplaySeconds =
-      static_cast<double>(simElapsedNanoseconds(shadowReplayStart)) / 1.0e9;
-    const SimOrderedMaintenanceShadowReplayComparison shadowComparison =
-      compareSimOrderedMaintenanceShadowDigests(
-        "initial_run_summary_ordered_maintenance",
-        static_cast<uint64_t>(summaries.size()),
-        orderedMaintenanceHostDigest,
-        orderedMaintenanceShadowDigest);
-    recordSimDeviceOrderedMaintenanceShadowComparison(
-      shadowComparison,
-      orderedMaintenanceHostDigest,
-      orderedMaintenanceShadowDigest,
-      static_cast<uint64_t>(summaries.size()),
-      eventCount,
-      static_cast<double>(cpuMergeNanoseconds) / 1.0e9,
-      shadowReplaySeconds);
-    if(simDeviceOrderedMaintenanceShadowValidateEnabledRuntime() &&
-       shadowComparison.mismatchCount > 0)
+    if(useDeviceOrderedMaintenanceShadowBackend)
     {
-      fprintf(stderr,
-              "SIM ordered maintenance shadow mismatch: case=%s ordinal=%llu kind=%s mismatches=%llu\n",
-              shadowComparison.firstMismatchCaseId.c_str(),
-              static_cast<unsigned long long>(shadowComparison.firstMismatchSummaryOrdinal),
-              shadowComparison.firstMismatchKind.c_str(),
-              static_cast<unsigned long long>(shadowComparison.mismatchCount));
-      abort();
+      recordSimDeviceOrderedMaintenanceShadowHostDigest(
+        orderedMaintenanceHostDigest,
+        static_cast<uint64_t>(summaries.size()),
+        eventCount,
+        static_cast<double>(cpuMergeNanoseconds) / 1.0e9);
+    }
+    else
+    {
+      const std::chrono::steady_clock::time_point shadowReplayStart =
+        std::chrono::steady_clock::now();
+      const bool shadowShouldMaintainHostSafeStore =
+        maintainSafeStore && !maintainedSafeStoreOnDevice;
+      const SimOrderedMaintenanceHostDigest orderedMaintenanceShadowDigest =
+        replaySimOrderedMaintenanceIndependentShadowDigest(
+          summaries,
+          eventCount,
+          *orderedMaintenanceShadowInitialContext,
+          shadowShouldMaintainHostSafeStore);
+      const double shadowReplaySeconds =
+        static_cast<double>(simElapsedNanoseconds(shadowReplayStart)) / 1.0e9;
+      const SimOrderedMaintenanceShadowReplayComparison shadowComparison =
+        compareSimOrderedMaintenanceShadowDigests(
+          "initial_run_summary_ordered_maintenance",
+          static_cast<uint64_t>(summaries.size()),
+          orderedMaintenanceHostDigest,
+          orderedMaintenanceShadowDigest);
+      recordSimDeviceOrderedMaintenanceShadowComparison(
+        shadowComparison,
+        orderedMaintenanceHostDigest,
+        orderedMaintenanceShadowDigest,
+        static_cast<uint64_t>(summaries.size()),
+        eventCount,
+        static_cast<double>(cpuMergeNanoseconds) / 1.0e9,
+        shadowReplaySeconds);
+      if(simDeviceOrderedMaintenanceShadowValidateEnabledRuntime() &&
+         shadowComparison.mismatchCount > 0)
+      {
+        fprintf(stderr,
+                "SIM ordered maintenance shadow mismatch: case=%s ordinal=%llu kind=%s mismatches=%llu\n",
+                shadowComparison.firstMismatchCaseId.c_str(),
+                static_cast<unsigned long long>(shadowComparison.firstMismatchSummaryOrdinal),
+                shadowComparison.firstMismatchKind.c_str(),
+                static_cast<unsigned long long>(shadowComparison.mismatchCount));
+        abort();
+      }
     }
   }
   delete orderedMaintenanceShadowInitialContext;

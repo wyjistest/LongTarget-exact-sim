@@ -274,6 +274,7 @@ grep -Eq '^benchmark\.sim_ordered_maintenance_intra_state_machine_serial_depende
 grep -Eq '^benchmark\.sim_ordered_maintenance_inter_state_machine_parallelism=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_enabled=[01]$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_validate_enabled=[01]$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_backend=(cpu|device)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_status=(disabled|ran|mismatch|not_supported)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_case_count=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_summary_count=[0-9]+$' "$STDERR_LOG"
@@ -298,6 +299,7 @@ grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_first_mismatch_summa
 grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_first_mismatch_kind=[A-Za-z0-9_.:-]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_enabled=[01]$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_validate_enabled=[01]$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_backend=(cpu|device)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_status=(disabled|ran|mismatch|not_supported)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_case_count=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_summary_count=[0-9]+$' "$STDERR_LOG"
@@ -320,6 +322,12 @@ grep -Eq '^benchmark\.sim_ordered_maintenance_host_safe_store_state_hash=[0-9]+$
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_safe_store_state_hash=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_host_observed_candidate_index_hash=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_observed_candidate_index_hash=[0-9]+$' "$STDERR_LOG"
+if [ "${LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND:-}" = "device" ]; then
+	grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_backend=device$' "$STDERR_LOG"
+	grep -Eq '^benchmark\.sim_device_ordered_maintenance_shadow_status=not_supported$' "$STDERR_LOG"
+	grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_backend=device$' "$STDERR_LOG"
+	grep -Eq '^benchmark\.sim_ordered_maintenance_shadow_status=not_supported$' "$STDERR_LOG"
+fi
 grep -Eq '^benchmark\.sim_initial_safe_store_device_build_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_safe_store_device_prune_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_safe_store_frontier_bytes_h2d=[0-9]+$' "$STDERR_LOG"
