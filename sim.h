@@ -12837,11 +12837,15 @@ inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
   vector<SimScanCudaCandidateState> candidateStates;
   int runningMin = 0;
   SimScanCudaInitialReduceReplayStats replayStats;
+  uint64_t replacementSequenceHash = simDigestFnvOffset();
+  uint64_t candidateReplacementCount = 0;
   if(!sim_scan_cuda_reduce_initial_run_summaries_for_test(summaries,
                                                           &candidateStates,
                                                           &runningMin,
                                                           &replayStats,
-                                                          errorOut))
+                                                          errorOut,
+                                                          &replacementSequenceHash,
+                                                          &candidateReplacementCount))
   {
     return false;
   }
@@ -12850,6 +12854,8 @@ inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
                                                                   candidateStates,
                                                                   runningMin,
                                                                   *digest);
+  digest->replacementSequenceHash = replacementSequenceHash;
+  digest->candidateReplacementCount = candidateReplacementCount;
   if(errorOut != NULL)
   {
     errorOut->clear();

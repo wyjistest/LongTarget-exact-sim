@@ -95,6 +95,74 @@ static std::vector<SimScanCudaInitialRunSummary> make_full_set_miss_sequence()
     return summaries;
 }
 
+static std::vector<SimScanCudaInitialRunSummary> make_full_candidate_seed_sequence(
+    int scoreBase,
+    bool tieScores)
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries;
+    for (int index = 0; index < K; ++index)
+    {
+        const int score = tieScores ? scoreBase : scoreBase + index;
+        summaries.push_back(make_summary(score,
+                                         100 + index,
+                                         200 + index,
+                                         static_cast<uint32_t>(3 + (index % 9)),
+                                         static_cast<uint32_t>(1 + (index % 5)),
+                                         static_cast<uint32_t>(8 + (index % 13)),
+                                         static_cast<uint32_t>(6 + (index % 17))));
+    }
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_single_replacement_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(30, false);
+    summaries.push_back(make_summary(120, 500, 600, 11, 2, 16, 14));
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_multiple_replacement_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(40, false);
+    for (int index = 0; index < 4; ++index)
+    {
+        summaries.push_back(make_summary(140 + index,
+                                         700 + index,
+                                         800 + index,
+                                         static_cast<uint32_t>(12 + index),
+                                         static_cast<uint32_t>(2 + index),
+                                         static_cast<uint32_t>(18 + index),
+                                         static_cast<uint32_t>(15 + index)));
+    }
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_tie_replacement_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(55, true);
+    summaries.push_back(make_summary(55, 900, 901, 13, 3, 19, 16));
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_victim_reappears_replacement_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(60, false);
+    const SimScanCudaInitialRunSummary victim = summaries.front();
+    summaries.push_back(make_summary(180, 1000, 1001, 14, 4, 20, 17));
+    summaries.push_back(make_summary(181,
+                                     static_cast<long>(victim.startCoord >> 32),
+                                     static_cast<long>(victim.startCoord & 0xffffffffULL),
+                                     15,
+                                     5,
+                                     21,
+                                     18));
+    return summaries;
+}
+
 static bool expect_device_candidate_digest_matches(
     const std::string &caseId,
     const std::vector<SimScanCudaInitialRunSummary> &summaries)
@@ -121,6 +189,14 @@ static bool expect_device_candidate_digest_matches(
                           hostDigest.finalCandidateStateHash,
                           (caseId + " CPU shadow final hash").c_str()) &&
          ok;
+    ok = expect_equal_u64(cpuShadowDigest.replacementSequenceHash,
+                          hostDigest.replacementSequenceHash,
+                          (caseId + " CPU shadow replacement sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateReplacementCount,
+                          hostDigest.candidateReplacementCount,
+                          (caseId + " CPU shadow replacement count").c_str()) &&
+         ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateCount,
                           hostDigest.candidateCount,
                           (caseId + " device candidate count").c_str()) &&
@@ -136,6 +212,14 @@ static bool expect_device_candidate_digest_matches(
     ok = expect_equal_u64(deviceShadowDigest.finalCandidateStateHash,
                           hostDigest.finalCandidateStateHash,
                           (caseId + " device final candidate state hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.replacementSequenceHash,
+                          hostDigest.replacementSequenceHash,
+                          (caseId + " device replacement sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateReplacementCount,
+                          hostDigest.candidateReplacementCount,
+                          (caseId + " device replacement count").c_str()) &&
          ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateSlotKeyHash,
                           hostDigest.candidateSlotKeyHash,
@@ -188,6 +272,18 @@ int main()
          ok;
     ok = expect_device_candidate_digest_matches("full_set_miss_replacement",
                                                 make_full_set_miss_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches("replacement_sequence_single_miss",
+                                                make_single_replacement_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches("replacement_sequence_multiple_misses",
+                                                make_multiple_replacement_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches("replacement_sequence_tie_break",
+                                                make_tie_replacement_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches("replacement_sequence_victim_reappears",
+                                                make_victim_reappears_replacement_sequence()) &&
          ok;
     ok = expect_device_candidate_digest_matches(
              "running_min_changes",

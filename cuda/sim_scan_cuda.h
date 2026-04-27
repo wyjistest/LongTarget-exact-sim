@@ -775,7 +775,9 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const std::vector<SimSc
                                                          std::vector<SimScanCudaCandidateState> *outCandidateStates,
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
-                                                         std::string *errorOut);
+                                                         std::string *errorOut,
+                                                         uint64_t *outReplacementSequenceHash = NULL,
+                                                         uint64_t *outCandidateReplacementCount = NULL);
 
 bool sim_scan_cuda_select_top_disjoint_candidate_states(const std::vector<SimScanCudaCandidateState> &candidateStates,
                                                         int maxProposalCount,
