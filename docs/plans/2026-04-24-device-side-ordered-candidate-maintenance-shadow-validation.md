@@ -96,6 +96,30 @@ runtime_prototype_allowed = false
 default_path_changes_allowed = false
 ```
 
+## Cost Summarizer
+
+After validation passes, `scripts/summarize_longtarget_device_ordered_maintenance_shadow_cost.py` consumes the validation decision plus one or more baseline / shadow telemetry JSON files and emits:
+
+```text
+device_ordered_maintenance_shadow_cost_cases.tsv
+device_ordered_maintenance_shadow_cost_summary.json
+device_ordered_maintenance_shadow_cost_decision.json
+device_ordered_maintenance_shadow_cost.md
+```
+
+The decision gate is:
+
+```text
+validation_not_passed -> debug_shadow_mismatch
+incomplete -> collect_shadow_cost_telemetry
+insufficient_coverage -> expand_shadow_coverage
+ready -> design_device_shadow_kernel
+cost_breakdown_needed -> profile_shadow_cost_breakdown
+too_expensive -> stop_device_ordered_shadow
+```
+
+The cost gate is still profiler-only. A `design_device_shadow_kernel` recommendation means a future device shadow may be designed for digest validation; it does not allow runtime replacement or default-path changes.
+
 ## Validation Boundary
 
 The next shadow implementation may only compare validation telemetry. It must preserve:

@@ -60,3 +60,4 @@ jobs:
           bash scripts/check_summarize_longtarget_sim_ordered_candidate_maintenance_budget.sh
           bash scripts/check_summarize_longtarget_device_ordered_maintenance_shadow_design.sh
           bash scripts/check_summarize_longtarget_device_ordered_maintenance_shadow_validation.sh
+          bash scripts/check_summarize_longtarget_device_ordered_maintenance_shadow_cost.sh
