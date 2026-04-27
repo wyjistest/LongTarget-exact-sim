@@ -573,8 +573,7 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          string *errorOut,
-                                                         uint64_t *outReplacementSequenceHash,
-                                                         uint64_t *outCandidateReplacementCount)
+                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats)
 {
   (void)summaries;
   if(outCandidateStates != NULL)
@@ -589,13 +588,9 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
   {
     *outReplayStats = SimScanCudaInitialReduceReplayStats();
   }
-  if(outReplacementSequenceHash != NULL)
+  if(outDigestStats != NULL)
   {
-    *outReplacementSequenceHash = 1469598103934665603ULL;
-  }
-  if(outCandidateReplacementCount != NULL)
-  {
-    *outCandidateReplacementCount = 0;
+    *outDigestStats = SimScanCudaOrderedMaintenanceReplayDigestStats();
   }
   if(errorOut != NULL)
   {

@@ -713,7 +713,10 @@ struct SimOrderedMaintenanceHostDigest
     fullSetMissCount(0),
     existingCandidateHitCount(0),
     candidateReplacementCount(0),
-    stateUpdateCount(0)
+    stateUpdateCount(0),
+    runningMinUpdateCount(0),
+    runningMinSlotUpdateCount(0),
+    floorChangeCount(0)
   {
   }
 
@@ -739,6 +742,9 @@ struct SimOrderedMaintenanceHostDigest
   uint64_t existingCandidateHitCount;
   uint64_t candidateReplacementCount;
   uint64_t stateUpdateCount;
+  uint64_t runningMinUpdateCount;
+  uint64_t runningMinSlotUpdateCount;
+  uint64_t floorChangeCount;
 };
 
 struct SimDeviceOrderedMaintenanceShadowValidationSnapshot
@@ -9208,6 +9214,14 @@ inline void finishSimOrderedMaintenanceHostDigestEvent(
   const long floorAfter = simCurrentCandidateFloor(context);
   if(eventState.floorBefore != floorAfter)
   {
+    ++digest.runningMinUpdateCount;
+    uint64_t runningMinHash = digest.runningMinUpdateSequenceHash;
+    runningMinHash = simDigestMixU64(runningMinHash,eventState.summaryOrdinal);
+    runningMinHash = simDigestMixLong(runningMinHash,eventState.floorBefore);
+    runningMinHash = simDigestMixLong(runningMinHash,floorAfter);
+    digest.runningMinUpdateSequenceHash = runningMinHash;
+
+    ++digest.floorChangeCount;
     uint64_t floorHash = digest.floorChangeSequenceHash;
     floorHash = simDigestMixU64(floorHash,eventState.summaryOrdinal);
     floorHash = simDigestMixLong(floorHash,eventState.floorBefore);
@@ -9217,6 +9231,7 @@ inline void finishSimOrderedMaintenanceHostDigestEvent(
   const int runningMinSlotAfter = simCurrentCandidateFloorSlot(context);
   if(eventState.runningMinSlotBefore != runningMinSlotAfter)
   {
+    ++digest.runningMinSlotUpdateCount;
     uint64_t slotHash = digest.runningMinSlotUpdateSequenceHash;
     slotHash = simDigestMixU64(slotHash,eventState.summaryOrdinal);
     slotHash = simDigestMixLong(slotHash,eventState.runningMinSlotBefore);
@@ -9267,8 +9282,6 @@ inline void populateSimOrderedMaintenanceCandidateStateDigestFromCudaStates(
   digest.candidateCount = static_cast<uint64_t>(candidateStates.size());
   digest.runningMin = runningMin;
   digest.runningMinSlot = simDigestCandidateStateFloorSlot(candidateStates);
-  digest.runningMinUpdateSequenceHash =
-    simDigestMixLong(digest.runningMinUpdateSequenceHash,digest.runningMin);
 
   uint64_t summaryHash = simDigestFnvOffset();
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
@@ -9316,10 +9329,6 @@ inline void finalizeSimOrderedMaintenanceHostDigest(const SimKernelContext &cont
     (context.candidateCount > 0) ? context.candidateCount : 0);
   digest.runningMin = context.runningMin;
   digest.runningMinSlot = simCurrentCandidateFloorSlot(context);
-  digest.runningMinUpdateSequenceHash =
-    simDigestMixLong(digest.runningMinUpdateSequenceHash,context.runningMin);
-  digest.runningMinSlotUpdateSequenceHash =
-    simDigestMixLong(digest.runningMinSlotUpdateSequenceHash,digest.runningMinSlot);
 
   vector<SimScanCudaCandidateState> contextStates;
   collectSimContextCandidateStates(context,contextStates);
@@ -9405,7 +9414,10 @@ inline bool writeSimOrderedMaintenanceHostDigestJson(
   output << "  \"full_set_miss_count\": " << digest.fullSetMissCount << ",\n";
   output << "  \"existing_candidate_hit_count\": " << digest.existingCandidateHitCount << ",\n";
   output << "  \"candidate_replacement_count\": " << digest.candidateReplacementCount << ",\n";
-  output << "  \"state_update_count\": " << digest.stateUpdateCount << "\n";
+  output << "  \"state_update_count\": " << digest.stateUpdateCount << ",\n";
+  output << "  \"running_min_update_count\": " << digest.runningMinUpdateCount << ",\n";
+  output << "  \"running_min_slot_update_count\": " << digest.runningMinSlotUpdateCount << ",\n";
+  output << "  \"floor_change_count\": " << digest.floorChangeCount << "\n";
   output << "}\n";
   if(!output)
   {
@@ -12837,15 +12849,13 @@ inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
   vector<SimScanCudaCandidateState> candidateStates;
   int runningMin = 0;
   SimScanCudaInitialReduceReplayStats replayStats;
-  uint64_t replacementSequenceHash = simDigestFnvOffset();
-  uint64_t candidateReplacementCount = 0;
+  SimScanCudaOrderedMaintenanceReplayDigestStats digestStats;
   if(!sim_scan_cuda_reduce_initial_run_summaries_for_test(summaries,
                                                           &candidateStates,
                                                           &runningMin,
                                                           &replayStats,
                                                           errorOut,
-                                                          &replacementSequenceHash,
-                                                          &candidateReplacementCount))
+                                                          &digestStats))
   {
     return false;
   }
@@ -12854,8 +12864,14 @@ inline bool replaySimOrderedMaintenanceDeviceShadowCandidateDigestForTest(
                                                                   candidateStates,
                                                                   runningMin,
                                                                   *digest);
-  digest->replacementSequenceHash = replacementSequenceHash;
-  digest->candidateReplacementCount = candidateReplacementCount;
+  digest->replacementSequenceHash = digestStats.replacementSequenceHash;
+  digest->runningMinUpdateSequenceHash = digestStats.runningMinUpdateSequenceHash;
+  digest->runningMinSlotUpdateSequenceHash = digestStats.runningMinSlotUpdateSequenceHash;
+  digest->floorChangeSequenceHash = digestStats.floorChangeSequenceHash;
+  digest->candidateReplacementCount = digestStats.candidateReplacementCount;
+  digest->runningMinUpdateCount = digestStats.runningMinUpdateCount;
+  digest->runningMinSlotUpdateCount = digestStats.runningMinSlotUpdateCount;
+  digest->floorChangeCount = digestStats.floorChangeCount;
   if(errorOut != NULL)
   {
     errorOut->clear();
@@ -13009,6 +13025,18 @@ compareSimOrderedMaintenanceShadowDigests(
                                         "state_update_count",
                                         hostDigest.stateUpdateCount,
                                         shadowDigest.stateUpdateCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "running_min_update_count",
+                                        hostDigest.runningMinUpdateCount,
+                                        shadowDigest.runningMinUpdateCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "running_min_slot_update_count",
+                                        hostDigest.runningMinSlotUpdateCount,
+                                        shadowDigest.runningMinSlotUpdateCount);
+  compareSimOrderedMaintenanceShadowU64(comparison,caseId,firstMismatchSummaryOrdinal,
+                                        "floor_change_count",
+                                        hostDigest.floorChangeCount,
+                                        shadowDigest.floorChangeCount);
   return comparison;
 }
 

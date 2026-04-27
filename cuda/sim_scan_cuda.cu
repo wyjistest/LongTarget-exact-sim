@@ -29,6 +29,15 @@ const int sim_scan_initial_reduce_chunk_size_default = 256;
 const int sim_scan_initial_reduce_chunk_size_min = 32;
 const int sim_scan_initial_reduce_chunk_size_max = 4096;
 const int sim_scan_initial_reduce_chunk_stats_count = 3;
+const int sim_scan_ordered_maintenance_digest_stats_count = 8;
+const int sim_scan_ordered_maintenance_digest_replacement_sequence_hash_index = 0;
+const int sim_scan_ordered_maintenance_digest_running_min_sequence_hash_index = 1;
+const int sim_scan_ordered_maintenance_digest_running_min_slot_sequence_hash_index = 2;
+const int sim_scan_ordered_maintenance_digest_floor_change_sequence_hash_index = 3;
+const int sim_scan_ordered_maintenance_digest_candidate_replacement_count_index = 4;
+const int sim_scan_ordered_maintenance_digest_running_min_update_count_index = 5;
+const int sim_scan_ordered_maintenance_digest_running_min_slot_update_count_index = 6;
+const int sim_scan_ordered_maintenance_digest_floor_change_count_index = 7;
 const int sim_scan_candidate_hash_capacity = 128;
 const int sim_scan_candidate_hash_empty = -1;
 const int sim_scan_candidate_hash_tombstone = -2;
@@ -5745,8 +5754,7 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
                                                                 const int *chunkMaxScores,
                                                                 int chunkSize,
                                                                 unsigned long long *replayStats,
-                                                                unsigned long long *replacementSequenceHashOut,
-                                                                unsigned long long *candidateReplacementCountOut)
+                                                                unsigned long long *orderedMaintenanceDigestStats)
 {
   if(blockIdx.x != 0 || threadIdx.x >= sim_scan_initial_reduce_threads)
   {
@@ -5772,7 +5780,13 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
   unsigned long long localChunkReplayedCount = 0;
   unsigned long long localSummaryReplayCount = 0;
   uint64_t localReplacementSequenceHash = sim_scan_digest_fnv_offset();
+  uint64_t localRunningMinUpdateSequenceHash = sim_scan_digest_fnv_offset();
+  uint64_t localRunningMinSlotUpdateSequenceHash = sim_scan_digest_fnv_offset();
+  uint64_t localFloorChangeSequenceHash = sim_scan_digest_fnv_offset();
   unsigned long long localCandidateReplacementCount = 0;
+  unsigned long long localRunningMinUpdateCount = 0;
+  unsigned long long localRunningMinSlotUpdateCount = 0;
+  unsigned long long localFloorChangeCount = 0;
   if(tid == 0)
   {
     int candidateCount = *candidateCountInOut;
@@ -5868,6 +5882,8 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       const int targetIndex = sim_scan_candidate_hash_find_warp(summary.startCoord,
                                                                 sharedHashCoords,
                                                                 sharedHashSlots);
+      const int runningMinBefore = sharedRunningMin;
+      const int runningMinSlotBefore = sharedMinIndex;
       if(targetIndex < 0)
       {
         const int candidateCountBefore = sharedCandidateCount;
@@ -5977,6 +5993,39 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
           __syncwarp();
         }
       }
+      if(tid == 0)
+      {
+        if(runningMinBefore != sharedRunningMin)
+        {
+          uint64_t runningMinHash = localRunningMinUpdateSequenceHash;
+          runningMinHash =
+            sim_scan_digest_mix_u64(runningMinHash,static_cast<uint64_t>(summaryIndex));
+          runningMinHash =
+            sim_scan_digest_mix_i64(runningMinHash,static_cast<int64_t>(runningMinBefore));
+          runningMinHash =
+            sim_scan_digest_mix_i64(runningMinHash,static_cast<int64_t>(sharedRunningMin));
+          localRunningMinUpdateSequenceHash = runningMinHash;
+          ++localRunningMinUpdateCount;
+
+          uint64_t floorHash = localFloorChangeSequenceHash;
+          floorHash = sim_scan_digest_mix_u64(floorHash,static_cast<uint64_t>(summaryIndex));
+          floorHash = sim_scan_digest_mix_i64(floorHash,static_cast<int64_t>(runningMinBefore));
+          floorHash = sim_scan_digest_mix_i64(floorHash,static_cast<int64_t>(sharedRunningMin));
+          localFloorChangeSequenceHash = floorHash;
+          ++localFloorChangeCount;
+        }
+        if(runningMinSlotBefore != sharedMinIndex)
+        {
+          uint64_t slotHash = localRunningMinSlotUpdateSequenceHash;
+          slotHash = sim_scan_digest_mix_u64(slotHash,static_cast<uint64_t>(summaryIndex));
+          slotHash =
+            sim_scan_digest_mix_i64(slotHash,static_cast<int64_t>(runningMinSlotBefore));
+          slotHash = sim_scan_digest_mix_i64(slotHash,static_cast<int64_t>(sharedMinIndex));
+          localRunningMinSlotUpdateSequenceHash = slotHash;
+          ++localRunningMinSlotUpdateCount;
+        }
+      }
+      __syncwarp();
     }
   }
 
@@ -5988,13 +6037,32 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
   }
   if(tid == 0)
   {
-    if(replacementSequenceHashOut != NULL)
+    if(orderedMaintenanceDigestStats != NULL)
     {
-      *replacementSequenceHashOut = localReplacementSequenceHash;
-    }
-    if(candidateReplacementCountOut != NULL)
-    {
-      *candidateReplacementCountOut = localCandidateReplacementCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_replacement_sequence_hash_index] =
+        localReplacementSequenceHash;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_running_min_sequence_hash_index] =
+        localRunningMinUpdateSequenceHash;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_running_min_slot_sequence_hash_index] =
+        localRunningMinSlotUpdateSequenceHash;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_floor_change_sequence_hash_index] =
+        localFloorChangeSequenceHash;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_replacement_count_index] =
+        localCandidateReplacementCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_running_min_update_count_index] =
+        localRunningMinUpdateCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_running_min_slot_update_count_index] =
+        localRunningMinSlotUpdateCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_floor_change_count_index] =
+        localFloorChangeCount;
     }
   }
 
@@ -12830,7 +12898,6 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                                                 NULL,
                                                                                                 reduceChunkSize,
                                                                                                 context->initialReduceReplayStatsDevice,
-                                                                                                NULL,
                                                                                                 NULL);
         status = cudaGetLastError();
         if(status != cudaSuccess)
@@ -14394,8 +14461,7 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          string *errorOut,
-                                                         uint64_t *outReplacementSequenceHash,
-                                                         uint64_t *outCandidateReplacementCount)
+                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats)
 {
   if(outCandidateStates == NULL || outRunningMin == NULL || outReplayStats == NULL)
   {
@@ -14408,13 +14474,9 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
   outCandidateStates->clear();
   *outRunningMin = 0;
   *outReplayStats = SimScanCudaInitialReduceReplayStats();
-  if(outReplacementSequenceHash != NULL)
+  if(outDigestStats != NULL)
   {
-    *outReplacementSequenceHash = 1469598103934665603ULL;
-  }
-  if(outCandidateReplacementCount != NULL)
-  {
-    *outCandidateReplacementCount = 0;
+    *outDigestStats = SimScanCudaOrderedMaintenanceReplayDigestStats();
   }
 
   if(summaries.size() > static_cast<size_t>(numeric_limits<int>::max()))
@@ -14475,11 +14537,12 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     }
   }
 
-  const bool collectReplacementDigest =
-    outReplacementSequenceHash != NULL || outCandidateReplacementCount != NULL;
+  const bool collectDigestStats = outDigestStats != NULL;
   const size_t replayStatsDeviceCount =
     static_cast<size_t>(sim_scan_initial_reduce_chunk_stats_count) +
-    (collectReplacementDigest ? static_cast<size_t>(2) : static_cast<size_t>(0));
+    (collectDigestStats ?
+     static_cast<size_t>(sim_scan_ordered_maintenance_digest_stats_count) :
+     static_cast<size_t>(0));
   if(!ensure_sim_scan_cuda_buffer(&context->initialReduceReplayStatsDevice,
                                   &context->initialReduceReplayStatsCapacity,
                                   replayStatsDeviceCount,
@@ -14526,13 +14589,9 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
   }
 
   const int reduceChunkSize = sim_scan_cuda_initial_reduce_chunk_size_runtime();
-  unsigned long long *replacementSequenceHashDevice =
-    collectReplacementDigest ?
+  unsigned long long *orderedMaintenanceDigestStatsDevice =
+    collectDigestStats ?
     (context->initialReduceReplayStatsDevice + sim_scan_initial_reduce_chunk_stats_count) :
-    NULL;
-  unsigned long long *candidateReplacementCountDevice =
-    collectReplacementDigest ?
-    (context->initialReduceReplayStatsDevice + sim_scan_initial_reduce_chunk_stats_count + 1) :
     NULL;
   if(summaryCount > 0)
   {
@@ -14544,8 +14603,7 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
                                                                                             NULL,
                                                                                             reduceChunkSize,
                                                                                             context->initialReduceReplayStatsDevice,
-                                                                                            replacementSequenceHashDevice,
-                                                                                            candidateReplacementCountDevice);
+                                                                                            orderedMaintenanceDigestStatsDevice);
     status = cudaGetLastError();
     if(status != cudaSuccess)
     {
@@ -14603,12 +14661,22 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     outReplayStats->chunkCount >= outReplayStats->chunkReplayedCount ?
     (outReplayStats->chunkCount - outReplayStats->chunkReplayedCount) : 0;
 
-  if(collectReplacementDigest && summaryCount > 0)
+  if(collectDigestStats && summaryCount > 0)
   {
-    unsigned long long replacementStatsHost[2] = {1469598103934665603ULL, 0};
-    status = cudaMemcpy(replacementStatsHost,
-                        replacementSequenceHashDevice,
-                        static_cast<size_t>(2) * sizeof(unsigned long long),
+    unsigned long long digestStatsHost[sim_scan_ordered_maintenance_digest_stats_count] = {
+      1469598103934665603ULL,
+      1469598103934665603ULL,
+      1469598103934665603ULL,
+      1469598103934665603ULL,
+      0,
+      0,
+      0,
+      0
+    };
+    status = cudaMemcpy(digestStatsHost,
+                        orderedMaintenanceDigestStatsDevice,
+                        static_cast<size_t>(sim_scan_ordered_maintenance_digest_stats_count) *
+                          sizeof(unsigned long long),
                         cudaMemcpyDeviceToHost);
     if(status != cudaSuccess)
     {
@@ -14618,14 +14686,30 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
       }
       return false;
     }
-    if(outReplacementSequenceHash != NULL)
-    {
-      *outReplacementSequenceHash = static_cast<uint64_t>(replacementStatsHost[0]);
-    }
-    if(outCandidateReplacementCount != NULL)
-    {
-      *outCandidateReplacementCount = static_cast<uint64_t>(replacementStatsHost[1]);
-    }
+    outDigestStats->replacementSequenceHash =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_replacement_sequence_hash_index]);
+    outDigestStats->runningMinUpdateSequenceHash =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_running_min_sequence_hash_index]);
+    outDigestStats->runningMinSlotUpdateSequenceHash =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_running_min_slot_sequence_hash_index]);
+    outDigestStats->floorChangeSequenceHash =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_floor_change_sequence_hash_index]);
+    outDigestStats->candidateReplacementCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_replacement_count_index]);
+    outDigestStats->runningMinUpdateCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_running_min_update_count_index]);
+    outDigestStats->runningMinSlotUpdateCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_running_min_slot_update_count_index]);
+    outDigestStats->floorChangeCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_floor_change_count_index]);
   }
 
   if(candidateCount < 0)

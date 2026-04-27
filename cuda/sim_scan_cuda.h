@@ -261,6 +261,30 @@ struct SimScanCudaInitialReduceReplayStats
   uint64_t summaryReplayCount;
 };
 
+struct SimScanCudaOrderedMaintenanceReplayDigestStats
+{
+  SimScanCudaOrderedMaintenanceReplayDigestStats():
+    replacementSequenceHash(1469598103934665603ULL),
+    runningMinUpdateSequenceHash(1469598103934665603ULL),
+    runningMinSlotUpdateSequenceHash(1469598103934665603ULL),
+    floorChangeSequenceHash(1469598103934665603ULL),
+    candidateReplacementCount(0),
+    runningMinUpdateCount(0),
+    runningMinSlotUpdateCount(0),
+    floorChangeCount(0)
+  {
+  }
+
+  uint64_t replacementSequenceHash;
+  uint64_t runningMinUpdateSequenceHash;
+  uint64_t runningMinSlotUpdateSequenceHash;
+  uint64_t floorChangeSequenceHash;
+  uint64_t candidateReplacementCount;
+  uint64_t runningMinUpdateCount;
+  uint64_t runningMinSlotUpdateCount;
+  uint64_t floorChangeCount;
+};
+
 struct SimCudaPersistentSafeStoreHandle
 {
   SimCudaPersistentSafeStoreHandle():
@@ -776,8 +800,7 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const std::vector<SimSc
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          std::string *errorOut,
-                                                         uint64_t *outReplacementSequenceHash = NULL,
-                                                         uint64_t *outCandidateReplacementCount = NULL);
+                                                         SimScanCudaOrderedMaintenanceReplayDigestStats *outDigestStats = NULL);
 
 bool sim_scan_cuda_select_top_disjoint_candidate_states(const std::vector<SimScanCudaCandidateState> &candidateStates,
                                                         int maxProposalCount,

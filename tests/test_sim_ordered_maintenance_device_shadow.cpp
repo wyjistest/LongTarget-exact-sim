@@ -38,6 +38,16 @@ static bool expect_equal_u64(uint64_t actual, uint64_t expected, const char *lab
     return false;
 }
 
+static bool expect_ge_u64(uint64_t actual, uint64_t expected, const char *label)
+{
+    if (actual >= expected)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected at least " << expected << ", got " << actual << "\n";
+    return false;
+}
+
 static SimScanCudaInitialRunSummary make_summary(int score,
                                                  long startI,
                                                  long startJ,
@@ -163,9 +173,57 @@ static std::vector<SimScanCudaInitialRunSummary> make_victim_reappears_replaceme
     return summaries;
 }
 
+static std::vector<SimScanCudaInitialRunSummary> make_running_min_changes_multiple_sequence()
+{
+    return std::vector<SimScanCudaInitialRunSummary>{
+        make_summary(40, 10, 10, 2, 1, 3, 3),
+        make_summary(20, 11, 10, 3, 1, 4, 4),
+        make_summary(60, 12, 10, 4, 1, 5, 5),
+        make_summary(10, 13, 10, 5, 1, 6, 6)};
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_running_min_slot_changes_after_replacement_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(70, false);
+    summaries.push_back(make_summary(180, 1100, 1101, 16, 6, 22, 19));
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_running_min_slot_tie_break_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(55, true);
+    summaries.push_back(make_summary(75, 100, 200, 17, 7, 23, 20));
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_replacement_without_running_min_change_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(65, true);
+    summaries.push_back(make_summary(65, 1200, 1201, 18, 8, 24, 21));
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_mixed_running_min_and_replacement_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_running_min_changes_multiple_sequence();
+    std::vector<SimScanCudaInitialRunSummary> seed =
+        make_full_candidate_seed_sequence(90, false);
+    summaries.insert(summaries.end(), seed.begin(), seed.end());
+    summaries.push_back(make_summary(95, 100, 200, 19, 9, 25, 22));
+    summaries.push_back(make_summary(210, 1300, 1301, 20, 10, 26, 23));
+    return summaries;
+}
+
 static bool expect_device_candidate_digest_matches(
     const std::string &caseId,
-    const std::vector<SimScanCudaInitialRunSummary> &summaries)
+    const std::vector<SimScanCudaInitialRunSummary> &summaries,
+    uint64_t minRunningMinUpdateCount = 0,
+    uint64_t minRunningMinSlotUpdateCount = 0,
+    uint64_t minFloorChangeCount = 0)
 {
     const uint64_t logicalEventCount = static_cast<uint64_t>(summaries.size() * 3);
     SimKernelContext initialContext = make_context();
@@ -196,6 +254,42 @@ static bool expect_device_candidate_digest_matches(
     ok = expect_equal_u64(cpuShadowDigest.candidateReplacementCount,
                           hostDigest.candidateReplacementCount,
                           (caseId + " CPU shadow replacement count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.runningMinUpdateSequenceHash,
+                          hostDigest.runningMinUpdateSequenceHash,
+                          (caseId + " CPU shadow running min sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.runningMinSlotUpdateSequenceHash,
+                          hostDigest.runningMinSlotUpdateSequenceHash,
+                          (caseId + " CPU shadow running min slot sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.floorChangeSequenceHash,
+                          hostDigest.floorChangeSequenceHash,
+                          (caseId + " CPU shadow floor change sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.runningMinUpdateCount,
+                          hostDigest.runningMinUpdateCount,
+                          (caseId + " CPU shadow running min update count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.runningMinSlotUpdateCount,
+                          hostDigest.runningMinSlotUpdateCount,
+                          (caseId + " CPU shadow running min slot update count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.floorChangeCount,
+                          hostDigest.floorChangeCount,
+                          (caseId + " CPU shadow floor change count").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.runningMinUpdateCount,
+                       minRunningMinUpdateCount,
+                       (caseId + " host running min update coverage").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.runningMinSlotUpdateCount,
+                       minRunningMinSlotUpdateCount,
+                       (caseId + " host running min slot update coverage").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.floorChangeCount,
+                       minFloorChangeCount,
+                       (caseId + " host floor change coverage").c_str()) &&
          ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateCount,
                           hostDigest.candidateCount,
@@ -239,7 +333,27 @@ static bool expect_device_candidate_digest_matches(
          ok;
     ok = expect_equal_u64(deviceShadowDigest.runningMinUpdateSequenceHash,
                           hostDigest.runningMinUpdateSequenceHash,
-                          (caseId + " device running min hash").c_str()) &&
+                          (caseId + " device running min sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.runningMinSlotUpdateSequenceHash,
+                          hostDigest.runningMinSlotUpdateSequenceHash,
+                          (caseId + " device running min slot sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.floorChangeSequenceHash,
+                          hostDigest.floorChangeSequenceHash,
+                          (caseId + " device floor change sequence hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.runningMinUpdateCount,
+                          hostDigest.runningMinUpdateCount,
+                          (caseId + " device running min update count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.runningMinSlotUpdateCount,
+                          hostDigest.runningMinSlotUpdateCount,
+                          (caseId + " device running min slot update count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.floorChangeCount,
+                          hostDigest.floorChangeCount,
+                          (caseId + " device floor change count").c_str()) &&
          ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateStateHandoffHash,
                           hostDigest.candidateStateHandoffHash,
@@ -254,6 +368,57 @@ int main()
 {
     bool ok = true;
 
+    ok = expect_device_candidate_digest_matches(
+             "running_min_no_change",
+             std::vector<SimScanCudaInitialRunSummary>()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "running_min_changes_once",
+             std::vector<SimScanCudaInitialRunSummary>{
+                 make_summary(17, 1, 1, 2, 1, 3, 3)},
+             1,
+             1,
+             1) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "running_min_changes_multiple_times",
+             make_running_min_changes_multiple_sequence(),
+             3,
+             2,
+             3) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "running_min_slot_changes_after_replacement",
+             make_running_min_slot_changes_after_replacement_sequence(),
+             2,
+             2,
+             2) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "running_min_slot_tie_break",
+             make_running_min_slot_tie_break_sequence(),
+             1,
+             2,
+             1) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "replacement_without_running_min_change",
+             make_replacement_without_running_min_change_sequence()) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "victim_reappears_with_floor_change",
+             make_victim_reappears_replacement_sequence(),
+             2,
+             2,
+             2) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "mixed_sequence_running_min_and_replacement",
+             make_mixed_running_min_and_replacement_sequence(),
+             3,
+             3,
+             3) &&
+         ok;
     ok = expect_device_candidate_digest_matches(
              "empty_summaries",
              std::vector<SimScanCudaInitialRunSummary>()) &&

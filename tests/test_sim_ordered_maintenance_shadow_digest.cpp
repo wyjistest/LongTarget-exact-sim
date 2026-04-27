@@ -160,6 +160,15 @@ int main()
     ok = expect_true(digestJson.find("\"replacement_sequence_hash\"") != std::string::npos,
                      "digest json replacement_sequence_hash") &&
          ok;
+    ok = expect_true(digestJson.find("\"running_min_update_count\"") != std::string::npos,
+                     "digest json running_min_update_count") &&
+         ok;
+    ok = expect_true(digestJson.find("\"running_min_slot_update_count\"") != std::string::npos,
+                     "digest json running_min_slot_update_count") &&
+         ok;
+    ok = expect_true(digestJson.find("\"floor_change_count\"") != std::string::npos,
+                     "digest json floor_change_count") &&
+         ok;
     ok = expect_true(digestJson.find("\"safe_store_state_hash\"") != std::string::npos,
                      "digest json safe_store_state_hash") &&
          ok;
