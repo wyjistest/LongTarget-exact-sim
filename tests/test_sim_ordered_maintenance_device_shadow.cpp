@@ -218,12 +218,49 @@ static std::vector<SimScanCudaInitialRunSummary> make_mixed_running_min_and_repl
     return summaries;
 }
 
+static std::vector<SimScanCudaInitialRunSummary> make_insert_then_existing_hit_sequence()
+{
+    return std::vector<SimScanCudaInitialRunSummary>{
+        make_summary(20, 1400, 1401, 21, 11, 27, 24),
+        make_summary(25, 1400, 1401, 22, 10, 28, 25)};
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_victim_key_not_visible_after_eviction_sequence()
+{
+    std::vector<SimScanCudaInitialRunSummary> summaries =
+        make_full_candidate_seed_sequence(100, false);
+    const SimScanCudaInitialRunSummary victim = summaries.front();
+    summaries.push_back(make_summary(220, 1500, 1501, 23, 12, 29, 26));
+    summaries.push_back(make_summary(221,
+                                     static_cast<long>(victim.startCoord >> 32),
+                                     static_cast<long>(victim.startCoord & 0xffffffffULL),
+                                     24,
+                                     13,
+                                     30,
+                                     27));
+    return summaries;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> make_hit_miss_interleaving_sequence()
+{
+    return std::vector<SimScanCudaInitialRunSummary>{
+        make_summary(31, 1600, 1601, 25, 14, 31, 28),
+        make_summary(32, 1601, 1602, 26, 15, 32, 29),
+        make_summary(33, 1600, 1601, 27, 13, 33, 30),
+        make_summary(34, 1602, 1603, 28, 16, 34, 31),
+        make_summary(35, 1601, 1602, 29, 14, 35, 32)};
+}
+
 static bool expect_device_candidate_digest_matches(
     const std::string &caseId,
     const std::vector<SimScanCudaInitialRunSummary> &summaries,
     uint64_t minRunningMinUpdateCount = 0,
     uint64_t minRunningMinSlotUpdateCount = 0,
-    uint64_t minFloorChangeCount = 0)
+    uint64_t minFloorChangeCount = 0,
+    uint64_t minVisibilityHitCount = 0,
+    uint64_t minVisibilityMissCount = 0,
+    uint64_t minVisibilityInsertCount = 0,
+    uint64_t minVisibilityEraseCount = 0)
 {
     const uint64_t logicalEventCount = static_cast<uint64_t>(summaries.size() * 3);
     SimKernelContext initialContext = make_context();
@@ -279,6 +316,30 @@ static bool expect_device_candidate_digest_matches(
                           hostDigest.floorChangeCount,
                           (caseId + " CPU shadow floor change count").c_str()) &&
          ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateIndexVisibilityHash,
+                          hostDigest.candidateIndexVisibilityHash,
+                          (caseId + " CPU shadow candidate-index visibility hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateIndexExistingHitCount,
+                          hostDigest.candidateIndexExistingHitCount,
+                          (caseId + " CPU shadow candidate-index hit count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateIndexMissCount,
+                          hostDigest.candidateIndexMissCount,
+                          (caseId + " CPU shadow candidate-index miss count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateIndexInsertCount,
+                          hostDigest.candidateIndexInsertCount,
+                          (caseId + " CPU shadow candidate-index insert count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateIndexEraseCount,
+                          hostDigest.candidateIndexEraseCount,
+                          (caseId + " CPU shadow candidate-index erase count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(cpuShadowDigest.candidateIndexVisibilityCheckCount,
+                          hostDigest.candidateIndexVisibilityCheckCount,
+                          (caseId + " CPU shadow candidate-index visibility check count").c_str()) &&
+         ok;
     ok = expect_ge_u64(hostDigest.runningMinUpdateCount,
                        minRunningMinUpdateCount,
                        (caseId + " host running min update coverage").c_str()) &&
@@ -290,6 +351,22 @@ static bool expect_device_candidate_digest_matches(
     ok = expect_ge_u64(hostDigest.floorChangeCount,
                        minFloorChangeCount,
                        (caseId + " host floor change coverage").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.candidateIndexExistingHitCount,
+                       minVisibilityHitCount,
+                       (caseId + " host candidate-index hit coverage").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.candidateIndexMissCount,
+                       minVisibilityMissCount,
+                       (caseId + " host candidate-index miss coverage").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.candidateIndexInsertCount,
+                       minVisibilityInsertCount,
+                       (caseId + " host candidate-index insert coverage").c_str()) &&
+         ok;
+    ok = expect_ge_u64(hostDigest.candidateIndexEraseCount,
+                       minVisibilityEraseCount,
+                       (caseId + " host candidate-index erase coverage").c_str()) &&
          ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateCount,
                           hostDigest.candidateCount,
@@ -355,6 +432,30 @@ static bool expect_device_candidate_digest_matches(
                           hostDigest.floorChangeCount,
                           (caseId + " device floor change count").c_str()) &&
          ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateIndexVisibilityHash,
+                          hostDigest.candidateIndexVisibilityHash,
+                          (caseId + " device candidate-index visibility hash").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateIndexExistingHitCount,
+                          hostDigest.candidateIndexExistingHitCount,
+                          (caseId + " device candidate-index hit count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateIndexMissCount,
+                          hostDigest.candidateIndexMissCount,
+                          (caseId + " device candidate-index miss count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateIndexInsertCount,
+                          hostDigest.candidateIndexInsertCount,
+                          (caseId + " device candidate-index insert count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateIndexEraseCount,
+                          hostDigest.candidateIndexEraseCount,
+                          (caseId + " device candidate-index erase count").c_str()) &&
+         ok;
+    ok = expect_equal_u64(deviceShadowDigest.candidateIndexVisibilityCheckCount,
+                          hostDigest.candidateIndexVisibilityCheckCount,
+                          (caseId + " device candidate-index visibility check count").c_str()) &&
+         ok;
     ok = expect_equal_u64(deviceShadowDigest.candidateStateHandoffHash,
                           hostDigest.candidateStateHandoffHash,
                           (caseId + " device handoff hash").c_str()) &&
@@ -417,7 +518,44 @@ int main()
              make_mixed_running_min_and_replacement_sequence(),
              3,
              3,
-             3) &&
+             3,
+             1,
+             55,
+             55,
+             5) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "insert_then_existing_hit",
+             make_insert_then_existing_hit_sequence(),
+             1,
+             1,
+             1,
+             1,
+             1,
+             1,
+             0) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "victim_key_not_visible_after_eviction",
+             make_victim_key_not_visible_after_eviction_sequence(),
+             2,
+             2,
+             2,
+             0,
+             52,
+             52,
+             2) &&
+         ok;
+    ok = expect_device_candidate_digest_matches(
+             "hit_miss_interleaving",
+             make_hit_miss_interleaving_sequence(),
+             1,
+             1,
+             1,
+             2,
+             3,
+             3,
+             0) &&
          ok;
     ok = expect_device_candidate_digest_matches(
              "empty_summaries",

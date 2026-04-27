@@ -268,10 +268,16 @@ struct SimScanCudaOrderedMaintenanceReplayDigestStats
     runningMinUpdateSequenceHash(1469598103934665603ULL),
     runningMinSlotUpdateSequenceHash(1469598103934665603ULL),
     floorChangeSequenceHash(1469598103934665603ULL),
+    candidateIndexVisibilityHash(1469598103934665603ULL),
     candidateReplacementCount(0),
     runningMinUpdateCount(0),
     runningMinSlotUpdateCount(0),
-    floorChangeCount(0)
+    floorChangeCount(0),
+    candidateIndexExistingHitCount(0),
+    candidateIndexMissCount(0),
+    candidateIndexInsertCount(0),
+    candidateIndexEraseCount(0),
+    candidateIndexVisibilityCheckCount(0)
   {
   }
 
@@ -279,10 +285,16 @@ struct SimScanCudaOrderedMaintenanceReplayDigestStats
   uint64_t runningMinUpdateSequenceHash;
   uint64_t runningMinSlotUpdateSequenceHash;
   uint64_t floorChangeSequenceHash;
+  uint64_t candidateIndexVisibilityHash;
   uint64_t candidateReplacementCount;
   uint64_t runningMinUpdateCount;
   uint64_t runningMinSlotUpdateCount;
   uint64_t floorChangeCount;
+  uint64_t candidateIndexExistingHitCount;
+  uint64_t candidateIndexMissCount;
+  uint64_t candidateIndexInsertCount;
+  uint64_t candidateIndexEraseCount;
+  uint64_t candidateIndexVisibilityCheckCount;
 };
 
 struct SimCudaPersistentSafeStoreHandle

@@ -169,6 +169,12 @@ int main()
     ok = expect_true(digestJson.find("\"floor_change_count\"") != std::string::npos,
                      "digest json floor_change_count") &&
          ok;
+    ok = expect_true(digestJson.find("\"candidate_index_visibility_check_count\"") != std::string::npos,
+                     "digest json candidate_index_visibility_check_count") &&
+         ok;
+    ok = expect_true(digestJson.find("\"candidate_index_insert_count\"") != std::string::npos,
+                     "digest json candidate_index_insert_count") &&
+         ok;
     ok = expect_true(digestJson.find("\"safe_store_state_hash\"") != std::string::npos,
                      "digest json safe_store_state_hash") &&
          ok;

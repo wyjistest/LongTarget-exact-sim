@@ -16,9 +16,9 @@ Phase 3d.1 adds an independent CPU shadow replay that is still validation-only. 
 
 Phase 3d.2 starts only with a backend interface for the future device-shadow lane. `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=cpu` preserves the existing CPU shadow validation path. `LONGTARGET_SIM_DEVICE_ORDERED_MAINTENANCE_SHADOW_BACKEND=device` currently records the authoritative host digest and exposes schema/status only; it returns `shadow_status=not_supported` until the synthetic device digest coverage is complete enough for benchmark validation.
 
-The first CUDA regression for Phase 3d.2 is deliberately narrower than the full validation gate. `make check-sim-ordered-maintenance-device-shadow` runs synthetic ordered row-run summaries through the existing ordered initial-replay CUDA kernel and checks the device candidate-state, replacement-sequence, and running-min/floor change-sequence digest subsets against host and CPU-shadow digests. Covered fields include final candidate state, runningMin, runningMinSlot, slot key/score/generation hashes, summary ordinal hash, handoff hash, replacement sequence hash/count, runningMin change hash/count, runningMinSlot change hash/count, and floor change hash/count.
+The first CUDA regression for Phase 3d.2 is deliberately narrower than the full validation gate. `make check-sim-ordered-maintenance-device-shadow` runs synthetic ordered row-run summaries through the existing ordered initial-replay CUDA kernel and checks the device candidate-state, replacement-sequence, running-min/floor change-sequence, and candidate-index visibility digest subsets against host and CPU-shadow digests. Covered fields include final candidate state, runningMin, runningMinSlot, slot key/score/generation hashes, summary ordinal hash, handoff hash, replacement sequence hash/count, runningMin change hash/count, runningMinSlot change hash/count, floor change hash/count, candidate-index visibility sequence hash, and candidate-index hit/miss/insert/erase/check counts.
 
-This is not sufficient for real device shadow validation. Device backend promotion still requires candidate-index visibility and safe-store digest coverage before `shadow_backend=device` can report anything other than `not_supported` on benchmark telemetry.
+This is not sufficient for real device shadow validation. Device backend promotion still requires safe-store digest coverage before `shadow_backend=device` can report anything other than `not_supported` on benchmark telemetry.
 
 ## Opt-In Contract
 
@@ -54,6 +54,11 @@ candidate_slot_key_hash
 candidate_slot_score_hash
 candidate_slot_generation_hash
 candidate_index_visibility_hash
+candidate_index_existing_hit_count
+candidate_index_miss_count
+candidate_index_insert_count
+candidate_index_erase_count
+candidate_index_visibility_check_count
 replacement_sequence_hash
 running_min_update_sequence_hash
 running_min_slot_update_sequence_hash

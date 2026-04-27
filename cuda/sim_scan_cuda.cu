@@ -29,15 +29,21 @@ const int sim_scan_initial_reduce_chunk_size_default = 256;
 const int sim_scan_initial_reduce_chunk_size_min = 32;
 const int sim_scan_initial_reduce_chunk_size_max = 4096;
 const int sim_scan_initial_reduce_chunk_stats_count = 3;
-const int sim_scan_ordered_maintenance_digest_stats_count = 8;
+const int sim_scan_ordered_maintenance_digest_stats_count = 14;
 const int sim_scan_ordered_maintenance_digest_replacement_sequence_hash_index = 0;
 const int sim_scan_ordered_maintenance_digest_running_min_sequence_hash_index = 1;
 const int sim_scan_ordered_maintenance_digest_running_min_slot_sequence_hash_index = 2;
 const int sim_scan_ordered_maintenance_digest_floor_change_sequence_hash_index = 3;
-const int sim_scan_ordered_maintenance_digest_candidate_replacement_count_index = 4;
-const int sim_scan_ordered_maintenance_digest_running_min_update_count_index = 5;
-const int sim_scan_ordered_maintenance_digest_running_min_slot_update_count_index = 6;
-const int sim_scan_ordered_maintenance_digest_floor_change_count_index = 7;
+const int sim_scan_ordered_maintenance_digest_candidate_index_visibility_hash_index = 4;
+const int sim_scan_ordered_maintenance_digest_candidate_replacement_count_index = 5;
+const int sim_scan_ordered_maintenance_digest_running_min_update_count_index = 6;
+const int sim_scan_ordered_maintenance_digest_running_min_slot_update_count_index = 7;
+const int sim_scan_ordered_maintenance_digest_floor_change_count_index = 8;
+const int sim_scan_ordered_maintenance_digest_candidate_index_existing_hit_count_index = 9;
+const int sim_scan_ordered_maintenance_digest_candidate_index_miss_count_index = 10;
+const int sim_scan_ordered_maintenance_digest_candidate_index_insert_count_index = 11;
+const int sim_scan_ordered_maintenance_digest_candidate_index_erase_count_index = 12;
+const int sim_scan_ordered_maintenance_digest_candidate_index_visibility_check_count_index = 13;
 const int sim_scan_candidate_hash_capacity = 128;
 const int sim_scan_candidate_hash_empty = -1;
 const int sim_scan_candidate_hash_tombstone = -2;
@@ -5783,10 +5789,16 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
   uint64_t localRunningMinUpdateSequenceHash = sim_scan_digest_fnv_offset();
   uint64_t localRunningMinSlotUpdateSequenceHash = sim_scan_digest_fnv_offset();
   uint64_t localFloorChangeSequenceHash = sim_scan_digest_fnv_offset();
+  uint64_t localCandidateIndexVisibilityHash = sim_scan_digest_fnv_offset();
   unsigned long long localCandidateReplacementCount = 0;
   unsigned long long localRunningMinUpdateCount = 0;
   unsigned long long localRunningMinSlotUpdateCount = 0;
   unsigned long long localFloorChangeCount = 0;
+  unsigned long long localCandidateIndexExistingHitCount = 0;
+  unsigned long long localCandidateIndexMissCount = 0;
+  unsigned long long localCandidateIndexInsertCount = 0;
+  unsigned long long localCandidateIndexEraseCount = 0;
+  unsigned long long localCandidateIndexVisibilityCheckCount = 0;
   if(tid == 0)
   {
     int candidateCount = *candidateCountInOut;
@@ -5852,7 +5864,9 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
         break;
       }
     }
-    const int chunkNeedsReplay = __any_sync(0xffffffffu, localNeedsReplay != 0) ? 1 : 0;
+    const int chunkNeedsReplay =
+      orderedMaintenanceDigestStats != NULL ? 1 :
+      (__any_sync(0xffffffffu, localNeedsReplay != 0) ? 1 : 0);
     if(tid == 0)
     {
       ++localChunkCount;
@@ -5882,11 +5896,23 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       const int targetIndex = sim_scan_candidate_hash_find_warp(summary.startCoord,
                                                                 sharedHashCoords,
                                                                 sharedHashSlots);
+      const int candidateCountBefore = sharedCandidateCount;
       const int runningMinBefore = sharedRunningMin;
       const int runningMinSlotBefore = sharedMinIndex;
+      if(tid == 0)
+      {
+        ++localCandidateIndexVisibilityCheckCount;
+        if(targetIndex >= 0)
+        {
+          ++localCandidateIndexExistingHitCount;
+        }
+        else
+        {
+          ++localCandidateIndexMissCount;
+        }
+      }
       if(targetIndex < 0)
       {
-        const int candidateCountBefore = sharedCandidateCount;
         if(tid == 0)
         {
           sharedNeedErase = 0;
@@ -5995,6 +6021,52 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       }
       if(tid == 0)
       {
+        const int candidateIndexAfter = targetIndex >= 0 ? targetIndex : sharedInsertIndex;
+        const int indexInsert = targetIndex < 0 ? 1 : 0;
+        const int indexErase =
+          (targetIndex < 0 && candidateCountBefore == sim_scan_cuda_max_candidates) ? 1 : 0;
+        if(indexInsert != 0)
+        {
+          ++localCandidateIndexInsertCount;
+        }
+        if(indexErase != 0)
+        {
+          ++localCandidateIndexEraseCount;
+        }
+        uint64_t visibilityHash = localCandidateIndexVisibilityHash;
+        visibilityHash =
+          sim_scan_digest_mix_u64(visibilityHash,static_cast<uint64_t>(summaryIndex));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,
+                                  static_cast<int64_t>(
+                                    static_cast<uint32_t>(summary.startCoord >> 32)));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,
+                                  static_cast<int64_t>(
+                                    static_cast<uint32_t>(summary.startCoord & 0xffffffffULL)));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(targetIndex));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(candidateIndexAfter));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(candidateCountBefore));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(sharedCandidateCount));
+        visibilityHash =
+          sim_scan_digest_mix_u64(visibilityHash,targetIndex >= 0 ? 1ULL : 0ULL);
+        visibilityHash =
+          sim_scan_digest_mix_u64(visibilityHash,targetIndex >= 0 ? 0ULL : 1ULL);
+        visibilityHash =
+          sim_scan_digest_mix_u64(visibilityHash,indexInsert != 0 ? 1ULL : 0ULL);
+        visibilityHash =
+          sim_scan_digest_mix_u64(visibilityHash,indexErase != 0 ? 1ULL : 0ULL);
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(runningMinSlotBefore));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(sharedMinIndex));
+        visibilityHash =
+          sim_scan_digest_mix_i64(visibilityHash,static_cast<int64_t>(summary.score));
+        localCandidateIndexVisibilityHash = visibilityHash;
         if(runningMinBefore != sharedRunningMin)
         {
           uint64_t runningMinHash = localRunningMinUpdateSequenceHash;
@@ -6052,6 +6124,9 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
         sim_scan_ordered_maintenance_digest_floor_change_sequence_hash_index] =
         localFloorChangeSequenceHash;
       orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_index_visibility_hash_index] =
+        localCandidateIndexVisibilityHash;
+      orderedMaintenanceDigestStats[
         sim_scan_ordered_maintenance_digest_candidate_replacement_count_index] =
         localCandidateReplacementCount;
       orderedMaintenanceDigestStats[
@@ -6063,6 +6138,21 @@ __global__ void sim_scan_reduce_initial_candidate_states_kernel(const SimScanCud
       orderedMaintenanceDigestStats[
         sim_scan_ordered_maintenance_digest_floor_change_count_index] =
         localFloorChangeCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_index_existing_hit_count_index] =
+        localCandidateIndexExistingHitCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_index_miss_count_index] =
+        localCandidateIndexMissCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_index_insert_count_index] =
+        localCandidateIndexInsertCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_index_erase_count_index] =
+        localCandidateIndexEraseCount;
+      orderedMaintenanceDigestStats[
+        sim_scan_ordered_maintenance_digest_candidate_index_visibility_check_count_index] =
+        localCandidateIndexVisibilityCheckCount;
     }
   }
 
@@ -14668,6 +14758,12 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
       1469598103934665603ULL,
       1469598103934665603ULL,
       1469598103934665603ULL,
+      1469598103934665603ULL,
+      0,
+      0,
+      0,
+      0,
+      0,
       0,
       0,
       0,
@@ -14698,6 +14794,9 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     outDigestStats->floorChangeSequenceHash =
       static_cast<uint64_t>(
         digestStatsHost[sim_scan_ordered_maintenance_digest_floor_change_sequence_hash_index]);
+    outDigestStats->candidateIndexVisibilityHash =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_index_visibility_hash_index]);
     outDigestStats->candidateReplacementCount =
       static_cast<uint64_t>(
         digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_replacement_count_index]);
@@ -14710,6 +14809,21 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     outDigestStats->floorChangeCount =
       static_cast<uint64_t>(
         digestStatsHost[sim_scan_ordered_maintenance_digest_floor_change_count_index]);
+    outDigestStats->candidateIndexExistingHitCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_index_existing_hit_count_index]);
+    outDigestStats->candidateIndexMissCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_index_miss_count_index]);
+    outDigestStats->candidateIndexInsertCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_index_insert_count_index]);
+    outDigestStats->candidateIndexEraseCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_index_erase_count_index]);
+    outDigestStats->candidateIndexVisibilityCheckCount =
+      static_cast<uint64_t>(
+        digestStatsHost[sim_scan_ordered_maintenance_digest_candidate_index_visibility_check_count_index]);
   }
 
   if(candidateCount < 0)
