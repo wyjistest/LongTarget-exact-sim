@@ -385,6 +385,9 @@ SIM_INITIAL_CUDA_MERGE_TEST_SOURCES := tests/test_sim_initial_cuda_merge.cpp cud
 SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET ?= tests/test_sim_initial_frontier_epoch_oracle
 SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES := tests/test_sim_initial_frontier_epoch_oracle.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET ?= tests/test_sim_frontier_epoch_shadow
+SIM_FRONTIER_EPOCH_SHADOW_TEST_SOURCES := tests/test_sim_frontier_epoch_shadow.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_LOCATE_UPDATE_TEST_TARGET ?= tests/test_sim_locate_update
 SIM_LOCATE_UPDATE_TEST_SOURCES := tests/test_sim_locate_update.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -412,6 +415,8 @@ build-sim-traceback-cuda-batch-test: $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET)
 build-sim-initial-cuda-merge-test: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 
 build-sim-frontier-epoch-oracle-test: $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
+
+build-sim-frontier-epoch-shadow-test: $(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET)
 
 build-sim-locate-update-test: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 
@@ -442,8 +447,11 @@ $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET): $(SIM_TRACEBACK_CUDA_BATCH_TEST_SOURCES
 $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET): $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
-$(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET): $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+$(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET): $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) tests/sim_frontier_epoch_oracle_helpers.h sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET): $(SIM_FRONTIER_EPOCH_SHADOW_TEST_SOURCES) tests/sim_frontier_epoch_oracle_helpers.h sim.h cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_FRONTIER_EPOCH_SHADOW_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_LOCATE_UPDATE_TEST_TARGET): $(SIM_LOCATE_UPDATE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_LOCATE_UPDATE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -480,6 +488,9 @@ check-sim-initial-cuda-merge: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 
 check-sim-frontier-epoch-oracle: $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
 	./$(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
+
+check-sim-frontier-epoch-shadow: $(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET)
+	./$(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET)
 
 check-sim-locate-update: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 	./$(SIM_LOCATE_UPDATE_TEST_TARGET)
@@ -635,6 +646,8 @@ check-longtarget-lite-output:
 		build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
+		build-sim-frontier-epoch-oracle-test check-sim-frontier-epoch-oracle \
+		build-sim-frontier-epoch-shadow-test check-sim-frontier-epoch-shadow \
 		build-sim-locate-update-test check-sim-locate-update \
 		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
 			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \

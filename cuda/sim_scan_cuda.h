@@ -777,6 +777,14 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const std::vector<SimSc
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          std::string *errorOut);
 
+bool sim_scan_cuda_reduce_frontier_epoch_shadow_for_test(
+  const std::vector<SimScanCudaInitialRunSummary> &summaries,
+  const std::vector<uint64_t> &summaryEpochIds,
+  const std::vector<uint64_t> &liveEpochIds,
+  std::vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  std::string *errorOut);
+
 bool sim_scan_cuda_select_top_disjoint_candidate_states(const std::vector<SimScanCudaCandidateState> &candidateStates,
                                                         int maxProposalCount,
                                                         std::vector<SimScanCudaCandidateState> *outSelectedStates,
