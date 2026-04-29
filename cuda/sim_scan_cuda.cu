@@ -6214,6 +6214,24 @@ __global__ void sim_scan_init_candidate_reduce_states_from_summaries_kernel(cons
                                                            reduceStates[idx]);
 }
 
+__global__ void sim_scan_init_frontier_epoch_reduce_states_from_summaries_kernel(
+  const SimScanCudaInitialRunSummary *summaries,
+  const uint64_t *summaryEpochIds,
+  int summaryCount,
+  uint64_t *summaryKeys,
+  SimScanCudaCandidateReduceState *reduceStates)
+{
+  const int idx = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if(idx >= summaryCount)
+  {
+    return;
+  }
+  summaryKeys[idx] = summaryEpochIds[idx];
+  initSimScanCudaCandidateReduceStateFromInitialRunSummary(summaries[idx],
+                                                           static_cast<uint32_t>(idx),
+                                                           reduceStates[idx]);
+}
+
 __global__ void sim_scan_init_candidate_reduce_states_from_candidate_states_kernel(const SimScanCudaCandidateState *candidateStates,
                                                                                    int candidateCount,
                                                                                    uint64_t *candidateKeys,
@@ -7019,6 +7037,29 @@ __global__ void sim_scan_filter_candidate_states_by_allowed_start_coords_kernel(
   }
   const int outIndex = atomicAdd(outCount,1);
   outStates[outIndex] = reduceStates[idx].candidate;
+}
+
+__global__ void sim_scan_compute_candidate_states_running_min_kernel(const SimScanCudaCandidateState *states,
+                                                                     int stateCount,
+                                                                     int *runningMinOut)
+{
+  if(blockIdx.x != 0 || threadIdx.x != 0)
+  {
+    return;
+  }
+  int runningMin = 0;
+  if(stateCount > 0)
+  {
+    runningMin = states[0].score;
+    for(int stateIndex = 1; stateIndex < stateCount; ++stateIndex)
+    {
+      if(states[stateIndex].score < runningMin)
+      {
+        runningMin = states[stateIndex].score;
+      }
+    }
+  }
+  *runningMinOut = runningMin;
 }
 
 static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaContext *context,
@@ -14537,6 +14578,335 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
     status = cudaMemcpy(outCandidateStates->data(),
                         context->candidateStatesDevice,
                         static_cast<size_t>(candidateCount) * sizeof(SimScanCudaCandidateState),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      outCandidateStates->clear();
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+  }
+
+  clear_sim_scan_cuda_error(errorOut);
+  return true;
+}
+
+bool sim_scan_cuda_reduce_frontier_epoch_shadow_for_test(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  const vector<uint64_t> &summaryEpochIds,
+  const vector<uint64_t> &liveEpochIds,
+  vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  string *errorOut)
+{
+  if(outCandidateStates == NULL || outRunningMin == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing frontier epoch shadow outputs";
+    }
+    return false;
+  }
+  outCandidateStates->clear();
+  *outRunningMin = 0;
+
+  if(summaryEpochIds.size() != summaries.size())
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "frontier epoch shadow summary/epoch count mismatch";
+    }
+    return false;
+  }
+  if(summaries.size() > static_cast<size_t>(numeric_limits<int>::max()) ||
+     liveEpochIds.size() > static_cast<size_t>(numeric_limits<int>::max()))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "frontier epoch shadow input count overflow";
+    }
+    return false;
+  }
+  for(size_t epochIndex = 0; epochIndex < summaryEpochIds.size(); ++epochIndex)
+  {
+    if(summaryEpochIds[epochIndex] == 0)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = "frontier epoch shadow summary epoch ids must be nonzero";
+      }
+      return false;
+    }
+  }
+
+  const int summaryCount = static_cast<int>(summaries.size());
+  if(summaryCount == 0 || liveEpochIds.empty())
+  {
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
+  vector<uint64_t> sortedLiveEpochIds = liveEpochIds;
+  sort(sortedLiveEpochIds.begin(),sortedLiveEpochIds.end());
+  sortedLiveEpochIds.erase(unique(sortedLiveEpochIds.begin(),sortedLiveEpochIds.end()),
+                           sortedLiveEpochIds.end());
+  const int liveEpochCount = static_cast<int>(sortedLiveEpochIds.size());
+  if(liveEpochCount <= 0)
+  {
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
+  int device = 0;
+  const int slot = simCudaWorkerSlotRuntime();
+  const cudaError_t deviceStatus = cudaGetDevice(&device);
+  if(deviceStatus != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(deviceStatus);
+    }
+    return false;
+  }
+
+  SimScanCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_sim_scan_cuda_context_for_device_slot(device,slot,&context,&contextMutex,errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_sim_scan_cuda_initialized_locked(*context,device,errorOut))
+  {
+    return false;
+  }
+
+  const size_t stateCount = static_cast<size_t>(summaryCount);
+  if(!ensure_sim_scan_cuda_buffer(&context->initialRunSummariesDevice,
+                                  &context->initialRunSummariesCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->summaryKeysDevice,
+                                  &context->summaryKeysCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
+                                  &context->reducedKeysCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
+                                  &context->reduceStatesCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->reducedStatesDevice,
+                                  &context->reducedStatesCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                  &context->outputCandidateStatesCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->filterStartCoordsDevice,
+                                  &context->filterStartCoordsCapacity,
+                                  sortedLiveEpochIds.size(),
+                                  errorOut))
+  {
+    return false;
+  }
+
+  cudaError_t status = cudaMemcpy(context->initialRunSummariesDevice,
+                                  summaries.data(),
+                                  stateCount * sizeof(SimScanCudaInitialRunSummary),
+                                  cudaMemcpyHostToDevice);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status = cudaMemcpy(context->summaryKeysDevice,
+                      summaryEpochIds.data(),
+                      stateCount * sizeof(uint64_t),
+                      cudaMemcpyHostToDevice);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status = cudaMemcpy(context->filterStartCoordsDevice,
+                      sortedLiveEpochIds.data(),
+                      sortedLiveEpochIds.size() * sizeof(uint64_t),
+                      cudaMemcpyHostToDevice);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const int threads = 256;
+  const int blocks = (summaryCount + threads - 1) / threads;
+  sim_scan_init_frontier_epoch_reduce_states_from_summaries_kernel<<<blocks, threads>>>(
+    context->initialRunSummariesDevice,
+    context->summaryKeysDevice,
+    summaryCount,
+    context->summaryKeysDevice,
+    context->reduceStatesDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  int reducedEpochCount = 0;
+  try
+  {
+    thrust::device_ptr<uint64_t> summaryKeysBegin = thrust::device_pointer_cast(context->summaryKeysDevice);
+    thrust::device_ptr<SimScanCudaCandidateReduceState> reduceStatesBegin =
+      thrust::device_pointer_cast(context->reduceStatesDevice);
+    thrust::stable_sort_by_key(thrust::device,
+                               summaryKeysBegin,
+                               summaryKeysBegin + summaryCount,
+                               reduceStatesBegin);
+    thrust::pair< thrust::device_ptr<uint64_t>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
+      thrust::reduce_by_key(thrust::device,
+                            summaryKeysBegin,
+                            summaryKeysBegin + summaryCount,
+                            reduceStatesBegin,
+                            thrust::device_pointer_cast(context->reducedKeysDevice),
+                            thrust::device_pointer_cast(context->reducedStatesDevice),
+                            thrust::equal_to<uint64_t>(),
+                            SimScanCudaCandidateReduceMergeOp());
+    reducedEpochCount =
+      static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
+  }
+  catch(const thrust::system_error &e)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = e.what();
+    }
+    return false;
+  }
+  catch(const exception &e)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = e.what();
+    }
+    return false;
+  }
+
+  if(reducedEpochCount < 0 || reducedEpochCount > summaryCount)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "frontier epoch shadow reduced count overflow";
+    }
+    return false;
+  }
+
+  int outputCandidateCount = 0;
+  if(reducedEpochCount > 0)
+  {
+    status = cudaMemset(context->filteredCandidateCountDevice,0,sizeof(int));
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    const int filterBlocks = (reducedEpochCount + threads - 1) / threads;
+    sim_scan_filter_candidate_states_by_allowed_start_coords_kernel<<<filterBlocks, threads>>>(
+      context->reducedKeysDevice,
+      context->reducedStatesDevice,
+      reducedEpochCount,
+      context->filterStartCoordsDevice,
+      liveEpochCount,
+      context->outputCandidateStatesDevice,
+      context->filteredCandidateCountDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    status = cudaMemcpy(&outputCandidateCount,
+                        context->filteredCandidateCountDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+  }
+
+  if(outputCandidateCount < 0 || outputCandidateCount > reducedEpochCount)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "frontier epoch shadow output count overflow";
+    }
+    return false;
+  }
+
+  sim_scan_compute_candidate_states_running_min_kernel<<<1, 1>>>(
+    context->outputCandidateStatesDevice,
+    outputCandidateCount,
+    context->runningMinDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  status = cudaMemcpy(outRunningMin,
+                      context->runningMinDevice,
+                      sizeof(int),
+                      cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  if(outputCandidateCount > 0)
+  {
+    outCandidateStates->resize(static_cast<size_t>(outputCandidateCount));
+    status = cudaMemcpy(outCandidateStates->data(),
+                        context->outputCandidateStatesDevice,
+                        static_cast<size_t>(outputCandidateCount) * sizeof(SimScanCudaCandidateState),
                         cudaMemcpyDeviceToHost);
     if(status != cudaSuccess)
     {

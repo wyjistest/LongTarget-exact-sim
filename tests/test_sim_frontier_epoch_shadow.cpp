@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <cuda_runtime.h>
+
 #include "../cuda/sim_scan_cuda.h"
 #include "sim_frontier_epoch_oracle_helpers.h"
 
@@ -19,6 +21,8 @@ struct ShadowCaseReport
     size_t epochCount;
     size_t liveEpochCount;
     size_t candidateCount;
+    size_t materializedHandleStateCount;
+    size_t prunedHandleStateCount;
     size_t materializedSafeStoreCount;
     size_t prunedSafeStoreCount;
     int runningMin;
@@ -28,22 +32,6 @@ struct ShadowCaseReport
     bool prunedSafeStoreExact;
     bool exact;
 };
-
-static void make_full_row_interval_filter(int queryLength,
-                                          int targetLength,
-                                          std::vector<int> &rowOffsets,
-                                          std::vector<SimScanCudaColumnInterval> &intervals)
-{
-    rowOffsets.assign(static_cast<size_t>(queryLength + 2), 0);
-    intervals.clear();
-    intervals.reserve(static_cast<size_t>(queryLength));
-    for (int row = 1; row <= queryLength; ++row)
-    {
-        rowOffsets[static_cast<size_t>(row)] = static_cast<int>(intervals.size());
-        intervals.push_back(SimScanCudaColumnInterval(1, targetLength));
-    }
-    rowOffsets[static_cast<size_t>(queryLength + 1)] = static_cast<int>(intervals.size());
-}
 
 static bool download_persistent_store_states(const SimCudaPersistentSafeStoreHandle &handle,
                                              std::vector<SimScanCudaCandidateState> *outStates,
@@ -62,24 +50,37 @@ static bool download_persistent_store_states(const SimCudaPersistentSafeStoreHan
     {
         return true;
     }
+    if (handle.statesDevice == 0)
+    {
+        if (errorOut != NULL)
+        {
+            *errorOut = "persistent store handle has no state device pointer";
+        }
+        return false;
+    }
 
-    std::vector<int> rowOffsets;
-    std::vector<SimScanCudaColumnInterval> intervals;
-    make_full_row_interval_filter(4096, 4096, rowOffsets, intervals);
-    return sim_scan_cuda_filter_persistent_safe_candidate_state_store_by_row_intervals(
-        handle,
-        4096,
-        4096,
-        rowOffsets,
-        intervals,
-        outStates,
-        errorOut);
+    outStates->resize(handle.stateCount);
+    const cudaError_t status = cudaMemcpy(outStates->data(),
+                                          reinterpret_cast<const void *>(handle.statesDevice),
+                                          handle.stateCount * sizeof(SimScanCudaCandidateState),
+                                          cudaMemcpyDeviceToHost);
+    if (status != cudaSuccess)
+    {
+        outStates->clear();
+        if (errorOut != NULL)
+        {
+            *errorOut = cudaGetErrorString(status);
+        }
+        return false;
+    }
+    return true;
 }
 
 static bool build_gpu_safe_store_states(const std::vector<SimScanCudaInitialRunSummary> &summaries,
                                         const std::vector<SimScanCudaCandidateState> &finalCandidates,
                                         int runningMin,
                                         std::vector<SimScanCudaCandidateState> *outStates,
+                                        size_t *outHandleStateCount,
                                         std::string *errorOut)
 {
     SimCudaPersistentSafeStoreHandle handle;
@@ -99,6 +100,10 @@ static bool build_gpu_safe_store_states(const std::vector<SimScanCudaInitialRunS
         return false;
     }
 
+    if (outHandleStateCount != NULL)
+    {
+        *outHandleStateCount = handle.stateCount;
+    }
     const bool ok = download_persistent_store_states(handle, outStates, errorOut);
     sim_scan_cuda_release_persistent_safe_candidate_state_store(&handle);
     return ok;
@@ -180,10 +185,12 @@ static bool analyze_shadow_case(const sim_frontier_epoch_test::TestCase &test,
                                      false);
 
     std::vector<SimScanCudaCandidateState> gpuMaterializedSafeStoreStates;
+    size_t gpuMaterializedHandleStateCount = 0;
     if (!build_gpu_safe_store_states(test.summaries,
                                      std::vector<SimScanCudaCandidateState>(),
                                      INT_MIN,
                                      &gpuMaterializedSafeStoreStates,
+                                     &gpuMaterializedHandleStateCount,
                                      &error))
     {
         sim_frontier_epoch_test::add_mismatch(mismatches, test.name, "safe_store_materialized_call", error);
@@ -199,10 +206,12 @@ static bool analyze_shadow_case(const sim_frontier_epoch_test::TestCase &test,
     ok = materializedSafeStoreExact && ok;
 
     std::vector<SimScanCudaCandidateState> gpuPrunedSafeStoreStates;
+    size_t gpuPrunedHandleStateCount = 0;
     if (!build_gpu_safe_store_states(test.summaries,
                                      gpuFrontierStates,
                                      gpuRunningMin,
                                      &gpuPrunedSafeStoreStates,
+                                     &gpuPrunedHandleStateCount,
                                      &error))
     {
         sim_frontier_epoch_test::add_mismatch(mismatches, test.name, "safe_store_pruned_call", error);
@@ -222,6 +231,8 @@ static bool analyze_shadow_case(const sim_frontier_epoch_test::TestCase &test,
     report.epochCount = oracle.epochs.size();
     report.liveEpochCount = oracle.liveEpochCount;
     report.candidateCount = gpuFrontierStates.size();
+    report.materializedHandleStateCount = gpuMaterializedHandleStateCount;
+    report.prunedHandleStateCount = gpuPrunedHandleStateCount;
     report.materializedSafeStoreCount = gpuMaterializedSafeStoreStates.size();
     report.prunedSafeStoreCount = gpuPrunedSafeStoreStates.size();
     report.runningMin = gpuRunningMin;
@@ -295,6 +306,8 @@ static bool write_summary(const std::vector<ShadowCaseReport> &reports,
             << "\"epoch_count\":" << report.epochCount << ","
             << "\"live_epoch_count\":" << report.liveEpochCount << ","
             << "\"candidate_count\":" << report.candidateCount << ","
+            << "\"materialized_handle_state_count\":" << report.materializedHandleStateCount << ","
+            << "\"pruned_handle_state_count\":" << report.prunedHandleStateCount << ","
             << "\"materialized_safe_store_count\":" << report.materializedSafeStoreCount << ","
             << "\"pruned_safe_store_count\":" << report.prunedSafeStoreCount << ","
             << "\"running_min\":" << report.runningMin << ","
