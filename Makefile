@@ -379,6 +379,9 @@ SIM_REGION_BUCKETED_TRUE_BATCH_TEST_SOURCES := tests/test_sim_region_bucketed_tr
 SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET ?= tests/test_sim_region_scheduler_shape_telemetry
 SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_SOURCES := tests/test_sim_region_scheduler_shape_telemetry.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET ?= tests/test_sim_region_single_request_direct_reduce
+SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_SOURCES := tests/test_sim_region_single_request_direct_reduce.cpp cuda/sim_scan_cuda.o
+
 SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET ?= tests/test_sim_cuda_proposal_select
 SIM_CUDA_PROPOSAL_SELECT_TEST_SOURCES := tests/test_sim_cuda_proposal_select.cpp cuda/sim_scan_cuda.o
 
@@ -448,6 +451,8 @@ build-sim-region-bucketed-true-batch-test: $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST
 
 build-sim-region-scheduler-shape-telemetry-test: $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET)
 
+build-sim-region-single-request-direct-reduce-test: $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+
 build-sim-cuda-proposal-select-test: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 
 build-sim-traceback-cuda-batch-test: $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET)
@@ -503,6 +508,9 @@ $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARGET): $(SIM_REGION_BUCKETED_TRUE_BATCH_
 
 $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET): $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET): $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET): $(SIM_CUDA_PROPOSAL_SELECT_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_CUDA_PROPOSAL_SELECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
@@ -578,6 +586,9 @@ check-sim-region-bucketed-true-batch: $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARG
 
 check-sim-region-scheduler-shape-telemetry: $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET)
 	./$(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET)
+
+check-sim-region-single-request-direct-reduce: $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+	./$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
 
 check-sim-cuda-proposal-select: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 	./$(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
@@ -777,6 +788,7 @@ check-longtarget-lite-output:
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 		build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
 		build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \
+		build-sim-region-single-request-direct-reduce-test check-sim-region-single-request-direct-reduce \
 		build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \

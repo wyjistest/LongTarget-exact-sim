@@ -2506,6 +2506,59 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionBucketedTrueBatchRejectedPadding<<endl;
   cerr<<"benchmark.sim_region_bucketed_true_batch_shadow_mismatches="
       <<simRegionBucketedTrueBatchShadowMismatches<<endl;
+  const char *simRegionSingleRequestDirectReduceEnv =
+    getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE");
+  const char *simRegionSingleRequestDirectReduceShadowEnv =
+    getenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_enabled="
+      <<((simRegionSingleRequestDirectReduceEnv != NULL &&
+          simRegionSingleRequestDirectReduceEnv[0] != '\0' &&
+          strcmp(simRegionSingleRequestDirectReduceEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_shadow_enabled="
+      <<((simRegionSingleRequestDirectReduceShadowEnv != NULL &&
+          simRegionSingleRequestDirectReduceShadowEnv[0] != '\0' &&
+          strcmp(simRegionSingleRequestDirectReduceShadowEnv,"0") != 0) ? 1 : 0)<<endl;
+  uint64_t simRegionSingleRequestDirectReduceAttempts = 0;
+  uint64_t simRegionSingleRequestDirectReduceSuccesses = 0;
+  uint64_t simRegionSingleRequestDirectReduceFallbacks = 0;
+  uint64_t simRegionSingleRequestDirectReduceOverflows = 0;
+  uint64_t simRegionSingleRequestDirectReduceShadowMismatches = 0;
+  uint64_t simRegionSingleRequestDirectReduceHashCapacityMax = 0;
+  uint64_t simRegionSingleRequestDirectReduceCandidates = 0;
+  uint64_t simRegionSingleRequestDirectReduceEvents = 0;
+  uint64_t simRegionSingleRequestDirectReduceRunSummaries = 0;
+  double simRegionSingleRequestDirectReduceGpuSeconds = 0.0;
+  getSimRegionSingleRequestDirectReduceStats(
+    simRegionSingleRequestDirectReduceAttempts,
+    simRegionSingleRequestDirectReduceSuccesses,
+    simRegionSingleRequestDirectReduceFallbacks,
+    simRegionSingleRequestDirectReduceOverflows,
+    simRegionSingleRequestDirectReduceShadowMismatches,
+    simRegionSingleRequestDirectReduceHashCapacityMax,
+    simRegionSingleRequestDirectReduceCandidates,
+    simRegionSingleRequestDirectReduceEvents,
+    simRegionSingleRequestDirectReduceRunSummaries,
+    simRegionSingleRequestDirectReduceGpuSeconds);
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_attempts="
+      <<simRegionSingleRequestDirectReduceAttempts<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_successes="
+      <<simRegionSingleRequestDirectReduceSuccesses<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fallbacks="
+      <<simRegionSingleRequestDirectReduceFallbacks<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_overflows="
+      <<simRegionSingleRequestDirectReduceOverflows<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_shadow_mismatches="
+      <<simRegionSingleRequestDirectReduceShadowMismatches<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_hash_capacity_max="
+      <<simRegionSingleRequestDirectReduceHashCapacityMax<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_candidates="
+      <<simRegionSingleRequestDirectReduceCandidates<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_events="
+      <<simRegionSingleRequestDirectReduceEvents<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_run_summaries="
+      <<simRegionSingleRequestDirectReduceRunSummaries<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_gpu_seconds="
+      <<simRegionSingleRequestDirectReduceGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_scan_gpu_seconds="<<simRegionScanGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_d2h_seconds="<<simRegionD2HSeconds<<endl;
   cerr<<"benchmark.sim_materialize_seconds="<<simMaterializeSeconds<<endl;

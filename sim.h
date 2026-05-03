@@ -5014,6 +5014,66 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceAttemptCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceSuccessCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFallbackCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceOverflowCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceShadowMismatchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceHashCapacityMax()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCandidateCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceEventCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceRunSummaryCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionCpuMergeNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5833,6 +5893,39 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		                                                            std::memory_order_relaxed);
 		}
 
+		inline void recordSimRegionSingleRequestDirectReduce(const SimScanCudaBatchResult &batchResult)
+		{
+		  simRegionSingleRequestDirectReduceAttemptCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceAttempts,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceSuccessCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceSuccesses,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFallbackCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFallbacks,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceOverflowCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceOverflows,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceShadowMismatchCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceShadowMismatches,
+		    std::memory_order_relaxed);
+		  updateSimTelemetryMax(simRegionSingleRequestDirectReduceHashCapacityMax(),
+		                        batchResult.regionSingleRequestDirectReduceHashCapacity);
+		  simRegionSingleRequestDirectReduceCandidateCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCandidateCount,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceEventCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceEventCount,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceRunSummaryCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceRunSummaryCount,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceGpuSeconds),
+		    std::memory_order_relaxed);
+		}
+
 		inline void recordSimRegionCpuMergeNanoseconds(uint64_t nanoseconds)
 		{
 		  simRegionCpuMergeNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -6420,6 +6513,35 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  paddingCells = simRegionBucketedTrueBatchPaddingCellCount().load(std::memory_order_relaxed);
 		  rejectedPadding = simRegionBucketedTrueBatchRejectedPaddingCount().load(std::memory_order_relaxed);
 		  shadowMismatches = simRegionBucketedTrueBatchShadowMismatchCount().load(std::memory_order_relaxed);
+		}
+
+		inline void getSimRegionSingleRequestDirectReduceStats(uint64_t &attempts,
+		                                                       uint64_t &successes,
+		                                                       uint64_t &fallbacks,
+		                                                       uint64_t &overflows,
+		                                                       uint64_t &shadowMismatches,
+		                                                       uint64_t &hashCapacityMax,
+		                                                       uint64_t &candidateCount,
+		                                                       uint64_t &eventCount,
+		                                                       uint64_t &runSummaryCount,
+		                                                       double &gpuSeconds)
+		{
+		  attempts = simRegionSingleRequestDirectReduceAttemptCount().load(std::memory_order_relaxed);
+		  successes = simRegionSingleRequestDirectReduceSuccessCount().load(std::memory_order_relaxed);
+		  fallbacks = simRegionSingleRequestDirectReduceFallbackCount().load(std::memory_order_relaxed);
+		  overflows = simRegionSingleRequestDirectReduceOverflowCount().load(std::memory_order_relaxed);
+		  shadowMismatches =
+		    simRegionSingleRequestDirectReduceShadowMismatchCount().load(std::memory_order_relaxed);
+		  hashCapacityMax =
+		    simRegionSingleRequestDirectReduceHashCapacityMax().load(std::memory_order_relaxed);
+		  candidateCount =
+		    simRegionSingleRequestDirectReduceCandidateCount().load(std::memory_order_relaxed);
+		  eventCount = simRegionSingleRequestDirectReduceEventCount().load(std::memory_order_relaxed);
+		  runSummaryCount =
+		    simRegionSingleRequestDirectReduceRunSummaryCount().load(std::memory_order_relaxed);
+		  gpuSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
 		}
 
 			inline void getSimInitialReductionStats(uint64_t &eventCount,
@@ -14085,6 +14207,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
         recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
       }
       recordSimRegionBucketedTrueBatch(cudaBatchResult);
+      recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
       if(recordSafeWindowExecTelemetry)
       {
         recordSimSafeWindowExecGeometry(workset);
@@ -14164,6 +14287,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
     }
     recordSimRegionBucketedTrueBatch(cudaBatchResult);
+    recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
     if(recordSafeWindowExecTelemetry)
     {
       recordSimSafeWindowExecGeometry(workset);
@@ -14424,6 +14548,7 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
         recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
       }
       recordSimRegionBucketedTrueBatch(cudaBatchResult);
+      recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
       recordSimRegionScanBackend(true,cudaBatchResult.taskCount,cudaBatchResult.launchCount);
     }
     if(hasHostSafeStore)
@@ -14477,6 +14602,7 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
       recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
     }
     recordSimRegionBucketedTrueBatch(cudaBatchResult);
+    recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
     recordSimRegionScanBackend(true,cudaBatchResult.taskCount,cudaBatchResult.launchCount);
   }
 

@@ -719,10 +719,12 @@ struct SimScanCudaBatchResult
     initialSummaryD2HCopySeconds(0.0),
     initialSummaryUnpackSeconds(0.0),
     initialSummaryResultMaterializeSeconds(0.0),
+    regionSingleRequestDirectReduceGpuSeconds(0.0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
     usedRegionBucketedTrueBatchPath(false),
     usedRegionPackedAggregationPath(false),
+    usedRegionSingleRequestDirectReducePath(false),
     usedInitialDirectSummaryPath(false),
     usedInitialPackedSummaryD2H(false),
     usedInitialSummaryHostCopyElision(false),
@@ -746,6 +748,15 @@ struct SimScanCudaBatchResult
     regionBucketedTrueBatchRejectedPadding(0),
     regionBucketedTrueBatchShadowMismatches(0),
     regionPackedAggregationRequestCount(0),
+    regionSingleRequestDirectReduceAttempts(0),
+    regionSingleRequestDirectReduceSuccesses(0),
+    regionSingleRequestDirectReduceFallbacks(0),
+    regionSingleRequestDirectReduceOverflows(0),
+    regionSingleRequestDirectReduceShadowMismatches(0),
+    regionSingleRequestDirectReduceHashCapacity(0),
+    regionSingleRequestDirectReduceCandidateCount(0),
+    regionSingleRequestDirectReduceEventCount(0),
+    regionSingleRequestDirectReduceRunSummaryCount(0),
     initialDeviceResidencyRequestCount(0),
     initialProposalV2RequestCount(0),
     initialProposalV3RequestCount(0),
@@ -785,10 +796,12 @@ struct SimScanCudaBatchResult
   double initialSummaryD2HCopySeconds;
   double initialSummaryUnpackSeconds;
   double initialSummaryResultMaterializeSeconds;
+  double regionSingleRequestDirectReduceGpuSeconds;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
   bool usedRegionBucketedTrueBatchPath;
   bool usedRegionPackedAggregationPath;
+  bool usedRegionSingleRequestDirectReducePath;
   bool usedInitialDirectSummaryPath;
   bool usedInitialPackedSummaryD2H;
   bool usedInitialSummaryHostCopyElision;
@@ -812,6 +825,15 @@ struct SimScanCudaBatchResult
   uint64_t regionBucketedTrueBatchRejectedPadding;
   uint64_t regionBucketedTrueBatchShadowMismatches;
   uint64_t regionPackedAggregationRequestCount;
+  uint64_t regionSingleRequestDirectReduceAttempts;
+  uint64_t regionSingleRequestDirectReduceSuccesses;
+  uint64_t regionSingleRequestDirectReduceFallbacks;
+  uint64_t regionSingleRequestDirectReduceOverflows;
+  uint64_t regionSingleRequestDirectReduceShadowMismatches;
+  uint64_t regionSingleRequestDirectReduceHashCapacity;
+  uint64_t regionSingleRequestDirectReduceCandidateCount;
+  uint64_t regionSingleRequestDirectReduceEventCount;
+  uint64_t regionSingleRequestDirectReduceRunSummaryCount;
   uint64_t initialDeviceResidencyRequestCount;
   uint64_t initialProposalV2RequestCount;
   uint64_t initialProposalV3RequestCount;
