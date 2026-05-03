@@ -17,6 +17,126 @@ bool sim_scan_cuda_init(int device,string *errorOut)
   return false;
 }
 
+static int sim_scan_cuda_stub_round_up_int(int value,int quantum)
+{
+  if(value <= 0 || quantum <= 0)
+  {
+    return 0;
+  }
+  return ((value + quantum - 1) / quantum) * quantum;
+}
+
+bool sim_scan_cuda_plan_region_bucketed_true_batches_for_test(
+  const vector<SimScanCudaRegionBucketedTrueBatchShape> &shapes,
+  vector<SimScanCudaRegionBucketedTrueBatchGroup> *groups,
+  SimScanCudaRegionBucketedTrueBatchStats *stats,
+  string *errorOut)
+{
+  if(groups == NULL || stats == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing bucketed true-batch planner outputs";
+    }
+    return false;
+  }
+  groups->clear();
+  *stats = SimScanCudaRegionBucketedTrueBatchStats();
+  stats->requests = static_cast<uint64_t>(shapes.size());
+
+  const size_t maxBatchSize = 32;
+  for(size_t runBegin = 0; runBegin < shapes.size();)
+  {
+    const int bucketRows = sim_scan_cuda_stub_round_up_int(shapes[runBegin].rowCount,64);
+    const int bucketCols = sim_scan_cuda_stub_round_up_int(shapes[runBegin].colCount,256);
+    if(bucketRows <= 0 || bucketCols <= 0)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = "invalid bucketed true-batch shape";
+      }
+      return false;
+    }
+    size_t runEnd = runBegin + 1;
+    while(runEnd < shapes.size() &&
+          sim_scan_cuda_stub_round_up_int(shapes[runEnd].rowCount,64) == bucketRows &&
+          sim_scan_cuda_stub_round_up_int(shapes[runEnd].colCount,256) == bucketCols)
+    {
+      ++runEnd;
+    }
+
+    for(size_t chunkBegin = runBegin; chunkBegin < runEnd;)
+    {
+      const size_t chunkCount =
+        (runEnd - chunkBegin) < maxBatchSize ? (runEnd - chunkBegin) : maxBatchSize;
+      uint64_t actualCells = 0;
+      for(size_t i = chunkBegin; i < chunkBegin + chunkCount; ++i)
+      {
+        actualCells += static_cast<uint64_t>(shapes[i].rowCount) *
+                       static_cast<uint64_t>(shapes[i].colCount);
+      }
+      const uint64_t paddedCells =
+        static_cast<uint64_t>(bucketRows) *
+        static_cast<uint64_t>(bucketCols) *
+        static_cast<uint64_t>(chunkCount);
+      if(chunkCount >= 2 && paddedCells <= actualCells + actualCells / 10)
+      {
+        SimScanCudaRegionBucketedTrueBatchGroup group;
+        group.requestBegin = chunkBegin;
+        group.requestCount = chunkCount;
+        group.bucketRows = bucketRows;
+        group.bucketCols = bucketCols;
+        group.actualCells = actualCells;
+        group.paddedCells = paddedCells;
+        group.bucketed = true;
+        groups->push_back(group);
+        ++stats->batches;
+        stats->fusedRequests += static_cast<uint64_t>(chunkCount);
+        stats->actualCells += actualCells;
+        stats->paddedCells += paddedCells;
+        stats->paddingCells += paddedCells - actualCells;
+      }
+      else
+      {
+        if(chunkCount >= 2 && paddedCells > actualCells)
+        {
+          stats->rejectedPadding += paddedCells - actualCells;
+        }
+        for(size_t i = chunkBegin; i < chunkBegin + chunkCount;)
+        {
+          size_t exactEnd = i + 1;
+          while(exactEnd < chunkBegin + chunkCount &&
+                shapes[exactEnd].rowCount == shapes[i].rowCount &&
+                shapes[exactEnd].colCount == shapes[i].colCount)
+          {
+            ++exactEnd;
+          }
+          const uint64_t requestCells =
+            static_cast<uint64_t>(shapes[i].rowCount) *
+            static_cast<uint64_t>(shapes[i].colCount);
+          SimScanCudaRegionBucketedTrueBatchGroup group;
+          group.requestBegin = i;
+          group.requestCount = exactEnd - i;
+          group.bucketRows = shapes[i].rowCount;
+          group.bucketCols = shapes[i].colCount;
+          group.actualCells = requestCells * static_cast<uint64_t>(group.requestCount);
+          group.paddedCells = group.actualCells;
+          group.bucketed = false;
+          groups->push_back(group);
+          i = exactEnd;
+        }
+      }
+      chunkBegin += chunkCount;
+    }
+    runBegin = runEnd;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return true;
+}
+
 bool sim_scan_cuda_upload_persistent_safe_candidate_state_store(const SimScanCudaCandidateState *states,
                                                                 size_t stateCount,
                                                                 SimCudaPersistentSafeStoreHandle *handleOut,
@@ -586,6 +706,101 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const vector<SimScanCud
   if(outReplayStats != NULL)
   {
     *outReplayStats = SimScanCudaInitialReduceReplayStats();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_reduce_initial_ordered_segmented_v3_for_test(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  const vector<int> &runBases,
+  const vector<int> &runTotals,
+  vector<SimScanCudaInitialBatchResult> *outResults,
+  SimScanCudaBatchResult *batchResult,
+  string *errorOut)
+{
+  (void)summaries;
+  (void)runBases;
+  (void)runTotals;
+  if(outResults != NULL)
+  {
+    outResults->clear();
+  }
+  if(batchResult != NULL)
+  {
+    *batchResult = SimScanCudaBatchResult();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_apply_frontier_chunk_transducer_shadow_for_test(
+  const vector<SimScanCudaCandidateState> &incomingStates,
+  int incomingRunningMin,
+  const vector<SimScanCudaInitialRunSummary> &chunkSummaries,
+  vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  SimScanCudaFrontierDigest *outDigest,
+  SimScanCudaFrontierTransducerShadowStats *outStats,
+  string *errorOut)
+{
+  (void)incomingStates;
+  (void)incomingRunningMin;
+  (void)chunkSummaries;
+  if(outCandidateStates != NULL)
+  {
+    outCandidateStates->clear();
+  }
+  if(outRunningMin != NULL)
+  {
+    *outRunningMin = 0;
+  }
+  if(outDigest != NULL)
+  {
+    resetSimScanCudaFrontierDigest(*outDigest,0,0);
+  }
+  if(outStats != NULL)
+  {
+    outStats->summaryReplayCount = 0;
+    outStats->insertCount = 0;
+    outStats->evictionCount = 0;
+    outStats->revisitCount = 0;
+    outStats->sameStartUpdateCount = 0;
+    outStats->kBoundaryReplacementCount = 0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  const vector<int> &runBases,
+  const vector<int> &runTotals,
+  int chunkSize,
+  vector<SimScanCudaFrontierTransducerSegmentedShadowResult> *outResults,
+  double *outShadowSeconds,
+  string *errorOut)
+{
+  (void)summaries;
+  (void)runBases;
+  (void)runTotals;
+  (void)chunkSize;
+  if(outResults != NULL)
+  {
+    outResults->clear();
+  }
+  if(outShadowSeconds != NULL)
+  {
+    *outShadowSeconds = 0.0;
   }
   if(errorOut != NULL)
   {

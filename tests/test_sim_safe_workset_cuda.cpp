@@ -756,12 +756,12 @@ int main()
         }
     }
 
-    const char *previousInitialDeviceMaintenance =
-        getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
-    const bool hadPreviousInitialDeviceMaintenance = previousInitialDeviceMaintenance != NULL;
-    const std::string previousInitialDeviceMaintenanceValue =
-        hadPreviousInitialDeviceMaintenance ? previousInitialDeviceMaintenance : "";
-    setenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE", "1", 1);
+    const char *previousInitialSafeStoreHandoff =
+        getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
+    const bool hadPreviousInitialSafeStoreHandoff = previousInitialSafeStoreHandoff != NULL;
+    const std::string previousInitialSafeStoreHandoffValue =
+        hadPreviousInitialSafeStoreHandoff ? previousInitialSafeStoreHandoff : "";
+    setenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF", "1", 1);
 
     SimKernelContext mirroredDeviceContext(20, 20);
     initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, mirroredDeviceContext);
@@ -805,33 +805,33 @@ int main()
 
     ok = expect_true(simCandidateContextsEqual(mirroredDeviceContext,
                                                mirroredContext),
-                     "gated initial device maintenance matches baseline frontier") && ok;
+                     "gated initial safe-store handoff matches baseline frontier") && ok;
     ok = expect_true(!mirroredDeviceContext.safeCandidateStateStore.valid,
-                     "gated initial device maintenance evicts host safe store") && ok;
+                     "gated initial safe-store handoff evicts host safe store") && ok;
     ok = expect_true(mirroredDeviceContext.gpuSafeCandidateStateStore.valid,
-                     "gated initial device maintenance keeps gpu safe store valid") && ok;
+                     "gated initial safe-store handoff keeps gpu safe store valid") && ok;
     ok = expect_true(simCanUseGpuFrontierCacheForResidency(mirroredDeviceContext),
-                     "gated initial device maintenance marks gpu frontier cache reusable") && ok;
+                     "gated initial safe-store handoff marks gpu frontier cache reusable") && ok;
     ok = expect_candidate_states_equal(mirroredDeviceStoreStates,
                                        mirroredContext.safeCandidateStateStore.states,
-                                       "gated initial device maintenance gpu store matches baseline host safe store") &&
+                                       "gated initial safe-store handoff gpu store matches baseline host safe store") &&
          ok;
     ok = expect_worksets_equal(mirroredDeviceGpuWorkset,
                                mirroredHostWorkset,
-                               "gated initial device maintenance gpu workset matches baseline host") && ok;
+                               "gated initial safe-store handoff gpu workset matches baseline host") && ok;
     ok = expect_equal_size(mirroredDeviceGpuAffectedStartCoords.size(),
                            mirroredExpectedAffectedStartCoords.size(),
-                           "gated initial device maintenance affected start count") && ok;
+                           "gated initial safe-store handoff affected start count") && ok;
 
-    if (hadPreviousInitialDeviceMaintenance)
+    if (hadPreviousInitialSafeStoreHandoff)
     {
-        setenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE",
-               previousInitialDeviceMaintenanceValue.c_str(),
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF",
+               previousInitialSafeStoreHandoffValue.c_str(),
                1);
     }
     else
     {
-        unsetenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
     }
 
     const char *previousDeviceKLoop = getenv("LONGTARGET_ENABLE_SIM_CUDA_DEVICE_K_LOOP");

@@ -30,6 +30,76 @@ struct SimScanCudaInitialRunSummary
   uint32_t scoreEndJ;
 };
 
+struct SimScanCudaPackedInitialRunSummary16
+{
+  int32_t score;
+  uint16_t startI;
+  uint16_t startJ;
+  uint16_t endI;
+  uint16_t minEndJ;
+  uint16_t maxEndJ;
+  uint16_t scoreEndJ;
+};
+
+static_assert(sizeof(SimScanCudaPackedInitialRunSummary16) == 16,
+              "packed initial run summary must stay 16 bytes");
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE uint32_t simScanCudaInitialRunSummaryStartI(
+  const SimScanCudaInitialRunSummary &summary)
+{
+  return static_cast<uint32_t>(summary.startCoord >> 32);
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE uint32_t simScanCudaInitialRunSummaryStartJ(
+  const SimScanCudaInitialRunSummary &summary)
+{
+  return static_cast<uint32_t>(summary.startCoord & 0xffffffffu);
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE bool simScanCudaInitialRunSummaryFitsPacked16(
+  const SimScanCudaInitialRunSummary &summary)
+{
+  const uint32_t startI = simScanCudaInitialRunSummaryStartI(summary);
+  const uint32_t startJ = simScanCudaInitialRunSummaryStartJ(summary);
+  return startI <= 65535u &&
+         startJ <= 65535u &&
+         summary.endI <= 65535u &&
+         summary.minEndJ <= 65535u &&
+         summary.maxEndJ <= 65535u &&
+         summary.scoreEndJ <= 65535u;
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE bool packSimScanCudaInitialRunSummary16(
+  const SimScanCudaInitialRunSummary &summary,
+  SimScanCudaPackedInitialRunSummary16 &packed)
+{
+  if(!simScanCudaInitialRunSummaryFitsPacked16(summary))
+  {
+    return false;
+  }
+  packed.score = static_cast<int32_t>(summary.score);
+  packed.startI = static_cast<uint16_t>(simScanCudaInitialRunSummaryStartI(summary));
+  packed.startJ = static_cast<uint16_t>(simScanCudaInitialRunSummaryStartJ(summary));
+  packed.endI = static_cast<uint16_t>(summary.endI);
+  packed.minEndJ = static_cast<uint16_t>(summary.minEndJ);
+  packed.maxEndJ = static_cast<uint16_t>(summary.maxEndJ);
+  packed.scoreEndJ = static_cast<uint16_t>(summary.scoreEndJ);
+  return true;
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE void unpackSimScanCudaInitialRunSummary16(
+  const SimScanCudaPackedInitialRunSummary16 &packed,
+  SimScanCudaInitialRunSummary &summary)
+{
+  summary.score = static_cast<int>(packed.score);
+  summary.startCoord = (static_cast<uint64_t>(packed.startI) << 32) |
+                       static_cast<uint64_t>(packed.startJ);
+  summary.endI = static_cast<uint32_t>(packed.endI);
+  summary.minEndJ = static_cast<uint32_t>(packed.minEndJ);
+  summary.maxEndJ = static_cast<uint32_t>(packed.maxEndJ);
+  summary.scoreEndJ = static_cast<uint32_t>(packed.scoreEndJ);
+}
+
 LONGTARGET_SIM_SCAN_HOST_DEVICE bool simScanCudaInitialRunStartsAt(const SimScanCudaRowEvent *events,
                                                                    int rowStartIndex,
                                                                    int eventIndex)
@@ -261,15 +331,125 @@ struct SimScanCudaInitialReduceReplayStats
   uint64_t summaryReplayCount;
 };
 
+struct SimScanCudaFrontierDigest
+{
+  int candidateCount;
+  int runningMin;
+  uint64_t slotOrderHash;
+  uint64_t candidateIdentityHash;
+  uint64_t scoreHash;
+  uint64_t boundsHash;
+};
+
+struct SimScanCudaFrontierTransducerShadowStats
+{
+  uint64_t summaryReplayCount;
+  uint64_t insertCount;
+  uint64_t evictionCount;
+  uint64_t revisitCount;
+  uint64_t sameStartUpdateCount;
+  uint64_t kBoundaryReplacementCount;
+};
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE uint64_t simScanCudaFrontierDigestMix(uint64_t hash,
+                                                                      uint64_t value)
+{
+  hash ^= value + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+  hash *= 0xbf58476d1ce4e5b9ULL;
+  hash ^= hash >> 31;
+  return hash;
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE uint64_t simScanCudaFrontierDigestInt(int value)
+{
+  return static_cast<uint64_t>(static_cast<uint32_t>(value));
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE void resetSimScanCudaFrontierDigest(
+  SimScanCudaFrontierDigest &digest,
+  int candidateCount,
+  int runningMin)
+{
+  digest.candidateCount = candidateCount;
+  digest.runningMin = runningMin;
+  digest.slotOrderHash = 0xcbf29ce484222325ULL;
+  digest.candidateIdentityHash = 0x84222325cbf29ce4ULL;
+  digest.scoreHash = 0x9e3779b97f4a7c15ULL;
+  digest.boundsHash = 0xbf58476d1ce4e5b9ULL;
+  digest.slotOrderHash = simScanCudaFrontierDigestMix(digest.slotOrderHash,
+                                                      simScanCudaFrontierDigestInt(candidateCount));
+  digest.slotOrderHash = simScanCudaFrontierDigestMix(digest.slotOrderHash,
+                                                      simScanCudaFrontierDigestInt(runningMin));
+  digest.candidateIdentityHash =
+    simScanCudaFrontierDigestMix(digest.candidateIdentityHash,
+                                 simScanCudaFrontierDigestInt(candidateCount));
+  digest.scoreHash = simScanCudaFrontierDigestMix(digest.scoreHash,
+                                                  simScanCudaFrontierDigestInt(runningMin));
+  digest.boundsHash = simScanCudaFrontierDigestMix(digest.boundsHash,
+                                                   simScanCudaFrontierDigestInt(candidateCount));
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE void updateSimScanCudaFrontierDigest(
+  SimScanCudaFrontierDigest &digest,
+  const SimScanCudaCandidateState &state,
+  int slot)
+{
+  const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+  digest.slotOrderHash = simScanCudaFrontierDigestMix(digest.slotOrderHash,
+                                                      simScanCudaFrontierDigestInt(slot));
+  digest.slotOrderHash = simScanCudaFrontierDigestMix(digest.slotOrderHash,startCoord);
+  digest.candidateIdentityHash =
+    simScanCudaFrontierDigestMix(digest.candidateIdentityHash,startCoord);
+  digest.candidateIdentityHash =
+    simScanCudaFrontierDigestMix(digest.candidateIdentityHash,
+                                 simScanCudaFrontierDigestInt(state.endI));
+  digest.candidateIdentityHash =
+    simScanCudaFrontierDigestMix(digest.candidateIdentityHash,
+                                 simScanCudaFrontierDigestInt(state.endJ));
+  digest.scoreHash = simScanCudaFrontierDigestMix(digest.scoreHash,
+                                                  simScanCudaFrontierDigestInt(state.score));
+  digest.scoreHash = simScanCudaFrontierDigestMix(digest.scoreHash,
+                                                  simScanCudaFrontierDigestInt(slot));
+  digest.boundsHash = simScanCudaFrontierDigestMix(digest.boundsHash,
+                                                   simScanCudaFrontierDigestInt(state.top));
+  digest.boundsHash = simScanCudaFrontierDigestMix(digest.boundsHash,
+                                                   simScanCudaFrontierDigestInt(state.bot));
+  digest.boundsHash = simScanCudaFrontierDigestMix(digest.boundsHash,
+                                                   simScanCudaFrontierDigestInt(state.left));
+  digest.boundsHash = simScanCudaFrontierDigestMix(digest.boundsHash,
+                                                   simScanCudaFrontierDigestInt(state.right));
+}
+
+struct SimScanCudaFrontierTransducerSegmentedShadowResult
+{
+  SimScanCudaFrontierTransducerSegmentedShadowResult():
+    runningMin(0)
+  {
+    resetSimScanCudaFrontierDigest(digest,0,0);
+    stats.summaryReplayCount = 0;
+    stats.insertCount = 0;
+    stats.evictionCount = 0;
+    stats.revisitCount = 0;
+    stats.sameStartUpdateCount = 0;
+    stats.kBoundaryReplacementCount = 0;
+  }
+
+  std::vector<SimScanCudaCandidateState> candidateStates;
+  int runningMin;
+  SimScanCudaFrontierDigest digest;
+  SimScanCudaFrontierTransducerShadowStats stats;
+};
+
 struct SimCudaPersistentSafeStoreHandle
 {
   SimCudaPersistentSafeStoreHandle():
     valid(false),
-    device(0),
-    slot(0),
-    stateCount(0),
-    statesDevice(0),
-    frontierValid(false),
+	    device(0),
+	    slot(0),
+	    stateCount(0),
+	    telemetryEpoch(0),
+	    statesDevice(0),
+	    frontierValid(false),
     frontierRunningMin(0),
     frontierCapacity(0),
     frontierCount(0),
@@ -278,10 +458,11 @@ struct SimCudaPersistentSafeStoreHandle
   }
 
   bool valid;
-  int device;
-  int slot;
-  size_t stateCount;
-  uintptr_t statesDevice;
+	  int device;
+	  int slot;
+	  size_t stateCount;
+	  uint64_t telemetryEpoch;
+	  uintptr_t statesDevice;
   bool frontierValid;
   int frontierRunningMin;
   size_t frontierCapacity;
@@ -337,7 +518,8 @@ struct SimScanCudaSafeWindow
 enum SimScanCudaSafeWindowPlannerMode
 {
   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE = 0,
-  SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1 = 1
+  SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1 = 1,
+  SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2 = 2
 };
 
 enum SimScanCudaRequestKind
@@ -533,10 +715,17 @@ struct SimScanCudaBatchResult
     initialSegmentedCompactSeconds(0.0),
     initialOrderedReplaySeconds(0.0),
     initialTopKSeconds(0.0),
+    initialSummaryPackSeconds(0.0),
+    initialSummaryD2HCopySeconds(0.0),
+    initialSummaryUnpackSeconds(0.0),
+    initialSummaryResultMaterializeSeconds(0.0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
+    usedRegionBucketedTrueBatchPath(false),
     usedRegionPackedAggregationPath(false),
     usedInitialDirectSummaryPath(false),
+    usedInitialPackedSummaryD2H(false),
+    usedInitialSummaryHostCopyElision(false),
     usedInitialHashReducePath(false),
     usedInitialSegmentedReducePath(false),
     usedInitialDeviceResidencyPath(false),
@@ -548,6 +737,14 @@ struct SimScanCudaBatchResult
     initialSegmentedFallback(false),
     initialProposalOnlineFallback(false),
     regionTrueBatchRequestCount(0),
+    regionBucketedTrueBatchBatches(0),
+    regionBucketedTrueBatchRequests(0),
+    regionBucketedTrueBatchFusedRequests(0),
+    regionBucketedTrueBatchActualCells(0),
+    regionBucketedTrueBatchPaddedCells(0),
+    regionBucketedTrueBatchPaddingCells(0),
+    regionBucketedTrueBatchRejectedPadding(0),
+    regionBucketedTrueBatchShadowMismatches(0),
     regionPackedAggregationRequestCount(0),
     initialDeviceResidencyRequestCount(0),
     initialProposalV2RequestCount(0),
@@ -555,6 +752,10 @@ struct SimScanCudaBatchResult
     initialProposalV3SelectedStateCount(0),
     initialProposalLogicalCandidateCount(0),
     initialProposalMaterializedCandidateCount(0),
+    initialSummaryPackedBytesD2H(0),
+    initialSummaryUnpackedEquivalentBytesD2H(0),
+    initialSummaryPackedD2HFallbacks(0),
+    initialSummaryHostCopyElidedBytes(0),
     initialSegmentedTileStateCount(0),
     initialSegmentedGroupedStateCount(0),
     taskCount(0),
@@ -580,10 +781,17 @@ struct SimScanCudaBatchResult
   double initialSegmentedCompactSeconds;
   double initialOrderedReplaySeconds;
   double initialTopKSeconds;
+  double initialSummaryPackSeconds;
+  double initialSummaryD2HCopySeconds;
+  double initialSummaryUnpackSeconds;
+  double initialSummaryResultMaterializeSeconds;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
+  bool usedRegionBucketedTrueBatchPath;
   bool usedRegionPackedAggregationPath;
   bool usedInitialDirectSummaryPath;
+  bool usedInitialPackedSummaryD2H;
+  bool usedInitialSummaryHostCopyElision;
   bool usedInitialHashReducePath;
   bool usedInitialSegmentedReducePath;
   bool usedInitialDeviceResidencyPath;
@@ -595,6 +803,14 @@ struct SimScanCudaBatchResult
   bool initialSegmentedFallback;
   bool initialProposalOnlineFallback;
   uint64_t regionTrueBatchRequestCount;
+  uint64_t regionBucketedTrueBatchBatches;
+  uint64_t regionBucketedTrueBatchRequests;
+  uint64_t regionBucketedTrueBatchFusedRequests;
+  uint64_t regionBucketedTrueBatchActualCells;
+  uint64_t regionBucketedTrueBatchPaddedCells;
+  uint64_t regionBucketedTrueBatchPaddingCells;
+  uint64_t regionBucketedTrueBatchRejectedPadding;
+  uint64_t regionBucketedTrueBatchShadowMismatches;
   uint64_t regionPackedAggregationRequestCount;
   uint64_t initialDeviceResidencyRequestCount;
   uint64_t initialProposalV2RequestCount;
@@ -602,11 +818,71 @@ struct SimScanCudaBatchResult
   uint64_t initialProposalV3SelectedStateCount;
   uint64_t initialProposalLogicalCandidateCount;
   uint64_t initialProposalMaterializedCandidateCount;
+  uint64_t initialSummaryPackedBytesD2H;
+  uint64_t initialSummaryUnpackedEquivalentBytesD2H;
+  uint64_t initialSummaryPackedD2HFallbacks;
+  uint64_t initialSummaryHostCopyElidedBytes;
   uint64_t initialSegmentedTileStateCount;
   uint64_t initialSegmentedGroupedStateCount;
   uint64_t taskCount;
   uint64_t launchCount;
   SimScanCudaInitialReduceReplayStats initialReduceReplayStats;
+};
+
+struct SimScanCudaRegionBucketedTrueBatchShape
+{
+  SimScanCudaRegionBucketedTrueBatchShape():rowCount(0),colCount(0) {}
+  SimScanCudaRegionBucketedTrueBatchShape(int rowCountIn,int colCountIn):
+    rowCount(rowCountIn),
+    colCount(colCountIn)
+  {}
+
+  int rowCount;
+  int colCount;
+};
+
+struct SimScanCudaRegionBucketedTrueBatchGroup
+{
+  SimScanCudaRegionBucketedTrueBatchGroup():
+    requestBegin(0),
+    requestCount(0),
+    bucketRows(0),
+    bucketCols(0),
+    actualCells(0),
+    paddedCells(0),
+    bucketed(false)
+  {}
+
+  size_t requestBegin;
+  size_t requestCount;
+  int bucketRows;
+  int bucketCols;
+  uint64_t actualCells;
+  uint64_t paddedCells;
+  bool bucketed;
+};
+
+struct SimScanCudaRegionBucketedTrueBatchStats
+{
+  SimScanCudaRegionBucketedTrueBatchStats():
+    batches(0),
+    requests(0),
+    fusedRequests(0),
+    actualCells(0),
+    paddedCells(0),
+    paddingCells(0),
+    rejectedPadding(0),
+    shadowMismatches(0)
+  {}
+
+  uint64_t batches;
+  uint64_t requests;
+  uint64_t fusedRequests;
+  uint64_t actualCells;
+  uint64_t paddedCells;
+  uint64_t paddingCells;
+  uint64_t rejectedPadding;
+  uint64_t shadowMismatches;
 };
 
 struct SimScanCudaSafeWindowResult
@@ -659,6 +935,12 @@ struct SimScanCudaSafeWindowExecutePlanResult
 
 bool sim_scan_cuda_is_built();
 bool sim_scan_cuda_init(int device,std::string *errorOut);
+
+bool sim_scan_cuda_plan_region_bucketed_true_batches_for_test(
+  const std::vector<SimScanCudaRegionBucketedTrueBatchShape> &shapes,
+  std::vector<SimScanCudaRegionBucketedTrueBatchGroup> *groups,
+  SimScanCudaRegionBucketedTrueBatchStats *stats,
+  std::string *errorOut);
 
 bool sim_scan_cuda_upload_persistent_safe_candidate_state_store(const SimScanCudaCandidateState *states,
                                                                 size_t stateCount,
@@ -777,12 +1059,39 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const std::vector<SimSc
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          std::string *errorOut);
 
+bool sim_scan_cuda_reduce_initial_ordered_segmented_v3_for_test(
+  const std::vector<SimScanCudaInitialRunSummary> &summaries,
+  const std::vector<int> &runBases,
+  const std::vector<int> &runTotals,
+  std::vector<SimScanCudaInitialBatchResult> *outResults,
+  SimScanCudaBatchResult *batchResult,
+  std::string *errorOut);
+
 bool sim_scan_cuda_reduce_frontier_epoch_shadow_for_test(
   const std::vector<SimScanCudaInitialRunSummary> &summaries,
   const std::vector<uint64_t> &summaryEpochIds,
   const std::vector<uint64_t> &liveEpochIds,
   std::vector<SimScanCudaCandidateState> *outCandidateStates,
   int *outRunningMin,
+  std::string *errorOut);
+
+bool sim_scan_cuda_apply_frontier_chunk_transducer_shadow_for_test(
+  const std::vector<SimScanCudaCandidateState> &incomingStates,
+  int incomingRunningMin,
+  const std::vector<SimScanCudaInitialRunSummary> &chunkSummaries,
+  std::vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  SimScanCudaFrontierDigest *outDigest,
+  SimScanCudaFrontierTransducerShadowStats *outStats,
+  std::string *errorOut);
+
+bool sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
+  const std::vector<SimScanCudaInitialRunSummary> &summaries,
+  const std::vector<int> &runBases,
+  const std::vector<int> &runTotals,
+  int chunkSize,
+  std::vector<SimScanCudaFrontierTransducerSegmentedShadowResult> *outResults,
+  double *outShadowSeconds,
   std::string *errorOut);
 
 bool sim_scan_cuda_select_top_disjoint_candidate_states(const std::vector<SimScanCudaCandidateState> &candidateStates,

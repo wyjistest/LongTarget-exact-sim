@@ -1,0 +1,220 @@
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "../cuda/sim_scan_cuda.h"
+
+namespace
+{
+
+static bool expect_true(bool value, const char *label)
+{
+    if (value)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected true, got false\n";
+    return false;
+}
+
+static bool expect_false(bool value, const char *label)
+{
+    if (!value)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected false, got true\n";
+    return false;
+}
+
+static bool expect_equal_uint64(uint64_t actual, uint64_t expected, const char *label)
+{
+    if (actual == expected)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+    return false;
+}
+
+static bool expect_equal_summary(const SimScanCudaInitialRunSummary &actual,
+                                 const SimScanCudaInitialRunSummary &expected,
+                                 const char *label)
+{
+    if (actual.score == expected.score &&
+        actual.startCoord == expected.startCoord &&
+        actual.endI == expected.endI &&
+        actual.minEndJ == expected.minEndJ &&
+        actual.maxEndJ == expected.maxEndJ &&
+        actual.scoreEndJ == expected.scoreEndJ)
+    {
+        return true;
+    }
+    std::cerr << label << ": summary mismatch\n";
+    return false;
+}
+
+static bool expect_equal_summaries(const std::vector<SimScanCudaInitialRunSummary> &actual,
+                                   const std::vector<SimScanCudaInitialRunSummary> &expected,
+                                   const char *label)
+{
+    if (actual.size() != expected.size())
+    {
+        std::cerr << label << ": size mismatch expected " << expected.size()
+                  << ", got " << actual.size() << "\n";
+        return false;
+    }
+    for (size_t i = 0; i < actual.size(); ++i)
+    {
+        if (!expect_equal_summary(actual[i], expected[i], label))
+        {
+            std::cerr << label << ": mismatch at index " << i << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+static void fill_score_matrix(int scoreMatrix[128][128])
+{
+    for (int i = 0; i < 128; ++i)
+    {
+        for (int j = 0; j < 128; ++j)
+        {
+            scoreMatrix[i][j] = -4;
+        }
+    }
+    scoreMatrix['A']['A'] = 5;
+    scoreMatrix['C']['C'] = 5;
+    scoreMatrix['G']['G'] = 5;
+    scoreMatrix['T']['T'] = 5;
+}
+
+static std::vector<SimScanCudaInitialRunSummary> run_summaries(bool packedD2H,
+                                                                bool hostCopyElision,
+                                                                bool reduceCandidates,
+                                                                SimScanCudaBatchResult &batchResult)
+{
+    if (packedD2H)
+    {
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H", "1", 1);
+    }
+    else
+    {
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
+    }
+    if (hostCopyElision)
+    {
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION", "1", 1);
+    }
+    else
+    {
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
+    }
+
+    int scoreMatrix[128][128] = {};
+    fill_score_matrix(scoreMatrix);
+
+    const char *query = "ACGTACGT";
+    const char *target = "ACGGACGT";
+    const int queryLength = 8;
+    const int targetLength = 8;
+    const int gapOpen = 16;
+    const int gapExtend = 4;
+    const int eventScoreFloor = 5;
+
+    std::vector<SimScanCudaInitialRunSummary> summaries;
+    std::vector<SimScanCudaCandidateState> candidateStates;
+    std::vector<SimScanCudaCandidateState> allCandidateStates;
+    int runningMin = 0;
+    uint64_t eventCount = 0;
+    uint64_t runSummaryCount = 0;
+    std::string error;
+    if (!sim_scan_cuda_enumerate_initial_events_row_major(query,
+                                                          target,
+                                                          queryLength,
+                                                          targetLength,
+                                                          gapOpen,
+                                                          gapExtend,
+                                                          scoreMatrix,
+                                                          eventScoreFloor,
+                                                          reduceCandidates,
+                                                          false,
+                                                          &summaries,
+                                                          &candidateStates,
+                                                          &allCandidateStates,
+                                                          NULL,
+                                                          &runningMin,
+                                                          &eventCount,
+                                                          &runSummaryCount,
+                                                          &batchResult,
+                                                          &error))
+    {
+        std::cerr << "initial summary run failed: " << error << "\n";
+        std::exit(2);
+    }
+    return summaries;
+}
+
+} // namespace
+
+int main()
+{
+    std::string initError;
+    if (!sim_scan_cuda_init(0, &initError))
+    {
+        std::cerr << "sim_scan_cuda_init failed: " << initError << "\n";
+        return 2;
+    }
+
+    bool ok = true;
+    SimScanCudaBatchResult defaultBatchResult;
+    const std::vector<SimScanCudaInitialRunSummary> defaultSummaries =
+        run_summaries(false, false, false, defaultBatchResult);
+    SimScanCudaBatchResult directBatchResult;
+    const std::vector<SimScanCudaInitialRunSummary> directSummaries =
+        run_summaries(false, true, false, directBatchResult);
+    SimScanCudaBatchResult packedDirectBatchResult;
+    const std::vector<SimScanCudaInitialRunSummary> packedDirectSummaries =
+        run_summaries(true, true, false, packedDirectBatchResult);
+    SimScanCudaBatchResult reduceBatchResult;
+    (void)run_summaries(false, true, true, reduceBatchResult);
+
+    const uint64_t expectedElidedBytes =
+        static_cast<uint64_t>(defaultSummaries.size()) *
+        static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
+
+    ok = expect_true(!defaultSummaries.empty(), "default summaries non-empty") && ok;
+    ok = expect_equal_summaries(directSummaries, defaultSummaries, "direct elision exact summaries") && ok;
+    ok = expect_equal_summaries(packedDirectSummaries, defaultSummaries, "packed direct elision exact summaries") && ok;
+    ok = expect_false(defaultBatchResult.usedInitialSummaryHostCopyElision,
+                      "default host-copy elision disabled") && ok;
+    ok = expect_equal_uint64(defaultBatchResult.initialSummaryHostCopyElidedBytes,
+                             0,
+                             "default elided bytes zero") && ok;
+    ok = expect_true(directBatchResult.usedInitialSummaryHostCopyElision,
+                     "direct host-copy elision used") && ok;
+    ok = expect_equal_uint64(directBatchResult.initialSummaryHostCopyElidedBytes,
+                             expectedElidedBytes,
+                             "direct elided bytes") && ok;
+    ok = expect_true(packedDirectBatchResult.usedInitialPackedSummaryD2H,
+                     "packed direct still uses packed D2H") && ok;
+    ok = expect_true(packedDirectBatchResult.usedInitialSummaryHostCopyElision,
+                     "packed direct host-copy elision used") && ok;
+    ok = expect_equal_uint64(packedDirectBatchResult.initialSummaryHostCopyElidedBytes,
+                             expectedElidedBytes,
+                             "packed direct elided bytes") && ok;
+    ok = expect_false(reduceBatchResult.usedInitialSummaryHostCopyElision,
+                      "reduce path does not use summary host-copy elision") && ok;
+
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
+    if (!ok)
+    {
+        return 1;
+    }
+    std::cout << "ok\n";
+    return 0;
+}

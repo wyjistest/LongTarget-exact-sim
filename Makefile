@@ -373,6 +373,12 @@ SIM_SCAN_BATCH_TEST_SOURCES := tests/test_sim_scan_batch.cpp cuda/sim_scan_cuda_
 SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET ?= tests/test_sim_scan_cuda_true_batch_reduce
 SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_SOURCES := tests/test_sim_scan_cuda_true_batch_reduce.cpp cuda/sim_scan_cuda.o
 
+SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARGET ?= tests/test_sim_region_bucketed_true_batch
+SIM_REGION_BUCKETED_TRUE_BATCH_TEST_SOURCES := tests/test_sim_region_bucketed_true_batch.cpp cuda/sim_scan_cuda.o
+
+SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET ?= tests/test_sim_region_scheduler_shape_telemetry
+SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_SOURCES := tests/test_sim_region_scheduler_shape_telemetry.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET ?= tests/test_sim_cuda_proposal_select
 SIM_CUDA_PROPOSAL_SELECT_TEST_SOURCES := tests/test_sim_cuda_proposal_select.cpp cuda/sim_scan_cuda.o
 
@@ -382,17 +388,47 @@ SIM_TRACEBACK_CUDA_BATCH_TEST_SOURCES := tests/test_sim_traceback_cuda_batch.cpp
 SIM_INITIAL_CUDA_MERGE_TEST_TARGET ?= tests/test_sim_initial_cuda_merge
 SIM_INITIAL_CUDA_MERGE_TEST_SOURCES := tests/test_sim_initial_cuda_merge.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET ?= tests/test_sim_initial_context_apply_chunk_skip
+SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_SOURCES := tests/test_sim_initial_context_apply_chunk_skip.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET ?= tests/test_sim_initial_frontier_epoch_oracle
 SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES := tests/test_sim_initial_frontier_epoch_oracle.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
 SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET ?= tests/test_sim_frontier_epoch_shadow
 SIM_FRONTIER_EPOCH_SHADOW_TEST_SOURCES := tests/test_sim_frontier_epoch_shadow.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_INITIAL_REDUCE_SEMANTICS_TEST_TARGET ?= tests/test_sim_initial_reduce_semantics
+SIM_INITIAL_REDUCE_SEMANTICS_TEST_SOURCES := tests/test_sim_initial_reduce_semantics.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_TARGET ?= tests/test_sim_initial_ordered_segmented_v3_exactness
+SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_SOURCES := tests/test_sim_initial_ordered_segmented_v3_exactness.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_TARGET ?= tests/test_sim_initial_frontier_transducer_shadow
+SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_SOURCES := tests/test_sim_initial_frontier_transducer_shadow.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_TARGET ?= tests/test_sim_initial_frontier_transducer_segmented_shadow
+SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_SOURCES := tests/test_sim_initial_frontier_transducer_segmented_shadow.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_TARGET ?= tests/test_sim_initial_frontier_compact_transducer_oracle
+SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_SOURCES := tests/test_sim_initial_frontier_compact_transducer_oracle.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_TARGET ?= tests/test_sim_initial_summary_packed_d2h
+SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_SOURCES := tests/test_sim_initial_summary_packed_d2h.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET ?= tests/test_sim_initial_summary_host_copy_elision
+SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_SOURCES := tests/test_sim_initial_summary_host_copy_elision.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_LOCATE_UPDATE_TEST_TARGET ?= tests/test_sim_locate_update
 SIM_LOCATE_UPDATE_TEST_SOURCES := tests/test_sim_locate_update.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
 SIM_SAFE_WORKSET_CUDA_TEST_TARGET ?= tests/test_sim_safe_workset_cuda
 SIM_SAFE_WORKSET_CUDA_TEST_SOURCES := tests/test_sim_safe_workset_cuda.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_TARGET ?= tests/test_sim_safe_window_geometry_v2
+SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_SOURCES := tests/test_sim_safe_window_geometry_v2.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_TARGET ?= tests/test_sim_safe_window_fine_execution
+SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_SOURCES := tests/test_sim_safe_window_fine_execution.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
 SIM_RESIDENCY_FRONTIER_TEST_TARGET ?= tests/test_sim_residency_frontier
 SIM_RESIDENCY_FRONTIER_TEST_SOURCES := tests/test_sim_residency_frontier.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
@@ -408,19 +444,43 @@ build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
 
 build-sim-scan-cuda-true-batch-reduce-test: $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET)
 
+build-sim-region-bucketed-true-batch-test: $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARGET)
+
+build-sim-region-scheduler-shape-telemetry-test: $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET)
+
 build-sim-cuda-proposal-select-test: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 
 build-sim-traceback-cuda-batch-test: $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET)
 
 build-sim-initial-cuda-merge-test: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 
+build-sim-initial-context-apply-chunk-skip-test: $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET)
+
 build-sim-frontier-epoch-oracle-test: $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
 
 build-sim-frontier-epoch-shadow-test: $(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET)
 
+build-sim-initial-reduce-semantics-test: $(SIM_INITIAL_REDUCE_SEMANTICS_TEST_TARGET)
+
+build-sim-initial-ordered-segmented-v3-exactness-test: $(SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_TARGET)
+
+build-sim-initial-frontier-transducer-shadow-test: $(SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_TARGET)
+
+build-sim-initial-frontier-transducer-segmented-shadow-test: $(SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_TARGET)
+
+build-sim-initial-frontier-compact-transducer-oracle-test: $(SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_TARGET)
+
+build-sim-initial-summary-packed-d2h-test: $(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_TARGET)
+
+build-sim-initial-summary-host-copy-elision-test: $(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET)
+
 build-sim-locate-update-test: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 
 build-sim-safe-workset-cuda-test: $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
+
+build-sim-safe-window-geometry-v2-test: $(SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_TARGET)
+
+build-sim-safe-window-fine-execution-test: $(SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_TARGET)
 
 build-sim-residency-frontier-test: $(SIM_RESIDENCY_FRONTIER_TEST_TARGET)
 
@@ -438,6 +498,12 @@ $(SIM_SCAN_BATCH_TEST_TARGET): $(SIM_SCAN_BATCH_TEST_SOURCES) cuda/sim_scan_cuda
 $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET): $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
+$(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARGET): $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET): $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
 $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET): $(SIM_CUDA_PROPOSAL_SELECT_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_CUDA_PROPOSAL_SELECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
@@ -447,17 +513,47 @@ $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET): $(SIM_TRACEBACK_CUDA_BATCH_TEST_SOURCES
 $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET): $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
+$(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET): $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
 $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET): $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) tests/sim_frontier_epoch_oracle_helpers.h sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET): $(SIM_FRONTIER_EPOCH_SHADOW_TEST_SOURCES) tests/sim_frontier_epoch_oracle_helpers.h sim.h cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_FRONTIER_EPOCH_SHADOW_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
+$(SIM_INITIAL_REDUCE_SEMANTICS_TEST_TARGET): $(SIM_INITIAL_REDUCE_SEMANTICS_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_REDUCE_SEMANTICS_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_TARGET): $(SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_TARGET): $(SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_TARGET): $(SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_TARGET): $(SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_TARGET): $(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET): $(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_SOURCES) cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
 $(SIM_LOCATE_UPDATE_TEST_TARGET): $(SIM_LOCATE_UPDATE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_LOCATE_UPDATE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET): $(SIM_SAFE_WORKSET_CUDA_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_SAFE_WORKSET_CUDA_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_TARGET): $(SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_TARGET): $(SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_RESIDENCY_FRONTIER_TEST_TARGET): $(SIM_RESIDENCY_FRONTIER_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_RESIDENCY_FRONTIER_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
@@ -477,6 +573,12 @@ check-sim-scan-batch: $(SIM_SCAN_BATCH_TEST_TARGET)
 check-sim-scan-cuda-true-batch-reduce: $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET)
 	./$(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET)
 
+check-sim-region-bucketed-true-batch: $(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARGET)
+	./$(SIM_REGION_BUCKETED_TRUE_BATCH_TEST_TARGET)
+
+check-sim-region-scheduler-shape-telemetry: $(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET)
+	./$(SIM_REGION_SCHEDULER_SHAPE_TELEMETRY_TEST_TARGET)
+
 check-sim-cuda-proposal-select: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 	./$(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 
@@ -486,17 +588,47 @@ check-sim-traceback-cuda-batch: $(SIM_TRACEBACK_CUDA_BATCH_TEST_TARGET)
 check-sim-initial-cuda-merge: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 	./$(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 
+check-sim-initial-context-apply-chunk-skip: $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET)
+	./$(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET)
+
 check-sim-frontier-epoch-oracle: $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
 	./$(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
 
 check-sim-frontier-epoch-shadow: $(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET)
 	./$(SIM_FRONTIER_EPOCH_SHADOW_TEST_TARGET)
 
+check-sim-initial-reduce-semantics: $(SIM_INITIAL_REDUCE_SEMANTICS_TEST_TARGET)
+	./$(SIM_INITIAL_REDUCE_SEMANTICS_TEST_TARGET)
+
+check-sim-initial-ordered-segmented-v3-exactness: $(SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_TARGET)
+	./$(SIM_INITIAL_ORDERED_SEGMENTED_V3_EXACTNESS_TEST_TARGET)
+
+check-sim-initial-frontier-transducer-shadow: $(SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_TARGET)
+	./$(SIM_INITIAL_FRONTIER_TRANSDUCER_SHADOW_TEST_TARGET)
+
+check-sim-initial-frontier-transducer-segmented-shadow: $(SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_TARGET)
+	./$(SIM_INITIAL_FRONTIER_TRANSDUCER_SEGMENTED_SHADOW_TEST_TARGET)
+
+check-sim-initial-frontier-compact-transducer-oracle: $(SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_TARGET)
+	./$(SIM_INITIAL_FRONTIER_COMPACT_TRANSDUCER_ORACLE_TEST_TARGET)
+
+check-sim-initial-summary-packed-d2h: $(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_TARGET)
+	./$(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST_TARGET)
+
+check-sim-initial-summary-host-copy-elision: $(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET)
+	./$(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET)
+
 check-sim-locate-update: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 	./$(SIM_LOCATE_UPDATE_TEST_TARGET)
 
 check-sim-safe-workset-cuda: $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
 	./$(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
+
+check-sim-safe-window-geometry-v2: $(SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_TARGET)
+	./$(SIM_SAFE_WINDOW_GEOMETRY_V2_TEST_TARGET)
+
+check-sim-safe-window-fine-execution: $(SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_TARGET)
+	./$(SIM_SAFE_WINDOW_FINE_EXECUTION_TEST_TARGET)
 
 check-sim-residency-frontier: $(SIM_RESIDENCY_FRONTIER_TEST_TARGET)
 	./$(SIM_RESIDENCY_FRONTIER_TEST_TARGET)
@@ -643,12 +775,24 @@ check-longtarget-lite-output:
 		build-fasim-cigar-test check-fasim-cigar \
 		build-prealign-shared-test check-prealign-shared \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
+		build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
+		build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \
 		build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
+		build-sim-initial-context-apply-chunk-skip-test check-sim-initial-context-apply-chunk-skip \
 		build-sim-frontier-epoch-oracle-test check-sim-frontier-epoch-oracle \
 		build-sim-frontier-epoch-shadow-test check-sim-frontier-epoch-shadow \
-		build-sim-locate-update-test check-sim-locate-update \
+		build-sim-initial-reduce-semantics-test check-sim-initial-reduce-semantics \
+		build-sim-initial-ordered-segmented-v3-exactness-test check-sim-initial-ordered-segmented-v3-exactness \
+		build-sim-initial-frontier-transducer-shadow-test check-sim-initial-frontier-transducer-shadow \
+		build-sim-initial-frontier-transducer-segmented-shadow-test check-sim-initial-frontier-transducer-segmented-shadow \
+		build-sim-initial-frontier-compact-transducer-oracle-test check-sim-initial-frontier-compact-transducer-oracle \
+		build-sim-initial-summary-packed-d2h-test check-sim-initial-summary-packed-d2h \
+			build-sim-initial-summary-host-copy-elision-test check-sim-initial-summary-host-copy-elision \
+				build-sim-safe-window-geometry-v2-test check-sim-safe-window-geometry-v2 \
+				build-sim-safe-window-fine-execution-test check-sim-safe-window-fine-execution \
+				build-sim-locate-update-test check-sim-locate-update \
 		build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
 			check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \

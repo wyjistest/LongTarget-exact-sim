@@ -1154,7 +1154,9 @@ static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSeque
     cudaRequest.eventScoreFloor = batchTasks[batchOffset].minScore;
     cudaRequest.reduceCandidates = useInitialReduce;
     cudaRequest.proposalCandidates = useInitialProposals;
-    cudaRequest.persistAllCandidateStatesOnDevice = simCudaInitialReducePersistOnDeviceRuntime();
+    cudaRequest.persistAllCandidateStatesOnDevice =
+      simCudaInitialReducePersistOnDeviceRuntime() &&
+      !simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime();
   }
 
   preparedBatch.usedInitialReduce = useInitialReduce;
@@ -1230,6 +1232,18 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialTopKSeconds));
     recordSimInitialSegmentedStateStats(preparedBatch.cudaBatchResult.initialSegmentedTileStateCount,
                                         preparedBatch.cudaBatchResult.initialSegmentedGroupedStateCount);
+    recordSimInitialSummaryPackedD2H(
+      preparedBatch.cudaBatchResult.usedInitialPackedSummaryD2H,
+      preparedBatch.cudaBatchResult.initialSummaryPackedBytesD2H,
+      preparedBatch.cudaBatchResult.initialSummaryUnpackedEquivalentBytesD2H,
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryPackSeconds),
+      preparedBatch.cudaBatchResult.initialSummaryPackedD2HFallbacks);
+    recordSimInitialSummaryHostCopyElision(
+      preparedBatch.cudaBatchResult.usedInitialSummaryHostCopyElision,
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryD2HCopySeconds),
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryUnpackSeconds),
+      simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryResultMaterializeSeconds),
+      preparedBatch.cudaBatchResult.initialSummaryHostCopyElidedBytes);
   }
   recordSimInitialScanBackend(true,
                               preparedBatch.cudaBatchResult.taskCount,
@@ -1278,6 +1292,10 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       if(preparedBatch.usedInitialReduce)
       {
         recordSimInitialReducedCandidates(static_cast<uint64_t>(result.candidateStates.size()));
+        runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(result.initialRunSummaries,
+                                                           result.candidateStates,
+                                                           result.runningMin,
+                                                           result.allCandidateStates);
       }
       else
       {
@@ -1297,8 +1315,12 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
     }
     else
     {
-      recordSimInitialSummaryBytesD2H(static_cast<uint64_t>(result.initialRunSummaries.size()) *
-                                      static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
+      const uint64_t summaryBytesD2H =
+        static_cast<uint64_t>(result.initialRunSummaries.size()) *
+        (preparedBatch.cudaBatchResult.usedInitialPackedSummaryD2H ?
+         static_cast<uint64_t>(sizeof(SimScanCudaPackedInitialRunSummary16)) :
+         static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
+      recordSimInitialSummaryBytesD2H(summaryBytesD2H);
       applySimCudaInitialRunSummariesToContext(result.initialRunSummaries,
                                                result.eventCount,
                                                preparedBatch.contexts[batchOffset],
@@ -1685,15 +1707,25 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simSafeWindowD2hNanoseconds = 0;
   uint64_t simSafeWindowExecBandCount = 0;
   uint64_t simSafeWindowExecCellCount = 0;
+  uint64_t simSafeWindowRawCellCount = 0;
+  uint64_t simSafeWindowRawMaxWindowCellCount = 0;
+  uint64_t simSafeWindowExecMaxBandCellCount = 0;
+  uint64_t simSafeWindowCoarseningInflatedCellCount = 0;
+  uint64_t simSafeWindowSparseV2ConsideredCount = 0;
+  uint64_t simSafeWindowSparseV2SelectedCount = 0;
+  uint64_t simSafeWindowSparseV2RejectedCount = 0;
+  uint64_t simSafeWindowSparseV2SavedCellCount = 0;
   uint64_t simSafeWindowPlanBandCount = 0;
   uint64_t simSafeWindowPlanCellCount = 0;
   uint64_t simSafeWindowPlanGpuNanoseconds = 0;
   uint64_t simSafeWindowPlanD2hNanoseconds = 0;
   uint64_t simSafeWindowPlanFallbackCount = 0;
-  uint64_t simSafeWindowPlanBetterThanBuilderCount = 0;
-  uint64_t simSafeWindowPlanWorseThanBuilderCount = 0;
-  uint64_t simSafeWindowPlanEqualToBuilderCount = 0;
-  uint64_t simSafeWindowAttemptCount = 0;
+	  uint64_t simSafeWindowPlanBetterThanBuilderCount = 0;
+	  uint64_t simSafeWindowPlanWorseThanBuilderCount = 0;
+	  uint64_t simSafeWindowPlanEqualToBuilderCount = 0;
+	  uint64_t simSafeWindowFineShadowCallCount = 0;
+	  uint64_t simSafeWindowFineShadowMismatchCount = 0;
+	  uint64_t simSafeWindowAttemptCount = 0;
   uint64_t simSafeWindowSkippedUnconvertibleCount = 0;
   uint64_t simSafeWindowSelectedWorksetCount = 0;
   uint64_t simSafeWindowAppliedCount = 0;
@@ -1722,15 +1754,25 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                         simSafeWindowD2hNanoseconds);
   getSimSafeWindowExecutionStats(simSafeWindowExecBandCount,
                                  simSafeWindowExecCellCount);
+  getSimSafeWindowGeometryTelemetryStats(simSafeWindowRawCellCount,
+                                         simSafeWindowRawMaxWindowCellCount,
+                                         simSafeWindowExecMaxBandCellCount,
+                                         simSafeWindowCoarseningInflatedCellCount,
+                                         simSafeWindowSparseV2ConsideredCount,
+                                         simSafeWindowSparseV2SelectedCount,
+                                         simSafeWindowSparseV2RejectedCount,
+                                         simSafeWindowSparseV2SavedCellCount);
   getSimSafeWindowPlanStats(simSafeWindowPlanBandCount,
                             simSafeWindowPlanCellCount,
                             simSafeWindowPlanGpuNanoseconds,
                             simSafeWindowPlanD2hNanoseconds,
                             simSafeWindowPlanFallbackCount);
-  getSimSafeWindowPlanComparisonStats(simSafeWindowPlanBetterThanBuilderCount,
-                                      simSafeWindowPlanWorseThanBuilderCount,
-                                      simSafeWindowPlanEqualToBuilderCount);
-  getSimSafeWindowPathStats(simSafeWindowAttemptCount,
+	  getSimSafeWindowPlanComparisonStats(simSafeWindowPlanBetterThanBuilderCount,
+	                                      simSafeWindowPlanWorseThanBuilderCount,
+	                                      simSafeWindowPlanEqualToBuilderCount);
+	  getSimSafeWindowFineShadowStats(simSafeWindowFineShadowCallCount,
+	                                  simSafeWindowFineShadowMismatchCount);
+	  getSimSafeWindowPathStats(simSafeWindowAttemptCount,
                             simSafeWindowSkippedUnconvertibleCount,
                             simSafeWindowSelectedWorksetCount,
                             simSafeWindowAppliedCount,
@@ -1751,8 +1793,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   getSimSafeWindowFallbackReasonStats(simSafeWindowFallbackSelectorErrorCount,
                                       simSafeWindowFallbackOverflowCount,
                                       simSafeWindowFallbackEmptySelectionCount);
-  cerr<<"benchmark.sim_safe_window_planner_mode="
-      <<simSafeWindowCudaPlannerModeName(simSafeWindowCudaPlannerModeRuntime())<<endl;
+	  cerr<<"benchmark.sim_safe_window_planner_mode="
+	      <<simSafeWindowCudaPlannerModeName(simSafeWindowCudaPlannerModeRuntime())<<endl;
+	  cerr<<"benchmark.sim_safe_window_exec_geometry="
+	      <<simSafeWindowExecGeometryName(simSafeWindowExecGeometryRuntime())<<endl;
   cerr<<"benchmark.sim_safe_window_attempts="<<simSafeWindowAttemptCount<<endl;
   cerr<<"benchmark.sim_safe_window_skipped_unconvertible="<<simSafeWindowSkippedUnconvertibleCount<<endl;
   cerr<<"benchmark.sim_safe_window_selected_worksets="<<simSafeWindowSelectedWorksetCount<<endl;
@@ -1792,6 +1836,19 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_safe_window_d2h_seconds="<<(static_cast<double>(simSafeWindowD2hNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_window_exec_bands="<<simSafeWindowExecBandCount<<endl;
   cerr<<"benchmark.sim_safe_window_exec_cells="<<simSafeWindowExecCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_raw_cells="<<simSafeWindowRawCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_raw_max_window_cells="<<simSafeWindowRawMaxWindowCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_exec_max_band_cells="<<simSafeWindowExecMaxBandCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_coarsening_inflated_cells="
+      <<simSafeWindowCoarseningInflatedCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_sparse_v2_considered="
+      <<simSafeWindowSparseV2ConsideredCount<<endl;
+  cerr<<"benchmark.sim_safe_window_sparse_v2_selected="
+      <<simSafeWindowSparseV2SelectedCount<<endl;
+  cerr<<"benchmark.sim_safe_window_sparse_v2_rejected="
+      <<simSafeWindowSparseV2RejectedCount<<endl;
+  cerr<<"benchmark.sim_safe_window_sparse_v2_saved_cells="
+      <<simSafeWindowSparseV2SavedCellCount<<endl;
   cerr<<"benchmark.sim_safe_window_plan_bands="<<simSafeWindowPlanBandCount<<endl;
   cerr<<"benchmark.sim_safe_window_plan_cells="<<simSafeWindowPlanCellCount<<endl;
   cerr<<"benchmark.sim_safe_window_plan_gpu_seconds="
@@ -1803,9 +1860,13 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simSafeWindowPlanBetterThanBuilderCount<<endl;
   cerr<<"benchmark.sim_safe_window_plan_worse_than_builder="
       <<simSafeWindowPlanWorseThanBuilderCount<<endl;
-  cerr<<"benchmark.sim_safe_window_plan_equal_to_builder="
-      <<simSafeWindowPlanEqualToBuilderCount<<endl;
-  uint64_t simFastWorksetBandCount = 0;
+	  cerr<<"benchmark.sim_safe_window_plan_equal_to_builder="
+	      <<simSafeWindowPlanEqualToBuilderCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_fine_shadow_calls="
+	      <<simSafeWindowFineShadowCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_fine_shadow_mismatches="
+	      <<simSafeWindowFineShadowMismatchCount<<endl;
+	  uint64_t simFastWorksetBandCount = 0;
   uint64_t simFastWorksetCellCount = 0;
   uint64_t simFastSegmentCount = 0;
   uint64_t simFastDiagonalSegmentCount = 0;
@@ -1969,6 +2030,21 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialReduceChunkTotal = 0;
   uint64_t simInitialReduceChunkReplayedTotal = 0;
   uint64_t simInitialReduceSummaryReplayedTotal = 0;
+  uint64_t simInitialContextApplyChunkTotal = 0;
+  uint64_t simInitialContextApplyChunkSkippedTotal = 0;
+  uint64_t simInitialContextApplyChunkReplayedTotal = 0;
+  uint64_t simInitialContextApplySummarySkippedTotal = 0;
+  uint64_t simInitialContextApplySummaryReplayedTotal = 0;
+  uint64_t simInitialSummaryPackedD2HEnabledCount = 0;
+  uint64_t simInitialSummaryPackedBytesD2H = 0;
+  uint64_t simInitialSummaryUnpackedEquivalentBytesD2H = 0;
+  double simInitialSummaryPackSeconds = 0.0;
+  uint64_t simInitialSummaryPackedD2HFallbacks = 0;
+  uint64_t simInitialSummaryHostCopyElisionEnabledCount = 0;
+  double simInitialSummaryD2HCopySeconds = 0.0;
+  double simInitialSummaryUnpackSeconds = 0.0;
+  double simInitialSummaryResultMaterializeSeconds = 0.0;
+  uint64_t simInitialSummaryHostCopyElidedBytes = 0;
   getSimInitialReductionStats(simInitialEventsTotal,
                               simInitialRunSummariesTotal,
                               simInitialSummaryBytesD2H,
@@ -1980,6 +2056,21 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                               simInitialReduceChunkTotal,
                               simInitialReduceChunkReplayedTotal,
                               simInitialReduceSummaryReplayedTotal);
+		  getSimInitialSummaryPackedD2HStats(simInitialSummaryPackedD2HEnabledCount,
+		                                     simInitialSummaryPackedBytesD2H,
+		                                     simInitialSummaryUnpackedEquivalentBytesD2H,
+		                                     simInitialSummaryPackSeconds,
+		                                     simInitialSummaryPackedD2HFallbacks);
+  getSimInitialSummaryHostCopyElisionStats(simInitialSummaryHostCopyElisionEnabledCount,
+                                           simInitialSummaryD2HCopySeconds,
+                                           simInitialSummaryUnpackSeconds,
+                                           simInitialSummaryResultMaterializeSeconds,
+                                           simInitialSummaryHostCopyElidedBytes);
+  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
+                                          simInitialContextApplyChunkSkippedTotal,
+                                          simInitialContextApplyChunkReplayedTotal,
+                                          simInitialContextApplySummarySkippedTotal,
+                                          simInitialContextApplySummaryReplayedTotal);
   double simInitialSafeStoreDeviceBuildSeconds = 0.0;
   double simInitialSafeStoreDevicePruneSeconds = 0.0;
   double simInitialSafeStoreFrontierUploadSeconds = 0.0;
@@ -1987,6 +2078,30 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                     simInitialSafeStoreDeviceBuildSeconds,
                                     simInitialSafeStoreDevicePruneSeconds,
                                     simInitialSafeStoreFrontierUploadSeconds);
+  uint64_t simInitialFrontierTransducerShadowCalls = 0;
+  double simInitialFrontierTransducerShadowSeconds = 0.0;
+  uint64_t simInitialFrontierTransducerShadowDigestD2HBytes = 0;
+  uint64_t simInitialFrontierTransducerShadowSummariesReplayed = 0;
+  uint64_t simInitialFrontierTransducerShadowMismatches = 0;
+  getSimInitialFrontierTransducerShadowStats(
+    simInitialFrontierTransducerShadowCalls,
+    simInitialFrontierTransducerShadowSeconds,
+    simInitialFrontierTransducerShadowDigestD2HBytes,
+    simInitialFrontierTransducerShadowSummariesReplayed,
+    simInitialFrontierTransducerShadowMismatches);
+  uint64_t simInitialOrderedSegmentedV3ShadowCalls = 0;
+  uint64_t simInitialOrderedSegmentedV3ShadowFrontierMismatches = 0;
+  uint64_t simInitialOrderedSegmentedV3ShadowRunningMinMismatches = 0;
+  uint64_t simInitialOrderedSegmentedV3ShadowSafeStoreMismatches = 0;
+  uint64_t simInitialOrderedSegmentedV3ShadowCandidateCountMismatches = 0;
+  uint64_t simInitialOrderedSegmentedV3ShadowCandidateValueMismatches = 0;
+  getSimInitialOrderedSegmentedV3ShadowStats(
+    simInitialOrderedSegmentedV3ShadowCalls,
+    simInitialOrderedSegmentedV3ShadowFrontierMismatches,
+    simInitialOrderedSegmentedV3ShadowRunningMinMismatches,
+    simInitialOrderedSegmentedV3ShadowSafeStoreMismatches,
+    simInitialOrderedSegmentedV3ShadowCandidateCountMismatches,
+    simInitialOrderedSegmentedV3ShadowCandidateValueMismatches);
   const uint64_t simInitialReduceChunkSkippedTotal =
     simInitialReduceChunkTotal >= simInitialReduceChunkReplayedTotal ?
     (simInitialReduceChunkTotal - simInitialReduceChunkReplayedTotal) : 0;
@@ -2104,6 +2219,25 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_events_total="<<simInitialEventsTotal<<endl;
   cerr<<"benchmark.sim_initial_run_summaries_total="<<simInitialRunSummariesTotal<<endl;
   cerr<<"benchmark.sim_initial_summary_bytes_d2h="<<simInitialSummaryBytesD2H<<endl;
+  cerr<<"benchmark.sim_initial_summary_packed_d2h_enabled="
+      <<(simInitialSummaryPackedD2HEnabledCount > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_summary_packed_bytes_d2h="
+      <<simInitialSummaryPackedBytesD2H<<endl;
+  cerr<<"benchmark.sim_initial_summary_unpacked_equivalent_bytes_d2h="
+      <<simInitialSummaryUnpackedEquivalentBytesD2H<<endl;
+  cerr<<"benchmark.sim_initial_summary_pack_seconds="<<simInitialSummaryPackSeconds<<endl;
+  cerr<<"benchmark.sim_initial_summary_packed_d2h_fallbacks="
+      <<simInitialSummaryPackedD2HFallbacks<<endl;
+  cerr<<"benchmark.sim_initial_summary_host_copy_elision_enabled="
+      <<(simInitialSummaryHostCopyElisionEnabledCount > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_summary_d2h_copy_seconds="
+      <<simInitialSummaryD2HCopySeconds<<endl;
+  cerr<<"benchmark.sim_initial_summary_unpack_seconds="
+      <<simInitialSummaryUnpackSeconds<<endl;
+  cerr<<"benchmark.sim_initial_summary_result_materialize_seconds="
+      <<simInitialSummaryResultMaterializeSeconds<<endl;
+  cerr<<"benchmark.sim_initial_summary_host_copy_elided_bytes="
+      <<simInitialSummaryHostCopyElidedBytes<<endl;
   cerr<<"benchmark.sim_initial_reduced_candidates_total="<<simInitialReducedCandidatesTotal<<endl;
   cerr<<"benchmark.sim_initial_all_candidate_states_total="<<simInitialAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_initial_store_bytes_d2h="<<simInitialStoreBytesD2H<<endl;
@@ -2113,6 +2247,28 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_safe_store_device_prune_seconds="<<simInitialSafeStoreDevicePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_safe_store_frontier_bytes_h2d="<<simInitialSafeStoreFrontierBytesH2D<<endl;
   cerr<<"benchmark.sim_initial_safe_store_frontier_upload_seconds="<<simInitialSafeStoreFrontierUploadSeconds<<endl;
+  cerr<<"benchmark.sim_initial_frontier_transducer_shadow_calls="
+      <<simInitialFrontierTransducerShadowCalls<<endl;
+  cerr<<"benchmark.sim_initial_frontier_transducer_shadow_seconds="
+      <<simInitialFrontierTransducerShadowSeconds<<endl;
+  cerr<<"benchmark.sim_initial_frontier_transducer_shadow_digest_d2h_bytes="
+      <<simInitialFrontierTransducerShadowDigestD2HBytes<<endl;
+  cerr<<"benchmark.sim_initial_frontier_transducer_shadow_summaries_replayed_total="
+      <<simInitialFrontierTransducerShadowSummariesReplayed<<endl;
+  cerr<<"benchmark.sim_initial_frontier_transducer_shadow_mismatches="
+      <<simInitialFrontierTransducerShadowMismatches<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_calls="
+      <<simInitialOrderedSegmentedV3ShadowCalls<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_frontier_mismatches="
+      <<simInitialOrderedSegmentedV3ShadowFrontierMismatches<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_running_min_mismatches="
+      <<simInitialOrderedSegmentedV3ShadowRunningMinMismatches<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_safe_store_mismatches="
+      <<simInitialOrderedSegmentedV3ShadowSafeStoreMismatches<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_candidate_count_mismatches="
+      <<simInitialOrderedSegmentedV3ShadowCandidateCountMismatches<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_candidate_value_mismatches="
+      <<simInitialOrderedSegmentedV3ShadowCandidateValueMismatches<<endl;
   cerr<<"benchmark.sim_proposal_materialize_backend="<<simProposalMaterializeBackend<<endl;
   cerr<<"benchmark.sim_proposal_all_candidate_states_total="<<simProposalAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_proposal_bytes_d2h="<<simProposalBytesD2H<<endl;
@@ -2170,6 +2326,13 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_reduce_chunks_replayed_total="<<simInitialReduceChunkReplayedTotal<<endl;
   cerr<<"benchmark.sim_initial_reduce_chunks_skipped_total="<<simInitialReduceChunkSkippedTotal<<endl;
   cerr<<"benchmark.sim_initial_reduce_summaries_replayed_total="<<simInitialReduceSummaryReplayedTotal<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_chunk_skip_enabled="
+      <<(simCudaInitialContextApplyChunkSkipEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_chunks_total="<<simInitialContextApplyChunkTotal<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_chunks_skipped="<<simInitialContextApplyChunkSkippedTotal<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_chunks_replayed="<<simInitialContextApplyChunkReplayedTotal<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_summaries_skipped="<<simInitialContextApplySummarySkippedTotal<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_summaries_replayed="<<simInitialContextApplySummaryReplayedTotal<<endl;
   double simInitialScanSeconds = 0.0;
   double simInitialScanGpuSeconds = 0.0;
   double simInitialScanD2HSeconds = 0.0;
@@ -2272,7 +2435,77 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_proposal_post_seconds="<<simProposalPostSeconds<<endl;
   cerr<<"benchmark.sim_locate_seconds="<<simLocateSeconds<<endl;
   cerr<<"benchmark.sim_locate_gpu_seconds="<<simLocateGpuSeconds<<endl;
-  cerr<<"benchmark.sim_region_packed_requests="<<getSimRegionPackedRequestCount()<<endl;
+	  cerr<<"benchmark.sim_region_packed_requests="<<getSimRegionPackedRequestCount()<<endl;
+	  SimRegionSchedulerShapeTelemetryStats simRegionSchedulerShapeStats;
+	  getSimRegionSchedulerShapeTelemetryStats(simRegionSchedulerShapeStats);
+	  cerr<<"benchmark.sim_region_scheduler_shape_telemetry_enabled="
+	      <<(simRegionSchedulerShapeTelemetryRuntime() ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_calls="
+	      <<simRegionSchedulerShapeStats.calls<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_bands="
+	      <<simRegionSchedulerShapeStats.bands<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_single_band_calls="
+	      <<simRegionSchedulerShapeStats.singleBandCalls<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_affected_starts="
+	      <<simRegionSchedulerShapeStats.affectedStarts<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_cells="
+	      <<simRegionSchedulerShapeStats.cells<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_max_band_rows="
+	      <<simRegionSchedulerShapeStats.maxBandRows<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_max_band_cols="
+	      <<simRegionSchedulerShapeStats.maxBandCols<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_mergeable_calls="
+	      <<simRegionSchedulerShapeStats.mergeableCalls<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_mergeable_cells="
+	      <<simRegionSchedulerShapeStats.mergeableCells<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_est_launch_reduction="
+	      <<simRegionSchedulerShapeStats.estimatedLaunchReduction<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_rejected_running_min="
+	      <<simRegionSchedulerShapeStats.rejectedRunningMin<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_rejected_safe_store_epoch="
+	      <<simRegionSchedulerShapeStats.rejectedSafeStoreEpoch<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_rejected_score_matrix="
+	      <<simRegionSchedulerShapeStats.rejectedScoreMatrix<<endl;
+	  cerr<<"benchmark.sim_region_scheduler_shape_rejected_filter="
+	      <<simRegionSchedulerShapeStats.rejectedFilter<<endl;
+	  const char *simRegionBucketedTrueBatchEnv =
+	    getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_BUCKETED_TRUE_BATCH");
+  cerr<<"benchmark.sim_region_bucketed_true_batch_enabled="
+      <<((simRegionBucketedTrueBatchEnv != NULL &&
+          simRegionBucketedTrueBatchEnv[0] != '\0' &&
+          strcmp(simRegionBucketedTrueBatchEnv,"0") != 0) ? 1 : 0)<<endl;
+  uint64_t simRegionBucketedTrueBatchBatches = 0;
+  uint64_t simRegionBucketedTrueBatchRequests = 0;
+  uint64_t simRegionBucketedTrueBatchFusedRequests = 0;
+  uint64_t simRegionBucketedTrueBatchActualCells = 0;
+  uint64_t simRegionBucketedTrueBatchPaddedCells = 0;
+  uint64_t simRegionBucketedTrueBatchPaddingCells = 0;
+  uint64_t simRegionBucketedTrueBatchRejectedPadding = 0;
+  uint64_t simRegionBucketedTrueBatchShadowMismatches = 0;
+  getSimRegionBucketedTrueBatchStats(simRegionBucketedTrueBatchBatches,
+                                     simRegionBucketedTrueBatchRequests,
+                                     simRegionBucketedTrueBatchFusedRequests,
+                                     simRegionBucketedTrueBatchActualCells,
+                                     simRegionBucketedTrueBatchPaddedCells,
+                                     simRegionBucketedTrueBatchPaddingCells,
+                                     simRegionBucketedTrueBatchRejectedPadding,
+                                     simRegionBucketedTrueBatchShadowMismatches);
+  cerr<<"benchmark.sim_region_bucketed_true_batch_batches="
+      <<simRegionBucketedTrueBatchBatches<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_requests="
+      <<simRegionBucketedTrueBatchRequests<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_fused_requests="
+      <<simRegionBucketedTrueBatchFusedRequests<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_actual_cells="
+      <<simRegionBucketedTrueBatchActualCells<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_padded_cells="
+      <<simRegionBucketedTrueBatchPaddedCells<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_padding_cells="
+      <<simRegionBucketedTrueBatchPaddingCells<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_rejected_padding="
+      <<simRegionBucketedTrueBatchRejectedPadding<<endl;
+  cerr<<"benchmark.sim_region_bucketed_true_batch_shadow_mismatches="
+      <<simRegionBucketedTrueBatchShadowMismatches<<endl;
   cerr<<"benchmark.sim_region_scan_gpu_seconds="<<simRegionScanGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_d2h_seconds="<<simRegionD2HSeconds<<endl;
   cerr<<"benchmark.sim_materialize_seconds="<<simMaterializeSeconds<<endl;

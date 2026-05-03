@@ -26,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <limits>
+#include <mutex>
 #if defined(__SSE2__) || defined(__AVX2__)
 #include <immintrin.h>
 #endif
@@ -593,6 +594,42 @@ struct SimPathWorkset
   vector<SimUpdateBand> bands;
 };
 
+struct SimRegionSchedulerShapeTelemetryStats
+{
+  SimRegionSchedulerShapeTelemetryStats():
+    calls(0),
+    bands(0),
+    singleBandCalls(0),
+    affectedStarts(0),
+    cells(0),
+    maxBandRows(0),
+    maxBandCols(0),
+    mergeableCalls(0),
+    mergeableCells(0),
+    estimatedLaunchReduction(0),
+    rejectedRunningMin(0),
+    rejectedSafeStoreEpoch(0),
+    rejectedScoreMatrix(0),
+    rejectedFilter(0)
+  {
+  }
+
+  uint64_t calls;
+  uint64_t bands;
+  uint64_t singleBandCalls;
+  uint64_t affectedStarts;
+  uint64_t cells;
+  uint64_t maxBandRows;
+  uint64_t maxBandCols;
+  uint64_t mergeableCalls;
+  uint64_t mergeableCells;
+  uint64_t estimatedLaunchReduction;
+  uint64_t rejectedRunningMin;
+  uint64_t rejectedSafeStoreEpoch;
+  uint64_t rejectedScoreMatrix;
+  uint64_t rejectedFilter;
+};
+
 struct SimCandidateStateStore
 {
   SimCandidateStateStore():
@@ -1051,6 +1088,12 @@ inline int simSafeWindowCudaMaxCountRuntime();
 inline bool simCudaValidateEnabledRuntime();
 inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime();
 
+enum SimSafeWindowExecGeometry
+{
+  SIM_SAFE_WINDOW_EXEC_GEOMETRY_COARSENED = 0,
+  SIM_SAFE_WINDOW_EXEC_GEOMETRY_FINE = 1
+};
+
 inline bool parseSimSafeWindowCompareBuilder(const char *env,bool validateEnabled)
 {
   if(validateEnabled)
@@ -1074,18 +1117,49 @@ inline SimScanCudaSafeWindowPlannerMode parseSimSafeWindowPlannerMode(const char
   {
     return SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1;
   }
+  if(strcmp(env,"sparse_v2") == 0)
+  {
+    return SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2;
+  }
   return SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE;
+}
+
+inline SimSafeWindowExecGeometry parseSimSafeWindowExecGeometry(const char *env)
+{
+  if(env == NULL || env[0] == '\0')
+  {
+    return SIM_SAFE_WINDOW_EXEC_GEOMETRY_COARSENED;
+  }
+  if(strcmp(env,"fine") == 0)
+  {
+    return SIM_SAFE_WINDOW_EXEC_GEOMETRY_FINE;
+  }
+  return SIM_SAFE_WINDOW_EXEC_GEOMETRY_COARSENED;
 }
 
 inline const char *simSafeWindowCudaPlannerModeName(SimScanCudaSafeWindowPlannerMode mode)
 {
   switch(mode)
   {
+    case SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2:
+      return "sparse_v2";
     case SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1:
       return "sparse_v1";
     case SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE:
     default:
       return "dense";
+  }
+}
+
+inline const char *simSafeWindowExecGeometryName(SimSafeWindowExecGeometry geometry)
+{
+  switch(geometry)
+  {
+    case SIM_SAFE_WINDOW_EXEC_GEOMETRY_FINE:
+      return "fine";
+    case SIM_SAFE_WINDOW_EXEC_GEOMETRY_COARSENED:
+    default:
+      return "coarsened";
   }
 }
 
@@ -1446,40 +1520,152 @@ inline SimPathWorkset buildSimSafeWindowExecutionWorkset(const SimPathWorkset &w
   return coarsenSimSafeWorksetForExecution(workset);
 }
 
+inline uint64_t simSafeWindowSaturatingAdd(uint64_t left,uint64_t right)
+{
+  if(numeric_limits<uint64_t>::max() - left < right)
+  {
+    return numeric_limits<uint64_t>::max();
+  }
+  return left + right;
+}
+
+inline uint64_t simSafeWindowCudaWindowCellCount(const SimScanCudaSafeWindow &window)
+{
+  if(window.rowEnd < window.rowStart || window.colEnd < window.colStart)
+  {
+    return 0;
+  }
+  return static_cast<uint64_t>(window.rowEnd - window.rowStart + 1) *
+         static_cast<uint64_t>(window.colEnd - window.colStart + 1);
+}
+
+inline uint64_t simSafeWindowCudaWindowCellCount(const vector<SimScanCudaSafeWindow> &windows)
+{
+  uint64_t cellCount = 0;
+  for(size_t windowIndex = 0; windowIndex < windows.size(); ++windowIndex)
+  {
+    cellCount = simSafeWindowSaturatingAdd(cellCount,
+                                           simSafeWindowCudaWindowCellCount(windows[windowIndex]));
+  }
+  return cellCount;
+}
+
+inline uint64_t simSafeWindowCudaMaxWindowCellCount(const vector<SimScanCudaSafeWindow> &windows)
+{
+  uint64_t maxCellCount = 0;
+  for(size_t windowIndex = 0; windowIndex < windows.size(); ++windowIndex)
+  {
+    maxCellCount = max(maxCellCount,simSafeWindowCudaWindowCellCount(windows[windowIndex]));
+  }
+  return maxCellCount;
+}
+
+inline uint64_t simSafeWindowMaxBandCellCount(const SimPathWorkset &workset)
+{
+  uint64_t maxCellCount = 0;
+  for(size_t bandIndex = 0; bandIndex < workset.bands.size(); ++bandIndex)
+  {
+    maxCellCount = max(maxCellCount,simUpdateBandCellCount(workset.bands[bandIndex]));
+  }
+  return maxCellCount;
+}
+
 struct SimSafeWindowExecutePlan
 {
   SimSafeWindowExecutePlan():
+    plannerModeRequested(SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE),
+    plannerModeUsed(SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE),
     windowCount(0),
     affectedStartCount(0),
     execBandCount(0),
     execCellCount(0),
+    rawWindowCellCount(0),
+    rawMaxWindowCellCount(0),
+    execMaxBandCellCount(0),
+    coarseningInflatedCellCount(0),
     overflowFallback(false),
     emptyPlan(true),
     coordBytesD2H(0),
     gpuNanoseconds(0),
-    d2hNanoseconds(0)
+    d2hNanoseconds(0),
+    sparseV2Considered(false),
+    sparseV2Selected(false),
+    sparseV2SavedCells(0)
   {
   }
 
   SimPathWorkset execWorkset;
+  SimPathWorkset rawWorkset;
   vector<uint64_t> uniqueAffectedStartCoords;
+  SimScanCudaSafeWindowPlannerMode plannerModeRequested;
+  SimScanCudaSafeWindowPlannerMode plannerModeUsed;
   uint64_t windowCount;
   uint64_t affectedStartCount;
   uint64_t execBandCount;
   uint64_t execCellCount;
+  uint64_t rawWindowCellCount;
+  uint64_t rawMaxWindowCellCount;
+  uint64_t execMaxBandCellCount;
+  uint64_t coarseningInflatedCellCount;
   bool overflowFallback;
   bool emptyPlan;
   uint64_t coordBytesD2H;
   uint64_t gpuNanoseconds;
   uint64_t d2hNanoseconds;
+  bool sparseV2Considered;
+  bool sparseV2Selected;
+  uint64_t sparseV2SavedCells;
 };
 
-inline bool buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(long queryLength,
-                                                                     long targetLength,
-                                                                     const SimTracebackPathSummary &summary,
-                                                                     const SimCudaPersistentSafeStoreHandle &handle,
-                                                                     SimSafeWindowExecutePlan &outPlan,
-                                                                     string *errorOut = NULL)
+inline const SimPathWorkset &selectSimSafeWindowExecutePlanWorkset(
+  const SimSafeWindowExecutePlan &plan,
+  SimSafeWindowExecGeometry geometry)
+{
+  return geometry == SIM_SAFE_WINDOW_EXEC_GEOMETRY_FINE ? plan.rawWorkset : plan.execWorkset;
+}
+
+inline void assignSimSafeWindowExecutePlanFromCudaResult(
+  const SimScanCudaSafeWindowExecutePlanResult &cudaPlan,
+  SimScanCudaSafeWindowPlannerMode plannerModeRequested,
+  SimScanCudaSafeWindowPlannerMode plannerModeUsed,
+  SimSafeWindowExecutePlan &outPlan)
+{
+  outPlan = SimSafeWindowExecutePlan();
+  const SimPathWorkset safeWindowWorkset =
+    makeSimPathWorksetFromCudaSafeWindows(cudaPlan.execWindows);
+  outPlan.rawWorkset = safeWindowWorkset;
+  outPlan.execWorkset = buildSimSafeWindowExecutionWorkset(safeWindowWorkset);
+  outPlan.uniqueAffectedStartCoords = cudaPlan.uniqueAffectedStartCoords;
+  outPlan.plannerModeRequested = plannerModeRequested;
+  outPlan.plannerModeUsed = plannerModeUsed;
+  outPlan.windowCount = cudaPlan.windowCount;
+  outPlan.affectedStartCount = cudaPlan.affectedStartCount;
+  outPlan.execBandCount = static_cast<uint64_t>(outPlan.execWorkset.bands.size());
+  outPlan.execCellCount = outPlan.execWorkset.cellCount;
+  outPlan.rawWindowCellCount = simSafeWindowCudaWindowCellCount(cudaPlan.execWindows);
+  outPlan.rawMaxWindowCellCount = simSafeWindowCudaMaxWindowCellCount(cudaPlan.execWindows);
+  outPlan.execMaxBandCellCount = simSafeWindowMaxBandCellCount(outPlan.execWorkset);
+  outPlan.coarseningInflatedCellCount =
+    outPlan.execCellCount > outPlan.rawWindowCellCount ?
+      outPlan.execCellCount - outPlan.rawWindowCellCount : 0;
+  outPlan.overflowFallback = cudaPlan.overflowFallback;
+  outPlan.emptyPlan = cudaPlan.emptyPlan;
+  outPlan.coordBytesD2H = cudaPlan.coordBytesD2H;
+  outPlan.gpuNanoseconds =
+    (cudaPlan.gpuSeconds <= 0.0) ? 0 : static_cast<uint64_t>(cudaPlan.gpuSeconds * 1.0e9 + 0.5);
+  outPlan.d2hNanoseconds =
+    (cudaPlan.d2hSeconds <= 0.0) ? 0 : static_cast<uint64_t>(cudaPlan.d2hSeconds * 1.0e9 + 0.5);
+}
+
+inline bool buildSimSafeWindowExecutePlanFromCudaCandidateStateStoreWithPlanner(
+  long queryLength,
+  long targetLength,
+  const SimTracebackPathSummary &summary,
+  const SimCudaPersistentSafeStoreHandle &handle,
+  SimScanCudaSafeWindowPlannerMode plannerMode,
+  int maxWindowCount,
+  SimSafeWindowExecutePlan &outPlan,
+  string *errorOut = NULL)
 {
   outPlan = SimSafeWindowExecutePlan();
   if(!summary.valid || queryLength <= 0 || targetLength <= 0)
@@ -1513,41 +1699,127 @@ inline bool buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(long queryL
     return false;
   }
 
-  SimScanCudaSafeWindowExecutePlanResult cudaPlan;
+  if(plannerMode != SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2)
+  {
+    SimScanCudaSafeWindowExecutePlanResult cudaPlan;
+    if(!sim_scan_cuda_build_safe_window_execute_plan(handle,
+                                                     static_cast<int>(queryLength),
+                                                     static_cast<int>(targetLength),
+                                                     summaryRowStart,
+                                                     summaryRowMinCols,
+                                                     summaryRowMaxCols,
+                                                     plannerMode,
+                                                     maxWindowCount,
+                                                     &cudaPlan,
+                                                     errorOut))
+    {
+      return false;
+    }
+    assignSimSafeWindowExecutePlanFromCudaResult(cudaPlan,
+                                                 plannerMode,
+                                                 plannerMode,
+                                                 outPlan);
+    if(errorOut != NULL)
+    {
+      errorOut->clear();
+    }
+    return true;
+  }
+
+  SimScanCudaSafeWindowExecutePlanResult denseCudaPlan;
   if(!sim_scan_cuda_build_safe_window_execute_plan(handle,
                                                    static_cast<int>(queryLength),
                                                    static_cast<int>(targetLength),
                                                    summaryRowStart,
                                                    summaryRowMinCols,
                                                    summaryRowMaxCols,
-                                                   simSafeWindowCudaPlannerModeRuntime(),
-                                                   simSafeWindowCudaMaxCountRuntime(),
-                                                   &cudaPlan,
+                                                   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE,
+                                                   maxWindowCount,
+                                                   &denseCudaPlan,
                                                    errorOut))
   {
     return false;
   }
 
-  const SimPathWorkset safeWindowWorkset =
-    makeSimPathWorksetFromCudaSafeWindows(cudaPlan.execWindows);
-  outPlan.execWorkset = buildSimSafeWindowExecutionWorkset(safeWindowWorkset);
-  outPlan.uniqueAffectedStartCoords.swap(cudaPlan.uniqueAffectedStartCoords);
-  outPlan.windowCount = cudaPlan.windowCount;
-  outPlan.affectedStartCount = cudaPlan.affectedStartCount;
-  outPlan.execBandCount = static_cast<uint64_t>(outPlan.execWorkset.bands.size());
-  outPlan.execCellCount = outPlan.execWorkset.cellCount;
-  outPlan.overflowFallback = cudaPlan.overflowFallback;
-  outPlan.emptyPlan = cudaPlan.emptyPlan;
-  outPlan.coordBytesD2H = cudaPlan.coordBytesD2H;
-  outPlan.gpuNanoseconds =
-    (cudaPlan.gpuSeconds <= 0.0) ? 0 : static_cast<uint64_t>(cudaPlan.gpuSeconds * 1.0e9 + 0.5);
-  outPlan.d2hNanoseconds =
-    (cudaPlan.d2hSeconds <= 0.0) ? 0 : static_cast<uint64_t>(cudaPlan.d2hSeconds * 1.0e9 + 0.5);
+  SimSafeWindowExecutePlan densePlan;
+  assignSimSafeWindowExecutePlanFromCudaResult(denseCudaPlan,
+                                               SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2,
+                                               SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE,
+                                               densePlan);
+
+  SimScanCudaSafeWindowExecutePlanResult sparseCudaPlan;
+  string sparseError;
+  const bool sparseOk =
+    sim_scan_cuda_build_safe_window_execute_plan(handle,
+                                                 static_cast<int>(queryLength),
+                                                 static_cast<int>(targetLength),
+                                                 summaryRowStart,
+                                                 summaryRowMinCols,
+                                                 summaryRowMaxCols,
+                                                 SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1,
+                                                 maxWindowCount,
+                                                 &sparseCudaPlan,
+                                                 &sparseError);
+
+  SimSafeWindowExecutePlan sparsePlan;
+  if(sparseOk)
+  {
+    assignSimSafeWindowExecutePlanFromCudaResult(sparseCudaPlan,
+                                                 SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2,
+                                                 SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2,
+                                                 sparsePlan);
+  }
+
+  const bool sparseUsable =
+    sparseOk &&
+    !sparsePlan.overflowFallback &&
+    !sparsePlan.emptyPlan &&
+    sparsePlan.execWorkset.hasWorkset &&
+    sparsePlan.affectedStartCount > 0;
+  const bool selectSparse =
+    sparseUsable && sparsePlan.execCellCount < densePlan.execCellCount;
+
+  outPlan = selectSparse ? sparsePlan : densePlan;
+  outPlan.plannerModeRequested = SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2;
+  outPlan.plannerModeUsed =
+    selectSparse ? SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V2 :
+                   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE;
+  outPlan.sparseV2Considered = true;
+  outPlan.sparseV2Selected = selectSparse;
+  outPlan.sparseV2SavedCells =
+    selectSparse ? densePlan.execCellCount - sparsePlan.execCellCount : 0;
+  if(sparseOk)
+  {
+    outPlan.coordBytesD2H =
+      simSafeWindowSaturatingAdd(densePlan.coordBytesD2H,sparsePlan.coordBytesD2H);
+    outPlan.gpuNanoseconds =
+      simSafeWindowSaturatingAdd(densePlan.gpuNanoseconds,sparsePlan.gpuNanoseconds);
+    outPlan.d2hNanoseconds =
+      simSafeWindowSaturatingAdd(densePlan.d2hNanoseconds,sparsePlan.d2hNanoseconds);
+  }
   if(errorOut != NULL)
   {
     errorOut->clear();
   }
   return true;
+}
+
+inline bool buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(long queryLength,
+                                                                     long targetLength,
+                                                                     const SimTracebackPathSummary &summary,
+                                                                     const SimCudaPersistentSafeStoreHandle &handle,
+                                                                     SimSafeWindowExecutePlan &outPlan,
+                                                                     string *errorOut = NULL)
+{
+  return buildSimSafeWindowExecutePlanFromCudaCandidateStateStoreWithPlanner(
+    queryLength,
+    targetLength,
+    summary,
+    handle,
+    simSafeWindowCudaPlannerModeRuntime(),
+    simSafeWindowCudaMaxCountRuntime(),
+    outPlan,
+    errorOut);
 }
 
 inline bool shouldPreferSimSafeWindowExecution(const SimPathWorkset &safeWindowWorkset,
@@ -1582,12 +1854,13 @@ enum SimSafeWindowPlanComparison
 };
 
 inline SimSafeWindowPlanComparison compareSimSafeWindowExecution(const SimSafeWindowExecutePlan &safeWindowPlan,
+                                                                 const SimPathWorkset &safeWindowExecWorkset,
                                                                  const SimPathWorkset &safeWorksetExec,
                                                                  uint64_t safeWorksetAffectedStartCount)
 {
   if(safeWindowPlan.overflowFallback ||
      safeWindowPlan.emptyPlan ||
-     !safeWindowPlan.execWorkset.hasWorkset ||
+     !safeWindowExecWorkset.hasWorkset ||
      safeWindowPlan.affectedStartCount == 0)
   {
     return SIM_SAFE_WINDOW_PLAN_COMPARISON_INVALID;
@@ -1596,14 +1869,14 @@ inline SimSafeWindowPlanComparison compareSimSafeWindowExecution(const SimSafeWi
   {
     return SIM_SAFE_WINDOW_PLAN_COMPARISON_INVALID;
   }
-  if(shouldPreferSimSafeWindowExecution(safeWindowPlan.execWorkset,
+  if(shouldPreferSimSafeWindowExecution(safeWindowExecWorkset,
                                         safeWindowPlan.affectedStartCount,
                                         safeWorksetExec,
                                         safeWorksetAffectedStartCount))
   {
     return SIM_SAFE_WINDOW_PLAN_COMPARISON_BETTER;
   }
-  if(safeWindowPlan.execWorkset.cellCount == safeWorksetExec.cellCount &&
+  if(safeWindowExecWorkset.cellCount == safeWorksetExec.cellCount &&
      safeWindowPlan.affectedStartCount == safeWorksetAffectedStartCount)
   {
     return SIM_SAFE_WINDOW_PLAN_COMPARISON_EQUAL;
@@ -2503,8 +2776,45 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
   return mode;
 }
 
-		inline bool simLocateCudaFastShadowEnabledRuntime()
-		{
+inline bool simSafeWindowGeometryTelemetryRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_GEOMETRY_TELEMETRY");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simRegionSchedulerShapeTelemetryRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_REGION_SCHEDULER_SHAPE_TELEMETRY");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline SimSafeWindowExecGeometry simSafeWindowExecGeometryRuntime()
+{
+  static const SimSafeWindowExecGeometry geometry =
+    parseSimSafeWindowExecGeometry(getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_EXEC_GEOMETRY"));
+  return geometry;
+}
+
+inline bool simSafeWindowFineShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_FINE_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+			inline bool simLocateCudaFastShadowEnabledRuntime()
+			{
 		  static const bool enabled = []()
 		  {
 		    const char *env = getenv("LONGTARGET_SIM_CUDA_LOCATE_FAST_SHADOW");
@@ -2571,9 +2881,13 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 			         simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET;
 		}
 
-		inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
+		inline bool simCudaInitialSafeStoreHandoffEnabledRuntime()
 		{
-		  const char *env = getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
+		  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
+		  if(env == NULL || env[0] == '\0')
+		  {
+		    env = getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
+		  }
 		  if(env == NULL || env[0] == '\0')
 		  {
 		    return false;
@@ -2585,8 +2899,87 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		         !simCudaProposalLoopEnabledRuntime();
 		}
 
-		inline bool simCudaInitialProposalResidencyEnabledRuntime()
-		{
+			inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
+			{
+			  return simCudaInitialSafeStoreHandoffEnabledRuntime();
+			}
+
+			struct SimInitialContextApplyChunkSkipStats
+			{
+			  SimInitialContextApplyChunkSkipStats():
+			    chunkCount(0),
+			    chunkReplayedCount(0),
+			    chunkSkippedCount(0),
+			    summaryReplayedCount(0),
+			    summarySkippedCount(0)
+			  {
+			  }
+
+			  uint64_t chunkCount;
+			  uint64_t chunkReplayedCount;
+			  uint64_t chunkSkippedCount;
+			  uint64_t summaryReplayedCount;
+			  uint64_t summarySkippedCount;
+			};
+
+			inline bool simCudaInitialContextApplyChunkSkipEnabledRuntime()
+			{
+			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CONTEXT_APPLY_CHUNK_SKIP");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return false;
+			  }
+			  return env[0] != '0';
+			}
+
+			inline int simCudaInitialContextApplyChunkSkipChunkSize()
+			{
+			  return 256;
+			}
+
+				inline bool simCudaInitialFrontierTransducerShadowEnabledRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_FRONTIER_TRANSDUCER_SHADOW");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return false;
+			  }
+			  return env[0] != '0' && !simCudaProposalLoopEnabledRuntime();
+			}
+
+			inline bool simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime()
+			{
+			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_ORDERED_SEGMENTED_V3_SHADOW");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return false;
+			  }
+			  return env[0] != '0';
+			}
+
+			inline int simCudaInitialFrontierTransducerShadowChunkSizeRuntime()
+			{
+			  const int defaultChunkSize = 256;
+			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_FRONTIER_TRANSDUCER_SHADOW_CHUNK_SIZE");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return defaultChunkSize;
+			  }
+			  char *end = NULL;
+			  const long parsed = strtol(env,&end,10);
+			  if(end == env || parsed <= 0)
+			  {
+			    return defaultChunkSize;
+			  }
+			  if(parsed > 4096)
+			  {
+			    return 4096;
+			  }
+			  return static_cast<int>(parsed);
+			}
+
+			inline bool simCudaInitialProposalResidencyEnabledRuntime()
+			{
 		  static const bool enabled = []()
 		  {
 		    const char *env = getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_PROPOSAL_RESIDENCY");
@@ -3459,6 +3852,54 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simSafeWindowRawCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowRawMaxWindowCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowExecMaxBandCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowCoarseningInflatedCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowSparseV2ConsideredCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowSparseV2SelectedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowSparseV2RejectedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowSparseV2SavedCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simSafeWindowPlanBandCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -3501,17 +3942,29 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
-		inline std::atomic<uint64_t> &simSafeWindowPlanEqualToBuilderCount()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simSafeWindowPlanEqualToBuilderCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
-		inline std::atomic<uint64_t> &simSafeWorksetBuilderCallsAfterSafeWindowCount()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simSafeWindowFineShadowCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowFineShadowMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWorksetBuilderCallsAfterSafeWindowCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
 		enum SimSafeWindowFallbackReason
 		{
@@ -3786,6 +4239,44 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simSafeWindowExecCellCount().fetch_add(execWorkset.cellCount,std::memory_order_relaxed);
 		}
 
+		inline void updateSimSafeWindowTelemetryMax(std::atomic<uint64_t> &target,uint64_t candidate)
+		{
+		  uint64_t current = target.load(std::memory_order_relaxed);
+		  while(current < candidate &&
+		        !target.compare_exchange_weak(current,
+		                                      candidate,
+		                                      std::memory_order_relaxed,
+		                                      std::memory_order_relaxed))
+		  {
+		  }
+		}
+
+		inline void recordSimSafeWindowGeometryTelemetry(const SimSafeWindowExecutePlan &plan)
+		{
+		  simSafeWindowRawCellCount().fetch_add(plan.rawWindowCellCount,std::memory_order_relaxed);
+		  updateSimSafeWindowTelemetryMax(simSafeWindowRawMaxWindowCellCount(),
+		                                  plan.rawMaxWindowCellCount);
+		  updateSimSafeWindowTelemetryMax(simSafeWindowExecMaxBandCellCount(),
+		                                  plan.execMaxBandCellCount);
+		  simSafeWindowCoarseningInflatedCellCount().fetch_add(
+		    plan.coarseningInflatedCellCount,
+		    std::memory_order_relaxed);
+		  if(plan.sparseV2Considered)
+		  {
+		    simSafeWindowSparseV2ConsideredCount().fetch_add(1,std::memory_order_relaxed);
+		    if(plan.sparseV2Selected)
+		    {
+		      simSafeWindowSparseV2SelectedCount().fetch_add(1,std::memory_order_relaxed);
+		    }
+		    else
+		    {
+		      simSafeWindowSparseV2RejectedCount().fetch_add(1,std::memory_order_relaxed);
+		    }
+		    simSafeWindowSparseV2SavedCellCount().fetch_add(plan.sparseV2SavedCells,
+		                                                    std::memory_order_relaxed);
+		  }
+		}
+
 		inline void recordSimSafeWindowPlan(const SimPathWorkset &execWorkset,
 		                                   uint64_t gpuNanoseconds,
 		                                   uint64_t d2hNanoseconds)
@@ -3802,10 +4293,10 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simSafeWindowPlanFallbackCount().fetch_add(1,std::memory_order_relaxed);
 		}
 
-		inline void recordSimSafeWindowPlanComparison(SimSafeWindowPlanComparison comparison)
-		{
-		  switch(comparison)
-		  {
+			inline void recordSimSafeWindowPlanComparison(SimSafeWindowPlanComparison comparison)
+			{
+			  switch(comparison)
+			  {
 		  case SIM_SAFE_WINDOW_PLAN_COMPARISON_BETTER:
 		    simSafeWindowPlanBetterThanBuilderCount().fetch_add(1,std::memory_order_relaxed);
 		    break;
@@ -3817,13 +4308,22 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		    break;
 		  case SIM_SAFE_WINDOW_PLAN_COMPARISON_INVALID:
 		    break;
-		  }
-		}
+			  }
+			}
 
-		inline void recordSimSafeWorksetBuilderCallAfterSafeWindow()
-		{
-		  simSafeWorksetBuilderCallsAfterSafeWindowCount().fetch_add(1,std::memory_order_relaxed);
-		}
+			inline void recordSimSafeWindowFineShadow(bool mismatch)
+			{
+			  simSafeWindowFineShadowCallCount().fetch_add(1,std::memory_order_relaxed);
+			  if(mismatch)
+			  {
+			    simSafeWindowFineShadowMismatchCount().fetch_add(1,std::memory_order_relaxed);
+			  }
+			}
+
+			inline void recordSimSafeWorksetBuilderCallAfterSafeWindow()
+			{
+			  simSafeWorksetBuilderCallsAfterSafeWindowCount().fetch_add(1,std::memory_order_relaxed);
+			}
 
 		inline void recordSimSafeWindowAttempt()
 		{
@@ -4047,6 +4547,30 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  execCellCount = simSafeWindowExecCellCount().load(std::memory_order_relaxed);
 		}
 
+		inline void getSimSafeWindowGeometryTelemetryStats(uint64_t &rawCellCount,
+		                                                  uint64_t &rawMaxWindowCellCount,
+		                                                  uint64_t &execMaxBandCellCount,
+		                                                  uint64_t &coarseningInflatedCellCount,
+		                                                  uint64_t &sparseV2ConsideredCount,
+		                                                  uint64_t &sparseV2SelectedCount,
+		                                                  uint64_t &sparseV2RejectedCount,
+		                                                  uint64_t &sparseV2SavedCellCount)
+		{
+		  rawCellCount = simSafeWindowRawCellCount().load(std::memory_order_relaxed);
+		  rawMaxWindowCellCount = simSafeWindowRawMaxWindowCellCount().load(std::memory_order_relaxed);
+		  execMaxBandCellCount = simSafeWindowExecMaxBandCellCount().load(std::memory_order_relaxed);
+		  coarseningInflatedCellCount =
+		    simSafeWindowCoarseningInflatedCellCount().load(std::memory_order_relaxed);
+		  sparseV2ConsideredCount =
+		    simSafeWindowSparseV2ConsideredCount().load(std::memory_order_relaxed);
+		  sparseV2SelectedCount =
+		    simSafeWindowSparseV2SelectedCount().load(std::memory_order_relaxed);
+		  sparseV2RejectedCount =
+		    simSafeWindowSparseV2RejectedCount().load(std::memory_order_relaxed);
+		  sparseV2SavedCellCount =
+		    simSafeWindowSparseV2SavedCellCount().load(std::memory_order_relaxed);
+		}
+
 		inline void getSimSafeWindowPlanStats(uint64_t &bandCount,
 		                                     uint64_t &cellCount,
 		                                     uint64_t &gpuNanoseconds,
@@ -4060,19 +4584,26 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  fallbackCount = simSafeWindowPlanFallbackCount().load(std::memory_order_relaxed);
 		}
 
-		inline void getSimSafeWindowPlanComparisonStats(uint64_t &betterCount,
-		                                               uint64_t &worseCount,
-		                                               uint64_t &equalCount)
-		{
-		  betterCount = simSafeWindowPlanBetterThanBuilderCount().load(std::memory_order_relaxed);
-		  worseCount = simSafeWindowPlanWorseThanBuilderCount().load(std::memory_order_relaxed);
-		  equalCount = simSafeWindowPlanEqualToBuilderCount().load(std::memory_order_relaxed);
-		}
+			inline void getSimSafeWindowPlanComparisonStats(uint64_t &betterCount,
+			                                               uint64_t &worseCount,
+			                                               uint64_t &equalCount)
+			{
+			  betterCount = simSafeWindowPlanBetterThanBuilderCount().load(std::memory_order_relaxed);
+			  worseCount = simSafeWindowPlanWorseThanBuilderCount().load(std::memory_order_relaxed);
+			  equalCount = simSafeWindowPlanEqualToBuilderCount().load(std::memory_order_relaxed);
+			}
 
-		inline uint64_t getSimSafeWorksetBuilderCallsAfterSafeWindow()
-		{
-		  return simSafeWorksetBuilderCallsAfterSafeWindowCount().load(std::memory_order_relaxed);
-		}
+			inline void getSimSafeWindowFineShadowStats(uint64_t &callCount,
+			                                           uint64_t &mismatchCount)
+			{
+			  callCount = simSafeWindowFineShadowCallCount().load(std::memory_order_relaxed);
+			  mismatchCount = simSafeWindowFineShadowMismatchCount().load(std::memory_order_relaxed);
+			}
+
+			inline uint64_t getSimSafeWorksetBuilderCallsAfterSafeWindow()
+			{
+			  return simSafeWorksetBuilderCallsAfterSafeWindowCount().load(std::memory_order_relaxed);
+			}
 
 		inline void getSimSafeWindowPathStats(uint64_t &attemptCount,
 		                                     uint64_t &skippedUnconvertibleCount,
@@ -4435,6 +4966,54 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchBatchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchFusedRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchActualCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchPaddedCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchPaddingCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchRejectedPaddingCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchShadowMismatchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionCpuMergeNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -4459,17 +5038,77 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
-		inline std::atomic<uint64_t> &simInitialSummaryBytesD2HCount()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simInitialSummaryBytesD2HCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
-		inline std::atomic<uint64_t> &simInitialReducedCandidateCount()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simInitialSummaryPackedD2HEnabledCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSummaryPackedBytesD2HCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSummaryUnpackedEquivalentBytesD2HCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSummaryPackNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+				inline std::atomic<uint64_t> &simInitialSummaryPackedD2HFallbackCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialSummaryHostCopyElisionEnabledCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialSummaryD2HCopyNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialSummaryUnpackNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialSummaryResultMaterializeNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialSummaryHostCopyElidedByteCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialReducedCandidateCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
 		inline std::atomic<uint64_t> &simInitialAllCandidateStateCount()
 		{
@@ -4513,14 +5152,80 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
-		inline std::atomic<uint64_t> &simInitialSafeStoreFrontierUploadNanoseconds()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simInitialSafeStoreFrontierUploadNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
-		inline std::atomic<uint64_t> &simProposalAllCandidateStateCount()
-		{
+			inline std::atomic<uint64_t> &simInitialFrontierTransducerShadowCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialFrontierTransducerShadowNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialFrontierTransducerShadowDigestD2HBytes()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialFrontierTransducerShadowSummaryReplayCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialFrontierTransducerShadowMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowFrontierMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowRunningMinMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowSafeStoreMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowCandidateCountMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowCandidateValueMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simProposalAllCandidateStateCount()
+			{
 		  static std::atomic<uint64_t> count(0);
 		  return count;
 		}
@@ -4808,17 +5513,47 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return count;
 		}
 
-		inline std::atomic<uint64_t> &simInitialReduceSummaryReplayCount()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simInitialReduceSummaryReplayCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
-		inline std::atomic<uint64_t> &simInitialScanNanoseconds()
-		{
-		  static std::atomic<uint64_t> count(0);
-		  return count;
-		}
+			inline std::atomic<uint64_t> &simInitialContextApplyChunkSkipChunkCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialContextApplyChunkSkipChunkReplayedCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialContextApplyChunkSkipChunkSkippedCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialContextApplyChunkSkipSummaryReplayedCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialContextApplyChunkSkipSummarySkippedCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialScanNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
 
 		inline std::atomic<uint64_t> &simInitialScanGpuNanoseconds()
 		{
@@ -5078,6 +5813,26 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simRegionPackedRequestCount().fetch_add(requestCount, std::memory_order_relaxed);
 		}
 
+		inline void recordSimRegionBucketedTrueBatch(const SimScanCudaBatchResult &batchResult)
+		{
+		  simRegionBucketedTrueBatchBatchCount().fetch_add(batchResult.regionBucketedTrueBatchBatches,
+		                                                   std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchRequestCount().fetch_add(batchResult.regionBucketedTrueBatchRequests,
+		                                                     std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchFusedRequestCount().fetch_add(batchResult.regionBucketedTrueBatchFusedRequests,
+		                                                          std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchActualCellCount().fetch_add(batchResult.regionBucketedTrueBatchActualCells,
+		                                                        std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchPaddedCellCount().fetch_add(batchResult.regionBucketedTrueBatchPaddedCells,
+		                                                        std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchPaddingCellCount().fetch_add(batchResult.regionBucketedTrueBatchPaddingCells,
+		                                                         std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchRejectedPaddingCount().fetch_add(batchResult.regionBucketedTrueBatchRejectedPadding,
+		                                                             std::memory_order_relaxed);
+		  simRegionBucketedTrueBatchShadowMismatchCount().fetch_add(batchResult.regionBucketedTrueBatchShadowMismatches,
+		                                                            std::memory_order_relaxed);
+		}
+
 		inline void recordSimRegionCpuMergeNanoseconds(uint64_t nanoseconds)
 		{
 		  simRegionCpuMergeNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -5098,15 +5853,49 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simInitialRunSummaryCount().fetch_add(summaryCount, std::memory_order_relaxed);
 		}
 
-		inline void recordSimInitialSummaryBytesD2H(uint64_t byteCount)
-		{
-		  simInitialSummaryBytesD2HCount().fetch_add(byteCount, std::memory_order_relaxed);
-		}
+			inline void recordSimInitialSummaryBytesD2H(uint64_t byteCount)
+			{
+			  simInitialSummaryBytesD2HCount().fetch_add(byteCount, std::memory_order_relaxed);
+			}
 
-		inline void recordSimInitialReducedCandidates(uint64_t candidateCount)
-		{
-		  simInitialReducedCandidateCount().fetch_add(candidateCount, std::memory_order_relaxed);
-		}
+			inline void recordSimInitialSummaryPackedD2H(bool usedPackedD2H,
+			                                            uint64_t packedBytesD2H,
+			                                            uint64_t unpackedEquivalentBytesD2H,
+			                                            uint64_t packNanoseconds,
+			                                            uint64_t fallbackCount)
+			{
+			  if(usedPackedD2H)
+			  {
+			    simInitialSummaryPackedD2HEnabledCount().fetch_add(1, std::memory_order_relaxed);
+			  }
+			  simInitialSummaryPackedBytesD2HCount().fetch_add(packedBytesD2H, std::memory_order_relaxed);
+			  simInitialSummaryUnpackedEquivalentBytesD2HCount().fetch_add(unpackedEquivalentBytesD2H,
+			                                                               std::memory_order_relaxed);
+				  simInitialSummaryPackNanoseconds().fetch_add(packNanoseconds, std::memory_order_relaxed);
+				  simInitialSummaryPackedD2HFallbackCount().fetch_add(fallbackCount, std::memory_order_relaxed);
+				}
+
+				inline void recordSimInitialSummaryHostCopyElision(bool usedHostCopyElision,
+				                                                  uint64_t d2hCopyNanoseconds,
+				                                                  uint64_t unpackNanoseconds,
+				                                                  uint64_t resultMaterializeNanoseconds,
+				                                                  uint64_t elidedBytes)
+				{
+				  if(usedHostCopyElision)
+				  {
+				    simInitialSummaryHostCopyElisionEnabledCount().fetch_add(1, std::memory_order_relaxed);
+				  }
+				  simInitialSummaryD2HCopyNanoseconds().fetch_add(d2hCopyNanoseconds, std::memory_order_relaxed);
+				  simInitialSummaryUnpackNanoseconds().fetch_add(unpackNanoseconds, std::memory_order_relaxed);
+				  simInitialSummaryResultMaterializeNanoseconds().fetch_add(resultMaterializeNanoseconds,
+				                                                            std::memory_order_relaxed);
+				  simInitialSummaryHostCopyElidedByteCount().fetch_add(elidedBytes, std::memory_order_relaxed);
+				}
+
+				inline void recordSimInitialReducedCandidates(uint64_t candidateCount)
+				{
+				  simInitialReducedCandidateCount().fetch_add(candidateCount, std::memory_order_relaxed);
+			}
 
 		inline void recordSimInitialAllCandidateStates(uint64_t candidateCount)
 		{
@@ -5146,6 +5935,32 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		inline void recordSimInitialSafeStoreFrontierUploadNanoseconds(uint64_t nanoseconds)
 		{
 		  simInitialSafeStoreFrontierUploadNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialFrontierTransducerShadow(uint64_t nanoseconds,
+		                                                     uint64_t digestD2HBytes,
+		                                                     uint64_t summaryReplayCount,
+		                                                     uint64_t mismatchCount)
+		{
+		  simInitialFrontierTransducerShadowCallCount().fetch_add(1, std::memory_order_relaxed);
+		  simInitialFrontierTransducerShadowNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
+		  simInitialFrontierTransducerShadowDigestD2HBytes().fetch_add(digestD2HBytes, std::memory_order_relaxed);
+		  simInitialFrontierTransducerShadowSummaryReplayCount().fetch_add(summaryReplayCount, std::memory_order_relaxed);
+		  simInitialFrontierTransducerShadowMismatchCount().fetch_add(mismatchCount, std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialOrderedSegmentedV3Shadow(uint64_t frontierMismatch,
+		                                                     uint64_t runningMinMismatch,
+		                                                     uint64_t safeStoreMismatch,
+		                                                     uint64_t candidateCountMismatch,
+		                                                     uint64_t candidateValueMismatch)
+		{
+		  simInitialOrderedSegmentedV3ShadowCallCount().fetch_add(1, std::memory_order_relaxed);
+		  simInitialOrderedSegmentedV3ShadowFrontierMismatchCount().fetch_add(frontierMismatch, std::memory_order_relaxed);
+		  simInitialOrderedSegmentedV3ShadowRunningMinMismatchCount().fetch_add(runningMinMismatch, std::memory_order_relaxed);
+		  simInitialOrderedSegmentedV3ShadowSafeStoreMismatchCount().fetch_add(safeStoreMismatch, std::memory_order_relaxed);
+		  simInitialOrderedSegmentedV3ShadowCandidateCountMismatchCount().fetch_add(candidateCountMismatch, std::memory_order_relaxed);
+		  simInitialOrderedSegmentedV3ShadowCandidateValueMismatchCount().fetch_add(candidateValueMismatch, std::memory_order_relaxed);
 		}
 
 		inline void recordSimProposalAllCandidateStates(uint64_t candidateCount)
@@ -5359,17 +6174,30 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  simDeviceKLoopNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
 		}
 
-		inline void recordSimInitialReduceReplayStats(const SimScanCudaInitialReduceReplayStats &stats)
-		{
-		  simInitialReduceChunkCount().fetch_add(stats.chunkCount, std::memory_order_relaxed);
-		  simInitialReduceChunkReplayedCount().fetch_add(stats.chunkReplayedCount, std::memory_order_relaxed);
-		  simInitialReduceSummaryReplayCount().fetch_add(stats.summaryReplayCount, std::memory_order_relaxed);
-		}
+			inline void recordSimInitialReduceReplayStats(const SimScanCudaInitialReduceReplayStats &stats)
+			{
+			  simInitialReduceChunkCount().fetch_add(stats.chunkCount, std::memory_order_relaxed);
+			  simInitialReduceChunkReplayedCount().fetch_add(stats.chunkReplayedCount, std::memory_order_relaxed);
+			  simInitialReduceSummaryReplayCount().fetch_add(stats.summaryReplayCount, std::memory_order_relaxed);
+			}
 
-		inline void recordSimInitialScanNanoseconds(uint64_t nanoseconds)
-		{
-		  simInitialScanNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
-		}
+			inline void recordSimInitialContextApplyChunkSkipStats(const SimInitialContextApplyChunkSkipStats &stats)
+			{
+			  simInitialContextApplyChunkSkipChunkCount().fetch_add(stats.chunkCount, std::memory_order_relaxed);
+			  simInitialContextApplyChunkSkipChunkReplayedCount().fetch_add(stats.chunkReplayedCount,
+			                                                                std::memory_order_relaxed);
+			  simInitialContextApplyChunkSkipChunkSkippedCount().fetch_add(stats.chunkSkippedCount,
+			                                                               std::memory_order_relaxed);
+			  simInitialContextApplyChunkSkipSummaryReplayedCount().fetch_add(stats.summaryReplayedCount,
+			                                                                  std::memory_order_relaxed);
+			  simInitialContextApplyChunkSkipSummarySkippedCount().fetch_add(stats.summarySkippedCount,
+			                                                                 std::memory_order_relaxed);
+			}
+
+			inline void recordSimInitialScanNanoseconds(uint64_t nanoseconds)
+			{
+			  simInitialScanNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
+			}
 
 		inline void recordSimInitialScanGpuNanoseconds(uint64_t nanoseconds)
 		{
@@ -5575,9 +6403,28 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  return simRegionPackedRequestCount().load(std::memory_order_relaxed);
 		}
 
-		inline void getSimInitialReductionStats(uint64_t &eventCount,
-		                                       uint64_t &summaryCount,
-		                                       uint64_t &summaryBytesD2H,
+		inline void getSimRegionBucketedTrueBatchStats(uint64_t &batches,
+		                                               uint64_t &requests,
+		                                               uint64_t &fusedRequests,
+		                                               uint64_t &actualCells,
+		                                               uint64_t &paddedCells,
+		                                               uint64_t &paddingCells,
+		                                               uint64_t &rejectedPadding,
+		                                               uint64_t &shadowMismatches)
+		{
+		  batches = simRegionBucketedTrueBatchBatchCount().load(std::memory_order_relaxed);
+		  requests = simRegionBucketedTrueBatchRequestCount().load(std::memory_order_relaxed);
+		  fusedRequests = simRegionBucketedTrueBatchFusedRequestCount().load(std::memory_order_relaxed);
+		  actualCells = simRegionBucketedTrueBatchActualCellCount().load(std::memory_order_relaxed);
+		  paddedCells = simRegionBucketedTrueBatchPaddedCellCount().load(std::memory_order_relaxed);
+		  paddingCells = simRegionBucketedTrueBatchPaddingCellCount().load(std::memory_order_relaxed);
+		  rejectedPadding = simRegionBucketedTrueBatchRejectedPaddingCount().load(std::memory_order_relaxed);
+		  shadowMismatches = simRegionBucketedTrueBatchShadowMismatchCount().load(std::memory_order_relaxed);
+		}
+
+			inline void getSimInitialReductionStats(uint64_t &eventCount,
+			                                       uint64_t &summaryCount,
+			                                       uint64_t &summaryBytesD2H,
 		                                       uint64_t &reducedCandidateCount,
 		                                       uint64_t &allCandidateStateCount,
 		                                       uint64_t &storeBytesD2H,
@@ -5597,26 +6444,115 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		  storeUploadNanoseconds = simInitialStoreUploadNanoseconds().load(std::memory_order_relaxed);
 		  chunkCount = simInitialReduceChunkCount().load(std::memory_order_relaxed);
 		  chunkReplayedCount = simInitialReduceChunkReplayedCount().load(std::memory_order_relaxed);
-		  summaryReplayCount = simInitialReduceSummaryReplayCount().load(std::memory_order_relaxed);
-		}
+			  summaryReplayCount = simInitialReduceSummaryReplayCount().load(std::memory_order_relaxed);
+			}
 
-		inline void getSimInitialSafeStoreDeviceStats(uint64_t &frontierBytesH2D,
-		                                              double &buildSeconds,
-		                                              double &pruneSeconds,
-		                                              double &frontierUploadSeconds)
-		{
+				inline void getSimInitialSummaryPackedD2HStats(uint64_t &enabledCount,
+				                                              uint64_t &packedBytesD2H,
+				                                              uint64_t &unpackedEquivalentBytesD2H,
+				                                              double &packSeconds,
+				                                              uint64_t &fallbackCount)
+			{
+			  enabledCount = simInitialSummaryPackedD2HEnabledCount().load(std::memory_order_relaxed);
+			  packedBytesD2H = simInitialSummaryPackedBytesD2HCount().load(std::memory_order_relaxed);
+			  unpackedEquivalentBytesD2H =
+			    simInitialSummaryUnpackedEquivalentBytesD2HCount().load(std::memory_order_relaxed);
+			  packSeconds =
+			    static_cast<double>(simInitialSummaryPackNanoseconds().load(std::memory_order_relaxed)) / 1.0e9;
+					  fallbackCount = simInitialSummaryPackedD2HFallbackCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialSummaryHostCopyElisionStats(uint64_t &enabledCount,
+					                                                    double &d2hCopySeconds,
+					                                                    double &unpackSeconds,
+					                                                    double &resultMaterializeSeconds,
+					                                                    uint64_t &elidedBytes)
+				{
+				  enabledCount =
+				    simInitialSummaryHostCopyElisionEnabledCount().load(std::memory_order_relaxed);
+				  d2hCopySeconds =
+				    static_cast<double>(simInitialSummaryD2HCopyNanoseconds().load(std::memory_order_relaxed)) /
+				    1.0e9;
+				  unpackSeconds =
+				    static_cast<double>(simInitialSummaryUnpackNanoseconds().load(std::memory_order_relaxed)) /
+				    1.0e9;
+				  resultMaterializeSeconds =
+				    static_cast<double>(
+				      simInitialSummaryResultMaterializeNanoseconds().load(std::memory_order_relaxed)) / 1.0e9;
+				  elidedBytes =
+				    simInitialSummaryHostCopyElidedByteCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialContextApplyChunkSkipStats(uint64_t &chunkCount,
+					                                                    uint64_t &chunkSkippedCount,
+				                                                    uint64_t &chunkReplayedCount,
+				                                                    uint64_t &summarySkippedCount,
+				                                                    uint64_t &summaryReplayedCount)
+				{
+				  chunkCount = simInitialContextApplyChunkSkipChunkCount().load(std::memory_order_relaxed);
+				  chunkSkippedCount =
+				    simInitialContextApplyChunkSkipChunkSkippedCount().load(std::memory_order_relaxed);
+				  chunkReplayedCount =
+				    simInitialContextApplyChunkSkipChunkReplayedCount().load(std::memory_order_relaxed);
+				  summarySkippedCount =
+				    simInitialContextApplyChunkSkipSummarySkippedCount().load(std::memory_order_relaxed);
+				  summaryReplayedCount =
+				    simInitialContextApplyChunkSkipSummaryReplayedCount().load(std::memory_order_relaxed);
+				}
+
+					inline void getSimInitialSafeStoreDeviceStats(uint64_t &frontierBytesH2D,
+					                                              double &buildSeconds,
+					                                              double &pruneSeconds,
+			                                              double &frontierUploadSeconds)
+			{
 		  frontierBytesH2D = simInitialSafeStoreFrontierBytesH2DCount().load(std::memory_order_relaxed);
 		  buildSeconds =
 		    static_cast<double>(simInitialSafeStoreDeviceBuildNanoseconds().load(std::memory_order_relaxed)) / 1.0e9;
 		  pruneSeconds =
 		    static_cast<double>(simInitialSafeStoreDevicePruneNanoseconds().load(std::memory_order_relaxed)) / 1.0e9;
-		  frontierUploadSeconds =
-		    static_cast<double>(simInitialSafeStoreFrontierUploadNanoseconds().load(std::memory_order_relaxed)) /
-		    1.0e9;
-		}
+			  frontierUploadSeconds =
+			    static_cast<double>(simInitialSafeStoreFrontierUploadNanoseconds().load(std::memory_order_relaxed)) /
+			    1.0e9;
+			}
 
-		inline void getSimProposalStats(uint64_t &allCandidateStateCount,
-		                               uint64_t &bytesD2H,
+			inline void getSimInitialFrontierTransducerShadowStats(uint64_t &callCount,
+			                                                       double &seconds,
+			                                                       uint64_t &digestD2HBytes,
+			                                                       uint64_t &summaryReplayCount,
+			                                                       uint64_t &mismatchCount)
+			{
+			  callCount = simInitialFrontierTransducerShadowCallCount().load(std::memory_order_relaxed);
+			  seconds =
+			    static_cast<double>(simInitialFrontierTransducerShadowNanoseconds().load(std::memory_order_relaxed)) /
+			    1.0e9;
+			  digestD2HBytes = simInitialFrontierTransducerShadowDigestD2HBytes().load(std::memory_order_relaxed);
+			  summaryReplayCount =
+			    simInitialFrontierTransducerShadowSummaryReplayCount().load(std::memory_order_relaxed);
+			  mismatchCount = simInitialFrontierTransducerShadowMismatchCount().load(std::memory_order_relaxed);
+			}
+
+			inline void getSimInitialOrderedSegmentedV3ShadowStats(uint64_t &callCount,
+			                                                       uint64_t &frontierMismatchCount,
+			                                                       uint64_t &runningMinMismatchCount,
+			                                                       uint64_t &safeStoreMismatchCount,
+			                                                       uint64_t &candidateCountMismatchCount,
+			                                                       uint64_t &candidateValueMismatchCount)
+			{
+			  callCount = simInitialOrderedSegmentedV3ShadowCallCount().load(std::memory_order_relaxed);
+			  frontierMismatchCount =
+			    simInitialOrderedSegmentedV3ShadowFrontierMismatchCount().load(std::memory_order_relaxed);
+			  runningMinMismatchCount =
+			    simInitialOrderedSegmentedV3ShadowRunningMinMismatchCount().load(std::memory_order_relaxed);
+			  safeStoreMismatchCount =
+			    simInitialOrderedSegmentedV3ShadowSafeStoreMismatchCount().load(std::memory_order_relaxed);
+			  candidateCountMismatchCount =
+			    simInitialOrderedSegmentedV3ShadowCandidateCountMismatchCount().load(std::memory_order_relaxed);
+			  candidateValueMismatchCount =
+			    simInitialOrderedSegmentedV3ShadowCandidateValueMismatchCount().load(std::memory_order_relaxed);
+			}
+
+			inline void getSimProposalStats(uint64_t &allCandidateStateCount,
+			                               uint64_t &bytesD2H,
 		                               uint64_t &selectedCount,
 		                               uint64_t &selectedBoxCellCount,
 		                               uint64_t &materializedCount,
@@ -5960,7 +6896,7 @@ inline SimScanCudaSafeWindowPlannerMode simSafeWindowCudaPlannerModeRuntime()
 		}
 
 struct SimKernelContext
-	{
+		{
   SimKernelContext(long queryLength,long targetLength):
     gapOpen(0),
     gapExtend(0),
@@ -6111,6 +7047,349 @@ struct SimKernelContext
   SimCandidateStats stats;
 };
 
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryCallCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryBandCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetrySingleBandCallCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryAffectedStartCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryCellCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryMaxBandRows()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryMaxBandCols()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryMergeableCallCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryMergeableCellCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryEstimatedLaunchReductionCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryRejectedRunningMinCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryRejectedSafeStoreEpochCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryRejectedScoreMatrixCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline std::atomic<uint64_t> &simRegionSchedulerShapeTelemetryRejectedFilterCount()
+{
+  static std::atomic<uint64_t> count(0);
+  return count;
+}
+
+inline uint64_t simRegionSchedulerShapeHashCombine(uint64_t hash,uint64_t value)
+{
+  return hash ^ (value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2));
+}
+
+inline uint64_t simRegionSchedulerShapeCandidateStateFingerprint(const SimScanCudaCandidateState &state)
+{
+  uint64_t hash = 1469598103934665603ull;
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.score)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.startI)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.startJ)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.endI)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.endJ)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.top)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.bot)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.left)));
+  hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(state.right)));
+  return hash;
+}
+
+inline uint64_t simRegionSchedulerShapeSafeStoreFingerprint(const SimKernelContext &context)
+{
+  uint64_t hash = 1469598103934665603ull;
+  hash = simRegionSchedulerShapeHashCombine(hash,context.safeCandidateStateStore.valid ? 1ull : 0ull);
+  if(context.safeCandidateStateStore.valid)
+  {
+    vector<uint64_t> stateFingerprints;
+    stateFingerprints.reserve(context.safeCandidateStateStore.states.size());
+    for(size_t stateIndex = 0; stateIndex < context.safeCandidateStateStore.states.size(); ++stateIndex)
+    {
+      stateFingerprints.push_back(
+        simRegionSchedulerShapeCandidateStateFingerprint(context.safeCandidateStateStore.states[stateIndex]));
+    }
+    sort(stateFingerprints.begin(),stateFingerprints.end());
+    hash = simRegionSchedulerShapeHashCombine(hash,
+                                             static_cast<uint64_t>(stateFingerprints.size()));
+    for(size_t stateIndex = 0; stateIndex < stateFingerprints.size(); ++stateIndex)
+    {
+      hash = simRegionSchedulerShapeHashCombine(hash,stateFingerprints[stateIndex]);
+    }
+  }
+
+  const SimCudaPersistentSafeStoreHandle &gpuStore = context.gpuSafeCandidateStateStore;
+  hash = simRegionSchedulerShapeHashCombine(hash,gpuStore.valid ? 1ull : 0ull);
+  if(gpuStore.valid)
+  {
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(gpuStore.device)));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(static_cast<int64_t>(gpuStore.slot)));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(gpuStore.stateCount));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(gpuStore.telemetryEpoch));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(gpuStore.statesDevice));
+    hash = simRegionSchedulerShapeHashCombine(hash,gpuStore.frontierValid ? 1ull : 0ull);
+    hash = simRegionSchedulerShapeHashCombine(hash,
+                                             static_cast<uint64_t>(static_cast<int64_t>(gpuStore.frontierRunningMin)));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(gpuStore.frontierCapacity));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(gpuStore.frontierCount));
+    hash = simRegionSchedulerShapeHashCombine(hash,static_cast<uint64_t>(gpuStore.frontierStatesDevice));
+  }
+  return hash;
+}
+
+inline uint64_t simRegionSchedulerShapeScoreMatrixFingerprint(const SimKernelContext &context)
+{
+  uint64_t hash = 1469598103934665603ull;
+  for(size_t row = 0; row < 128; ++row)
+  {
+    for(size_t col = 0; col < 128; ++col)
+    {
+      hash = simRegionSchedulerShapeHashCombine(
+        hash,
+        static_cast<uint64_t>(static_cast<int64_t>(context.scoreMatrix[row][col])));
+    }
+  }
+  return hash;
+}
+
+struct SimRegionSchedulerShapeTelemetrySignature
+{
+  SimRegionSchedulerShapeTelemetrySignature():
+    runningMin(0),
+    safeStoreFingerprint(0),
+    scoreMatrixFingerprint(0),
+    cells(0)
+  {
+  }
+
+  long runningMin;
+  uint64_t safeStoreFingerprint;
+  uint64_t scoreMatrixFingerprint;
+  vector<uint64_t> filterStartCoords;
+  uint64_t cells;
+};
+
+struct SimRegionSchedulerShapeTelemetryState
+{
+  SimRegionSchedulerShapeTelemetryState():
+    hasPrevious(false),
+    currentRunLength(0)
+  {
+  }
+
+  bool hasPrevious;
+  SimRegionSchedulerShapeTelemetrySignature previous;
+  uint64_t currentRunLength;
+};
+
+inline std::mutex &simRegionSchedulerShapeTelemetryMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
+inline SimRegionSchedulerShapeTelemetryState &simRegionSchedulerShapeTelemetryState()
+{
+  static SimRegionSchedulerShapeTelemetryState state;
+  return state;
+}
+
+inline void recordSimRegionSchedulerShapeTelemetryMax(std::atomic<uint64_t> &target,uint64_t candidate)
+{
+  uint64_t current = target.load(std::memory_order_relaxed);
+  while(current < candidate &&
+        !target.compare_exchange_weak(current,
+                                      candidate,
+                                      std::memory_order_relaxed,
+                                      std::memory_order_relaxed))
+  {
+  }
+}
+
+inline void recordSimRegionSchedulerShapeTelemetry(const SimPathWorkset &workset,
+                                                   const vector<uint64_t> &affectedStartCoords,
+                                                   const SimKernelContext &context)
+{
+  const uint64_t callBands = static_cast<uint64_t>(workset.bands.size());
+  const uint64_t callCells =
+    workset.cellCount != 0 ? workset.cellCount : simPathWorksetCellCountFromBands(workset.bands);
+  simRegionSchedulerShapeTelemetryCallCount().fetch_add(1,std::memory_order_relaxed);
+  simRegionSchedulerShapeTelemetryBandCount().fetch_add(callBands,std::memory_order_relaxed);
+  if(callBands == 1)
+  {
+    simRegionSchedulerShapeTelemetrySingleBandCallCount().fetch_add(1,std::memory_order_relaxed);
+  }
+  simRegionSchedulerShapeTelemetryAffectedStartCount().fetch_add(
+    static_cast<uint64_t>(affectedStartCoords.size()),
+    std::memory_order_relaxed);
+  simRegionSchedulerShapeTelemetryCellCount().fetch_add(callCells,std::memory_order_relaxed);
+
+  for(size_t bandIndex = 0; bandIndex < workset.bands.size(); ++bandIndex)
+  {
+    const SimUpdateBand &band = workset.bands[bandIndex];
+    const uint64_t rowCount =
+      band.rowEnd >= band.rowStart ? static_cast<uint64_t>(band.rowEnd - band.rowStart + 1) : 0;
+    const uint64_t colCount =
+      band.colEnd >= band.colStart ? static_cast<uint64_t>(band.colEnd - band.colStart + 1) : 0;
+    recordSimRegionSchedulerShapeTelemetryMax(simRegionSchedulerShapeTelemetryMaxBandRows(),
+                                              rowCount);
+    recordSimRegionSchedulerShapeTelemetryMax(simRegionSchedulerShapeTelemetryMaxBandCols(),
+                                              colCount);
+  }
+
+  SimRegionSchedulerShapeTelemetrySignature signature;
+  signature.runningMin = context.runningMin;
+  signature.safeStoreFingerprint = simRegionSchedulerShapeSafeStoreFingerprint(context);
+  signature.scoreMatrixFingerprint = simRegionSchedulerShapeScoreMatrixFingerprint(context);
+  signature.filterStartCoords = makeSortedUniqueSimStartCoords(affectedStartCoords);
+  signature.cells = callCells;
+
+  std::lock_guard<std::mutex> lock(simRegionSchedulerShapeTelemetryMutex());
+  SimRegionSchedulerShapeTelemetryState &state = simRegionSchedulerShapeTelemetryState();
+  if(state.hasPrevious)
+  {
+    const bool sameRunningMin = state.previous.runningMin == signature.runningMin;
+    const bool sameSafeStore = state.previous.safeStoreFingerprint == signature.safeStoreFingerprint;
+    const bool sameScoreMatrix =
+      state.previous.scoreMatrixFingerprint == signature.scoreMatrixFingerprint;
+    const bool sameFilter = state.previous.filterStartCoords == signature.filterStartCoords;
+    if(sameRunningMin && sameSafeStore && sameScoreMatrix && sameFilter)
+    {
+      if(state.currentRunLength == 1)
+      {
+        simRegionSchedulerShapeTelemetryMergeableCallCount().fetch_add(1,
+                                                                       std::memory_order_relaxed);
+        simRegionSchedulerShapeTelemetryMergeableCellCount().fetch_add(state.previous.cells,
+                                                                       std::memory_order_relaxed);
+      }
+      simRegionSchedulerShapeTelemetryMergeableCallCount().fetch_add(1,
+                                                                     std::memory_order_relaxed);
+      simRegionSchedulerShapeTelemetryMergeableCellCount().fetch_add(callCells,
+                                                                     std::memory_order_relaxed);
+      simRegionSchedulerShapeTelemetryEstimatedLaunchReductionCount().fetch_add(
+        1,
+        std::memory_order_relaxed);
+      ++state.currentRunLength;
+    }
+    else
+    {
+      if(!sameRunningMin)
+      {
+        simRegionSchedulerShapeTelemetryRejectedRunningMinCount().fetch_add(
+          1,
+          std::memory_order_relaxed);
+      }
+      if(!sameSafeStore)
+      {
+        simRegionSchedulerShapeTelemetryRejectedSafeStoreEpochCount().fetch_add(
+          1,
+          std::memory_order_relaxed);
+      }
+      if(!sameScoreMatrix)
+      {
+        simRegionSchedulerShapeTelemetryRejectedScoreMatrixCount().fetch_add(
+          1,
+          std::memory_order_relaxed);
+      }
+      if(!sameFilter)
+      {
+        simRegionSchedulerShapeTelemetryRejectedFilterCount().fetch_add(
+          1,
+          std::memory_order_relaxed);
+      }
+      state.currentRunLength = 1;
+    }
+  }
+  else
+  {
+    state.hasPrevious = true;
+    state.currentRunLength = 1;
+  }
+  state.previous = signature;
+}
+
+inline void getSimRegionSchedulerShapeTelemetryStats(SimRegionSchedulerShapeTelemetryStats &stats)
+{
+  stats.calls = simRegionSchedulerShapeTelemetryCallCount().load(std::memory_order_relaxed);
+  stats.bands = simRegionSchedulerShapeTelemetryBandCount().load(std::memory_order_relaxed);
+  stats.singleBandCalls =
+    simRegionSchedulerShapeTelemetrySingleBandCallCount().load(std::memory_order_relaxed);
+  stats.affectedStarts =
+    simRegionSchedulerShapeTelemetryAffectedStartCount().load(std::memory_order_relaxed);
+  stats.cells = simRegionSchedulerShapeTelemetryCellCount().load(std::memory_order_relaxed);
+  stats.maxBandRows = simRegionSchedulerShapeTelemetryMaxBandRows().load(std::memory_order_relaxed);
+  stats.maxBandCols = simRegionSchedulerShapeTelemetryMaxBandCols().load(std::memory_order_relaxed);
+  stats.mergeableCalls =
+    simRegionSchedulerShapeTelemetryMergeableCallCount().load(std::memory_order_relaxed);
+  stats.mergeableCells =
+    simRegionSchedulerShapeTelemetryMergeableCellCount().load(std::memory_order_relaxed);
+  stats.estimatedLaunchReduction =
+    simRegionSchedulerShapeTelemetryEstimatedLaunchReductionCount().load(std::memory_order_relaxed);
+  stats.rejectedRunningMin =
+    simRegionSchedulerShapeTelemetryRejectedRunningMinCount().load(std::memory_order_relaxed);
+  stats.rejectedSafeStoreEpoch =
+    simRegionSchedulerShapeTelemetryRejectedSafeStoreEpochCount().load(std::memory_order_relaxed);
+  stats.rejectedScoreMatrix =
+    simRegionSchedulerShapeTelemetryRejectedScoreMatrixCount().load(std::memory_order_relaxed);
+  stats.rejectedFilter =
+    simRegionSchedulerShapeTelemetryRejectedFilterCount().load(std::memory_order_relaxed);
+}
+
 inline void rebuildSimCandidateStartIndex(SimKernelContext &context);
 inline long findSimCandidateIndex(const SimCandidateStartIndex &index,long startI,long startJ);
 inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<uint64_t> &uniqueCoords,
@@ -6126,6 +7405,11 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
                                              SimKernelContext &context,
                                              bool benchmarkEnabled,
                                              bool proposalCandidates);
+inline void runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  const vector<SimScanCudaCandidateState> &candidateStates,
+  int runningMin,
+  const vector<SimScanCudaCandidateState> &allCandidateStates);
 inline void invalidateSimSafeCandidateStateStore(SimKernelContext &context);
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
                                                          SimKernelContext &context);
@@ -7523,6 +8807,25 @@ inline void applySimCudaInitialRunSummary(const SimScanCudaInitialRunSummary &su
                                  stats);
 }
 
+inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSummary &summary,
+                                                  const SimKernelContext &context)
+{
+  const long startI = static_cast<long>(unpackSimCoordI(summary.startCoord));
+  const long startJ = static_cast<long>(unpackSimCoordJ(summary.startCoord));
+  const long candidateIndex = findSimCandidateIndex(context.candidateStartIndex,startI,startJ);
+  if(candidateIndex < 0 || candidateIndex >= context.candidateCount)
+  {
+    return false;
+  }
+
+  const SimCandidate &candidate = context.candidates[static_cast<size_t>(candidateIndex)];
+  return candidate.SCORE > static_cast<long>(summary.score) &&
+         candidate.TOP <= static_cast<long>(summary.endI) &&
+         candidate.BOT >= static_cast<long>(summary.endI) &&
+         candidate.LEFT <= static_cast<long>(summary.minEndJ) &&
+         candidate.RIGHT >= static_cast<long>(summary.maxEndJ);
+}
+
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
                                                          SimKernelContext &context)
 {
@@ -7601,6 +8904,55 @@ inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSu
     applySimCudaInitialRunSummary(summaries[summaryIndex],context,stats);
   }
   refreshSimRunningMin(context);
+}
+
+inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  uint64_t logicalEventCount,
+  SimKernelContext &context,
+  int chunkSize,
+  SimInitialContextApplyChunkSkipStats *statsOut = NULL)
+{
+  SimInitialContextApplyChunkSkipStats stats;
+  SimCandidateStats *candidateStats = context.statsEnabled ? &context.stats : NULL;
+  if(candidateStats) candidateStats->eventsSeen += logicalEventCount;
+  const size_t safeChunkSize = static_cast<size_t>(chunkSize > 0 ? chunkSize : 1);
+
+  for(size_t chunkBase = 0; chunkBase < summaries.size(); chunkBase += safeChunkSize)
+  {
+    ++stats.chunkCount;
+    const size_t chunkEnd = min(chunkBase + safeChunkSize,summaries.size());
+    bool chunkIsCoveredNoOp = true;
+    for(size_t summaryIndex = chunkBase; summaryIndex < chunkEnd; ++summaryIndex)
+    {
+      if(!simCudaInitialRunSummaryIsContextNoOp(summaries[summaryIndex],context))
+      {
+        chunkIsCoveredNoOp = false;
+        break;
+      }
+    }
+
+    const uint64_t chunkSummaryCount = static_cast<uint64_t>(chunkEnd - chunkBase);
+    if(chunkIsCoveredNoOp)
+    {
+      ++stats.chunkSkippedCount;
+      stats.summarySkippedCount += chunkSummaryCount;
+      continue;
+    }
+
+    ++stats.chunkReplayedCount;
+    stats.summaryReplayedCount += chunkSummaryCount;
+    for(size_t summaryIndex = chunkBase; summaryIndex < chunkEnd; ++summaryIndex)
+    {
+      applySimCudaInitialRunSummary(summaries[summaryIndex],context,candidateStats);
+    }
+  }
+
+  refreshSimRunningMin(context);
+  if(statsOut != NULL)
+  {
+    *statsOut = stats;
+  }
 }
 
 inline void mergeSimCudaCandidateStatesIntoContext(const vector<SimScanCudaCandidateState> &states,
@@ -9234,7 +10586,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    const bool proposalCandidates = simCudaInitialProposalRequestEnabledRuntime();
 	    const bool reduceCandidates = simCudaInitialReduceRequestEnabledRuntime();
 	    const bool persistInitialCandidateStatesOnDevice =
-	      simCudaInitialReducePersistOnDeviceRuntime() ||
+	      (simCudaInitialReducePersistOnDeviceRuntime() &&
+	       !simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime()) ||
 	      simCudaInitialProposalResidencyEnabledRuntime();
 	    vector<SimScanCudaRequest> cudaRequests(1);
 	    cudaRequests[0].kind = SIM_SCAN_CUDA_REQUEST_INITIAL;
@@ -9274,12 +10627,24 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	            simSecondsToNanoseconds(cudaBatchResult.initialSegmentedReduceSeconds));
 	          recordSimInitialSegmentedCompactNanoseconds(
 	            simSecondsToNanoseconds(cudaBatchResult.initialSegmentedCompactSeconds));
-	          recordSimInitialTopKNanoseconds(
-	            simSecondsToNanoseconds(cudaBatchResult.initialTopKSeconds));
-	          recordSimInitialSegmentedStateStats(cudaBatchResult.initialSegmentedTileStateCount,
-	                                             cudaBatchResult.initialSegmentedGroupedStateCount);
-	          if(cudaBatchResult.usedInitialProposalV2Path)
-	          {
+		          recordSimInitialTopKNanoseconds(
+		            simSecondsToNanoseconds(cudaBatchResult.initialTopKSeconds));
+		          recordSimInitialSegmentedStateStats(cudaBatchResult.initialSegmentedTileStateCount,
+		                                             cudaBatchResult.initialSegmentedGroupedStateCount);
+			          recordSimInitialSummaryPackedD2H(
+			            cudaBatchResult.usedInitialPackedSummaryD2H,
+			            cudaBatchResult.initialSummaryPackedBytesD2H,
+			            cudaBatchResult.initialSummaryUnpackedEquivalentBytesD2H,
+			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryPackSeconds),
+			            cudaBatchResult.initialSummaryPackedD2HFallbacks);
+			          recordSimInitialSummaryHostCopyElision(
+			            cudaBatchResult.usedInitialSummaryHostCopyElision,
+			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryD2HCopySeconds),
+			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryUnpackSeconds),
+			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryResultMaterializeSeconds),
+			            cudaBatchResult.initialSummaryHostCopyElidedBytes);
+			          if(cudaBatchResult.usedInitialProposalV2Path)
+		          {
 	            recordSimInitialProposalV2(1,cudaBatchResult.initialProposalV2RequestCount);
 	          }
 	          if(cudaBatchResult.usedInitialProposalV2DirectTopKPath)
@@ -9292,11 +10657,15 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	        }
 	      recordSimInitialEvents(cudaResults[0].eventCount);
 	      recordSimInitialRunSummaries(cudaResults[0].runSummaryCount);
-	      if(!cudaRequests[0].reduceCandidates && !cudaRequests[0].proposalCandidates)
-	      {
-	        recordSimInitialSummaryBytesD2H(static_cast<uint64_t>(cudaResults[0].initialRunSummaries.size()) *
-	                                        static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
-	      }
+		      if(!cudaRequests[0].reduceCandidates && !cudaRequests[0].proposalCandidates)
+		      {
+		        const uint64_t summaryBytesD2H =
+		          static_cast<uint64_t>(cudaResults[0].initialRunSummaries.size()) *
+		          (cudaBatchResult.usedInitialPackedSummaryD2H ?
+		           static_cast<uint64_t>(sizeof(SimScanCudaPackedInitialRunSummary16)) :
+		           static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
+		        recordSimInitialSummaryBytesD2H(summaryBytesD2H);
+		      }
 		      if(cudaRequests[0].reduceCandidates || cudaRequests[0].proposalCandidates)
 		      {
 	        recordSimInitialAllCandidateStates(cudaResults[0].allCandidateStateCount);
@@ -9309,6 +10678,11 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	        {
 	          recordSimInitialReducedCandidates(static_cast<uint64_t>(cudaResults[0].candidateStates.size()));
 	          recordSimInitialReduceReplayStats(cudaBatchResult.initialReduceReplayStats);
+	          runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(
+	            cudaResults[0].initialRunSummaries,
+	            cudaResults[0].candidateStates,
+	            cudaResults[0].runningMin,
+	            cudaResults[0].allCandidateStates);
 	        }
 	        else
 	        {
@@ -9439,15 +10813,331 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  }
 
 	  recordSimInitialScanBackend(usedCuda,scanTaskCount,scanLaunchCount);
-	  if(benchmarkEnabled)
+		  if(benchmarkEnabled)
+		  {
+		    recordSimInitialScanNanoseconds(simElapsedNanoseconds(initialScanStart));
+		  }
+		}
+
+	inline SimScanCudaFrontierDigest digestSimCudaFrontierStatesForTransducerShadow(
+	  const vector<SimScanCudaCandidateState> &states,
+	  int runningMin)
+	{
+	  SimScanCudaFrontierDigest digest;
+	  resetSimScanCudaFrontierDigest(digest,static_cast<int>(states.size()),runningMin);
+	  for(size_t i = 0; i < states.size(); ++i)
 	  {
-	    recordSimInitialScanNanoseconds(simElapsedNanoseconds(initialScanStart));
+	    updateSimScanCudaFrontierDigest(digest,states[i],static_cast<int>(i));
+	  }
+	  return digest;
+	}
+
+	inline void runSimCudaInitialFrontierTransducerShadowIfEnabled(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  const SimKernelContext &context)
+	{
+	  if(!simCudaInitialFrontierTransducerShadowEnabledRuntime())
+	  {
+	    return;
+	  }
+
+	  vector<int> runBases(1,0);
+	  vector<int> runTotals(1,static_cast<int>(summaries.size()));
+	  vector<SimScanCudaFrontierTransducerSegmentedShadowResult> shadowResults;
+	  double shadowSeconds = 0.0;
+	  string shadowError;
+	  uint64_t mismatchCount = 0;
+	  uint64_t digestD2HBytes = 0;
+	  uint64_t summaryReplayCount = 0;
+	  const bool callOk =
+	    sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
+	      summaries,
+	      runBases,
+	      runTotals,
+	      simCudaInitialFrontierTransducerShadowChunkSizeRuntime(),
+	      &shadowResults,
+	      &shadowSeconds,
+	      &shadowError);
+	  if(!callOk || shadowResults.size() != 1u)
+	  {
+	    mismatchCount = 1;
+	  }
+	  else
+	  {
+	    vector<SimScanCudaCandidateState> cpuStates;
+	    collectSimContextCandidateStates(context,cpuStates);
+	    const SimScanCudaFrontierDigest cpuDigest =
+	      digestSimCudaFrontierStatesForTransducerShadow(
+	        cpuStates,
+	        static_cast<int>(context.runningMin));
+	    const SimScanCudaFrontierTransducerSegmentedShadowResult &shadow = shadowResults[0];
+	    digestD2HBytes =
+	      static_cast<uint64_t>(sizeof(SimScanCudaFrontierDigest)) +
+	      static_cast<uint64_t>(sizeof(SimScanCudaFrontierTransducerShadowStats)) +
+	      static_cast<uint64_t>(shadow.candidateStates.size()) *
+	        static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+	    summaryReplayCount = shadow.stats.summaryReplayCount;
+	    const bool digestMatch =
+	      cpuDigest.candidateCount == shadow.digest.candidateCount &&
+	      cpuDigest.runningMin == shadow.digest.runningMin &&
+	      cpuDigest.slotOrderHash == shadow.digest.slotOrderHash &&
+	      cpuDigest.candidateIdentityHash == shadow.digest.candidateIdentityHash &&
+	      cpuDigest.scoreHash == shadow.digest.scoreHash &&
+	      cpuDigest.boundsHash == shadow.digest.boundsHash;
+	    if(shadow.runningMin != static_cast<int>(context.runningMin) ||
+	       shadow.candidateStates.size() != cpuStates.size() ||
+	       !digestMatch)
+	    {
+	      mismatchCount = 1;
+	    }
+	    else
+	    {
+	      for(size_t i = 0; i < cpuStates.size(); ++i)
+	      {
+	        if(memcmp(&cpuStates[i],
+	                  &shadow.candidateStates[i],
+	                  sizeof(SimScanCudaCandidateState)) != 0)
+	        {
+	          mismatchCount = 1;
+	          break;
+	        }
+	      }
+	    }
+	  }
+	  recordSimInitialFrontierTransducerShadow(
+	    simSecondsToNanoseconds(shadowSeconds),
+	    digestD2HBytes,
+	    summaryReplayCount,
+	    mismatchCount);
+	  if(mismatchCount != 0 && simCudaValidateEnabledRuntime())
+	  {
+	    fprintf(stderr,
+	            "SIM CUDA initial frontier transducer shadow mismatch%s%s\n",
+	            shadowError.empty() ? "" : ": ",
+	            shadowError.empty() ? "" : shadowError.c_str());
 	  }
 	}
 
-inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
-                                                     uint64_t eventCount,
-                                                     SimKernelContext &context,
+	inline bool simCudaCandidateStateVectorsEqualOrdered(
+	  const vector<SimScanCudaCandidateState> &lhs,
+	  const vector<SimScanCudaCandidateState> &rhs)
+	{
+	  if(lhs.size() != rhs.size())
+	  {
+	    return false;
+	  }
+	  for(size_t i = 0; i < lhs.size(); ++i)
+	  {
+	    if(memcmp(&lhs[i],&rhs[i],sizeof(SimScanCudaCandidateState)) != 0)
+	    {
+	      return false;
+	    }
+	  }
+	  return true;
+	}
+
+	inline size_t simCudaFirstCandidateStateMismatchIndexOrdered(
+	  const vector<SimScanCudaCandidateState> &lhs,
+	  const vector<SimScanCudaCandidateState> &rhs)
+	{
+	  const size_t limit = min(lhs.size(),rhs.size());
+	  for(size_t i = 0; i < limit; ++i)
+	  {
+	    if(memcmp(&lhs[i],&rhs[i],sizeof(SimScanCudaCandidateState)) != 0)
+	    {
+	      return i;
+	    }
+	  }
+	  return limit;
+	}
+
+	inline void simCudaPrintCandidateStateForShadow(const char *label,
+	                                                const SimScanCudaCandidateState &state)
+	{
+	  fprintf(stderr,
+	          "%s(score=%d start=(%d,%d) end=(%d,%d) box=(%d,%d,%d,%d))",
+	          label,
+	          state.score,
+	          state.startI,
+	          state.startJ,
+	          state.endI,
+	          state.endJ,
+	          state.top,
+	          state.bot,
+	          state.left,
+	          state.right);
+	}
+
+	inline vector<SimScanCudaCandidateState> simCudaSortedCandidateStatesForShadow(
+	  vector<SimScanCudaCandidateState> states)
+	{
+	  sort(states.begin(),states.end(),
+	       [](const SimScanCudaCandidateState &lhs,
+	          const SimScanCudaCandidateState &rhs)
+	       {
+	         const uint64_t lhsStart = simScanCudaCandidateStateStartCoord(lhs);
+	         const uint64_t rhsStart = simScanCudaCandidateStateStartCoord(rhs);
+	         if(lhsStart != rhsStart) return lhsStart < rhsStart;
+	         if(lhs.score != rhs.score) return lhs.score < rhs.score;
+	         if(lhs.endI != rhs.endI) return lhs.endI < rhs.endI;
+	         if(lhs.endJ != rhs.endJ) return lhs.endJ < rhs.endJ;
+	         if(lhs.top != rhs.top) return lhs.top < rhs.top;
+	         if(lhs.bot != rhs.bot) return lhs.bot < rhs.bot;
+	         if(lhs.left != rhs.left) return lhs.left < rhs.left;
+	         return lhs.right < rhs.right;
+	       });
+	  return states;
+	}
+
+	inline bool simCudaCandidateStateVectorsEqualAsSet(
+	  const vector<SimScanCudaCandidateState> &lhs,
+	  const vector<SimScanCudaCandidateState> &rhs)
+	{
+	  return simCudaCandidateStateVectorsEqualOrdered(
+	    simCudaSortedCandidateStatesForShadow(lhs),
+	    simCudaSortedCandidateStatesForShadow(rhs));
+	}
+
+	inline bool simCudaCandidateStatesContainStartCoord(
+	  const vector<SimScanCudaCandidateState> &states,
+	  uint64_t startCoord)
+	{
+	  for(size_t i = 0; i < states.size(); ++i)
+	  {
+	    if(simScanCudaCandidateStateStartCoord(states[i]) == startCoord)
+	    {
+	      return true;
+	    }
+	  }
+	  return false;
+	}
+
+	inline vector<SimScanCudaCandidateState> buildSimCudaInitialShadowExpectedSafeStore(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  const vector<SimScanCudaCandidateState> &frontierStates,
+	  int runningMin)
+	{
+	  vector<SimScanCudaCandidateState> allStates;
+	  reduceSimCudaInitialRunSummariesToAllCandidateStates(summaries,NULL,allStates);
+	  vector<SimScanCudaCandidateState> kept;
+	  kept.reserve(allStates.size());
+	  for(size_t i = 0; i < allStates.size(); ++i)
+	  {
+	    const uint64_t startCoord = simScanCudaCandidateStateStartCoord(allStates[i]);
+	    if(allStates[i].score > runningMin ||
+	       simCudaCandidateStatesContainStartCoord(frontierStates,startCoord))
+	    {
+	      kept.push_back(allStates[i]);
+	    }
+	  }
+	  return kept;
+	}
+
+	inline void runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  const vector<SimScanCudaCandidateState> &candidateStates,
+	  int runningMin,
+	  const vector<SimScanCudaCandidateState> &allCandidateStates)
+	{
+	  if(!simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime() ||
+	     summaries.empty())
+	  {
+	    return;
+	  }
+
+	  vector<SimScanCudaCandidateState> cpuCandidateStates;
+	  int cpuRunningMin = 0;
+	  reduceSimCudaInitialRunSummariesToCandidateStates(
+	    summaries,
+	    cpuCandidateStates,
+	    cpuRunningMin);
+	  const vector<SimScanCudaCandidateState> cpuSafeStoreStates =
+	    buildSimCudaInitialShadowExpectedSafeStore(
+	      summaries,
+	      cpuCandidateStates,
+	      cpuRunningMin);
+
+	  const bool runningMinMismatch = runningMin != cpuRunningMin;
+	  const bool candidateCountMismatch =
+	    candidateStates.size() != cpuCandidateStates.size();
+	  const bool candidateValueMismatch =
+	    !candidateCountMismatch &&
+	    !simCudaCandidateStateVectorsEqualOrdered(candidateStates,cpuCandidateStates);
+	  const bool frontierMatch =
+	    !runningMinMismatch &&
+	    !candidateCountMismatch &&
+	    !candidateValueMismatch;
+	  const bool safeStoreMatch =
+	    simCudaCandidateStateVectorsEqualAsSet(allCandidateStates,cpuSafeStoreStates);
+	  recordSimInitialOrderedSegmentedV3Shadow(frontierMatch ? 0 : 1,
+	                                           runningMinMismatch ? 1 : 0,
+	                                           safeStoreMatch ? 0 : 1,
+	                                           candidateCountMismatch ? 1 : 0,
+	                                           candidateValueMismatch ? 1 : 0);
+	  if(!frontierMatch || !safeStoreMatch)
+	  {
+	    fprintf(stderr,
+	            "SIM CUDA initial ordered_segmented_v3 shadow mismatch: "
+	            "frontier=%s safe_store=%s summaries=%zu gpu_candidates=%zu cpu_candidates=%zu "
+	            "gpu_running_min=%d cpu_running_min=%d\n",
+	            frontierMatch ? "match" : "mismatch",
+	            safeStoreMatch ? "match" : "mismatch",
+	            summaries.size(),
+	            candidateStates.size(),
+	            cpuCandidateStates.size(),
+	            runningMin,
+	            cpuRunningMin);
+	    if(candidateValueMismatch)
+	    {
+	      const size_t mismatchIndex =
+	        simCudaFirstCandidateStateMismatchIndexOrdered(candidateStates,cpuCandidateStates);
+	      if(mismatchIndex < candidateStates.size() &&
+	         mismatchIndex < cpuCandidateStates.size())
+	      {
+	        fprintf(stderr,
+	                "SIM CUDA initial ordered_segmented_v3 first frontier mismatch index=%zu ",
+	                mismatchIndex);
+	        simCudaPrintCandidateStateForShadow("gpu=",
+	                                            candidateStates[mismatchIndex]);
+	        fprintf(stderr," ");
+	        simCudaPrintCandidateStateForShadow("cpu=",
+	                                            cpuCandidateStates[mismatchIndex]);
+	        fprintf(stderr,"\n");
+	      }
+	    }
+	    if(!safeStoreMatch)
+	    {
+	      const vector<SimScanCudaCandidateState> sortedGpuSafeStore =
+	        simCudaSortedCandidateStatesForShadow(allCandidateStates);
+	      const vector<SimScanCudaCandidateState> sortedCpuSafeStore =
+	        simCudaSortedCandidateStatesForShadow(cpuSafeStoreStates);
+	      const size_t mismatchIndex =
+	        simCudaFirstCandidateStateMismatchIndexOrdered(sortedGpuSafeStore,
+	                                                       sortedCpuSafeStore);
+	      fprintf(stderr,
+	              "SIM CUDA initial ordered_segmented_v3 safe-store mismatch index=%zu "
+	              "gpu_safe_store=%zu cpu_safe_store=%zu",
+	              mismatchIndex,
+	              sortedGpuSafeStore.size(),
+	              sortedCpuSafeStore.size());
+	      if(mismatchIndex < sortedGpuSafeStore.size() &&
+	         mismatchIndex < sortedCpuSafeStore.size())
+	      {
+	        fprintf(stderr," ");
+	        simCudaPrintCandidateStateForShadow("gpu=",
+	                                            sortedGpuSafeStore[mismatchIndex]);
+	        fprintf(stderr," ");
+	        simCudaPrintCandidateStateForShadow("cpu=",
+	                                            sortedCpuSafeStore[mismatchIndex]);
+	      }
+	      fprintf(stderr,"\n");
+	    }
+	  }
+	}
+
+	inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
+	                                                     uint64_t eventCount,
+	                                                     SimKernelContext &context,
                                                      bool benchmarkEnabled)
 {
   context.proposalCandidateLoop = false;
@@ -9458,7 +11148,21 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   const std::chrono::steady_clock::time_point contextApplyStart =
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-  mergeSimCudaInitialRunSummaries(summaries,eventCount,context);
+  if(simCudaInitialContextApplyChunkSkipEnabledRuntime())
+  {
+    SimInitialContextApplyChunkSkipStats chunkSkipStats;
+    mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
+      summaries,
+      eventCount,
+      context,
+      simCudaInitialContextApplyChunkSkipChunkSize(),
+      &chunkSkipStats);
+    recordSimInitialContextApplyChunkSkipStats(chunkSkipStats);
+  }
+  else
+  {
+    mergeSimCudaInitialRunSummaries(summaries,eventCount,context);
+  }
   if(benchmarkEnabled)
   {
     recordSimInitialScanCpuContextApplyNanoseconds(simElapsedNanoseconds(contextApplyStart));
@@ -9466,7 +11170,7 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
   if(maintainSafeStore)
   {
     bool maintainedSafeStoreOnDevice = false;
-    if(simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime())
+    if(simCudaInitialSafeStoreHandoffEnabledRuntime())
     {
       vector<SimScanCudaCandidateState> finalCandidateStates;
       collectSimContextCandidateStates(context,finalCandidateStates);
@@ -9570,11 +11274,12 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
       }
     }
   }
-  if(benchmarkEnabled)
-  {
-    recordSimInitialScanCpuMergeNanoseconds(simElapsedNanoseconds(cpuMergeStart));
-  }
-}
+	  if(benchmarkEnabled)
+	  {
+	    recordSimInitialScanCpuMergeNanoseconds(simElapsedNanoseconds(cpuMergeStart));
+	  }
+	  runSimCudaInitialFrontierTransducerShadowIfEnabled(summaries,context);
+	}
 
 inline bool collectSimCudaProposalStatesForLoop(int maxProposalCount,
                                                 const SimKernelContext &context,
@@ -12379,6 +14084,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       {
         recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
       }
+      recordSimRegionBucketedTrueBatch(cudaBatchResult);
       if(recordSafeWindowExecTelemetry)
       {
         recordSimSafeWindowExecGeometry(workset);
@@ -12457,6 +14163,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     {
       recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
     }
+    recordSimRegionBucketedTrueBatch(cudaBatchResult);
     if(recordSafeWindowExecTelemetry)
     {
       recordSimSafeWindowExecGeometry(workset);
@@ -12716,6 +14423,7 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
       {
         recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
       }
+      recordSimRegionBucketedTrueBatch(cudaBatchResult);
       recordSimRegionScanBackend(true,cudaBatchResult.taskCount,cudaBatchResult.launchCount);
     }
     if(hasHostSafeStore)
@@ -12768,6 +14476,7 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
     {
       recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
     }
+    recordSimRegionBucketedTrueBatch(cudaBatchResult);
     recordSimRegionScanBackend(true,cudaBatchResult.taskCount,cudaBatchResult.launchCount);
   }
 
@@ -12911,6 +14620,10 @@ inline bool applySimSafeWindowUpdate(const char *A,
                                      bool recordTelemetry,
                                      SimSafeWorksetFallbackReason *fallbackReason)
 {
+  if(recordTelemetry && simRegionSchedulerShapeTelemetryRuntime())
+  {
+    recordSimRegionSchedulerShapeTelemetry(workset,affectedStartCoords,context);
+  }
   return applySimSafeAggregatedGpuUpdate(A,
                                          B,
                                          workset,
@@ -12918,8 +14631,181 @@ inline bool applySimSafeWindowUpdate(const char *A,
                                          context,
                                          recordTelemetry,
                                          false,
-                                         true,
-                                         fallbackReason);
+	                                         true,
+	                                         fallbackReason);
+}
+
+inline bool collectSimSafeStoreStatesForShadow(const SimKernelContext &context,
+                                               vector<SimScanCudaCandidateState> &outStates,
+                                               string *errorOut = NULL)
+{
+  outStates.clear();
+  if(context.safeCandidateStateStore.valid)
+  {
+    outStates = context.safeCandidateStateStore.states;
+    if(errorOut != NULL)
+    {
+      errorOut->clear();
+    }
+    return true;
+  }
+  if(!context.gpuSafeCandidateStateStore.valid)
+  {
+    if(errorOut != NULL)
+    {
+      errorOut->clear();
+    }
+    return true;
+  }
+
+  const long queryLength = static_cast<long>(context.workspace.HH.size()) - 1;
+  const long targetLength = static_cast<long>(context.workspace.CC.size()) - 1;
+  if(queryLength <= 0 || targetLength <= 0)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "invalid context dimensions for safe-window shadow safe-store export";
+    }
+    return false;
+  }
+  vector<SimUpdateBand> fullBands(1);
+  fullBands[0].rowStart = 1;
+  fullBands[0].rowEnd = queryLength;
+  fullBands[0].colStart = 1;
+  fullBands[0].colEnd = targetLength;
+  return collectSimCudaPersistentSafeCandidateStatesIntersectingBands(queryLength,
+                                                                      targetLength,
+                                                                      context.gpuSafeCandidateStateStore,
+                                                                      fullBands,
+                                                                      outStates,
+                                                                      errorOut);
+}
+
+inline void installSimSafeStoreStatesForShadow(const vector<SimScanCudaCandidateState> &states,
+                                               bool valid,
+                                               SimKernelContext &context)
+{
+  resetSimCandidateStateStore(context.safeCandidateStateStore,valid);
+  if(valid)
+  {
+    context.safeCandidateStateStore.states = states;
+    rebuildSimCandidateStateStoreIndex(context.safeCandidateStateStore);
+  }
+}
+
+inline bool simSafeWindowShadowContextsEqual(const SimKernelContext &lhs,
+                                             const SimKernelContext &rhs,
+                                             string *errorOut = NULL)
+{
+  if(!simCandidateContextsEqual(lhs,rhs))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "candidate frontier mismatch";
+    }
+    return false;
+  }
+
+  vector<SimScanCudaCandidateState> lhsSafeStoreStates;
+  vector<SimScanCudaCandidateState> rhsSafeStoreStates;
+  string lhsError;
+  string rhsError;
+  if(!collectSimSafeStoreStatesForShadow(lhs,lhsSafeStoreStates,&lhsError) ||
+     !collectSimSafeStoreStatesForShadow(rhs,rhsSafeStoreStates,&rhsError))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = !lhsError.empty() ? lhsError : rhsError;
+    }
+    return false;
+  }
+  if(!simCudaCandidateStateVectorsEqualAsSet(lhsSafeStoreStates,rhsSafeStoreStates))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "safe-store mismatch";
+    }
+    return false;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return true;
+}
+
+inline bool runSimSafeWindowFineShadow(const char *A,
+                                       const char *B,
+                                       const SimSafeWindowExecutePlan &safeWindowPlan,
+                                       const vector<uint64_t> &affectedStartCoords,
+                                       const SimKernelContext &context,
+                                       bool force)
+{
+  if((!force && !simSafeWindowFineShadowEnabledRuntime()) ||
+     !safeWindowPlan.rawWorkset.hasWorkset ||
+     !safeWindowPlan.execWorkset.hasWorkset ||
+     affectedStartCoords.empty())
+  {
+    return true;
+  }
+
+  vector<SimScanCudaCandidateState> safeStoreStates;
+  string shadowError;
+  const bool haveSafeStore =
+    context.safeCandidateStateStore.valid || context.gpuSafeCandidateStateStore.valid;
+  if(haveSafeStore &&
+     !collectSimSafeStoreStatesForShadow(context,safeStoreStates,&shadowError))
+  {
+    recordSimSafeWindowFineShadow(true);
+    if(simCudaValidateEnabledRuntime())
+    {
+      fprintf(stderr,
+              "SIM CUDA safe-window fine shadow mismatch: %s\n",
+              shadowError.empty() ? "safe-store export failed" : shadowError.c_str());
+    }
+    return false;
+  }
+
+  SimKernelContext coarsenedContext = context;
+  SimKernelContext fineContext = context;
+  installSimSafeStoreStatesForShadow(safeStoreStates,haveSafeStore,coarsenedContext);
+  installSimSafeStoreStatesForShadow(safeStoreStates,haveSafeStore,fineContext);
+
+  SimSafeWorksetFallbackReason coarsenedReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
+  SimSafeWorksetFallbackReason fineReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
+  const bool coarsenedApplied =
+    applySimSafeWindowUpdate(A,
+                             B,
+                             safeWindowPlan.execWorkset,
+                             affectedStartCoords,
+                             coarsenedContext,
+                             false,
+                             &coarsenedReason);
+  const bool fineApplied =
+    applySimSafeWindowUpdate(A,
+                             B,
+                             safeWindowPlan.rawWorkset,
+                             affectedStartCoords,
+                             fineContext,
+                             false,
+                             &fineReason);
+  bool mismatch = coarsenedApplied != fineApplied;
+  if(!mismatch && coarsenedApplied && fineApplied)
+  {
+    mismatch = !simSafeWindowShadowContextsEqual(coarsenedContext,
+                                                 fineContext,
+                                                 &shadowError);
+  }
+  recordSimSafeWindowFineShadow(mismatch);
+  if(mismatch && simCudaValidateEnabledRuntime())
+  {
+    fprintf(stderr,
+            "SIM CUDA safe-window fine shadow mismatch: coarsened_applied=%d fine_applied=%d detail=%s\n",
+            coarsenedApplied ? 1 : 0,
+            fineApplied ? 1 : 0,
+            shadowError.empty() ? "context mismatch" : shadowError.c_str());
+  }
+  return !mismatch;
 }
 
 inline void applySimLocatedUpdateRegion(const char *A,
@@ -13092,11 +14978,12 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
 	    bool useSafeWindowPath = false;
 	    bool safeWindowAttempted = false;
 	    bool safeWindowPlanUsable = false;
-	    string safeWorksetBuildError;
-	    const bool hasSafeStore = context.safeCandidateStateStore.valid || context.gpuSafeCandidateStateStore.valid;
-	    const bool compareSafeWindowWithBuilder = simSafeWindowCompareBuilderRuntime();
-	    bool builtSafeWorkset = true;
-	    bool usedSafeWorksetBuilderPath = false;
+		    string safeWorksetBuildError;
+		    const bool hasSafeStore = context.safeCandidateStateStore.valid || context.gpuSafeCandidateStateStore.valid;
+		    const bool compareSafeWindowWithBuilder = simSafeWindowCompareBuilderRuntime();
+		    const SimSafeWindowExecGeometry safeWindowExecGeometry = simSafeWindowExecGeometryRuntime();
+		    bool builtSafeWorkset = true;
+		    bool usedSafeWorksetBuilderPath = false;
 	    if(context.gpuSafeCandidateStateStore.valid && simSafeWindowCudaEnabledRuntime())
 	    {
       safeWindowAttempted = true;
@@ -13117,11 +15004,11 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
         recordSimSafeWindowSkippedUnconvertible();
         safeWorksetBuildError.clear();
       }
-      else if(buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(queryLength,
-                                                                       targetLength,
-                                                                       pathSummary,
-                                                                       context.gpuSafeCandidateStateStore,
-                                                                       safeWindowPlan,
+	      else if(buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(queryLength,
+	                                                                       targetLength,
+	                                                                       pathSummary,
+	                                                                       context.gpuSafeCandidateStateStore,
+	                                                                       safeWindowPlan,
                                                                        &safeWorksetBuildError))
       {
         recordSimSafeWindowExecution(safeWindowPlan.windowCount,
@@ -13129,6 +15016,10 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
                                      safeWindowPlan.coordBytesD2H,
                                      safeWindowPlan.gpuNanoseconds,
                                      safeWindowPlan.d2hNanoseconds);
+        if(simSafeWindowGeometryTelemetryRuntime())
+        {
+          recordSimSafeWindowGeometryTelemetry(safeWindowPlan);
+        }
         if(safeWindowPlan.overflowFallback)
         {
           recordSimSafeWindowFallbackReason(SIM_SAFE_WINDOW_FALLBACK_OVERFLOW);
@@ -13139,17 +15030,19 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
           recordSimSafeWindowFallbackReason(SIM_SAFE_WINDOW_FALLBACK_EMPTY_SELECTION);
           recordSimSafeWindowPlanFallback();
         }
-        else
-        {
-          safeWindowPlanUsable =
-            safeWindowPlan.execWorkset.hasWorkset &&
-            safeWindowPlan.affectedStartCount > 0;
-          if(safeWindowPlanUsable)
-          {
-            recordSimSafeWindowPlan(safeWindowPlan.execWorkset,
-                                    safeWindowPlan.gpuNanoseconds,
-                                    safeWindowPlan.d2hNanoseconds);
-          }
+	        else
+	        {
+	          const SimPathWorkset &safeWindowExecWorkset =
+	            selectSimSafeWindowExecutePlanWorkset(safeWindowPlan,safeWindowExecGeometry);
+	          safeWindowPlanUsable =
+	            safeWindowExecWorkset.hasWorkset &&
+	            safeWindowPlan.affectedStartCount > 0;
+	          if(safeWindowPlanUsable)
+	          {
+	            recordSimSafeWindowPlan(safeWindowExecWorkset,
+	                                    safeWindowPlan.gpuNanoseconds,
+	                                    safeWindowPlan.d2hNanoseconds);
+	          }
         }
         safeWorksetBuildError.clear();
       }
@@ -13235,11 +15128,14 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
         recordSimSafeWindowSelectedWorkset();
       }
       else
-      {
-        const SimSafeWindowPlanComparison safeWindowPlanComparison =
-          compareSimSafeWindowExecution(safeWindowPlan,
-                                        execSafeWorkset,
-                                        safeWorksetAffectedStartCount);
+	      {
+	        const SimPathWorkset &safeWindowExecWorkset =
+	          selectSimSafeWindowExecutePlanWorkset(safeWindowPlan,safeWindowExecGeometry);
+	        const SimSafeWindowPlanComparison safeWindowPlanComparison =
+	          compareSimSafeWindowExecution(safeWindowPlan,
+	                                        safeWindowExecWorkset,
+	                                        execSafeWorkset,
+	                                        safeWorksetAffectedStartCount);
         recordSimSafeWindowPlanComparison(safeWindowPlanComparison);
         if(safeWindowPlanComparison == SIM_SAFE_WINDOW_PLAN_COMPARISON_BETTER)
         {
@@ -13248,16 +15144,33 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
         }
       }
     }
-    if(safeWindowAttempted && !useSafeWindowPath && usedSafeWorksetBuilderPath)
-    {
-      recordSimSafeWindowGpuBuilderFallback();
-    }
-    const SimPathWorkset &selectedExecWorkset =
-      useSafeWindowPath ? safeWindowPlan.execWorkset : execSafeWorkset;
-    const vector<uint64_t> &selectedAffectedStartCoords =
-      useSafeWindowPath ? safeWindowPlan.uniqueAffectedStartCoords : uniqueAffectedStartCoords;
-    const bool safeApplicable =
-      useSafeWindowPath ? safeWindowPlanUsable : safeWorksetUsable;
+	    if(safeWindowAttempted && !useSafeWindowPath && usedSafeWorksetBuilderPath)
+	    {
+	      recordSimSafeWindowGpuBuilderFallback();
+	    }
+	    const vector<uint64_t> &selectedAffectedStartCoords =
+	      useSafeWindowPath ? safeWindowPlan.uniqueAffectedStartCoords : uniqueAffectedStartCoords;
+	    const bool safeApplicable =
+	      useSafeWindowPath ? safeWindowPlanUsable : safeWorksetUsable;
+	    bool fineSafeWindowMatchesCoarsened = true;
+	    if(safeApplicable && useSafeWindowPath)
+	    {
+	      fineSafeWindowMatchesCoarsened =
+	        runSimSafeWindowFineShadow(A,
+	                                   B,
+	                                   safeWindowPlan,
+	                                   selectedAffectedStartCoords,
+	                                   context,
+	                                   safeWindowExecGeometry == SIM_SAFE_WINDOW_EXEC_GEOMETRY_FINE);
+	    }
+	    const bool useFineSafeWindowExecution =
+	      useSafeWindowPath &&
+	      safeWindowExecGeometry == SIM_SAFE_WINDOW_EXEC_GEOMETRY_FINE &&
+	      fineSafeWindowMatchesCoarsened;
+	    const SimPathWorkset &selectedExecWorkset =
+	      useSafeWindowPath ?
+	      (useFineSafeWindowExecution ? safeWindowPlan.rawWorkset : safeWindowPlan.execWorkset) :
+	      execSafeWorkset;
     bool usedSafeWorkset = false;
     bool locateUsedCuda = false;
     SimSafeWorksetFallbackReason safeFallbackReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
@@ -13303,12 +15216,11 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
     {
       safeFallbackReason = SIM_SAFE_WORKSET_FALLBACK_NO_AFFECTED_START;
     }
-    else if(!safeApplicable && !selectedExecWorkset.hasWorkset)
-    {
-      safeFallbackReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
-    }
-
-    if(simLocateCudaFastShadowEnabledRuntime())
+	    else if(!safeApplicable && !selectedExecWorkset.hasWorkset)
+	    {
+	      safeFallbackReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
+	    }
+	    if(simLocateCudaFastShadowEnabledRuntime())
     {
       SimKernelContext exactShadowContext = context;
       const SimLocateResult exactShadowResult =
