@@ -61,6 +61,16 @@ static bool expect_nonnegative_double(double value, const char *label)
     return false;
 }
 
+static bool expect_zero_double(double value, const char *label)
+{
+    if (value == 0.0)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected zero value, got " << value << "\n";
+    return false;
+}
+
 static bool expect_candidate_states_equal(const std::vector<SimScanCudaCandidateState> &actual,
                                           const std::vector<SimScanCudaCandidateState> &expected,
                                           const char *label)
@@ -184,6 +194,7 @@ static bool run_region_aggregated(const std::vector<SimScanCudaRequest> &request
 static void clear_direct_env()
 {
     unsetenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE");
+    unsetenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS");
     unsetenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
     unsetenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_HASH_CAPACITY");
 }
@@ -300,6 +311,94 @@ static bool test_direct_reduce_records_profile_telemetry()
                                    "profile count d2h seconds") && ok;
     ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
                                    "profile candidate-count d2h seconds") && ok;
+    return ok;
+}
+
+static bool test_direct_reduce_deferred_counts_match_authoritative()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS", "1", 1);
+    SimScanCudaRequest deferredRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> deferredRequests(1, deferredRequest);
+    SimScanCudaRegionAggregationResult deferredResult;
+    SimScanCudaBatchResult deferredBatchResult;
+    if (!run_region_aggregated(deferredRequests, &deferredResult, &deferredBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(deferredResult, baselineResult, "deferred") && true;
+    ok = expect_true(deferredBatchResult.usedRegionSingleRequestDirectReducePath,
+                     "deferred direct path used") && ok;
+    ok = expect_true(deferredBatchResult.usedRegionSingleRequestDirectReduceDeferredCounts,
+                     "deferred count path used") && ok;
+    ok = expect_zero_double(deferredBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
+                            "deferred candidate-count d2h seconds") && ok;
+    ok = expect_nonnegative_double(
+           deferredBatchResult.regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds,
+           "deferred count snapshot d2h seconds") && ok;
+    ok = expect_equal_uint64(deferredBatchResult.regionSingleRequestDirectReduceCandidateCount,
+                             static_cast<uint64_t>(deferredResult.candidateStates.size()),
+                             "deferred candidate count") && ok;
+    return ok;
+}
+
+static bool test_direct_reduce_deferred_counts_handles_zero_candidates()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "TTTTTTTT";
+    const int eventScoreFloor = 1000000;
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS", "1", 1);
+    SimScanCudaRequest request =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "zero deferred direct path used") && true;
+    ok = expect_true(batchResult.usedRegionSingleRequestDirectReduceDeferredCounts,
+                     "zero deferred count path used") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(result.candidateStates.size()),
+                             0,
+                             "zero deferred candidate state size") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCandidateCount,
+                             0,
+                             "zero deferred candidate count") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
+                            "zero deferred candidate-count d2h seconds") && ok;
     return ok;
 }
 
@@ -530,6 +629,8 @@ int main()
     bool ok = true;
     ok = test_direct_reduce_matches_authoritative_single_request() && ok;
     ok = test_direct_reduce_records_profile_telemetry() && ok;
+    ok = test_direct_reduce_deferred_counts_match_authoritative() && ok;
+    ok = test_direct_reduce_deferred_counts_handles_zero_candidates() && ok;
     ok = test_direct_reduce_shadow_matches_authoritative() && ok;
     ok = test_direct_reduce_matches_gapped_event_runs() && ok;
     ok = test_direct_reduce_matches_offset_region() && ok;

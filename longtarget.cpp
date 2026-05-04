@@ -2510,10 +2510,16 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE");
   const char *simRegionSingleRequestDirectReduceShadowEnv =
     getenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
+  const char *simRegionDirectReduceDeferredCountsEnv =
+    getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS");
   cerr<<"benchmark.sim_region_single_request_direct_reduce_enabled="
       <<((simRegionSingleRequestDirectReduceEnv != NULL &&
           simRegionSingleRequestDirectReduceEnv[0] != '\0' &&
           strcmp(simRegionSingleRequestDirectReduceEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_deferred_counts_enabled="
+      <<((simRegionDirectReduceDeferredCountsEnv != NULL &&
+          simRegionDirectReduceDeferredCountsEnv[0] != '\0' &&
+          strcmp(simRegionDirectReduceDeferredCountsEnv,"0") != 0) ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_shadow_enabled="
       <<((simRegionSingleRequestDirectReduceShadowEnv != NULL &&
           simRegionSingleRequestDirectReduceShadowEnv[0] != '\0' &&
@@ -2533,6 +2539,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simRegionSingleRequestDirectReduceCompactGpuSeconds = 0.0;
   double simRegionSingleRequestDirectReduceCountD2HSeconds = 0.0;
   double simRegionSingleRequestDirectReduceCandidateCountD2HSeconds = 0.0;
+  double simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds = 0.0;
   uint64_t simRegionSingleRequestDirectReduceAffectedStarts = 0;
   uint64_t simRegionSingleRequestDirectReduceReduceWorkItems = 0;
   getSimRegionSingleRequestDirectReduceStats(
@@ -2551,6 +2558,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simRegionSingleRequestDirectReduceCompactGpuSeconds,
     simRegionSingleRequestDirectReduceCountD2HSeconds,
     simRegionSingleRequestDirectReduceCandidateCountD2HSeconds,
+    simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds,
     simRegionSingleRequestDirectReduceAffectedStarts,
     simRegionSingleRequestDirectReduceReduceWorkItems);
   cerr<<"benchmark.sim_region_single_request_direct_reduce_attempts="
@@ -2583,6 +2591,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionSingleRequestDirectReduceCountD2HSeconds<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_candidate_count_d2h_seconds="
       <<simRegionSingleRequestDirectReduceCandidateCountD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_deferred_count_snapshot_d2h_seconds="
+      <<simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_affected_starts="
       <<simRegionSingleRequestDirectReduceAffectedStarts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_reduce_work_items="

@@ -5104,6 +5104,12 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceAffectedStartCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5981,6 +5987,9 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  simRegionSingleRequestDirectReduceCandidateCountD2HNanoseconds().fetch_add(
 		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds),
 		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds),
+		    std::memory_order_relaxed);
 		  simRegionSingleRequestDirectReduceAffectedStartCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReduceAffectedStartCount,
 		    std::memory_order_relaxed);
@@ -6593,6 +6602,7 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		                                                       double &compactGpuSeconds,
 		                                                       double &countD2HSeconds,
 		                                                       double &candidateCountD2HSeconds,
+		                                                       double &deferredCountSnapshotD2HSeconds,
 		                                                       uint64_t &affectedStartCount,
 		                                                       uint64_t &reduceWorkItems)
 		{
@@ -6626,6 +6636,9 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		    1.0e9;
 		  candidateCountD2HSeconds =
 		    static_cast<double>(simRegionSingleRequestDirectReduceCandidateCountD2HNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  deferredCountSnapshotD2HSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HNanoseconds().load(std::memory_order_relaxed)) /
 		    1.0e9;
 		  affectedStartCount =
 		    simRegionSingleRequestDirectReduceAffectedStartCount().load(std::memory_order_relaxed);

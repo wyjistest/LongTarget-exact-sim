@@ -725,11 +725,13 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceCompactGpuSeconds(0.0),
     regionSingleRequestDirectReduceCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceCandidateCountD2HSeconds(0.0),
+    regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds(0.0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
     usedRegionBucketedTrueBatchPath(false),
     usedRegionPackedAggregationPath(false),
     usedRegionSingleRequestDirectReducePath(false),
+    usedRegionSingleRequestDirectReduceDeferredCounts(false),
     usedInitialDirectSummaryPath(false),
     usedInitialPackedSummaryD2H(false),
     usedInitialSummaryHostCopyElision(false),
@@ -809,11 +811,13 @@ struct SimScanCudaBatchResult
   double regionSingleRequestDirectReduceCompactGpuSeconds;
   double regionSingleRequestDirectReduceCountD2HSeconds;
   double regionSingleRequestDirectReduceCandidateCountD2HSeconds;
+  double regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
   bool usedRegionBucketedTrueBatchPath;
   bool usedRegionPackedAggregationPath;
   bool usedRegionSingleRequestDirectReducePath;
+  bool usedRegionSingleRequestDirectReduceDeferredCounts;
   bool usedInitialDirectSummaryPath;
   bool usedInitialPackedSummaryD2H;
   bool usedInitialSummaryHostCopyElision;
