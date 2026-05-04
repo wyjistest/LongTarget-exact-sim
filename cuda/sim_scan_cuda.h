@@ -720,6 +720,11 @@ struct SimScanCudaBatchResult
     initialSummaryUnpackSeconds(0.0),
     initialSummaryResultMaterializeSeconds(0.0),
     regionSingleRequestDirectReduceGpuSeconds(0.0),
+    regionSingleRequestDirectReduceDpGpuSeconds(0.0),
+    regionSingleRequestDirectReduceFilterReduceGpuSeconds(0.0),
+    regionSingleRequestDirectReduceCompactGpuSeconds(0.0),
+    regionSingleRequestDirectReduceCountD2HSeconds(0.0),
+    regionSingleRequestDirectReduceCandidateCountD2HSeconds(0.0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
     usedRegionBucketedTrueBatchPath(false),
@@ -757,6 +762,8 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceCandidateCount(0),
     regionSingleRequestDirectReduceEventCount(0),
     regionSingleRequestDirectReduceRunSummaryCount(0),
+    regionSingleRequestDirectReduceAffectedStartCount(0),
+    regionSingleRequestDirectReduceReduceWorkItems(0),
     initialDeviceResidencyRequestCount(0),
     initialProposalV2RequestCount(0),
     initialProposalV3RequestCount(0),
@@ -797,6 +804,11 @@ struct SimScanCudaBatchResult
   double initialSummaryUnpackSeconds;
   double initialSummaryResultMaterializeSeconds;
   double regionSingleRequestDirectReduceGpuSeconds;
+  double regionSingleRequestDirectReduceDpGpuSeconds;
+  double regionSingleRequestDirectReduceFilterReduceGpuSeconds;
+  double regionSingleRequestDirectReduceCompactGpuSeconds;
+  double regionSingleRequestDirectReduceCountD2HSeconds;
+  double regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
   bool usedRegionBucketedTrueBatchPath;
@@ -834,6 +846,8 @@ struct SimScanCudaBatchResult
   uint64_t regionSingleRequestDirectReduceCandidateCount;
   uint64_t regionSingleRequestDirectReduceEventCount;
   uint64_t regionSingleRequestDirectReduceRunSummaryCount;
+  uint64_t regionSingleRequestDirectReduceAffectedStartCount;
+  uint64_t regionSingleRequestDirectReduceReduceWorkItems;
   uint64_t initialDeviceResidencyRequestCount;
   uint64_t initialProposalV2RequestCount;
   uint64_t initialProposalV3RequestCount;

@@ -590,6 +590,9 @@ check-sim-region-scheduler-shape-telemetry: $(SIM_REGION_SCHEDULER_SHAPE_TELEMET
 check-sim-region-single-request-direct-reduce: $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
 	./$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
 
+check-sim-region-direct-reduce-profile-telemetry: $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+	./$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+
 check-sim-cuda-proposal-select: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 	./$(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 
@@ -786,10 +789,10 @@ check-longtarget-lite-output:
 		build-fasim-cigar-test check-fasim-cigar \
 		build-prealign-shared-test check-prealign-shared \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
-		build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
-		build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \
-		build-sim-region-single-request-direct-reduce-test check-sim-region-single-request-direct-reduce \
-		build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
+			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
+			build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \
+			build-sim-region-single-request-direct-reduce-test check-sim-region-single-request-direct-reduce check-sim-region-direct-reduce-profile-telemetry \
+			build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-initial-context-apply-chunk-skip-test check-sim-initial-context-apply-chunk-skip \

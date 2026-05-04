@@ -2528,6 +2528,13 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simRegionSingleRequestDirectReduceEvents = 0;
   uint64_t simRegionSingleRequestDirectReduceRunSummaries = 0;
   double simRegionSingleRequestDirectReduceGpuSeconds = 0.0;
+  double simRegionSingleRequestDirectReduceDpGpuSeconds = 0.0;
+  double simRegionSingleRequestDirectReduceFilterReduceGpuSeconds = 0.0;
+  double simRegionSingleRequestDirectReduceCompactGpuSeconds = 0.0;
+  double simRegionSingleRequestDirectReduceCountD2HSeconds = 0.0;
+  double simRegionSingleRequestDirectReduceCandidateCountD2HSeconds = 0.0;
+  uint64_t simRegionSingleRequestDirectReduceAffectedStarts = 0;
+  uint64_t simRegionSingleRequestDirectReduceReduceWorkItems = 0;
   getSimRegionSingleRequestDirectReduceStats(
     simRegionSingleRequestDirectReduceAttempts,
     simRegionSingleRequestDirectReduceSuccesses,
@@ -2538,7 +2545,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simRegionSingleRequestDirectReduceCandidates,
     simRegionSingleRequestDirectReduceEvents,
     simRegionSingleRequestDirectReduceRunSummaries,
-    simRegionSingleRequestDirectReduceGpuSeconds);
+    simRegionSingleRequestDirectReduceGpuSeconds,
+    simRegionSingleRequestDirectReduceDpGpuSeconds,
+    simRegionSingleRequestDirectReduceFilterReduceGpuSeconds,
+    simRegionSingleRequestDirectReduceCompactGpuSeconds,
+    simRegionSingleRequestDirectReduceCountD2HSeconds,
+    simRegionSingleRequestDirectReduceCandidateCountD2HSeconds,
+    simRegionSingleRequestDirectReduceAffectedStarts,
+    simRegionSingleRequestDirectReduceReduceWorkItems);
   cerr<<"benchmark.sim_region_single_request_direct_reduce_attempts="
       <<simRegionSingleRequestDirectReduceAttempts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_successes="
@@ -2559,6 +2573,20 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionSingleRequestDirectReduceRunSummaries<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_gpu_seconds="
       <<simRegionSingleRequestDirectReduceGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_dp_gpu_seconds="
+      <<simRegionSingleRequestDirectReduceDpGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_filter_reduce_gpu_seconds="
+      <<simRegionSingleRequestDirectReduceFilterReduceGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_compact_gpu_seconds="
+      <<simRegionSingleRequestDirectReduceCompactGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_count_d2h_seconds="
+      <<simRegionSingleRequestDirectReduceCountD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_candidate_count_d2h_seconds="
+      <<simRegionSingleRequestDirectReduceCandidateCountD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_affected_starts="
+      <<simRegionSingleRequestDirectReduceAffectedStarts<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_reduce_work_items="
+      <<simRegionSingleRequestDirectReduceReduceWorkItems<<endl;
   cerr<<"benchmark.sim_region_scan_gpu_seconds="<<simRegionScanGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_d2h_seconds="<<simRegionD2HSeconds<<endl;
   cerr<<"benchmark.sim_materialize_seconds="<<simMaterializeSeconds<<endl;

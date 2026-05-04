@@ -5074,6 +5074,48 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceDpGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFilterReduceGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCompactGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCountD2HNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCandidateCountD2HNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceAffectedStartCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceWorkItemCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionCpuMergeNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5924,6 +5966,27 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  simRegionSingleRequestDirectReduceGpuNanoseconds().fetch_add(
 		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceGpuSeconds),
 		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceDpGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceDpGpuSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFilterReduceGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceFilterReduceGpuSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCompactGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCompactGpuSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCountD2HNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCountD2HSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCandidateCountD2HNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceAffectedStartCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceAffectedStartCount,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceWorkItemCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceReduceWorkItems,
+		    std::memory_order_relaxed);
 		}
 
 		inline void recordSimRegionCpuMergeNanoseconds(uint64_t nanoseconds)
@@ -6524,7 +6587,14 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		                                                       uint64_t &candidateCount,
 		                                                       uint64_t &eventCount,
 		                                                       uint64_t &runSummaryCount,
-		                                                       double &gpuSeconds)
+		                                                       double &gpuSeconds,
+		                                                       double &dpGpuSeconds,
+		                                                       double &filterReduceGpuSeconds,
+		                                                       double &compactGpuSeconds,
+		                                                       double &countD2HSeconds,
+		                                                       double &candidateCountD2HSeconds,
+		                                                       uint64_t &affectedStartCount,
+		                                                       uint64_t &reduceWorkItems)
 		{
 		  attempts = simRegionSingleRequestDirectReduceAttemptCount().load(std::memory_order_relaxed);
 		  successes = simRegionSingleRequestDirectReduceSuccessCount().load(std::memory_order_relaxed);
@@ -6542,6 +6612,25 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
 		  gpuSeconds =
 		    static_cast<double>(simRegionSingleRequestDirectReduceGpuNanoseconds().load(std::memory_order_relaxed)) /
 		    1.0e9;
+		  dpGpuSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceDpGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  filterReduceGpuSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceFilterReduceGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  compactGpuSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceCompactGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  countD2HSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceCountD2HNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  candidateCountD2HSeconds =
+		    static_cast<double>(simRegionSingleRequestDirectReduceCandidateCountD2HNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  affectedStartCount =
+		    simRegionSingleRequestDirectReduceAffectedStartCount().load(std::memory_order_relaxed);
+		  reduceWorkItems =
+		    simRegionSingleRequestDirectReduceWorkItemCount().load(std::memory_order_relaxed);
 		}
 
 			inline void getSimInitialReductionStats(uint64_t &eventCount,

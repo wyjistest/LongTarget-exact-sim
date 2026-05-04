@@ -41,6 +41,26 @@ static bool expect_equal_uint64(uint64_t actual, uint64_t expected, const char *
     return false;
 }
 
+static bool expect_positive_double(double value, const char *label)
+{
+    if (value > 0.0)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected positive value, got " << value << "\n";
+    return false;
+}
+
+static bool expect_nonnegative_double(double value, const char *label)
+{
+    if (value >= 0.0)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected non-negative value, got " << value << "\n";
+    return false;
+}
+
 static bool expect_candidate_states_equal(const std::vector<SimScanCudaCandidateState> &actual,
                                           const std::vector<SimScanCudaCandidateState> &expected,
                                           const char *label)
@@ -234,6 +254,52 @@ static bool test_direct_reduce_matches_authoritative_single_request()
     ok = expect_equal_uint64(directBatchResult.regionSingleRequestDirectReduceCandidateCount,
                              static_cast<uint64_t>(directResult.candidateStates.size()),
                              "direct candidate count") && ok;
+    return ok;
+}
+
+static bool test_direct_reduce_records_profile_telemetry()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    SimScanCudaRequest request = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    const uint64_t expectedWorkItems =
+      batchResult.regionSingleRequestDirectReduceAffectedStartCount *
+      batchResult.regionSingleRequestDirectReduceRunSummaryCount;
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "profile direct path used") && true;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceAffectedStartCount,
+                             static_cast<uint64_t>(filter.size()),
+                             "profile affected start count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceReduceWorkItems,
+                             expectedWorkItems,
+                             "profile reduce work items") && ok;
+    ok = expect_positive_double(batchResult.regionSingleRequestDirectReduceDpGpuSeconds,
+                                "profile dp gpu seconds") && ok;
+    ok = expect_positive_double(batchResult.regionSingleRequestDirectReduceFilterReduceGpuSeconds,
+                                "profile filter reduce gpu seconds") && ok;
+    ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReduceCompactGpuSeconds,
+                                   "profile compact gpu seconds") && ok;
+    ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReduceCountD2HSeconds,
+                                   "profile count d2h seconds") && ok;
+    ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
+                                   "profile candidate-count d2h seconds") && ok;
     return ok;
 }
 
@@ -463,6 +529,7 @@ int main()
 
     bool ok = true;
     ok = test_direct_reduce_matches_authoritative_single_request() && ok;
+    ok = test_direct_reduce_records_profile_telemetry() && ok;
     ok = test_direct_reduce_shadow_matches_authoritative() && ok;
     ok = test_direct_reduce_matches_gapped_event_runs() && ok;
     ok = test_direct_reduce_matches_offset_region() && ok;

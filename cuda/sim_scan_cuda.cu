@@ -435,6 +435,11 @@ struct SimScanCudaContext
     stopEvent(NULL),
     auxStartEvent(NULL),
     auxStopEvent(NULL),
+    regionDirectDpStopEvent(NULL),
+    regionDirectReduceStartEvent(NULL),
+    regionDirectReduceStopEvent(NULL),
+    regionDirectPrefixStopEvent(NULL),
+    regionDirectCompactStartEvent(NULL),
     batchOutputCursorsDevice(NULL),
     batchOutputCursorsCapacity(0)
   {
@@ -583,9 +588,101 @@ struct SimScanCudaContext
   cudaEvent_t stopEvent;
   cudaEvent_t auxStartEvent;
   cudaEvent_t auxStopEvent;
+  cudaEvent_t regionDirectDpStopEvent;
+  cudaEvent_t regionDirectReduceStartEvent;
+  cudaEvent_t regionDirectReduceStopEvent;
+  cudaEvent_t regionDirectPrefixStopEvent;
+  cudaEvent_t regionDirectCompactStartEvent;
   int *batchOutputCursorsDevice;
   size_t batchOutputCursorsCapacity;
 };
+
+static void sim_scan_cuda_destroy_event_if_present(cudaEvent_t &event)
+{
+  if(event != NULL)
+  {
+    cudaEventDestroy(event);
+    event = NULL;
+  }
+}
+
+static void sim_scan_cuda_release_initial_context_resources(SimScanCudaContext &context)
+{
+  if(context.filteredCandidateCountDevice != NULL)
+  {
+    cudaFree(context.filteredCandidateCountDevice);
+    context.filteredCandidateCountDevice = NULL;
+  }
+  if(context.eventCountDevice != NULL)
+  {
+    cudaFree(context.eventCountDevice);
+    context.eventCountDevice = NULL;
+  }
+  if(context.runningMinDevice != NULL)
+  {
+    cudaFree(context.runningMinDevice);
+    context.runningMinDevice = NULL;
+  }
+  if(context.candidateCountDevice != NULL)
+  {
+    cudaFree(context.candidateCountDevice);
+    context.candidateCountDevice = NULL;
+  }
+  if(context.candidateStatesDevice != NULL)
+  {
+    cudaFree(context.candidateStatesDevice);
+    context.candidateStatesDevice = NULL;
+  }
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectCompactStartEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPrefixStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectReduceStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectReduceStartEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectDpStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.auxStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.auxStartEvent);
+  sim_scan_cuda_destroy_event_if_present(context.stopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.startEvent);
+}
+
+static bool sim_scan_cuda_record_event(cudaEvent_t event,string *errorOut)
+{
+  cudaError_t status = cudaEventRecord(event);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  return true;
+}
+
+static bool sim_scan_cuda_elapsed_seconds(cudaEvent_t startEvent,
+                                          cudaEvent_t stopEvent,
+                                          double *outSeconds,
+                                          string *errorOut)
+{
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  float elapsedMs = 0.0f;
+  cudaError_t status = cudaEventElapsedTime(&elapsedMs,startEvent,stopEvent);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = static_cast<double>(elapsedMs) / 1000.0;
+  }
+  return true;
+}
 
 struct SimScanCudaCandidateReduceState
 {
@@ -2501,6 +2598,32 @@ static bool ensure_sim_scan_cuda_initialized_locked(SimScanCudaContext &context,
     return false;
   }
 
+  status = cudaEventCreate(&context.regionDirectDpStopEvent);
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectReduceStartEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectReduceStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPrefixStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectCompactStartEvent);
+  }
+  if(status != cudaSuccess)
+  {
+    sim_scan_cuda_release_initial_context_resources(context);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
   context.initialized = true;
   context.device = device;
   return true;
@@ -11914,6 +12037,16 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialSummaryResultMaterializeSeconds;
   batchResult->regionSingleRequestDirectReduceGpuSeconds +=
     requestBatchResult.regionSingleRequestDirectReduceGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceDpGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceFilterReduceGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceFilterReduceGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCompactGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceCompactGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCountD2HSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceCountD2HSeconds;
+  batchResult->regionSingleRequestDirectReduceCandidateCountD2HSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
     batchResult->usedRegionTrueBatchPath || requestBatchResult.usedRegionTrueBatchPath;
@@ -11981,6 +12114,10 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceEventCount;
   batchResult->regionSingleRequestDirectReduceRunSummaryCount +=
     requestBatchResult.regionSingleRequestDirectReduceRunSummaryCount;
+  batchResult->regionSingleRequestDirectReduceAffectedStartCount +=
+    requestBatchResult.regionSingleRequestDirectReduceAffectedStartCount;
+  batchResult->regionSingleRequestDirectReduceReduceWorkItems +=
+    requestBatchResult.regionSingleRequestDirectReduceReduceWorkItems;
   batchResult->initialDeviceResidencyRequestCount += requestBatchResult.initialDeviceResidencyRequestCount;
   batchResult->initialProposalV2RequestCount += requestBatchResult.initialProposalV2RequestCount;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
@@ -19476,6 +19613,16 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
   }
   batchResult->regionSingleRequestDirectReduceGpuSeconds +=
     directBatchResult.regionSingleRequestDirectReduceGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceDpGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceFilterReduceGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceFilterReduceGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCompactGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCompactGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCountD2HSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCountD2HSeconds;
+  batchResult->regionSingleRequestDirectReduceCandidateCountD2HSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     directBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -19495,6 +19642,10 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
     directBatchResult.regionSingleRequestDirectReduceEventCount;
   batchResult->regionSingleRequestDirectReduceRunSummaryCount +=
     directBatchResult.regionSingleRequestDirectReduceRunSummaryCount;
+  batchResult->regionSingleRequestDirectReduceAffectedStartCount +=
+    directBatchResult.regionSingleRequestDirectReduceAffectedStartCount;
+  batchResult->regionSingleRequestDirectReduceReduceWorkItems +=
+    directBatchResult.regionSingleRequestDirectReduceReduceWorkItems;
 }
 
 static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
@@ -19545,6 +19696,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       batchResult->usedCuda = true;
       batchResult->usedRegionSingleRequestDirectReducePath = true;
       batchResult->regionSingleRequestDirectReduceSuccesses = 1;
+      batchResult->regionSingleRequestDirectReduceAffectedStartCount =
+        static_cast<uint64_t>(max(request.filterStartCoordCount,0));
       batchResult->taskCount = 1;
       batchResult->launchCount = 1;
     }
@@ -19664,6 +19817,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   {
     return false;
   }
+  if(!sim_scan_cuda_record_event(context->regionDirectDpStopEvent,errorOut))
+  {
+    return false;
+  }
 
   int eventCount = 0;
   int runSummaryCount = 0;
@@ -19673,9 +19830,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   {
     status = cudaMemcpy(&runSummaryCount,context->batchRunTotalsDevice,sizeof(int),cudaMemcpyDeviceToHost);
   }
-  double d2hSeconds =
+  const double countD2HSeconds =
     static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
                           chrono::steady_clock::now() - countCopyStart).count()) / 1.0e9;
+  double d2hSeconds = countD2HSeconds;
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -19699,11 +19857,16 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   if(batchResult != NULL)
   {
     batchResult->d2hSeconds = d2hSeconds;
+    batchResult->regionSingleRequestDirectReduceCountD2HSeconds = countD2HSeconds;
     batchResult->regionSingleRequestDirectReduceEventCount = static_cast<uint64_t>(max(eventCount,0));
     batchResult->regionSingleRequestDirectReduceRunSummaryCount =
       static_cast<uint64_t>(max(runSummaryCount,0));
   }
 
+  if(!sim_scan_cuda_record_event(context->regionDirectReduceStartEvent,errorOut))
+  {
+    return false;
+  }
   const int filterThreads = 256;
   sim_scan_region_direct_reduce_filter_summaries_kernel<<<request.filterStartCoordCount, filterThreads>>>(
     context->initialRunSummariesDevice,
@@ -19721,6 +19884,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
     return false;
   }
+  if(!sim_scan_cuda_record_event(context->regionDirectReduceStopEvent,errorOut))
+  {
+    return false;
+  }
 
   sim_scan_prefix_sum_kernel<<<1, 1>>>(context->batchEventBasesDevice,
                                        request.filterStartCoordCount,
@@ -19735,13 +19902,18 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
     return false;
   }
+  if(!sim_scan_cuda_record_event(context->regionDirectPrefixStopEvent,errorOut))
+  {
+    return false;
+  }
 
   int candidateCount = 0;
   const chrono::steady_clock::time_point candidateCopyStart = chrono::steady_clock::now();
   status = cudaMemcpy(&candidateCount,context->candidateCountDevice,sizeof(int),cudaMemcpyDeviceToHost);
-  d2hSeconds +=
+  const double candidateCountD2HSeconds =
     static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
                           chrono::steady_clock::now() - candidateCopyStart).count()) / 1.0e9;
+  d2hSeconds += candidateCountD2HSeconds;
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -19759,6 +19931,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     return false;
   }
 
+  if(!sim_scan_cuda_record_event(context->regionDirectCompactStartEvent,errorOut))
+  {
+    return false;
+  }
   if(candidateCount > 0)
   {
     const int filterBlocks =
@@ -19798,6 +19974,30 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
     return false;
   }
+  double dpGpuSeconds = 0.0;
+  double filterReduceGpuSeconds = 0.0;
+  double prefixGpuSeconds = 0.0;
+  double compactKernelGpuSeconds = 0.0;
+  if(!sim_scan_cuda_elapsed_seconds(context->startEvent,
+                                    context->regionDirectDpStopEvent,
+                                    &dpGpuSeconds,
+                                    errorOut) ||
+     !sim_scan_cuda_elapsed_seconds(context->regionDirectReduceStartEvent,
+                                    context->regionDirectReduceStopEvent,
+                                    &filterReduceGpuSeconds,
+                                    errorOut) ||
+     !sim_scan_cuda_elapsed_seconds(context->regionDirectReduceStopEvent,
+                                    context->regionDirectPrefixStopEvent,
+                                    &prefixGpuSeconds,
+                                    errorOut) ||
+     !sim_scan_cuda_elapsed_seconds(context->regionDirectCompactStartEvent,
+                                    context->stopEvent,
+                                    &compactKernelGpuSeconds,
+                                    errorOut))
+  {
+    return false;
+  }
+  const double compactGpuSeconds = prefixGpuSeconds + compactKernelGpuSeconds;
 
   outResult->candidateStatesDevice =
     candidateCount > 0 ? context->batchCandidateStatesDevice : NULL;
@@ -19815,12 +20015,24 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     batchResult->gpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
     batchResult->d2hSeconds = d2hSeconds;
     batchResult->regionSingleRequestDirectReduceGpuSeconds = batchResult->gpuSeconds;
+    batchResult->regionSingleRequestDirectReduceDpGpuSeconds = dpGpuSeconds;
+    batchResult->regionSingleRequestDirectReduceFilterReduceGpuSeconds =
+      filterReduceGpuSeconds;
+    batchResult->regionSingleRequestDirectReduceCompactGpuSeconds = compactGpuSeconds;
+    batchResult->regionSingleRequestDirectReduceCountD2HSeconds = countD2HSeconds;
+    batchResult->regionSingleRequestDirectReduceCandidateCountD2HSeconds =
+      candidateCountD2HSeconds;
     batchResult->usedRegionSingleRequestDirectReducePath = true;
     batchResult->regionSingleRequestDirectReduceSuccesses = 1;
     batchResult->regionSingleRequestDirectReduceCandidateCount =
       static_cast<uint64_t>(candidateCount);
     batchResult->regionSingleRequestDirectReduceEventCount = outResult->eventCount;
     batchResult->regionSingleRequestDirectReduceRunSummaryCount = outResult->runSummaryCount;
+    batchResult->regionSingleRequestDirectReduceAffectedStartCount =
+      static_cast<uint64_t>(request.filterStartCoordCount);
+    batchResult->regionSingleRequestDirectReduceReduceWorkItems =
+      static_cast<uint64_t>(request.filterStartCoordCount) *
+      static_cast<uint64_t>(max(runSummaryCount,0));
     batchResult->taskCount = 1;
     batchResult->launchCount = 1;
   }
