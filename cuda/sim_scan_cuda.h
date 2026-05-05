@@ -726,6 +726,20 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceCandidateCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds(0.0),
+    regionSingleRequestDirectReducePipelineMetadataH2DSeconds(0.0),
+    regionSingleRequestDirectReducePipelineDiagGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineEventCountGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineEventCountD2HSeconds(0.0),
+    regionSingleRequestDirectReducePipelineEventPrefixGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineRunCountGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineRunCountD2HSeconds(0.0),
+    regionSingleRequestDirectReducePipelineRunPrefixGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineRunCompactGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineCandidatePrefixGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds(0.0),
+    regionSingleRequestDirectReducePipelineAccountedGpuSeconds(0.0),
+    regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds(0.0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
     usedRegionBucketedTrueBatchPath(false),
@@ -766,6 +780,33 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceRunSummaryCount(0),
     regionSingleRequestDirectReduceAffectedStartCount(0),
     regionSingleRequestDirectReduceReduceWorkItems(0),
+    regionSingleRequestDirectReducePipelineRequestCount(0),
+    regionSingleRequestDirectReducePipelineRowCountTotal(0),
+    regionSingleRequestDirectReducePipelineRowCountMax(0),
+    regionSingleRequestDirectReducePipelineColCountTotal(0),
+    regionSingleRequestDirectReducePipelineColCountMax(0),
+    regionSingleRequestDirectReducePipelineCellCountTotal(0),
+    regionSingleRequestDirectReducePipelineCellCountMax(0),
+    regionSingleRequestDirectReducePipelineDiagCountTotal(0),
+    regionSingleRequestDirectReducePipelineDiagCountMax(0),
+    regionSingleRequestDirectReducePipelineFilterStartCountTotal(0),
+    regionSingleRequestDirectReducePipelineFilterStartCountMax(0),
+    regionSingleRequestDirectReducePipelineDiagLaunchCount(0),
+    regionSingleRequestDirectReducePipelineEventCountLaunchCount(0),
+    regionSingleRequestDirectReducePipelineEventPrefixLaunchCount(0),
+    regionSingleRequestDirectReducePipelineRunCountLaunchCount(0),
+    regionSingleRequestDirectReducePipelineRunPrefixLaunchCount(0),
+    regionSingleRequestDirectReducePipelineRunCompactLaunchCount(0),
+    regionSingleRequestDirectReducePipelineFilterReduceLaunchCount(0),
+    regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount(0),
+    regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount(0),
+    regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount(0),
+    regionSingleRequestDirectReducePipelineDpLt1msCount(0),
+    regionSingleRequestDirectReducePipelineDp1To5msCount(0),
+    regionSingleRequestDirectReducePipelineDp5To10msCount(0),
+    regionSingleRequestDirectReducePipelineDp10To50msCount(0),
+    regionSingleRequestDirectReducePipelineDpGte50msCount(0),
+    regionSingleRequestDirectReducePipelineDpMaxNanoseconds(0),
     initialDeviceResidencyRequestCount(0),
     initialProposalV2RequestCount(0),
     initialProposalV3RequestCount(0),
@@ -812,6 +853,20 @@ struct SimScanCudaBatchResult
   double regionSingleRequestDirectReduceCountD2HSeconds;
   double regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   double regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
+  double regionSingleRequestDirectReducePipelineMetadataH2DSeconds;
+  double regionSingleRequestDirectReducePipelineDiagGpuSeconds;
+  double regionSingleRequestDirectReducePipelineEventCountGpuSeconds;
+  double regionSingleRequestDirectReducePipelineEventCountD2HSeconds;
+  double regionSingleRequestDirectReducePipelineEventPrefixGpuSeconds;
+  double regionSingleRequestDirectReducePipelineRunCountGpuSeconds;
+  double regionSingleRequestDirectReducePipelineRunCountD2HSeconds;
+  double regionSingleRequestDirectReducePipelineRunPrefixGpuSeconds;
+  double regionSingleRequestDirectReducePipelineRunCompactGpuSeconds;
+  double regionSingleRequestDirectReducePipelineCandidatePrefixGpuSeconds;
+  double regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds;
+  double regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds;
+  double regionSingleRequestDirectReducePipelineAccountedGpuSeconds;
+  double regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
   bool usedRegionBucketedTrueBatchPath;
@@ -852,6 +907,33 @@ struct SimScanCudaBatchResult
   uint64_t regionSingleRequestDirectReduceRunSummaryCount;
   uint64_t regionSingleRequestDirectReduceAffectedStartCount;
   uint64_t regionSingleRequestDirectReduceReduceWorkItems;
+  uint64_t regionSingleRequestDirectReducePipelineRequestCount;
+  uint64_t regionSingleRequestDirectReducePipelineRowCountTotal;
+  uint64_t regionSingleRequestDirectReducePipelineRowCountMax;
+  uint64_t regionSingleRequestDirectReducePipelineColCountTotal;
+  uint64_t regionSingleRequestDirectReducePipelineColCountMax;
+  uint64_t regionSingleRequestDirectReducePipelineCellCountTotal;
+  uint64_t regionSingleRequestDirectReducePipelineCellCountMax;
+  uint64_t regionSingleRequestDirectReducePipelineDiagCountTotal;
+  uint64_t regionSingleRequestDirectReducePipelineDiagCountMax;
+  uint64_t regionSingleRequestDirectReducePipelineFilterStartCountTotal;
+  uint64_t regionSingleRequestDirectReducePipelineFilterStartCountMax;
+  uint64_t regionSingleRequestDirectReducePipelineDiagLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineEventCountLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineEventPrefixLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineRunCountLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineRunPrefixLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineRunCompactLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineFilterReduceLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount;
+  uint64_t regionSingleRequestDirectReducePipelineDpLt1msCount;
+  uint64_t regionSingleRequestDirectReducePipelineDp1To5msCount;
+  uint64_t regionSingleRequestDirectReducePipelineDp5To10msCount;
+  uint64_t regionSingleRequestDirectReducePipelineDp10To50msCount;
+  uint64_t regionSingleRequestDirectReducePipelineDpGte50msCount;
+  uint64_t regionSingleRequestDirectReducePipelineDpMaxNanoseconds;
   uint64_t initialDeviceResidencyRequestCount;
   uint64_t initialProposalV2RequestCount;
   uint64_t initialProposalV3RequestCount;

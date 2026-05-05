@@ -1663,10 +1663,19 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simSafeStoreRefreshD2hNanoseconds = 0;
   uint64_t simSafeStoreInvalidatedAfterExactFallbackCount = 0;
   uint64_t simFrontierCacheInvalidateProposalEraseCount = 0;
-  uint64_t simFrontierCacheInvalidateStoreUpdateCount = 0;
-  uint64_t simFrontierCacheInvalidateReleaseOrErrorCount = 0;
-  uint64_t simFrontierCacheRebuildFromResidencyCount = 0;
-  uint64_t simFrontierCacheRebuildFromHostFinalCandidatesCount = 0;
+	  uint64_t simFrontierCacheInvalidateStoreUpdateCount = 0;
+	  uint64_t simFrontierCacheInvalidateReleaseOrErrorCount = 0;
+	  uint64_t simFrontierCacheRebuildFromResidencyCount = 0;
+	  uint64_t simFrontierCacheRebuildFromHostFinalCandidatesCount = 0;
+	  uint64_t simInitialSafeStoreHandoffCreatedCount = 0;
+	  uint64_t simInitialSafeStoreHandoffAvailableForLocateCount = 0;
+	  uint64_t simInitialSafeStoreHandoffHostStoreEvictedCount = 0;
+	  uint64_t simInitialSafeStoreHandoffHostMergeSkippedCount = 0;
+	  uint64_t simInitialSafeStoreHandoffHostMergeFallbackCount = 0;
+	  uint64_t simInitialSafeStoreHandoffRejectedFastShadowCount = 0;
+	  uint64_t simInitialSafeStoreHandoffRejectedProposalLoopCount = 0;
+	  uint64_t simInitialSafeStoreHandoffRejectedMissingGpuStoreCount = 0;
+	  uint64_t simInitialSafeStoreHandoffRejectedStaleEpochCount = 0;
   getSimSafeStoreRefreshStats(simSafeStoreRefreshAttemptCount,
                               simSafeStoreRefreshSuccessCount,
                               simSafeStoreRefreshFailureCount,
@@ -1674,11 +1683,21 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                               simSafeStoreRefreshGpuNanoseconds,
                               simSafeStoreRefreshD2hNanoseconds,
                               simSafeStoreInvalidatedAfterExactFallbackCount);
-  getSimFrontierCacheTransitionStats(simFrontierCacheInvalidateProposalEraseCount,
-                                     simFrontierCacheInvalidateStoreUpdateCount,
-                                     simFrontierCacheInvalidateReleaseOrErrorCount,
-                                     simFrontierCacheRebuildFromResidencyCount,
-                                     simFrontierCacheRebuildFromHostFinalCandidatesCount);
+	  getSimFrontierCacheTransitionStats(simFrontierCacheInvalidateProposalEraseCount,
+	                                     simFrontierCacheInvalidateStoreUpdateCount,
+	                                     simFrontierCacheInvalidateReleaseOrErrorCount,
+	                                     simFrontierCacheRebuildFromResidencyCount,
+	                                     simFrontierCacheRebuildFromHostFinalCandidatesCount);
+	  getSimInitialSafeStoreHandoffCompositionStats(
+	    simInitialSafeStoreHandoffCreatedCount,
+	    simInitialSafeStoreHandoffAvailableForLocateCount,
+	    simInitialSafeStoreHandoffHostStoreEvictedCount,
+	    simInitialSafeStoreHandoffHostMergeSkippedCount,
+	    simInitialSafeStoreHandoffHostMergeFallbackCount,
+	    simInitialSafeStoreHandoffRejectedFastShadowCount,
+	    simInitialSafeStoreHandoffRejectedProposalLoopCount,
+	    simInitialSafeStoreHandoffRejectedMissingGpuStoreCount,
+	    simInitialSafeStoreHandoffRejectedStaleEpochCount);
   cerr<<"benchmark.sim_safe_store_refresh_attempts="<<simSafeStoreRefreshAttemptCount<<endl;
   cerr<<"benchmark.sim_safe_store_refresh_success="<<simSafeStoreRefreshSuccessCount<<endl;
   cerr<<"benchmark.sim_safe_store_refresh_failures="<<simSafeStoreRefreshFailureCount<<endl;
@@ -1697,9 +1716,39 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simFrontierCacheInvalidateReleaseOrErrorCount<<endl;
   cerr<<"benchmark.sim_frontier_rebuild_from_residency="
       <<simFrontierCacheRebuildFromResidencyCount<<endl;
-  cerr<<"benchmark.sim_frontier_rebuild_from_host_final_candidates="
-      <<simFrontierCacheRebuildFromHostFinalCandidatesCount<<endl;
-  uint64_t simSafeWindowCount = 0;
+	  cerr<<"benchmark.sim_frontier_rebuild_from_host_final_candidates="
+	      <<simFrontierCacheRebuildFromHostFinalCandidatesCount<<endl;
+	  const char *simInitialSafeStoreHandoffEnv =
+	    getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
+	  if(simInitialSafeStoreHandoffEnv == NULL ||
+	     simInitialSafeStoreHandoffEnv[0] == '\0')
+	  {
+	    simInitialSafeStoreHandoffEnv =
+	      getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
+	  }
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_enabled="
+	      <<((simInitialSafeStoreHandoffEnv != NULL &&
+	          simInitialSafeStoreHandoffEnv[0] != '\0' &&
+	          strcmp(simInitialSafeStoreHandoffEnv,"0") != 0) ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_created="
+	      <<simInitialSafeStoreHandoffCreatedCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_available_for_locate="
+	      <<simInitialSafeStoreHandoffAvailableForLocateCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_host_store_evicted="
+	      <<simInitialSafeStoreHandoffHostStoreEvictedCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_host_merge_skipped="
+	      <<simInitialSafeStoreHandoffHostMergeSkippedCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_host_merge_fallbacks="
+	      <<simInitialSafeStoreHandoffHostMergeFallbackCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_rejected_fast_shadow="
+	      <<simInitialSafeStoreHandoffRejectedFastShadowCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_rejected_proposal_loop="
+	      <<simInitialSafeStoreHandoffRejectedProposalLoopCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_rejected_missing_gpu_store="
+	      <<simInitialSafeStoreHandoffRejectedMissingGpuStoreCount<<endl;
+	  cerr<<"benchmark.sim_initial_safe_store_handoff_rejected_stale_epoch="
+	      <<simInitialSafeStoreHandoffRejectedStaleEpochCount<<endl;
+	  uint64_t simSafeWindowCount = 0;
   uint64_t simSafeWindowAffectedStartCount = 0;
   uint64_t simSafeWindowCoordBytesD2H = 0;
   uint64_t simSafeWindowFallbackCount = 0;
@@ -2512,6 +2561,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
   const char *simRegionDirectReduceDeferredCountsEnv =
     getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS");
+  const char *simRegionDirectReducePipelineTelemetryEnv =
+    getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
   cerr<<"benchmark.sim_region_single_request_direct_reduce_enabled="
       <<((simRegionSingleRequestDirectReduceEnv != NULL &&
           simRegionSingleRequestDirectReduceEnv[0] != '\0' &&
@@ -2524,6 +2575,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<((simRegionSingleRequestDirectReduceShadowEnv != NULL &&
           simRegionSingleRequestDirectReduceShadowEnv[0] != '\0' &&
           strcmp(simRegionSingleRequestDirectReduceShadowEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_telemetry_enabled="
+      <<((simRegionDirectReducePipelineTelemetryEnv != NULL &&
+          simRegionDirectReducePipelineTelemetryEnv[0] != '\0' &&
+          strcmp(simRegionDirectReducePipelineTelemetryEnv,"0") != 0) ? 1 : 0)<<endl;
   uint64_t simRegionSingleRequestDirectReduceAttempts = 0;
   uint64_t simRegionSingleRequestDirectReduceSuccesses = 0;
   uint64_t simRegionSingleRequestDirectReduceFallbacks = 0;
@@ -2561,6 +2616,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds,
     simRegionSingleRequestDirectReduceAffectedStarts,
     simRegionSingleRequestDirectReduceReduceWorkItems);
+  SimRegionSingleRequestDirectReducePipelineStats simRegionDirectReducePipelineStats;
+  getSimRegionSingleRequestDirectReducePipelineStats(simRegionDirectReducePipelineStats);
   cerr<<"benchmark.sim_region_single_request_direct_reduce_attempts="
       <<simRegionSingleRequestDirectReduceAttempts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_successes="
@@ -2597,6 +2654,88 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionSingleRequestDirectReduceAffectedStarts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_reduce_work_items="
       <<simRegionSingleRequestDirectReduceReduceWorkItems<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_requests="
+      <<simRegionDirectReducePipelineStats.requestCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_rows="
+      <<simRegionDirectReducePipelineStats.rowCountTotal<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_rows_max="
+      <<simRegionDirectReducePipelineStats.rowCountMax<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_cols="
+      <<simRegionDirectReducePipelineStats.colCountTotal<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_cols_max="
+      <<simRegionDirectReducePipelineStats.colCountMax<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_cells="
+      <<simRegionDirectReducePipelineStats.cellCountTotal<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_cells_max="
+      <<simRegionDirectReducePipelineStats.cellCountMax<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_diags="
+      <<simRegionDirectReducePipelineStats.diagCountTotal<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_diags_max="
+      <<simRegionDirectReducePipelineStats.diagCountMax<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_filter_starts="
+      <<simRegionDirectReducePipelineStats.filterStartCountTotal<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_filter_starts_max="
+      <<simRegionDirectReducePipelineStats.filterStartCountMax<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_diag_launches="
+      <<simRegionDirectReducePipelineStats.diagLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_event_count_launches="
+      <<simRegionDirectReducePipelineStats.eventCountLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_event_prefix_launches="
+      <<simRegionDirectReducePipelineStats.eventPrefixLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_count_launches="
+      <<simRegionDirectReducePipelineStats.runCountLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_prefix_launches="
+      <<simRegionDirectReducePipelineStats.runPrefixLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_compact_launches="
+      <<simRegionDirectReducePipelineStats.runCompactLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_filter_reduce_launches="
+      <<simRegionDirectReducePipelineStats.filterReduceLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_candidate_prefix_launches="
+      <<simRegionDirectReducePipelineStats.candidatePrefixLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_candidate_compact_launches="
+      <<simRegionDirectReducePipelineStats.candidateCompactLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_count_snapshot_launches="
+      <<simRegionDirectReducePipelineStats.countSnapshotLaunchCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_dp_lt_1ms="
+      <<simRegionDirectReducePipelineStats.dpLt1msCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_dp_1_to_5ms="
+      <<simRegionDirectReducePipelineStats.dp1To5msCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_dp_5_to_10ms="
+      <<simRegionDirectReducePipelineStats.dp5To10msCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_dp_10_to_50ms="
+      <<simRegionDirectReducePipelineStats.dp10To50msCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_dp_gte_50ms="
+      <<simRegionDirectReducePipelineStats.dpGte50msCount<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_dp_max_seconds="
+      <<simRegionDirectReducePipelineStats.dpMaxSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_metadata_h2d_seconds="
+      <<simRegionDirectReducePipelineStats.metadataH2DSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_diag_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.diagGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_event_count_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.eventCountGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_event_count_d2h_seconds="
+      <<simRegionDirectReducePipelineStats.eventCountD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_event_prefix_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.eventPrefixGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_count_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.runCountGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_count_d2h_seconds="
+      <<simRegionDirectReducePipelineStats.runCountD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_prefix_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.runPrefixGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_run_compact_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.runCompactGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_candidate_prefix_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.candidatePrefixGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_candidate_compact_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.candidateCompactGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_count_snapshot_d2h_seconds="
+      <<simRegionDirectReducePipelineStats.countSnapshotD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_accounted_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.accountedGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_unaccounted_gpu_seconds="
+      <<simRegionDirectReducePipelineStats.unaccountedGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_scan_gpu_seconds="<<simRegionScanGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_d2h_seconds="<<simRegionD2HSeconds<<endl;
   cerr<<"benchmark.sim_materialize_seconds="<<simMaterializeSeconds<<endl;

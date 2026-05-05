@@ -593,6 +593,13 @@ check-sim-region-single-request-direct-reduce: $(SIM_REGION_SINGLE_REQUEST_DIREC
 check-sim-region-direct-reduce-profile-telemetry: $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
 	./$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
 
+check-sim-region-direct-reduce-pipeline-telemetry: $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+	./$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+
+check-sim-initial-safe-store-handoff-region-deferred-composition: $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET) $(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF=1 LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE=1 LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS=1 ./$(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
+	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF=1 LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE=1 LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS=1 ./$(SIM_REGION_SINGLE_REQUEST_DIRECT_REDUCE_TEST_TARGET)
+
 check-sim-cuda-proposal-select: $(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 	./$(SIM_CUDA_PROPOSAL_SELECT_TEST_TARGET)
 
@@ -791,7 +798,8 @@ check-longtarget-lite-output:
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
 			build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \
-			build-sim-region-single-request-direct-reduce-test check-sim-region-single-request-direct-reduce check-sim-region-direct-reduce-profile-telemetry \
+			build-sim-region-single-request-direct-reduce-test check-sim-region-single-request-direct-reduce check-sim-region-direct-reduce-profile-telemetry check-sim-region-direct-reduce-pipeline-telemetry \
+			check-sim-initial-safe-store-handoff-region-deferred-composition \
 			build-sim-cuda-proposal-select-test check-sim-cuda-proposal-select \
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \

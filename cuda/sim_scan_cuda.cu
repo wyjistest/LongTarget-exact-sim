@@ -440,6 +440,13 @@ struct SimScanCudaContext
     regionDirectReduceStopEvent(NULL),
     regionDirectPrefixStopEvent(NULL),
     regionDirectCompactStartEvent(NULL),
+    regionDirectPipelineMetadataStopEvent(NULL),
+    regionDirectPipelineDiagStopEvent(NULL),
+    regionDirectPipelineEventCountStopEvent(NULL),
+    regionDirectPipelineEventPrefixStopEvent(NULL),
+    regionDirectPipelineRunCountStopEvent(NULL),
+    regionDirectPipelineRunPrefixStopEvent(NULL),
+    regionDirectPipelineRunCompactStopEvent(NULL),
     batchOutputCursorsDevice(NULL),
     batchOutputCursorsCapacity(0)
   {
@@ -593,6 +600,13 @@ struct SimScanCudaContext
   cudaEvent_t regionDirectReduceStopEvent;
   cudaEvent_t regionDirectPrefixStopEvent;
   cudaEvent_t regionDirectCompactStartEvent;
+  cudaEvent_t regionDirectPipelineMetadataStopEvent;
+  cudaEvent_t regionDirectPipelineDiagStopEvent;
+  cudaEvent_t regionDirectPipelineEventCountStopEvent;
+  cudaEvent_t regionDirectPipelineEventPrefixStopEvent;
+  cudaEvent_t regionDirectPipelineRunCountStopEvent;
+  cudaEvent_t regionDirectPipelineRunPrefixStopEvent;
+  cudaEvent_t regionDirectPipelineRunCompactStopEvent;
   int *batchOutputCursorsDevice;
   size_t batchOutputCursorsCapacity;
 };
@@ -634,6 +648,13 @@ static void sim_scan_cuda_release_initial_context_resources(SimScanCudaContext &
     context.candidateStatesDevice = NULL;
   }
   sim_scan_cuda_destroy_event_if_present(context.regionDirectCompactStartEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineRunCompactStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineRunPrefixStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineRunCountStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineEventPrefixStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineEventCountStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineDiagStopEvent);
+  sim_scan_cuda_destroy_event_if_present(context.regionDirectPipelineMetadataStopEvent);
   sim_scan_cuda_destroy_event_if_present(context.regionDirectPrefixStopEvent);
   sim_scan_cuda_destroy_event_if_present(context.regionDirectReduceStopEvent);
   sim_scan_cuda_destroy_event_if_present(context.regionDirectReduceStartEvent);
@@ -2614,6 +2635,34 @@ static bool ensure_sim_scan_cuda_initialized_locked(SimScanCudaContext &context,
   if(status == cudaSuccess)
   {
     status = cudaEventCreate(&context.regionDirectCompactStartEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineMetadataStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineDiagStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineEventCountStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineEventPrefixStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineRunCountStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineRunPrefixStopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&context.regionDirectPipelineRunCompactStopEvent);
   }
   if(status != cudaSuccess)
   {
@@ -11872,6 +11921,12 @@ static bool sim_scan_cuda_region_direct_reduce_deferred_counts_runtime()
   return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
 }
 
+static bool sim_scan_cuda_region_direct_reduce_pipeline_telemetry_runtime()
+{
+  const char *env = getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
+  return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+}
+
 static bool sim_scan_cuda_region_single_request_direct_reduce_shadow_runtime()
 {
   const char *env = getenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
@@ -11895,6 +11950,150 @@ static size_t sim_scan_cuda_region_single_request_direct_hash_capacity_runtime(i
                                static_cast<size_t>(max(filterStartCoordCount,0)) *
                                  static_cast<size_t>(2));
   return sim_scan_cuda_next_power_of_two(requested);
+}
+
+static uint64_t sim_scan_cuda_seconds_to_nanoseconds(double seconds)
+{
+  if(seconds <= 0.0)
+  {
+    return 0;
+  }
+  const long double nanoseconds = static_cast<long double>(seconds) * 1000000000.0L;
+  if(nanoseconds >= static_cast<long double>(numeric_limits<uint64_t>::max()))
+  {
+    return numeric_limits<uint64_t>::max();
+  }
+  return static_cast<uint64_t>(nanoseconds + 0.5L);
+}
+
+static void sim_scan_cuda_record_direct_pipeline_dp_bucket(double dpSeconds,
+                                                           SimScanCudaBatchResult *batchResult)
+{
+  if(batchResult == NULL)
+  {
+    return;
+  }
+  if(dpSeconds < 0.001)
+  {
+    batchResult->regionSingleRequestDirectReducePipelineDpLt1msCount += 1;
+  }
+  else if(dpSeconds < 0.005)
+  {
+    batchResult->regionSingleRequestDirectReducePipelineDp1To5msCount += 1;
+  }
+  else if(dpSeconds < 0.010)
+  {
+    batchResult->regionSingleRequestDirectReducePipelineDp5To10msCount += 1;
+  }
+  else if(dpSeconds < 0.050)
+  {
+    batchResult->regionSingleRequestDirectReducePipelineDp10To50msCount += 1;
+  }
+  else
+  {
+    batchResult->regionSingleRequestDirectReducePipelineDpGte50msCount += 1;
+  }
+  batchResult->regionSingleRequestDirectReducePipelineDpMaxNanoseconds =
+    max(batchResult->regionSingleRequestDirectReducePipelineDpMaxNanoseconds,
+        sim_scan_cuda_seconds_to_nanoseconds(dpSeconds));
+}
+
+static void sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(
+  const SimScanCudaBatchResult &source,
+  SimScanCudaBatchResult *target)
+{
+  if(target == NULL)
+  {
+    return;
+  }
+  target->regionSingleRequestDirectReducePipelineMetadataH2DSeconds +=
+    source.regionSingleRequestDirectReducePipelineMetadataH2DSeconds;
+  target->regionSingleRequestDirectReducePipelineDiagGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineDiagGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineEventCountGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineEventCountGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineEventCountD2HSeconds +=
+    source.regionSingleRequestDirectReducePipelineEventCountD2HSeconds;
+  target->regionSingleRequestDirectReducePipelineEventPrefixGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineEventPrefixGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineRunCountGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineRunCountGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineRunCountD2HSeconds +=
+    source.regionSingleRequestDirectReducePipelineRunCountD2HSeconds;
+  target->regionSingleRequestDirectReducePipelineRunPrefixGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineRunPrefixGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineRunCompactGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineRunCompactGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineCandidatePrefixGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineCandidatePrefixGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds +=
+    source.regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds;
+  target->regionSingleRequestDirectReducePipelineAccountedGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineAccountedGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds +=
+    source.regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds;
+  target->regionSingleRequestDirectReducePipelineRequestCount +=
+    source.regionSingleRequestDirectReducePipelineRequestCount;
+  target->regionSingleRequestDirectReducePipelineRowCountTotal +=
+    source.regionSingleRequestDirectReducePipelineRowCountTotal;
+  target->regionSingleRequestDirectReducePipelineRowCountMax =
+    max(target->regionSingleRequestDirectReducePipelineRowCountMax,
+        source.regionSingleRequestDirectReducePipelineRowCountMax);
+  target->regionSingleRequestDirectReducePipelineColCountTotal +=
+    source.regionSingleRequestDirectReducePipelineColCountTotal;
+  target->regionSingleRequestDirectReducePipelineColCountMax =
+    max(target->regionSingleRequestDirectReducePipelineColCountMax,
+        source.regionSingleRequestDirectReducePipelineColCountMax);
+  target->regionSingleRequestDirectReducePipelineCellCountTotal +=
+    source.regionSingleRequestDirectReducePipelineCellCountTotal;
+  target->regionSingleRequestDirectReducePipelineCellCountMax =
+    max(target->regionSingleRequestDirectReducePipelineCellCountMax,
+        source.regionSingleRequestDirectReducePipelineCellCountMax);
+  target->regionSingleRequestDirectReducePipelineDiagCountTotal +=
+    source.regionSingleRequestDirectReducePipelineDiagCountTotal;
+  target->regionSingleRequestDirectReducePipelineDiagCountMax =
+    max(target->regionSingleRequestDirectReducePipelineDiagCountMax,
+        source.regionSingleRequestDirectReducePipelineDiagCountMax);
+  target->regionSingleRequestDirectReducePipelineFilterStartCountTotal +=
+    source.regionSingleRequestDirectReducePipelineFilterStartCountTotal;
+  target->regionSingleRequestDirectReducePipelineFilterStartCountMax =
+    max(target->regionSingleRequestDirectReducePipelineFilterStartCountMax,
+        source.regionSingleRequestDirectReducePipelineFilterStartCountMax);
+  target->regionSingleRequestDirectReducePipelineDiagLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineDiagLaunchCount;
+  target->regionSingleRequestDirectReducePipelineEventCountLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineEventCountLaunchCount;
+  target->regionSingleRequestDirectReducePipelineEventPrefixLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineEventPrefixLaunchCount;
+  target->regionSingleRequestDirectReducePipelineRunCountLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineRunCountLaunchCount;
+  target->regionSingleRequestDirectReducePipelineRunPrefixLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineRunPrefixLaunchCount;
+  target->regionSingleRequestDirectReducePipelineRunCompactLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineRunCompactLaunchCount;
+  target->regionSingleRequestDirectReducePipelineFilterReduceLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineFilterReduceLaunchCount;
+  target->regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount;
+  target->regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount;
+  target->regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount +=
+    source.regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount;
+  target->regionSingleRequestDirectReducePipelineDpLt1msCount +=
+    source.regionSingleRequestDirectReducePipelineDpLt1msCount;
+  target->regionSingleRequestDirectReducePipelineDp1To5msCount +=
+    source.regionSingleRequestDirectReducePipelineDp1To5msCount;
+  target->regionSingleRequestDirectReducePipelineDp5To10msCount +=
+    source.regionSingleRequestDirectReducePipelineDp5To10msCount;
+  target->regionSingleRequestDirectReducePipelineDp10To50msCount +=
+    source.regionSingleRequestDirectReducePipelineDp10To50msCount;
+  target->regionSingleRequestDirectReducePipelineDpGte50msCount +=
+    source.regionSingleRequestDirectReducePipelineDpGte50msCount;
+  target->regionSingleRequestDirectReducePipelineDpMaxNanoseconds =
+    max(target->regionSingleRequestDirectReducePipelineDpMaxNanoseconds,
+        source.regionSingleRequestDirectReducePipelineDpMaxNanoseconds);
 }
 
 static int sim_scan_cuda_round_up_int(int value,int quantum)
@@ -12085,6 +12284,7 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   batchResult->regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds +=
     requestBatchResult.regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
+  sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(requestBatchResult,batchResult);
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
     batchResult->usedRegionTrueBatchPath || requestBatchResult.usedRegionTrueBatchPath;
@@ -18229,7 +18429,8 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
                                                                           int requestIndex,
                                                                           int reservedOutputBase,
                                                                           int reservedOutputCapacity,
-                                                                          string *errorOut)
+                                                                          string *errorOut,
+                                                                          SimScanCudaBatchResult *pipelineBatchResult = NULL)
 {
   if(context == NULL)
   {
@@ -18242,9 +18443,37 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
 
   const int rowCount = rowEnd - rowStart + 1;
   const int colCount = colEnd - colStart + 1;
+  const bool recordPipelineTelemetry = pipelineBatchResult != NULL;
   if(rowCount <= 0 || colCount <= 0)
   {
     return true;
+  }
+  if(recordPipelineTelemetry)
+  {
+    const uint64_t rowCountU64 = static_cast<uint64_t>(rowCount);
+    const uint64_t colCountU64 = static_cast<uint64_t>(colCount);
+    const uint64_t diagCountU64 = static_cast<uint64_t>(rowCount + colCount - 1);
+    const uint64_t filterCountU64 = static_cast<uint64_t>(max(filterStartCoordCount,0));
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineRequestCount += 1;
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineRowCountTotal += rowCountU64;
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineRowCountMax =
+      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineRowCountMax,rowCountU64);
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineColCountTotal += colCountU64;
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineColCountMax =
+      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineColCountMax,colCountU64);
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineCellCountTotal +=
+      rowCountU64 * colCountU64;
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineCellCountMax =
+      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineCellCountMax,
+          rowCountU64 * colCountU64);
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagCountTotal += diagCountU64;
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagCountMax =
+      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagCountMax,diagCountU64);
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineFilterStartCountTotal +=
+      filterCountU64;
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax =
+      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax,
+          filterCountU64);
   }
 
   if(blockedWords == NULL || blockedWordCount <= 0)
@@ -18361,10 +18590,17 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   int prevStartI = 0;
   int prevLen = 0;
 
+  if(recordPipelineTelemetry &&
+     !sim_scan_cuda_record_event(context->regionDirectPipelineMetadataStopEvent,errorOut))
+  {
+    return false;
+  }
+
   const int M = queryLength;
   const int N = targetLength;
   const int diagStart = rowStart + colStart;
   const int diagEnd = rowEnd + colEnd;
+  uint64_t diagLaunches = 0;
   for(int diag = diagStart; diag <= diagEnd; ++diag)
   {
     const int curStartIHost = max(rowStart, diag - colEnd);
@@ -18413,6 +18649,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
                                                              blockedWordCount,
                                                              context->HScoreDevice,
                                                              context->HCoordDevice);
+    ++diagLaunches;
     status = cudaGetLastError();
     if(status != cudaSuccess)
     {
@@ -18438,6 +18675,15 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
     std::swap(prevF, curF);
     std::swap(prevFc, curFc);
   }
+  if(recordPipelineTelemetry)
+  {
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagLaunchCount +=
+      diagLaunches;
+    if(!sim_scan_cuda_record_event(context->regionDirectPipelineDiagStopEvent,errorOut))
+    {
+      return false;
+    }
+  }
 
   const int countThreads = 256;
   const int countBlocks = rowCount;
@@ -18458,6 +18704,14 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
       *errorOut = cuda_error_string(status);
     }
     return false;
+  }
+  if(recordPipelineTelemetry)
+  {
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineEventCountLaunchCount += 1;
+    if(!sim_scan_cuda_record_event(context->regionDirectPipelineEventCountStopEvent,errorOut))
+    {
+      return false;
+    }
   }
 
   sim_scan_prefix_sum_kernel<<<1, 1>>>(context->rowCountsDevice,
@@ -18485,6 +18739,14 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
       *errorOut = cuda_error_string(status);
     }
     return false;
+  }
+  if(recordPipelineTelemetry)
+  {
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineEventPrefixLaunchCount += 1;
+    if(!sim_scan_cuda_record_event(context->regionDirectPipelineEventPrefixStopEvent,errorOut))
+    {
+      return false;
+    }
   }
 
   if(maxEventsAllowed == 0)
@@ -18530,6 +18792,14 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
     }
     return false;
   }
+  if(recordPipelineTelemetry)
+  {
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineRunCountLaunchCount += 1;
+    if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunCountStopEvent,errorOut))
+    {
+      return false;
+    }
+  }
 
   sim_scan_prefix_sum_kernel<<<1, 1>>>(context->rowCountsDevice,
                                        rowCount,
@@ -18557,6 +18827,14 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
     }
     return false;
   }
+  if(recordPipelineTelemetry)
+  {
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineRunPrefixLaunchCount += 1;
+    if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunPrefixStopEvent,errorOut))
+    {
+      return false;
+    }
+  }
   sim_scan_compact_region_run_summaries_kernel<<<summaryBlocks, summaryThreads, summarySharedBytes>>>(context->eventsDevice,
                                                                                                       context->rowOffsetsDevice,
                                                                                                       rowCount,
@@ -18571,6 +18849,14 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
       *errorOut = cuda_error_string(status);
     }
     return false;
+  }
+  if(recordPipelineTelemetry)
+  {
+    pipelineBatchResult->regionSingleRequestDirectReducePipelineRunCompactLaunchCount += 1;
+    if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunCompactStopEvent,errorOut))
+    {
+      return false;
+    }
   }
   return true;
 }
@@ -19692,6 +19978,7 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
     directBatchResult.regionSingleRequestDirectReduceAffectedStartCount;
   batchResult->regionSingleRequestDirectReduceReduceWorkItems +=
     directBatchResult.regionSingleRequestDirectReduceReduceWorkItems;
+  sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(directBatchResult,batchResult);
 }
 
 static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
@@ -19783,6 +20070,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   const int maxEventsAllowed = static_cast<int>(maxEventsAllowedSize);
   const bool useDeferredCounts =
     sim_scan_cuda_region_direct_reduce_deferred_counts_runtime();
+  const bool usePipelineTelemetry =
+    sim_scan_cuda_region_direct_reduce_pipeline_telemetry_runtime();
 
   const size_t hashCapacity =
     sim_scan_cuda_region_single_request_direct_hash_capacity_runtime(request.filterStartCoordCount);
@@ -19866,7 +20155,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
                                                                     0,
                                                                     0,
                                                                     maxEventsAllowed,
-                                                                    errorOut))
+                                                                    errorOut,
+                                                                    usePipelineTelemetry ? batchResult : NULL))
   {
     return false;
   }
@@ -19878,15 +20168,25 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   int eventCount = 0;
   int runSummaryCount = 0;
   double countD2HSeconds = 0.0;
+  double eventCountD2HSeconds = 0.0;
+  double runCountD2HSeconds = 0.0;
   double candidateCountD2HSeconds = 0.0;
   double d2hSeconds = 0.0;
   if(!useDeferredCounts)
   {
     const chrono::steady_clock::time_point countCopyStart = chrono::steady_clock::now();
+    const chrono::steady_clock::time_point eventCopyStart = chrono::steady_clock::now();
     status = cudaMemcpy(&eventCount,context->batchEventTotalsDevice,sizeof(int),cudaMemcpyDeviceToHost);
+    eventCountD2HSeconds =
+      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                            chrono::steady_clock::now() - eventCopyStart).count()) / 1.0e9;
     if(status == cudaSuccess)
     {
+      const chrono::steady_clock::time_point runCopyStart = chrono::steady_clock::now();
       status = cudaMemcpy(&runSummaryCount,context->batchRunTotalsDevice,sizeof(int),cudaMemcpyDeviceToHost);
+      runCountD2HSeconds =
+        static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                              chrono::steady_clock::now() - runCopyStart).count()) / 1.0e9;
     }
     countD2HSeconds =
       static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
@@ -19917,6 +20217,13 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   {
     batchResult->d2hSeconds = d2hSeconds;
     batchResult->regionSingleRequestDirectReduceCountD2HSeconds = countD2HSeconds;
+    if(usePipelineTelemetry)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineEventCountD2HSeconds =
+        eventCountD2HSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineRunCountD2HSeconds =
+        runCountD2HSeconds;
+    }
     batchResult->regionSingleRequestDirectReduceEventCount = static_cast<uint64_t>(max(eventCount,0));
     batchResult->regionSingleRequestDirectReduceRunSummaryCount =
       static_cast<uint64_t>(max(runSummaryCount,0));
@@ -19960,6 +20267,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
     return false;
   }
+  if(usePipelineTelemetry && batchResult != NULL)
+  {
+    batchResult->regionSingleRequestDirectReducePipelineFilterReduceLaunchCount += 1;
+  }
   if(!sim_scan_cuda_record_event(context->regionDirectReduceStopEvent,errorOut))
   {
     return false;
@@ -19977,6 +20288,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       *errorOut = cuda_error_string(status);
     }
     return false;
+  }
+  if(usePipelineTelemetry && batchResult != NULL)
+  {
+    batchResult->regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount += 1;
   }
   if(!sim_scan_cuda_record_event(context->regionDirectPrefixStopEvent,errorOut))
   {
@@ -20033,6 +20348,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       }
       return false;
     }
+    if(usePipelineTelemetry && batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount += 1;
+    }
   }
 
   status = cudaEventRecord(context->stopEvent);
@@ -20062,6 +20381,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       context->batchRunTotalsDevice,
       context->candidateCountDevice,
       context->batchCandidateCountsDevice);
+    if(usePipelineTelemetry && batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount += 1;
+    }
     status = cudaGetLastError();
     if(status == cudaSuccess)
     {
@@ -20074,6 +20397,11 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
                             chrono::steady_clock::now() - countCopyStart).count()) / 1.0e9;
     d2hSeconds += countD2HSeconds;
+    if(usePipelineTelemetry && batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds =
+        countD2HSeconds;
+    }
     if(status != cudaSuccess)
     {
       if(errorOut != NULL)
@@ -20129,6 +20457,47 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     return false;
   }
   const double compactGpuSeconds = prefixGpuSeconds + compactKernelGpuSeconds;
+  double pipelineMetadataH2DSeconds = 0.0;
+  double pipelineDiagGpuSeconds = 0.0;
+  double pipelineEventCountGpuSeconds = 0.0;
+  double pipelineEventPrefixGpuSeconds = 0.0;
+  double pipelineRunCountGpuSeconds = 0.0;
+  double pipelineRunPrefixGpuSeconds = 0.0;
+  double pipelineRunCompactGpuSeconds = 0.0;
+  if(usePipelineTelemetry && batchResult != NULL)
+  {
+    if(!sim_scan_cuda_elapsed_seconds(context->startEvent,
+                                      context->regionDirectPipelineMetadataStopEvent,
+                                      &pipelineMetadataH2DSeconds,
+                                      errorOut) ||
+       !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineMetadataStopEvent,
+                                      context->regionDirectPipelineDiagStopEvent,
+                                      &pipelineDiagGpuSeconds,
+                                      errorOut) ||
+       !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineDiagStopEvent,
+                                      context->regionDirectPipelineEventCountStopEvent,
+                                      &pipelineEventCountGpuSeconds,
+                                      errorOut) ||
+       !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineEventCountStopEvent,
+                                      context->regionDirectPipelineEventPrefixStopEvent,
+                                      &pipelineEventPrefixGpuSeconds,
+                                      errorOut) ||
+       !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineEventPrefixStopEvent,
+                                      context->regionDirectPipelineRunCountStopEvent,
+                                      &pipelineRunCountGpuSeconds,
+                                      errorOut) ||
+       !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineRunCountStopEvent,
+                                      context->regionDirectPipelineRunPrefixStopEvent,
+                                      &pipelineRunPrefixGpuSeconds,
+                                      errorOut) ||
+       !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineRunPrefixStopEvent,
+                                      context->regionDirectPipelineRunCompactStopEvent,
+                                      &pipelineRunCompactGpuSeconds,
+                                      errorOut))
+    {
+      return false;
+    }
+  }
 
   outResult->candidateStatesDevice =
     candidateCount > 0 ? context->batchCandidateStatesDevice : NULL;
@@ -20167,6 +20536,43 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     batchResult->regionSingleRequestDirectReduceReduceWorkItems =
       static_cast<uint64_t>(request.filterStartCoordCount) *
       static_cast<uint64_t>(max(runSummaryCount,0));
+    if(usePipelineTelemetry)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineMetadataH2DSeconds =
+        pipelineMetadataH2DSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineDiagGpuSeconds =
+        pipelineDiagGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineEventCountGpuSeconds =
+        pipelineEventCountGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineEventPrefixGpuSeconds =
+        pipelineEventPrefixGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineRunCountGpuSeconds =
+        pipelineRunCountGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineRunPrefixGpuSeconds =
+        pipelineRunPrefixGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineRunCompactGpuSeconds =
+        pipelineRunCompactGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineCandidatePrefixGpuSeconds =
+        prefixGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds =
+        compactKernelGpuSeconds;
+      const double accountedGpuSeconds =
+        pipelineMetadataH2DSeconds +
+        pipelineDiagGpuSeconds +
+        pipelineEventCountGpuSeconds +
+        pipelineEventPrefixGpuSeconds +
+        pipelineRunCountGpuSeconds +
+        pipelineRunPrefixGpuSeconds +
+        pipelineRunCompactGpuSeconds +
+        filterReduceGpuSeconds +
+        prefixGpuSeconds +
+        compactKernelGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineAccountedGpuSeconds =
+        accountedGpuSeconds;
+      batchResult->regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds =
+        max(0.0,batchResult->gpuSeconds - accountedGpuSeconds);
+      sim_scan_cuda_record_direct_pipeline_dp_bucket(dpGpuSeconds,batchResult);
+    }
     batchResult->taskCount = 1;
     batchResult->launchCount = 1;
   }

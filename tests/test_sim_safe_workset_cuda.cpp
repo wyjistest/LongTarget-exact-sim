@@ -697,6 +697,20 @@ int main()
                           "sparse planner execute-plan cell count") && ok;
     ok = expect_true(!storeHandle.valid, "store handle released after sparse planner path") && ok;
 
+    const char *previousInitialSafeStoreHandoff =
+        getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
+    const bool hadPreviousInitialSafeStoreHandoff = previousInitialSafeStoreHandoff != NULL;
+    const std::string previousInitialSafeStoreHandoffValue =
+        hadPreviousInitialSafeStoreHandoff ? previousInitialSafeStoreHandoff : "";
+    const char *previousInitialSafeStoreHandoffAlias =
+        getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
+    const bool hadPreviousInitialSafeStoreHandoffAlias =
+        previousInitialSafeStoreHandoffAlias != NULL;
+    const std::string previousInitialSafeStoreHandoffAliasValue =
+        hadPreviousInitialSafeStoreHandoffAlias ? previousInitialSafeStoreHandoffAlias : "";
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
+    unsetenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
+
     std::vector<SimScanCudaInitialRunSummary> mirroredSummaries;
     mirroredSummaries.push_back(SimScanCudaInitialRunSummary{20, packSimCoord(5, 7), 9, 7, 12, 12});
     mirroredSummaries.push_back(SimScanCudaInitialRunSummary{18, packSimCoord(1, 1), 4, 1, 6, 6});
@@ -756,11 +770,25 @@ int main()
         }
     }
 
-    const char *previousInitialSafeStoreHandoff =
-        getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
-    const bool hadPreviousInitialSafeStoreHandoff = previousInitialSafeStoreHandoff != NULL;
-    const std::string previousInitialSafeStoreHandoffValue =
-        hadPreviousInitialSafeStoreHandoff ? previousInitialSafeStoreHandoff : "";
+    uint64_t handoffCreatedBefore = 0;
+    uint64_t handoffAvailableBefore = 0;
+    uint64_t handoffHostStoreEvictedBefore = 0;
+    uint64_t handoffHostMergeSkippedBefore = 0;
+    uint64_t handoffHostMergeFallbacksBefore = 0;
+    uint64_t handoffRejectedFastShadowBefore = 0;
+    uint64_t handoffRejectedProposalLoopBefore = 0;
+    uint64_t handoffRejectedMissingGpuStoreBefore = 0;
+    uint64_t handoffRejectedStaleEpochBefore = 0;
+    getSimInitialSafeStoreHandoffCompositionStats(handoffCreatedBefore,
+                                                 handoffAvailableBefore,
+                                                 handoffHostStoreEvictedBefore,
+                                                 handoffHostMergeSkippedBefore,
+                                                 handoffHostMergeFallbacksBefore,
+                                                 handoffRejectedFastShadowBefore,
+                                                 handoffRejectedProposalLoopBefore,
+                                                 handoffRejectedMissingGpuStoreBefore,
+                                                 handoffRejectedStaleEpochBefore);
+
     setenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF", "1", 1);
 
     SimKernelContext mirroredDeviceContext(20, 20);
@@ -810,6 +838,8 @@ int main()
                      "gated initial safe-store handoff evicts host safe store") && ok;
     ok = expect_true(mirroredDeviceContext.gpuSafeCandidateStateStore.valid,
                      "gated initial safe-store handoff keeps gpu safe store valid") && ok;
+    ok = expect_true(mirroredDeviceContext.initialSafeStoreHandoffActive,
+                     "gated initial safe-store handoff marks context active") && ok;
     ok = expect_true(simCanUseGpuFrontierCacheForResidency(mirroredDeviceContext),
                      "gated initial safe-store handoff marks gpu frontier cache reusable") && ok;
     ok = expect_candidate_states_equal(mirroredDeviceStoreStates,
@@ -823,6 +853,77 @@ int main()
                            mirroredExpectedAffectedStartCoords.size(),
                            "gated initial safe-store handoff affected start count") && ok;
 
+    uint64_t handoffCreatedAfterBuild = 0;
+    uint64_t handoffAvailableAfterBuild = 0;
+    uint64_t handoffHostStoreEvictedAfterBuild = 0;
+    uint64_t handoffHostMergeSkippedAfterBuild = 0;
+    uint64_t handoffHostMergeFallbacksAfterBuild = 0;
+    uint64_t handoffRejectedFastShadowAfterBuild = 0;
+    uint64_t handoffRejectedProposalLoopAfterBuild = 0;
+    uint64_t handoffRejectedMissingGpuStoreAfterBuild = 0;
+    uint64_t handoffRejectedStaleEpochAfterBuild = 0;
+    getSimInitialSafeStoreHandoffCompositionStats(handoffCreatedAfterBuild,
+                                                 handoffAvailableAfterBuild,
+                                                 handoffHostStoreEvictedAfterBuild,
+                                                 handoffHostMergeSkippedAfterBuild,
+                                                 handoffHostMergeFallbacksAfterBuild,
+                                                 handoffRejectedFastShadowAfterBuild,
+                                                 handoffRejectedProposalLoopAfterBuild,
+                                                 handoffRejectedMissingGpuStoreAfterBuild,
+                                                 handoffRejectedStaleEpochAfterBuild);
+    ok = expect_equal_u64(handoffCreatedAfterBuild,
+                          handoffCreatedBefore + 1,
+                          "initial safe-store handoff telemetry created") && ok;
+    ok = expect_equal_u64(handoffHostStoreEvictedAfterBuild,
+                          handoffHostStoreEvictedBefore + 1,
+                          "initial safe-store handoff telemetry host-store evicted") && ok;
+
+    const std::string compositionQuery(20, 'A');
+    const std::string compositionTarget(20, 'A');
+    const std::string paddedCompositionQuery = " " + compositionQuery;
+    const std::string paddedCompositionTarget = " " + compositionTarget;
+    SimKernelContext missingGpuHandoffContext(20, 20);
+    initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, missingGpuHandoffContext);
+    missingGpuHandoffContext.initialSafeStoreHandoffActive = true;
+    SimSafeWorksetFallbackReason missingGpuFallback = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
+    const bool missingGpuUpdateOk =
+        applySimSafeAggregatedGpuUpdate(paddedCompositionQuery.c_str(),
+                                        paddedCompositionTarget.c_str(),
+                                        mirroredDeviceGpuWorkset,
+                                        mirroredDeviceGpuAffectedStartCoords,
+                                        missingGpuHandoffContext,
+                                        false,
+                                        false,
+                                        false,
+                                        &missingGpuFallback);
+    ok = expect_true(!missingGpuUpdateOk,
+                     "initial safe-store handoff composition missing-gpu update rejects") && ok;
+
+    uint64_t handoffCreatedAfterUpdates = 0;
+    uint64_t handoffAvailableAfterMissing = 0;
+    uint64_t handoffHostStoreEvictedAfterUpdates = 0;
+    uint64_t handoffHostMergeSkippedAfterMissing = 0;
+    uint64_t handoffHostMergeFallbacksAfterUpdates = 0;
+    uint64_t handoffRejectedFastShadowAfterUpdates = 0;
+    uint64_t handoffRejectedProposalLoopAfterUpdates = 0;
+    uint64_t handoffRejectedMissingGpuStoreAfterUpdates = 0;
+    uint64_t handoffRejectedStaleEpochAfterUpdates = 0;
+    getSimInitialSafeStoreHandoffCompositionStats(handoffCreatedAfterUpdates,
+                                                 handoffAvailableAfterMissing,
+                                                 handoffHostStoreEvictedAfterUpdates,
+                                                 handoffHostMergeSkippedAfterMissing,
+                                                 handoffHostMergeFallbacksAfterUpdates,
+                                                 handoffRejectedFastShadowAfterUpdates,
+                                                 handoffRejectedProposalLoopAfterUpdates,
+                                                 handoffRejectedMissingGpuStoreAfterUpdates,
+                                                 handoffRejectedStaleEpochAfterUpdates);
+    ok = expect_equal_u64(handoffHostMergeFallbacksAfterUpdates,
+                          handoffHostMergeFallbacksAfterBuild + 1,
+                          "initial safe-store handoff telemetry host merge fallback") && ok;
+    ok = expect_equal_u64(handoffRejectedMissingGpuStoreAfterUpdates,
+                          handoffRejectedMissingGpuStoreAfterBuild + 1,
+                          "initial safe-store handoff telemetry missing gpu store") && ok;
+
     if (hadPreviousInitialSafeStoreHandoff)
     {
         setenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF",
@@ -832,6 +933,16 @@ int main()
     else
     {
         unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_HANDOFF");
+    }
+    if (hadPreviousInitialSafeStoreHandoffAlias)
+    {
+        setenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE",
+               previousInitialSafeStoreHandoffAliasValue.c_str(),
+               1);
+    }
+    else
+    {
+        unsetenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_SAFE_STORE_DEVICE_MAINTENANCE");
     }
 
     const char *previousDeviceKLoop = getenv("LONGTARGET_ENABLE_SIM_CUDA_DEVICE_K_LOOP");
@@ -1624,6 +1735,27 @@ int main()
     ok = expect_true(baselineAggregatedUpdateOk,
                      "baseline aggregated gpu update succeeds") && ok;
 
+    uint64_t handoffCreatedBeforeAggregated = 0;
+    uint64_t handoffAvailableBeforeAggregated = 0;
+    uint64_t handoffHostStoreEvictedBeforeAggregated = 0;
+    uint64_t handoffHostMergeSkippedBeforeAggregated = 0;
+    uint64_t handoffHostMergeFallbacksBeforeAggregated = 0;
+    uint64_t handoffRejectedFastShadowBeforeAggregated = 0;
+    uint64_t handoffRejectedProposalLoopBeforeAggregated = 0;
+    uint64_t handoffRejectedMissingGpuStoreBeforeAggregated = 0;
+    uint64_t handoffRejectedStaleEpochBeforeAggregated = 0;
+    getSimInitialSafeStoreHandoffCompositionStats(handoffCreatedBeforeAggregated,
+                                                 handoffAvailableBeforeAggregated,
+                                                 handoffHostStoreEvictedBeforeAggregated,
+                                                 handoffHostMergeSkippedBeforeAggregated,
+                                                 handoffHostMergeFallbacksBeforeAggregated,
+                                                 handoffRejectedFastShadowBeforeAggregated,
+                                                 handoffRejectedProposalLoopBeforeAggregated,
+                                                 handoffRejectedMissingGpuStoreBeforeAggregated,
+                                                 handoffRejectedStaleEpochBeforeAggregated);
+    resetSimCandidateStateStore(gatedAggregatedUpdateContext.safeCandidateStateStore, false);
+    gatedAggregatedUpdateContext.initialSafeStoreHandoffActive = true;
+
     setenv("LONGTARGET_ENABLE_SIM_CUDA_SAFE_WORKSET_DEVICE_MAINTENANCE", "1", 1);
     SimSafeWorksetFallbackReason gatedAggregatedFallback = SIM_SAFE_WORKSET_FALLBACK_INVALID_STORE;
     const bool gatedAggregatedUpdateOk =
@@ -1638,6 +1770,37 @@ int main()
                                         &gatedAggregatedFallback);
     ok = expect_true(gatedAggregatedUpdateOk,
                      "gated aggregated gpu update succeeds") && ok;
+
+    uint64_t handoffCreatedAfterAggregated = 0;
+    uint64_t handoffAvailableAfterAggregated = 0;
+    uint64_t handoffHostStoreEvictedAfterAggregated = 0;
+    uint64_t handoffHostMergeSkippedAfterAggregated = 0;
+    uint64_t handoffHostMergeFallbacksAfterAggregated = 0;
+    uint64_t handoffRejectedFastShadowAfterAggregated = 0;
+    uint64_t handoffRejectedProposalLoopAfterAggregated = 0;
+    uint64_t handoffRejectedMissingGpuStoreAfterAggregated = 0;
+    uint64_t handoffRejectedStaleEpochAfterAggregated = 0;
+    getSimInitialSafeStoreHandoffCompositionStats(handoffCreatedAfterAggregated,
+                                                 handoffAvailableAfterAggregated,
+                                                 handoffHostStoreEvictedAfterAggregated,
+                                                 handoffHostMergeSkippedAfterAggregated,
+                                                 handoffHostMergeFallbacksAfterAggregated,
+                                                 handoffRejectedFastShadowAfterAggregated,
+                                                 handoffRejectedProposalLoopAfterAggregated,
+                                                 handoffRejectedMissingGpuStoreAfterAggregated,
+                                                 handoffRejectedStaleEpochAfterAggregated);
+    ok = expect_equal_u64(handoffAvailableAfterAggregated,
+                          handoffAvailableBeforeAggregated + 1,
+                          "initial safe-store handoff telemetry aggregated available for locate") && ok;
+    ok = expect_equal_u64(handoffHostMergeSkippedAfterAggregated,
+                          handoffHostMergeSkippedBeforeAggregated + 1,
+                          "initial safe-store handoff telemetry aggregated host merge skipped") && ok;
+    ok = expect_equal_u64(handoffHostMergeFallbacksAfterAggregated,
+                          handoffHostMergeFallbacksBeforeAggregated,
+                          "initial safe-store handoff telemetry aggregated no host merge fallback") && ok;
+    ok = expect_equal_u64(handoffRejectedStaleEpochAfterAggregated,
+                          handoffRejectedStaleEpochBeforeAggregated,
+                          "initial safe-store handoff telemetry aggregated no stale rejection") && ok;
 
     std::vector<SimScanCudaCandidateState> gatedAggregatedStoreStates;
     if (!collectSimCudaPersistentSafeCandidateStatesIntersectingBands(

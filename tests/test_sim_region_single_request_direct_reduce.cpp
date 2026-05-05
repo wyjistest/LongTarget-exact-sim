@@ -195,6 +195,7 @@ static void clear_direct_env()
 {
     unsetenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE");
     unsetenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
     unsetenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
     unsetenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_HASH_CAPACITY");
 }
@@ -311,6 +312,178 @@ static bool test_direct_reduce_records_profile_telemetry()
                                    "profile count d2h seconds") && ok;
     ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
                                    "profile candidate-count d2h seconds") && ok;
+    return ok;
+}
+
+static bool test_direct_reduce_pipeline_telemetry_disabled_by_default()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    SimScanCudaRequest request = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "pipeline disabled direct path used") && true;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
+                             0,
+                             "pipeline disabled request count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             0,
+                             "pipeline disabled diag launches") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReducePipelineDiagGpuSeconds,
+                            "pipeline disabled diag seconds") && ok;
+    return ok;
+}
+
+static bool test_direct_reduce_records_pipeline_telemetry()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+    const uint64_t rowCount = static_cast<uint64_t>(query.size());
+    const uint64_t colCount = static_cast<uint64_t>(target.size());
+    const uint64_t diagCount = rowCount + colCount - 1;
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest request = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    const uint64_t dpBucketTotal =
+      batchResult.regionSingleRequestDirectReducePipelineDpLt1msCount +
+      batchResult.regionSingleRequestDirectReducePipelineDp1To5msCount +
+      batchResult.regionSingleRequestDirectReducePipelineDp5To10msCount +
+      batchResult.regionSingleRequestDirectReducePipelineDp10To50msCount +
+      batchResult.regionSingleRequestDirectReducePipelineDpGte50msCount;
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "pipeline telemetry direct path used") && true;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
+                             1,
+                             "pipeline request count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRowCountTotal,
+                             rowCount,
+                             "pipeline row total") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRowCountMax,
+                             rowCount,
+                             "pipeline row max") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineColCountTotal,
+                             colCount,
+                             "pipeline col total") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCellCountTotal,
+                             rowCount * colCount,
+                             "pipeline cell total") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineDiagCountTotal,
+                             diagCount,
+                             "pipeline diag total") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             diagCount,
+                             "pipeline diag launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineFilterStartCountTotal,
+                             static_cast<uint64_t>(filter.size()),
+                             "pipeline filter total") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineEventCountLaunchCount,
+                             1,
+                             "pipeline event count launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineEventPrefixLaunchCount,
+                             1,
+                             "pipeline event prefix launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRunCountLaunchCount,
+                             1,
+                             "pipeline run count launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRunPrefixLaunchCount,
+                             1,
+                             "pipeline run prefix launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRunCompactLaunchCount,
+                             1,
+                             "pipeline run compact launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineFilterReduceLaunchCount,
+                             1,
+                             "pipeline filter reduce launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount,
+                             1,
+                             "pipeline candidate prefix launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount,
+                             1,
+                             "pipeline candidate compact launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount,
+                             0,
+                             "pipeline count snapshot launches") && ok;
+    ok = expect_equal_uint64(dpBucketTotal,
+                             1,
+                             "pipeline dp bucket total") && ok;
+    ok = expect_positive_double(batchResult.regionSingleRequestDirectReducePipelineDiagGpuSeconds,
+                                "pipeline diag seconds") && ok;
+    ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReducePipelineEventCountGpuSeconds,
+                                   "pipeline event count seconds") && ok;
+    ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReducePipelineRunCompactGpuSeconds,
+                                   "pipeline run compact seconds") && ok;
+    ok = expect_nonnegative_double(batchResult.regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds,
+                                   "pipeline unaccounted seconds") && ok;
+    return ok;
+}
+
+static bool test_direct_reduce_pipeline_telemetry_records_deferred_snapshot()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest request = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReduceDeferredCounts,
+                          "pipeline deferred path used") && true;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
+                             1,
+                             "pipeline deferred request count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount,
+                             1,
+                             "pipeline deferred snapshot launches") && ok;
+    ok = expect_nonnegative_double(
+           batchResult.regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds,
+           "pipeline deferred snapshot d2h seconds") && ok;
     return ok;
 }
 
@@ -612,6 +785,9 @@ static bool test_direct_reduce_overflow_falls_back()
     ok = expect_equal_uint64(directBatchResult.regionSingleRequestDirectReduceOverflows,
                              1,
                              "overflow count") && ok;
+    ok = expect_equal_uint64(directBatchResult.regionSingleRequestDirectReducePipelineRequestCount,
+                             0,
+                             "overflow pipeline request count") && ok;
     return ok;
 }
 
@@ -629,6 +805,9 @@ int main()
     bool ok = true;
     ok = test_direct_reduce_matches_authoritative_single_request() && ok;
     ok = test_direct_reduce_records_profile_telemetry() && ok;
+    ok = test_direct_reduce_pipeline_telemetry_disabled_by_default() && ok;
+    ok = test_direct_reduce_records_pipeline_telemetry() && ok;
+    ok = test_direct_reduce_pipeline_telemetry_records_deferred_snapshot() && ok;
     ok = test_direct_reduce_deferred_counts_match_authoritative() && ok;
     ok = test_direct_reduce_deferred_counts_handles_zero_candidates() && ok;
     ok = test_direct_reduce_shadow_matches_authoritative() && ok;
