@@ -1363,6 +1363,7 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryUnpackSeconds),
       simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryResultMaterializeSeconds),
       preparedBatch.cudaBatchResult.initialSummaryHostCopyElidedBytes);
+    recordSimInitialPinnedAsyncHandoffStats(preparedBatch.cudaBatchResult);
     if(!preparedBatch.usedInitialReduce &&
        !preparedBatch.usedInitialProposals &&
        simCudaInitialChunkedHandoffEnabledRuntime())
@@ -2229,6 +2230,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simInitialSummaryUnpackSeconds = 0.0;
   double simInitialSummaryResultMaterializeSeconds = 0.0;
   uint64_t simInitialSummaryHostCopyElidedBytes = 0;
+  SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
   SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
   uint64_t simInitialExactFrontierReplayFrontierStates = 0;
@@ -2254,7 +2256,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryUnpackSeconds,
                                            simInitialSummaryResultMaterializeSeconds,
                                            simInitialSummaryHostCopyElidedBytes);
-	  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
+  getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
+  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
 	                                          simInitialContextApplyChunkReplayedTotal,
 	                                          simInitialContextApplySummarySkippedTotal,
@@ -2432,6 +2435,61 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSummaryResultMaterializeSeconds<<endl;
   cerr<<"benchmark.sim_initial_summary_host_copy_elided_bytes="
       <<simInitialSummaryHostCopyElidedBytes<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_enabled="
+      <<((simCudaInitialChunkedHandoffEnabledRuntime() &&
+          simCudaInitialPinnedAsyncHandoffEnabledRuntime()) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_requested="
+      <<(simCudaInitialPinnedAsyncHandoffEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_active="
+      <<(simInitialPinnedAsyncHandoffStats.activeCount > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_requested_batches="
+      <<simInitialPinnedAsyncHandoffStats.requestedCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_active_batches="
+      <<simInitialPinnedAsyncHandoffStats.activeCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_disabled_reason="
+      <<((simInitialPinnedAsyncHandoffStats.activeCount > 0 &&
+          simInitialPinnedAsyncHandoffStats.requestedCount >
+            simInitialPinnedAsyncHandoffStats.activeCount) ?
+         "mixed" :
+         (simInitialPinnedAsyncHandoffStats.activeCount > 0) ?
+         "none" :
+         simInitialPinnedAsyncHandoffDisabledReasonLabel(
+           simInitialPinnedAsyncHandoffStats.disabledReason))<<endl;
+  cerr<<"benchmark.sim_initial_handoff_source_ready_mode="
+      <<simInitialPinnedAsyncHandoffSourceReadyModeLabel(
+          simInitialPinnedAsyncHandoffStats.sourceReadyMode)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_chunks_total="
+      <<simInitialPinnedAsyncHandoffStats.chunkCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_slots="
+      <<simInitialPinnedAsyncHandoffStats.pinnedSlots<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_bytes="
+      <<simInitialPinnedAsyncHandoffStats.pinnedBytes<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_allocation_failures="
+      <<simInitialPinnedAsyncHandoffStats.pinnedAllocationFailures<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pageable_fallbacks="
+      <<simInitialPinnedAsyncHandoffStats.pageableFallbacks<<endl;
+  cerr<<"benchmark.sim_initial_handoff_sync_copies="
+      <<simInitialPinnedAsyncHandoffStats.syncCopies<<endl;
+  cerr<<"benchmark.sim_initial_handoff_async_copies="
+      <<simInitialPinnedAsyncHandoffStats.asyncCopies<<endl;
+  cerr<<"benchmark.sim_initial_handoff_slot_reuse_waits="
+      <<simInitialPinnedAsyncHandoffStats.slotReuseWaits<<endl;
+  cerr<<"benchmark.sim_initial_handoff_slots_reused_after_materialize="
+      <<((simInitialPinnedAsyncHandoffStats.activeCount > 0 &&
+          simInitialPinnedAsyncHandoffStats.slotsReusedAfterMaterializeCount ==
+            simInitialPinnedAsyncHandoffStats.activeCount) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_async_d2h_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.asyncD2HNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_d2h_wait_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.d2hWaitNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_apply_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.cpuApplyNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_d2h_overlap_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.cpuD2HOverlapNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_dp_d2h_overlap_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.dpD2HOverlapNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_critical_path_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.criticalPathNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_reduced_candidates_total="<<simInitialReducedCandidatesTotal<<endl;
   cerr<<"benchmark.sim_initial_all_candidate_states_total="<<simInitialAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_initial_store_bytes_d2h="<<simInitialStoreBytesD2H<<endl;

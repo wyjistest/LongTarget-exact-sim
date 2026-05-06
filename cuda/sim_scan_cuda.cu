@@ -121,6 +121,73 @@ bool sim_scan_cuda_initial_summary_host_copy_elision_runtime()
   return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
 }
 
+bool sim_scan_cuda_initial_chunked_handoff_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
+}
+
+bool sim_scan_cuda_initial_pinned_async_handoff_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+}
+
+bool sim_scan_cuda_initial_pinned_async_force_alloc_fail_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_FORCE_ALLOC_FAIL");
+}
+
+int sim_scan_cuda_env_int_with_aliases(const char *canonicalName,
+                                       const char *shortName,
+                                       const char *compatName,
+                                       int defaultValue,
+                                       int maxValue)
+{
+  const char *env = getenv(canonicalName);
+  if(env == NULL || env[0] == '\0')
+  {
+    env = getenv(shortName);
+  }
+  if(env == NULL || env[0] == '\0')
+  {
+    env = getenv(compatName);
+  }
+  if(env == NULL || env[0] == '\0')
+  {
+    return defaultValue;
+  }
+  char *end = NULL;
+  const long parsed = strtol(env,&end,10);
+  if(end == env || parsed <= 0)
+  {
+    return defaultValue;
+  }
+  if(parsed > maxValue)
+  {
+    return maxValue;
+  }
+  return static_cast<int>(parsed);
+}
+
+int sim_scan_cuda_initial_handoff_rows_per_chunk_runtime()
+{
+  return sim_scan_cuda_env_int_with_aliases(
+    "LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK",
+    "LONGTARGET_SIM_CUDA_INITIAL_CHUNK_ROWS",
+    "LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_CHUNK_ROWS",
+    256,
+    8192);
+}
+
+int sim_scan_cuda_initial_handoff_ring_slots_runtime()
+{
+  return sim_scan_cuda_env_int_with_aliases(
+    "LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_RING_SLOTS",
+    "LONGTARGET_SIM_CUDA_INITIAL_RING_SLOTS",
+    "LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_RING_SLOTS",
+    3,
+    16);
+}
+
 bool sim_scan_cuda_mainline_residency_runtime()
 {
   const char *locateModeEnv = getenv("LONGTARGET_SIM_CUDA_LOCATE_MODE");
@@ -449,6 +516,7 @@ struct SimScanCudaContext
     stopEvent(NULL),
     auxStartEvent(NULL),
     auxStopEvent(NULL),
+    initialHandoffCopyStream(NULL),
     regionDirectDpStopEvent(NULL),
     regionDirectReduceStartEvent(NULL),
     regionDirectReduceStopEvent(NULL),
@@ -611,6 +679,7 @@ struct SimScanCudaContext
   cudaEvent_t stopEvent;
   cudaEvent_t auxStartEvent;
   cudaEvent_t auxStopEvent;
+  cudaStream_t initialHandoffCopyStream;
   cudaEvent_t regionDirectDpStopEvent;
   cudaEvent_t regionDirectReduceStartEvent;
   cudaEvent_t regionDirectReduceStopEvent;
@@ -633,6 +702,15 @@ static void sim_scan_cuda_destroy_event_if_present(cudaEvent_t &event)
   {
     cudaEventDestroy(event);
     event = NULL;
+  }
+}
+
+static void sim_scan_cuda_destroy_stream_if_present(cudaStream_t &stream)
+{
+  if(stream != NULL)
+  {
+    cudaStreamDestroy(stream);
+    stream = NULL;
   }
 }
 
@@ -675,6 +753,7 @@ static void sim_scan_cuda_release_initial_context_resources(SimScanCudaContext &
   sim_scan_cuda_destroy_event_if_present(context.regionDirectReduceStopEvent);
   sim_scan_cuda_destroy_event_if_present(context.regionDirectReduceStartEvent);
   sim_scan_cuda_destroy_event_if_present(context.regionDirectDpStopEvent);
+  sim_scan_cuda_destroy_stream_if_present(context.initialHandoffCopyStream);
   sim_scan_cuda_destroy_event_if_present(context.auxStopEvent);
   sim_scan_cuda_destroy_event_if_present(context.auxStartEvent);
   sim_scan_cuda_destroy_event_if_present(context.stopEvent);
@@ -718,6 +797,362 @@ static bool sim_scan_cuda_elapsed_seconds(cudaEvent_t startEvent,
   {
     *outSeconds = static_cast<double>(elapsedMs) / 1000.0;
   }
+  return true;
+}
+
+struct SimScanCudaInitialHandoffChunk
+{
+  SimScanCudaInitialHandoffChunk():summaryBase(0),summaryCount(0) {}
+  SimScanCudaInitialHandoffChunk(int base,int count):summaryBase(base),summaryCount(count) {}
+
+  int summaryBase;
+  int summaryCount;
+};
+
+static void sim_scan_cuda_destroy_events(vector<cudaEvent_t> &events)
+{
+  for(size_t i = 0; i < events.size(); ++i)
+  {
+    if(events[i] != NULL)
+    {
+      cudaEventDestroy(events[i]);
+      events[i] = NULL;
+    }
+  }
+}
+
+static void sim_scan_cuda_free_pinned_slots(
+  vector<SimScanCudaInitialRunSummary *> &slots)
+{
+  for(size_t i = 0; i < slots.size(); ++i)
+  {
+    if(slots[i] != NULL)
+    {
+      cudaFreeHost(slots[i]);
+      slots[i] = NULL;
+    }
+  }
+}
+
+static void sim_scan_cuda_build_initial_handoff_chunks(
+  const vector<int> &runBases,
+  const vector<int> &runOffsets,
+  int batchSize,
+  int M,
+  int rowOffsetStride,
+  int rowsPerChunk,
+  vector<SimScanCudaInitialHandoffChunk> &chunks)
+{
+  chunks.clear();
+  const int chunkRows = rowsPerChunk > 0 ? rowsPerChunk : 1;
+  for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+  {
+    const int batchRunBase = runBases[static_cast<size_t>(batchIndex)];
+    const size_t offsetBase =
+      static_cast<size_t>(batchIndex) * static_cast<size_t>(rowOffsetStride);
+    for(int rowStart = 1; rowStart <= M; rowStart += chunkRows)
+    {
+      const int rowEnd = min(M,rowStart + chunkRows - 1);
+      const int chunkStart = runOffsets[offsetBase + static_cast<size_t>(rowStart)];
+      const int chunkEnd = runOffsets[offsetBase + static_cast<size_t>(rowEnd + 1)];
+      if(chunkEnd > chunkStart)
+      {
+        chunks.push_back(
+          SimScanCudaInitialHandoffChunk(batchRunBase + chunkStart,
+                                         chunkEnd - chunkStart));
+      }
+    }
+  }
+}
+
+static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
+  SimScanCudaContext *context,
+  const vector<SimScanCudaInitialHandoffChunk> &chunks,
+  SimScanCudaInitialRunSummary *summaryDestination,
+  double *asyncD2HSeconds,
+  double *d2hWaitSeconds,
+  uint64_t *pinnedSlotsOut,
+  uint64_t *pinnedBytesOut,
+  uint64_t *pinnedAllocationFailuresOut,
+  uint64_t *asyncCopiesOut,
+  uint64_t *slotReuseWaitsOut,
+  bool *slotsReusedAfterMaterializeOut,
+  string *errorOut)
+{
+  if(asyncD2HSeconds != NULL)
+  {
+    *asyncD2HSeconds = 0.0;
+  }
+  if(d2hWaitSeconds != NULL)
+  {
+    *d2hWaitSeconds = 0.0;
+  }
+  if(pinnedSlotsOut != NULL)
+  {
+    *pinnedSlotsOut = 0;
+  }
+  if(pinnedBytesOut != NULL)
+  {
+    *pinnedBytesOut = 0;
+  }
+  if(pinnedAllocationFailuresOut != NULL)
+  {
+    *pinnedAllocationFailuresOut = 0;
+  }
+  if(asyncCopiesOut != NULL)
+  {
+    *asyncCopiesOut = 0;
+  }
+  if(slotReuseWaitsOut != NULL)
+  {
+    *slotReuseWaitsOut = 0;
+  }
+  if(slotsReusedAfterMaterializeOut != NULL)
+  {
+    *slotsReusedAfterMaterializeOut = false;
+  }
+  if(context == NULL ||
+     context->initialHandoffCopyStream == NULL ||
+     context->stopEvent == NULL ||
+     summaryDestination == NULL)
+  {
+    return false;
+  }
+  if(chunks.empty())
+  {
+    return true;
+  }
+
+  int maxChunkSummaries = 0;
+  for(size_t i = 0; i < chunks.size(); ++i)
+  {
+    maxChunkSummaries = max(maxChunkSummaries,chunks[i].summaryCount);
+  }
+  if(maxChunkSummaries <= 0)
+  {
+    return true;
+  }
+
+  const int configuredSlots = sim_scan_cuda_initial_handoff_ring_slots_runtime();
+  const size_t slotCount =
+    min(static_cast<size_t>(max(configuredSlots,1)),chunks.size());
+  const size_t slotBytes =
+    static_cast<size_t>(maxChunkSummaries) * sizeof(SimScanCudaInitialRunSummary);
+  vector<SimScanCudaInitialRunSummary *> slots(slotCount,NULL);
+  vector<cudaEvent_t> slotDoneEvents(slotCount,NULL);
+  vector<int> slotChunkIndex(slotCount,-1);
+  cudaEvent_t copyStartEvent = NULL;
+  cudaEvent_t copyStopEvent = NULL;
+  uint64_t asyncCopyCount = 0;
+  uint64_t slotReuseWaitCount = 0;
+
+  if(sim_scan_cuda_initial_pinned_async_force_alloc_fail_runtime())
+  {
+    if(pinnedAllocationFailuresOut != NULL)
+    {
+      *pinnedAllocationFailuresOut = 1;
+    }
+    return false;
+  }
+
+  for(size_t slotIndex = 0; slotIndex < slotCount; ++slotIndex)
+  {
+    cudaError_t status = cudaHostAlloc(reinterpret_cast<void **>(&slots[slotIndex]),
+                                       slotBytes,
+                                       cudaHostAllocDefault);
+    if(status != cudaSuccess)
+    {
+      if(pinnedAllocationFailuresOut != NULL)
+      {
+        *pinnedAllocationFailuresOut = 1;
+      }
+      sim_scan_cuda_free_pinned_slots(slots);
+      return false;
+    }
+    status = cudaEventCreateWithFlags(&slotDoneEvents[slotIndex],
+                                      cudaEventDisableTiming);
+    if(status != cudaSuccess)
+    {
+      sim_scan_cuda_destroy_events(slotDoneEvents);
+      sim_scan_cuda_free_pinned_slots(slots);
+      return false;
+    }
+  }
+
+  cudaError_t status = cudaEventCreate(&copyStartEvent);
+  if(status == cudaSuccess)
+  {
+    status = cudaEventCreate(&copyStopEvent);
+  }
+  if(status != cudaSuccess)
+  {
+    if(copyStartEvent != NULL)
+    {
+      cudaEventDestroy(copyStartEvent);
+    }
+    sim_scan_cuda_destroy_events(slotDoneEvents);
+    sim_scan_cuda_free_pinned_slots(slots);
+    return false;
+  }
+
+  auto cleanupAfterCopyStreamUse = [&]()
+  {
+    cudaStreamSynchronize(context->initialHandoffCopyStream);
+    cudaEventDestroy(copyStopEvent);
+    cudaEventDestroy(copyStartEvent);
+    sim_scan_cuda_destroy_events(slotDoneEvents);
+    sim_scan_cuda_free_pinned_slots(slots);
+  };
+
+  double waitSeconds = 0.0;
+  auto flushSlot = [&](size_t slotIndex) -> bool
+  {
+    const int chunkIndex = slotChunkIndex[slotIndex];
+    if(chunkIndex < 0)
+    {
+      return true;
+    }
+    const std::chrono::steady_clock::time_point waitStart =
+      std::chrono::steady_clock::now();
+    cudaError_t waitStatus = cudaEventSynchronize(slotDoneEvents[slotIndex]);
+    waitSeconds +=
+      static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - waitStart).count()) / 1.0e9;
+    if(waitStatus != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(waitStatus);
+      }
+      return false;
+    }
+    const SimScanCudaInitialHandoffChunk &chunk =
+      chunks[static_cast<size_t>(chunkIndex)];
+    // A ring slot is reusable only after the D2H event completes and the
+    // payload has been materialized into the stable host summary vector.
+    memcpy(summaryDestination + chunk.summaryBase,
+           slots[slotIndex],
+           static_cast<size_t>(chunk.summaryCount) * sizeof(SimScanCudaInitialRunSummary));
+    slotChunkIndex[slotIndex] = -1;
+    return true;
+  };
+
+  // Stage 1 uses a global producer-complete event as the source-ready
+  // dependency. Per-chunk producer events are required before this can claim
+  // DP/D2H overlap.
+  status = cudaStreamWaitEvent(context->initialHandoffCopyStream,context->stopEvent,0);
+  if(status == cudaSuccess)
+  {
+    status = cudaEventRecord(copyStartEvent,context->initialHandoffCopyStream);
+  }
+  if(status != cudaSuccess)
+  {
+    cleanupAfterCopyStreamUse();
+    return false;
+  }
+
+  for(size_t chunkIndex = 0; chunkIndex < chunks.size(); ++chunkIndex)
+  {
+    const size_t slotIndex = chunkIndex % slotCount;
+    if(slotChunkIndex[slotIndex] >= 0)
+    {
+      ++slotReuseWaitCount;
+    }
+    if(!flushSlot(slotIndex))
+    {
+      cleanupAfterCopyStreamUse();
+      return false;
+    }
+    const SimScanCudaInitialHandoffChunk &chunk = chunks[chunkIndex];
+    status = cudaMemcpyAsync(slots[slotIndex],
+                             context->initialRunSummariesDevice + chunk.summaryBase,
+                             static_cast<size_t>(chunk.summaryCount) *
+                               sizeof(SimScanCudaInitialRunSummary),
+                             cudaMemcpyDeviceToHost,
+                             context->initialHandoffCopyStream);
+    if(status == cudaSuccess)
+    {
+      status = cudaEventRecord(slotDoneEvents[slotIndex],
+                               context->initialHandoffCopyStream);
+    }
+    if(status != cudaSuccess)
+    {
+      cleanupAfterCopyStreamUse();
+      return false;
+    }
+    ++asyncCopyCount;
+    slotChunkIndex[slotIndex] = static_cast<int>(chunkIndex);
+  }
+
+  status = cudaEventRecord(copyStopEvent,context->initialHandoffCopyStream);
+  if(status != cudaSuccess)
+  {
+    cleanupAfterCopyStreamUse();
+    return false;
+  }
+  for(size_t slotIndex = 0; slotIndex < slotCount; ++slotIndex)
+  {
+    if(!flushSlot(slotIndex))
+    {
+      cleanupAfterCopyStreamUse();
+      return false;
+    }
+  }
+  const std::chrono::steady_clock::time_point finalWaitStart =
+    std::chrono::steady_clock::now();
+  status = cudaEventSynchronize(copyStopEvent);
+  waitSeconds +=
+    static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::steady_clock::now() - finalWaitStart).count()) / 1.0e9;
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    cleanupAfterCopyStreamUse();
+    return false;
+  }
+
+  if(asyncD2HSeconds != NULL)
+  {
+    float elapsedMs = 0.0f;
+    status = cudaEventElapsedTime(&elapsedMs,copyStartEvent,copyStopEvent);
+    if(status == cudaSuccess)
+    {
+      *asyncD2HSeconds = static_cast<double>(elapsedMs) / 1000.0;
+    }
+  }
+  if(d2hWaitSeconds != NULL)
+  {
+    *d2hWaitSeconds = waitSeconds;
+  }
+  if(pinnedSlotsOut != NULL)
+  {
+    *pinnedSlotsOut = static_cast<uint64_t>(slotCount);
+  }
+  if(pinnedBytesOut != NULL)
+  {
+    *pinnedBytesOut =
+      static_cast<uint64_t>(slotBytes) * static_cast<uint64_t>(slotCount);
+  }
+  if(asyncCopiesOut != NULL)
+  {
+    *asyncCopiesOut = asyncCopyCount;
+  }
+  if(slotReuseWaitsOut != NULL)
+  {
+    *slotReuseWaitsOut = slotReuseWaitCount;
+  }
+  if(slotsReusedAfterMaterializeOut != NULL)
+  {
+    *slotsReusedAfterMaterializeOut = true;
+  }
+
+  cudaEventDestroy(copyStopEvent);
+  cudaEventDestroy(copyStartEvent);
+  sim_scan_cuda_destroy_events(slotDoneEvents);
+  sim_scan_cuda_free_pinned_slots(slots);
   return true;
 }
 
@@ -2640,6 +3075,18 @@ static bool ensure_sim_scan_cuda_initialized_locked(SimScanCudaContext &context,
     context.auxStartEvent = NULL;
     context.stopEvent = NULL;
     context.startEvent = NULL;
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  status = cudaStreamCreateWithFlags(&context.initialHandoffCopyStream,
+                                     cudaStreamNonBlocking);
+  if(status != cudaSuccess)
+  {
+    sim_scan_cuda_release_initial_context_resources(context);
     if(errorOut != NULL)
     {
       *errorOut = cuda_error_string(status);
@@ -12711,6 +13158,18 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->initialSummaryUnpackSeconds += requestBatchResult.initialSummaryUnpackSeconds;
   batchResult->initialSummaryResultMaterializeSeconds +=
     requestBatchResult.initialSummaryResultMaterializeSeconds;
+  batchResult->initialHandoffAsyncD2HSeconds +=
+    requestBatchResult.initialHandoffAsyncD2HSeconds;
+  batchResult->initialHandoffD2HWaitSeconds +=
+    requestBatchResult.initialHandoffD2HWaitSeconds;
+  batchResult->initialHandoffCpuApplySeconds +=
+    requestBatchResult.initialHandoffCpuApplySeconds;
+  batchResult->initialHandoffCpuD2HOverlapSeconds +=
+    requestBatchResult.initialHandoffCpuD2HOverlapSeconds;
+  batchResult->initialHandoffDpD2HOverlapSeconds +=
+    requestBatchResult.initialHandoffDpD2HOverlapSeconds;
+  batchResult->initialHandoffCriticalPathSeconds +=
+    requestBatchResult.initialHandoffCriticalPathSeconds;
   batchResult->regionSingleRequestDirectReduceGpuSeconds +=
     requestBatchResult.regionSingleRequestDirectReduceGpuSeconds;
   batchResult->regionSingleRequestDirectReduceDpGpuSeconds +=
@@ -12758,6 +13217,27 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->usedInitialSummaryHostCopyElision =
     batchResult->usedInitialSummaryHostCopyElision ||
     requestBatchResult.usedInitialSummaryHostCopyElision;
+  batchResult->usedInitialPinnedAsyncHandoff =
+    batchResult->usedInitialPinnedAsyncHandoff ||
+    requestBatchResult.usedInitialPinnedAsyncHandoff;
+  batchResult->initialHandoffPinnedAsyncRequested =
+    batchResult->initialHandoffPinnedAsyncRequested ||
+    requestBatchResult.initialHandoffPinnedAsyncRequested;
+  batchResult->initialHandoffPinnedAsyncActive =
+    batchResult->initialHandoffPinnedAsyncActive ||
+    requestBatchResult.initialHandoffPinnedAsyncActive;
+  if(requestBatchResult.initialHandoffPinnedAsyncDisabledReason !=
+     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED)
+  {
+    batchResult->initialHandoffPinnedAsyncDisabledReason =
+      requestBatchResult.initialHandoffPinnedAsyncDisabledReason;
+  }
+  if(requestBatchResult.initialHandoffPinnedAsyncSourceReadyMode !=
+     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE)
+  {
+    batchResult->initialHandoffPinnedAsyncSourceReadyMode =
+      requestBatchResult.initialHandoffPinnedAsyncSourceReadyMode;
+  }
   batchResult->usedInitialHashReducePath =
     batchResult->usedInitialHashReducePath || requestBatchResult.usedInitialHashReducePath;
   batchResult->usedInitialSegmentedReducePath =
@@ -12871,6 +13351,19 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->initialSummaryPackedD2HFallbacks += requestBatchResult.initialSummaryPackedD2HFallbacks;
   batchResult->initialSummaryHostCopyElidedBytes +=
     requestBatchResult.initialSummaryHostCopyElidedBytes;
+  batchResult->initialHandoffChunksTotal += requestBatchResult.initialHandoffChunksTotal;
+  batchResult->initialHandoffPinnedSlots += requestBatchResult.initialHandoffPinnedSlots;
+  batchResult->initialHandoffPinnedBytes += requestBatchResult.initialHandoffPinnedBytes;
+  batchResult->initialHandoffPinnedAllocationFailures +=
+    requestBatchResult.initialHandoffPinnedAllocationFailures;
+  batchResult->initialHandoffPageableFallbacks +=
+    requestBatchResult.initialHandoffPageableFallbacks;
+  batchResult->initialHandoffSyncCopies += requestBatchResult.initialHandoffSyncCopies;
+  batchResult->initialHandoffAsyncCopies += requestBatchResult.initialHandoffAsyncCopies;
+  batchResult->initialHandoffSlotReuseWaits += requestBatchResult.initialHandoffSlotReuseWaits;
+  batchResult->initialHandoffSlotsReusedAfterMaterialize =
+    batchResult->initialHandoffSlotsReusedAfterMaterialize ||
+    requestBatchResult.initialHandoffSlotsReusedAfterMaterialize;
   batchResult->initialSegmentedTileStateCount += requestBatchResult.initialSegmentedTileStateCount;
   batchResult->initialSegmentedGroupedStateCount += requestBatchResult.initialSegmentedGroupedStateCount;
   batchResult->taskCount += requestBatchResult.taskCount;
@@ -15473,6 +15966,104 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     return false;
   }
 
+  const bool requestInitialPinnedAsyncHandoff =
+    sim_scan_cuda_initial_pinned_async_handoff_runtime();
+  const bool initialChunkedHandoffRequested =
+    sim_scan_cuda_initial_chunked_handoff_runtime();
+  SimScanCudaInitialPinnedAsyncDisabledReason initialPinnedAsyncDisabledReason =
+    requestInitialPinnedAsyncHandoff ?
+    SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NONE :
+    SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED;
+  bool initialPinnedAsyncHandoffEligible = false;
+  if(requestInitialPinnedAsyncHandoff)
+  {
+    if(!initialChunkedHandoffRequested)
+    {
+      initialPinnedAsyncDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_CHUNKED_HANDOFF_OFF;
+    }
+    else if(!anySummaryRequests || anyCandidateExtraction)
+    {
+      initialPinnedAsyncDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_UNSUPPORTED_PATH;
+    }
+    else if(totalRunSummaries <= 0)
+    {
+      initialPinnedAsyncDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_SUMMARIES;
+    }
+    else if(sim_scan_cuda_initial_packed_summary_d2h_runtime())
+    {
+      initialPinnedAsyncDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_PACKED_SUMMARY_D2H;
+    }
+    else if(batchSize == 1 && sim_scan_cuda_initial_summary_host_copy_elision_runtime())
+    {
+      initialPinnedAsyncDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_HOST_COPY_ELISION;
+    }
+    else
+    {
+      initialPinnedAsyncHandoffEligible = true;
+    }
+  }
+  vector<int> initialHandoffRunBasesHost;
+  vector<int> initialHandoffRunOffsetsHost;
+  vector<SimScanCudaInitialHandoffChunk> initialHandoffChunks;
+  if(initialPinnedAsyncHandoffEligible)
+  {
+    const std::chrono::steady_clock::time_point handoffOffsetCopyStart =
+      std::chrono::steady_clock::now();
+    initialHandoffRunBasesHost.assign(static_cast<size_t>(batchSize),0);
+    status = cudaMemcpy(initialHandoffRunBasesHost.data(),
+                        context->batchRunBasesDevice,
+                        static_cast<size_t>(batchSize) * sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    initialHandoffRunOffsetsHost.assign(
+      static_cast<size_t>(batchSize) * static_cast<size_t>(rowOffsetStride),
+      0);
+    status = cudaMemcpy(initialHandoffRunOffsetsHost.data(),
+                        context->batchRunOffsetsDevice,
+                        static_cast<size_t>(batchSize) *
+                          static_cast<size_t>(rowOffsetStride) *
+                          sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    initialCountCopySeconds +=
+      static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() -
+                            handoffOffsetCopyStart).count()) / 1.0e9;
+    sim_scan_cuda_build_initial_handoff_chunks(
+      initialHandoffRunBasesHost,
+      initialHandoffRunOffsetsHost,
+      batchSize,
+      M,
+      rowOffsetStride,
+      sim_scan_cuda_initial_handoff_rows_per_chunk_runtime(),
+      initialHandoffChunks);
+    if(initialHandoffChunks.empty())
+    {
+      initialPinnedAsyncHandoffEligible = false;
+      initialPinnedAsyncDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_CHUNKS;
+    }
+  }
+
   if(totalRunSummaries > 0 &&
      !ensure_sim_scan_cuda_buffer(&context->initialRunSummariesDevice,
                                   &context->initialRunSummariesCapacity,
@@ -15797,17 +16388,22 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     }
   }
 
+  const bool deferInitialStopSynchronize =
+    initialPinnedAsyncHandoffEligible && !initialHandoffChunks.empty();
   status = cudaEventRecord(context->stopEvent);
   if(status == cudaSuccess)
   {
-    const std::chrono::steady_clock::time_point syncWaitStart = std::chrono::steady_clock::now();
-    status = cudaEventSynchronize(context->stopEvent);
-    initialSyncWaitSeconds =
-      static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            std::chrono::steady_clock::now() - syncWaitStart).count()) / 1.0e9;
+    if(!deferInitialStopSynchronize)
+    {
+      const std::chrono::steady_clock::time_point syncWaitStart = std::chrono::steady_clock::now();
+      status = cudaEventSynchronize(context->stopEvent);
+      initialSyncWaitSeconds =
+        static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              std::chrono::steady_clock::now() - syncWaitStart).count()) / 1.0e9;
+    }
   }
   float elapsedMs = 0.0f;
-  if(status == cudaSuccess)
+  if(status == cudaSuccess && !deferInitialStopSynchronize)
   {
     status = cudaEventElapsedTime(&elapsedMs, context->startEvent, context->stopEvent);
   }
@@ -15849,11 +16445,29 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   double initialSummaryD2HCopySeconds = 0.0;
   double initialSummaryUnpackSeconds = 0.0;
   double initialSummaryResultMaterializeSeconds = 0.0;
+  double initialHandoffAsyncD2HSeconds = 0.0;
+  double initialHandoffD2HWaitSeconds = 0.0;
+  double initialHandoffCpuApplySeconds = 0.0;
+  double initialHandoffCpuD2HOverlapSeconds = 0.0;
+  double initialHandoffDpD2HOverlapSeconds = 0.0;
+  double initialHandoffCriticalPathSeconds = 0.0;
   uint64_t initialSummaryPackedBytesD2H = 0;
   uint64_t initialSummaryUnpackedEquivalentBytesD2H = 0;
   uint64_t initialSummaryPackedD2HFallbacks = 0;
   uint64_t initialSummaryHostCopyElidedBytes = 0;
+  uint64_t initialHandoffChunksTotal = static_cast<uint64_t>(initialHandoffChunks.size());
+  uint64_t initialHandoffPinnedSlots = 0;
+  uint64_t initialHandoffPinnedBytes = 0;
+  uint64_t initialHandoffPinnedAllocationFailures = 0;
+  uint64_t initialHandoffPageableFallbacks = 0;
+  uint64_t initialHandoffSyncCopies = 0;
+  uint64_t initialHandoffAsyncCopies = 0;
+  uint64_t initialHandoffSlotReuseWaits = 0;
+  bool initialHandoffSlotsReusedAfterMaterialize = false;
+  SimScanCudaInitialPinnedAsyncSourceReadyMode initialHandoffSourceReadyMode =
+    SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE;
   bool usedInitialPackedSummaryD2H = false;
+  bool usedInitialPinnedAsyncHandoff = false;
   const bool useInitialSummaryHostCopyElision =
     anySummaryRequests &&
     totalRunSummaries > 0 &&
@@ -16000,31 +16614,84 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         packedSummaries.resize(static_cast<size_t>(totalRunSummaries));
         summaryDestination = packedSummaries.data();
       }
-      const std::chrono::steady_clock::time_point copyStart =
-        std::chrono::steady_clock::now();
-      status = cudaMemcpy(summaryDestination,
-                          context->initialRunSummariesDevice,
-                          static_cast<size_t>(totalRunSummaries) * sizeof(SimScanCudaInitialRunSummary),
-                          cudaMemcpyDeviceToHost);
-      initialSummaryD2HCopySeconds +=
-        static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              std::chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
-      if(status != cudaSuccess)
+      if(initialPinnedAsyncHandoffEligible && !initialHandoffChunks.empty())
       {
-        if(useInitialSummaryHostCopyElision)
+        const bool asyncCopied =
+          sim_scan_cuda_copy_initial_summaries_pinned_async(
+            context,
+            initialHandoffChunks,
+            summaryDestination,
+            &initialHandoffAsyncD2HSeconds,
+            &initialHandoffD2HWaitSeconds,
+            &initialHandoffPinnedSlots,
+            &initialHandoffPinnedBytes,
+            &initialHandoffPinnedAllocationFailures,
+            &initialHandoffAsyncCopies,
+            &initialHandoffSlotReuseWaits,
+            &initialHandoffSlotsReusedAfterMaterialize,
+            errorOut);
+        if(asyncCopied)
         {
-          results[0].initialRunSummaries.clear();
+          usedInitialPinnedAsyncHandoff = true;
+          copiedSummaries = true;
+          initialHandoffSourceReadyMode =
+            SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_GLOBAL_STOP_EVENT;
+          initialHandoffCriticalPathSeconds =
+            max(initialHandoffAsyncD2HSeconds,initialHandoffD2HWaitSeconds);
+          initialSummaryD2HCopySeconds += initialHandoffAsyncD2HSeconds;
         }
         else
         {
-          packedSummaries.clear();
+          initialHandoffPageableFallbacks = 1;
+          initialHandoffSyncCopies = 1;
         }
-        if(errorOut != NULL)
-        {
-          *errorOut = cuda_error_string(status);
-        }
-        return false;
       }
+      if(!copiedSummaries)
+      {
+        const std::chrono::steady_clock::time_point copyStart =
+          std::chrono::steady_clock::now();
+        status = cudaMemcpy(summaryDestination,
+                            context->initialRunSummariesDevice,
+                            static_cast<size_t>(totalRunSummaries) * sizeof(SimScanCudaInitialRunSummary),
+                            cudaMemcpyDeviceToHost);
+        const double syncCopySeconds =
+          static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
+        initialSummaryD2HCopySeconds += syncCopySeconds;
+        if(initialPinnedAsyncHandoffEligible && !usedInitialPinnedAsyncHandoff)
+        {
+          initialHandoffCriticalPathSeconds += syncCopySeconds;
+        }
+        if(status != cudaSuccess)
+        {
+          if(useInitialSummaryHostCopyElision)
+          {
+            results[0].initialRunSummaries.clear();
+          }
+          else
+          {
+            packedSummaries.clear();
+          }
+          if(errorOut != NULL)
+          {
+            *errorOut = cuda_error_string(status);
+          }
+          return false;
+        }
+      }
+    }
+  }
+
+  if(deferInitialStopSynchronize)
+  {
+    status = cudaEventElapsedTime(&elapsedMs, context->startEvent, context->stopEvent);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
     }
   }
 
@@ -16378,15 +17045,43 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     batchResult->initialSummaryUnpackSeconds = initialSummaryUnpackSeconds;
     batchResult->initialSummaryResultMaterializeSeconds =
       initialSummaryResultMaterializeSeconds;
+    batchResult->initialHandoffAsyncD2HSeconds = initialHandoffAsyncD2HSeconds;
+    batchResult->initialHandoffD2HWaitSeconds = initialHandoffD2HWaitSeconds;
+    batchResult->initialHandoffCpuApplySeconds = initialHandoffCpuApplySeconds;
+    batchResult->initialHandoffCpuD2HOverlapSeconds = initialHandoffCpuD2HOverlapSeconds;
+    batchResult->initialHandoffDpD2HOverlapSeconds = initialHandoffDpD2HOverlapSeconds;
+    batchResult->initialHandoffCriticalPathSeconds = initialHandoffCriticalPathSeconds;
     batchResult->usedInitialPackedSummaryD2H = usedInitialPackedSummaryD2H;
     batchResult->usedInitialSummaryHostCopyElision =
       useInitialSummaryHostCopyElision;
+    batchResult->usedInitialPinnedAsyncHandoff = usedInitialPinnedAsyncHandoff;
     batchResult->initialSummaryPackedBytesD2H = initialSummaryPackedBytesD2H;
     batchResult->initialSummaryUnpackedEquivalentBytesD2H =
       initialSummaryUnpackedEquivalentBytesD2H;
     batchResult->initialSummaryPackedD2HFallbacks = initialSummaryPackedD2HFallbacks;
     batchResult->initialSummaryHostCopyElidedBytes =
       initialSummaryHostCopyElidedBytes;
+    batchResult->initialHandoffPinnedAsyncRequested =
+      requestInitialPinnedAsyncHandoff;
+    batchResult->initialHandoffPinnedAsyncActive =
+      initialPinnedAsyncHandoffEligible;
+    batchResult->initialHandoffPinnedAsyncDisabledReason =
+      initialPinnedAsyncHandoffEligible ?
+      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NONE :
+      initialPinnedAsyncDisabledReason;
+    batchResult->initialHandoffPinnedAsyncSourceReadyMode =
+      initialHandoffSourceReadyMode;
+    batchResult->initialHandoffChunksTotal = initialHandoffChunksTotal;
+    batchResult->initialHandoffPinnedSlots = initialHandoffPinnedSlots;
+    batchResult->initialHandoffPinnedBytes = initialHandoffPinnedBytes;
+    batchResult->initialHandoffPinnedAllocationFailures =
+      initialHandoffPinnedAllocationFailures;
+    batchResult->initialHandoffPageableFallbacks = initialHandoffPageableFallbacks;
+    batchResult->initialHandoffSyncCopies = initialHandoffSyncCopies;
+    batchResult->initialHandoffAsyncCopies = initialHandoffAsyncCopies;
+    batchResult->initialHandoffSlotReuseWaits = initialHandoffSlotReuseWaits;
+    batchResult->initialHandoffSlotsReusedAfterMaterialize =
+      initialHandoffSlotsReusedAfterMaterialize;
     batchResult->initialSegmentedTileStateCount = initialSegmentedTileStateCount;
     batchResult->initialSegmentedGroupedStateCount = initialSegmentedGroupedStateCount;
     batchResult->taskCount = static_cast<uint64_t>(batchSize);

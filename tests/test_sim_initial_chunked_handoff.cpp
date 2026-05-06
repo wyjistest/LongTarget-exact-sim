@@ -177,18 +177,24 @@ int main()
     bool ok = true;
 
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
     ok = expect_false(simCudaInitialChunkedHandoffEnabledRuntime(),
                       "chunked handoff default disabled") && ok;
+    ok = expect_false(simCudaInitialPinnedAsyncHandoffEnabledRuntime(),
+                      "pinned async handoff default disabled") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffChunkRowsRuntime(), 256,
                           "chunked handoff default rows") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffRingSlotsRuntime(), 3,
                           "chunked handoff default ring slots") && ok;
 
     setenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF", "1", 1);
     setenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK", "2", 1);
     setenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_RING_SLOTS", "4", 1);
     ok = expect_true(simCudaInitialChunkedHandoffEnabledRuntime(),
                      "chunked handoff opt-in enabled") && ok;
+    ok = expect_true(simCudaInitialPinnedAsyncHandoffEnabledRuntime(),
+                     "pinned async handoff opt-in enabled") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffChunkRowsRuntime(), 2,
                           "chunked handoff env rows") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffRingSlotsRuntime(), 4,
@@ -289,6 +295,7 @@ int main()
                           "streaming fallback reason") && ok;
 
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_CHUNK_ROWS");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_RING_SLOTS");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK");

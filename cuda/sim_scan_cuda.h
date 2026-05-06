@@ -694,6 +694,24 @@ struct SimScanCudaInitialBatchResult
   SimScanCudaInitialBatchResult():allCandidateStateCount(0),runningMin(0),eventCount(0),runSummaryCount(0) {}
 };
 
+enum SimScanCudaInitialPinnedAsyncDisabledReason
+{
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED = 0,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NONE = 1,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_CHUNKED_HANDOFF_OFF = 2,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_UNSUPPORTED_PATH = 3,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_SUMMARIES = 4,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_PACKED_SUMMARY_D2H = 5,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_HOST_COPY_ELISION = 6,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_CHUNKS = 7
+};
+
+enum SimScanCudaInitialPinnedAsyncSourceReadyMode
+{
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE = 0,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_GLOBAL_STOP_EVENT = 1
+};
+
 struct SimScanCudaBatchResult
 {
   SimScanCudaBatchResult():
@@ -719,6 +737,12 @@ struct SimScanCudaBatchResult
     initialSummaryD2HCopySeconds(0.0),
     initialSummaryUnpackSeconds(0.0),
     initialSummaryResultMaterializeSeconds(0.0),
+    initialHandoffAsyncD2HSeconds(0.0),
+    initialHandoffD2HWaitSeconds(0.0),
+    initialHandoffCpuApplySeconds(0.0),
+    initialHandoffCpuD2HOverlapSeconds(0.0),
+    initialHandoffDpD2HOverlapSeconds(0.0),
+    initialHandoffCriticalPathSeconds(0.0),
     regionSingleRequestDirectReduceGpuSeconds(0.0),
     regionSingleRequestDirectReduceDpGpuSeconds(0.0),
     regionSingleRequestDirectReduceFilterReduceGpuSeconds(0.0),
@@ -755,6 +779,7 @@ struct SimScanCudaBatchResult
     usedInitialDirectSummaryPath(false),
     usedInitialPackedSummaryD2H(false),
     usedInitialSummaryHostCopyElision(false),
+    usedInitialPinnedAsyncHandoff(false),
     usedInitialHashReducePath(false),
     usedInitialSegmentedReducePath(false),
     usedInitialDeviceResidencyPath(false),
@@ -846,6 +871,19 @@ struct SimScanCudaBatchResult
     initialSummaryUnpackedEquivalentBytesD2H(0),
     initialSummaryPackedD2HFallbacks(0),
     initialSummaryHostCopyElidedBytes(0),
+    initialHandoffPinnedAsyncRequested(false),
+    initialHandoffPinnedAsyncActive(false),
+    initialHandoffPinnedAsyncDisabledReason(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED),
+    initialHandoffPinnedAsyncSourceReadyMode(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE),
+    initialHandoffChunksTotal(0),
+    initialHandoffPinnedSlots(0),
+    initialHandoffPinnedBytes(0),
+    initialHandoffPinnedAllocationFailures(0),
+    initialHandoffPageableFallbacks(0),
+    initialHandoffSyncCopies(0),
+    initialHandoffAsyncCopies(0),
+    initialHandoffSlotReuseWaits(0),
+    initialHandoffSlotsReusedAfterMaterialize(false),
     initialSegmentedTileStateCount(0),
     initialSegmentedGroupedStateCount(0),
     taskCount(0),
@@ -875,6 +913,12 @@ struct SimScanCudaBatchResult
   double initialSummaryD2HCopySeconds;
   double initialSummaryUnpackSeconds;
   double initialSummaryResultMaterializeSeconds;
+  double initialHandoffAsyncD2HSeconds;
+  double initialHandoffD2HWaitSeconds;
+  double initialHandoffCpuApplySeconds;
+  double initialHandoffCpuD2HOverlapSeconds;
+  double initialHandoffDpD2HOverlapSeconds;
+  double initialHandoffCriticalPathSeconds;
   double regionSingleRequestDirectReduceGpuSeconds;
   double regionSingleRequestDirectReduceDpGpuSeconds;
   double regionSingleRequestDirectReduceFilterReduceGpuSeconds;
@@ -911,6 +955,7 @@ struct SimScanCudaBatchResult
   bool usedInitialDirectSummaryPath;
   bool usedInitialPackedSummaryD2H;
   bool usedInitialSummaryHostCopyElision;
+  bool usedInitialPinnedAsyncHandoff;
   bool usedInitialHashReducePath;
   bool usedInitialSegmentedReducePath;
   bool usedInitialDeviceResidencyPath;
@@ -1002,6 +1047,19 @@ struct SimScanCudaBatchResult
   uint64_t initialSummaryUnpackedEquivalentBytesD2H;
   uint64_t initialSummaryPackedD2HFallbacks;
   uint64_t initialSummaryHostCopyElidedBytes;
+  bool initialHandoffPinnedAsyncRequested;
+  bool initialHandoffPinnedAsyncActive;
+  SimScanCudaInitialPinnedAsyncDisabledReason initialHandoffPinnedAsyncDisabledReason;
+  SimScanCudaInitialPinnedAsyncSourceReadyMode initialHandoffPinnedAsyncSourceReadyMode;
+  uint64_t initialHandoffChunksTotal;
+  uint64_t initialHandoffPinnedSlots;
+  uint64_t initialHandoffPinnedBytes;
+  uint64_t initialHandoffPinnedAllocationFailures;
+  uint64_t initialHandoffPageableFallbacks;
+  uint64_t initialHandoffSyncCopies;
+  uint64_t initialHandoffAsyncCopies;
+  uint64_t initialHandoffSlotReuseWaits;
+  bool initialHandoffSlotsReusedAfterMaterialize;
   uint64_t initialSegmentedTileStateCount;
   uint64_t initialSegmentedGroupedStateCount;
   uint64_t taskCount;

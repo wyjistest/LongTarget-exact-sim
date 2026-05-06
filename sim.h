@@ -2954,8 +2954,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  SIM_INITIAL_CHUNKED_HANDOFF_FALLBACK_SYNC_COPY = 5
 				};
 
-				struct SimInitialChunkedHandoffStats
-				{
+					struct SimInitialChunkedHandoffStats
+					{
 				  SimInitialChunkedHandoffStats():
 				    chunkCount(0),
 				    summariesReplayed(0),
@@ -2983,10 +2983,56 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  uint64_t criticalPathD2HNanoseconds;
 				  uint64_t measuredOverlapNanoseconds;
 				  uint64_t fallbackCount;
-				  SimInitialChunkedHandoffFallbackReason fallbackReason;
-				};
+					  SimInitialChunkedHandoffFallbackReason fallbackReason;
+					};
 
-				struct SimInitialCpuFrontierFastApplyTelemetry
+					struct SimInitialPinnedAsyncHandoffStats
+					{
+					  SimInitialPinnedAsyncHandoffStats():
+					    requestedCount(0),
+					    activeCount(0),
+					    disabledReason(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED),
+					    sourceReadyMode(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE),
+					    chunkCount(0),
+					    pinnedSlots(0),
+					    pinnedBytes(0),
+					    pinnedAllocationFailures(0),
+					    pageableFallbacks(0),
+					    syncCopies(0),
+					    asyncCopies(0),
+					    slotReuseWaits(0),
+					    slotsReusedAfterMaterializeCount(0),
+					    asyncD2HNanoseconds(0),
+					    d2hWaitNanoseconds(0),
+					    cpuApplyNanoseconds(0),
+					    cpuD2HOverlapNanoseconds(0),
+					    dpD2HOverlapNanoseconds(0),
+					    criticalPathNanoseconds(0)
+					  {
+					  }
+
+					  uint64_t requestedCount;
+					  uint64_t activeCount;
+					  SimScanCudaInitialPinnedAsyncDisabledReason disabledReason;
+					  SimScanCudaInitialPinnedAsyncSourceReadyMode sourceReadyMode;
+					  uint64_t chunkCount;
+					  uint64_t pinnedSlots;
+					  uint64_t pinnedBytes;
+					  uint64_t pinnedAllocationFailures;
+					  uint64_t pageableFallbacks;
+					  uint64_t syncCopies;
+					  uint64_t asyncCopies;
+					  uint64_t slotReuseWaits;
+					  uint64_t slotsReusedAfterMaterializeCount;
+					  uint64_t asyncD2HNanoseconds;
+					  uint64_t d2hWaitNanoseconds;
+					  uint64_t cpuApplyNanoseconds;
+					  uint64_t cpuD2HOverlapNanoseconds;
+					  uint64_t dpD2HOverlapNanoseconds;
+					  uint64_t criticalPathNanoseconds;
+					};
+
+					struct SimInitialCpuFrontierFastApplyTelemetry
 				{
 				  SimInitialCpuFrontierFastApplyTelemetry():
 				    enabledCount(0),
@@ -3026,11 +3072,17 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return env[0] != '0';
 				}
 
-				inline bool simCudaInitialChunkedHandoffEnabledRuntime()
-				{
-				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
-				  return env != NULL && env[0] != '\0' && env[0] != '0';
-				}
+					inline bool simCudaInitialChunkedHandoffEnabledRuntime()
+					{
+					  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
+					  return env != NULL && env[0] != '\0' && env[0] != '0';
+					}
+
+					inline bool simCudaInitialPinnedAsyncHandoffEnabledRuntime()
+					{
+					  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+					  return env != NULL && env[0] != '\0' && env[0] != '0';
+					}
 
 				inline bool simCudaInitialExactFrontierReplayEnabledRuntime()
 				{
@@ -6559,13 +6611,131 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
-			inline std::atomic<uint64_t> &simInitialChunkedHandoffFallbackReasonCode()
-			{
-			  static std::atomic<uint64_t> count(0);
-			  return count;
-			}
+				inline std::atomic<uint64_t> &simInitialChunkedHandoffFallbackReasonCode()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
 
-			inline std::atomic<uint64_t> &simInitialExactFrontierReplayRequestCount()
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffChunkCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffRequestedCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffActiveCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffDisabledReasonCode()
+				{
+				  static std::atomic<uint64_t> count(
+				    static_cast<uint64_t>(
+				      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED));
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffSourceReadyModeCode()
+				{
+				  static std::atomic<uint64_t> count(
+				    static_cast<uint64_t>(
+				      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE));
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffPinnedSlotCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffPinnedBytes()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffPinnedAllocationFailureCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffPageableFallbackCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffSyncCopyCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffAsyncCopyCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffSlotReuseWaitCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffSlotsReusedAfterMaterializeCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffAsyncD2HNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffD2HWaitNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffCpuApplyNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffCpuD2HOverlapNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffDpD2HOverlapNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffCriticalPathNanoseconds()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialExactFrontierReplayRequestCount()
 			{
 			  static std::atomic<uint64_t> count(0);
 			  return count;
@@ -7574,10 +7744,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
-			inline void recordSimInitialChunkedHandoffTransferNanoseconds(
-			  uint64_t criticalPathD2HNanoseconds,
-			  uint64_t cpuWaitNanoseconds,
-			  uint64_t measuredOverlapNanoseconds)
+				inline void recordSimInitialChunkedHandoffTransferNanoseconds(
+				  uint64_t criticalPathD2HNanoseconds,
+				  uint64_t cpuWaitNanoseconds,
+				  uint64_t measuredOverlapNanoseconds)
 			{
 			  simInitialChunkedHandoffCriticalPathD2HNanoseconds().fetch_add(
 			    criticalPathD2HNanoseconds,
@@ -7585,11 +7755,88 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  simInitialChunkedHandoffCpuWaitNanoseconds().fetch_add(cpuWaitNanoseconds,
 			                                                         std::memory_order_relaxed);
 			  simInitialChunkedHandoffMeasuredOverlapNanoseconds().fetch_add(
-			    measuredOverlapNanoseconds,
-			    std::memory_order_relaxed);
-			}
+				    measuredOverlapNanoseconds,
+				    std::memory_order_relaxed);
+				}
 
-			inline void recordSimInitialExactFrontierReplay(uint64_t frontierStateCount,
+				inline void recordSimInitialPinnedAsyncHandoffStats(
+				  const SimScanCudaBatchResult &batchResult)
+				{
+				  if(batchResult.initialHandoffPinnedAsyncRequested)
+				  {
+				    simInitialPinnedAsyncHandoffRequestedCount().fetch_add(1,
+				                                                          std::memory_order_relaxed);
+				  }
+				  if(batchResult.initialHandoffPinnedAsyncActive)
+				  {
+				    simInitialPinnedAsyncHandoffActiveCount().fetch_add(1,
+				                                                       std::memory_order_relaxed);
+				  }
+				  else if(batchResult.initialHandoffPinnedAsyncDisabledReason !=
+				          SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED)
+				  {
+				    simInitialPinnedAsyncHandoffDisabledReasonCode().store(
+				      static_cast<uint64_t>(batchResult.initialHandoffPinnedAsyncDisabledReason),
+				      std::memory_order_relaxed);
+				  }
+				  if(batchResult.initialHandoffPinnedAsyncSourceReadyMode !=
+				     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE)
+				  {
+				    simInitialPinnedAsyncHandoffSourceReadyModeCode().store(
+				      static_cast<uint64_t>(batchResult.initialHandoffPinnedAsyncSourceReadyMode),
+				      std::memory_order_relaxed);
+				  }
+				  simInitialPinnedAsyncHandoffChunkCount().fetch_add(
+				    batchResult.initialHandoffChunksTotal,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffPinnedSlotCount().fetch_add(
+				    batchResult.initialHandoffPinnedSlots,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffPinnedBytes().fetch_add(
+				    batchResult.initialHandoffPinnedBytes,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffPinnedAllocationFailureCount().fetch_add(
+				    batchResult.initialHandoffPinnedAllocationFailures,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffPageableFallbackCount().fetch_add(
+				    batchResult.initialHandoffPageableFallbacks,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffSyncCopyCount().fetch_add(
+				    batchResult.initialHandoffSyncCopies,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffAsyncCopyCount().fetch_add(
+				    batchResult.initialHandoffAsyncCopies,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffSlotReuseWaitCount().fetch_add(
+				    batchResult.initialHandoffSlotReuseWaits,
+				    std::memory_order_relaxed);
+				  if(batchResult.initialHandoffSlotsReusedAfterMaterialize)
+				  {
+				    simInitialPinnedAsyncHandoffSlotsReusedAfterMaterializeCount().fetch_add(
+				      1,
+				      std::memory_order_relaxed);
+				  }
+				  simInitialPinnedAsyncHandoffAsyncD2HNanoseconds().fetch_add(
+				    simSecondsToNanoseconds(batchResult.initialHandoffAsyncD2HSeconds),
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffD2HWaitNanoseconds().fetch_add(
+				    simSecondsToNanoseconds(batchResult.initialHandoffD2HWaitSeconds),
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffCpuApplyNanoseconds().fetch_add(
+				    simSecondsToNanoseconds(batchResult.initialHandoffCpuApplySeconds),
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffCpuD2HOverlapNanoseconds().fetch_add(
+				    simSecondsToNanoseconds(batchResult.initialHandoffCpuD2HOverlapSeconds),
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffDpD2HOverlapNanoseconds().fetch_add(
+				    simSecondsToNanoseconds(batchResult.initialHandoffDpD2HOverlapSeconds),
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncHandoffCriticalPathNanoseconds().fetch_add(
+				    simSecondsToNanoseconds(batchResult.initialHandoffCriticalPathSeconds),
+				    std::memory_order_relaxed);
+				}
+
+				inline void recordSimInitialExactFrontierReplay(uint64_t frontierStateCount,
 			                                                bool deviceSafeStore)
 			{
 			  simInitialExactFrontierReplayRequestCount().fetch_add(1, std::memory_order_relaxed);
@@ -8267,8 +8514,46 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return "unknown";
 					}
 
-					inline void getSimInitialChunkedHandoffStats(SimInitialChunkedHandoffStats &stats)
+					inline const char *simInitialPinnedAsyncHandoffDisabledReasonLabel(
+					  SimScanCudaInitialPinnedAsyncDisabledReason reason)
 					{
+					  switch(reason)
+					  {
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED:
+					      return "not_requested";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NONE:
+					      return "none";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_CHUNKED_HANDOFF_OFF:
+					      return "chunked_handoff_off";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_UNSUPPORTED_PATH:
+					      return "unsupported_path";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_SUMMARIES:
+					      return "no_summaries";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_PACKED_SUMMARY_D2H:
+					      return "packed_summary_d2h";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_HOST_COPY_ELISION:
+					      return "host_copy_elision";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_CHUNKS:
+					      return "no_chunks";
+					  }
+					  return "unknown";
+					}
+
+					inline const char *simInitialPinnedAsyncHandoffSourceReadyModeLabel(
+					  SimScanCudaInitialPinnedAsyncSourceReadyMode mode)
+					{
+					  switch(mode)
+					  {
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE:
+					      return "none";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_GLOBAL_STOP_EVENT:
+					      return "global_stop_event";
+					  }
+					  return "unknown";
+					}
+
+						inline void getSimInitialChunkedHandoffStats(SimInitialChunkedHandoffStats &stats)
+						{
 					  stats.chunkCount =
 					    simInitialChunkedHandoffChunkCount().load(std::memory_order_relaxed);
 					  stats.summariesReplayed =
@@ -8291,10 +8576,62 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    simInitialChunkedHandoffFallbackCount().load(std::memory_order_relaxed);
 					  stats.fallbackReason =
 					    static_cast<SimInitialChunkedHandoffFallbackReason>(
-					      simInitialChunkedHandoffFallbackReasonCode().load(std::memory_order_relaxed));
-					}
+						      simInitialChunkedHandoffFallbackReasonCode().load(std::memory_order_relaxed));
+						}
 
-					inline void getSimInitialExactFrontierReplayStats(uint64_t &requestCount,
+						inline void getSimInitialPinnedAsyncHandoffStats(
+						  SimInitialPinnedAsyncHandoffStats &stats)
+						{
+						  stats.requestedCount =
+						    simInitialPinnedAsyncHandoffRequestedCount().load(std::memory_order_relaxed);
+						  stats.activeCount =
+						    simInitialPinnedAsyncHandoffActiveCount().load(std::memory_order_relaxed);
+						  stats.disabledReason =
+						    static_cast<SimScanCudaInitialPinnedAsyncDisabledReason>(
+						      simInitialPinnedAsyncHandoffDisabledReasonCode().load(
+						        std::memory_order_relaxed));
+						  stats.sourceReadyMode =
+						    static_cast<SimScanCudaInitialPinnedAsyncSourceReadyMode>(
+						      simInitialPinnedAsyncHandoffSourceReadyModeCode().load(
+						        std::memory_order_relaxed));
+						  stats.chunkCount =
+						    simInitialPinnedAsyncHandoffChunkCount().load(std::memory_order_relaxed);
+						  stats.pinnedSlots =
+						    simInitialPinnedAsyncHandoffPinnedSlotCount().load(std::memory_order_relaxed);
+						  stats.pinnedBytes =
+						    simInitialPinnedAsyncHandoffPinnedBytes().load(std::memory_order_relaxed);
+						  stats.pinnedAllocationFailures =
+						    simInitialPinnedAsyncHandoffPinnedAllocationFailureCount().load(
+						      std::memory_order_relaxed);
+						  stats.pageableFallbacks =
+						    simInitialPinnedAsyncHandoffPageableFallbackCount().load(std::memory_order_relaxed);
+						  stats.syncCopies =
+						    simInitialPinnedAsyncHandoffSyncCopyCount().load(std::memory_order_relaxed);
+						  stats.asyncCopies =
+						    simInitialPinnedAsyncHandoffAsyncCopyCount().load(std::memory_order_relaxed);
+						  stats.slotReuseWaits =
+						    simInitialPinnedAsyncHandoffSlotReuseWaitCount().load(std::memory_order_relaxed);
+						  stats.slotsReusedAfterMaterializeCount =
+						    simInitialPinnedAsyncHandoffSlotsReusedAfterMaterializeCount().load(
+						      std::memory_order_relaxed);
+						  stats.asyncD2HNanoseconds =
+						    simInitialPinnedAsyncHandoffAsyncD2HNanoseconds().load(std::memory_order_relaxed);
+						  stats.d2hWaitNanoseconds =
+						    simInitialPinnedAsyncHandoffD2HWaitNanoseconds().load(std::memory_order_relaxed);
+						  stats.cpuApplyNanoseconds =
+						    simInitialPinnedAsyncHandoffCpuApplyNanoseconds().load(std::memory_order_relaxed);
+						  stats.cpuD2HOverlapNanoseconds =
+						    simInitialPinnedAsyncHandoffCpuD2HOverlapNanoseconds().load(
+						      std::memory_order_relaxed);
+						  stats.dpD2HOverlapNanoseconds =
+						    simInitialPinnedAsyncHandoffDpD2HOverlapNanoseconds().load(
+						      std::memory_order_relaxed);
+						  stats.criticalPathNanoseconds =
+						    simInitialPinnedAsyncHandoffCriticalPathNanoseconds().load(
+						      std::memory_order_relaxed);
+						}
+
+						inline void getSimInitialExactFrontierReplayStats(uint64_t &requestCount,
 					                                                  uint64_t &frontierStateCount,
 					                                                  uint64_t &deviceSafeStoreCount)
 					{
@@ -12842,15 +13179,16 @@ inline void runSimCandidateLoop(const SimRequest &request,
 			            cudaBatchResult.initialSummaryUnpackedEquivalentBytesD2H,
 			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryPackSeconds),
 			            cudaBatchResult.initialSummaryPackedD2HFallbacks);
-			          recordSimInitialSummaryHostCopyElision(
-			            cudaBatchResult.usedInitialSummaryHostCopyElision,
-			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryD2HCopySeconds),
-			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryUnpackSeconds),
-			            simSecondsToNanoseconds(cudaBatchResult.initialSummaryResultMaterializeSeconds),
-			            cudaBatchResult.initialSummaryHostCopyElidedBytes);
-			          if(!cudaRequests[0].reduceCandidates &&
-			             !cudaRequests[0].proposalCandidates &&
-			             simCudaInitialChunkedHandoffEnabledRuntime())
+				          recordSimInitialSummaryHostCopyElision(
+				            cudaBatchResult.usedInitialSummaryHostCopyElision,
+				            simSecondsToNanoseconds(cudaBatchResult.initialSummaryD2HCopySeconds),
+				            simSecondsToNanoseconds(cudaBatchResult.initialSummaryUnpackSeconds),
+				            simSecondsToNanoseconds(cudaBatchResult.initialSummaryResultMaterializeSeconds),
+				            cudaBatchResult.initialSummaryHostCopyElidedBytes);
+				          recordSimInitialPinnedAsyncHandoffStats(cudaBatchResult);
+				          if(!cudaRequests[0].reduceCandidates &&
+				             !cudaRequests[0].proposalCandidates &&
+				             simCudaInitialChunkedHandoffEnabledRuntime())
 			          {
 			            recordSimInitialChunkedHandoffTransferNanoseconds(
 			              simSecondsToNanoseconds(cudaBatchResult.d2hSeconds),
