@@ -2914,10 +2914,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
   return simCudaInitialSafeStoreHandoffEnabledRuntime();
 }
 
-			struct SimInitialContextApplyChunkSkipStats
-			{
-			  SimInitialContextApplyChunkSkipStats():
-			    chunkCount(0),
+				struct SimInitialContextApplyChunkSkipStats
+				{
+				  SimInitialContextApplyChunkSkipStats():
+				    chunkCount(0),
 			    chunkReplayedCount(0),
 			    chunkSkippedCount(0),
 			    summaryReplayedCount(0),
@@ -2929,21 +2929,75 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  uint64_t chunkReplayedCount;
 			  uint64_t chunkSkippedCount;
 			  uint64_t summaryReplayedCount;
-			  uint64_t summarySkippedCount;
-			};
+				  uint64_t summarySkippedCount;
+				};
 
-			inline bool simCudaInitialContextApplyChunkSkipEnabledRuntime()
-			{
-			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CONTEXT_APPLY_CHUNK_SKIP");
+				struct SimInitialCpuFrontierFastApplyStats
+				{
+				  SimInitialCpuFrontierFastApplyStats():
+				    summariesReplayed(0),
+				    candidatesOut(0)
+				  {
+				  }
+
+				  uint64_t summariesReplayed;
+				  uint64_t candidatesOut;
+				};
+
+				struct SimInitialCpuFrontierFastApplyTelemetry
+				{
+				  SimInitialCpuFrontierFastApplyTelemetry():
+				    enabledCount(0),
+				    attempts(0),
+				    successes(0),
+				    fallbacks(0),
+				    shadowMismatches(0),
+				    summariesReplayed(0),
+				    candidatesOut(0),
+				    fastApplyNanoseconds(0),
+				    oracleApplyNanosecondsShadow(0),
+				    rejectedByStats(0),
+				    rejectedByNonemptyContext(0)
+				  {
+				  }
+
+				  uint64_t enabledCount;
+				  uint64_t attempts;
+				  uint64_t successes;
+				  uint64_t fallbacks;
+				  uint64_t shadowMismatches;
+				  uint64_t summariesReplayed;
+				  uint64_t candidatesOut;
+				  uint64_t fastApplyNanoseconds;
+				  uint64_t oracleApplyNanosecondsShadow;
+				  uint64_t rejectedByStats;
+				  uint64_t rejectedByNonemptyContext;
+				};
+
+				inline bool simCudaInitialContextApplyChunkSkipEnabledRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CONTEXT_APPLY_CHUNK_SKIP");
 			  if(env == NULL || env[0] == '\0')
 			  {
 			    return false;
 			  }
-			  return env[0] != '0';
-			}
+				  return env[0] != '0';
+				}
 
-			inline int simCudaInitialContextApplyChunkSkipChunkSize()
-			{
+				inline bool simCudaInitialCpuFrontierFastApplyEnabledRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_ENABLE_SIM_CUDA_INITIAL_CPU_FRONTIER_FAST_APPLY");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
+				inline bool simCudaInitialCpuFrontierFastApplyShadowEnabledRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CPU_FRONTIER_FAST_APPLY_SHADOW");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
+				inline int simCudaInitialContextApplyChunkSkipChunkSize()
+				{
 			  return 256;
 			}
 
@@ -5249,6 +5303,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedOracleDpGpuNanosecondsShadow()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedTotalGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceAffectedStartCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -5256,6 +5328,162 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		}
 
 		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceWorkItemCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpAttemptCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpEligibleCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpSuccessCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpFallbackCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpShadowMismatchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpRejectedByCellsCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpRejectedByDiagLenCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceFusedDpDiagLaunchesReplacedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopOracleDpGpuNanosecondsShadow()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopTotalGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpSupportedFlag()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpAttemptCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpEligibleCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpSuccessCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpFallbackCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpShadowMismatchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpRejectedByUnsupportedCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpRejectedByCellsCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpRejectedByDiagLenCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpRejectedByResidencyCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionSingleRequestDirectReduceCoopDpDiagLaunchesReplacedCount()
 		{
 		  static std::atomic<uint64_t> count(0);
 		  return count;
@@ -5591,15 +5819,81 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return count;
 				}
 
-				inline std::atomic<uint64_t> &simInitialSummaryHostCopyElidedByteCount()
-				{
-				  static std::atomic<uint64_t> count(0);
-				  return count;
-				}
+					inline std::atomic<uint64_t> &simInitialSummaryHostCopyElidedByteCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
 
-				inline std::atomic<uint64_t> &simInitialReducedCandidateCount()
-				{
-				  static std::atomic<uint64_t> count(0);
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyEnabledCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyAttemptCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplySuccessCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyFallbackCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyShadowMismatchCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplySummaryReplayCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyCandidateOutCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyNanoseconds()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyOracleNanosecondsShadow()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyRejectedByStatsCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyRejectedByNonemptyContextCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialReducedCandidateCount()
+					{
+					  static std::atomic<uint64_t> count(0);
 			  return count;
 			}
 
@@ -6375,11 +6669,97 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HNanoseconds().fetch_add(
 		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds),
 		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceFusedDpGpuSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedOracleDpGpuNanosecondsShadow().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedTotalGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceFusedTotalGpuSeconds),
+		    std::memory_order_relaxed);
 		  simRegionSingleRequestDirectReduceAffectedStartCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReduceAffectedStartCount,
 		    std::memory_order_relaxed);
 		  simRegionSingleRequestDirectReduceWorkItemCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReduceReduceWorkItems,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpAttemptCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpAttempts,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpEligibleCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpEligible,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpSuccessCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpSuccesses,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpFallbackCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpFallbacks,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpShadowMismatchCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpShadowMismatches,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpRejectedByCellsCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpRejectedByCells,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpRejectedByDiagLenCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpRejectedByDiagLen,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpCellCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpCells,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpRequestCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpRequests,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceFusedDpDiagLaunchesReplacedCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCoopDpGpuSeconds),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopOracleDpGpuNanosecondsShadow().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow),
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopTotalGpuNanoseconds().fetch_add(
+		    simSecondsToNanoseconds(batchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds),
+		    std::memory_order_relaxed);
+		  updateSimTelemetryMax(simRegionSingleRequestDirectReduceCoopDpSupportedFlag(),
+		                        batchResult.regionSingleRequestDirectReduceCoopDpSupported);
+		  simRegionSingleRequestDirectReduceCoopDpAttemptCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpAttempts,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpEligibleCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpEligible,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpSuccessCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpSuccesses,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpFallbackCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpFallbacks,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpShadowMismatchCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpShadowMismatches,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpRejectedByUnsupportedCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpRejectedByUnsupported,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpRejectedByCellsCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpRejectedByCells,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpRejectedByDiagLenCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpRejectedByDiagLen,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpRejectedByResidencyCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpRejectedByResidency,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpCellCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpCells,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpRequestCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpRequests,
+		    std::memory_order_relaxed);
+		  simRegionSingleRequestDirectReduceCoopDpDiagLaunchesReplacedCount().fetch_add(
+		    batchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced,
 		    std::memory_order_relaxed);
 		  simRegionSingleRequestDirectReducePipelineRequestCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReducePipelineRequestCount,
@@ -6542,10 +6922,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  simInitialSummaryPackedD2HFallbackCount().fetch_add(fallbackCount, std::memory_order_relaxed);
 				}
 
-				inline void recordSimInitialSummaryHostCopyElision(bool usedHostCopyElision,
-				                                                  uint64_t d2hCopyNanoseconds,
-				                                                  uint64_t unpackNanoseconds,
-				                                                  uint64_t resultMaterializeNanoseconds,
+					inline void recordSimInitialSummaryHostCopyElision(bool usedHostCopyElision,
+					                                                  uint64_t d2hCopyNanoseconds,
+					                                                  uint64_t unpackNanoseconds,
+					                                                  uint64_t resultMaterializeNanoseconds,
 				                                                  uint64_t elidedBytes)
 				{
 				  if(usedHostCopyElision)
@@ -6556,12 +6936,66 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  simInitialSummaryUnpackNanoseconds().fetch_add(unpackNanoseconds, std::memory_order_relaxed);
 				  simInitialSummaryResultMaterializeNanoseconds().fetch_add(resultMaterializeNanoseconds,
 				                                                            std::memory_order_relaxed);
-				  simInitialSummaryHostCopyElidedByteCount().fetch_add(elidedBytes, std::memory_order_relaxed);
-				}
+					  simInitialSummaryHostCopyElidedByteCount().fetch_add(elidedBytes, std::memory_order_relaxed);
+					}
 
-				inline void recordSimInitialReducedCandidates(uint64_t candidateCount)
-				{
-				  simInitialReducedCandidateCount().fetch_add(candidateCount, std::memory_order_relaxed);
+					inline void recordSimInitialCpuFrontierFastApplyEnabled()
+					{
+					  simInitialCpuFrontierFastApplyEnabledCount().fetch_add(1, std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyAttempt()
+					{
+					  simInitialCpuFrontierFastApplyAttemptCount().fetch_add(1, std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplySuccess()
+					{
+					  simInitialCpuFrontierFastApplySuccessCount().fetch_add(1, std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyFallback()
+					{
+					  simInitialCpuFrontierFastApplyFallbackCount().fetch_add(1, std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyShadowMismatch()
+					{
+					  simInitialCpuFrontierFastApplyShadowMismatchCount().fetch_add(1, std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyRejectedByStats()
+					{
+					  simInitialCpuFrontierFastApplyRejectedByStatsCount().fetch_add(1, std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyRejectedByNonemptyContext()
+					{
+					  simInitialCpuFrontierFastApplyRejectedByNonemptyContextCount().fetch_add(1,
+					                                                                           std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyReplayStats(
+					  const SimInitialCpuFrontierFastApplyStats &stats,
+					  uint64_t fastApplyNanoseconds)
+					{
+					  simInitialCpuFrontierFastApplySummaryReplayCount().fetch_add(stats.summariesReplayed,
+					                                                               std::memory_order_relaxed);
+					  simInitialCpuFrontierFastApplyCandidateOutCount().fetch_add(stats.candidatesOut,
+					                                                              std::memory_order_relaxed);
+					  simInitialCpuFrontierFastApplyNanoseconds().fetch_add(fastApplyNanoseconds,
+					                                                        std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialCpuFrontierFastApplyOracleShadowNanoseconds(uint64_t nanoseconds)
+					{
+					  simInitialCpuFrontierFastApplyOracleNanosecondsShadow().fetch_add(nanoseconds,
+					                                                                    std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialReducedCandidates(uint64_t candidateCount)
+					{
+					  simInitialReducedCandidateCount().fetch_add(candidateCount, std::memory_order_relaxed);
 			}
 
 		inline void recordSimInitialAllCandidateStates(uint64_t candidateCount)
@@ -7134,6 +7568,43 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  double unaccountedGpuSeconds;
 		};
 
+		struct SimRegionSingleRequestDirectReduceFusedDpStats
+		{
+		  uint64_t attempts;
+		  uint64_t eligible;
+		  uint64_t successes;
+		  uint64_t fallbacks;
+		  uint64_t shadowMismatches;
+		  uint64_t rejectedByCells;
+		  uint64_t rejectedByDiagLen;
+		  uint64_t cells;
+		  uint64_t requests;
+		  uint64_t diagLaunchesReplaced;
+		  double fusedDpGpuSeconds;
+		  double oracleDpGpuSecondsShadow;
+		  double fusedTotalGpuSeconds;
+		};
+
+		struct SimRegionSingleRequestDirectReduceCoopDpStats
+		{
+		  uint64_t supported;
+		  uint64_t attempts;
+		  uint64_t eligible;
+		  uint64_t successes;
+		  uint64_t fallbacks;
+		  uint64_t shadowMismatches;
+		  uint64_t rejectedByUnsupported;
+		  uint64_t rejectedByCells;
+		  uint64_t rejectedByDiagLen;
+		  uint64_t rejectedByResidency;
+		  uint64_t cells;
+		  uint64_t requests;
+		  uint64_t diagLaunchesReplaced;
+		  double coopDpGpuSeconds;
+		  double oracleDpGpuSecondsShadow;
+		  double coopTotalGpuSeconds;
+		};
+
 		inline void getSimRegionSingleRequestDirectReduceStats(uint64_t &attempts,
 		                                                       uint64_t &successes,
 		                                                       uint64_t &fallbacks,
@@ -7191,6 +7662,86 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    simRegionSingleRequestDirectReduceAffectedStartCount().load(std::memory_order_relaxed);
 		  reduceWorkItems =
 		    simRegionSingleRequestDirectReduceWorkItemCount().load(std::memory_order_relaxed);
+		}
+
+		inline void getSimRegionSingleRequestDirectReduceFusedDpStats(
+		  SimRegionSingleRequestDirectReduceFusedDpStats &stats)
+		{
+		  stats.attempts =
+		    simRegionSingleRequestDirectReduceFusedDpAttemptCount().load(std::memory_order_relaxed);
+		  stats.eligible =
+		    simRegionSingleRequestDirectReduceFusedDpEligibleCount().load(std::memory_order_relaxed);
+		  stats.successes =
+		    simRegionSingleRequestDirectReduceFusedDpSuccessCount().load(std::memory_order_relaxed);
+		  stats.fallbacks =
+		    simRegionSingleRequestDirectReduceFusedDpFallbackCount().load(std::memory_order_relaxed);
+		  stats.shadowMismatches =
+		    simRegionSingleRequestDirectReduceFusedDpShadowMismatchCount().load(std::memory_order_relaxed);
+		  stats.rejectedByCells =
+		    simRegionSingleRequestDirectReduceFusedDpRejectedByCellsCount().load(std::memory_order_relaxed);
+		  stats.rejectedByDiagLen =
+		    simRegionSingleRequestDirectReduceFusedDpRejectedByDiagLenCount().load(std::memory_order_relaxed);
+		  stats.cells =
+		    simRegionSingleRequestDirectReduceFusedDpCellCount().load(std::memory_order_relaxed);
+		  stats.requests =
+		    simRegionSingleRequestDirectReduceFusedDpRequestCount().load(std::memory_order_relaxed);
+		  stats.diagLaunchesReplaced =
+		    simRegionSingleRequestDirectReduceFusedDpDiagLaunchesReplacedCount().load(std::memory_order_relaxed);
+		  stats.fusedDpGpuSeconds =
+		    static_cast<double>(
+		      simRegionSingleRequestDirectReduceFusedDpGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  stats.oracleDpGpuSecondsShadow =
+		    static_cast<double>(
+		      simRegionSingleRequestDirectReduceFusedOracleDpGpuNanosecondsShadow().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  stats.fusedTotalGpuSeconds =
+		    static_cast<double>(
+		      simRegionSingleRequestDirectReduceFusedTotalGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		}
+
+		inline void getSimRegionSingleRequestDirectReduceCoopDpStats(
+		  SimRegionSingleRequestDirectReduceCoopDpStats &stats)
+		{
+		  stats.supported =
+		    simRegionSingleRequestDirectReduceCoopDpSupportedFlag().load(std::memory_order_relaxed);
+		  stats.attempts =
+		    simRegionSingleRequestDirectReduceCoopDpAttemptCount().load(std::memory_order_relaxed);
+		  stats.eligible =
+		    simRegionSingleRequestDirectReduceCoopDpEligibleCount().load(std::memory_order_relaxed);
+		  stats.successes =
+		    simRegionSingleRequestDirectReduceCoopDpSuccessCount().load(std::memory_order_relaxed);
+		  stats.fallbacks =
+		    simRegionSingleRequestDirectReduceCoopDpFallbackCount().load(std::memory_order_relaxed);
+		  stats.shadowMismatches =
+		    simRegionSingleRequestDirectReduceCoopDpShadowMismatchCount().load(std::memory_order_relaxed);
+		  stats.rejectedByUnsupported =
+		    simRegionSingleRequestDirectReduceCoopDpRejectedByUnsupportedCount().load(std::memory_order_relaxed);
+		  stats.rejectedByCells =
+		    simRegionSingleRequestDirectReduceCoopDpRejectedByCellsCount().load(std::memory_order_relaxed);
+		  stats.rejectedByDiagLen =
+		    simRegionSingleRequestDirectReduceCoopDpRejectedByDiagLenCount().load(std::memory_order_relaxed);
+		  stats.rejectedByResidency =
+		    simRegionSingleRequestDirectReduceCoopDpRejectedByResidencyCount().load(std::memory_order_relaxed);
+		  stats.cells =
+		    simRegionSingleRequestDirectReduceCoopDpCellCount().load(std::memory_order_relaxed);
+		  stats.requests =
+		    simRegionSingleRequestDirectReduceCoopDpRequestCount().load(std::memory_order_relaxed);
+		  stats.diagLaunchesReplaced =
+		    simRegionSingleRequestDirectReduceCoopDpDiagLaunchesReplacedCount().load(std::memory_order_relaxed);
+		  stats.coopDpGpuSeconds =
+		    static_cast<double>(
+		      simRegionSingleRequestDirectReduceCoopDpGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  stats.oracleDpGpuSecondsShadow =
+		    static_cast<double>(
+		      simRegionSingleRequestDirectReduceCoopOracleDpGpuNanosecondsShadow().load(std::memory_order_relaxed)) /
+		    1.0e9;
+		  stats.coopTotalGpuSeconds =
+		    static_cast<double>(
+		      simRegionSingleRequestDirectReduceCoopTotalGpuNanoseconds().load(std::memory_order_relaxed)) /
+		    1.0e9;
 		}
 
 		inline void getSimRegionSingleRequestDirectReducePipelineStats(
@@ -7371,10 +7922,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				    simInitialSummaryHostCopyElidedByteCount().load(std::memory_order_relaxed);
 					}
 
-					inline void getSimInitialContextApplyChunkSkipStats(uint64_t &chunkCount,
+					 inline void getSimInitialContextApplyChunkSkipStats(uint64_t &chunkCount,
 					                                                    uint64_t &chunkSkippedCount,
-				                                                    uint64_t &chunkReplayedCount,
-				                                                    uint64_t &summarySkippedCount,
+					                                                    uint64_t &chunkReplayedCount,
+					                                                    uint64_t &summarySkippedCount,
 				                                                    uint64_t &summaryReplayedCount)
 				{
 				  chunkCount = simInitialContextApplyChunkSkipChunkCount().load(std::memory_order_relaxed);
@@ -7384,13 +7935,40 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				    simInitialContextApplyChunkSkipChunkReplayedCount().load(std::memory_order_relaxed);
 				  summarySkippedCount =
 				    simInitialContextApplyChunkSkipSummarySkippedCount().load(std::memory_order_relaxed);
-				  summaryReplayedCount =
-				    simInitialContextApplyChunkSkipSummaryReplayedCount().load(std::memory_order_relaxed);
-				}
+					  summaryReplayedCount =
+					    simInitialContextApplyChunkSkipSummaryReplayedCount().load(std::memory_order_relaxed);
+					}
 
-					inline void getSimInitialSafeStoreDeviceStats(uint64_t &frontierBytesH2D,
-					                                              double &buildSeconds,
-					                                              double &pruneSeconds,
+					inline void getSimInitialCpuFrontierFastApplyStats(
+					  SimInitialCpuFrontierFastApplyTelemetry &stats)
+					{
+					  stats.enabledCount =
+					    simInitialCpuFrontierFastApplyEnabledCount().load(std::memory_order_relaxed);
+					  stats.attempts =
+					    simInitialCpuFrontierFastApplyAttemptCount().load(std::memory_order_relaxed);
+					  stats.successes =
+					    simInitialCpuFrontierFastApplySuccessCount().load(std::memory_order_relaxed);
+					  stats.fallbacks =
+					    simInitialCpuFrontierFastApplyFallbackCount().load(std::memory_order_relaxed);
+					  stats.shadowMismatches =
+					    simInitialCpuFrontierFastApplyShadowMismatchCount().load(std::memory_order_relaxed);
+					  stats.summariesReplayed =
+					    simInitialCpuFrontierFastApplySummaryReplayCount().load(std::memory_order_relaxed);
+					  stats.candidatesOut =
+					    simInitialCpuFrontierFastApplyCandidateOutCount().load(std::memory_order_relaxed);
+					  stats.fastApplyNanoseconds =
+					    simInitialCpuFrontierFastApplyNanoseconds().load(std::memory_order_relaxed);
+					  stats.oracleApplyNanosecondsShadow =
+					    simInitialCpuFrontierFastApplyOracleNanosecondsShadow().load(std::memory_order_relaxed);
+					  stats.rejectedByStats =
+					    simInitialCpuFrontierFastApplyRejectedByStatsCount().load(std::memory_order_relaxed);
+					  stats.rejectedByNonemptyContext =
+					    simInitialCpuFrontierFastApplyRejectedByNonemptyContextCount().load(std::memory_order_relaxed);
+					}
+
+						inline void getSimInitialSafeStoreDeviceStats(uint64_t &frontierBytesH2D,
+						                                              double &buildSeconds,
+						                                              double &pruneSeconds,
 			                                              double &frontierUploadSeconds)
 			{
 		  frontierBytesH2D = simInitialSafeStoreFrontierBytesH2DCount().load(std::memory_order_relaxed);
@@ -9723,10 +10301,10 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
          candidate.RIGHT >= static_cast<long>(summary.maxEndJ);
 }
 
-inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
-                                                         SimKernelContext &context)
-{
-  SimCandidateStateStore &store = context.safeCandidateStateStore;
+	inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
+	                                                         SimKernelContext &context)
+	{
+	  SimCandidateStateStore &store = context.safeCandidateStateStore;
   if(!store.valid)
   {
     resetSimCandidateStateStore(store,true);
@@ -9734,12 +10312,281 @@ inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCud
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
   {
     upsertSimCandidateStateStoreSummary(summaries[summaryIndex],store);
-  }
-}
+	  }
+	}
 
-inline bool applySimCudaRegionRunSummary(const SimScanCudaInitialRunSummary &summary,
-                                         SimKernelContext &context,
-                                         SimCandidateStats *stats = NULL)
+	struct SimInitialCpuFrontierFastApplyTransducer
+	{
+	  enum { indexCapacity = 256 };
+
+	  SimInitialCpuFrontierFastApplyTransducer():
+	    candidateCount(0)
+	  {
+	    clearIndex();
+	    heap.clear();
+	  }
+
+	  void clearIndex()
+	  {
+	    memset(slotState,0,sizeof(slotState));
+	    memset(candidateSlot,0xff,sizeof(candidateSlot));
+	    tombstoneCount = 0;
+	  }
+
+	  static size_t hashStartCoord(uint64_t startCoord)
+	  {
+	    uint64_t value = startCoord;
+	    value ^= value >> 33;
+	    value *= 0xff51afd7ed558ccdull;
+	    value ^= value >> 33;
+	    return static_cast<size_t>(value & (indexCapacity - 1));
+	  }
+
+	  int findIndex(uint64_t startCoord) const
+	  {
+	    size_t slot = hashStartCoord(startCoord);
+	    for(size_t probe = 0; probe < indexCapacity; ++probe)
+	    {
+	      if(slotState[slot] == 0)
+	      {
+	        return -1;
+	      }
+	      if(slotState[slot] == 1 && slotStartCoord[slot] == startCoord)
+	      {
+	        return slotCandidateIndex[slot];
+	      }
+	      slot = (slot + 1) & (indexCapacity - 1);
+	    }
+	    return -1;
+	  }
+
+	  void insertIndex(uint64_t startCoord,int candidateIndex)
+	  {
+	    size_t slot = hashStartCoord(startCoord);
+	    size_t firstTombstone = indexCapacity;
+	    while(slotState[slot] != 0)
+	    {
+	      if(slotState[slot] == 2 && firstTombstone == indexCapacity)
+	      {
+	        firstTombstone = slot;
+	      }
+	      slot = (slot + 1) & (indexCapacity - 1);
+	    }
+	    if(firstTombstone != indexCapacity)
+	    {
+	      slot = firstTombstone;
+	      --tombstoneCount;
+	    }
+	    slotState[slot] = 1;
+	    slotStartCoord[slot] = startCoord;
+	    slotCandidateIndex[slot] = candidateIndex;
+	    candidateSlot[candidateIndex] = static_cast<int>(slot);
+	  }
+
+	  void eraseIndex(int candidateIndex)
+	  {
+	    if(candidateIndex < 0 || candidateIndex >= K)
+	    {
+	      return;
+	    }
+	    const int slot = candidateSlot[candidateIndex];
+	    if(slot < 0)
+	    {
+	      return;
+	    }
+	    slotState[static_cast<size_t>(slot)] = 2;
+	    candidateSlot[candidateIndex] = -1;
+	    ++tombstoneCount;
+	  }
+
+	  void rebuildIndex()
+	  {
+	    clearIndex();
+	    for(long candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+	    {
+	      insertIndex(packSimCoord(static_cast<uint32_t>(candidates[candidateIndex].STARI),
+	                               static_cast<uint32_t>(candidates[candidateIndex].STARJ)),
+	                  static_cast<int>(candidateIndex));
+	    }
+	  }
+
+	  void buildHeap()
+	  {
+	    heap.clear();
+	    if(candidateCount <= 0)
+	    {
+	      return;
+	    }
+	    heap.size = static_cast<int>(candidateCount);
+	    for(int candidateIndex = 0; candidateIndex < heap.size; ++candidateIndex)
+	    {
+	      heap.heap[candidateIndex] = candidateIndex;
+	      heap.pos[candidateIndex] = candidateIndex;
+	    }
+	    for(int heapIndex = heap.size / 2 - 1; heapIndex >= 0; --heapIndex)
+	    {
+	      simCandidateHeapSiftDown(heap,candidates,heapIndex);
+	    }
+	    heap.valid = (candidateCount == K);
+	  }
+
+	  void updateHeapIndex(int candidateIndex)
+	  {
+	    if(!heap.valid || candidateIndex < 0 || candidateIndex >= K)
+	    {
+	      return;
+	    }
+	    const int currentPos = heap.pos[candidateIndex];
+	    if(currentPos < 0 || currentPos >= heap.size)
+	    {
+	      return;
+	    }
+	    simCandidateHeapSiftUp(heap,candidates,currentPos);
+	    simCandidateHeapSiftDown(heap,candidates,heap.pos[candidateIndex]);
+	  }
+
+	  int ensureCandidateIndex(uint64_t startCoord,long startI,long startJ,long score,long endI,long endJ)
+	  {
+	    const int foundIndex = findIndex(startCoord);
+	    if(foundIndex >= 0 && foundIndex < candidateCount)
+	    {
+	      return foundIndex;
+	    }
+
+	    int slotIndex = 0;
+	    if(candidateCount == K)
+	    {
+	      if(!heap.valid)
+	      {
+	        buildHeap();
+	      }
+	      slotIndex = peekMinSimCandidateIndex(heap);
+	      if(slotIndex < 0 || slotIndex >= static_cast<int>(candidateCount))
+	      {
+	        slotIndex = 0;
+	      }
+	      eraseIndex(slotIndex);
+	    }
+	    else
+	    {
+	      slotIndex = static_cast<int>(candidateCount++);
+	    }
+
+	    SimCandidate &candidate = candidates[slotIndex];
+	    candidate.SCORE = score;
+	    candidate.STARI = startI;
+	    candidate.STARJ = startJ;
+	    candidate.ENDI = endI;
+	    candidate.ENDJ = endJ;
+	    candidate.TOP = candidate.BOT = endI;
+	    candidate.LEFT = candidate.RIGHT = endJ;
+	    insertIndex(startCoord,slotIndex);
+	    if(candidateCount == K)
+	    {
+	      if(!heap.valid)
+	      {
+	        buildHeap();
+	      }
+	      updateHeapIndex(slotIndex);
+	    }
+	    if(tombstoneCount > static_cast<size_t>(K))
+	    {
+	      rebuildIndex();
+	    }
+	    return slotIndex;
+	  }
+
+	  void applySummary(const SimScanCudaInitialRunSummary &summary)
+	  {
+	    const long startI = static_cast<long>(unpackSimCoordI(summary.startCoord));
+	    const long startJ = static_cast<long>(unpackSimCoordJ(summary.startCoord));
+	    const long score = static_cast<long>(summary.score);
+	    const long endI = static_cast<long>(summary.endI);
+	    const long scoreEndJ = static_cast<long>(summary.scoreEndJ);
+	    const int candidateIndex =
+	      ensureCandidateIndex(summary.startCoord,startI,startJ,score,endI,scoreEndJ);
+	    SimCandidate &candidate = candidates[candidateIndex];
+	    if(candidate.SCORE < score)
+	    {
+	      candidate.SCORE = score;
+	      candidate.ENDI = endI;
+	      candidate.ENDJ = scoreEndJ;
+	      if(candidateCount == K && heap.valid)
+	      {
+	        updateHeapIndex(candidateIndex);
+	      }
+	    }
+	    if(candidate.TOP > endI) candidate.TOP = endI;
+	    if(candidate.BOT < endI) candidate.BOT = endI;
+	    if(candidate.LEFT > static_cast<long>(summary.minEndJ))
+	    {
+	      candidate.LEFT = static_cast<long>(summary.minEndJ);
+	    }
+	    if(candidate.RIGHT < static_cast<long>(summary.maxEndJ))
+	    {
+	      candidate.RIGHT = static_cast<long>(summary.maxEndJ);
+	    }
+	  }
+
+	  void materialize(SimKernelContext &context) const
+	  {
+	    context.candidateCount = candidateCount;
+	    for(long candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+	    {
+	      context.candidates[candidateIndex] = candidates[candidateIndex];
+	    }
+	    rebuildSimCandidateStartIndex(context);
+	    context.candidateMinHeap.clear();
+	    if(context.candidateCount == K)
+	    {
+	      buildSimCandidateMinHeap(context);
+	    }
+	    refreshSimRunningMin(context);
+	  }
+
+	  SimCandidate candidates[K];
+	  long candidateCount;
+	  unsigned char slotState[indexCapacity];
+	  uint64_t slotStartCoord[indexCapacity];
+	  int slotCandidateIndex[indexCapacity];
+	  int candidateSlot[K];
+	  size_t tombstoneCount;
+	  SimCandidateMinHeap heap;
+	};
+
+	inline bool applySimCudaInitialRunSummariesCpuFrontierFastApply(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  uint64_t eventCount,
+	  SimKernelContext &context,
+	  SimInitialCpuFrontierFastApplyStats *statsOut = NULL)
+	{
+	  (void)eventCount;
+	  if(statsOut != NULL)
+	  {
+	    *statsOut = SimInitialCpuFrontierFastApplyStats();
+	  }
+	  if(context.statsEnabled || context.candidateCount != 0)
+	  {
+	    return false;
+	  }
+
+	  SimInitialCpuFrontierFastApplyTransducer transducer;
+	  for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
+	  {
+	    transducer.applySummary(summaries[summaryIndex]);
+	  }
+	  transducer.materialize(context);
+	  if(statsOut != NULL)
+	  {
+	    statsOut->summariesReplayed = static_cast<uint64_t>(summaries.size());
+	    statsOut->candidatesOut = static_cast<uint64_t>(context.candidateCount);
+	  }
+	  return true;
+	}
+
+	inline bool applySimCudaRegionRunSummary(const SimScanCudaInitialRunSummary &summary,
+	                                         SimKernelContext &context,
+	                                         SimCandidateStats *stats = NULL)
 {
   if(static_cast<long>(summary.score) <= context.runningMin)
   {
@@ -12032,36 +12879,162 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  }
 	}
 
-	inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
-	                                                     uint64_t eventCount,
-	                                                     SimKernelContext &context,
-                                                     bool benchmarkEnabled)
-{
-  context.proposalCandidateLoop = false;
-  const bool maintainSafeStore =
-    simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
+		inline void applySimCudaInitialRunSummariesLegacyContextApply(
+		  const vector<SimScanCudaInitialRunSummary> &summaries,
+		  uint64_t eventCount,
+		  SimKernelContext &context)
+		{
+		  if(simCudaInitialContextApplyChunkSkipEnabledRuntime())
+		  {
+		    SimInitialContextApplyChunkSkipStats chunkSkipStats;
+		    mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
+		      summaries,
+		      eventCount,
+		      context,
+		      simCudaInitialContextApplyChunkSkipChunkSize(),
+		      &chunkSkipStats);
+		    recordSimInitialContextApplyChunkSkipStats(chunkSkipStats);
+		  }
+		  else
+		  {
+		    mergeSimCudaInitialRunSummaries(summaries,eventCount,context);
+		  }
+		}
+
+		inline bool simInitialCpuFrontierFastApplyContextsEqual(const SimKernelContext &actual,
+		                                                        const SimKernelContext &expected)
+		{
+		  if(actual.candidateCount != expected.candidateCount ||
+		     actual.runningMin != expected.runningMin)
+		  {
+		    return false;
+		  }
+		  for(long candidateIndex = 0; candidateIndex < actual.candidateCount; ++candidateIndex)
+		  {
+		    if(memcmp(&actual.candidates[candidateIndex],
+		              &expected.candidates[candidateIndex],
+		              sizeof(SimCandidate)) != 0)
+		    {
+		      return false;
+		    }
+		  }
+		  return true;
+		}
+
+		inline bool trySimCudaInitialCpuFrontierFastApply(
+		  const vector<SimScanCudaInitialRunSummary> &summaries,
+		  uint64_t eventCount,
+		  SimKernelContext &context,
+		  bool useFastResult)
+		{
+		  recordSimInitialCpuFrontierFastApplyAttempt();
+		  if(context.statsEnabled)
+		  {
+		    recordSimInitialCpuFrontierFastApplyRejectedByStats();
+		    recordSimInitialCpuFrontierFastApplyFallback();
+		    return false;
+		  }
+		  if(context.candidateCount != 0)
+		  {
+		    recordSimInitialCpuFrontierFastApplyRejectedByNonemptyContext();
+		    recordSimInitialCpuFrontierFastApplyFallback();
+		    return false;
+		  }
+
+		  const bool shadowEnabled = simCudaInitialCpuFrontierFastApplyShadowEnabledRuntime();
+		  if(shadowEnabled)
+		  {
+		    SimKernelContext oracleContext(context);
+		    const std::chrono::steady_clock::time_point oracleStart =
+		      std::chrono::steady_clock::now();
+		    applySimCudaInitialRunSummariesLegacyContextApply(summaries,eventCount,oracleContext);
+		    recordSimInitialCpuFrontierFastApplyOracleShadowNanoseconds(
+		      simElapsedNanoseconds(oracleStart));
+
+		    SimKernelContext fastContext(context);
+		    SimInitialCpuFrontierFastApplyStats fastStats;
+		    const std::chrono::steady_clock::time_point fastStart =
+		      std::chrono::steady_clock::now();
+		    const bool fastOk =
+		      applySimCudaInitialRunSummariesCpuFrontierFastApply(summaries,
+		                                                          eventCount,
+		                                                          fastContext,
+		                                                          &fastStats);
+		    const uint64_t fastNanoseconds = simElapsedNanoseconds(fastStart);
+		    if(fastOk)
+		    {
+		      recordSimInitialCpuFrontierFastApplyReplayStats(fastStats,fastNanoseconds);
+		    }
+
+		    if(!fastOk ||
+		       !simInitialCpuFrontierFastApplyContextsEqual(fastContext,oracleContext))
+		    {
+		      recordSimInitialCpuFrontierFastApplyShadowMismatch();
+		      recordSimInitialCpuFrontierFastApplyFallback();
+		      context = oracleContext;
+		      return true;
+		    }
+
+		    recordSimInitialCpuFrontierFastApplySuccess();
+		    context = useFastResult ? fastContext : oracleContext;
+		    return true;
+		  }
+
+		  SimInitialCpuFrontierFastApplyStats fastStats;
+		  const std::chrono::steady_clock::time_point fastStart =
+		    std::chrono::steady_clock::now();
+		  const bool fastOk =
+		    applySimCudaInitialRunSummariesCpuFrontierFastApply(summaries,
+		                                                        eventCount,
+		                                                        context,
+		                                                        &fastStats);
+		  const uint64_t fastNanoseconds = simElapsedNanoseconds(fastStart);
+		  if(!fastOk)
+		  {
+		    recordSimInitialCpuFrontierFastApplyFallback();
+		    return false;
+		  }
+		  recordSimInitialCpuFrontierFastApplyReplayStats(fastStats,fastNanoseconds);
+		  recordSimInitialCpuFrontierFastApplySuccess();
+		  return true;
+		}
+
+		inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
+		                                                     uint64_t eventCount,
+		                                                     SimKernelContext &context,
+	                                                     bool benchmarkEnabled)
+	{
+	  context.proposalCandidateLoop = false;
+	  const bool maintainSafeStore =
+	    simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
     simCudaProposalLoopEnabledRuntime();
-  const std::chrono::steady_clock::time_point cpuMergeStart =
-    benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-  const std::chrono::steady_clock::time_point contextApplyStart =
-    benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-  if(simCudaInitialContextApplyChunkSkipEnabledRuntime())
-  {
-    SimInitialContextApplyChunkSkipStats chunkSkipStats;
-    mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
-      summaries,
-      eventCount,
-      context,
-      simCudaInitialContextApplyChunkSkipChunkSize(),
-      &chunkSkipStats);
-    recordSimInitialContextApplyChunkSkipStats(chunkSkipStats);
-  }
-  else
-  {
-    mergeSimCudaInitialRunSummaries(summaries,eventCount,context);
-  }
-  if(benchmarkEnabled)
-  {
+	  const std::chrono::steady_clock::time_point cpuMergeStart =
+	    benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	  const std::chrono::steady_clock::time_point contextApplyStart =
+	    benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	  bool contextApplyDone = false;
+	  const bool useInitialCpuFrontierFastApply =
+	    simCudaInitialCpuFrontierFastApplyEnabledRuntime();
+	  const bool shadowInitialCpuFrontierFastApply =
+	    simCudaInitialCpuFrontierFastApplyShadowEnabledRuntime();
+	  if(useInitialCpuFrontierFastApply || shadowInitialCpuFrontierFastApply)
+	  {
+	    if(useInitialCpuFrontierFastApply)
+	    {
+	      recordSimInitialCpuFrontierFastApplyEnabled();
+	    }
+	    contextApplyDone =
+	      trySimCudaInitialCpuFrontierFastApply(summaries,
+	                                            eventCount,
+	                                            context,
+	                                            useInitialCpuFrontierFastApply);
+	  }
+	  if(!contextApplyDone)
+	  {
+	    applySimCudaInitialRunSummariesLegacyContextApply(summaries,eventCount,context);
+	  }
+	  if(benchmarkEnabled)
+	  {
     recordSimInitialScanCpuContextApplyNanoseconds(simElapsedNanoseconds(contextApplyStart));
   }
   if(maintainSafeStore)

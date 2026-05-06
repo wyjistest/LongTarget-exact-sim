@@ -139,6 +139,28 @@ struct LongTargetExecutionMetrics
     calcScoreTargetBin8193To65535Bp(0),
     calcScoreTargetBinGt65535Tasks(0),
     calcScoreTargetBinGt65535Bp(0),
+    calcScoreCudaTargetH2DSeconds(0.0),
+    calcScoreCudaPermutationH2DSeconds(0.0),
+    calcScoreCudaKernelSeconds(0.0),
+    calcScoreCudaScoreD2HSeconds(0.0),
+    calcScoreCudaSyncWaitSeconds(0.0),
+    calcScoreHostEncodeSeconds(0.0),
+    calcScoreHostShufflePlanSeconds(0.0),
+    calcScoreHostMleSeconds(0.0),
+    calcScoreCudaPipelineV2Enabled(0),
+    calcScoreCudaPipelineV2ShadowEnabled(0),
+    calcScoreCudaPipelineV2UsedGroups(0),
+    calcScoreCudaPipelineV2Fallbacks(0),
+    calcScoreCudaPipelineV2ShadowComparisons(0),
+    calcScoreCudaPipelineV2ShadowMismatches(0),
+    calcScoreCudaPipelineV2KernelSeconds(0.0),
+    calcScoreCudaPipelineV2ScoreD2HSeconds(0.0),
+    calcScoreCudaPipelineV2HostReduceSeconds(0.0),
+    calcScoreCudaGroups(0),
+    calcScoreCudaPairs(0),
+    calcScoreCudaTargetBytesH2D(0),
+    calcScoreCudaPermutationBytesH2D(0),
+    calcScoreCudaScoreBytesD2H(0),
     simScanTasks(0),
     simScanLaunches(0),
     simTracebackCandidates(0),
@@ -217,6 +239,28 @@ struct LongTargetExecutionMetrics
   uint64_t calcScoreTargetBin8193To65535Bp;
   uint64_t calcScoreTargetBinGt65535Tasks;
   uint64_t calcScoreTargetBinGt65535Bp;
+  double calcScoreCudaTargetH2DSeconds;
+  double calcScoreCudaPermutationH2DSeconds;
+  double calcScoreCudaKernelSeconds;
+  double calcScoreCudaScoreD2HSeconds;
+  double calcScoreCudaSyncWaitSeconds;
+  double calcScoreHostEncodeSeconds;
+  double calcScoreHostShufflePlanSeconds;
+  double calcScoreHostMleSeconds;
+  uint64_t calcScoreCudaPipelineV2Enabled;
+  uint64_t calcScoreCudaPipelineV2ShadowEnabled;
+  uint64_t calcScoreCudaPipelineV2UsedGroups;
+  uint64_t calcScoreCudaPipelineV2Fallbacks;
+  uint64_t calcScoreCudaPipelineV2ShadowComparisons;
+  uint64_t calcScoreCudaPipelineV2ShadowMismatches;
+  double calcScoreCudaPipelineV2KernelSeconds;
+  double calcScoreCudaPipelineV2ScoreD2HSeconds;
+  double calcScoreCudaPipelineV2HostReduceSeconds;
+  uint64_t calcScoreCudaGroups;
+  uint64_t calcScoreCudaPairs;
+  uint64_t calcScoreCudaTargetBytesH2D;
+  uint64_t calcScoreCudaPermutationBytesH2D;
+  uint64_t calcScoreCudaScoreBytesD2H;
   uint64_t simScanTasks;
   uint64_t simScanLaunches;
   uint64_t simTracebackCandidates;
@@ -457,7 +501,49 @@ static inline void longtarget_record_calc_score_group_result(LongTargetExecution
     default:
       metrics.calcScoreCpuFallbackOther += taskCount;
       break;
+	  }
+	}
+
+static inline void longtarget_record_calc_score_cuda_batch_telemetry(LongTargetExecutionMetrics &metrics,
+                                                                     uint64_t taskCount,
+                                                                     uint64_t pairCount,
+                                                                     const CalcScoreCudaBatchResult &batchResult)
+{
+  if(!batchResult.usedCuda)
+  {
+    return;
   }
+  metrics.calcScoreCudaGroups += 1;
+  metrics.calcScoreCudaPairs += taskCount * pairCount;
+  metrics.calcScoreCudaTargetH2DSeconds += batchResult.targetH2DSeconds;
+  metrics.calcScoreCudaPermutationH2DSeconds += batchResult.permutationH2DSeconds;
+  metrics.calcScoreCudaKernelSeconds += batchResult.kernelSeconds;
+  metrics.calcScoreCudaScoreD2HSeconds += batchResult.scoreD2HSeconds;
+  metrics.calcScoreCudaSyncWaitSeconds += batchResult.syncWaitSeconds;
+  if(batchResult.pipelineV2Enabled)
+  {
+    metrics.calcScoreCudaPipelineV2Enabled = 1;
+  }
+  if(batchResult.pipelineV2ShadowEnabled)
+  {
+    metrics.calcScoreCudaPipelineV2ShadowEnabled = 1;
+  }
+  if(batchResult.pipelineV2Used)
+  {
+    metrics.calcScoreCudaPipelineV2UsedGroups += 1;
+  }
+  if(batchResult.pipelineV2Fallback)
+  {
+    metrics.calcScoreCudaPipelineV2Fallbacks += 1;
+  }
+  metrics.calcScoreCudaPipelineV2ShadowComparisons += batchResult.pipelineV2ShadowComparisons;
+  metrics.calcScoreCudaPipelineV2ShadowMismatches += batchResult.pipelineV2ShadowMismatches;
+  metrics.calcScoreCudaPipelineV2KernelSeconds += batchResult.pipelineV2KernelSeconds;
+  metrics.calcScoreCudaPipelineV2ScoreD2HSeconds += batchResult.pipelineV2ScoreD2HSeconds;
+  metrics.calcScoreCudaPipelineV2HostReduceSeconds += batchResult.pipelineV2HostReduceSeconds;
+  metrics.calcScoreCudaTargetBytesH2D += batchResult.targetBytesH2D;
+  metrics.calcScoreCudaPermutationBytesH2D += batchResult.permutationBytesH2D;
+  metrics.calcScoreCudaScoreBytesD2H += batchResult.scoreBytesD2H;
 }
 
 static inline bool longtarget_window_pipeline_overlap_enabled_runtime(bool useWindowPipeline)
@@ -898,6 +984,22 @@ static inline bool longtarget_cuda_validate_enabled()
 {
   const char *validateEnv = getenv("LONGTARGET_CUDA_VALIDATE");
   return validateEnv != NULL && validateEnv[0] != '\0' && strcmp(validateEnv,"0") != 0;
+}
+
+static inline bool longtarget_calc_score_cuda_pipeline_v2_enabled()
+{
+  const char *env = getenv("LONGTARGET_ENABLE_CALC_SCORE_CUDA_PIPELINE_V2");
+  return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+}
+
+static inline bool longtarget_calc_score_cuda_pipeline_v2_shadow_enabled()
+{
+  if(!longtarget_calc_score_cuda_pipeline_v2_enabled())
+  {
+    return false;
+  }
+  const char *env = getenv("LONGTARGET_CALC_SCORE_CUDA_PIPELINE_V2_SHADOW");
+  return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
 }
 
 static inline bool longtarget_write_tfosorted_lite_enabled()
@@ -2115,14 +2217,16 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryUnpackSeconds,
                                            simInitialSummaryResultMaterializeSeconds,
                                            simInitialSummaryHostCopyElidedBytes);
-  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
-                                          simInitialContextApplyChunkSkippedTotal,
-                                          simInitialContextApplyChunkReplayedTotal,
-                                          simInitialContextApplySummarySkippedTotal,
-                                          simInitialContextApplySummaryReplayedTotal);
-  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
-  double simInitialSafeStoreDevicePruneSeconds = 0.0;
-  double simInitialSafeStoreFrontierUploadSeconds = 0.0;
+	  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
+	                                          simInitialContextApplyChunkSkippedTotal,
+	                                          simInitialContextApplyChunkReplayedTotal,
+	                                          simInitialContextApplySummarySkippedTotal,
+	                                          simInitialContextApplySummaryReplayedTotal);
+	  SimInitialCpuFrontierFastApplyTelemetry simInitialCpuFrontierFastApplyTelemetry;
+	  getSimInitialCpuFrontierFastApplyStats(simInitialCpuFrontierFastApplyTelemetry);
+	  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
+	  double simInitialSafeStoreDevicePruneSeconds = 0.0;
+	  double simInitialSafeStoreFrontierUploadSeconds = 0.0;
   getSimInitialSafeStoreDeviceStats(simInitialSafeStoreFrontierBytesH2D,
                                     simInitialSafeStoreDeviceBuildSeconds,
                                     simInitialSafeStoreDevicePruneSeconds,
@@ -2379,11 +2483,33 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(simCudaInitialContextApplyChunkSkipEnabledRuntime() ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_context_apply_chunks_total="<<simInitialContextApplyChunkTotal<<endl;
   cerr<<"benchmark.sim_initial_context_apply_chunks_skipped="<<simInitialContextApplyChunkSkippedTotal<<endl;
-  cerr<<"benchmark.sim_initial_context_apply_chunks_replayed="<<simInitialContextApplyChunkReplayedTotal<<endl;
-  cerr<<"benchmark.sim_initial_context_apply_summaries_skipped="<<simInitialContextApplySummarySkippedTotal<<endl;
-  cerr<<"benchmark.sim_initial_context_apply_summaries_replayed="<<simInitialContextApplySummaryReplayedTotal<<endl;
-  double simInitialScanSeconds = 0.0;
-  double simInitialScanGpuSeconds = 0.0;
+	  cerr<<"benchmark.sim_initial_context_apply_chunks_replayed="<<simInitialContextApplyChunkReplayedTotal<<endl;
+	  cerr<<"benchmark.sim_initial_context_apply_summaries_skipped="<<simInitialContextApplySummarySkippedTotal<<endl;
+	  cerr<<"benchmark.sim_initial_context_apply_summaries_replayed="<<simInitialContextApplySummaryReplayedTotal<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_enabled="
+	      <<(simInitialCpuFrontierFastApplyTelemetry.enabledCount > 0 ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_attempts="
+	      <<simInitialCpuFrontierFastApplyTelemetry.attempts<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_successes="
+	      <<simInitialCpuFrontierFastApplyTelemetry.successes<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_fallbacks="
+	      <<simInitialCpuFrontierFastApplyTelemetry.fallbacks<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_shadow_mismatches="
+	      <<simInitialCpuFrontierFastApplyTelemetry.shadowMismatches<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_summaries_replayed_total="
+	      <<simInitialCpuFrontierFastApplyTelemetry.summariesReplayed<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_candidates_out_total="
+	      <<simInitialCpuFrontierFastApplyTelemetry.candidatesOut<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_fast_apply_seconds="
+	      <<(static_cast<double>(simInitialCpuFrontierFastApplyTelemetry.fastApplyNanoseconds) / 1.0e9)<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_oracle_apply_seconds_shadow="
+	      <<(static_cast<double>(simInitialCpuFrontierFastApplyTelemetry.oracleApplyNanosecondsShadow) / 1.0e9)<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_rejected_by_stats="
+	      <<simInitialCpuFrontierFastApplyTelemetry.rejectedByStats<<endl;
+	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_rejected_by_nonempty_context="
+	      <<simInitialCpuFrontierFastApplyTelemetry.rejectedByNonemptyContext<<endl;
+	  double simInitialScanSeconds = 0.0;
+	  double simInitialScanGpuSeconds = 0.0;
   double simInitialScanD2HSeconds = 0.0;
   double simInitialScanCpuMergeSeconds = 0.0;
   double simInitialScanDiagSeconds = 0.0;
@@ -2563,6 +2689,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS");
   const char *simRegionDirectReducePipelineTelemetryEnv =
     getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
+  const char *simRegionDirectReduceFusedDpEnv =
+    getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP");
+  const char *simRegionDirectReduceFusedDpShadowEnv =
+    getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_SHADOW");
+  const char *simRegionDirectReduceCoopDpEnv =
+    getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP");
+  const char *simRegionDirectReduceCoopDpShadowEnv =
+    getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_SHADOW");
   cerr<<"benchmark.sim_region_single_request_direct_reduce_enabled="
       <<((simRegionSingleRequestDirectReduceEnv != NULL &&
           simRegionSingleRequestDirectReduceEnv[0] != '\0' &&
@@ -2579,6 +2713,22 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<((simRegionDirectReducePipelineTelemetryEnv != NULL &&
           simRegionDirectReducePipelineTelemetryEnv[0] != '\0' &&
           strcmp(simRegionDirectReducePipelineTelemetryEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_enabled="
+      <<((simRegionDirectReduceFusedDpEnv != NULL &&
+          simRegionDirectReduceFusedDpEnv[0] != '\0' &&
+          strcmp(simRegionDirectReduceFusedDpEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_shadow_enabled="
+      <<((simRegionDirectReduceFusedDpShadowEnv != NULL &&
+          simRegionDirectReduceFusedDpShadowEnv[0] != '\0' &&
+          strcmp(simRegionDirectReduceFusedDpShadowEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_enabled="
+      <<((simRegionDirectReduceCoopDpEnv != NULL &&
+          simRegionDirectReduceCoopDpEnv[0] != '\0' &&
+          strcmp(simRegionDirectReduceCoopDpEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_shadow_enabled="
+      <<((simRegionDirectReduceCoopDpShadowEnv != NULL &&
+          simRegionDirectReduceCoopDpShadowEnv[0] != '\0' &&
+          strcmp(simRegionDirectReduceCoopDpShadowEnv,"0") != 0) ? 1 : 0)<<endl;
   uint64_t simRegionSingleRequestDirectReduceAttempts = 0;
   uint64_t simRegionSingleRequestDirectReduceSuccesses = 0;
   uint64_t simRegionSingleRequestDirectReduceFallbacks = 0;
@@ -2618,6 +2768,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simRegionSingleRequestDirectReduceReduceWorkItems);
   SimRegionSingleRequestDirectReducePipelineStats simRegionDirectReducePipelineStats;
   getSimRegionSingleRequestDirectReducePipelineStats(simRegionDirectReducePipelineStats);
+  SimRegionSingleRequestDirectReduceFusedDpStats simRegionDirectReduceFusedDpStats;
+  getSimRegionSingleRequestDirectReduceFusedDpStats(simRegionDirectReduceFusedDpStats);
+  SimRegionSingleRequestDirectReduceCoopDpStats simRegionDirectReduceCoopDpStats;
+  getSimRegionSingleRequestDirectReduceCoopDpStats(simRegionDirectReduceCoopDpStats);
   cerr<<"benchmark.sim_region_single_request_direct_reduce_attempts="
       <<simRegionSingleRequestDirectReduceAttempts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_successes="
@@ -2654,6 +2808,64 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionSingleRequestDirectReduceAffectedStarts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_reduce_work_items="
       <<simRegionSingleRequestDirectReduceReduceWorkItems<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_attempts="
+      <<simRegionDirectReduceFusedDpStats.attempts<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_eligible="
+      <<simRegionDirectReduceFusedDpStats.eligible<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_successes="
+      <<simRegionDirectReduceFusedDpStats.successes<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_fallbacks="
+      <<simRegionDirectReduceFusedDpStats.fallbacks<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_shadow_mismatches="
+      <<simRegionDirectReduceFusedDpStats.shadowMismatches<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_rejected_by_cells="
+      <<simRegionDirectReduceFusedDpStats.rejectedByCells<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_rejected_by_diag_len="
+      <<simRegionDirectReduceFusedDpStats.rejectedByDiagLen<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_cells="
+      <<simRegionDirectReduceFusedDpStats.cells<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_requests="
+      <<simRegionDirectReduceFusedDpStats.requests<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_diag_launches_replaced="
+      <<simRegionDirectReduceFusedDpStats.diagLaunchesReplaced<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_gpu_seconds="
+      <<simRegionDirectReduceFusedDpStats.fusedDpGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_dp_oracle_gpu_seconds_shadow="
+      <<simRegionDirectReduceFusedDpStats.oracleDpGpuSecondsShadow<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_fused_total_gpu_seconds="
+      <<simRegionDirectReduceFusedDpStats.fusedTotalGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_supported="
+      <<simRegionDirectReduceCoopDpStats.supported<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_attempts="
+      <<simRegionDirectReduceCoopDpStats.attempts<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_eligible="
+      <<simRegionDirectReduceCoopDpStats.eligible<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_successes="
+      <<simRegionDirectReduceCoopDpStats.successes<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_fallbacks="
+      <<simRegionDirectReduceCoopDpStats.fallbacks<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_shadow_mismatches="
+      <<simRegionDirectReduceCoopDpStats.shadowMismatches<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_rejected_by_unsupported="
+      <<simRegionDirectReduceCoopDpStats.rejectedByUnsupported<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_rejected_by_cells="
+      <<simRegionDirectReduceCoopDpStats.rejectedByCells<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_rejected_by_diag_len="
+      <<simRegionDirectReduceCoopDpStats.rejectedByDiagLen<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_rejected_by_residency="
+      <<simRegionDirectReduceCoopDpStats.rejectedByResidency<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_cells="
+      <<simRegionDirectReduceCoopDpStats.cells<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_requests="
+      <<simRegionDirectReduceCoopDpStats.requests<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_diag_launches_replaced="
+      <<simRegionDirectReduceCoopDpStats.diagLaunchesReplaced<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_gpu_seconds="
+      <<simRegionDirectReduceCoopDpStats.coopDpGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_dp_oracle_gpu_seconds_shadow="
+      <<simRegionDirectReduceCoopDpStats.oracleDpGpuSecondsShadow<<endl;
+  cerr<<"benchmark.sim_region_single_request_direct_reduce_coop_total_gpu_seconds="
+      <<simRegionDirectReduceCoopDpStats.coopTotalGpuSeconds<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_requests="
       <<simRegionDirectReducePipelineStats.requestCount<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_pipeline_rows="
@@ -2758,6 +2970,28 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.calc_score_target_bin_8193_65535_bp="<<metrics.calcScoreTargetBin8193To65535Bp<<endl;
   cerr<<"benchmark.calc_score_target_bin_gt_65535_tasks="<<metrics.calcScoreTargetBinGt65535Tasks<<endl;
   cerr<<"benchmark.calc_score_target_bin_gt_65535_bp="<<metrics.calcScoreTargetBinGt65535Bp<<endl;
+  cerr<<"benchmark.calc_score_cuda_target_h2d_seconds="<<metrics.calcScoreCudaTargetH2DSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_permutation_h2d_seconds="<<metrics.calcScoreCudaPermutationH2DSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_kernel_seconds="<<metrics.calcScoreCudaKernelSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_score_d2h_seconds="<<metrics.calcScoreCudaScoreD2HSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_sync_wait_seconds="<<metrics.calcScoreCudaSyncWaitSeconds<<endl;
+  cerr<<"benchmark.calc_score_host_encode_seconds="<<metrics.calcScoreHostEncodeSeconds<<endl;
+  cerr<<"benchmark.calc_score_host_shuffle_plan_seconds="<<metrics.calcScoreHostShufflePlanSeconds<<endl;
+  cerr<<"benchmark.calc_score_host_mle_seconds="<<metrics.calcScoreHostMleSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_enabled="<<metrics.calcScoreCudaPipelineV2Enabled<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_shadow_enabled="<<metrics.calcScoreCudaPipelineV2ShadowEnabled<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_used_groups="<<metrics.calcScoreCudaPipelineV2UsedGroups<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_fallbacks="<<metrics.calcScoreCudaPipelineV2Fallbacks<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_shadow_comparisons="<<metrics.calcScoreCudaPipelineV2ShadowComparisons<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_shadow_mismatches="<<metrics.calcScoreCudaPipelineV2ShadowMismatches<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_kernel_seconds="<<metrics.calcScoreCudaPipelineV2KernelSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_score_d2h_seconds="<<metrics.calcScoreCudaPipelineV2ScoreD2HSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_pipeline_v2_host_reduce_seconds="<<metrics.calcScoreCudaPipelineV2HostReduceSeconds<<endl;
+  cerr<<"benchmark.calc_score_cuda_groups="<<metrics.calcScoreCudaGroups<<endl;
+  cerr<<"benchmark.calc_score_cuda_pairs="<<metrics.calcScoreCudaPairs<<endl;
+  cerr<<"benchmark.calc_score_cuda_target_bytes_h2d="<<metrics.calcScoreCudaTargetBytesH2D<<endl;
+  cerr<<"benchmark.calc_score_cuda_permutation_bytes_h2d="<<metrics.calcScoreCudaPermutationBytesH2D<<endl;
+  cerr<<"benchmark.calc_score_cuda_score_bytes_d2h="<<metrics.calcScoreCudaScoreBytesD2H<<endl;
   cerr<<"benchmark.sim_seconds="<<metrics.simSeconds<<endl;
   cerr<<"benchmark.postprocess_seconds="<<metrics.postProcessSeconds<<endl;
   cerr<<"benchmark.two_stage_discovery_mode="<<metrics.twoStageDiscoveryMode<<endl;
@@ -3036,6 +3270,11 @@ void initEnv(int argc,char * const *argv,struct para &paraList)
 }
 void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vector<struct triplex>&sort_triplex_list,LongTargetExecutionMetrics *metrics)
 {
+  if(metrics != NULL)
+  {
+    metrics->calcScoreCudaPipelineV2Enabled = longtarget_calc_score_cuda_pipeline_v2_enabled() ? 1 : 0;
+    metrics->calcScoreCudaPipelineV2ShadowEnabled = longtarget_calc_score_cuda_pipeline_v2_shadow_enabled() ? 1 : 0;
+  }
 	vector< string> dnaSequencesVec;
 	vector< int> dnaSequencesStartPos;
   int cut_num=0;
@@ -3204,6 +3443,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
   uint64_t deferredThresholdBatchSizeMax = 0;
   double deferredThresholdBatchedSeconds = 0.0;
   const int calcScoreQueryLength = static_cast<int>(rnaSequence.size());
+  const bool calcScoreTelemetryEnabled = metrics != NULL && longtarget_benchmark_enabled();
   vector<pair<int,size_t> > calcScoreTasksSorted;
   calcScoreTasksSorted.reserve(tasks.size());
   for(size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
@@ -3441,9 +3681,17 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
             bool groupUsedCuda = false;
             if(targetLength > 0)
             {
+              const double shufflePlanStart = calcScoreTelemetryEnabled ? longtarget_now_seconds() : 0.0;
               thresholdWorkspace.ensureShufflePlan(static_cast<size_t>(targetLength));
+              if(calcScoreTelemetryEnabled)
+              {
+                const double shufflePlanSeconds = longtarget_now_seconds() - shufflePlanStart;
+                metrics->calcScoreHostShufflePlanSeconds += shufflePlanSeconds;
+                cudaThresholdSeconds += shufflePlanSeconds;
+              }
               if(thresholdWorkspace.shufflePlanEnabled && thresholdWorkspace.useShortShufflePlan)
               {
+                const double hostEncodeStart = calcScoreTelemetryEnabled ? longtarget_now_seconds() : 0.0;
                 vector<uint8_t> encodedTargets(groupSize * static_cast<size_t>(targetLength));
                 for(size_t groupOffset = 0; groupOffset < groupSize; ++groupOffset)
                 {
@@ -3454,6 +3702,12 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                     encodedTargets[groupOffset * static_cast<size_t>(targetLength) + static_cast<size_t>(i)] =
                       targetBaseLut.lut[static_cast<unsigned char>(target[static_cast<size_t>(i)])];
                   }
+                }
+                if(calcScoreTelemetryEnabled)
+                {
+                  const double hostEncodeSeconds = longtarget_now_seconds() - hostEncodeStart;
+                  metrics->calcScoreHostEncodeSeconds += hostEncodeSeconds;
+                  cudaThresholdSeconds += hostEncodeSeconds;
                 }
 
                 vector<int> pairScores;
@@ -3468,12 +3722,20 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                                                           CALC_SCORE_MLE_COUNT + 1,
                                                           &pairScores,
                                                           &batchResult,
-                                                          &cudaError))
+                                                          &cudaError,
+                                                          calcScoreTelemetryEnabled))
                 {
                   const double groupElapsedSeconds = longtarget_now_seconds() - groupStartSeconds;
                   cudaThresholdSeconds += groupElapsedSeconds;
                   groupUsedCuda = true;
                   usedCudaAny = true;
+                  if(metrics != NULL)
+                  {
+                    longtarget_record_calc_score_cuda_batch_telemetry(*metrics,
+                                                                      static_cast<uint64_t>(groupSize),
+                                                                      static_cast<uint64_t>(CALC_SCORE_MLE_COUNT + 1),
+                                                                      batchResult);
+                  }
                   if(deferredExactTwoStage)
                   {
                     deferredThresholdBatchCount += 1;
@@ -3486,6 +3748,7 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                   thresholdWorkspace.ensureAa1Length(targetLength);
                   for(size_t groupOffset = 0; groupOffset < groupSize; ++groupOffset)
                   {
+                    const double hostMleStart = calcScoreTelemetryEnabled ? longtarget_now_seconds() : 0.0;
                     vector<int> maxScores(static_cast<size_t>(CALC_SCORE_MLE_COUNT));
                     const int *rowScores = &pairScores[groupOffset * static_cast<size_t>(CALC_SCORE_MLE_COUNT + 1)];
                     for(int i = 0; i < CALC_SCORE_MLE_COUNT; ++i)
@@ -3516,6 +3779,12 @@ void LongTarget(struct para &paraList,string rnaSequence,string dnaSequence,vect
                     const size_t taskIndex = calcScoreTasksSorted[groupStart + groupOffset].second;
                     taskMinScores[taskIndex] = minScore;
                     taskMinScoreReady[taskIndex] = 1;
+                    if(calcScoreTelemetryEnabled)
+                    {
+                      const double hostMleSeconds = longtarget_now_seconds() - hostMleStart;
+                      metrics->calcScoreHostMleSeconds += hostMleSeconds;
+                      cudaThresholdSeconds += hostMleSeconds;
+                    }
 
                     if(validateCuda)
                     {

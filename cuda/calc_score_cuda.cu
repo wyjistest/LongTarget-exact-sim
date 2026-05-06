@@ -2,6 +2,10 @@
 
 #include <cuda_runtime.h>
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 
@@ -192,6 +196,55 @@ __global__ void calc_score_cuda_kernel(const int16_t *profileFwd,
   }
 }
 
+__global__ void calc_score_cuda_kernel_v2(const int16_t *profileFwd,
+                                          const int16_t *profileRev,
+                                          const uint8_t *encodedTargets,
+                                          const uint16_t *permutations,
+                                          int taskCount,
+                                          int targetLength,
+                                          int pairCount,
+                                          int segLen,
+                                          int *outOrientationScores)
+{
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int blockIndex = static_cast<int>(blockIdx.x);
+  const int orientationIndex = blockIndex & 1;
+  const int pairTaskIndex = blockIndex >> 1;
+  const int taskIndex = pairTaskIndex / pairCount;
+  const int pairIndex = pairTaskIndex - taskIndex * pairCount;
+  if(taskIndex >= taskCount)
+  {
+    return;
+  }
+
+  extern __shared__ int16_t sharedMem[];
+  int16_t *E = sharedMem;
+  int16_t *H0 = sharedMem + segLen * 32;
+  int16_t *H1 = sharedMem + 2 * segLen * 32;
+
+  for(int i = lane; i < segLen * 32; i += 32)
+  {
+    E[i] = 0;
+    H0[i] = 0;
+    H1[i] = 0;
+  }
+  __syncwarp();
+
+  const uint8_t *taskTarget = encodedTargets + static_cast<size_t>(taskIndex) * static_cast<size_t>(targetLength);
+  const uint16_t *evenPermutation = permutations + static_cast<size_t>(pairIndex * 2) * static_cast<size_t>(targetLength);
+  const uint16_t *permutation = orientationIndex == 0 ? evenPermutation : (evenPermutation + targetLength);
+  const int16_t *profile = orientationIndex == 0 ? profileFwd : profileRev;
+
+  const int score = striped_sw_warp(profile, taskTarget, permutation, targetLength, segLen, lane, E, H0, H1);
+  if(lane == 0)
+  {
+    outOrientationScores[(static_cast<size_t>(taskIndex) * static_cast<size_t>(pairCount) +
+                          static_cast<size_t>(pairIndex)) *
+                           2u +
+                         static_cast<size_t>(orientationIndex)] = score;
+  }
+}
+
 static inline string cuda_error_string(cudaError_t error)
 {
   const char *message = cudaGetErrorString(error);
@@ -200,6 +253,35 @@ static inline string cuda_error_string(cudaError_t error)
     return "unknown CUDA error";
   }
   return string(message);
+}
+
+static inline double calc_score_cuda_now_seconds()
+{
+  typedef chrono::steady_clock Clock;
+  const Clock::time_point now = Clock::now();
+  return chrono::duration_cast< chrono::duration<double> >(now.time_since_epoch()).count();
+}
+
+static inline bool calc_score_cuda_env_enabled(const char *name)
+{
+  const char *env = getenv(name);
+  return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+}
+
+static inline bool calc_score_cuda_pipeline_v2_enabled_runtime()
+{
+  return calc_score_cuda_env_enabled("LONGTARGET_ENABLE_CALC_SCORE_CUDA_PIPELINE_V2");
+}
+
+static inline bool calc_score_cuda_pipeline_v2_shadow_enabled_runtime()
+{
+  return calc_score_cuda_pipeline_v2_enabled_runtime() &&
+         calc_score_cuda_env_enabled("LONGTARGET_CALC_SCORE_CUDA_PIPELINE_V2_SHADOW");
+}
+
+static inline bool calc_score_cuda_validate_enabled_runtime()
+{
+  return calc_score_cuda_env_enabled("LONGTARGET_CUDA_VALIDATE");
 }
 
 struct CalcScoreCudaBatchContext
@@ -214,6 +296,7 @@ struct CalcScoreCudaBatchContext
     targetsDevice(NULL),
     permutationsDevice(NULL),
     scoresDevice(NULL),
+    orientationScoresDevice(NULL),
     startEvent(NULL),
     stopEvent(NULL)
   {
@@ -230,6 +313,7 @@ struct CalcScoreCudaBatchContext
   uint8_t *targetsDevice;
   uint16_t *permutationsDevice;
   int *scoresDevice;
+  int *orientationScoresDevice;
 
   cudaEvent_t startEvent;
   cudaEvent_t stopEvent;
@@ -360,28 +444,56 @@ static bool ensure_calc_score_cuda_batch_capacity_locked(CalcScoreCudaBatchConte
                                                         int targetLength,
                                                         int permutationCount,
                                                         int pairCount,
+                                                        bool requireOrientationScores,
                                                         string *errorOut)
 {
   if(taskCount <= context.capacityTasks && targetLength <= context.capacityTargetLength &&
      permutationCount <= context.capacityPermutationCount && pairCount <= context.capacityPairCount &&
-     context.targetsDevice != NULL && context.permutationsDevice != NULL && context.scoresDevice != NULL)
+     context.targetsDevice != NULL && context.permutationsDevice != NULL && context.scoresDevice != NULL &&
+     (!requireOrientationScores || context.orientationScoresDevice != NULL))
   {
     return true;
   }
+
+  const bool needsResize =
+    taskCount > context.capacityTasks || targetLength > context.capacityTargetLength ||
+    permutationCount > context.capacityPermutationCount || pairCount > context.capacityPairCount ||
+    context.targetsDevice == NULL || context.permutationsDevice == NULL || context.scoresDevice == NULL;
 
   const int newCapTasks = max(context.capacityTasks, taskCount);
   const int newCapTargetLength = max(context.capacityTargetLength, targetLength);
   const int newCapPermutations = max(context.capacityPermutationCount, permutationCount);
   const int newCapPairs = max(context.capacityPairCount, pairCount);
 
+  if(!needsResize)
+  {
+    int *newOrientationScoresDevice = NULL;
+    const size_t orientationScoresBytes =
+      static_cast<size_t>(newCapTasks) * static_cast<size_t>(newCapPairs) * 2u * sizeof(int);
+    cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&newOrientationScoresDevice), orientationScoresBytes);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    context.orientationScoresDevice = newOrientationScoresDevice;
+    return true;
+  }
+
   uint8_t *newTargetsDevice = NULL;
   uint16_t *newPermutationsDevice = NULL;
   int *newScoresDevice = NULL;
+  int *newOrientationScoresDevice = NULL;
 
   const size_t targetsBytes = static_cast<size_t>(newCapTasks) * static_cast<size_t>(newCapTargetLength) * sizeof(uint8_t);
   const size_t permutationsBytes =
     static_cast<size_t>(newCapPermutations) * static_cast<size_t>(newCapTargetLength) * sizeof(uint16_t);
   const size_t scoresBytes = static_cast<size_t>(newCapTasks) * static_cast<size_t>(newCapPairs) * sizeof(int);
+  const size_t orientationScoresBytes =
+    static_cast<size_t>(newCapTasks) * static_cast<size_t>(newCapPairs) * 2u * sizeof(int);
 
   cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&newTargetsDevice), targetsBytes);
   if(status != cudaSuccess)
@@ -413,6 +525,21 @@ static bool ensure_calc_score_cuda_batch_capacity_locked(CalcScoreCudaBatchConte
     }
     return false;
   }
+  if(requireOrientationScores)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&newOrientationScoresDevice), orientationScoresBytes);
+    if(status != cudaSuccess)
+    {
+      cudaFree(newTargetsDevice);
+      cudaFree(newPermutationsDevice);
+      cudaFree(newScoresDevice);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+  }
 
   if(context.targetsDevice != NULL)
   {
@@ -426,10 +553,15 @@ static bool ensure_calc_score_cuda_batch_capacity_locked(CalcScoreCudaBatchConte
   {
     cudaFree(context.scoresDevice);
   }
+  if(context.orientationScoresDevice != NULL)
+  {
+    cudaFree(context.orientationScoresDevice);
+  }
 
   context.targetsDevice = newTargetsDevice;
   context.permutationsDevice = newPermutationsDevice;
   context.scoresDevice = newScoresDevice;
+  context.orientationScoresDevice = newOrientationScoresDevice;
   context.capacityTasks = newCapTasks;
   context.capacityTargetLength = newCapTargetLength;
   context.capacityPermutationCount = newCapPermutations;
@@ -598,6 +730,239 @@ void calc_score_cuda_release_query(CalcScoreCudaQueryHandle *handle)
   *handle = CalcScoreCudaQueryHandle();
 }
 
+static bool calc_score_cuda_run_v1_locked(CalcScoreCudaBatchContext &context,
+                                          const CalcScoreCudaQueryHandle &handle,
+                                          int taskCount,
+                                          int targetLength,
+                                          int pairCount,
+                                          bool collectTelemetry,
+                                          double *kernelSecondsOut,
+                                          double *syncWaitSecondsOut,
+                                          string *errorOut)
+{
+  if(kernelSecondsOut != NULL)
+  {
+    *kernelSecondsOut = 0.0;
+  }
+  if(syncWaitSecondsOut != NULL)
+  {
+    *syncWaitSecondsOut = 0.0;
+  }
+
+  const int blocks = taskCount * pairCount;
+  const int threadsPerBlock = 64;
+  const size_t sharedBytes = static_cast<size_t>(2) * static_cast<size_t>(3) *
+                             static_cast<size_t>(handle.segLen) * 32u * sizeof(int16_t);
+
+  cudaError_t status = cudaEventRecord(context.startEvent);
+  if(status == cudaSuccess)
+  {
+    calc_score_cuda_kernel<<<blocks, threadsPerBlock, sharedBytes>>>(reinterpret_cast<const int16_t *>(handle.profileFwdDevice),
+                                                                     reinterpret_cast<const int16_t *>(handle.profileRevDevice),
+                                                                     context.targetsDevice,
+                                                                     context.permutationsDevice,
+                                                                     taskCount,
+                                                                     targetLength,
+                                                                     pairCount,
+                                                                     handle.segLen,
+                                                                     context.scoresDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventRecord(context.stopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    const double syncWaitStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
+    status = cudaEventSynchronize(context.stopEvent);
+    if(collectTelemetry && syncWaitSecondsOut != NULL)
+    {
+      *syncWaitSecondsOut = calc_score_cuda_now_seconds() - syncWaitStart;
+    }
+  }
+  float elapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&elapsedMs, context.startEvent, context.stopEvent);
+  }
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(kernelSecondsOut != NULL)
+  {
+    *kernelSecondsOut = static_cast<double>(elapsedMs) / 1000.0;
+  }
+  return true;
+}
+
+static bool calc_score_cuda_run_v2_locked(CalcScoreCudaBatchContext &context,
+                                          const CalcScoreCudaQueryHandle &handle,
+                                          int taskCount,
+                                          int targetLength,
+                                          int pairCount,
+                                          bool collectTelemetry,
+                                          double *kernelSecondsOut,
+                                          double *syncWaitSecondsOut,
+                                          string *errorOut)
+{
+  if(kernelSecondsOut != NULL)
+  {
+    *kernelSecondsOut = 0.0;
+  }
+  if(syncWaitSecondsOut != NULL)
+  {
+    *syncWaitSecondsOut = 0.0;
+  }
+  if(context.orientationScoresDevice == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing CUDA v2 orientation score buffer";
+    }
+    return false;
+  }
+
+  const int blocks = taskCount * pairCount * 2;
+  const int threadsPerBlock = 32;
+  const size_t sharedBytes = static_cast<size_t>(3) * static_cast<size_t>(handle.segLen) * 32u * sizeof(int16_t);
+
+  cudaError_t status = cudaEventRecord(context.startEvent);
+  if(status == cudaSuccess)
+  {
+    calc_score_cuda_kernel_v2<<<blocks, threadsPerBlock, sharedBytes>>>(reinterpret_cast<const int16_t *>(handle.profileFwdDevice),
+                                                                        reinterpret_cast<const int16_t *>(handle.profileRevDevice),
+                                                                        context.targetsDevice,
+                                                                        context.permutationsDevice,
+                                                                        taskCount,
+                                                                        targetLength,
+                                                                        pairCount,
+                                                                        handle.segLen,
+                                                                        context.orientationScoresDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaEventRecord(context.stopEvent);
+  }
+  if(status == cudaSuccess)
+  {
+    const double syncWaitStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
+    status = cudaEventSynchronize(context.stopEvent);
+    if(collectTelemetry && syncWaitSecondsOut != NULL)
+    {
+      *syncWaitSecondsOut = calc_score_cuda_now_seconds() - syncWaitStart;
+    }
+  }
+  float elapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&elapsedMs, context.startEvent, context.stopEvent);
+  }
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(kernelSecondsOut != NULL)
+  {
+    *kernelSecondsOut = static_cast<double>(elapsedMs) / 1000.0;
+  }
+  return true;
+}
+
+static bool calc_score_cuda_copy_v1_scores_locked(CalcScoreCudaBatchContext &context,
+                                                  size_t scoreCount,
+                                                  vector<int> *outPairScores,
+                                                  bool collectTelemetry,
+                                                  double *scoreD2HSecondsOut,
+                                                  string *errorOut)
+{
+  if(scoreD2HSecondsOut != NULL)
+  {
+    *scoreD2HSecondsOut = 0.0;
+  }
+  outPairScores->resize(scoreCount);
+  const double scoreD2HStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
+  cudaError_t status = cudaMemcpy(outPairScores->data(),
+                                  context.scoresDevice,
+                                  scoreCount * sizeof(int),
+                                  cudaMemcpyDeviceToHost);
+  if(collectTelemetry && scoreD2HSecondsOut != NULL)
+  {
+    *scoreD2HSecondsOut = calc_score_cuda_now_seconds() - scoreD2HStart;
+  }
+  if(status != cudaSuccess)
+  {
+    outPairScores->clear();
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  return true;
+}
+
+static bool calc_score_cuda_copy_reduce_v2_scores_locked(CalcScoreCudaBatchContext &context,
+                                                         size_t scoreCount,
+                                                         vector<int> *outPairScores,
+                                                         bool collectTelemetry,
+                                                         double *scoreD2HSecondsOut,
+                                                         double *hostReduceSecondsOut,
+                                                         string *errorOut)
+{
+  if(scoreD2HSecondsOut != NULL)
+  {
+    *scoreD2HSecondsOut = 0.0;
+  }
+  if(hostReduceSecondsOut != NULL)
+  {
+    *hostReduceSecondsOut = 0.0;
+  }
+
+  vector<int> orientationScores(scoreCount * 2u);
+  const double scoreD2HStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
+  cudaError_t status = cudaMemcpy(orientationScores.data(),
+                                  context.orientationScoresDevice,
+                                  orientationScores.size() * sizeof(int),
+                                  cudaMemcpyDeviceToHost);
+  if(collectTelemetry && scoreD2HSecondsOut != NULL)
+  {
+    *scoreD2HSecondsOut = calc_score_cuda_now_seconds() - scoreD2HStart;
+  }
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  outPairScores->resize(scoreCount);
+  const double reduceStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
+  for(size_t i = 0; i < scoreCount; ++i)
+  {
+    const int fwdScore = orientationScores[i * 2u];
+    const int revScore = orientationScores[i * 2u + 1u];
+    (*outPairScores)[i] = fwdScore > revScore ? fwdScore : revScore;
+  }
+  if(collectTelemetry && hostReduceSecondsOut != NULL)
+  {
+    *hostReduceSecondsOut = calc_score_cuda_now_seconds() - reduceStart;
+  }
+  return true;
+}
+
 bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &handle,
                                              const uint8_t *encodedTargetsHost,
                                              int taskCount,
@@ -607,7 +972,8 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
                                              int pairCount,
                                              vector<int> *outPairScores,
                                              CalcScoreCudaBatchResult *batchResult,
-                                             string *errorOut)
+                                             string *errorOut,
+                                             bool collectTelemetry)
 {
   if(outPairScores == NULL)
   {
@@ -681,22 +1047,50 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
     return false;
   }
 
+  const bool pipelineV2Enabled = calc_score_cuda_pipeline_v2_enabled_runtime();
+  const bool pipelineV2ShadowEnabled = calc_score_cuda_pipeline_v2_shadow_enabled_runtime();
+  const size_t scoreCount = static_cast<size_t>(taskCount) * static_cast<size_t>(pairCount);
   const size_t targetsBytes = static_cast<size_t>(taskCount) * static_cast<size_t>(targetLength) * sizeof(uint8_t);
   const size_t permutationsBytes =
     static_cast<size_t>(requiredPermutationCount) * static_cast<size_t>(targetLength) * sizeof(uint16_t);
-  const size_t scoresBytes = static_cast<size_t>(taskCount) * static_cast<size_t>(pairCount) * sizeof(int);
+  const size_t scoresBytes = scoreCount * sizeof(int);
+  const size_t orientationScoresBytes = scoreCount * 2u * sizeof(int);
 
   lock_guard<mutex> lock(*contextMutex);
   if(!ensure_calc_score_cuda_batch_initialized_locked(*context,device,errorOut))
   {
     return false;
   }
-  if(!ensure_calc_score_cuda_batch_capacity_locked(*context,taskCount,targetLength,requiredPermutationCount,pairCount,errorOut))
+  if(!ensure_calc_score_cuda_batch_capacity_locked(*context,
+                                                   taskCount,
+                                                   targetLength,
+                                                   requiredPermutationCount,
+                                                   pairCount,
+                                                   pipelineV2Enabled,
+                                                   errorOut))
   {
     return false;
   }
 
+  double targetH2DSeconds = 0.0;
+  double permutationH2DSeconds = 0.0;
+  double scoreD2HSeconds = 0.0;
+  double syncWaitSeconds = 0.0;
+  double kernelSeconds = 0.0;
+  double pipelineV2KernelSeconds = 0.0;
+  double pipelineV2ScoreD2HSeconds = 0.0;
+  double pipelineV2HostReduceSeconds = 0.0;
+  bool pipelineV2Used = false;
+  bool pipelineV2Fallback = false;
+  uint64_t pipelineV2ShadowComparisons = 0;
+  uint64_t pipelineV2ShadowMismatches = 0;
+
+  const double targetH2DStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
   cudaError_t status = cudaMemcpy(context->targetsDevice, encodedTargetsHost, targetsBytes, cudaMemcpyHostToDevice);
+  if(collectTelemetry)
+  {
+    targetH2DSeconds = calc_score_cuda_now_seconds() - targetH2DStart;
+  }
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -705,47 +1099,11 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
     }
     return false;
   }
+  const double permutationH2DStart = collectTelemetry ? calc_score_cuda_now_seconds() : 0.0;
   status = cudaMemcpy(context->permutationsDevice, permutationsHost, permutationsBytes, cudaMemcpyHostToDevice);
-  if(status != cudaSuccess)
+  if(collectTelemetry)
   {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
-  const int blocks = taskCount * pairCount;
-  const int threadsPerBlock = 64;
-  const size_t sharedBytes = static_cast<size_t>(2) * static_cast<size_t>(3) * static_cast<size_t>(handle.segLen) * 32u *
-                             sizeof(int16_t);
-
-  status = cudaEventRecord(context->startEvent);
-  if(status == cudaSuccess)
-  {
-    calc_score_cuda_kernel<<<blocks, threadsPerBlock, sharedBytes>>>(reinterpret_cast<const int16_t *>(handle.profileFwdDevice),
-                                                                     reinterpret_cast<const int16_t *>(handle.profileRevDevice),
-                                                                     context->targetsDevice,
-                                                                     context->permutationsDevice,
-                                                                     taskCount,
-                                                                     targetLength,
-                                                                     pairCount,
-                                                                     handle.segLen,
-                                                                     context->scoresDevice);
-    status = cudaGetLastError();
-  }
-  if(status == cudaSuccess)
-  {
-    status = cudaEventRecord(context->stopEvent);
-  }
-  if(status == cudaSuccess)
-  {
-    status = cudaEventSynchronize(context->stopEvent);
-  }
-  float elapsedMs = 0.0f;
-  if(status == cudaSuccess)
-  {
-    status = cudaEventElapsedTime(&elapsedMs, context->startEvent, context->stopEvent);
+    permutationH2DSeconds = calc_score_cuda_now_seconds() - permutationH2DStart;
   }
   if(status != cudaSuccess)
   {
@@ -756,22 +1114,136 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
     return false;
   }
 
-  outPairScores->resize(static_cast<size_t>(taskCount) * static_cast<size_t>(pairCount));
-  status = cudaMemcpy(outPairScores->data(), context->scoresDevice, scoresBytes, cudaMemcpyDeviceToHost);
-
-  if(status != cudaSuccess)
+  bool computed = false;
+  if(pipelineV2Enabled && !pipelineV2ShadowEnabled)
   {
-    outPairScores->clear();
-    if(errorOut != NULL)
+    double v2SyncWaitSeconds = 0.0;
+    string v2Error;
+    if(calc_score_cuda_run_v2_locked(*context,
+                                     handle,
+                                     taskCount,
+                                     targetLength,
+                                     pairCount,
+                                     collectTelemetry,
+                                     &pipelineV2KernelSeconds,
+                                     &v2SyncWaitSeconds,
+                                     &v2Error) &&
+       calc_score_cuda_copy_reduce_v2_scores_locked(*context,
+                                                    scoreCount,
+                                                    outPairScores,
+                                                    collectTelemetry,
+                                                    &pipelineV2ScoreD2HSeconds,
+                                                    &pipelineV2HostReduceSeconds,
+                                                    &v2Error))
     {
-      *errorOut = cuda_error_string(status);
+      pipelineV2Used = true;
+      kernelSeconds = pipelineV2KernelSeconds;
+      scoreD2HSeconds = pipelineV2ScoreD2HSeconds;
+      syncWaitSeconds = v2SyncWaitSeconds;
+      computed = true;
     }
-    return false;
+    else
+    {
+      pipelineV2Fallback = true;
+    }
+  }
+
+  if(!computed)
+  {
+    if(!calc_score_cuda_run_v1_locked(*context,
+                                      handle,
+                                      taskCount,
+                                      targetLength,
+                                      pairCount,
+                                      collectTelemetry,
+                                      &kernelSeconds,
+                                      &syncWaitSeconds,
+                                      errorOut))
+    {
+      return false;
+    }
+    if(!calc_score_cuda_copy_v1_scores_locked(*context,
+                                              scoreCount,
+                                              outPairScores,
+                                              collectTelemetry,
+                                              &scoreD2HSeconds,
+                                              errorOut))
+    {
+      return false;
+    }
+    computed = true;
+  }
+
+  if(pipelineV2Enabled && pipelineV2ShadowEnabled)
+  {
+    vector<int> pipelineV2Scores;
+    double shadowSyncWaitSeconds = 0.0;
+    string shadowError;
+    if(calc_score_cuda_run_v2_locked(*context,
+                                     handle,
+                                     taskCount,
+                                     targetLength,
+                                     pairCount,
+                                     collectTelemetry,
+                                     &pipelineV2KernelSeconds,
+                                     &shadowSyncWaitSeconds,
+                                     &shadowError) &&
+       calc_score_cuda_copy_reduce_v2_scores_locked(*context,
+                                                    scoreCount,
+                                                    &pipelineV2Scores,
+                                                    collectTelemetry,
+                                                    &pipelineV2ScoreD2HSeconds,
+                                                    &pipelineV2HostReduceSeconds,
+                                                    &shadowError))
+    {
+      (void)shadowSyncWaitSeconds;
+      pipelineV2Used = true;
+      pipelineV2ShadowComparisons = static_cast<uint64_t>(scoreCount);
+      for(size_t i = 0; i < scoreCount; ++i)
+      {
+        if((*outPairScores)[i] != pipelineV2Scores[i])
+        {
+          ++pipelineV2ShadowMismatches;
+        }
+      }
+
+      if(pipelineV2ShadowMismatches != 0 && calc_score_cuda_validate_enabled_runtime())
+      {
+        fprintf(stderr,
+                "CUDA calc_score v2 shadow mismatch comparisons=%llu mismatches=%llu\n",
+                static_cast<unsigned long long>(pipelineV2ShadowComparisons),
+                static_cast<unsigned long long>(pipelineV2ShadowMismatches));
+        abort();
+      }
+    }
+    else
+    {
+      pipelineV2Fallback = true;
+    }
   }
 
   if(batchResult != NULL)
   {
-    batchResult->gpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
+    batchResult->gpuSeconds = kernelSeconds;
+    batchResult->targetH2DSeconds = targetH2DSeconds;
+    batchResult->permutationH2DSeconds = permutationH2DSeconds;
+    batchResult->kernelSeconds = kernelSeconds;
+    batchResult->scoreD2HSeconds = scoreD2HSeconds;
+    batchResult->syncWaitSeconds = syncWaitSeconds;
+    batchResult->pipelineV2Enabled = pipelineV2Enabled;
+    batchResult->pipelineV2ShadowEnabled = pipelineV2ShadowEnabled;
+    batchResult->pipelineV2Used = pipelineV2Used;
+    batchResult->pipelineV2Fallback = pipelineV2Fallback;
+    batchResult->pipelineV2ShadowComparisons = pipelineV2ShadowComparisons;
+    batchResult->pipelineV2ShadowMismatches = pipelineV2ShadowMismatches;
+    batchResult->pipelineV2KernelSeconds = pipelineV2KernelSeconds;
+    batchResult->pipelineV2ScoreD2HSeconds = pipelineV2ScoreD2HSeconds;
+    batchResult->pipelineV2HostReduceSeconds = pipelineV2HostReduceSeconds;
+    batchResult->targetBytesH2D = static_cast<uint64_t>(targetsBytes);
+    batchResult->permutationBytesH2D = static_cast<uint64_t>(permutationsBytes);
+    batchResult->scoreBytesD2H = static_cast<uint64_t>(pipelineV2Enabled && !pipelineV2ShadowEnabled && pipelineV2Used ?
+                                                        orientationScoresBytes :
+                                                        scoresBytes);
     batchResult->usedCuda = true;
   }
   return true;

@@ -20,9 +20,45 @@ struct CalcScoreCudaQueryHandle
 
 struct CalcScoreCudaBatchResult
 {
-  CalcScoreCudaBatchResult():gpuSeconds(0.0),usedCuda(false) {}
+  CalcScoreCudaBatchResult():
+    gpuSeconds(0.0),
+    targetH2DSeconds(0.0),
+    permutationH2DSeconds(0.0),
+    kernelSeconds(0.0),
+    scoreD2HSeconds(0.0),
+    syncWaitSeconds(0.0),
+    pipelineV2Enabled(false),
+    pipelineV2ShadowEnabled(false),
+    pipelineV2Used(false),
+    pipelineV2Fallback(false),
+    pipelineV2ShadowComparisons(0),
+    pipelineV2ShadowMismatches(0),
+    pipelineV2KernelSeconds(0.0),
+    pipelineV2ScoreD2HSeconds(0.0),
+    pipelineV2HostReduceSeconds(0.0),
+    targetBytesH2D(0),
+    permutationBytesH2D(0),
+    scoreBytesD2H(0),
+    usedCuda(false) {}
 
   double gpuSeconds;
+  double targetH2DSeconds;
+  double permutationH2DSeconds;
+  double kernelSeconds;
+  double scoreD2HSeconds;
+  double syncWaitSeconds;
+  bool pipelineV2Enabled;
+  bool pipelineV2ShadowEnabled;
+  bool pipelineV2Used;
+  bool pipelineV2Fallback;
+  uint64_t pipelineV2ShadowComparisons;
+  uint64_t pipelineV2ShadowMismatches;
+  double pipelineV2KernelSeconds;
+  double pipelineV2ScoreD2HSeconds;
+  double pipelineV2HostReduceSeconds;
+  uint64_t targetBytesH2D;
+  uint64_t permutationBytesH2D;
+  uint64_t scoreBytesD2H;
   bool usedCuda;
 };
 
@@ -45,6 +81,7 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
                                              int pairCount,
                                              std::vector<int> *outPairScores,
                                              CalcScoreCudaBatchResult *batchResult,
-                                             std::string *errorOut);
+                                             std::string *errorOut,
+                                             bool collectTelemetry = false);
 
 #endif

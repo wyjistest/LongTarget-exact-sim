@@ -56,7 +56,8 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
                                              int pairCount,
                                              vector<int> *outPairScores,
                                              CalcScoreCudaBatchResult *batchResult,
-                                             string *errorOut)
+                                             string *errorOut,
+                                             bool collectTelemetry)
 {
   (void)handle;
   (void)encodedTargetsHost;
@@ -65,6 +66,7 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
   (void)permutationsHost;
   (void)permutationCount;
   (void)pairCount;
+  (void)collectTelemetry;
   if(outPairScores != NULL)
   {
     outPairScores->clear();
@@ -79,4 +81,3 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
   }
   return false;
 }
-

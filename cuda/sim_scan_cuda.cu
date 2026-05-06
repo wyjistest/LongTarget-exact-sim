@@ -11,6 +11,7 @@
 #include <mutex>
 
 #include <cuda_runtime.h>
+#include <cooperative_groups.h>
 #include <thrust/functional.h>
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
@@ -23,6 +24,8 @@ using namespace std;
 
 namespace
 {
+
+namespace cg = cooperative_groups;
 
 const int sim_scan_cuda_max_candidates = 50;
 const int sim_scan_initial_reduce_threads = 32;
@@ -303,6 +306,8 @@ struct SimScanCudaContext
   SimScanCudaContext():
     initialized(false),
     device(0),
+    cooperativeLaunchSupported(false),
+    multiProcessorCount(0),
     capacityQuery(0),
     capacityTarget(0),
     leadingDim(0),
@@ -454,6 +459,8 @@ struct SimScanCudaContext
 
   bool initialized;
   int device;
+  bool cooperativeLaunchSupported;
+  int multiProcessorCount;
   int capacityQuery;
   int capacityTarget;
   int leadingDim;
@@ -2463,7 +2470,19 @@ static bool ensure_sim_scan_cuda_initialized_locked(SimScanCudaContext &context,
     return true;
   }
 
-  cudaError_t status = cudaEventCreate(&context.startEvent);
+  cudaError_t status = cudaSuccess;
+  cudaDeviceProp deviceProp;
+  status = cudaGetDeviceProperties(&deviceProp,device);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  status = cudaEventCreate(&context.startEvent);
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -2675,6 +2694,8 @@ static bool ensure_sim_scan_cuda_initialized_locked(SimScanCudaContext &context,
   }
   context.initialized = true;
   context.device = device;
+  context.cooperativeLaunchSupported = deviceProp.cooperativeLaunch != 0;
+  context.multiProcessorCount = deviceProp.multiProcessorCount;
   return true;
 }
 
@@ -4052,6 +4073,129 @@ __global__ void sim_scan_diag_true_batch_kernel(const char *A,
   HCoordMat[matIndex] = hCoord;
 }
 
+__device__ __forceinline__ void sim_scan_compute_region_diag_cell(const char *A,
+                                                                  const char *B,
+                                                                  int rowStart,
+                                                                  int colStart,
+                                                                  int diag,
+                                                                  int curStartI,
+                                                                  int idx,
+                                                                  int prevStartI,
+                                                                  int prevLen,
+                                                                  int ppStartI,
+                                                                  int ppLen,
+                                                                  int Q,
+                                                                  int R,
+                                                                  int QR,
+                                                                  const int *prevH,
+                                                                  const uint64_t *prevHc,
+                                                                  const int *prevD,
+                                                                  const uint64_t *prevDc,
+                                                                  const int *prevF,
+                                                                  const uint64_t *prevFc,
+                                                                  const int *ppH,
+                                                                  const uint64_t *ppHc,
+                                                                  const uint64_t *blockedWords,
+                                                                  int blockedWordStart,
+                                                                  int blockedWordCount,
+                                                                  SimScanCudaDiagCellState &cell)
+{
+  cell.i = curStartI + idx;
+  cell.j = diag - cell.i;
+
+  int leftHScore = 0;
+  uint64_t leftHCoord = sim_pack_coord(static_cast<uint32_t>(cell.i), static_cast<uint32_t>(cell.j - 1));
+  int leftFScore = -Q;
+  uint64_t leftFCoord = leftHCoord;
+  if(cell.j > colStart)
+  {
+    const int leftIndex = cell.i - prevStartI;
+    if(leftIndex >= 0 && leftIndex < prevLen)
+    {
+      leftHScore = prevH[leftIndex];
+      leftHCoord = prevHc[leftIndex];
+      leftFScore = prevF[leftIndex];
+      leftFCoord = prevFc[leftIndex];
+    }
+  }
+
+  int upHScore = 0;
+  uint64_t upHCoord = sim_pack_coord(static_cast<uint32_t>(cell.i - 1), static_cast<uint32_t>(cell.j));
+  int upDScore = -Q;
+  uint64_t upDCoord = upHCoord;
+  if(cell.i > rowStart)
+  {
+    const int upIndex = cell.i - 1 - prevStartI;
+    if(upIndex >= 0 && upIndex < prevLen)
+    {
+      upHScore = prevH[upIndex];
+      upHCoord = prevHc[upIndex];
+      upDScore = prevD[upIndex];
+      upDCoord = prevDc[upIndex];
+    }
+  }
+
+  int diagHScore = 0;
+  uint64_t diagHCoord = sim_pack_coord(static_cast<uint32_t>(cell.i - 1), static_cast<uint32_t>(cell.j - 1));
+  if(cell.i > rowStart && cell.j > colStart)
+  {
+    const int diagIndex = cell.i - 1 - ppStartI;
+    if(diagIndex >= 0 && diagIndex < ppLen)
+    {
+      diagHScore = ppH[diagIndex];
+      diagHCoord = ppHc[diagIndex];
+    }
+  }
+
+  cell.fScore = leftFScore - R;
+  cell.fCoord = leftFCoord;
+  sim_order_state(cell.fScore, cell.fCoord, leftHScore - QR, leftHCoord);
+
+  cell.dScore = upDScore - R;
+  cell.dCoord = upDCoord;
+  sim_order_state(cell.dScore, cell.dCoord, upHScore - QR, upHCoord);
+
+  bool diagAvailable = true;
+  if(blockedWords != NULL && blockedWordCount > 0)
+  {
+    const int localRow = cell.i - rowStart;
+    const int wordIndex = (cell.j >> 6) - blockedWordStart;
+    if(localRow >= 0 && wordIndex >= 0 && wordIndex < blockedWordCount)
+    {
+      const size_t index =
+        static_cast<size_t>(localRow) * static_cast<size_t>(blockedWordCount) +
+        static_cast<size_t>(wordIndex);
+      const uint64_t mask = static_cast<uint64_t>(1) << (static_cast<unsigned int>(cell.j) & 63u);
+      diagAvailable = (blockedWords[index] & mask) == 0;
+    }
+  }
+
+  int hDiagScore = 0;
+  uint64_t hDiagCoord = sim_pack_coord(static_cast<uint32_t>(cell.i), static_cast<uint32_t>(cell.j));
+  if(diagAvailable)
+  {
+    const unsigned char a = static_cast<unsigned char>(A[cell.i]);
+    const unsigned char b = static_cast<unsigned char>(B[cell.j]);
+    hDiagScore = diagHScore + sim_score_matrix[static_cast<int>(a) * 128 + static_cast<int>(b)];
+    hDiagCoord = diagHCoord;
+    if(hDiagScore <= 0)
+    {
+      hDiagScore = 0;
+      hDiagCoord = sim_pack_coord(static_cast<uint32_t>(cell.i), static_cast<uint32_t>(cell.j));
+    }
+  }
+
+  cell.hScore = hDiagScore;
+  cell.hCoord = hDiagCoord;
+  sim_order_state(cell.hScore, cell.hCoord, cell.dScore, cell.dCoord);
+  sim_order_state(cell.hScore, cell.hCoord, cell.fScore, cell.fCoord);
+  if(cell.hScore <= 0)
+  {
+    cell.hScore = 0;
+    cell.hCoord = sim_pack_coord(static_cast<uint32_t>(cell.i), static_cast<uint32_t>(cell.j));
+  }
+}
+
 __global__ void sim_scan_diag_region_kernel(const char *A,
                                             const char *B,
                                             int rowStart,
@@ -4094,119 +4238,342 @@ __global__ void sim_scan_diag_region_kernel(const char *A,
   {
     return;
   }
-  const int i = curStartI + idx;
-  const int j = diag - i;
-
   (void)M;
   (void)N;
 
-  int leftHScore = 0;
-  uint64_t leftHCoord = sim_pack_coord(static_cast<uint32_t>(i), static_cast<uint32_t>(j - 1));
-  int leftFScore = -Q;
-  uint64_t leftFCoord = leftHCoord;
-  if(j > colStart)
+  SimScanCudaDiagCellState cell;
+  sim_scan_compute_region_diag_cell(A,
+                                    B,
+                                    rowStart,
+                                    colStart,
+                                    diag,
+                                    curStartI,
+                                    idx,
+                                    prevStartI,
+                                    prevLen,
+                                    ppStartI,
+                                    ppLen,
+                                    Q,
+                                    R,
+                                    QR,
+                                    prevH,
+                                    prevHc,
+                                    prevD,
+                                    prevDc,
+                                    prevF,
+                                    prevFc,
+                                    ppH,
+                                    ppHc,
+                                    blockedWords,
+                                    blockedWordStart,
+                                    blockedWordCount,
+                                    cell);
+
+  curH[idx] = cell.hScore;
+  curHc[idx] = cell.hCoord;
+  curD[idx] = cell.dScore;
+  curDc[idx] = cell.dCoord;
+  curF[idx] = cell.fScore;
+  curFc[idx] = cell.fCoord;
+
+  const size_t matIndex = static_cast<size_t>(cell.i) * static_cast<size_t>(leadingDim) +
+                          static_cast<size_t>(cell.j);
+  HScoreMat[matIndex] = cell.hScore;
+  HCoordMat[matIndex] = cell.hCoord;
+}
+
+__global__ void sim_scan_fused_region_dp_single_block_kernel(const char *A,
+                                                             const char *B,
+                                                             int rowStart,
+                                                             int rowEnd,
+                                                             int colStart,
+                                                             int colEnd,
+                                                             int M,
+                                                             int N,
+                                                             int leadingDim,
+                                                             int Q,
+                                                             int R,
+                                                             int QR,
+                                                             int *diagH0,
+                                                             uint64_t *diagHc0,
+                                                             int *diagH1,
+                                                             uint64_t *diagHc1,
+                                                             int *diagH2,
+                                                             uint64_t *diagHc2,
+                                                             int *diagD1,
+                                                             uint64_t *diagDc1,
+                                                             int *diagD2,
+                                                             uint64_t *diagDc2,
+                                                             int *diagF1,
+                                                             uint64_t *diagFc1,
+                                                             int *diagF2,
+                                                             uint64_t *diagFc2,
+                                                             const uint64_t *blockedWords,
+                                                             int blockedWordStart,
+                                                             int blockedWordCount,
+                                                             int *HScoreMat,
+                                                             uint64_t *HCoordMat)
+{
+  (void)M;
+  (void)N;
+
+  int *ppH = diagH0;
+  uint64_t *ppHc = diagHc0;
+  int *prevH = diagH1;
+  uint64_t *prevHc = diagHc1;
+  int *curH = diagH2;
+  uint64_t *curHc = diagHc2;
+
+  int *prevD = diagD1;
+  uint64_t *prevDc = diagDc1;
+  int *curD = diagD2;
+  uint64_t *curDc = diagDc2;
+
+  int *prevF = diagF1;
+  uint64_t *prevFc = diagFc1;
+  int *curF = diagF2;
+  uint64_t *curFc = diagFc2;
+
+  int ppStartI = 0;
+  int ppLen = 0;
+  int prevStartI = 0;
+  int prevLen = 0;
+
+  const int diagStart = rowStart + colStart;
+  const int diagEnd = rowEnd + colEnd;
+  for(int diag = diagStart; diag <= diagEnd; ++diag)
   {
-    const int leftI = i;
-    const int leftIndex = leftI - prevStartI;
-    if(leftIndex >= 0 && leftIndex < prevLen)
+    const int startFromCol = diag - colEnd;
+    const int curStartI = rowStart > startFromCol ? rowStart : startFromCol;
+    const int endFromCol = diag - colStart;
+    const int curEndI = rowEnd < endFromCol ? rowEnd : endFromCol;
+    const int curLen = curEndI >= curStartI ? (curEndI - curStartI + 1) : 0;
+
+    for(int idx = static_cast<int>(threadIdx.x); idx < curLen; idx += static_cast<int>(blockDim.x))
     {
-      leftHScore = prevH[leftIndex];
-      leftHCoord = prevHc[leftIndex];
-      leftFScore = prevF[leftIndex];
-      leftFCoord = prevFc[leftIndex];
-    }
-  }
+      SimScanCudaDiagCellState cell;
+      sim_scan_compute_region_diag_cell(A,
+                                        B,
+                                        rowStart,
+                                        colStart,
+                                        diag,
+                                        curStartI,
+                                        idx,
+                                        prevStartI,
+                                        prevLen,
+                                        ppStartI,
+                                        ppLen,
+                                        Q,
+                                        R,
+                                        QR,
+                                        prevH,
+                                        prevHc,
+                                        prevD,
+                                        prevDc,
+                                        prevF,
+                                        prevFc,
+                                        ppH,
+                                        ppHc,
+                                        blockedWords,
+                                        blockedWordStart,
+                                        blockedWordCount,
+                                        cell);
+      curH[idx] = cell.hScore;
+      curHc[idx] = cell.hCoord;
+      curD[idx] = cell.dScore;
+      curDc[idx] = cell.dCoord;
+      curF[idx] = cell.fScore;
+      curFc[idx] = cell.fCoord;
 
-  int upHScore = 0;
-  uint64_t upHCoord = sim_pack_coord(static_cast<uint32_t>(i - 1), static_cast<uint32_t>(j));
-  int upDScore = -Q;
-  uint64_t upDCoord = upHCoord;
-  if(i > rowStart)
+      const size_t matIndex = static_cast<size_t>(cell.i) * static_cast<size_t>(leadingDim) +
+                              static_cast<size_t>(cell.j);
+      HScoreMat[matIndex] = cell.hScore;
+      HCoordMat[matIndex] = cell.hCoord;
+    }
+
+    __syncthreads();
+
+    ppStartI = prevStartI;
+    ppLen = prevLen;
+    prevStartI = curStartI;
+    prevLen = curLen;
+
+    int *oldPpH = ppH;
+    ppH = prevH;
+    prevH = curH;
+    curH = oldPpH;
+
+    uint64_t *oldPpHc = ppHc;
+    ppHc = prevHc;
+    prevHc = curHc;
+    curHc = oldPpHc;
+
+    int *oldPrevD = prevD;
+    prevD = curD;
+    curD = oldPrevD;
+
+    uint64_t *oldPrevDc = prevDc;
+    prevDc = curDc;
+    curDc = oldPrevDc;
+
+    int *oldPrevF = prevF;
+    prevF = curF;
+    curF = oldPrevF;
+
+    uint64_t *oldPrevFc = prevFc;
+    prevFc = curFc;
+    curFc = oldPrevFc;
+  }
+}
+
+__global__ void sim_scan_coop_region_dp_kernel(const char *A,
+                                               const char *B,
+                                               int rowStart,
+                                               int rowEnd,
+                                               int colStart,
+                                               int colEnd,
+                                               int M,
+                                               int N,
+                                               int leadingDim,
+                                               int Q,
+                                               int R,
+                                               int QR,
+                                               int *diagH0,
+                                               uint64_t *diagHc0,
+                                               int *diagH1,
+                                               uint64_t *diagHc1,
+                                               int *diagH2,
+                                               uint64_t *diagHc2,
+                                               int *diagD1,
+                                               uint64_t *diagDc1,
+                                               int *diagD2,
+                                               uint64_t *diagDc2,
+                                               int *diagF1,
+                                               uint64_t *diagFc1,
+                                               int *diagF2,
+                                               uint64_t *diagFc2,
+                                               const uint64_t *blockedWords,
+                                               int blockedWordStart,
+                                               int blockedWordCount,
+                                               int *HScoreMat,
+                                               uint64_t *HCoordMat)
+{
+  (void)M;
+  (void)N;
+
+  cg::grid_group grid = cg::this_grid();
+  const int globalThread =
+    static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  const int globalStride =
+    static_cast<int>(gridDim.x * blockDim.x);
+
+  int *ppH = diagH0;
+  uint64_t *ppHc = diagHc0;
+  int *prevH = diagH1;
+  uint64_t *prevHc = diagHc1;
+  int *curH = diagH2;
+  uint64_t *curHc = diagHc2;
+
+  int *prevD = diagD1;
+  uint64_t *prevDc = diagDc1;
+  int *curD = diagD2;
+  uint64_t *curDc = diagDc2;
+
+  int *prevF = diagF1;
+  uint64_t *prevFc = diagFc1;
+  int *curF = diagF2;
+  uint64_t *curFc = diagFc2;
+
+  int ppStartI = 0;
+  int ppLen = 0;
+  int prevStartI = 0;
+  int prevLen = 0;
+
+  const int diagStart = rowStart + colStart;
+  const int diagEnd = rowEnd + colEnd;
+  for(int diag = diagStart; diag <= diagEnd; ++diag)
   {
-    const int upI = i - 1;
-    const int upIndex = upI - prevStartI;
-    if(upIndex >= 0 && upIndex < prevLen)
+    const int startFromCol = diag - colEnd;
+    const int curStartI = rowStart > startFromCol ? rowStart : startFromCol;
+    const int endFromCol = diag - colStart;
+    const int curEndI = rowEnd < endFromCol ? rowEnd : endFromCol;
+    const int curLen = curEndI >= curStartI ? (curEndI - curStartI + 1) : 0;
+
+    for(int idx = globalThread; idx < curLen; idx += globalStride)
     {
-      upHScore = prevH[upIndex];
-      upHCoord = prevHc[upIndex];
-      upDScore = prevD[upIndex];
-      upDCoord = prevDc[upIndex];
+      SimScanCudaDiagCellState cell;
+      sim_scan_compute_region_diag_cell(A,
+                                        B,
+                                        rowStart,
+                                        colStart,
+                                        diag,
+                                        curStartI,
+                                        idx,
+                                        prevStartI,
+                                        prevLen,
+                                        ppStartI,
+                                        ppLen,
+                                        Q,
+                                        R,
+                                        QR,
+                                        prevH,
+                                        prevHc,
+                                        prevD,
+                                        prevDc,
+                                        prevF,
+                                        prevFc,
+                                        ppH,
+                                        ppHc,
+                                        blockedWords,
+                                        blockedWordStart,
+                                        blockedWordCount,
+                                        cell);
+      curH[idx] = cell.hScore;
+      curHc[idx] = cell.hCoord;
+      curD[idx] = cell.dScore;
+      curDc[idx] = cell.dCoord;
+      curF[idx] = cell.fScore;
+      curFc[idx] = cell.fCoord;
+
+      const size_t matIndex = static_cast<size_t>(cell.i) * static_cast<size_t>(leadingDim) +
+                              static_cast<size_t>(cell.j);
+      HScoreMat[matIndex] = cell.hScore;
+      HCoordMat[matIndex] = cell.hCoord;
     }
+
+    grid.sync();
+
+    ppStartI = prevStartI;
+    ppLen = prevLen;
+    prevStartI = curStartI;
+    prevLen = curLen;
+
+    int *oldPpH = ppH;
+    ppH = prevH;
+    prevH = curH;
+    curH = oldPpH;
+
+    uint64_t *oldPpHc = ppHc;
+    ppHc = prevHc;
+    prevHc = curHc;
+    curHc = oldPpHc;
+
+    int *oldPrevD = prevD;
+    prevD = curD;
+    curD = oldPrevD;
+
+    uint64_t *oldPrevDc = prevDc;
+    prevDc = curDc;
+    curDc = oldPrevDc;
+
+    int *oldPrevF = prevF;
+    prevF = curF;
+    curF = oldPrevF;
+
+    uint64_t *oldPrevFc = prevFc;
+    prevFc = curFc;
+    curFc = oldPrevFc;
   }
-
-  int diagHScore = 0;
-  uint64_t diagHCoord = sim_pack_coord(static_cast<uint32_t>(i - 1), static_cast<uint32_t>(j - 1));
-  if(i > rowStart && j > colStart)
-  {
-    const int diagI = i - 1;
-    const int diagIndex = diagI - ppStartI;
-    if(diagIndex >= 0 && diagIndex < ppLen)
-    {
-      diagHScore = ppH[diagIndex];
-      diagHCoord = ppHc[diagIndex];
-    }
-  }
-
-  int fScore = leftFScore - R;
-  uint64_t fCoord = leftFCoord;
-  const int fOpenScore = leftHScore - QR;
-  const uint64_t fOpenCoord = leftHCoord;
-  sim_order_state(fScore, fCoord, fOpenScore, fOpenCoord);
-
-  int dScore = upDScore - R;
-  uint64_t dCoord = upDCoord;
-  const int dOpenScore = upHScore - QR;
-  const uint64_t dOpenCoord = upHCoord;
-  sim_order_state(dScore, dCoord, dOpenScore, dOpenCoord);
-
-  bool diagAvailable = true;
-  if(blockedWords != NULL && blockedWordCount > 0)
-  {
-    const int localRow = i - rowStart;
-    const int wordIndex = (j >> 6) - blockedWordStart;
-    if(localRow >= 0 && wordIndex >= 0 && wordIndex < blockedWordCount)
-    {
-      const size_t index = static_cast<size_t>(localRow) * static_cast<size_t>(blockedWordCount) + static_cast<size_t>(wordIndex);
-      const uint64_t mask = static_cast<uint64_t>(1) << (static_cast<unsigned int>(j) & 63u);
-      diagAvailable = (blockedWords[index] & mask) == 0;
-    }
-  }
-
-  int hDiagScore = 0;
-  uint64_t hDiagCoord = sim_pack_coord(static_cast<uint32_t>(i), static_cast<uint32_t>(j));
-  if(diagAvailable)
-  {
-    const unsigned char a = static_cast<unsigned char>(A[i]);
-    const unsigned char b = static_cast<unsigned char>(B[j]);
-    hDiagScore = diagHScore + sim_score_matrix[static_cast<int>(a) * 128 + static_cast<int>(b)];
-    hDiagCoord = diagHCoord;
-    if(hDiagScore <= 0)
-    {
-      hDiagScore = 0;
-      hDiagCoord = sim_pack_coord(static_cast<uint32_t>(i), static_cast<uint32_t>(j));
-    }
-  }
-
-  int hScore = hDiagScore;
-  uint64_t hCoord = hDiagCoord;
-  sim_order_state(hScore, hCoord, dScore, dCoord);
-  sim_order_state(hScore, hCoord, fScore, fCoord);
-  if(hScore <= 0)
-  {
-    hScore = 0;
-    hCoord = sim_pack_coord(static_cast<uint32_t>(i), static_cast<uint32_t>(j));
-  }
-
-  curH[idx] = hScore;
-  curHc[idx] = hCoord;
-  curD[idx] = dScore;
-  curDc[idx] = dCoord;
-  curF[idx] = fScore;
-  curFc[idx] = fCoord;
-
-  const size_t matIndex = static_cast<size_t>(i) * static_cast<size_t>(leadingDim) + static_cast<size_t>(j);
-  HScoreMat[matIndex] = hScore;
-  HCoordMat[matIndex] = hCoord;
 }
 
 __global__ void sim_scan_diag_region_true_batch_kernel(const char *A,
@@ -11933,6 +12300,71 @@ static bool sim_scan_cuda_region_single_request_direct_reduce_shadow_runtime()
   return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
 }
 
+static bool sim_scan_cuda_region_direct_reduce_fused_dp_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP");
+}
+
+static bool sim_scan_cuda_region_direct_reduce_fused_dp_shadow_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_SHADOW");
+}
+
+static uint64_t sim_scan_cuda_region_direct_reduce_fused_dp_size_limit_runtime(const char *envName,
+                                                                               uint64_t defaultValue)
+{
+  const char *env = getenv(envName);
+  if(env == NULL || env[0] == '\0')
+  {
+    return defaultValue;
+  }
+  char *end = NULL;
+  unsigned long long parsed = strtoull(env,&end,10);
+  if(end == env)
+  {
+    return defaultValue;
+  }
+  return static_cast<uint64_t>(parsed);
+}
+
+static uint64_t sim_scan_cuda_region_direct_reduce_fused_dp_max_cells_runtime()
+{
+  return sim_scan_cuda_region_direct_reduce_fused_dp_size_limit_runtime(
+    "LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_CELLS",
+    1000000ULL);
+}
+
+static uint64_t sim_scan_cuda_region_direct_reduce_fused_dp_max_diag_len_runtime()
+{
+  return sim_scan_cuda_region_direct_reduce_fused_dp_size_limit_runtime(
+    "LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_DIAG_LEN",
+    1024ULL);
+}
+
+static bool sim_scan_cuda_region_direct_reduce_coop_dp_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP");
+}
+
+static bool sim_scan_cuda_region_direct_reduce_coop_dp_shadow_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_SHADOW");
+}
+
+static uint64_t sim_scan_cuda_region_direct_reduce_coop_dp_max_cells_runtime()
+{
+  return sim_scan_cuda_region_direct_reduce_fused_dp_size_limit_runtime(
+    "LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_CELLS",
+    10000000ULL);
+}
+
+static uint64_t sim_scan_cuda_region_direct_reduce_coop_dp_max_diag_len_runtime()
+{
+  return sim_scan_cuda_region_direct_reduce_fused_dp_size_limit_runtime(
+    "LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_DIAG_LEN",
+    4096ULL);
+}
+
 static size_t sim_scan_cuda_region_single_request_direct_hash_capacity_runtime(int filterStartCoordCount)
 {
   const char *env = getenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_HASH_CAPACITY");
@@ -12284,6 +12716,18 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   batchResult->regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds +=
     requestBatchResult.regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
+  batchResult->regionSingleRequestDirectReduceFusedDpGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow;
+  batchResult->regionSingleRequestDirectReduceFusedTotalGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedTotalGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCoopDpGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow;
+  batchResult->regionSingleRequestDirectReduceCoopTotalGpuSeconds +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds;
   sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(requestBatchResult,batchResult);
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
@@ -12359,6 +12803,53 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceAffectedStartCount;
   batchResult->regionSingleRequestDirectReduceReduceWorkItems +=
     requestBatchResult.regionSingleRequestDirectReduceReduceWorkItems;
+  batchResult->regionSingleRequestDirectReduceFusedDpAttempts +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpAttempts;
+  batchResult->regionSingleRequestDirectReduceFusedDpEligible +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpEligible;
+  batchResult->regionSingleRequestDirectReduceFusedDpSuccesses +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses;
+  batchResult->regionSingleRequestDirectReduceFusedDpFallbacks +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpFallbacks;
+  batchResult->regionSingleRequestDirectReduceFusedDpShadowMismatches +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpShadowMismatches;
+  batchResult->regionSingleRequestDirectReduceFusedDpRejectedByCells +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByCells;
+  batchResult->regionSingleRequestDirectReduceFusedDpRejectedByDiagLen +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByDiagLen;
+  batchResult->regionSingleRequestDirectReduceFusedDpCells +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpCells;
+  batchResult->regionSingleRequestDirectReduceFusedDpRequests +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpRequests;
+  batchResult->regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced +=
+    requestBatchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced;
+  batchResult->regionSingleRequestDirectReduceCoopDpSupported =
+    max(batchResult->regionSingleRequestDirectReduceCoopDpSupported,
+        requestBatchResult.regionSingleRequestDirectReduceCoopDpSupported);
+  batchResult->regionSingleRequestDirectReduceCoopDpAttempts +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpAttempts;
+  batchResult->regionSingleRequestDirectReduceCoopDpEligible +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpEligible;
+  batchResult->regionSingleRequestDirectReduceCoopDpSuccesses +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses;
+  batchResult->regionSingleRequestDirectReduceCoopDpFallbacks +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpFallbacks;
+  batchResult->regionSingleRequestDirectReduceCoopDpShadowMismatches +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpShadowMismatches;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByUnsupported +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByUnsupported;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByCells +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByCells;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByDiagLen +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByDiagLen;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByResidency +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByResidency;
+  batchResult->regionSingleRequestDirectReduceCoopDpCells +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpCells;
+  batchResult->regionSingleRequestDirectReduceCoopDpRequests +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpRequests;
+  batchResult->regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced +=
+    requestBatchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced;
   batchResult->initialDeviceResidencyRequestCount += requestBatchResult.initialDeviceResidencyRequestCount;
   batchResult->initialProposalV2RequestCount += requestBatchResult.initialProposalV2RequestCount;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
@@ -18409,6 +18900,151 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
   return true;
 }
 
+struct SimScanCudaRegionDirectReduceFusedDpGate
+{
+  SimScanCudaRegionDirectReduceFusedDpGate():
+    enabled(false),
+    eligible(false),
+    rejectedByCells(false),
+    rejectedByDiagLen(false),
+    cells(0),
+    diagCount(0)
+  {
+  }
+
+  bool enabled;
+  bool eligible;
+  bool rejectedByCells;
+  bool rejectedByDiagLen;
+  uint64_t cells;
+  uint64_t diagCount;
+};
+
+static SimScanCudaRegionDirectReduceFusedDpGate
+sim_scan_cuda_region_direct_reduce_fused_dp_gate(int rowCount,int colCount,bool allowFusedDp)
+{
+  SimScanCudaRegionDirectReduceFusedDpGate gate;
+  gate.enabled = allowFusedDp && sim_scan_cuda_region_direct_reduce_fused_dp_runtime();
+  if(rowCount <= 0 || colCount <= 0)
+  {
+    return gate;
+  }
+  gate.cells = static_cast<uint64_t>(rowCount) * static_cast<uint64_t>(colCount);
+  gate.diagCount = static_cast<uint64_t>(rowCount + colCount - 1);
+  if(!gate.enabled)
+  {
+    return gate;
+  }
+  const uint64_t maxCells = sim_scan_cuda_region_direct_reduce_fused_dp_max_cells_runtime();
+  const uint64_t maxDiagLen = sim_scan_cuda_region_direct_reduce_fused_dp_max_diag_len_runtime();
+  if(gate.cells > maxCells)
+  {
+    gate.rejectedByCells = true;
+    return gate;
+  }
+  const uint64_t diagLen = static_cast<uint64_t>(min(rowCount,colCount));
+  if(diagLen > maxDiagLen)
+  {
+    gate.rejectedByDiagLen = true;
+    return gate;
+  }
+  gate.eligible = true;
+  return gate;
+}
+
+struct SimScanCudaRegionDirectReduceCoopDpGate
+{
+  SimScanCudaRegionDirectReduceCoopDpGate():
+    enabled(false),
+    supported(false),
+    eligible(false),
+    rejectedByUnsupported(false),
+    rejectedByCells(false),
+    rejectedByDiagLen(false),
+    rejectedByResidency(false),
+    cells(0),
+    diagCount(0),
+    launchBlocks(0)
+  {
+  }
+
+  bool enabled;
+  bool supported;
+  bool eligible;
+  bool rejectedByUnsupported;
+  bool rejectedByCells;
+  bool rejectedByDiagLen;
+  bool rejectedByResidency;
+  uint64_t cells;
+  uint64_t diagCount;
+  int launchBlocks;
+};
+
+static SimScanCudaRegionDirectReduceCoopDpGate
+sim_scan_cuda_region_direct_reduce_coop_dp_gate(SimScanCudaContext *context,
+                                                int rowCount,
+                                                int colCount,
+                                                bool allowCoopDp)
+{
+  SimScanCudaRegionDirectReduceCoopDpGate gate;
+  gate.enabled = allowCoopDp && sim_scan_cuda_region_direct_reduce_coop_dp_runtime();
+  if(rowCount <= 0 || colCount <= 0)
+  {
+    return gate;
+  }
+  gate.cells = static_cast<uint64_t>(rowCount) * static_cast<uint64_t>(colCount);
+  gate.diagCount = static_cast<uint64_t>(rowCount + colCount - 1);
+  if(!gate.enabled)
+  {
+    return gate;
+  }
+  gate.supported =
+    context != NULL &&
+    context->cooperativeLaunchSupported &&
+    context->multiProcessorCount > 0;
+  if(!gate.supported)
+  {
+    gate.rejectedByUnsupported = true;
+    return gate;
+  }
+
+  const uint64_t maxCells = sim_scan_cuda_region_direct_reduce_coop_dp_max_cells_runtime();
+  const uint64_t maxDiagLen = sim_scan_cuda_region_direct_reduce_coop_dp_max_diag_len_runtime();
+  if(gate.cells > maxCells)
+  {
+    gate.rejectedByCells = true;
+    return gate;
+  }
+  const int maxDiagLenActual = min(rowCount,colCount);
+  if(static_cast<uint64_t>(maxDiagLenActual) > maxDiagLen)
+  {
+    gate.rejectedByDiagLen = true;
+    return gate;
+  }
+
+  int activeBlocksPerSm = 0;
+  cudaError_t status =
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&activeBlocksPerSm,
+                                                  sim_scan_coop_region_dp_kernel,
+                                                  256,
+                                                  0);
+  if(status != cudaSuccess || activeBlocksPerSm <= 0)
+  {
+    gate.rejectedByResidency = true;
+    return gate;
+  }
+  const int residentBlocks = activeBlocksPerSm * context->multiProcessorCount;
+  const int neededBlocks = max(1,(maxDiagLenActual + 255) / 256);
+  if(neededBlocks > residentBlocks)
+  {
+    gate.rejectedByResidency = true;
+    return gate;
+  }
+  gate.launchBlocks = neededBlocks;
+  gate.eligible = true;
+  return gate;
+}
+
 static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimScanCudaContext *context,
                                                                           int queryLength,
                                                                           int targetLength,
@@ -18430,7 +19066,10 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
                                                                           int reservedOutputBase,
                                                                           int reservedOutputCapacity,
                                                                           string *errorOut,
-                                                                          SimScanCudaBatchResult *pipelineBatchResult = NULL)
+                                                                          SimScanCudaBatchResult *batchResult = NULL,
+                                                                          bool recordPipelineTelemetryRequested = false,
+                                                                          bool allowFusedDp = false,
+                                                                          bool allowCoopDp = false)
 {
   if(context == NULL)
   {
@@ -18443,7 +19082,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
 
   const int rowCount = rowEnd - rowStart + 1;
   const int colCount = colEnd - colStart + 1;
-  const bool recordPipelineTelemetry = pipelineBatchResult != NULL;
+  const bool recordPipelineTelemetry = batchResult != NULL && recordPipelineTelemetryRequested;
   if(rowCount <= 0 || colCount <= 0)
   {
     return true;
@@ -18454,25 +19093,25 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
     const uint64_t colCountU64 = static_cast<uint64_t>(colCount);
     const uint64_t diagCountU64 = static_cast<uint64_t>(rowCount + colCount - 1);
     const uint64_t filterCountU64 = static_cast<uint64_t>(max(filterStartCoordCount,0));
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineRequestCount += 1;
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineRowCountTotal += rowCountU64;
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineRowCountMax =
-      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineRowCountMax,rowCountU64);
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineColCountTotal += colCountU64;
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineColCountMax =
-      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineColCountMax,colCountU64);
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineCellCountTotal +=
+    batchResult->regionSingleRequestDirectReducePipelineRequestCount += 1;
+    batchResult->regionSingleRequestDirectReducePipelineRowCountTotal += rowCountU64;
+    batchResult->regionSingleRequestDirectReducePipelineRowCountMax =
+      max(batchResult->regionSingleRequestDirectReducePipelineRowCountMax,rowCountU64);
+    batchResult->regionSingleRequestDirectReducePipelineColCountTotal += colCountU64;
+    batchResult->regionSingleRequestDirectReducePipelineColCountMax =
+      max(batchResult->regionSingleRequestDirectReducePipelineColCountMax,colCountU64);
+    batchResult->regionSingleRequestDirectReducePipelineCellCountTotal +=
       rowCountU64 * colCountU64;
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineCellCountMax =
-      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineCellCountMax,
+    batchResult->regionSingleRequestDirectReducePipelineCellCountMax =
+      max(batchResult->regionSingleRequestDirectReducePipelineCellCountMax,
           rowCountU64 * colCountU64);
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagCountTotal += diagCountU64;
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagCountMax =
-      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagCountMax,diagCountU64);
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineFilterStartCountTotal +=
+    batchResult->regionSingleRequestDirectReducePipelineDiagCountTotal += diagCountU64;
+    batchResult->regionSingleRequestDirectReducePipelineDiagCountMax =
+      max(batchResult->regionSingleRequestDirectReducePipelineDiagCountMax,diagCountU64);
+    batchResult->regionSingleRequestDirectReducePipelineFilterStartCountTotal +=
       filterCountU64;
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax =
-      max(pipelineBatchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax,
+    batchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax =
+      max(batchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax,
           filterCountU64);
   }
 
@@ -18590,7 +19229,68 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   int prevStartI = 0;
   int prevLen = 0;
 
-  if(recordPipelineTelemetry &&
+  const SimScanCudaRegionDirectReduceFusedDpGate fusedDpGate =
+    sim_scan_cuda_region_direct_reduce_fused_dp_gate(rowCount,colCount,allowFusedDp);
+  if(batchResult != NULL && fusedDpGate.enabled)
+  {
+    batchResult->regionSingleRequestDirectReduceFusedDpAttempts += 1;
+    if(fusedDpGate.rejectedByCells)
+    {
+      batchResult->regionSingleRequestDirectReduceFusedDpRejectedByCells += 1;
+      batchResult->regionSingleRequestDirectReduceFusedDpFallbacks += 1;
+    }
+    else if(fusedDpGate.rejectedByDiagLen)
+    {
+      batchResult->regionSingleRequestDirectReduceFusedDpRejectedByDiagLen += 1;
+      batchResult->regionSingleRequestDirectReduceFusedDpFallbacks += 1;
+    }
+    else if(fusedDpGate.eligible)
+    {
+      batchResult->regionSingleRequestDirectReduceFusedDpEligible += 1;
+    }
+  }
+  const SimScanCudaRegionDirectReduceCoopDpGate coopDpGate =
+    sim_scan_cuda_region_direct_reduce_coop_dp_gate(context,
+                                                    rowCount,
+                                                    colCount,
+                                                    allowCoopDp && !fusedDpGate.eligible);
+  if(batchResult != NULL && coopDpGate.enabled)
+  {
+    batchResult->regionSingleRequestDirectReduceCoopDpAttempts += 1;
+    if(coopDpGate.supported)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpSupported = 1;
+    }
+    if(coopDpGate.rejectedByUnsupported)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpRejectedByUnsupported += 1;
+      batchResult->regionSingleRequestDirectReduceCoopDpFallbacks += 1;
+    }
+    else if(coopDpGate.rejectedByCells)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpRejectedByCells += 1;
+      batchResult->regionSingleRequestDirectReduceCoopDpFallbacks += 1;
+    }
+    else if(coopDpGate.rejectedByDiagLen)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpRejectedByDiagLen += 1;
+      batchResult->regionSingleRequestDirectReduceCoopDpFallbacks += 1;
+    }
+    else if(coopDpGate.rejectedByResidency)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpRejectedByResidency += 1;
+      batchResult->regionSingleRequestDirectReduceCoopDpFallbacks += 1;
+    }
+    else if(coopDpGate.eligible)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpEligible += 1;
+    }
+  }
+  const bool useFusedDp = fusedDpGate.eligible;
+  const bool useCoopDp = !useFusedDp && coopDpGate.eligible;
+  const bool recordDpSegment = recordPipelineTelemetry || useFusedDp || useCoopDp;
+
+  if(recordDpSegment &&
      !sim_scan_cuda_record_event(context->regionDirectPipelineMetadataStopEvent,errorOut))
   {
     return false;
@@ -18601,55 +19301,40 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   const int diagStart = rowStart + colStart;
   const int diagEnd = rowEnd + colEnd;
   uint64_t diagLaunches = 0;
-  for(int diag = diagStart; diag <= diagEnd; ++diag)
+  if(useFusedDp)
   {
-    const int curStartIHost = max(rowStart, diag - colEnd);
-    const int curEndIHost = min(rowEnd, diag - colStart);
-    const int curLenHost = curEndIHost >= curStartIHost ? (curEndIHost - curStartIHost + 1) : 0;
-    if(curLenHost <= 0)
-    {
-      continue;
-    }
-
-    const int threadsPerBlock = 256;
-    const int blocks = (curLenHost + threadsPerBlock - 1) / threadsPerBlock;
-    sim_scan_diag_region_kernel<<<blocks, threadsPerBlock>>>(context->ADevice,
+    sim_scan_fused_region_dp_single_block_kernel<<<1, 256>>>(context->ADevice,
                                                              context->BDevice,
                                                              rowStart,
+                                                             rowEnd,
                                                              colStart,
+                                                             colEnd,
                                                              M,
                                                              N,
                                                              context->leadingDim,
-                                                             diag,
-                                                             curStartIHost,
-                                                             curLenHost,
-                                                             prevStartI,
-                                                             prevLen,
-                                                             ppStartI,
-                                                             ppLen,
                                                              gapOpen,
                                                              gapExtend,
                                                              QR,
-                                                             prevH,
-                                                             prevHc,
-                                                             prevD,
-                                                             prevDc,
-                                                             prevF,
-                                                             prevFc,
-                                                             ppH,
-                                                             ppHc,
-                                                             curH,
-                                                             curHc,
-                                                             curD,
-                                                             curDc,
-                                                             curF,
-                                                             curFc,
+                                                             context->diagH0,
+                                                             context->diagHc0,
+                                                             context->diagH1,
+                                                             context->diagHc1,
+                                                             context->diagH2,
+                                                             context->diagHc2,
+                                                             context->diagD1,
+                                                             context->diagDc1,
+                                                             context->diagD2,
+                                                             context->diagDc2,
+                                                             context->diagF1,
+                                                             context->diagFc1,
+                                                             context->diagF2,
+                                                             context->diagFc2,
                                                              blockedWordsDevice,
                                                              blockedWordStart,
                                                              blockedWordCount,
                                                              context->HScoreDevice,
                                                              context->HCoordDevice);
-    ++diagLaunches;
+    diagLaunches = 1;
     status = cudaGetLastError();
     if(status != cudaSuccess)
     {
@@ -18659,26 +19344,163 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
       }
       return false;
     }
+    if(batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReduceFusedDpSuccesses += 1;
+      batchResult->regionSingleRequestDirectReduceFusedDpRequests += 1;
+      batchResult->regionSingleRequestDirectReduceFusedDpCells += fusedDpGate.cells;
+      batchResult->regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced +=
+        fusedDpGate.diagCount;
+    }
+  }
+  else if(useCoopDp)
+  {
+    int MArg = M;
+    int NArg = N;
+    int QRArg = QR;
+    void *kernelArgs[] =
+    {
+      &context->ADevice,
+      &context->BDevice,
+      &rowStart,
+      &rowEnd,
+      &colStart,
+      &colEnd,
+      &MArg,
+      &NArg,
+      &context->leadingDim,
+      &gapOpen,
+      &gapExtend,
+      &QRArg,
+      &context->diagH0,
+      &context->diagHc0,
+      &context->diagH1,
+      &context->diagHc1,
+      &context->diagH2,
+      &context->diagHc2,
+      &context->diagD1,
+      &context->diagDc1,
+      &context->diagD2,
+      &context->diagDc2,
+      &context->diagF1,
+      &context->diagFc1,
+      &context->diagF2,
+      &context->diagFc2,
+      &blockedWordsDevice,
+      &blockedWordStart,
+      &blockedWordCount,
+      &context->HScoreDevice,
+      &context->HCoordDevice
+    };
+    status = cudaLaunchCooperativeKernel(
+      reinterpret_cast<const void *>(sim_scan_coop_region_dp_kernel),
+      dim3(coopDpGate.launchBlocks),
+      dim3(256),
+      kernelArgs,
+      0,
+      0);
+    diagLaunches = 1;
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopDpSuccesses += 1;
+      batchResult->regionSingleRequestDirectReduceCoopDpRequests += 1;
+      batchResult->regionSingleRequestDirectReduceCoopDpCells += coopDpGate.cells;
+      batchResult->regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced +=
+        coopDpGate.diagCount;
+    }
+  }
+  else
+  {
+    for(int diag = diagStart; diag <= diagEnd; ++diag)
+    {
+      const int curStartIHost = max(rowStart, diag - colEnd);
+      const int curEndIHost = min(rowEnd, diag - colStart);
+      const int curLenHost = curEndIHost >= curStartIHost ? (curEndIHost - curStartIHost + 1) : 0;
+      if(curLenHost <= 0)
+      {
+        continue;
+      }
 
-    ppStartI = prevStartI;
-    ppLen = prevLen;
-    prevStartI = curStartIHost;
-    prevLen = curLenHost;
+      const int threadsPerBlock = 256;
+      const int blocks = (curLenHost + threadsPerBlock - 1) / threadsPerBlock;
+      sim_scan_diag_region_kernel<<<blocks, threadsPerBlock>>>(context->ADevice,
+                                                               context->BDevice,
+                                                               rowStart,
+                                                               colStart,
+                                                               M,
+                                                               N,
+                                                               context->leadingDim,
+                                                               diag,
+                                                               curStartIHost,
+                                                               curLenHost,
+                                                               prevStartI,
+                                                               prevLen,
+                                                               ppStartI,
+                                                               ppLen,
+                                                               gapOpen,
+                                                               gapExtend,
+                                                               QR,
+                                                               prevH,
+                                                               prevHc,
+                                                               prevD,
+                                                               prevDc,
+                                                               prevF,
+                                                               prevFc,
+                                                               ppH,
+                                                               ppHc,
+                                                               curH,
+                                                               curHc,
+                                                               curD,
+                                                               curDc,
+                                                               curF,
+                                                               curFc,
+                                                               blockedWordsDevice,
+                                                               blockedWordStart,
+                                                               blockedWordCount,
+                                                               context->HScoreDevice,
+                                                               context->HCoordDevice);
+      ++diagLaunches;
+      status = cudaGetLastError();
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
 
-    std::swap(ppH, prevH);
-    std::swap(ppHc, prevHc);
-    std::swap(prevH, curH);
-    std::swap(prevHc, curHc);
+      ppStartI = prevStartI;
+      ppLen = prevLen;
+      prevStartI = curStartIHost;
+      prevLen = curLenHost;
 
-    std::swap(prevD, curD);
-    std::swap(prevDc, curDc);
-    std::swap(prevF, curF);
-    std::swap(prevFc, curFc);
+      std::swap(ppH, prevH);
+      std::swap(ppHc, prevHc);
+      std::swap(prevH, curH);
+      std::swap(prevHc, curHc);
+
+      std::swap(prevD, curD);
+      std::swap(prevDc, curDc);
+      std::swap(prevF, curF);
+      std::swap(prevFc, curFc);
+    }
   }
   if(recordPipelineTelemetry)
   {
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineDiagLaunchCount +=
+    batchResult->regionSingleRequestDirectReducePipelineDiagLaunchCount +=
       diagLaunches;
+  }
+  if(recordDpSegment)
+  {
     if(!sim_scan_cuda_record_event(context->regionDirectPipelineDiagStopEvent,errorOut))
     {
       return false;
@@ -18707,7 +19529,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   }
   if(recordPipelineTelemetry)
   {
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineEventCountLaunchCount += 1;
+    batchResult->regionSingleRequestDirectReducePipelineEventCountLaunchCount += 1;
     if(!sim_scan_cuda_record_event(context->regionDirectPipelineEventCountStopEvent,errorOut))
     {
       return false;
@@ -18742,7 +19564,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   }
   if(recordPipelineTelemetry)
   {
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineEventPrefixLaunchCount += 1;
+    batchResult->regionSingleRequestDirectReducePipelineEventPrefixLaunchCount += 1;
     if(!sim_scan_cuda_record_event(context->regionDirectPipelineEventPrefixStopEvent,errorOut))
     {
       return false;
@@ -18794,7 +19616,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   }
   if(recordPipelineTelemetry)
   {
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineRunCountLaunchCount += 1;
+    batchResult->regionSingleRequestDirectReducePipelineRunCountLaunchCount += 1;
     if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunCountStopEvent,errorOut))
     {
       return false;
@@ -18829,7 +19651,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   }
   if(recordPipelineTelemetry)
   {
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineRunPrefixLaunchCount += 1;
+    batchResult->regionSingleRequestDirectReducePipelineRunPrefixLaunchCount += 1;
     if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunPrefixStopEvent,errorOut))
     {
       return false;
@@ -18852,7 +19674,7 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   }
   if(recordPipelineTelemetry)
   {
-    pipelineBatchResult->regionSingleRequestDirectReducePipelineRunCompactLaunchCount += 1;
+    batchResult->regionSingleRequestDirectReducePipelineRunCompactLaunchCount += 1;
     if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunCompactStopEvent,errorOut))
     {
       return false;
@@ -19952,6 +20774,18 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
     directBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   batchResult->regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds +=
     directBatchResult.regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
+  batchResult->regionSingleRequestDirectReduceFusedDpGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow +=
+    directBatchResult.regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow;
+  batchResult->regionSingleRequestDirectReduceFusedTotalGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceFusedTotalGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCoopDpGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow +=
+    directBatchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow;
+  batchResult->regionSingleRequestDirectReduceCoopTotalGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds;
   batchResult->usedRegionSingleRequestDirectReduceDeferredCounts =
     batchResult->usedRegionSingleRequestDirectReduceDeferredCounts ||
     directBatchResult.usedRegionSingleRequestDirectReduceDeferredCounts;
@@ -19978,7 +20812,133 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
     directBatchResult.regionSingleRequestDirectReduceAffectedStartCount;
   batchResult->regionSingleRequestDirectReduceReduceWorkItems +=
     directBatchResult.regionSingleRequestDirectReduceReduceWorkItems;
+  batchResult->regionSingleRequestDirectReduceFusedDpAttempts +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpAttempts;
+  batchResult->regionSingleRequestDirectReduceFusedDpEligible +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpEligible;
+  batchResult->regionSingleRequestDirectReduceFusedDpSuccesses +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses;
+  batchResult->regionSingleRequestDirectReduceFusedDpFallbacks +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpFallbacks;
+  batchResult->regionSingleRequestDirectReduceFusedDpShadowMismatches +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpShadowMismatches;
+  batchResult->regionSingleRequestDirectReduceFusedDpRejectedByCells +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByCells;
+  batchResult->regionSingleRequestDirectReduceFusedDpRejectedByDiagLen +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByDiagLen;
+  batchResult->regionSingleRequestDirectReduceFusedDpCells +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpCells;
+  batchResult->regionSingleRequestDirectReduceFusedDpRequests +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpRequests;
+  batchResult->regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced;
+  batchResult->regionSingleRequestDirectReduceCoopDpSupported =
+    max(batchResult->regionSingleRequestDirectReduceCoopDpSupported,
+        directBatchResult.regionSingleRequestDirectReduceCoopDpSupported);
+  batchResult->regionSingleRequestDirectReduceCoopDpAttempts +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpAttempts;
+  batchResult->regionSingleRequestDirectReduceCoopDpEligible +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpEligible;
+  batchResult->regionSingleRequestDirectReduceCoopDpSuccesses +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses;
+  batchResult->regionSingleRequestDirectReduceCoopDpFallbacks +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpFallbacks;
+  batchResult->regionSingleRequestDirectReduceCoopDpShadowMismatches +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpShadowMismatches;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByUnsupported +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByUnsupported;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByCells +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByCells;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByDiagLen +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByDiagLen;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByResidency +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByResidency;
+  batchResult->regionSingleRequestDirectReduceCoopDpCells +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpCells;
+  batchResult->regionSingleRequestDirectReduceCoopDpRequests +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRequests;
+  batchResult->regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced;
   sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(directBatchResult,batchResult);
+}
+
+static void sim_scan_cuda_merge_region_single_request_direct_reduce_fused_dp_stats(
+  const SimScanCudaBatchResult &directBatchResult,
+  SimScanCudaBatchResult *batchResult)
+{
+  if(batchResult == NULL)
+  {
+    return;
+  }
+  batchResult->regionSingleRequestDirectReduceFusedDpGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow +=
+    directBatchResult.regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow;
+  batchResult->regionSingleRequestDirectReduceFusedTotalGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceFusedTotalGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceFusedDpAttempts +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpAttempts;
+  batchResult->regionSingleRequestDirectReduceFusedDpEligible +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpEligible;
+  batchResult->regionSingleRequestDirectReduceFusedDpSuccesses +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses;
+  batchResult->regionSingleRequestDirectReduceFusedDpFallbacks +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpFallbacks;
+  batchResult->regionSingleRequestDirectReduceFusedDpShadowMismatches +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpShadowMismatches;
+  batchResult->regionSingleRequestDirectReduceFusedDpRejectedByCells +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByCells;
+  batchResult->regionSingleRequestDirectReduceFusedDpRejectedByDiagLen +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByDiagLen;
+  batchResult->regionSingleRequestDirectReduceFusedDpCells +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpCells;
+  batchResult->regionSingleRequestDirectReduceFusedDpRequests +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpRequests;
+  batchResult->regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced +=
+    directBatchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced;
+}
+
+static void sim_scan_cuda_merge_region_single_request_direct_reduce_coop_dp_stats(
+  const SimScanCudaBatchResult &directBatchResult,
+  SimScanCudaBatchResult *batchResult)
+{
+  if(batchResult == NULL)
+  {
+    return;
+  }
+  batchResult->regionSingleRequestDirectReduceCoopDpGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow +=
+    directBatchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow;
+  batchResult->regionSingleRequestDirectReduceCoopTotalGpuSeconds +=
+    directBatchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceCoopDpSupported =
+    max(batchResult->regionSingleRequestDirectReduceCoopDpSupported,
+        directBatchResult.regionSingleRequestDirectReduceCoopDpSupported);
+  batchResult->regionSingleRequestDirectReduceCoopDpAttempts +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpAttempts;
+  batchResult->regionSingleRequestDirectReduceCoopDpEligible +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpEligible;
+  batchResult->regionSingleRequestDirectReduceCoopDpSuccesses +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses;
+  batchResult->regionSingleRequestDirectReduceCoopDpFallbacks +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpFallbacks;
+  batchResult->regionSingleRequestDirectReduceCoopDpShadowMismatches +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpShadowMismatches;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByUnsupported +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByUnsupported;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByCells +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByCells;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByDiagLen +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByDiagLen;
+  batchResult->regionSingleRequestDirectReduceCoopDpRejectedByResidency +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByResidency;
+  batchResult->regionSingleRequestDirectReduceCoopDpCells +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpCells;
+  batchResult->regionSingleRequestDirectReduceCoopDpRequests +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpRequests;
+  batchResult->regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced +=
+    directBatchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced;
 }
 
 static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
@@ -19987,7 +20947,11 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   SimScanCudaAggregatedRegionDeviceResult *outResult,
   SimScanCudaBatchResult *batchResult,
   bool *outHandled,
-  string *errorOut)
+  string *errorOut,
+  bool allowFusedDp = true,
+  bool allowFusedDpShadow = true,
+  bool allowCoopDp = true,
+  bool allowCoopDpShadow = true)
 {
   if(outHandled != NULL)
   {
@@ -20124,6 +21088,237 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     return false;
   }
 
+  const SimScanCudaRegionDirectReduceFusedDpGate fusedShadowGate =
+    sim_scan_cuda_region_direct_reduce_fused_dp_gate(rowCount,colCount,allowFusedDp);
+  if(allowFusedDpShadow &&
+     fusedShadowGate.eligible &&
+     sim_scan_cuda_region_direct_reduce_fused_dp_shadow_runtime())
+  {
+    SimScanCudaAggregatedRegionDeviceResult oracleResult;
+    SimScanCudaBatchResult oracleBatchResult;
+    bool oracleHandled = false;
+    if(!sim_scan_cuda_try_region_single_request_direct_reduce_locked(context,
+                                                                     request,
+                                                                     &oracleResult,
+                                                                     &oracleBatchResult,
+                                                                     &oracleHandled,
+                                                                     errorOut,
+                                                                     false,
+                                                                     false,
+                                                                     false,
+                                                                     false))
+    {
+      return false;
+    }
+    vector<SimScanCudaCandidateState> oracleStates;
+    if(!oracleHandled ||
+       !sim_scan_cuda_copy_aggregated_region_device_candidates_to_host(oracleResult,
+                                                                       &oracleStates,
+                                                                       errorOut))
+    {
+      return false;
+    }
+
+    SimScanCudaAggregatedRegionDeviceResult candidateResult;
+    SimScanCudaBatchResult candidateBatchResult;
+    bool candidateHandled = false;
+    if(!sim_scan_cuda_try_region_single_request_direct_reduce_locked(context,
+                                                                     request,
+                                                                     &candidateResult,
+                                                                     &candidateBatchResult,
+                                                                     &candidateHandled,
+                                                                     errorOut,
+                                                                     true,
+                                                                     false,
+                                                                     false,
+                                                                     false))
+    {
+      return false;
+    }
+    vector<SimScanCudaCandidateState> candidateStates;
+    if(!candidateHandled ||
+       !sim_scan_cuda_copy_aggregated_region_device_candidates_to_host(candidateResult,
+                                                                       &candidateStates,
+                                                                       errorOut))
+    {
+      return false;
+    }
+    candidateBatchResult.regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow +=
+      oracleBatchResult.regionSingleRequestDirectReduceDpGpuSeconds;
+
+    if(sim_scan_cuda_aggregated_region_shadow_matches(candidateResult,
+                                                      candidateStates,
+                                                      oracleResult,
+                                                      oracleStates))
+    {
+      *outResult = candidateResult;
+      if(batchResult != NULL)
+      {
+        *batchResult = candidateBatchResult;
+      }
+      if(outHandled != NULL)
+      {
+        *outHandled = true;
+      }
+      clear_sim_scan_cuda_error(errorOut);
+      return true;
+    }
+
+    SimScanCudaAggregatedRegionDeviceResult fallbackResult;
+    SimScanCudaBatchResult fallbackBatchResult;
+    bool fallbackHandled = false;
+    if(!sim_scan_cuda_try_region_single_request_direct_reduce_locked(context,
+                                                                     request,
+                                                                     &fallbackResult,
+                                                                     &fallbackBatchResult,
+                                                                     &fallbackHandled,
+                                                                     errorOut,
+                                                                     false,
+                                                                     false,
+                                                                     false,
+                                                                     false))
+    {
+      return false;
+    }
+    if(!fallbackHandled)
+    {
+      return true;
+    }
+    *outResult = fallbackResult;
+    if(batchResult != NULL)
+    {
+      *batchResult = fallbackBatchResult;
+      candidateBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses = 0;
+      candidateBatchResult.regionSingleRequestDirectReduceFusedDpFallbacks += 1;
+      candidateBatchResult.regionSingleRequestDirectReduceFusedDpShadowMismatches += 1;
+      sim_scan_cuda_merge_region_single_request_direct_reduce_fused_dp_stats(candidateBatchResult,
+                                                                             batchResult);
+    }
+    if(outHandled != NULL)
+    {
+      *outHandled = true;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
+  const SimScanCudaRegionDirectReduceCoopDpGate coopShadowGate =
+    sim_scan_cuda_region_direct_reduce_coop_dp_gate(context,
+                                                    rowCount,
+                                                    colCount,
+                                                    allowCoopDp && !fusedShadowGate.eligible);
+  if(allowCoopDpShadow &&
+     coopShadowGate.eligible &&
+     sim_scan_cuda_region_direct_reduce_coop_dp_shadow_runtime())
+  {
+    SimScanCudaAggregatedRegionDeviceResult oracleResult;
+    SimScanCudaBatchResult oracleBatchResult;
+    bool oracleHandled = false;
+    if(!sim_scan_cuda_try_region_single_request_direct_reduce_locked(context,
+                                                                     request,
+                                                                     &oracleResult,
+                                                                     &oracleBatchResult,
+                                                                     &oracleHandled,
+                                                                     errorOut,
+                                                                     false,
+                                                                     false,
+                                                                     false,
+                                                                     false))
+    {
+      return false;
+    }
+    vector<SimScanCudaCandidateState> oracleStates;
+    if(!oracleHandled ||
+       !sim_scan_cuda_copy_aggregated_region_device_candidates_to_host(oracleResult,
+                                                                       &oracleStates,
+                                                                       errorOut))
+    {
+      return false;
+    }
+
+    SimScanCudaAggregatedRegionDeviceResult candidateResult;
+    SimScanCudaBatchResult candidateBatchResult;
+    bool candidateHandled = false;
+    if(!sim_scan_cuda_try_region_single_request_direct_reduce_locked(context,
+                                                                     request,
+                                                                     &candidateResult,
+                                                                     &candidateBatchResult,
+                                                                     &candidateHandled,
+                                                                     errorOut,
+                                                                     allowFusedDp,
+                                                                     false,
+                                                                     true,
+                                                                     false))
+    {
+      return false;
+    }
+    vector<SimScanCudaCandidateState> candidateStates;
+    if(!candidateHandled ||
+       !sim_scan_cuda_copy_aggregated_region_device_candidates_to_host(candidateResult,
+                                                                       &candidateStates,
+                                                                       errorOut))
+    {
+      return false;
+    }
+    candidateBatchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow +=
+      oracleBatchResult.regionSingleRequestDirectReduceDpGpuSeconds;
+
+    if(sim_scan_cuda_aggregated_region_shadow_matches(candidateResult,
+                                                      candidateStates,
+                                                      oracleResult,
+                                                      oracleStates))
+    {
+      *outResult = candidateResult;
+      if(batchResult != NULL)
+      {
+        *batchResult = candidateBatchResult;
+      }
+      if(outHandled != NULL)
+      {
+        *outHandled = true;
+      }
+      clear_sim_scan_cuda_error(errorOut);
+      return true;
+    }
+
+    SimScanCudaAggregatedRegionDeviceResult fallbackResult;
+    SimScanCudaBatchResult fallbackBatchResult;
+    bool fallbackHandled = false;
+    if(!sim_scan_cuda_try_region_single_request_direct_reduce_locked(context,
+                                                                     request,
+                                                                     &fallbackResult,
+                                                                     &fallbackBatchResult,
+                                                                     &fallbackHandled,
+                                                                     errorOut,
+                                                                     false,
+                                                                     false,
+                                                                     false,
+                                                                     false))
+    {
+      return false;
+    }
+    if(!fallbackHandled)
+    {
+      return true;
+    }
+    *outResult = fallbackResult;
+    if(batchResult != NULL)
+    {
+      *batchResult = fallbackBatchResult;
+      candidateBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses = 0;
+      candidateBatchResult.regionSingleRequestDirectReduceCoopDpFallbacks += 1;
+      candidateBatchResult.regionSingleRequestDirectReduceCoopDpShadowMismatches += 1;
+      sim_scan_cuda_merge_region_single_request_direct_reduce_coop_dp_stats(candidateBatchResult,
+                                                                            batchResult);
+    }
+    if(outHandled != NULL)
+    {
+      *outHandled = true;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   cudaError_t status = cudaSuccess;
   status = cudaEventRecord(context->startEvent);
   if(status != cudaSuccess)
@@ -20156,7 +21351,10 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
                                                                     0,
                                                                     maxEventsAllowed,
                                                                     errorOut,
-                                                                    usePipelineTelemetry ? batchResult : NULL))
+                                                                    batchResult,
+                                                                    usePipelineTelemetry,
+                                                                    allowFusedDp,
+                                                                    allowCoopDp))
   {
     return false;
   }
@@ -20464,6 +21662,26 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   double pipelineRunCountGpuSeconds = 0.0;
   double pipelineRunPrefixGpuSeconds = 0.0;
   double pipelineRunCompactGpuSeconds = 0.0;
+  double fusedDpGpuSeconds = 0.0;
+  double coopDpGpuSeconds = 0.0;
+  if(batchResult != NULL &&
+     batchResult->regionSingleRequestDirectReduceFusedDpSuccesses > 0 &&
+     !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineMetadataStopEvent,
+                                    context->regionDirectPipelineDiagStopEvent,
+                                    &fusedDpGpuSeconds,
+                                    errorOut))
+  {
+    return false;
+  }
+  if(batchResult != NULL &&
+     batchResult->regionSingleRequestDirectReduceCoopDpSuccesses > 0 &&
+     !sim_scan_cuda_elapsed_seconds(context->regionDirectPipelineMetadataStopEvent,
+                                    context->regionDirectPipelineDiagStopEvent,
+                                    &coopDpGpuSeconds,
+                                    errorOut))
+  {
+    return false;
+  }
   if(usePipelineTelemetry && batchResult != NULL)
   {
     if(!sim_scan_cuda_elapsed_seconds(context->startEvent,
@@ -20516,6 +21734,16 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     batchResult->d2hSeconds = d2hSeconds;
     batchResult->regionSingleRequestDirectReduceGpuSeconds = batchResult->gpuSeconds;
     batchResult->regionSingleRequestDirectReduceDpGpuSeconds = dpGpuSeconds;
+    batchResult->regionSingleRequestDirectReduceFusedDpGpuSeconds += fusedDpGpuSeconds;
+    batchResult->regionSingleRequestDirectReduceCoopDpGpuSeconds += coopDpGpuSeconds;
+    if(batchResult->regionSingleRequestDirectReduceFusedDpSuccesses > 0)
+    {
+      batchResult->regionSingleRequestDirectReduceFusedTotalGpuSeconds += batchResult->gpuSeconds;
+    }
+    if(batchResult->regionSingleRequestDirectReduceCoopDpSuccesses > 0)
+    {
+      batchResult->regionSingleRequestDirectReduceCoopTotalGpuSeconds += batchResult->gpuSeconds;
+    }
     batchResult->regionSingleRequestDirectReduceFilterReduceGpuSeconds =
       filterReduceGpuSeconds;
     batchResult->regionSingleRequestDirectReduceCompactGpuSeconds = compactGpuSeconds;

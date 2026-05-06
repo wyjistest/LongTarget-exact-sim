@@ -198,6 +198,14 @@ static void clear_direct_env()
     unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
     unsetenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
     unsetenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_HASH_CAPACITY");
+    unsetenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_SHADOW");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_CELLS");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_DIAG_LEN");
+    unsetenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_SHADOW");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_CELLS");
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_DIAG_LEN");
 }
 
 static bool expect_region_results_equal(const SimScanCudaRegionAggregationResult &actual,
@@ -791,6 +799,572 @@ static bool test_direct_reduce_overflow_falls_back()
     return ok;
 }
 
+static bool test_fused_dp_counters_disabled_by_default()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest request = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    const uint64_t diagCount =
+      static_cast<uint64_t>(query.size()) + static_cast<uint64_t>(target.size()) - 1;
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "fused disabled direct path used") && true;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceFusedDpAttempts,
+                             0,
+                             "fused disabled attempts") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceFusedDpSuccesses,
+                             0,
+                             "fused disabled successes") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced,
+                             0,
+                             "fused disabled diag launches replaced") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             diagCount,
+                             "fused disabled pipeline diag launches") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceFusedDpGpuSeconds,
+                            "fused disabled dp seconds") && ok;
+    return ok;
+}
+
+static bool test_fused_dp_matches_authoritative_small_request()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+    const uint64_t rowCount = static_cast<uint64_t>(query.size());
+    const uint64_t colCount = static_cast<uint64_t>(target.size());
+    const uint64_t diagCount = rowCount + colCount - 1;
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest fusedRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> fusedRequests(1, fusedRequest);
+    SimScanCudaRegionAggregationResult fusedResult;
+    SimScanCudaBatchResult fusedBatchResult;
+    if (!run_region_aggregated(fusedRequests, &fusedResult, &fusedBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(fusedResult, baselineResult, "fused small") && true;
+    ok = expect_true(fusedBatchResult.usedRegionSingleRequestDirectReducePath,
+                     "fused small direct path used") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpAttempts,
+                             1,
+                             "fused small attempts") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpEligible,
+                             1,
+                             "fused small eligible") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses,
+                             1,
+                             "fused small successes") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpFallbacks,
+                             0,
+                             "fused small fallbacks") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpRequests,
+                             1,
+                             "fused small requests") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpCells,
+                             rowCount * colCount,
+                             "fused small cells") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced,
+                             diagCount,
+                             "fused small diag launches replaced") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             1,
+                             "fused small pipeline diag launches") && ok;
+    ok = expect_positive_double(fusedBatchResult.regionSingleRequestDirectReduceFusedDpGpuSeconds,
+                                "fused small dp seconds") && ok;
+    ok = expect_positive_double(fusedBatchResult.regionSingleRequestDirectReduceFusedTotalGpuSeconds,
+                                "fused small total seconds") && ok;
+    return ok;
+}
+
+static bool test_fused_dp_deferred_counts_match_authoritative()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS", "1", 1);
+    SimScanCudaRequest fusedRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> fusedRequests(1, fusedRequest);
+    SimScanCudaRegionAggregationResult fusedResult;
+    SimScanCudaBatchResult fusedBatchResult;
+    if (!run_region_aggregated(fusedRequests, &fusedResult, &fusedBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(fusedResult, baselineResult, "fused deferred") && true;
+    ok = expect_true(fusedBatchResult.usedRegionSingleRequestDirectReduceDeferredCounts,
+                     "fused deferred count path used") && ok;
+    ok = expect_equal_uint64(fusedBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses,
+                             1,
+                             "fused deferred successes") && ok;
+    ok = expect_zero_double(fusedBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
+                            "fused deferred candidate-count d2h seconds") && ok;
+    return ok;
+}
+
+static bool test_fused_dp_threshold_rejections_fall_back()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+    const uint64_t diagCount =
+      static_cast<uint64_t>(query.size()) + static_cast<uint64_t>(target.size()) - 1;
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_CELLS", "1", 1);
+    SimScanCudaRequest cellsRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> cellsRequests(1, cellsRequest);
+    SimScanCudaRegionAggregationResult cellsResult;
+    SimScanCudaBatchResult cellsBatchResult;
+    if (!run_region_aggregated(cellsRequests, &cellsResult, &cellsBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_CELLS");
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_DIAG_LEN", "1", 1);
+    SimScanCudaRequest diagRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> diagRequests(1, diagRequest);
+    SimScanCudaRegionAggregationResult diagResult;
+    SimScanCudaBatchResult diagBatchResult;
+    if (!run_region_aggregated(diagRequests, &diagResult, &diagBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(cellsResult, baselineResult, "fused max-cells fallback") && true;
+    ok = expect_region_results_equal(diagResult, baselineResult, "fused max-diag fallback") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceFusedDpAttempts,
+                             1,
+                             "fused max-cells attempts") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceFusedDpEligible,
+                             0,
+                             "fused max-cells eligible") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceFusedDpFallbacks,
+                             1,
+                             "fused max-cells fallbacks") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByCells,
+                             1,
+                             "fused max-cells rejection") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             diagCount,
+                             "fused max-cells pipeline diag launches") && ok;
+    ok = expect_equal_uint64(diagBatchResult.regionSingleRequestDirectReduceFusedDpRejectedByDiagLen,
+                             1,
+                             "fused max-diag rejection") && ok;
+    ok = expect_equal_uint64(diagBatchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             diagCount,
+                             "fused max-diag pipeline diag launches") && ok;
+    return ok;
+}
+
+static bool test_fused_dp_shadow_matches_direct_oracle()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "AAAAAAAA";
+    const std::string target = "AAATAAAA";
+    const int eventScoreFloor = 8;
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_SHADOW", "1", 1);
+    SimScanCudaRequest shadowRequest =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> shadowRequests(1, shadowRequest);
+    SimScanCudaRegionAggregationResult shadowResult;
+    SimScanCudaBatchResult shadowBatchResult;
+    if (!run_region_aggregated(shadowRequests, &shadowResult, &shadowBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(shadowResult, baselineResult, "fused shadow") && true;
+    ok = expect_equal_uint64(shadowBatchResult.regionSingleRequestDirectReduceFusedDpAttempts,
+                             1,
+                             "fused shadow attempts") && ok;
+    ok = expect_equal_uint64(shadowBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses,
+                             1,
+                             "fused shadow successes") && ok;
+    ok = expect_equal_uint64(shadowBatchResult.regionSingleRequestDirectReduceFusedDpShadowMismatches,
+                             0,
+                             "fused shadow mismatches") && ok;
+    ok = expect_positive_double(
+           shadowBatchResult.regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow,
+           "fused shadow oracle dp seconds") && ok;
+    return ok;
+}
+
+static bool test_coop_dp_counters_disabled_by_default()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest request = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "coop disabled direct path used") && true;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCoopDpAttempts,
+                             0,
+                             "coop disabled attempts") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCoopDpSuccesses,
+                             0,
+                             "coop disabled successes") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced,
+                             0,
+                             "coop disabled diag launches replaced") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceCoopDpGpuSeconds,
+                            "coop disabled dp seconds") && ok;
+    return ok;
+}
+
+static bool test_coop_dp_matches_authoritative_when_single_block_rejects()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGTACGTACGT";
+    const std::string target = "ACGTAAAACGTACGTG";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+    const uint64_t rowCount = static_cast<uint64_t>(query.size());
+    const uint64_t colCount = static_cast<uint64_t>(target.size());
+    const uint64_t diagCount = rowCount + colCount - 1;
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_FUSED_DP_MAX_DIAG_LEN", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest coopRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> coopRequests(1, coopRequest);
+    SimScanCudaRegionAggregationResult coopResult;
+    SimScanCudaBatchResult coopBatchResult;
+    if (!run_region_aggregated(coopRequests, &coopResult, &coopBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(coopResult, baselineResult, "coop") && true;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceFusedDpSuccesses,
+                             0,
+                             "coop fused successes") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpAttempts,
+                             1,
+                             "coop attempts") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpEligible,
+                             1,
+                             "coop eligible") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses,
+                             1,
+                             "coop successes") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpFallbacks,
+                             0,
+                             "coop fallbacks") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpRequests,
+                             1,
+                             "coop requests") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpCells,
+                             rowCount * colCount,
+                             "coop cells") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced,
+                             diagCount,
+                             "coop diag launches replaced") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             1,
+                             "coop pipeline diag launches") && ok;
+    ok = expect_positive_double(coopBatchResult.regionSingleRequestDirectReduceCoopDpGpuSeconds,
+                                "coop dp seconds") && ok;
+    ok = expect_positive_double(coopBatchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds,
+                                "coop total seconds") && ok;
+    return ok;
+}
+
+static bool test_coop_dp_deferred_counts_match_authoritative()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGTACGTACGT";
+    const std::string target = "ACGTAAAACGTACGTG";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS", "1", 1);
+    SimScanCudaRequest coopRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> coopRequests(1, coopRequest);
+    SimScanCudaRegionAggregationResult coopResult;
+    SimScanCudaBatchResult coopBatchResult;
+    if (!run_region_aggregated(coopRequests, &coopResult, &coopBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(coopResult, baselineResult, "coop deferred") && true;
+    ok = expect_true(coopBatchResult.usedRegionSingleRequestDirectReduceDeferredCounts,
+                     "coop deferred count path used") && ok;
+    ok = expect_equal_uint64(coopBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses,
+                             1,
+                             "coop deferred successes") && ok;
+    ok = expect_zero_double(coopBatchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
+                            "coop deferred candidate-count d2h seconds") && ok;
+    return ok;
+}
+
+static bool test_coop_dp_threshold_rejections_fall_back()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGTACGTACGT";
+    const std::string target = "ACGTAAAACGTACGTG";
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+    const uint64_t diagCount =
+      static_cast<uint64_t>(query.size()) + static_cast<uint64_t>(target.size()) - 1;
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_CELLS", "1", 1);
+    SimScanCudaRequest cellsRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> cellsRequests(1, cellsRequest);
+    SimScanCudaRegionAggregationResult cellsResult;
+    SimScanCudaBatchResult cellsBatchResult;
+    if (!run_region_aggregated(cellsRequests, &cellsResult, &cellsBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+
+    unsetenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_CELLS");
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_MAX_DIAG_LEN", "1", 1);
+    SimScanCudaRequest diagRequest = make_region_request(query, target, scoreMatrix, &filter);
+    std::vector<SimScanCudaRequest> diagRequests(1, diagRequest);
+    SimScanCudaRegionAggregationResult diagResult;
+    SimScanCudaBatchResult diagBatchResult;
+    if (!run_region_aggregated(diagRequests, &diagResult, &diagBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(cellsResult, baselineResult, "coop max-cells fallback") && true;
+    ok = expect_region_results_equal(diagResult, baselineResult, "coop max-diag fallback") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceCoopDpAttempts,
+                             1,
+                             "coop max-cells attempts") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceCoopDpEligible,
+                             0,
+                             "coop max-cells eligible") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceCoopDpFallbacks,
+                             1,
+                             "coop max-cells fallbacks") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByCells,
+                             1,
+                             "coop max-cells rejection") && ok;
+    ok = expect_equal_uint64(cellsBatchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             diagCount,
+                             "coop max-cells pipeline diag launches") && ok;
+    ok = expect_equal_uint64(diagBatchResult.regionSingleRequestDirectReduceCoopDpRejectedByDiagLen,
+                             1,
+                             "coop max-diag rejection") && ok;
+    ok = expect_equal_uint64(diagBatchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             diagCount,
+                             "coop max-diag pipeline diag launches") && ok;
+    return ok;
+}
+
+static bool test_coop_dp_shadow_matches_direct_oracle()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "AAAAAAAAAAAAAAAA";
+    const std::string target = "AAAAATAAAAAAAAAA";
+    const int eventScoreFloor = 8;
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    SimScanCudaRequest baselineRequest =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> baselineRequests(1, baselineRequest);
+    SimScanCudaRegionAggregationResult baselineResult;
+    SimScanCudaBatchResult baselineBatchResult;
+    if (!run_region_aggregated(baselineRequests, &baselineResult, &baselineBatchResult))
+    {
+        return false;
+    }
+
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_COOP_DP_SHADOW", "1", 1);
+    SimScanCudaRequest shadowRequest =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> shadowRequests(1, shadowRequest);
+    SimScanCudaRegionAggregationResult shadowResult;
+    SimScanCudaBatchResult shadowBatchResult;
+    if (!run_region_aggregated(shadowRequests, &shadowResult, &shadowBatchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_region_results_equal(shadowResult, baselineResult, "coop shadow") && true;
+    ok = expect_equal_uint64(shadowBatchResult.regionSingleRequestDirectReduceCoopDpAttempts,
+                             1,
+                             "coop shadow attempts") && ok;
+    ok = expect_equal_uint64(shadowBatchResult.regionSingleRequestDirectReduceCoopDpSuccesses,
+                             1,
+                             "coop shadow successes") && ok;
+    ok = expect_equal_uint64(shadowBatchResult.regionSingleRequestDirectReduceCoopDpShadowMismatches,
+                             0,
+                             "coop shadow mismatches") && ok;
+    ok = expect_positive_double(
+           shadowBatchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow,
+           "coop shadow oracle dp seconds") && ok;
+    return ok;
+}
+
 }
 
 int main()
@@ -815,6 +1389,16 @@ int main()
     ok = test_direct_reduce_matches_offset_region() && ok;
     ok = test_direct_reduce_falls_back_without_filter() && ok;
     ok = test_direct_reduce_overflow_falls_back() && ok;
+    ok = test_fused_dp_counters_disabled_by_default() && ok;
+    ok = test_fused_dp_matches_authoritative_small_request() && ok;
+    ok = test_fused_dp_deferred_counts_match_authoritative() && ok;
+    ok = test_fused_dp_threshold_rejections_fall_back() && ok;
+    ok = test_fused_dp_shadow_matches_direct_oracle() && ok;
+    ok = test_coop_dp_counters_disabled_by_default() && ok;
+    ok = test_coop_dp_matches_authoritative_when_single_block_rejects() && ok;
+    ok = test_coop_dp_deferred_counts_match_authoritative() && ok;
+    ok = test_coop_dp_threshold_rejections_fall_back() && ok;
+    ok = test_coop_dp_shadow_matches_direct_oracle() && ok;
     clear_direct_env();
     return ok ? 0 : 1;
 }

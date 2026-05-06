@@ -726,6 +726,12 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceCandidateCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds(0.0),
+    regionSingleRequestDirectReduceFusedDpGpuSeconds(0.0),
+    regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow(0.0),
+    regionSingleRequestDirectReduceFusedTotalGpuSeconds(0.0),
+    regionSingleRequestDirectReduceCoopDpGpuSeconds(0.0),
+    regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow(0.0),
+    regionSingleRequestDirectReduceCoopTotalGpuSeconds(0.0),
     regionSingleRequestDirectReducePipelineMetadataH2DSeconds(0.0),
     regionSingleRequestDirectReducePipelineDiagGpuSeconds(0.0),
     regionSingleRequestDirectReducePipelineEventCountGpuSeconds(0.0),
@@ -780,6 +786,29 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceRunSummaryCount(0),
     regionSingleRequestDirectReduceAffectedStartCount(0),
     regionSingleRequestDirectReduceReduceWorkItems(0),
+    regionSingleRequestDirectReduceFusedDpAttempts(0),
+    regionSingleRequestDirectReduceFusedDpEligible(0),
+    regionSingleRequestDirectReduceFusedDpSuccesses(0),
+    regionSingleRequestDirectReduceFusedDpFallbacks(0),
+    regionSingleRequestDirectReduceFusedDpShadowMismatches(0),
+    regionSingleRequestDirectReduceFusedDpRejectedByCells(0),
+    regionSingleRequestDirectReduceFusedDpRejectedByDiagLen(0),
+    regionSingleRequestDirectReduceFusedDpCells(0),
+    regionSingleRequestDirectReduceFusedDpRequests(0),
+    regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced(0),
+    regionSingleRequestDirectReduceCoopDpSupported(0),
+    regionSingleRequestDirectReduceCoopDpAttempts(0),
+    regionSingleRequestDirectReduceCoopDpEligible(0),
+    regionSingleRequestDirectReduceCoopDpSuccesses(0),
+    regionSingleRequestDirectReduceCoopDpFallbacks(0),
+    regionSingleRequestDirectReduceCoopDpShadowMismatches(0),
+    regionSingleRequestDirectReduceCoopDpRejectedByUnsupported(0),
+    regionSingleRequestDirectReduceCoopDpRejectedByCells(0),
+    regionSingleRequestDirectReduceCoopDpRejectedByDiagLen(0),
+    regionSingleRequestDirectReduceCoopDpRejectedByResidency(0),
+    regionSingleRequestDirectReduceCoopDpCells(0),
+    regionSingleRequestDirectReduceCoopDpRequests(0),
+    regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced(0),
     regionSingleRequestDirectReducePipelineRequestCount(0),
     regionSingleRequestDirectReducePipelineRowCountTotal(0),
     regionSingleRequestDirectReducePipelineRowCountMax(0),
@@ -853,6 +882,12 @@ struct SimScanCudaBatchResult
   double regionSingleRequestDirectReduceCountD2HSeconds;
   double regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   double regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
+  double regionSingleRequestDirectReduceFusedDpGpuSeconds;
+  double regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow;
+  double regionSingleRequestDirectReduceFusedTotalGpuSeconds;
+  double regionSingleRequestDirectReduceCoopDpGpuSeconds;
+  double regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow;
+  double regionSingleRequestDirectReduceCoopTotalGpuSeconds;
   double regionSingleRequestDirectReducePipelineMetadataH2DSeconds;
   double regionSingleRequestDirectReducePipelineDiagGpuSeconds;
   double regionSingleRequestDirectReducePipelineEventCountGpuSeconds;
@@ -907,6 +942,29 @@ struct SimScanCudaBatchResult
   uint64_t regionSingleRequestDirectReduceRunSummaryCount;
   uint64_t regionSingleRequestDirectReduceAffectedStartCount;
   uint64_t regionSingleRequestDirectReduceReduceWorkItems;
+  uint64_t regionSingleRequestDirectReduceFusedDpAttempts;
+  uint64_t regionSingleRequestDirectReduceFusedDpEligible;
+  uint64_t regionSingleRequestDirectReduceFusedDpSuccesses;
+  uint64_t regionSingleRequestDirectReduceFusedDpFallbacks;
+  uint64_t regionSingleRequestDirectReduceFusedDpShadowMismatches;
+  uint64_t regionSingleRequestDirectReduceFusedDpRejectedByCells;
+  uint64_t regionSingleRequestDirectReduceFusedDpRejectedByDiagLen;
+  uint64_t regionSingleRequestDirectReduceFusedDpCells;
+  uint64_t regionSingleRequestDirectReduceFusedDpRequests;
+  uint64_t regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced;
+  uint64_t regionSingleRequestDirectReduceCoopDpSupported;
+  uint64_t regionSingleRequestDirectReduceCoopDpAttempts;
+  uint64_t regionSingleRequestDirectReduceCoopDpEligible;
+  uint64_t regionSingleRequestDirectReduceCoopDpSuccesses;
+  uint64_t regionSingleRequestDirectReduceCoopDpFallbacks;
+  uint64_t regionSingleRequestDirectReduceCoopDpShadowMismatches;
+  uint64_t regionSingleRequestDirectReduceCoopDpRejectedByUnsupported;
+  uint64_t regionSingleRequestDirectReduceCoopDpRejectedByCells;
+  uint64_t regionSingleRequestDirectReduceCoopDpRejectedByDiagLen;
+  uint64_t regionSingleRequestDirectReduceCoopDpRejectedByResidency;
+  uint64_t regionSingleRequestDirectReduceCoopDpCells;
+  uint64_t regionSingleRequestDirectReduceCoopDpRequests;
+  uint64_t regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced;
   uint64_t regionSingleRequestDirectReducePipelineRequestCount;
   uint64_t regionSingleRequestDirectReducePipelineRowCountTotal;
   uint64_t regionSingleRequestDirectReducePipelineRowCountMax;
