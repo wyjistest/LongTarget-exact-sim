@@ -66,9 +66,13 @@ Optional CUDA builds can accelerate the exact threshold (`calc_score_with_worksp
 
 ```
 make build-cuda
+make build-cuda-native-ada   # opt-in Ada native lane, emits longtarget_cuda_sm89
+make check-cuda-native-ada-fatbin
 make check-smoke-cuda
 LONGTARGET_ENABLE_CUDA=1 TARGET=$PWD/longtarget_cuda ./scripts/run_sample_exactness.sh
 ```
+
+`make build-cuda-native-ada` keeps the portable `build-cuda` default unchanged and builds separate `sm_89` CUDA objects for Ada validation; it is an opt-in build lane, not a replacement default. `make check-cuda-native-ada-fatbin` verifies the fatbin contains `sm_89` cubins and `sm_80` PTX, then runs the sample with `CUDA_FORCE_PTX_JIT=1`; that smoke checks PTX fallback compatibility, not native Ada performance.
 
 Optional CUDA builds can also accelerate SIM candidate scanning (both initial scan and traceback update rescans). These toggles are opt-in at runtime:
 
@@ -76,6 +80,8 @@ Optional CUDA builds can also accelerate SIM candidate scanning (both initial sc
 - `LONGTARGET_ENABLE_SIM_CUDA_INITIAL_REDUCE=1`: experimental GPU-side candidate reduction for CUDA initial scan; default stays off because the exact-safe default path still replays row-run summaries on the host, while the current v1 GPU reducer replays those summaries serially on-device and can regress badly on large samples
 - `LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND=legacy|hash|segmented|ordered_segmented_v3`: select the experimental initial-reduce backend; `legacy` keeps the original single-request ordered replay path, `hash` routes single-request initial reduce through the shared true-batch/hash pipeline, `segmented` keeps the exact legacy top-K replay while switching the safe-store rebuild to a grouped segmented reduce, and `ordered_segmented_v3` uses the v3 ordered frontier transducer plus segmented safe-store compaction (default: `legacy`; compatibility alias: `LONGTARGET_SIM_CUDA_INITIAL_HASH_REDUCE=1`)
 - `LONGTARGET_SIM_CUDA_INITIAL_ORDERED_SEGMENTED_V3_SHADOW=1`: diagnostic opt-in for `ordered_segmented_v3`; it copies initial run summaries back as an oracle source and compares the v3 frontier/runningMin/safe-store result against CPU ordered replay without changing the default path
+- `LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF=1`: default-off infrastructure path for ordered row-chunk host handoff on the default summary-replay initial scan; the CPU still applies chunks in `endI` order and performs final running-min refresh / safe-store prune only after all chunks are consumed. This is not the pinned async D2H overlap path yet. Chunk sizing uses `LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK` (default: 256) and ring accounting uses `LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_RING_SLOTS` (default: 3). Canonical env vars win conflicts over short aliases `LONGTARGET_SIM_CUDA_INITIAL_CHUNK_ROWS` / `LONGTARGET_SIM_CUDA_INITIAL_RING_SLOTS`, which win over compatibility aliases `LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_CHUNK_ROWS` / `LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_RING_SLOTS`.
+- `LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_REPLAY=1`: default-off exact frontier replay scaffold for the experimental initial reducer; it routes through the existing `ordered_segmented_v3` reducer/device safe-store path and records explicit replay-authority telemetry. It is infrastructure only and must not be treated as a faster path guarantee.
 - `LONGTARGET_ENABLE_SIM_CUDA_REGION=1`: CUDA traceback update rescan (exact / hybrid)
 - `LONGTARGET_ENABLE_SIM_CUDA_REGION_BUCKETED_TRUE_BATCH=1`: experimental opt-in for the aggregated CUDA region rescan path; requests with the same rounded `(ceil(rows/64)*64, ceil(cols/256)*256)` bucket can share one true-batch launch when padding is no more than 10% and the bucket size is 2-32 requests
 - `LONGTARGET_SIM_CUDA_REGION_BUCKETED_TRUE_BATCH_SHADOW=1`: diagnostic opt-in for bucketed region true-batch; it runs the existing non-bucketed aggregated path as the oracle, compares event/run/candidate state results, and falls back to the oracle on mismatch
@@ -193,9 +199,15 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_events_total`: logical raw initial events seen before row-run coalescing / reduction
 - `benchmark.sim_initial_run_summaries_total`: contiguous same-start run summaries produced by the CUDA initial scan
 - `benchmark.sim_initial_reduce_backend`: initial reduce backend selection for the experimental reducer path (`off`, `legacy`, `hash`, `segmented`, or `ordered_segmented_v3`)
+- `benchmark.sim_initial_replay_authority`: authoritative replay owner for the initial path (`cpu`, `gpu_shadow`, or `gpu_real`) so logs do not conflate CUDA initial scanning with GPU-resident exact frontier replay
 - `benchmark.sim_initial_summary_bytes_d2h`: initial summary bytes copied device-to-host (0 on the experimental initial reduce path)
 - `benchmark.sim_initial_summary_packed_d2h_enabled` / `benchmark.sim_initial_summary_packed_bytes_d2h` / `benchmark.sim_initial_summary_unpacked_equivalent_bytes_d2h` / `benchmark.sim_initial_summary_pack_seconds` / `benchmark.sim_initial_summary_packed_d2h_fallbacks`: opt-in packed summary D2H measurement telemetry
 - `benchmark.sim_initial_summary_host_copy_elision_enabled` / `benchmark.sim_initial_summary_d2h_copy_seconds` / `benchmark.sim_initial_summary_unpack_seconds` / `benchmark.sim_initial_summary_result_materialize_seconds` / `benchmark.sim_initial_summary_host_copy_elided_bytes`: opt-in host-copy elision measurement telemetry for the initial summary handoff path
+- `benchmark.sim_initial_chunked_handoff_enabled` / `benchmark.sim_initial_chunked_handoff_rows_per_chunk` / `benchmark.sim_initial_chunked_handoff_rows_per_chunk_source` / `benchmark.sim_initial_chunked_handoff_ring_slots_configured` / `benchmark.sim_initial_chunked_handoff_ring_slots_source`: default-off row-chunk handoff configuration and env-source counters
+- `benchmark.sim_initial_chunked_handoff_chunks_total` / `benchmark.sim_initial_chunked_handoff_summaries_replayed` / `benchmark.sim_initial_chunked_handoff_ring_slots`: default-off row-chunk handoff activity counters
+- `benchmark.sim_initial_chunked_handoff_pinned_allocation_failures` / `benchmark.sim_initial_chunked_handoff_pageable_fallbacks` / `benchmark.sim_initial_chunked_handoff_sync_copies` / `benchmark.sim_initial_chunked_handoff_fallbacks` / `benchmark.sim_initial_chunked_handoff_fallback_reason`: handoff fallback accounting for the future pinned async D2H gate
+- `benchmark.sim_initial_chunked_handoff_cpu_wait_seconds` / `benchmark.sim_initial_chunked_handoff_critical_path_d2h_seconds` / `benchmark.sim_initial_chunked_handoff_measured_overlap_seconds`: chunked handoff timing fields; in the current scaffold they are accounting fields and do not by themselves prove DP/D2H overlap
+- `benchmark.sim_initial_exact_frontier_replay_enabled` / `benchmark.sim_initial_exact_frontier_replay_requests` / `benchmark.sim_initial_exact_frontier_replay_frontier_states` / `benchmark.sim_initial_exact_frontier_replay_device_safe_stores`: default-off exact frontier replay scaffold telemetry
 - `benchmark.sim_initial_reduced_candidates_total`: reduced candidate states copied back by the experimental initial reduce path
 - `benchmark.sim_initial_all_candidate_states_total`: full per-start candidate states copied back to rebuild the exact-safe initial `safeCandidateStateStore`
 - `benchmark.sim_initial_store_bytes_d2h`: bytes copied back for those full candidate states
@@ -249,8 +261,12 @@ These ratios are additive to the existing `projected_*` fields and remain option
 Validation helpers:
 
 - `make check-benchmark-telemetry`: verify benchmark stderr includes the expected telemetry fields
+- `make check-cuda-native-ada-fatbin`: verify the opt-in Ada binary has native `sm_89` cubins, keeps PTX fallback, and passes the sample under `CUDA_FORCE_PTX_JIT=1`
 - `make check-sim-cuda-region-docs`: verify this README and `EXACT_SIM_PROGRESS.md` still document the SIM CUDA region exactness constraints
 - `make check-sim-initial-cuda-merge`: verify the coalesced CUDA initial-scan host merge matches per-event replay while reducing logical host updates
+- `make check-sim-initial-chunked-handoff`: verify ordered row-chunk host apply matches the whole-batch initial summary replay
+- `make check-sim-initial-exact-frontier-replay`: verify the default-off exact frontier replay scaffold selects the intended reducer/replay authority without changing default behavior
+- `make check-sim-initial-chunked-handoff-matrix`: run the sample CUDA SIM region-locate path over small, non-power-of-two, tail, and large chunk sizes
 - `make check-project-whole-genome-runtime`: verify the projection script preserves backward compatibility and emits the optional whole-genome ratios when the source telemetry is present
 
 To compare the bundled sample (`testDNA.fa` + `H19.fa`) against `Fasim-LongTarget` (speed + TFOsorted overlap vs LongTarget exact), run:

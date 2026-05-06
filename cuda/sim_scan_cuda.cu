@@ -111,6 +111,11 @@ bool sim_scan_cuda_initial_packed_summary_d2h_runtime()
   return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
 }
 
+bool sim_scan_cuda_initial_exact_frontier_replay_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_REPLAY");
+}
+
 bool sim_scan_cuda_initial_summary_host_copy_elision_runtime()
 {
   return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
@@ -160,6 +165,10 @@ SimScanCudaInitialReduceBackend sim_scan_cuda_initial_reduce_backend_runtime()
     return SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_LEGACY;
   }
   if(sim_scan_cuda_mainline_residency_runtime())
+  {
+    return SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_ORDERED_SEGMENTED_V3;
+  }
+  if(sim_scan_cuda_initial_exact_frontier_replay_runtime())
   {
     return SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_ORDERED_SEGMENTED_V3;
   }

@@ -5,12 +5,16 @@
 *.o
 *.out
 *.log
+*.py[cod]
+__pycache__/
+**/__pycache__/
 gmon.out
 
 /longtarget_x86
 /longtarget_avx2
 /longtarget_cuda
 /longtarget_cuda_avx2
+/longtarget_cuda_sm89
 /fasim_cuda_test
 /fasim_longtarget_x86
 /fasim_longtarget_cuda

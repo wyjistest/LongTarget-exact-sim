@@ -74,21 +74,39 @@ CUDA_LDFLAGS ?= -L$(CUDA_HOME)/lib64 -lcudart
 
 CUDA_TARGET ?= longtarget_cuda
 CUDA_OBJ := cuda/calc_score_cuda.o cuda/sim_scan_cuda.o cuda/prealign_cuda.o cuda/sim_traceback_cuda.o cuda/sim_locate_cuda.o
+CUDA_ADA_TARGET ?= longtarget_cuda_sm89
+CUDA_ADA_CXXFLAGS ?= -O3 -std=c++11 --generate-code=arch=compute_89,code=sm_89 --generate-code=arch=compute_80,code=compute_80
+CUDA_ADA_OBJ := cuda/calc_score_cuda.sm89.o cuda/sim_scan_cuda.sm89.o cuda/prealign_cuda.sm89.o cuda/sim_traceback_cuda.sm89.o cuda/sim_locate_cuda.sm89.o
 
 cuda/calc_score_cuda.o: cuda/calc_score_cuda.cu cuda/calc_score_cuda.h
 	$(NVCC) $(CUDA_CXXFLAGS) -c $< -o $@
 
+cuda/calc_score_cuda.sm89.o: cuda/calc_score_cuda.cu cuda/calc_score_cuda.h
+	$(NVCC) $(CUDA_ADA_CXXFLAGS) -c $< -o $@
+
 cuda/sim_scan_cuda.o: cuda/sim_scan_cuda.cu cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
 	$(NVCC) $(CUDA_CXXFLAGS) -c $< -o $@
+
+cuda/sim_scan_cuda.sm89.o: cuda/sim_scan_cuda.cu cuda/sim_scan_cuda.h cuda/sim_cuda_runtime.h
+	$(NVCC) $(CUDA_ADA_CXXFLAGS) -c $< -o $@
 
 cuda/prealign_cuda.o: cuda/prealign_cuda.cu cuda/prealign_cuda.h
 	$(NVCC) $(CUDA_CXXFLAGS) -c $< -o $@
 
+cuda/prealign_cuda.sm89.o: cuda/prealign_cuda.cu cuda/prealign_cuda.h
+	$(NVCC) $(CUDA_ADA_CXXFLAGS) -c $< -o $@
+
 cuda/sim_traceback_cuda.o: cuda/sim_traceback_cuda.cu cuda/sim_traceback_cuda.h cuda/sim_cuda_runtime.h
 	$(NVCC) $(CUDA_CXXFLAGS) -c $< -o $@
 
+cuda/sim_traceback_cuda.sm89.o: cuda/sim_traceback_cuda.cu cuda/sim_traceback_cuda.h cuda/sim_cuda_runtime.h
+	$(NVCC) $(CUDA_ADA_CXXFLAGS) -c $< -o $@
+
 cuda/sim_locate_cuda.o: cuda/sim_locate_cuda.cu cuda/sim_locate_cuda.h cuda/sim_cuda_runtime.h
 	$(NVCC) $(CUDA_CXXFLAGS) -c $< -o $@
+
+cuda/sim_locate_cuda.sm89.o: cuda/sim_locate_cuda.cu cuda/sim_locate_cuda.h cuda/sim_cuda_runtime.h
+	$(NVCC) $(CUDA_ADA_CXXFLAGS) -c $< -o $@
 
 build-cuda: $(CUDA_TARGET)
 
@@ -97,6 +115,14 @@ $(CUDA_TARGET): longtarget.cpp $(HEADERS) $(CUDA_OBJ)
 
 build-cuda-avx2:
 	$(MAKE) CUDA_TARGET=longtarget_cuda_avx2 SIMD_FLAGS=-mavx2 build-cuda
+
+build-cuda-native-ada: $(CUDA_ADA_TARGET)
+
+$(CUDA_ADA_TARGET): longtarget.cpp $(HEADERS) $(CUDA_ADA_OBJ)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) longtarget.cpp $(CUDA_ADA_OBJ) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+check-cuda-native-ada-fatbin: build-cuda-native-ada
+	TARGET=$(CURDIR)/$(CUDA_ADA_TARGET) CUDA_HOME=$(CUDA_HOME) sh ./scripts/check_cuda_native_ada_fatbin.sh
 
 FASIM_CXXFLAGS ?= -O3 -std=c++11 -pthread
 FASIM_SIMD_FLAGS ?= -msse2
@@ -136,6 +162,22 @@ check-sample-cuda-sim-region:
 check-sample-cuda-sim-region-locate:
 	$(MAKE) build-cuda
 	LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
+
+check-sim-initial-chunked-handoff-matrix:
+	$(MAKE) build-cuda
+	for rows in 1 2 3 4 7 8 16 31 64 127 256 1024; do \
+		LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF=1 \
+		LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK=$$rows \
+		LONGTARGET_ENABLE_SIM_CUDA=1 \
+		LONGTARGET_ENABLE_SIM_CUDA_REGION=1 \
+		LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 \
+		EXPECTED_SIM_INITIAL_BACKEND=cuda \
+		EXPECTED_SIM_REGION_BACKEND=cuda \
+		EXPECTED_SIM_LOCATE_MODE=safe_workset \
+		OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_chunked_rows_$$rows \
+		TARGET=$(CURDIR)/$(CUDA_TARGET) \
+		./scripts/run_sample_exactness_cuda.sh || exit $$?; \
+	done
 
 oracle-smoke: $(TARGET)
 	RULE=1 EXPECTED_DIR=$(CURDIR)/tests/oracle_rule1 OUTPUT_SUBDIR=sample_exactness_rule1 ./scripts/run_sample_exactness.sh --generate-oracle
@@ -394,6 +436,12 @@ SIM_INITIAL_CUDA_MERGE_TEST_SOURCES := tests/test_sim_initial_cuda_merge.cpp cud
 SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET ?= tests/test_sim_initial_context_apply_chunk_skip
 SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_SOURCES := tests/test_sim_initial_context_apply_chunk_skip.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET ?= tests/test_sim_initial_chunked_handoff
+SIM_INITIAL_CHUNKED_HANDOFF_TEST_SOURCES := tests/test_sim_initial_chunked_handoff.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
+SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET ?= tests/test_sim_initial_exact_frontier_replay
+SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_SOURCES := tests/test_sim_initial_exact_frontier_replay.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET ?= tests/test_sim_initial_cpu_frontier_fast_apply
 SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_SOURCES := tests/test_sim_initial_cpu_frontier_fast_apply.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -467,6 +515,10 @@ build-sim-initial-cuda-merge-test: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 
 build-sim-initial-context-apply-chunk-skip-test: $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET)
 
+build-sim-initial-chunked-handoff-test: $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET)
+
+build-sim-initial-exact-frontier-replay-test: $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET)
+
 build-sim-initial-cpu-frontier-fast-apply-test: $(SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET)
 
 build-sim-frontier-epoch-oracle-test: $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
@@ -533,6 +585,12 @@ $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET): $(SIM_INITIAL_CUDA_MERGE_TEST_SOURCES) si
 
 $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET): $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET): $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET): $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET): $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) tests/sim_frontier_epoch_oracle_helpers.h sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -633,6 +691,12 @@ check-sim-initial-cuda-merge: $(SIM_INITIAL_CUDA_MERGE_TEST_TARGET)
 
 check-sim-initial-context-apply-chunk-skip: $(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET)
 	./$(SIM_INITIAL_CONTEXT_APPLY_CHUNK_SKIP_TEST_TARGET)
+
+check-sim-initial-chunked-handoff: $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET)
+	./$(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET)
+
+check-sim-initial-exact-frontier-replay: $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET)
+	./$(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET)
 
 check-sim-initial-cpu-frontier-fast-apply: $(SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET)
 	./$(SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET)
@@ -807,7 +871,7 @@ check-longtarget-lite-output:
 	bash ./scripts/check_longtarget_lite_output.sh
 
 .PHONY: build build-avx2 build-openmp build-openmp-avx2 \
-		build-cuda build-cuda-avx2 \
+		build-cuda build-cuda-avx2 build-cuda-native-ada check-cuda-native-ada-fatbin \
 		build-fasim build-fasim-cuda \
 		oracle-sample check-sample oracle-smoke check-smoke \
 		check-sample-row check-sample-wavefront check-smoke-row check-smoke-wavefront \
@@ -838,6 +902,9 @@ check-longtarget-lite-output:
 		build-sim-traceback-cuda-batch-test check-sim-traceback-cuda-batch \
 		build-sim-initial-cuda-merge-test check-sim-initial-cuda-merge \
 		build-sim-initial-context-apply-chunk-skip-test check-sim-initial-context-apply-chunk-skip \
+		build-sim-initial-chunked-handoff-test check-sim-initial-chunked-handoff \
+		check-sim-initial-chunked-handoff-matrix \
+		build-sim-initial-exact-frontier-replay-test check-sim-initial-exact-frontier-replay \
 		build-sim-initial-cpu-frontier-fast-apply-test check-sim-initial-cpu-frontier-fast-apply \
 		build-sim-frontier-epoch-oracle-test check-sim-frontier-epoch-oracle \
 		build-sim-frontier-epoch-shadow-test check-sim-frontier-epoch-shadow \
