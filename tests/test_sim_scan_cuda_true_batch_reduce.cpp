@@ -1259,6 +1259,22 @@ int main()
       run_single_initial_reduce(query, target0, queryLength, targetLength, gapOpen, gapExtend, scoreMatrix, eventScoreFloor);
     const SimScanCudaInitialBatchResult expected1 =
       run_single_initial_reduce(query, target1, queryLength, targetLength, gapOpen, gapExtend, scoreMatrix, eventScoreFloor);
+    SimScanCudaBatchResult singleResidencyBatchResult;
+    const SimScanCudaInitialBatchResult singleResidency =
+      run_single_initial_reduce_residency(query,
+                                          target0,
+                                          queryLength,
+                                          targetLength,
+                                          gapOpen,
+                                          gapExtend,
+                                          scoreMatrix,
+                                          eventScoreFloor,
+                                          &singleResidencyBatchResult);
+    ok = expect_true(singleResidency.persistentSafeStoreHandle.valid,
+                     "single residency persistent store valid") && ok;
+    ok = expect_true(singleResidencyBatchResult.
+                       initialAllCandidateReduceKeyBufferEnsureSkips > 0,
+                     "single residency all-candidate reduce key buffer ensure skips recorded") && ok;
     SimScanCudaBatchResult singleHashBatchResult;
     const SimScanCudaInitialBatchResult singleHashResult =
       run_single_initial_reduce_backend("hash",

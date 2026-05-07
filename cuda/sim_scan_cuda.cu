@@ -9319,6 +9319,7 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
                                                                  int finalCandidateCount,
                                                                  int runningMin,
                                                                  int *outCandidateCount,
+                                                                 uint64_t *outReduceKeyBufferEnsureSkips,
                                                                  string *errorOut)
 {
   if(outCandidateCount == NULL)
@@ -9340,10 +9341,6 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
                                   &context->summaryKeysCapacity,
                                   stateCount,
                                   errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
-                                  &context->reducedKeysCapacity,
-                                  stateCount,
-                                  errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
                                   &context->reduceStatesCapacity,
                                   stateCount,
@@ -9358,6 +9355,10 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
                                   errorOut))
   {
     return false;
+  }
+  if(outReduceKeyBufferEnsureSkips != NULL)
+  {
+    *outReduceKeyBufferEnsureSkips += 1;
   }
 
   const int reduceThreads = 256;
@@ -9386,17 +9387,17 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
                                summaryKeysBegin,
                                summaryKeysBegin + summaryCount,
                                reduceStatesBegin);
-    thrust::pair< thrust::device_ptr<uint64_t>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
+    thrust::pair< thrust::discard_iterator<>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
       thrust::reduce_by_key(thrust::device,
                             summaryKeysBegin,
                             summaryKeysBegin + summaryCount,
                             reduceStatesBegin,
-                            thrust::device_pointer_cast(context->reducedKeysDevice),
+                            thrust::make_discard_iterator(),
                             thrust::device_pointer_cast(context->reducedStatesDevice),
                             thrust::equal_to<uint64_t>(),
                             SimScanCudaCandidateReduceMergeOp());
     reducedCandidateCount =
-      static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
+      static_cast<int>(reducedEnds.second - thrust::device_pointer_cast(context->reducedStatesDevice));
   }
   catch(const thrust::system_error &e)
   {
@@ -12784,6 +12785,7 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
                                                            0,
                                                            numeric_limits<int>::min(),
                                                            &allCandidateCount,
+                                                           NULL,
                                                            errorOut))
   {
     return false;
@@ -13927,6 +13929,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestAllCandidateBaseUploadSkips;
   batchResult->initialTrueBatchSingleRequestAllCandidateBasePrefixSkips +=
     requestBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips;
+  batchResult->initialAllCandidateReduceKeyBufferEnsureSkips +=
+    requestBatchResult.initialAllCandidateReduceKeyBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=
@@ -15923,6 +15927,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
   int reducedRunningMin = 0;
   double proposalSelectGpuSeconds = 0.0;
   uint64_t initialProposalDirectTopKSingleStateSkips = 0;
+  uint64_t allCandidateReduceKeyBufferEnsureSkips = 0;
   SimScanCudaInitialReduceReplayStats replayStats;
   if(totalRunSummaries > 0 && !usedProposalOnlinePath)
   {
@@ -16065,6 +16070,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                  reducedCandidateCount,
                                                                  reducedRunningMin,
                                                                  &allCandidateStateCount,
+                                                                 &allCandidateReduceKeyBufferEnsureSkips,
                                                                  errorOut))
         {
           return false;
@@ -16079,6 +16085,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                  0,
                                                                  numeric_limits<int>::min(),
                                                                  &allCandidateStateCount,
+                                                                 &allCandidateReduceKeyBufferEnsureSkips,
                                                                  errorOut))
         {
           return false;
@@ -16211,6 +16218,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
     batchResult->proposalSelectGpuSeconds = proposalSelectGpuSeconds;
     batchResult->initialProposalDirectTopKSingleStateSkips =
       initialProposalDirectTopKSingleStateSkips;
+    batchResult->initialAllCandidateReduceKeyBufferEnsureSkips =
+      allCandidateReduceKeyBufferEnsureSkips;
     batchResult->initialDiagSeconds = initialDiagSeconds;
     batchResult->initialOnlineReduceSeconds = initialOnlineReduceSeconds;
     batchResult->initialWaitSeconds = batchResult->d2hSeconds;
