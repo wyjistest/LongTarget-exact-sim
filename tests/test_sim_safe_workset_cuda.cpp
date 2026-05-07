@@ -509,6 +509,37 @@ int main()
     noSeedSummary.rowMinCols = {1, 1, 1};
     noSeedSummary.rowMaxCols = {2, 2, 2};
 
+    SimScanCudaSafeWindowResult noSeedDenseSafeWindowResult;
+    if (!sim_scan_cuda_select_safe_workset_windows(storeHandle,
+                                                   20,
+                                                   20,
+                                                   static_cast<int>(noSeedSummary.rowStart),
+                                                   std::vector<int>(noSeedSummary.rowMinCols.begin(),
+                                                                    noSeedSummary.rowMinCols.end()),
+                                                   std::vector<int>(noSeedSummary.rowMaxCols.begin(),
+                                                                    noSeedSummary.rowMaxCols.end()),
+                                                   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE,
+                                                   32,
+                                                   &noSeedDenseSafeWindowResult,
+                                                   &error))
+    {
+        std::cerr << "sim_scan_cuda_select_safe_workset_windows(no-seed dense) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    ok = expect_equal_size(noSeedDenseSafeWindowResult.windows.size(),
+                           0,
+                           "no-seed dense safe-window returns no windows") && ok;
+    ok = expect_equal_size(noSeedDenseSafeWindowResult.affectedStartCoords.size(),
+                           0,
+                           "no-seed dense safe-window returns no affected starts") && ok;
+    ok = expect_equal_u64(noSeedDenseSafeWindowResult.affectedCandidateCount,
+                          0,
+                          "no-seed dense safe-window affected candidate count") && ok;
+    ok = expect_equal_u64(noSeedDenseSafeWindowResult.coordBytesD2H,
+                          0,
+                          "no-seed dense safe-window payload d2h bytes skipped") && ok;
+
     SimScanCudaSafeWindowResult noSeedSparseSafeWindowResult;
     if (!sim_scan_cuda_select_safe_workset_windows(storeHandle,
                                                    20,

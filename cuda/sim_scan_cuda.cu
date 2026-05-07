@@ -12546,6 +12546,14 @@ bool sim_scan_cuda_select_safe_workset_windows(const SimCudaPersistentSafeStoreH
     return false;
   }
   outResult->affectedCandidateCount = static_cast<uint64_t>(affectedCandidateCount);
+  if(affectedCandidateCount == 0)
+  {
+    outResult->d2hSeconds =
+      static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - d2hStart).count()) / 1.0e9;
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
 
   vector<int> denseRowMinCols(static_cast<size_t>(rowRangeCount),targetLength + 1);
   vector<int> denseRowMaxCols(static_cast<size_t>(rowRangeCount),0);
