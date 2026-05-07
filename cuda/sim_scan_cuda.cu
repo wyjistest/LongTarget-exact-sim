@@ -13994,6 +13994,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationSliceTempOutputBufferEnsureSkips;
   batchResult->regionPackedAggregationCandidateCountClearSkips +=
     requestBatchResult.regionPackedAggregationCandidateCountClearSkips;
+  batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
   batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
     requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
@@ -24300,14 +24302,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                    &context->batchEventTotalsCapacity,
                                    requestCount,
                                    errorOut) ||
-      !ensure_sim_scan_cuda_buffer(&context->batchRunTotalsDevice,
-                                   &context->batchRunTotalsCapacity,
-                                   requestCount,
-                                   errorOut) ||
-      !ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
-                                   &context->batchCandidateCountsCapacity,
-                                   requestCount,
-                                   errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->batchRunTotalsDevice,
+                                  &context->batchRunTotalsCapacity,
+                                  requestCount,
+                                  errorOut) ||
       !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
                                    &context->batchEventBasesCapacity,
                                    requestCount,
@@ -24571,6 +24569,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   bool candidateOutputBufferEnsured = false;
+  bool candidateCountBufferEnsured = false;
   uint64_t noFilterReservedCopySkips = 0;
   const bool deferNoFilterCandidateCountH2D = orderedFirst.filterStartCoordCount == 0;
   uint64_t noFilterCandidateCountScalarH2DSkips = 0;
@@ -24600,6 +24599,17 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     outResult->runSummaryCount += static_cast<uint64_t>(requestRunCount);
     if(requestRunCount > 0)
     {
+      if(!candidateCountBufferEnsured && orderedFirst.filterStartCoordCount > 0)
+      {
+        if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
+                                        &context->batchCandidateCountsCapacity,
+                                        requestCount,
+                                        errorOut))
+        {
+          return false;
+        }
+        candidateCountBufferEnsured = true;
+      }
       if(!candidateOutputBufferEnsured)
       {
         if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
@@ -24642,6 +24652,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       noFilterCandidateCountScalarH2DSkips;
     batchResult->regionPackedAggregationSliceTempOutputBufferEnsureSkips +=
       sliceTempOutputBufferEnsureSkips;
+    if(orderedFirst.filterStartCoordCount == 0 && !candidateCountBufferEnsured)
+    {
+      batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips += 1;
+    }
   }
 
   if(outResult->runSummaryCount == 0)
@@ -24783,6 +24797,17 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     status = cudaSuccess;
     if(deferNoFilterCandidateCountH2D)
     {
+      if(!candidateCountBufferEnsured)
+      {
+        if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
+                                        &context->batchCandidateCountsCapacity,
+                                        requestCount,
+                                        errorOut))
+        {
+          return false;
+        }
+        candidateCountBufferEnsured = true;
+      }
       status = cudaMemcpy(context->batchCandidateCountsDevice,
                           requestCandidateCounts.data(),
                           requestCount * sizeof(int),
