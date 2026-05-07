@@ -13803,6 +13803,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceCoopOracleDpGpuSecondsShadow;
   batchResult->regionSingleRequestDirectReduceCoopTotalGpuSeconds +=
     requestBatchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds;
+  batchResult->regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips +=
+    requestBatchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips;
   sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(requestBatchResult,batchResult);
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
@@ -22753,6 +22755,8 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
   batchResult->regionSingleRequestDirectReduceHashCapacity =
     max(batchResult->regionSingleRequestDirectReduceHashCapacity,
         directBatchResult.regionSingleRequestDirectReduceHashCapacity);
+  batchResult->regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips +=
+    directBatchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips;
   batchResult->regionSingleRequestDirectReduceCandidateCount +=
     directBatchResult.regionSingleRequestDirectReduceCandidateCount;
   batchResult->regionSingleRequestDirectReduceEventCount +=
@@ -23008,10 +23012,6 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
 
   if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
                                   &context->outputCandidateStatesCapacity,
-                                  filterCount,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
-                                  &context->batchCandidateStatesCapacity,
                                   filterCount,
                                   errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
@@ -23474,11 +23474,27 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
   }
 
+  const bool shouldCompactCandidates = useDeferredCounts || candidateCount > 0;
+  if(shouldCompactCandidates)
+  {
+    if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
+                                    &context->batchCandidateStatesCapacity,
+                                    filterCount,
+                                    errorOut))
+    {
+      return false;
+    }
+  }
+  else if(batchResult != NULL)
+  {
+    batchResult->regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips += 1;
+  }
+
   if(!sim_scan_cuda_record_event(context->regionDirectCompactStartEvent,errorOut))
   {
     return false;
   }
-  if(useDeferredCounts || candidateCount > 0)
+  if(shouldCompactCandidates)
   {
     const int filterBlocks =
       (request.filterStartCoordCount + filterThreads - 1) / filterThreads;

@@ -583,6 +583,54 @@ static bool test_direct_reduce_deferred_counts_handles_zero_candidates()
     return ok;
 }
 
+static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "TTTTTTTT";
+    const int eventScoreFloor = 1000000;
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest request =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "zero direct path used") && true;
+    ok = expect_false(batchResult.usedRegionSingleRequestDirectReduceDeferredCounts,
+                      "zero direct deferred count path not used") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(result.candidateStates.size()),
+                             0,
+                             "zero direct candidate state size") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCandidateCount,
+                             0,
+                             "zero direct candidate count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
+                             1,
+                             "zero direct pipeline request count") && ok;
+    ok = expect_equal_uint64(
+           batchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips,
+           1,
+           "zero direct compact buffer ensure skip") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount,
+                             0,
+                             "zero direct candidate compact launches") && ok;
+    return ok;
+}
+
 static bool test_direct_reduce_shadow_matches_authoritative()
 {
     int scoreMatrix[128][128];
@@ -1384,6 +1432,7 @@ int main()
     ok = test_direct_reduce_pipeline_telemetry_records_deferred_snapshot() && ok;
     ok = test_direct_reduce_deferred_counts_match_authoritative() && ok;
     ok = test_direct_reduce_deferred_counts_handles_zero_candidates() && ok;
+    ok = test_direct_reduce_zero_candidates_skips_compact_buffer_ensure() && ok;
     ok = test_direct_reduce_shadow_matches_authoritative() && ok;
     ok = test_direct_reduce_matches_gapped_event_runs() && ok;
     ok = test_direct_reduce_matches_offset_region() && ok;
