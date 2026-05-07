@@ -1275,6 +1275,9 @@ int main()
     ok = expect_true(singleResidencyBatchResult.
                        initialAllCandidateReduceKeyBufferEnsureSkips > 0,
                      "single residency all-candidate reduce key buffer ensure skips recorded") && ok;
+    ok = expect_true(singleResidencyBatchResult.
+                       initialAllCandidateOutputBufferOverensureSkips > 0,
+                     "single residency all-candidate output buffer overensure skips recorded") && ok;
     SimScanCudaBatchResult singleHashBatchResult;
     const SimScanCudaInitialBatchResult singleHashResult =
       run_single_initial_reduce_backend("hash",

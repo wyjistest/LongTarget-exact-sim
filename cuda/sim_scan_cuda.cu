@@ -9316,11 +9316,12 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
                                                                  const SimScanCudaInitialRunSummary *summariesDevice,
                                                                  int summaryCount,
                                                                  const SimScanCudaCandidateState *finalCandidateStatesDevice,
-                                                                 int finalCandidateCount,
-                                                                 int runningMin,
-                                                                 int *outCandidateCount,
-                                                                 uint64_t *outReduceKeyBufferEnsureSkips,
-                                                                 string *errorOut)
+                                                                  int finalCandidateCount,
+                                                                  int runningMin,
+                                                                  int *outCandidateCount,
+                                                                  uint64_t *outReduceKeyBufferEnsureSkips,
+                                                                  uint64_t *outOutputBufferOverensureSkips,
+                                                                  string *errorOut)
 {
   if(outCandidateCount == NULL)
   {
@@ -9347,10 +9348,6 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
                                   errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->reducedStatesDevice,
                                   &context->reducedStatesCapacity,
-                                  stateCount,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
-                                  &context->outputCandidateStatesCapacity,
                                   stateCount,
                                   errorOut))
   {
@@ -9428,6 +9425,18 @@ static bool sim_scan_prepare_all_candidate_states_from_summaries(SimScanCudaCont
   int outputCandidateCount = 0;
   if(reducedCandidateCount > 0)
   {
+    if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                    &context->outputCandidateStatesCapacity,
+                                    static_cast<size_t>(reducedCandidateCount),
+                                    errorOut))
+    {
+      return false;
+    }
+    if(outOutputBufferOverensureSkips != NULL &&
+       static_cast<size_t>(reducedCandidateCount) < stateCount)
+    {
+      *outOutputBufferOverensureSkips += 1;
+    }
     const int extractThreads = 256;
     const int extractBlocks = (reducedCandidateCount + extractThreads - 1) / extractThreads;
     status = cudaMemset(context->filteredCandidateCountDevice,0,sizeof(int));
@@ -12786,6 +12795,7 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
                                                            numeric_limits<int>::min(),
                                                            &allCandidateCount,
                                                            NULL,
+                                                           NULL,
                                                            errorOut))
   {
     return false;
@@ -13931,6 +13941,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips;
   batchResult->initialAllCandidateReduceKeyBufferEnsureSkips +=
     requestBatchResult.initialAllCandidateReduceKeyBufferEnsureSkips;
+  batchResult->initialAllCandidateOutputBufferOverensureSkips +=
+    requestBatchResult.initialAllCandidateOutputBufferOverensureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=
@@ -15932,6 +15944,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
   double proposalSelectGpuSeconds = 0.0;
   uint64_t initialProposalDirectTopKSingleStateSkips = 0;
   uint64_t allCandidateReduceKeyBufferEnsureSkips = 0;
+  uint64_t allCandidateOutputBufferOverensureSkips = 0;
   SimScanCudaInitialReduceReplayStats replayStats;
   if(totalRunSummaries > 0 && !usedProposalOnlinePath)
   {
@@ -16075,6 +16088,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                  reducedRunningMin,
                                                                  &allCandidateStateCount,
                                                                  &allCandidateReduceKeyBufferEnsureSkips,
+                                                                 &allCandidateOutputBufferOverensureSkips,
                                                                  errorOut))
         {
           return false;
@@ -16090,6 +16104,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                  numeric_limits<int>::min(),
                                                                  &allCandidateStateCount,
                                                                  &allCandidateReduceKeyBufferEnsureSkips,
+                                                                 &allCandidateOutputBufferOverensureSkips,
                                                                  errorOut))
         {
           return false;
@@ -16224,6 +16239,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
       initialProposalDirectTopKSingleStateSkips;
     batchResult->initialAllCandidateReduceKeyBufferEnsureSkips =
       allCandidateReduceKeyBufferEnsureSkips;
+    batchResult->initialAllCandidateOutputBufferOverensureSkips =
+      allCandidateOutputBufferOverensureSkips;
     batchResult->initialDiagSeconds = initialDiagSeconds;
     batchResult->initialOnlineReduceSeconds = initialOnlineReduceSeconds;
     batchResult->initialWaitSeconds = batchResult->d2hSeconds;
