@@ -2958,6 +2958,46 @@ int main()
                          "zero-run proposal batch result 1 persistent store invalid") && ok;
     }
 
+    std::vector<SimScanCudaInitialBatchRequest> zeroRunProposalResidencyRequests =
+      zeroRunProposalRequests;
+    zeroRunProposalResidencyRequests[0].persistAllCandidateStatesOnDevice = true;
+    zeroRunProposalResidencyRequests[1].persistAllCandidateStatesOnDevice = true;
+    std::vector<SimScanCudaInitialBatchResult> zeroRunProposalResidencyTrueBatchResults;
+    SimScanCudaBatchResult zeroRunProposalResidencyTrueBatchResult;
+    if (!sim_scan_cuda_enumerate_initial_events_row_major_true_batch(
+          zeroRunProposalResidencyRequests,
+          &zeroRunProposalResidencyTrueBatchResults,
+          &zeroRunProposalResidencyTrueBatchResult,
+          &error))
+    {
+        std::cerr << "zero-run proposal residency true batch failed: " << error << "\n";
+        return 2;
+    }
+    ok = expect_true(zeroRunProposalResidencyTrueBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run proposal residency batch used device residency path") && ok;
+    ok = expect_equal_uint64(zeroRunProposalResidencyTrueBatchResult.launchCount,
+                             0,
+                             "zero-run proposal residency batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunProposalResidencyTrueBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run proposal residency batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunProposalResidencyTrueBatchResults.size()),
+                             2,
+                             "zero-run proposal residency batch result count") && ok;
+    if (zeroRunProposalResidencyTrueBatchResults.size() == 2)
+    {
+        ok = expect_true(zeroRunProposalResidencyTrueBatchResults[0].persistentSafeStoreHandle.valid,
+                         "zero-run proposal residency batch result 0 persistent store valid") && ok;
+        ok = expect_true(zeroRunProposalResidencyTrueBatchResults[1].persistentSafeStoreHandle.valid,
+                         "zero-run proposal residency batch result 1 persistent store valid") && ok;
+        ok = expect_equal_uint64(zeroRunProposalResidencyTrueBatchResults[0].allCandidateStateCount,
+                                 0,
+                                 "zero-run proposal residency batch result 0 allCandidateStateCount") && ok;
+        ok = expect_equal_uint64(zeroRunProposalResidencyTrueBatchResults[1].allCandidateStateCount,
+                                 0,
+                                 "zero-run proposal residency batch result 1 allCandidateStateCount") && ok;
+    }
+
     SimScanCudaBatchResult proposalBatchResultV2;
     const std::vector<SimScanCudaInitialBatchResult> proposalBatchResultsV2 =
       run_true_batch_initial_proposal_v2(proposalRequests, &proposalBatchResultV2);
@@ -3211,6 +3251,39 @@ int main()
     ok = expect_candidate_states_equal(selectedProposalResidencyStates1,
                                        proposalExpected1,
                                        "single proposal residency 1 persistent store top-k") && ok;
+
+    SimScanCudaBatchResult zeroRunProposalResidencyBatchResult;
+    const SimScanCudaInitialBatchResult zeroRunProposalResidency =
+      run_single_initial_proposal_residency(query,
+                                            target0,
+                                            queryLength,
+                                            targetLength,
+                                            gapOpen,
+                                            gapExtend,
+                                            scoreMatrix,
+                                            zeroRunSummaryEventScoreFloor,
+                                            &zeroRunProposalResidencyBatchResult);
+    ok = expect_true(zeroRunProposalResidencyBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run proposal residency used device residency path") && ok;
+    ok = expect_equal_uint64(zeroRunProposalResidencyBatchResult.launchCount,
+                             0,
+                             "zero-run proposal residency launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunProposalResidencyBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run proposal residency gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(zeroRunProposalResidency.eventCount,
+                             0,
+                             "zero-run proposal residency eventCount") && ok;
+    ok = expect_equal_uint64(zeroRunProposalResidency.runSummaryCount,
+                             0,
+                             "zero-run proposal residency runSummaryCount") && ok;
+    ok = expect_equal_uint64(zeroRunProposalResidency.allCandidateStateCount,
+                             0,
+                             "zero-run proposal residency allCandidateStateCount") && ok;
+    ok = expect_true(zeroRunProposalResidency.candidateStates.empty(),
+                     "zero-run proposal residency candidateStates empty") && ok;
+    ok = expect_true(zeroRunProposalResidency.persistentSafeStoreHandle.valid,
+                     "zero-run proposal residency persistent store valid") && ok;
 
     const SimScanCudaInitialBatchResult singleProposalStreaming0 =
       run_single_initial_proposal_streaming(query,

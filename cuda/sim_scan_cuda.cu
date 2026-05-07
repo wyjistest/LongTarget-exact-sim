@@ -15697,7 +15697,6 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
     ((reduceCandidates && !proposalCandidates) ||
      (proposalCandidates &&
       !reduceCandidates &&
-      outPersistentSafeStoreHandle == NULL &&
       !sim_scan_cuda_initial_proposal_online_runtime() &&
       !sim_scan_cuda_initial_proposal_streaming_runtime()));
   if(skipNoEventInitialRequest)
@@ -15732,7 +15731,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
     {
       batchResult->usedCuda = true;
       batchResult->usedInitialDeviceResidencyPath =
-        reduceCandidates && !proposalCandidates && outPersistentSafeStoreHandle != NULL;
+        (reduceCandidates || proposalCandidates) && outPersistentSafeStoreHandle != NULL;
       batchResult->initialDeviceResidencyRequestCount =
         batchResult->usedInitialDeviceResidencyPath ? 1u : 0u;
       batchResult->taskCount = 1;
@@ -16547,6 +16546,10 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     {
       anyProposalCandidates = true;
       ++proposalRequestCount;
+      if(requests[i].persistAllCandidateStatesOnDevice)
+      {
+        ++deviceResidencyRequestCount;
+      }
     }
     else
     {
@@ -16662,12 +16665,13 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
      (anyReduceCandidates &&
       !anyProposalCandidates) ||
      (anyProposalCandidates &&
-      !anyReduceCandidates &&
-      deviceResidencyRequestCount == 0));
+      !anyReduceCandidates));
   if(skipNoEventInitialBatch)
   {
     outResults->assign(requests.size(),SimScanCudaInitialBatchResult());
-    if(anyReduceCandidates && !anyProposalCandidates && deviceResidencyRequestCount > 0)
+    if(deviceResidencyRequestCount > 0 &&
+       ((anyReduceCandidates && !anyProposalCandidates) ||
+        (anyProposalCandidates && !anyReduceCandidates)))
     {
       int device = 0;
       const cudaError_t deviceStatus = cudaGetDevice(&device);
@@ -16707,7 +16711,9 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       batchResult->usedCuda = true;
       batchResult->usedInitialDirectSummaryPath = true;
       batchResult->usedInitialDeviceResidencyPath =
-        anyReduceCandidates && !anyProposalCandidates && deviceResidencyRequestCount > 0;
+        deviceResidencyRequestCount > 0 &&
+        ((anyReduceCandidates && !anyProposalCandidates) ||
+         (anyProposalCandidates && !anyReduceCandidates));
       batchResult->initialDeviceResidencyRequestCount =
         static_cast<uint64_t>(max(deviceResidencyRequestCount,0));
       batchResult->taskCount = static_cast<uint64_t>(batchSize);
