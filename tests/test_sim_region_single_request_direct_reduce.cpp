@@ -556,6 +556,7 @@ static bool test_direct_reduce_deferred_counts_handles_zero_candidates()
     clear_direct_env();
     setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
     setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
     SimScanCudaRequest request =
       make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
     std::vector<SimScanCudaRequest> requests(1, request);
@@ -578,6 +579,18 @@ static bool test_direct_reduce_deferred_counts_handles_zero_candidates()
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCandidateCount,
                              0,
                              "zero deferred candidate count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineFilterReduceLaunchCount,
+                             0,
+                             "zero deferred filter-reduce launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount,
+                             0,
+                             "zero deferred candidate-prefix launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount,
+                             0,
+                             "zero deferred candidate-compact launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCountSnapshotLaunchCount,
+                             0,
+                             "zero deferred count-snapshot launches") && ok;
     ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
                             "zero deferred candidate-count d2h seconds") && ok;
     return ok;

@@ -21346,8 +21346,13 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
                                                                           SimScanCudaBatchResult *batchResult = NULL,
                                                                           bool recordPipelineTelemetryRequested = false,
                                                                           bool allowFusedDp = false,
-                                                                          bool allowCoopDp = false)
+                                                                          bool allowCoopDp = false,
+                                                                          bool *outZeroRunKnown = NULL)
 {
+  if(outZeroRunKnown != NULL)
+  {
+    *outZeroRunKnown = false;
+  }
   if(context == NULL)
   {
     if(errorOut != NULL)
@@ -21905,6 +21910,10 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
         {
           return false;
         }
+      }
+      if(outZeroRunKnown != NULL)
+      {
+        *outZeroRunKnown = true;
       }
       return true;
     }
@@ -23935,6 +23944,7 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     return false;
   }
 
+  bool directZeroRunKnown = false;
   if(!sim_scan_cuda_execute_region_request_to_reserved_slice_locked(context,
                                                                     request.queryLength,
                                                                     request.targetLength,
@@ -23959,7 +23969,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
                                                                     batchResult,
                                                                     usePipelineTelemetry,
                                                                     allowFusedDp,
-                                                                    allowCoopDp))
+                                                                    allowCoopDp,
+                                                                    &directZeroRunKnown))
   {
     return false;
   }
@@ -23970,12 +23981,23 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
 
   int eventCount = 0;
   int runSummaryCount = 0;
+  int candidateCount = 0;
   double countD2HSeconds = 0.0;
   double eventCountD2HSeconds = 0.0;
   double runCountD2HSeconds = 0.0;
   double candidateCountD2HSeconds = 0.0;
   double d2hSeconds = 0.0;
-  if(!useDeferredCounts)
+  if(useDeferredCounts && directZeroRunKnown)
+  {
+    eventCount = 0;
+    runSummaryCount = 0;
+    candidateCount = 0;
+    if(batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReduceZeroRunEventCountD2HSkips += 1;
+    }
+  }
+  else if(!useDeferredCounts)
   {
     const chrono::steady_clock::time_point countCopyStart = chrono::steady_clock::now();
     const chrono::steady_clock::time_point runCopyStart = chrono::steady_clock::now();
@@ -24046,8 +24068,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       static_cast<uint64_t>(max(runSummaryCount,0));
   }
 
-  int candidateCount = 0;
-  const bool shouldReduceCandidates = useDeferredCounts || runSummaryCount > 0;
+  const bool shouldReduceCandidates =
+    (useDeferredCounts && !directZeroRunKnown) || runSummaryCount > 0;
   const int filterThreads = 256;
   if(shouldReduceCandidates)
   {
@@ -24146,7 +24168,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
   }
 
-  const bool shouldCompactCandidates = useDeferredCounts || candidateCount > 0;
+  const bool shouldCompactCandidates =
+    (useDeferredCounts && !directZeroRunKnown) || candidateCount > 0;
   if(shouldCompactCandidates)
   {
     if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
@@ -24210,7 +24233,7 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
     return false;
   }
-  if(useDeferredCounts)
+  if(useDeferredCounts && !directZeroRunKnown)
   {
     int countSnapshot[3] = {0,0,0};
     const chrono::steady_clock::time_point countCopyStart = chrono::steady_clock::now();
