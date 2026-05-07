@@ -473,7 +473,11 @@ bool sim_scan_cuda_enumerate_events_row_major_batch(const vector<SimScanCudaRequ
                                                             &requestResult.eventCount,
                                                             &requestResult.runSummaryCount,
                                                             &requestBatchResult,
-                                                            errorOut);
+                                                            errorOut,
+                                                            request.persistAllCandidateStatesOnDevice ?
+                                                              &requestResult.persistentSafeStoreHandle :
+                                                              NULL,
+                                                            request.initialSummaryChunkConsumer);
     }
     else if(request.kind == SIM_SCAN_CUDA_REQUEST_REGION)
     {
@@ -600,7 +604,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                       uint64_t *outRunSummaryCount,
                                                       SimScanCudaBatchResult *batchResult,
                                                       string *errorOut,
-                                                      SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle)
+                                                      SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle,
+                                                      SimScanCudaInitialSummaryChunkConsumer initialSummaryChunkConsumer)
 {
   (void)A;
   (void)B;
@@ -612,6 +617,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
   (void)eventScoreFloor;
   (void)reduceCandidates;
   (void)proposalCandidates;
+  (void)initialSummaryChunkConsumer;
   if(outRunSummaries != NULL)
   {
     outRunSummaries->clear();

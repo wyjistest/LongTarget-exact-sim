@@ -14,6 +14,21 @@ rm -f "$STDERR_LOG"
 
 cd "$ROOT_DIR"
 
+unset LONGTARGET_ENABLE_SIM_CUDA_INITIAL_REDUCE
+unset LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND
+unset LONGTARGET_SIM_CUDA_INITIAL_HASH_REDUCE
+unset LONGTARGET_SIM_CUDA_INITIAL_ORDERED_SEGMENTED_V3_SHADOW
+unset LONGTARGET_SIM_CUDA_INITIAL_FRONTIER_TRANSDUCER_SHADOW
+unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF
+unset LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK
+unset LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_RING_SLOTS
+unset LONGTARGET_SIM_CUDA_INITIAL_CHUNK_ROWS
+unset LONGTARGET_SIM_CUDA_INITIAL_RING_SLOTS
+unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_CHUNK_ROWS
+unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_RING_SLOTS
+unset LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_REPLAY
+unset LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H
+
 LONGTARGET_BENCHMARK=1 \
 LONGTARGET_ENABLE_CUDA=1 \
 LONGTARGET_ENABLE_SIM_CUDA=1 \
@@ -34,6 +49,7 @@ grep -Eq '^benchmark\.sim_traceback_tie_rate=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_solver_backend=(cpu|cuda_full_exact|cuda_window_pipeline|mixed)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_backend=(cpu|cuda|mixed)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_reduce_backend=(off|legacy|hash|segmented|ordered_segmented_v3)$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_replay_authority=cpu$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_residency_mode=[01]$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_backend=(cpu|cuda|mixed)$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_locate_backend=(cpu|cuda|mixed)$' "$STDERR_LOG"
@@ -145,7 +161,7 @@ grep -Eq '^benchmark\.sim_locate_total_cells=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_events_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_run_summaries_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_bytes_d2h=[0-9]+$' "$STDERR_LOG"
-grep -Eq '^benchmark\.sim_initial_summary_packed_d2h_enabled=[01]$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_summary_packed_d2h_enabled=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_packed_bytes_d2h=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_unpacked_equivalent_bytes_d2h=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_pack_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
@@ -155,6 +171,28 @@ grep -Eq '^benchmark\.sim_initial_summary_d2h_copy_seconds=[0-9]+(\.[0-9]+)?([eE
 grep -Eq '^benchmark\.sim_initial_summary_unpack_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_result_materialize_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_host_copy_elided_bytes=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_enabled=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_requested=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_active=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_requested_batches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_active_batches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_disabled_reason=not_requested$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_source_ready_mode=none$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_chunks_total=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_slots=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_bytes=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pinned_allocation_failures=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_pageable_fallbacks=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_sync_copies=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_async_copies=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_slot_reuse_waits=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_slots_reused_after_materialize=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_async_d2h_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_d2h_wait_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_cpu_apply_seconds=0(\.0+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_cpu_d2h_overlap_seconds=0(\.0+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_dp_d2h_overlap_seconds=0(\.0+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_handoff_critical_path_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_reduced_candidates_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_all_candidate_states_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_store_bytes_d2h=[0-9]+$' "$STDERR_LOG"
@@ -252,6 +290,26 @@ grep -Eq '^benchmark\.sim_initial_context_apply_chunks_skipped=[0-9]+$' "$STDERR
 grep -Eq '^benchmark\.sim_initial_context_apply_chunks_replayed=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_context_apply_summaries_skipped=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_context_apply_summaries_replayed=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_enabled=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_rows_per_chunk=256$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_rows_per_chunk_source=default$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_chunks_total=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_summaries_replayed=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_ring_slots_configured=3$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_ring_slots=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_ring_slots_source=default$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_pinned_allocation_failures=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_pageable_fallbacks=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_sync_copies=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_cpu_wait_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_critical_path_d2h_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_measured_overlap_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_fallbacks=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_chunked_handoff_fallback_reason=[a-z0-9_]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_replay_enabled=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_replay_requests=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_replay_frontier_states=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_replay_device_safe_stores=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_cpu_frontier_fast_apply_enabled=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_cpu_frontier_fast_apply_attempts=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_cpu_frontier_fast_apply_successes=0$' "$STDERR_LOG"

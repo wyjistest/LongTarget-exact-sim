@@ -300,6 +300,7 @@ struct LongTargetWindowPipelinePreparedBatch
     valid(false),
     usedInitialReduce(false),
     usedInitialProposals(false),
+    usedInitialPinnedAsyncCpuPipeline(false),
     gpuStageNanoseconds(0)
   {
   }
@@ -307,11 +308,13 @@ struct LongTargetWindowPipelinePreparedBatch
   bool valid;
   bool usedInitialReduce;
   bool usedInitialProposals;
+  bool usedInitialPinnedAsyncCpuPipeline;
   uint64_t gpuStageNanoseconds;
   vector<LongTargetWindowPipelineTask> batchTasks;
   string paddedQuery;
   vector<string> paddedTargets;
   vector<SimKernelContext> contexts;
+  vector<SimInitialPinnedAsyncCpuPipelineApplyState> initialCpuPipelineStates;
   vector<SimScanCudaInitialBatchResult> cudaResults;
   SimScanCudaBatchResult cudaBatchResult;
 };
@@ -350,7 +353,24 @@ static inline string longtargetSimInitialReduceBackendLabel()
     return "hash";
   }
 
-  return simCudaMainlineResidencyEnabledRuntime() ? "ordered_segmented_v3" : "legacy";
+  return (simCudaMainlineResidencyEnabledRuntime() ||
+          simCudaInitialExactFrontierReplayEnabledRuntime()) ?
+         "ordered_segmented_v3" : "legacy";
+}
+
+static inline string longtargetSimInitialReplayAuthorityLabel()
+{
+  if(simCudaInitialExactFrontierReplayEnabledRuntime() &&
+     simCudaInitialReduceRequestEnabledRuntime())
+  {
+    return "gpu_real";
+  }
+  if(simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime() ||
+     simCudaInitialFrontierTransducerShadowEnabledRuntime())
+  {
+    return "gpu_shadow";
+  }
+  return "cpu";
 }
 
 static inline size_t longtarget_window_pipeline_batch_size()
@@ -1224,10 +1244,17 @@ static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSeque
   preparedBatch.paddedQuery = ' ' + rnaSequence;
   preparedBatch.paddedTargets.assign(batchSize,string());
   preparedBatch.contexts.reserve(batchSize);
+  preparedBatch.initialCpuPipelineStates.resize(batchSize);
   vector<LongTargetSimScoreMatrixInt> scoreMatrices(batchSize);
   vector<SimScanCudaInitialBatchRequest> cudaRequests(batchSize);
   const bool useInitialProposals = simCudaInitialProposalRequestEnabledRuntime();
   const bool useInitialReduce = simCudaInitialReduceRequestEnabledRuntime();
+  const bool useInitialPinnedAsyncCpuPipeline =
+    !useInitialReduce &&
+    !useInitialProposals &&
+    simCudaInitialChunkedHandoffEnabledRuntime() &&
+    simCudaInitialPinnedAsyncHandoffEnabledRuntime() &&
+    simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime();
 
   for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
   {
@@ -1259,10 +1286,42 @@ static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSeque
     cudaRequest.persistAllCandidateStatesOnDevice =
       simCudaInitialReducePersistOnDeviceRuntime() &&
       !simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime();
+    if(useInitialPinnedAsyncCpuPipeline)
+    {
+      SimKernelContext *pipelineContext = &preparedBatch.contexts.back();
+      SimInitialPinnedAsyncCpuPipelineApplyState *pipelineState =
+        &preparedBatch.initialCpuPipelineStates[batchOffset];
+      cudaRequest.initialSummaryChunkConsumer =
+        [pipelineContext,pipelineState](const SimScanCudaInitialSummaryChunk &chunk)
+        {
+          applySimInitialPinnedAsyncCpuPipelineChunk(chunk.summaries,
+                                                    chunk.batchIndex,
+                                                    chunk.chunkIndex,
+                                                    chunk.summaryBase,
+                                                    static_cast<size_t>(chunk.summaryCount),
+                                                    *pipelineContext,
+                                                    *pipelineState);
+        };
+    }
+  }
+
+  if(useInitialPinnedAsyncCpuPipeline)
+  {
+    const bool maintainSafeStore =
+      simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
+      simCudaProposalLoopEnabledRuntime();
+    for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
+    {
+      beginSimInitialPinnedAsyncCpuPipelineApply(0,
+                                                preparedBatch.contexts[batchOffset],
+                                                maintainSafeStore,
+                                                preparedBatch.initialCpuPipelineStates[batchOffset]);
+    }
   }
 
   preparedBatch.usedInitialReduce = useInitialReduce;
   preparedBatch.usedInitialProposals = useInitialProposals;
+  preparedBatch.usedInitialPinnedAsyncCpuPipeline = useInitialPinnedAsyncCpuPipeline;
   string cudaError;
   if(!(sim_scan_cuda_init(simCudaDeviceRuntime(),&cudaError) &&
        sim_scan_cuda_enumerate_initial_events_row_major_true_batch(cudaRequests,
@@ -1346,6 +1405,16 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryUnpackSeconds),
       simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialSummaryResultMaterializeSeconds),
       preparedBatch.cudaBatchResult.initialSummaryHostCopyElidedBytes);
+    recordSimInitialPinnedAsyncHandoffStats(preparedBatch.cudaBatchResult);
+    if(!preparedBatch.usedInitialReduce &&
+       !preparedBatch.usedInitialProposals &&
+       simCudaInitialChunkedHandoffEnabledRuntime())
+    {
+      recordSimInitialChunkedHandoffTransferNanoseconds(
+        simSecondsToNanoseconds(preparedBatch.cudaBatchResult.d2hSeconds),
+        0,
+        0);
+    }
   }
   recordSimInitialScanBackend(true,
                               preparedBatch.cudaBatchResult.taskCount,
@@ -1394,6 +1463,12 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       if(preparedBatch.usedInitialReduce)
       {
         recordSimInitialReducedCandidates(static_cast<uint64_t>(result.candidateStates.size()));
+        if(simCudaInitialExactFrontierReplayEnabledRuntime())
+        {
+          recordSimInitialExactFrontierReplay(
+            static_cast<uint64_t>(result.candidateStates.size()),
+            result.persistentSafeStoreHandle.valid);
+        }
         runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(result.initialRunSummaries,
                                                            result.candidateStates,
                                                            result.runningMin,
@@ -1423,10 +1498,44 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
          static_cast<uint64_t>(sizeof(SimScanCudaPackedInitialRunSummary16)) :
          static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
       recordSimInitialSummaryBytesD2H(summaryBytesD2H);
-      applySimCudaInitialRunSummariesToContext(result.initialRunSummaries,
-                                               result.eventCount,
-                                               preparedBatch.contexts[batchOffset],
-                                               benchmarkEnabled);
+      if(preparedBatch.usedInitialPinnedAsyncCpuPipeline &&
+         preparedBatch.cudaBatchResult.initialHandoffCpuPipelineActive)
+      {
+        preparedBatch.initialCpuPipelineStates[batchOffset].logicalEventCount =
+          result.eventCount;
+        if(preparedBatch.contexts[batchOffset].statsEnabled &&
+           !preparedBatch.initialCpuPipelineStates[batchOffset].eventsSeenRecorded)
+        {
+          preparedBatch.contexts[batchOffset].stats.eventsSeen += result.eventCount;
+          preparedBatch.initialCpuPipelineStates[batchOffset].eventsSeenRecorded = true;
+        }
+        finalizeSimInitialPinnedAsyncCpuPipelineApply(
+          preparedBatch.contexts[batchOffset],
+          preparedBatch.initialCpuPipelineStates[batchOffset],
+          false);
+        preparedBatch.cudaBatchResult.initialHandoffCpuPipelineChunksFinalized +=
+          preparedBatch.initialCpuPipelineStates[batchOffset].chunksFinalized;
+        preparedBatch.cudaBatchResult.initialHandoffCpuPipelineFinalizeCount +=
+          preparedBatch.initialCpuPipelineStates[batchOffset].finalizeCount;
+        preparedBatch.cudaBatchResult.initialHandoffCpuPipelineOutOfOrderChunks +=
+          preparedBatch.initialCpuPipelineStates[batchOffset].outOfOrderChunks;
+        if(benchmarkEnabled)
+        {
+          recordSimInitialPinnedAsyncCpuPipelineFinalizeStats(
+            preparedBatch.initialCpuPipelineStates[batchOffset]);
+        }
+        finalizeSimCudaInitialRunSummariesToContext(result.initialRunSummaries,
+                                                    preparedBatch.contexts[batchOffset],
+                                                    benchmarkEnabled,
+                                                    true);
+      }
+      else
+      {
+        applySimCudaInitialRunSummariesToContext(result.initialRunSummaries,
+                                                 result.eventCount,
+                                                 preparedBatch.contexts[batchOffset],
+                                                 benchmarkEnabled);
+      }
     }
   }
 
@@ -1640,6 +1749,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   }
   cerr<<"benchmark.sim_initial_backend="<<simInitialBackend<<endl;
   cerr<<"benchmark.sim_initial_reduce_backend="<<longtargetSimInitialReduceBackendLabel()<<endl;
+  cerr<<"benchmark.sim_initial_replay_authority="<<longtargetSimInitialReplayAuthorityLabel()<<endl;
   cerr<<"benchmark.sim_initial_residency_mode="
       <<(simCudaMainlineResidencyEnabledRuntime() ? 1 : 0)
       <<endl;
@@ -2196,6 +2306,11 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simInitialSummaryUnpackSeconds = 0.0;
   double simInitialSummaryResultMaterializeSeconds = 0.0;
   uint64_t simInitialSummaryHostCopyElidedBytes = 0;
+  SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
+  SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
+  uint64_t simInitialExactFrontierReplayRequests = 0;
+  uint64_t simInitialExactFrontierReplayFrontierStates = 0;
+  uint64_t simInitialExactFrontierReplayDeviceSafeStores = 0;
   getSimInitialReductionStats(simInitialEventsTotal,
                               simInitialRunSummariesTotal,
                               simInitialSummaryBytesD2H,
@@ -2217,11 +2332,16 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryUnpackSeconds,
                                            simInitialSummaryResultMaterializeSeconds,
                                            simInitialSummaryHostCopyElidedBytes);
-	  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
+  getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
+  getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
 	                                          simInitialContextApplyChunkReplayedTotal,
 	                                          simInitialContextApplySummarySkippedTotal,
 	                                          simInitialContextApplySummaryReplayedTotal);
+	  getSimInitialChunkedHandoffStats(simInitialChunkedHandoffStats);
+	  getSimInitialExactFrontierReplayStats(simInitialExactFrontierReplayRequests,
+	                                        simInitialExactFrontierReplayFrontierStates,
+	                                        simInitialExactFrontierReplayDeviceSafeStores);
 	  SimInitialCpuFrontierFastApplyTelemetry simInitialCpuFrontierFastApplyTelemetry;
 	  getSimInitialCpuFrontierFastApplyStats(simInitialCpuFrontierFastApplyTelemetry);
 	  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
@@ -2391,6 +2511,84 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSummaryResultMaterializeSeconds<<endl;
   cerr<<"benchmark.sim_initial_summary_host_copy_elided_bytes="
       <<simInitialSummaryHostCopyElidedBytes<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_enabled="
+      <<((simCudaInitialChunkedHandoffEnabledRuntime() &&
+          simCudaInitialPinnedAsyncHandoffEnabledRuntime()) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_requested="
+      <<(simCudaInitialPinnedAsyncHandoffEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_active="
+      <<(simInitialPinnedAsyncHandoffStats.activeCount > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_requested_batches="
+      <<simInitialPinnedAsyncHandoffStats.requestedCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_active_batches="
+      <<simInitialPinnedAsyncHandoffStats.activeCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_async_disabled_reason="
+      <<((simInitialPinnedAsyncHandoffStats.activeCount > 0 &&
+          simInitialPinnedAsyncHandoffStats.requestedCount >
+            simInitialPinnedAsyncHandoffStats.activeCount) ?
+         "mixed" :
+         (simInitialPinnedAsyncHandoffStats.activeCount > 0) ?
+         "none" :
+         simInitialPinnedAsyncHandoffDisabledReasonLabel(
+           simInitialPinnedAsyncHandoffStats.disabledReason))<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_requested="
+      <<(simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_active="
+      <<(simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_disabled_reason="
+      <<((simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount > 0 &&
+          simInitialPinnedAsyncHandoffStats.cpuPipelineRequestedCount >
+            simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount) ?
+         "mixed" :
+         (simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount > 0) ?
+         "none" :
+         simInitialPinnedAsyncCpuPipelineDisabledReasonLabel(
+           simInitialPinnedAsyncHandoffStats.cpuPipelineDisabledReason))<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_chunks_applied="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineChunksApplied<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_summaries_applied="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineSummariesApplied<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_chunks_finalized="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineChunksFinalized<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_finalize_count="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineFinalizeCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_out_of_order_chunks="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineOutOfOrderChunks<<endl;
+  cerr<<"benchmark.sim_initial_handoff_source_ready_mode="
+      <<simInitialPinnedAsyncHandoffSourceReadyModeLabel(
+          simInitialPinnedAsyncHandoffStats.sourceReadyMode)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_chunks_total="
+      <<simInitialPinnedAsyncHandoffStats.chunkCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_slots="
+      <<simInitialPinnedAsyncHandoffStats.pinnedSlots<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_bytes="
+      <<simInitialPinnedAsyncHandoffStats.pinnedBytes<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pinned_allocation_failures="
+      <<simInitialPinnedAsyncHandoffStats.pinnedAllocationFailures<<endl;
+  cerr<<"benchmark.sim_initial_handoff_pageable_fallbacks="
+      <<simInitialPinnedAsyncHandoffStats.pageableFallbacks<<endl;
+  cerr<<"benchmark.sim_initial_handoff_sync_copies="
+      <<simInitialPinnedAsyncHandoffStats.syncCopies<<endl;
+  cerr<<"benchmark.sim_initial_handoff_async_copies="
+      <<simInitialPinnedAsyncHandoffStats.asyncCopies<<endl;
+  cerr<<"benchmark.sim_initial_handoff_slot_reuse_waits="
+      <<simInitialPinnedAsyncHandoffStats.slotReuseWaits<<endl;
+  cerr<<"benchmark.sim_initial_handoff_slots_reused_after_materialize="
+      <<((simInitialPinnedAsyncHandoffStats.activeCount > 0 &&
+          simInitialPinnedAsyncHandoffStats.slotsReusedAfterMaterializeCount ==
+            simInitialPinnedAsyncHandoffStats.activeCount) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_async_d2h_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.asyncD2HNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_d2h_wait_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.d2hWaitNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_apply_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.cpuApplyNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_d2h_overlap_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.cpuD2HOverlapNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_dp_d2h_overlap_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.dpD2HOverlapNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_critical_path_seconds="
+      <<(static_cast<double>(simInitialPinnedAsyncHandoffStats.criticalPathNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_reduced_candidates_total="<<simInitialReducedCandidatesTotal<<endl;
   cerr<<"benchmark.sim_initial_all_candidate_states_total="<<simInitialAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_initial_store_bytes_d2h="<<simInitialStoreBytesD2H<<endl;
@@ -2486,6 +2684,46 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	  cerr<<"benchmark.sim_initial_context_apply_chunks_replayed="<<simInitialContextApplyChunkReplayedTotal<<endl;
 	  cerr<<"benchmark.sim_initial_context_apply_summaries_skipped="<<simInitialContextApplySummarySkippedTotal<<endl;
 	  cerr<<"benchmark.sim_initial_context_apply_summaries_replayed="<<simInitialContextApplySummaryReplayedTotal<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_enabled="
+	      <<(simCudaInitialChunkedHandoffEnabledRuntime() ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_rows_per_chunk="
+	      <<simCudaInitialChunkedHandoffChunkRowsRuntime()<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_rows_per_chunk_source="
+	      <<simCudaInitialChunkedHandoffChunkRowsSourceLabelRuntime()<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_chunks_total="
+	      <<simInitialChunkedHandoffStats.chunkCount<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_summaries_replayed="
+	      <<simInitialChunkedHandoffStats.summariesReplayed<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_ring_slots_configured="
+	      <<simCudaInitialChunkedHandoffRingSlotsRuntime()<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_ring_slots="
+	      <<simInitialChunkedHandoffStats.ringSlots<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_ring_slots_source="
+	      <<simCudaInitialChunkedHandoffRingSlotsSourceLabelRuntime()<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_pinned_allocation_failures="
+	      <<simInitialChunkedHandoffStats.pinnedAllocationFailures<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_pageable_fallbacks="
+	      <<simInitialChunkedHandoffStats.pageableFallbacks<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_sync_copies="
+	      <<simInitialChunkedHandoffStats.syncCopies<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_cpu_wait_seconds="
+	      <<(static_cast<double>(simInitialChunkedHandoffStats.cpuWaitNanoseconds) / 1.0e9)<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_critical_path_d2h_seconds="
+	      <<(static_cast<double>(simInitialChunkedHandoffStats.criticalPathD2HNanoseconds) / 1.0e9)<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_measured_overlap_seconds="
+	      <<(static_cast<double>(simInitialChunkedHandoffStats.measuredOverlapNanoseconds) / 1.0e9)<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_fallbacks="
+	      <<simInitialChunkedHandoffStats.fallbackCount<<endl;
+	  cerr<<"benchmark.sim_initial_chunked_handoff_fallback_reason="
+	      <<simInitialChunkedHandoffFallbackReasonLabel(simInitialChunkedHandoffStats.fallbackReason)<<endl;
+	  cerr<<"benchmark.sim_initial_exact_frontier_replay_enabled="
+	      <<(simCudaInitialExactFrontierReplayEnabledRuntime() ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_initial_exact_frontier_replay_requests="
+	      <<simInitialExactFrontierReplayRequests<<endl;
+	  cerr<<"benchmark.sim_initial_exact_frontier_replay_frontier_states="
+	      <<simInitialExactFrontierReplayFrontierStates<<endl;
+	  cerr<<"benchmark.sim_initial_exact_frontier_replay_device_safe_stores="
+	      <<simInitialExactFrontierReplayDeviceSafeStores<<endl;
 	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_enabled="
 	      <<(simInitialCpuFrontierFastApplyTelemetry.enabledCount > 0 ? 1 : 0)<<endl;
 	  cerr<<"benchmark.sim_initial_cpu_frontier_fast_apply_attempts="
