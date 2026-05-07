@@ -1715,6 +1715,18 @@ int main()
                   << error << "\n";
         return 2;
     }
+    if (!sim_scan_cuda_update_persistent_safe_candidate_state_store(
+            std::vector<SimScanCudaCandidateState>(),
+            refreshSeedStates,
+            static_cast<int>(gatedAggregatedUpdateContext.runningMin),
+            &gatedAggregatedUpdateContext.gpuSafeCandidateStateStore,
+            &error))
+    {
+        std::cerr << "prime frontier cache(gatedAggregatedUpdateContext) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    markSimGpuFrontierCacheSynchronized(gatedAggregatedUpdateContext);
 
     SimPathWorkset aggregatedUpdateWorkset;
     aggregatedUpdateWorkset.hasWorkset = true;
