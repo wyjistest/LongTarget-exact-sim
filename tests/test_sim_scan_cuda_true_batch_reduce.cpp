@@ -1781,6 +1781,41 @@ int main()
                              1,
                              "region aggregated final compact base buffer ensure skips") && ok;
 
+    SimScanCudaRequest noFilterSingleSummaryRequest0 = regionRequest0;
+    noFilterSingleSummaryRequest0.rowStart = 1;
+    noFilterSingleSummaryRequest0.rowEnd = 1;
+    noFilterSingleSummaryRequest0.colStart = 1;
+    noFilterSingleSummaryRequest0.colEnd = 1;
+    noFilterSingleSummaryRequest0.eventScoreFloor = 0;
+    noFilterSingleSummaryRequest0.filterStartCoords = NULL;
+    noFilterSingleSummaryRequest0.filterStartCoordCount = 0;
+    SimScanCudaRequest noFilterSingleSummaryRequest1 = noFilterSingleSummaryRequest0;
+    noFilterSingleSummaryRequest1.rowStart = 2;
+    noFilterSingleSummaryRequest1.rowEnd = 2;
+    noFilterSingleSummaryRequest1.colStart = 2;
+    noFilterSingleSummaryRequest1.colEnd = 2;
+    std::vector<SimScanCudaRequest> noFilterSingleSummaryRequests;
+    noFilterSingleSummaryRequests.push_back(noFilterSingleSummaryRequest0);
+    noFilterSingleSummaryRequests.push_back(noFilterSingleSummaryRequest1);
+    SimScanCudaBatchResult noFilterSingleSummaryBaselineBatchResult;
+    const std::vector<SimScanCudaRequestResult> noFilterSingleSummaryBaselineResults =
+      run_region_batch_reduce_all(noFilterSingleSummaryRequests,
+                                  false,
+                                  &noFilterSingleSummaryBaselineBatchResult);
+    SimScanCudaBatchResult noFilterSingleSummaryAggregatedBatchResult;
+    const SimScanCudaRegionAggregationResult noFilterSingleSummaryAggregatedResult =
+      run_region_aggregated_reduce_all(noFilterSingleSummaryRequests,
+                                       &noFilterSingleSummaryAggregatedBatchResult);
+    const std::vector<SimScanCudaCandidateState> expectedNoFilterSingleSummaryStates =
+      aggregate_region_candidate_states_host(noFilterSingleSummaryBaselineResults);
+    ok = expect_candidate_states_equal(noFilterSingleSummaryAggregatedResult.candidateStates,
+                                       expectedNoFilterSingleSummaryStates,
+                                       "region aggregated no-filter single-summary candidateStates") && ok;
+    ok = expect_equal_uint64(noFilterSingleSummaryAggregatedBatchResult.
+                               regionPackedAggregationSingleSummaryRequestReduceSkips,
+                             2,
+                             "region aggregated no-filter single-summary request reduce skips") && ok;
+
     SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
     zeroRunRegionRequest0.eventScoreFloor = 1000000;
     SimScanCudaRequest zeroRunRegionRequest1 = zeroRunRegionRequest0;

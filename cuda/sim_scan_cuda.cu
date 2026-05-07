@@ -7773,6 +7773,17 @@ __global__ void sim_scan_init_candidate_reduce_states_from_summaries_kernel(cons
                                                            reduceStates[idx]);
 }
 
+__global__ void sim_scan_copy_single_summary_to_candidate_state_kernel(
+  const SimScanCudaInitialRunSummary *summaries,
+  SimScanCudaCandidateState *candidateStates)
+{
+  if(threadIdx.x != 0 || blockIdx.x != 0)
+  {
+    return;
+  }
+  initSimScanCudaCandidateStateFromInitialRunSummary(summaries[0],candidateStates[0]);
+}
+
 __global__ void sim_scan_init_frontier_epoch_reduce_states_from_summaries_kernel(
   const SimScanCudaInitialRunSummary *summaries,
   const uint64_t *summaryEpochIds,
@@ -14018,6 +14029,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationFilterReservedCopySkips;
   batchResult->regionPackedAggregationSingleCandidateFinalReduceSkips +=
     requestBatchResult.regionPackedAggregationSingleCandidateFinalReduceSkips;
+  batchResult->regionPackedAggregationSingleSummaryRequestReduceSkips +=
+    requestBatchResult.regionPackedAggregationSingleSummaryRequestReduceSkips;
   batchResult->regionPackedAggregationSingleRequestFinalReduceSkips +=
     requestBatchResult.regionPackedAggregationSingleRequestFinalReduceSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
@@ -22319,10 +22332,64 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
                                                                                     int *outHostKnownCandidateCount = NULL,
                                                                                     bool deferNoFilterCandidateCountH2D = false,
                                                                                     uint64_t *outNoFilterCandidateCountScalarH2DSkips = NULL,
-                                                                                    uint64_t *outSliceTempOutputBufferEnsureSkips = NULL)
+                                                                                    uint64_t *outSliceTempOutputBufferEnsureSkips = NULL,
+                                                                                    uint64_t *outSingleSummaryRequestReduceSkips = NULL)
 {
   if(context == NULL || summaryCount <= 0)
   {
+    return true;
+  }
+
+  if(summaryCount == 1 && filterStartCoordCount == 0)
+  {
+    if(deferNoFilterCandidateCountH2D)
+    {
+      if(outNoFilterCandidateCountScalarH2DSkips != NULL)
+      {
+        *outNoFilterCandidateCountScalarH2DSkips += 1;
+      }
+    }
+    else
+    {
+      const int outputCandidateCount = 1;
+      cudaError_t countStatus =
+        cudaMemcpy(context->batchCandidateCountsDevice + requestIndex,
+                   &outputCandidateCount,
+                   sizeof(int),
+                   cudaMemcpyHostToDevice);
+      if(countStatus != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(countStatus);
+        }
+        return false;
+      }
+    }
+    if(outNoFilterReservedCopySkips != NULL)
+    {
+      *outNoFilterReservedCopySkips += 1;
+    }
+    if(outHostKnownCandidateCount != NULL)
+    {
+      *outHostKnownCandidateCount = 1;
+    }
+    if(outSingleSummaryRequestReduceSkips != NULL)
+    {
+      *outSingleSummaryRequestReduceSkips += 1;
+    }
+    sim_scan_copy_single_summary_to_candidate_state_kernel<<<1, 1>>>(
+      context->initialRunSummariesDevice + static_cast<size_t>(summaryBase),
+      context->batchCandidateStatesDevice + static_cast<ptrdiff_t>(reservedOutputBase));
+    const cudaError_t status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
     return true;
   }
 
@@ -24640,6 +24707,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   const bool deferNoFilterCandidateCountH2D = orderedFirst.filterStartCoordCount == 0;
   uint64_t noFilterCandidateCountScalarH2DSkips = 0;
   uint64_t sliceTempOutputBufferEnsureSkips = 0;
+  uint64_t singleSummaryRequestReduceSkips = 0;
   for(size_t i = 0; i < requests.size(); ++i)
   {
     const int requestCapacity = requestCandidateCapacities[i];
@@ -24699,7 +24767,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                   &requestCandidateCounts[i],
                                                                                   deferNoFilterCandidateCountH2D,
                                                                                   &noFilterCandidateCountScalarH2DSkips,
-                                                                                  &sliceTempOutputBufferEnsureSkips))
+                                                                                  &sliceTempOutputBufferEnsureSkips,
+                                                                                  &singleSummaryRequestReduceSkips))
       {
         return false;
       }
@@ -24718,6 +24787,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       noFilterCandidateCountScalarH2DSkips;
     batchResult->regionPackedAggregationSliceTempOutputBufferEnsureSkips +=
       sliceTempOutputBufferEnsureSkips;
+    batchResult->regionPackedAggregationSingleSummaryRequestReduceSkips +=
+      singleSummaryRequestReduceSkips;
     if(orderedFirst.filterStartCoordCount == 0 && !candidateCountBufferEnsured)
     {
       batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips += 1;
