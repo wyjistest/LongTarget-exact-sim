@@ -13424,6 +13424,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestPrefixSkips;
   batchResult->initialTrueBatchSingleRequestInputPackSkips +=
     requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
+  batchResult->initialTrueBatchSingleRequestCountCopySkips +=
+    requestBatchResult.initialTrueBatchSingleRequestCountCopySkips;
   batchResult->usedInitialPinnedAsyncHandoff =
     batchResult->usedInitialPinnedAsyncHandoff ||
     requestBatchResult.usedInitialPinnedAsyncHandoff;
@@ -16838,6 +16840,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   uint64_t initialSummaryHostCopyElisionBaseCopyReuses = 0;
   uint64_t initialSummaryHostCopyElisionRunCountCopySkips = 0;
   uint64_t initialSummaryHostCopyElisionEventCountCopySkips = 0;
+  uint64_t initialTrueBatchSingleRequestCountCopySkips = 0;
   uint64_t initialSummaryPackedBytesD2H = 0;
   uint64_t initialSummaryUnpackedEquivalentBytesD2H = 0;
   uint64_t initialSummaryPackedD2HFallbacks = 0;
@@ -17258,10 +17261,14 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   }
 
   const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
-  if(useInitialSummaryHostCopyElision && batchSize == 1)
+  if(batchSize == 1)
   {
     totalEventsPerTask[0] = totalEvents;
-    initialSummaryHostCopyElisionEventCountCopySkips = 1;
+    initialTrueBatchSingleRequestCountCopySkips += 1;
+    if(useInitialSummaryHostCopyElision)
+    {
+      initialSummaryHostCopyElisionEventCountCopySkips = 1;
+    }
   }
   else
   {
@@ -17283,6 +17290,15 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   {
     totalRunsPerTask = hostCopyElisionRunCounts;
     initialSummaryHostCopyElisionCountCopyReuses = 1;
+    if(batchSize == 1)
+    {
+      initialTrueBatchSingleRequestCountCopySkips += 1;
+    }
+  }
+  else if(batchSize == 1)
+  {
+    totalRunsPerTask[0] = totalRunSummaries;
+    initialTrueBatchSingleRequestCountCopySkips += 1;
   }
   else
   {
@@ -17652,6 +17668,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestPrefixSkips;
     batchResult->initialTrueBatchSingleRequestInputPackSkips =
       initialTrueBatchSingleRequestInputPackSkips;
+    batchResult->initialTrueBatchSingleRequestCountCopySkips =
+      initialTrueBatchSingleRequestCountCopySkips;
     batchResult->initialHandoffPinnedAsyncRequested =
       requestInitialPinnedAsyncHandoff;
     batchResult->initialHandoffPinnedAsyncActive =
