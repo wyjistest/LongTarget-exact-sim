@@ -180,6 +180,65 @@ int main()
     const std::string query1 = " ACGT";
     const std::string target1 = " AGGT";
 
+    std::vector<unsigned char> singleInsertOnlyOps;
+    std::vector<unsigned char> singleDeleteOnlyOps;
+    SimTracebackCudaResult singleInsertOnlyResult;
+    SimTracebackCudaResult singleDeleteOnlyResult;
+    error.clear();
+    if (!sim_traceback_cuda_traceback_global_affine(emptyQuery.c_str(),
+                                                    insertOnlyTarget.c_str(),
+                                                    static_cast<int>(emptyQuery.size()) - 1,
+                                                    static_cast<int>(insertOnlyTarget.size()) - 1,
+                                                    10,
+                                                    -10,
+                                                    10,
+                                                    10,
+                                                    1,
+                                                    NULL,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    &singleInsertOnlyOps,
+                                                    &singleInsertOnlyResult,
+                                                    &error))
+    {
+        std::cerr << "single insert-only request failed: " << error << "\n";
+        return 2;
+    }
+    error.clear();
+    if (!sim_traceback_cuda_traceback_global_affine(deleteOnlyQuery.c_str(),
+                                                    emptyTarget.c_str(),
+                                                    static_cast<int>(deleteOnlyQuery.size()) - 1,
+                                                    static_cast<int>(emptyTarget.size()) - 1,
+                                                    10,
+                                                    -10,
+                                                    10,
+                                                    10,
+                                                    1,
+                                                    NULL,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    &singleDeleteOnlyOps,
+                                                    &singleDeleteOnlyResult,
+                                                    &error))
+    {
+        std::cerr << "single delete-only request failed: " << error << "\n";
+        return 2;
+    }
+    ok = expect_equal_bool(singleInsertOnlyResult.usedCuda,
+                           false,
+                           "single insert-only usedCuda skipped") && ok;
+    ok = expect_equal_bool(singleDeleteOnlyResult.usedCuda,
+                           false,
+                           "single delete-only usedCuda skipped") && ok;
+    ok = expect_ops_equal(singleInsertOnlyOps,
+                          expectedInsertOnlyOps,
+                          "single insert-only ops") && ok;
+    ok = expect_ops_equal(singleDeleteOnlyOps,
+                          expectedDeleteOnlyOps,
+                          "single delete-only ops") && ok;
+
     std::vector<unsigned char> singleOps0;
     std::vector<unsigned char> singleOps1;
     SimTracebackCudaResult singleResult0;

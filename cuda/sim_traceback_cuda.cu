@@ -1323,6 +1323,22 @@ bool sim_traceback_cuda_traceback_global_affine(const char *A,
     if(errorOut != NULL) *errorOut = "invalid gap penalties";
     return false;
   }
+  if(queryLength == 0 || targetLength == 0)
+  {
+    if(targetLength > 0)
+    {
+      outOpsReversed->assign(static_cast<size_t>(targetLength),static_cast<unsigned char>(1));
+    }
+    else
+    {
+      outOpsReversed->assign(static_cast<size_t>(queryLength),static_cast<unsigned char>(2));
+    }
+    if(errorOut != NULL)
+    {
+      errorOut->clear();
+    }
+    return true;
+  }
   if(blockedWords == NULL || blockedWordCount <= 0)
   {
     blockedWords = NULL;
