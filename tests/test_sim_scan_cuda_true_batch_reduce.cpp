@@ -1152,6 +1152,10 @@ int main()
            freshProposalV3BatchResult.initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips,
            1,
            "fresh single proposal V3 all-candidate count buffer ensure skip") && ok;
+    ok = expect_equal_uint64(
+           freshProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3StateCountUploadSkips,
+           1,
+           "fresh single proposal V3 state-count upload skip") && ok;
     if (freshProposalV3Results.size() == 1)
     {
         ok = expect_proposal_result_equal(freshProposalV3Results[0],
@@ -2229,6 +2233,10 @@ int main()
            singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips,
            1,
            "single proposal V3 state-base upload skip") && ok;
+    ok = expect_equal_uint64(
+           singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3StateCountUploadSkips,
+           1,
+           "single proposal V3 state-count upload skip") && ok;
     ok = expect_equal_uint64(
            singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
            1,

@@ -1447,6 +1447,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips);
     recordSimInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips);
+    recordSimInitialTrueBatchSingleRequestProposalV3StateCountUploadSkips(
+      preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestProposalV3StateCountUploadSkips);
     recordSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips);
     recordSimInitialTrueBatchSingleRequestProposalV3SelectedCompactSkips(
@@ -2378,6 +2380,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialProposalV3SingleStateSelectorSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips = 0;
+  uint64_t simInitialTrueBatchSingleRequestProposalV3StateCountUploadSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3SelectedCompactSkips = 0;
   uint64_t simInitialTrueBatchEventBaseMaterializeSkips = 0;
@@ -2441,6 +2444,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips);
   getSimInitialTrueBatchSingleRequestProposalV3StateBaseUploadStats(
     simInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips);
+  getSimInitialTrueBatchSingleRequestProposalV3StateCountUploadStats(
+    simInitialTrueBatchSingleRequestProposalV3StateCountUploadSkips);
   getSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadStats(
     simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips);
   getSimInitialTrueBatchSingleRequestProposalV3SelectedCompactStats(
@@ -2670,6 +2675,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_proposal_v3_state_base_upload_skips="
       <<simInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips<<endl;
+  cerr<<"benchmark.sim_initial_true_batch_single_request_proposal_v3_state_count_upload_skips="
+      <<simInitialTrueBatchSingleRequestProposalV3StateCountUploadSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_proposal_v3_selected_base_upload_skips="
       <<simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_proposal_v3_selected_compact_skips="
