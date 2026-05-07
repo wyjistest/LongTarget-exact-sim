@@ -1413,6 +1413,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestPrefixSkips);
     recordSimInitialTrueBatchSingleRequestInputPackSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestInputPackSkips);
+    recordSimInitialTrueBatchSingleRequestTargetBufferSkips(
+      preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestTargetBufferSkips);
     recordSimInitialTrueBatchSingleRequestEventScoreFloorUploadSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips);
     recordSimInitialTrueBatchSingleRequestCountCopySkips(
@@ -2332,6 +2334,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialSummaryHostCopyElisionEventCountCopySkips = 0;
   uint64_t simInitialTrueBatchSingleRequestPrefixSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestInputPackSkips = 0;
+  uint64_t simInitialTrueBatchSingleRequestTargetBufferSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestEventScoreFloorUploadSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestCountCopySkips = 0;
   uint64_t simInitialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
@@ -2370,6 +2373,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryHostCopyElisionEventCountCopySkips);
   getSimInitialTrueBatchSingleRequestPrefixStats(simInitialTrueBatchSingleRequestPrefixSkips);
   getSimInitialTrueBatchSingleRequestInputPackStats(simInitialTrueBatchSingleRequestInputPackSkips);
+  getSimInitialTrueBatchSingleRequestTargetBufferStats(
+    simInitialTrueBatchSingleRequestTargetBufferSkips);
   getSimInitialTrueBatchSingleRequestEventScoreFloorUploadStats(
     simInitialTrueBatchSingleRequestEventScoreFloorUploadSkips);
   getSimInitialTrueBatchSingleRequestCountCopyStats(simInitialTrueBatchSingleRequestCountCopySkips);
@@ -2570,6 +2575,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialTrueBatchSingleRequestPrefixSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_input_pack_skips="
       <<simInitialTrueBatchSingleRequestInputPackSkips<<endl;
+  cerr<<"benchmark.sim_initial_true_batch_single_request_target_buffer_skips="
+      <<simInitialTrueBatchSingleRequestTargetBufferSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_event_score_floor_upload_skips="
       <<simInitialTrueBatchSingleRequestEventScoreFloorUploadSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_count_copy_skips="

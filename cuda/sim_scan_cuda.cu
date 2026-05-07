@@ -13431,6 +13431,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestPrefixSkips;
   batchResult->initialTrueBatchSingleRequestInputPackSkips +=
     requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
+  batchResult->initialTrueBatchSingleRequestTargetBufferSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestTargetBufferSkips;
   batchResult->initialTrueBatchSingleRequestEventScoreFloorUploadSkips +=
     requestBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips;
   batchResult->initialTrueBatchSingleRequestCountCopySkips +=
@@ -15852,19 +15854,17 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
   const bool initialChunkedHandoffRequested =
     sim_scan_cuda_initial_chunked_handoff_runtime();
+  const bool skipSingleRequestTargetBuffer = batchSize == 1;
   const bool skipSingleRequestEventScoreFloorUpload = batchSize == 1;
   const bool skipSingleRequestRunBaseBufferEnsure =
     batchSize == 1 && !anyCandidateExtraction && !requestInitialPinnedAsyncHandoff;
   const int singleEventScoreFloor =
     skipSingleRequestEventScoreFloorUpload ? first.eventScoreFloor : 0;
+  uint64_t initialTrueBatchSingleRequestTargetBufferSkips = 0;
   uint64_t initialTrueBatchSingleRequestEventScoreFloorUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
 
-  if(!ensure_sim_scan_cuda_buffer(&context->batchBDevice,
-                                  &context->batchBCapacityBytes,
-                                  packedBChars,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchHScoreDevice,
+  if(!ensure_sim_scan_cuda_buffer(&context->batchHScoreDevice,
                                   &context->batchHScoreCapacityCells,
                                   batchMatrixCells,
                                   errorOut) ||
@@ -15892,6 +15892,17 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                                   &context->batchRunTotalsCapacity,
                                   static_cast<size_t>(batchSize),
                                   errorOut))
+  {
+    return false;
+  }
+  if(skipSingleRequestTargetBuffer)
+  {
+    initialTrueBatchSingleRequestTargetBufferSkips += 1;
+  }
+  else if(!ensure_sim_scan_cuda_buffer(&context->batchBDevice,
+                                       &context->batchBCapacityBytes,
+                                       packedBChars,
+                                       errorOut))
   {
     return false;
   }
@@ -15938,7 +15949,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   uint64_t initialTrueBatchSingleRequestInputPackSkips = 0;
   if(batchSize == 1)
   {
-    status = cudaMemcpy(context->batchBDevice,
+    status = cudaMemcpy(context->BDevice,
                         first.B,
                         targetBytesPerRequest,
                         cudaMemcpyHostToDevice);
@@ -16046,7 +16057,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     sim_scan_diag_true_batch_kernel<<<dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(batchSize)),
                                       threadsPerBlock>>>(
       context->ADevice,
-      context->batchBDevice,
+      skipSingleRequestTargetBuffer ? context->BDevice : context->batchBDevice,
       batchSize,
       N + 1,
       M,
@@ -17702,6 +17713,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestPrefixSkips;
     batchResult->initialTrueBatchSingleRequestInputPackSkips =
       initialTrueBatchSingleRequestInputPackSkips;
+    batchResult->initialTrueBatchSingleRequestTargetBufferSkips =
+      initialTrueBatchSingleRequestTargetBufferSkips;
     batchResult->initialTrueBatchSingleRequestEventScoreFloorUploadSkips =
       initialTrueBatchSingleRequestEventScoreFloorUploadSkips;
     batchResult->initialTrueBatchSingleRequestCountCopySkips =

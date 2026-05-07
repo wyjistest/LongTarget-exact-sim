@@ -6093,6 +6093,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialTrueBatchSingleRequestTargetBufferSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialTrueBatchSingleRequestEventScoreFloorUploadSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7525,6 +7531,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                                 std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialTrueBatchSingleRequestTargetBufferSkips(uint64_t targetBufferSkips)
+					{
+					  simInitialTrueBatchSingleRequestTargetBufferSkipCount().fetch_add(targetBufferSkips,
+					                                                                   std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialTrueBatchSingleRequestEventScoreFloorUploadSkips(uint64_t eventScoreFloorUploadSkips)
 					{
 					  simInitialTrueBatchSingleRequestEventScoreFloorUploadSkipCount().fetch_add(eventScoreFloorUploadSkips,
@@ -8738,6 +8750,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  inputPackSkips =
 					    simInitialTrueBatchSingleRequestInputPackSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialTrueBatchSingleRequestTargetBufferStats(uint64_t &targetBufferSkips)
+					{
+					  targetBufferSkips =
+					    simInitialTrueBatchSingleRequestTargetBufferSkipCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialTrueBatchSingleRequestEventScoreFloorUploadStats(uint64_t &eventScoreFloorUploadSkips)
@@ -13699,6 +13717,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 				            cudaBatchResult.initialTrueBatchSingleRequestPrefixSkips);
 				          recordSimInitialTrueBatchSingleRequestInputPackSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestInputPackSkips);
+				          recordSimInitialTrueBatchSingleRequestTargetBufferSkips(
+				            cudaBatchResult.initialTrueBatchSingleRequestTargetBufferSkips);
 				          recordSimInitialTrueBatchSingleRequestEventScoreFloorUploadSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips);
 				          recordSimInitialTrueBatchSingleRequestCountCopySkips(

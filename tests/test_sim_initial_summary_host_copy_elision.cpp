@@ -284,6 +284,9 @@ int main()
     ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestInputPackSkips,
                              2,
                              "default single-request input pack skips") && ok;
+    ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestTargetBufferSkips,
+                             1,
+                             "default single-request target buffer skip") && ok;
     ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
                              1,
                              "default single-request event-score-floor upload skip") && ok;
@@ -319,6 +322,9 @@ int main()
     ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestInputPackSkips,
                              2,
                              "direct single-request input pack skips") && ok;
+    ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestTargetBufferSkips,
+                             1,
+                             "direct single-request target buffer skip") && ok;
     ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
                              1,
                              "direct single-request event-score-floor upload skip") && ok;
@@ -356,6 +362,9 @@ int main()
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestInputPackSkips,
                              2,
                              "packed direct single-request input pack skips") && ok;
+    ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestTargetBufferSkips,
+                             1,
+                             "packed direct single-request target buffer skip") && ok;
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
                              1,
                              "packed direct single-request event-score-floor upload skip") && ok;
@@ -379,6 +388,9 @@ int main()
     ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
                              0,
                              "reduce single-request no true-batch event-score-floor upload skip") && ok;
+    ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestTargetBufferSkips,
+                             0,
+                             "reduce single-request no true-batch target buffer skip") && ok;
     ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
                              0,
                              "reduce single-request no run-base materialize skip") && ok;
@@ -437,6 +449,9 @@ int main()
     ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestInputPackSkips,
                              0,
                              "direct true-batch no single-request input pack skips") && ok;
+    ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestTargetBufferSkips,
+                             0,
+                             "direct true-batch no single-request target buffer skip") && ok;
     ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
                              0,
                              "direct true-batch no single-request event-score-floor upload skip") && ok;
@@ -474,6 +489,9 @@ int main()
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestInputPackSkips,
                              0,
                              "packed direct true-batch no single-request input pack skips") && ok;
+    ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestTargetBufferSkips,
+                             0,
+                             "packed direct true-batch no single-request target buffer skip") && ok;
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
                              0,
                              "packed direct true-batch no single-request event-score-floor upload skip") && ok;
