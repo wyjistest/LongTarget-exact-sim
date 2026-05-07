@@ -1935,6 +1935,34 @@ int main()
     ok = expect_true(singleStateProposalBatchResult.proposalSelectGpuSeconds == 0.0,
                      "single-state proposal skips selector gpu work") && ok;
 
+    SimScanCudaInitialBatchRequest singleStateProposalRequest;
+    singleStateProposalRequest.A = singleStateQuery;
+    singleStateProposalRequest.B = singleStateTarget;
+    singleStateProposalRequest.queryLength = 1;
+    singleStateProposalRequest.targetLength = 1;
+    singleStateProposalRequest.gapOpen = gapOpen;
+    singleStateProposalRequest.gapExtend = gapExtend;
+    singleStateProposalRequest.scoreMatrix = scoreMatrix;
+    singleStateProposalRequest.eventScoreFloor = 4;
+    singleStateProposalRequest.proposalCandidates = true;
+    std::vector<SimScanCudaInitialBatchRequest> singleStateProposalV2Requests;
+    singleStateProposalV2Requests.push_back(singleStateProposalRequest);
+    SimScanCudaBatchResult singleStateProposalV2BatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> singleStateProposalV2Results =
+      run_true_batch_initial_proposal_v2(singleStateProposalV2Requests,
+                                         &singleStateProposalV2BatchResult);
+    ok = expect_equal_uint64(static_cast<uint64_t>(singleStateProposalV2Results.size()),
+                             1,
+                             "single-state proposal V2 result count") && ok;
+    ok = expect_equal_uint64(singleStateProposalV2BatchResult.initialProposalLogicalCandidateCount,
+                             1,
+                             "single-state proposal V2 logical candidate count") && ok;
+    ok = expect_equal_uint64(singleStateProposalV2BatchResult.initialProposalDirectTopKSingleStateSkips,
+                             1,
+                             "single-state proposal V2 direct-topK single-state skip") && ok;
+    ok = expect_true(singleStateProposalV2BatchResult.initialProposalDirectTopKGpuSeconds == 0.0,
+                     "single-state proposal V2 skips selector gpu work") && ok;
+
     SimScanCudaInitialBatchRequest proposalRequest1 = proposalRequest0;
     proposalRequest1.B = target1;
 

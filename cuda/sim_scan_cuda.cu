@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -2021,6 +2022,7 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_from_device_loc
                                                                                     int maxProposalCount,
                                                                                     vector<SimScanCudaCandidateState> *outSelectedStates,
                                                                                     double *outGpuSeconds,
+                                                                                    uint64_t *outSingleStateSkips,
                                                                                     string *errorOut)
 {
   if(outSelectedStates == NULL)
@@ -2036,6 +2038,10 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_from_device_loc
   {
     *outGpuSeconds = 0.0;
   }
+  if(outSingleStateSkips != NULL)
+  {
+    *outSingleStateSkips = 0;
+  }
   if(context == NULL || statesDevice == NULL || stateCount <= 0 || maxProposalCount <= 0)
   {
     clear_sim_scan_cuda_error(errorOut);
@@ -2043,6 +2049,33 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_from_device_loc
   }
 
   const int clampedProposalCount = min(maxProposalCount, sim_scan_cuda_max_candidates);
+  if(stateCount == 1)
+  {
+    outSelectedStates->resize(1);
+    const char *candidateAddress =
+      reinterpret_cast<const char *>(statesDevice) +
+      offsetof(SimScanCudaCandidateReduceState,candidate);
+    const cudaError_t status = cudaMemcpy(outSelectedStates->data(),
+                                          candidateAddress,
+                                          sizeof(SimScanCudaCandidateState),
+                                          cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      outSelectedStates->clear();
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(outSingleStateSkips != NULL)
+    {
+      *outSingleStateSkips = 1;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   cudaError_t status = cudaEventRecord(context->startEvent);
   if(status != cudaSuccess)
   {
@@ -17767,6 +17800,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                                                                                   sim_scan_cuda_max_candidates,
                                                                                   &proposalStates,
                                                                                   &requestProposalGpuSeconds,
+                                                                                  &requestProposalSingleStateSkips,
                                                                                   errorOut) :
           sim_scan_select_top_disjoint_candidate_states_from_device_locked(context,
                                                                            context->outputCandidateStatesDevice + allCandidateCursor,
