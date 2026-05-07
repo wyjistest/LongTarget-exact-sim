@@ -1417,6 +1417,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestTargetBufferSkips);
     recordSimInitialTrueBatchSingleRequestMatrixBufferSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips);
+    recordSimInitialTrueBatchSingleRequestMetadataBufferSkips(
+      preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips);
     recordSimInitialTrueBatchSingleRequestEventScoreFloorUploadSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips);
     recordSimInitialTrueBatchSingleRequestCountCopySkips(
@@ -2338,6 +2340,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialTrueBatchSingleRequestInputPackSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestTargetBufferSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestMatrixBufferSkips = 0;
+  uint64_t simInitialTrueBatchSingleRequestMetadataBufferSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestEventScoreFloorUploadSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestCountCopySkips = 0;
   uint64_t simInitialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
@@ -2380,6 +2383,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialTrueBatchSingleRequestTargetBufferSkips);
   getSimInitialTrueBatchSingleRequestMatrixBufferStats(
     simInitialTrueBatchSingleRequestMatrixBufferSkips);
+  getSimInitialTrueBatchSingleRequestMetadataBufferStats(
+    simInitialTrueBatchSingleRequestMetadataBufferSkips);
   getSimInitialTrueBatchSingleRequestEventScoreFloorUploadStats(
     simInitialTrueBatchSingleRequestEventScoreFloorUploadSkips);
   getSimInitialTrueBatchSingleRequestCountCopyStats(simInitialTrueBatchSingleRequestCountCopySkips);
@@ -2584,6 +2589,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialTrueBatchSingleRequestTargetBufferSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_matrix_buffer_skips="
       <<simInitialTrueBatchSingleRequestMatrixBufferSkips<<endl;
+  cerr<<"benchmark.sim_initial_true_batch_single_request_metadata_buffer_skips="
+      <<simInitialTrueBatchSingleRequestMetadataBufferSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_event_score_floor_upload_skips="
       <<simInitialTrueBatchSingleRequestEventScoreFloorUploadSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_count_copy_skips="
