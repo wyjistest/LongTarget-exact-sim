@@ -1355,6 +1355,12 @@ int main()
     ok = expect_equal_uint64(singleHashBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
                              1,
                              "single hash backend run-base materialize skip") && ok;
+    ok = expect_equal_uint64(singleHashBatchResult.initialTrueBatchSingleRequestAllCandidateBaseBufferEnsureSkips,
+                             1,
+                             "single hash backend all-candidate base buffer ensure skip") && ok;
+    ok = expect_equal_uint64(singleHashBatchResult.initialTrueBatchSingleRequestAllCandidateBaseUploadSkips,
+                             1,
+                             "single hash backend all-candidate base upload skip") && ok;
     ok = expect_reduce_result_equal(singleHashResult,
                                     hashReduceBatchResults[0],
                                     "single hash backend equals batch hash result 0") && ok;
