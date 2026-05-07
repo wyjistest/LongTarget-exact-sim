@@ -171,6 +171,7 @@ grep -Eq '^benchmark\.sim_initial_summary_d2h_copy_seconds=[0-9]+(\.[0-9]+)?([eE
 grep -Eq '^benchmark\.sim_initial_summary_unpack_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_result_materialize_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_summary_host_copy_elided_bytes=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_summary_host_copy_elision_count_copy_reuses=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_enabled=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_requested=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_active=0$' "$STDERR_LOG"
