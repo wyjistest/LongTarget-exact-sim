@@ -16,6 +16,7 @@
 #include <thrust/functional.h>
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
+#include <thrust/iterator/discard_iterator.h>
 #include <thrust/reduce.h>
 #include <thrust/scan.h>
 #include <thrust/sort.h>
@@ -14060,6 +14061,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationSingleRequestFinalReduceSkips;
   batchResult->regionPackedAggregationAlreadyPackedFinalCompactSkips +=
     requestBatchResult.regionPackedAggregationAlreadyPackedFinalCompactSkips;
+  batchResult->regionPackedAggregationFinalReduceKeyBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationFinalReduceKeyBufferEnsureSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -24998,10 +25001,6 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                     &context->summaryKeysCapacity,
                                     static_cast<size_t>(packedCandidateCountInt),
                                     errorOut) ||
-       !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
-                                    &context->reducedKeysCapacity,
-                                    static_cast<size_t>(packedCandidateCountInt),
-                                    errorOut) ||
        !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
                                     &context->reduceStatesCapacity,
                                     static_cast<size_t>(packedCandidateCountInt),
@@ -25012,6 +25011,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                     errorOut))
     {
       return false;
+    }
+    if(batchResult != NULL)
+    {
+      batchResult->regionPackedAggregationFinalReduceKeyBufferEnsureSkips += 1;
     }
 
     if(!alreadyPackedFinalCandidates)
@@ -25121,17 +25124,17 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                  summaryKeysBegin,
                                  summaryKeysBegin + packedCandidateCountInt,
                                  reduceStatesBegin);
-      thrust::pair< thrust::device_ptr<uint64_t>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
+      thrust::pair< thrust::discard_iterator<>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
         thrust::reduce_by_key(thrust::device,
                               summaryKeysBegin,
                               summaryKeysBegin + packedCandidateCountInt,
                               reduceStatesBegin,
-                              thrust::device_pointer_cast(context->reducedKeysDevice),
+                              thrust::make_discard_iterator(),
                               thrust::device_pointer_cast(context->reducedStatesDevice),
                               thrust::equal_to<uint64_t>(),
                               SimScanCudaCandidateReduceMergeOp());
       reducedCandidateCount =
-        static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
+        static_cast<int>(reducedEnds.second - thrust::device_pointer_cast(context->reducedStatesDevice));
     }
     catch(const thrust::system_error &e)
     {
