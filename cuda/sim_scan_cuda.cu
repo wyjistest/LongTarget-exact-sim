@@ -15683,15 +15683,20 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
     }
     return false;
   }
-  if(reduceCandidates &&
-     !proposalCandidates &&
-     outPersistentSafeStoreHandle == NULL &&
-     sim_scan_cuda_request_shape_has_no_possible_events(queryLength,
-                                                        targetLength,
-                                                        scoreMatrix,
-                                                        gapOpen,
-                                                        gapExtend,
-                                                        eventScoreFloor))
+  const bool skipNoEventInitialRequest =
+    outPersistentSafeStoreHandle == NULL &&
+    sim_scan_cuda_request_shape_has_no_possible_events(queryLength,
+                                                       targetLength,
+                                                       scoreMatrix,
+                                                       gapOpen,
+                                                       gapExtend,
+                                                       eventScoreFloor) &&
+    ((reduceCandidates && !proposalCandidates) ||
+     (proposalCandidates &&
+      !reduceCandidates &&
+      !sim_scan_cuda_initial_proposal_online_runtime() &&
+      !sim_scan_cuda_initial_proposal_streaming_runtime()));
+  if(skipNoEventInitialRequest)
   {
     if(batchResult != NULL)
     {

@@ -1359,6 +1359,42 @@ int main()
     ok = expect_equal_double(zeroRunInitialBatchResult.gpuSeconds,
                              0.0,
                              "zero-run initial legacy gpu seconds skipped") && ok;
+    SimScanCudaBatchResult zeroRunInitialProposalBatchResult;
+    const SimScanCudaInitialBatchResult zeroRunInitialProposal =
+      run_single_initial_proposal(query,
+                                  target0,
+                                  queryLength,
+                                  targetLength,
+                                  gapOpen,
+                                  gapExtend,
+                                  scoreMatrix,
+                                  zeroRunInitialEventScoreFloor,
+                                  &zeroRunInitialProposalBatchResult);
+    ok = expect_equal_uint64(zeroRunInitialProposal.eventCount,
+                             0,
+                             "zero-run initial proposal eventCount") && ok;
+    ok = expect_equal_uint64(zeroRunInitialProposal.runSummaryCount,
+                             0,
+                             "zero-run initial proposal runSummaryCount") && ok;
+    ok = expect_true(zeroRunInitialProposal.candidateStates.empty(),
+                     "zero-run initial proposal candidateStates empty") && ok;
+    ok = expect_true(zeroRunInitialProposal.allCandidateStates.empty(),
+                     "zero-run initial proposal allCandidateStates empty") && ok;
+    ok = expect_true(!zeroRunInitialProposal.persistentSafeStoreHandle.valid,
+                     "zero-run initial proposal persistent store invalid") && ok;
+    ok = expect_true(zeroRunInitialProposalBatchResult.usedCuda,
+                     "zero-run initial proposal usedCuda") && ok;
+    ok = expect_true(!zeroRunInitialProposalBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run initial proposal no residency path") && ok;
+    ok = expect_equal_uint64(zeroRunInitialProposalBatchResult.taskCount,
+                             1,
+                             "zero-run initial proposal taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunInitialProposalBatchResult.launchCount,
+                             0,
+                             "zero-run initial proposal launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunInitialProposalBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run initial proposal gpu seconds skipped") && ok;
     SimScanCudaBatchResult singleResidencyBatchResult;
     const SimScanCudaInitialBatchResult singleResidency =
       run_single_initial_reduce_residency(query,
