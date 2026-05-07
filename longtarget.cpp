@@ -300,6 +300,7 @@ struct LongTargetWindowPipelinePreparedBatch
     valid(false),
     usedInitialReduce(false),
     usedInitialProposals(false),
+    usedInitialPinnedAsyncCpuPipeline(false),
     gpuStageNanoseconds(0)
   {
   }
@@ -307,11 +308,13 @@ struct LongTargetWindowPipelinePreparedBatch
   bool valid;
   bool usedInitialReduce;
   bool usedInitialProposals;
+  bool usedInitialPinnedAsyncCpuPipeline;
   uint64_t gpuStageNanoseconds;
   vector<LongTargetWindowPipelineTask> batchTasks;
   string paddedQuery;
   vector<string> paddedTargets;
   vector<SimKernelContext> contexts;
+  vector<SimInitialPinnedAsyncCpuPipelineApplyState> initialCpuPipelineStates;
   vector<SimScanCudaInitialBatchResult> cudaResults;
   SimScanCudaBatchResult cudaBatchResult;
 };
@@ -1241,10 +1244,17 @@ static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSeque
   preparedBatch.paddedQuery = ' ' + rnaSequence;
   preparedBatch.paddedTargets.assign(batchSize,string());
   preparedBatch.contexts.reserve(batchSize);
+  preparedBatch.initialCpuPipelineStates.resize(batchSize);
   vector<LongTargetSimScoreMatrixInt> scoreMatrices(batchSize);
   vector<SimScanCudaInitialBatchRequest> cudaRequests(batchSize);
   const bool useInitialProposals = simCudaInitialProposalRequestEnabledRuntime();
   const bool useInitialReduce = simCudaInitialReduceRequestEnabledRuntime();
+  const bool useInitialPinnedAsyncCpuPipeline =
+    !useInitialReduce &&
+    !useInitialProposals &&
+    simCudaInitialChunkedHandoffEnabledRuntime() &&
+    simCudaInitialPinnedAsyncHandoffEnabledRuntime() &&
+    simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime();
 
   for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
   {
@@ -1276,10 +1286,42 @@ static inline bool longtarget_prepare_window_pipeline_batch_gpu(string &rnaSeque
     cudaRequest.persistAllCandidateStatesOnDevice =
       simCudaInitialReducePersistOnDeviceRuntime() &&
       !simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime();
+    if(useInitialPinnedAsyncCpuPipeline)
+    {
+      SimKernelContext *pipelineContext = &preparedBatch.contexts.back();
+      SimInitialPinnedAsyncCpuPipelineApplyState *pipelineState =
+        &preparedBatch.initialCpuPipelineStates[batchOffset];
+      cudaRequest.initialSummaryChunkConsumer =
+        [pipelineContext,pipelineState](const SimScanCudaInitialSummaryChunk &chunk)
+        {
+          applySimInitialPinnedAsyncCpuPipelineChunk(chunk.summaries,
+                                                    chunk.batchIndex,
+                                                    chunk.chunkIndex,
+                                                    chunk.summaryBase,
+                                                    static_cast<size_t>(chunk.summaryCount),
+                                                    *pipelineContext,
+                                                    *pipelineState);
+        };
+    }
+  }
+
+  if(useInitialPinnedAsyncCpuPipeline)
+  {
+    const bool maintainSafeStore =
+      simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
+      simCudaProposalLoopEnabledRuntime();
+    for(size_t batchOffset = 0; batchOffset < batchSize; ++batchOffset)
+    {
+      beginSimInitialPinnedAsyncCpuPipelineApply(0,
+                                                preparedBatch.contexts[batchOffset],
+                                                maintainSafeStore,
+                                                preparedBatch.initialCpuPipelineStates[batchOffset]);
+    }
   }
 
   preparedBatch.usedInitialReduce = useInitialReduce;
   preparedBatch.usedInitialProposals = useInitialProposals;
+  preparedBatch.usedInitialPinnedAsyncCpuPipeline = useInitialPinnedAsyncCpuPipeline;
   string cudaError;
   if(!(sim_scan_cuda_init(simCudaDeviceRuntime(),&cudaError) &&
        sim_scan_cuda_enumerate_initial_events_row_major_true_batch(cudaRequests,
@@ -1456,10 +1498,44 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
          static_cast<uint64_t>(sizeof(SimScanCudaPackedInitialRunSummary16)) :
          static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)));
       recordSimInitialSummaryBytesD2H(summaryBytesD2H);
-      applySimCudaInitialRunSummariesToContext(result.initialRunSummaries,
-                                               result.eventCount,
-                                               preparedBatch.contexts[batchOffset],
-                                               benchmarkEnabled);
+      if(preparedBatch.usedInitialPinnedAsyncCpuPipeline &&
+         preparedBatch.cudaBatchResult.initialHandoffCpuPipelineActive)
+      {
+        preparedBatch.initialCpuPipelineStates[batchOffset].logicalEventCount =
+          result.eventCount;
+        if(preparedBatch.contexts[batchOffset].statsEnabled &&
+           !preparedBatch.initialCpuPipelineStates[batchOffset].eventsSeenRecorded)
+        {
+          preparedBatch.contexts[batchOffset].stats.eventsSeen += result.eventCount;
+          preparedBatch.initialCpuPipelineStates[batchOffset].eventsSeenRecorded = true;
+        }
+        finalizeSimInitialPinnedAsyncCpuPipelineApply(
+          preparedBatch.contexts[batchOffset],
+          preparedBatch.initialCpuPipelineStates[batchOffset],
+          false);
+        preparedBatch.cudaBatchResult.initialHandoffCpuPipelineChunksFinalized +=
+          preparedBatch.initialCpuPipelineStates[batchOffset].chunksFinalized;
+        preparedBatch.cudaBatchResult.initialHandoffCpuPipelineFinalizeCount +=
+          preparedBatch.initialCpuPipelineStates[batchOffset].finalizeCount;
+        preparedBatch.cudaBatchResult.initialHandoffCpuPipelineOutOfOrderChunks +=
+          preparedBatch.initialCpuPipelineStates[batchOffset].outOfOrderChunks;
+        if(benchmarkEnabled)
+        {
+          recordSimInitialPinnedAsyncCpuPipelineFinalizeStats(
+            preparedBatch.initialCpuPipelineStates[batchOffset]);
+        }
+        finalizeSimCudaInitialRunSummariesToContext(result.initialRunSummaries,
+                                                    preparedBatch.contexts[batchOffset],
+                                                    benchmarkEnabled,
+                                                    true);
+      }
+      else
+      {
+        applySimCudaInitialRunSummariesToContext(result.initialRunSummaries,
+                                                 result.eventCount,
+                                                 preparedBatch.contexts[batchOffset],
+                                                 benchmarkEnabled);
+      }
     }
   }
 
@@ -2455,6 +2531,29 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
          "none" :
          simInitialPinnedAsyncHandoffDisabledReasonLabel(
            simInitialPinnedAsyncHandoffStats.disabledReason))<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_requested="
+      <<(simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_active="
+      <<(simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_disabled_reason="
+      <<((simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount > 0 &&
+          simInitialPinnedAsyncHandoffStats.cpuPipelineRequestedCount >
+            simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount) ?
+         "mixed" :
+         (simInitialPinnedAsyncHandoffStats.cpuPipelineActiveCount > 0) ?
+         "none" :
+         simInitialPinnedAsyncCpuPipelineDisabledReasonLabel(
+           simInitialPinnedAsyncHandoffStats.cpuPipelineDisabledReason))<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_chunks_applied="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineChunksApplied<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_summaries_applied="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineSummariesApplied<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_chunks_finalized="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineChunksFinalized<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_finalize_count="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineFinalizeCount<<endl;
+  cerr<<"benchmark.sim_initial_handoff_cpu_pipeline_out_of_order_chunks="
+      <<simInitialPinnedAsyncHandoffStats.cpuPipelineOutOfOrderChunks<<endl;
   cerr<<"benchmark.sim_initial_handoff_source_ready_mode="
       <<simInitialPinnedAsyncHandoffSourceReadyModeLabel(
           simInitialPinnedAsyncHandoffStats.sourceReadyMode)<<endl;

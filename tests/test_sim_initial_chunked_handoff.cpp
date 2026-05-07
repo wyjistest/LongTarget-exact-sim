@@ -178,10 +178,13 @@ int main()
 
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE");
     ok = expect_false(simCudaInitialChunkedHandoffEnabledRuntime(),
                       "chunked handoff default disabled") && ok;
     ok = expect_false(simCudaInitialPinnedAsyncHandoffEnabledRuntime(),
                       "pinned async handoff default disabled") && ok;
+    ok = expect_false(simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime(),
+                      "pinned async CPU pipeline default disabled") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffChunkRowsRuntime(), 256,
                           "chunked handoff default rows") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffRingSlotsRuntime(), 3,
@@ -189,12 +192,15 @@ int main()
 
     setenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF", "1", 1);
     setenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE", "1", 1);
     setenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK", "2", 1);
     setenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_RING_SLOTS", "4", 1);
     ok = expect_true(simCudaInitialChunkedHandoffEnabledRuntime(),
                      "chunked handoff opt-in enabled") && ok;
     ok = expect_true(simCudaInitialPinnedAsyncHandoffEnabledRuntime(),
                      "pinned async handoff opt-in enabled") && ok;
+    ok = expect_true(simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime(),
+                     "pinned async CPU pipeline opt-in enabled") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffChunkRowsRuntime(), 2,
                           "chunked handoff env rows") && ok;
     ok = expect_equal_int(simCudaInitialChunkedHandoffRingSlotsRuntime(), 4,
@@ -294,8 +300,107 @@ int main()
                           static_cast<int>(SIM_INITIAL_CHUNKED_HANDOFF_FALLBACK_NONE),
                           "streaming fallback reason") && ok;
 
+    SimKernelContext pipeline(4096, 4096);
+    initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, pipeline);
+    SimInitialPinnedAsyncCpuPipelineApplyState pipelineState;
+    beginSimInitialPinnedAsyncCpuPipelineApply(
+        static_cast<uint64_t>(summaries.size()),
+        pipeline,
+        true,
+        pipelineState);
+    applySimInitialPinnedAsyncCpuPipelineChunk(
+        summaries.data(),
+        0,
+        0,
+        0,
+        0,
+        pipeline,
+        pipelineState);
+    ok = expect_equal_int(static_cast<int>(pipeline.runningMin),
+                          0,
+                          "pipeline empty chunk does not refresh runningMin") && ok;
+    const size_t firstChunkCount = std::min<size_t>(2, summaries.size());
+    applySimInitialPinnedAsyncCpuPipelineChunk(
+        summaries.data(),
+        0,
+        1,
+        0,
+        firstChunkCount,
+        pipeline,
+        pipelineState);
+    ok = expect_equal_int(static_cast<int>(pipeline.runningMin),
+                          0,
+                          "pipeline chunk apply defers runningMin refresh") && ok;
+    ok = expect_true(pipeline.safeCandidateStateStore.valid,
+                     "pipeline chunk initializes safe-store") && ok;
+    const size_t safeStoreBeforeFinalize = pipeline.safeCandidateStateStore.states.size();
+    ok = expect_true(safeStoreBeforeFinalize > 0,
+                     "pipeline chunk upserts safe-store before finalize") && ok;
+    if (firstChunkCount < summaries.size())
+    {
+        applySimInitialPinnedAsyncCpuPipelineChunk(
+            summaries.data() + firstChunkCount,
+            0,
+            2,
+            firstChunkCount,
+            summaries.size() - firstChunkCount,
+            pipeline,
+            pipelineState);
+    }
+    finalizeSimInitialPinnedAsyncCpuPipelineApply(pipeline,
+                                                  pipelineState,
+                                                  true);
+    ok = expect_candidates_equal(pipeline, baseline, "pipeline candidates") && ok;
+    ok = expect_equal_int(static_cast<int>(pipeline.runningMin),
+                          static_cast<int>(baseline.runningMin),
+                          "pipeline final runningMin") && ok;
+    ok = expect_safe_store_equal(pipeline.safeCandidateStateStore,
+                                 baseline.safeCandidateStateStore,
+                                 "pipeline final safe-store") && ok;
+    ok = expect_equal_uint64(pipelineState.chunksApplied,
+                             summaries.size() > firstChunkCount ? 3 : 2,
+                             "pipeline chunks applied counts empty chunk") && ok;
+    ok = expect_equal_uint64(pipelineState.summariesApplied,
+                             static_cast<uint64_t>(summaries.size()),
+                             "pipeline summaries applied") && ok;
+    ok = expect_equal_uint64(pipelineState.outOfOrderChunks,
+                             0,
+                             "pipeline chunks applied in canonical order") && ok;
+
+    SimKernelContext outOfOrderPipeline(4096, 4096);
+    initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, outOfOrderPipeline);
+    SimInitialPinnedAsyncCpuPipelineApplyState outOfOrderState;
+    beginSimInitialPinnedAsyncCpuPipelineApply(
+        0,
+        outOfOrderPipeline,
+        false,
+        outOfOrderState);
+    applySimInitialPinnedAsyncCpuPipelineChunk(
+        summaries.data(),
+        0,
+        1,
+        0,
+        firstChunkCount,
+        outOfOrderPipeline,
+        outOfOrderState);
+    ok = expect_equal_uint64(outOfOrderState.outOfOrderChunks,
+                             0,
+                             "pipeline allows empty chunk id gaps") && ok;
+    applySimInitialPinnedAsyncCpuPipelineChunk(
+        summaries.data(),
+        0,
+        0,
+        0,
+        firstChunkCount,
+        outOfOrderPipeline,
+        outOfOrderState);
+    ok = expect_equal_uint64(outOfOrderState.outOfOrderChunks,
+                             1,
+                             "pipeline detects out-of-order chunk apply") && ok;
+
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_CHUNK_ROWS");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_RING_SLOTS");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK");

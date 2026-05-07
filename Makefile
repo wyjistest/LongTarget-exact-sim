@@ -276,6 +276,86 @@ check-sim-initial-pinned-async-handoff-fallback:
 	grep -Eq '^benchmark\.sim_initial_handoff_sync_copies=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff_forced_fallback/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_async_copies=0$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff_forced_fallback/stderr.log
 
+check-sim-initial-pinned-async-cpu-pipeline:
+	$(MAKE) build-cuda
+	LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK=1 \
+	LONGTARGET_ENABLE_SIM_CUDA=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_REGION=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 \
+	EXPECTED_SIM_INITIAL_BACKEND=cuda \
+	EXPECTED_SIM_REGION_BACKEND=cuda \
+	EXPECTED_SIM_LOCATE_MODE=safe_workset \
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline \
+	TARGET=$(CURDIR)/$(CUDA_TARGET) \
+	./scripts/run_sample_exactness_cuda.sh
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_requested=1$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_active=1$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_disabled_reason=none$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_chunks_applied=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_summaries_applied=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_chunks_finalized=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	awk -F= '/^benchmark\.sim_initial_handoff_cpu_pipeline_chunks_applied=/{applied=$$2} /^benchmark\.sim_initial_handoff_cpu_pipeline_chunks_finalized=/{finalized=$$2} END{exit !(applied > 0 && finalized == applied)}' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_finalize_count=48$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_out_of_order_chunks=0$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_async_copies=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_sync_copies=0$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_pageable_fallbacks=0$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_apply_seconds=([1-9][0-9]*(\.[0-9]+)?|0\.[0-9]*[1-9][0-9]*)([eE][-+]?[0-9]+)?$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_d2h_overlap_seconds=([1-9][0-9]*(\.[0-9]+)?|0\.[0-9]*[1-9][0-9]*)([eE][-+]?[0-9]+)?$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_source_ready_mode=global_stop_event$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_dp_d2h_overlap_seconds=0(\.0+)?$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE=1 \
+	LONGTARGET_ENABLE_SIM_CUDA=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_REGION=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 \
+	EXPECTED_SIM_INITIAL_BACKEND=cuda \
+	EXPECTED_SIM_REGION_BACKEND=cuda \
+	EXPECTED_SIM_LOCATE_MODE=safe_workset \
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_cpu_pipeline_pinned_async_off \
+	TARGET=$(CURDIR)/$(CUDA_TARGET) \
+	./scripts/run_sample_exactness_cuda.sh
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_requested=1$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_pinned_async_off/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_active=0$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_pinned_async_off/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_disabled_reason=pinned_async_off$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_pinned_async_off/stderr.log
+	LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_REPLAY=1 \
+	LONGTARGET_ENABLE_SIM_CUDA=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_REGION=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 \
+	EXPECTED_SIM_INITIAL_BACKEND=cuda \
+	EXPECTED_SIM_REGION_BACKEND=cuda \
+	EXPECTED_SIM_LOCATE_MODE=safe_workset \
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_cpu_pipeline_exact_replay \
+	TARGET=$(CURDIR)/$(CUDA_TARGET) \
+	./scripts/run_sample_exactness_cuda.sh
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_requested=1$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_exact_replay/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_active=0$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_exact_replay/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_disabled_reason=unsupported_path$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_exact_replay/stderr.log
+	LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE=1 \
+	LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_FORCE_ALLOC_FAIL=1 \
+	LONGTARGET_ENABLE_SIM_CUDA=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_REGION=1 \
+	LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 \
+	EXPECTED_SIM_INITIAL_BACKEND=cuda \
+	EXPECTED_SIM_REGION_BACKEND=cuda \
+	EXPECTED_SIM_LOCATE_MODE=safe_workset \
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_cpu_pipeline_forced_fallback \
+	TARGET=$(CURDIR)/$(CUDA_TARGET) \
+	./scripts/run_sample_exactness_cuda.sh
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_requested=1$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_forced_fallback/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_active=0$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_forced_fallback/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_async_copies=0$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_forced_fallback/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_d2h_overlap_seconds=0(\.0+)?$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_forced_fallback/stderr.log
+	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_finalize_count=0$$' .tmp/sample_exactness_cuda_sim_region_locate_cpu_pipeline_forced_fallback/stderr.log
+
 oracle-smoke: $(TARGET)
 	RULE=1 EXPECTED_DIR=$(CURDIR)/tests/oracle_rule1 OUTPUT_SUBDIR=sample_exactness_rule1 ./scripts/run_sample_exactness.sh --generate-oracle
 

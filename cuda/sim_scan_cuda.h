@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -262,6 +263,27 @@ struct SimScanCudaCandidateState
   int left;
   int right;
 };
+
+struct SimScanCudaInitialSummaryChunk
+{
+  SimScanCudaInitialSummaryChunk():
+    batchIndex(0),
+    chunkIndex(0),
+    summaryBase(0),
+    summaryCount(0),
+    summaries(NULL)
+  {
+  }
+
+  int batchIndex;
+  uint64_t chunkIndex;
+  uint64_t summaryBase;
+  uint64_t summaryCount;
+  const SimScanCudaInitialRunSummary *summaries;
+};
+
+typedef std::function<void(const SimScanCudaInitialSummaryChunk &)>
+  SimScanCudaInitialSummaryChunkConsumer;
 
 LONGTARGET_SIM_SCAN_HOST_DEVICE uint64_t simScanCudaCandidateStateStartCoord(const SimScanCudaCandidateState &candidate)
 {
@@ -556,7 +578,8 @@ struct SimScanCudaRequest
     filterStartCoordCount(0),
     seedCandidates(NULL),
     seedCandidateCount(0),
-    seedRunningMin(0)
+    seedRunningMin(0),
+    initialSummaryChunkConsumer()
   {
   }
 
@@ -586,6 +609,7 @@ struct SimScanCudaRequest
   const SimScanCudaCandidateState *seedCandidates;
   int seedCandidateCount;
   int seedRunningMin;
+  SimScanCudaInitialSummaryChunkConsumer initialSummaryChunkConsumer;
 };
 
 struct SimScanCudaRequestResult
@@ -660,7 +684,8 @@ struct SimScanCudaInitialBatchRequest
     persistAllCandidateStatesOnDevice(false),
     seedCandidates(NULL),
     seedCandidateCount(0),
-    seedRunningMin(0)
+    seedRunningMin(0),
+    initialSummaryChunkConsumer()
   {
   }
 
@@ -678,6 +703,7 @@ struct SimScanCudaInitialBatchRequest
   const SimScanCudaCandidateState *seedCandidates;
   int seedCandidateCount;
   int seedRunningMin;
+  SimScanCudaInitialSummaryChunkConsumer initialSummaryChunkConsumer;
 };
 
 struct SimScanCudaInitialBatchResult
@@ -710,6 +736,18 @@ enum SimScanCudaInitialPinnedAsyncSourceReadyMode
 {
   SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE = 0,
   SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_GLOBAL_STOP_EVENT = 1
+};
+
+enum SimScanCudaInitialPinnedAsyncCpuPipelineDisabledReason
+{
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED = 0,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NONE = 1,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_PINNED_ASYNC_OFF = 2,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_CHUNKED_HANDOFF_OFF = 3,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_UNSUPPORTED_PATH = 4,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NO_SUMMARIES = 5,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NO_CHUNKS = 6,
+  SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_PINNED_ASYNC_FALLBACK = 7
 };
 
 struct SimScanCudaBatchResult
@@ -875,6 +913,15 @@ struct SimScanCudaBatchResult
     initialHandoffPinnedAsyncActive(false),
     initialHandoffPinnedAsyncDisabledReason(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED),
     initialHandoffPinnedAsyncSourceReadyMode(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE),
+    initialHandoffCpuPipelineRequested(false),
+    initialHandoffCpuPipelineActive(false),
+    initialHandoffCpuPipelineDisabledReason(
+      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED),
+    initialHandoffCpuPipelineChunksApplied(0),
+    initialHandoffCpuPipelineSummariesApplied(0),
+    initialHandoffCpuPipelineChunksFinalized(0),
+    initialHandoffCpuPipelineFinalizeCount(0),
+    initialHandoffCpuPipelineOutOfOrderChunks(0),
     initialHandoffChunksTotal(0),
     initialHandoffPinnedSlots(0),
     initialHandoffPinnedBytes(0),
@@ -1051,6 +1098,14 @@ struct SimScanCudaBatchResult
   bool initialHandoffPinnedAsyncActive;
   SimScanCudaInitialPinnedAsyncDisabledReason initialHandoffPinnedAsyncDisabledReason;
   SimScanCudaInitialPinnedAsyncSourceReadyMode initialHandoffPinnedAsyncSourceReadyMode;
+  bool initialHandoffCpuPipelineRequested;
+  bool initialHandoffCpuPipelineActive;
+  SimScanCudaInitialPinnedAsyncCpuPipelineDisabledReason initialHandoffCpuPipelineDisabledReason;
+  uint64_t initialHandoffCpuPipelineChunksApplied;
+  uint64_t initialHandoffCpuPipelineSummariesApplied;
+  uint64_t initialHandoffCpuPipelineChunksFinalized;
+  uint64_t initialHandoffCpuPipelineFinalizeCount;
+  uint64_t initialHandoffCpuPipelineOutOfOrderChunks;
   uint64_t initialHandoffChunksTotal;
   uint64_t initialHandoffPinnedSlots;
   uint64_t initialHandoffPinnedBytes;
@@ -1284,7 +1339,9 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                       uint64_t *outRunSummaryCount,
                                                       SimScanCudaBatchResult *batchResult,
                                                       std::string *errorOut,
-                                                      SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle = NULL);
+                                                      SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle = NULL,
+                                                      SimScanCudaInitialSummaryChunkConsumer initialSummaryChunkConsumer =
+                                                        SimScanCudaInitialSummaryChunkConsumer());
 
 bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const std::vector<SimScanCudaInitialBatchRequest> &requests,
                                                                  std::vector<SimScanCudaInitialBatchResult> *outResults,

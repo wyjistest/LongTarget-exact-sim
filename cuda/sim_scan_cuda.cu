@@ -131,6 +131,11 @@ bool sim_scan_cuda_initial_pinned_async_handoff_runtime()
   return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
 }
 
+bool sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE");
+}
+
 bool sim_scan_cuda_initial_pinned_async_force_alloc_fail_runtime()
 {
   return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_FORCE_ALLOC_FAIL");
@@ -802,9 +807,26 @@ static bool sim_scan_cuda_elapsed_seconds(cudaEvent_t startEvent,
 
 struct SimScanCudaInitialHandoffChunk
 {
-  SimScanCudaInitialHandoffChunk():summaryBase(0),summaryCount(0) {}
-  SimScanCudaInitialHandoffChunk(int base,int count):summaryBase(base),summaryCount(count) {}
+  SimScanCudaInitialHandoffChunk():
+    batchIndex(0),
+    chunkIndex(0),
+    summaryBase(0),
+    summaryCount(0)
+  {
+  }
+  SimScanCudaInitialHandoffChunk(int batchIndexValue,
+                                 uint64_t chunkIndexValue,
+                                 int base,
+                                 int count):
+    batchIndex(batchIndexValue),
+    chunkIndex(chunkIndexValue),
+    summaryBase(base),
+    summaryCount(count)
+  {
+  }
 
+  int batchIndex;
+  uint64_t chunkIndex;
   int summaryBase;
   int summaryCount;
 };
@@ -845,8 +867,10 @@ static void sim_scan_cuda_build_initial_handoff_chunks(
 {
   chunks.clear();
   const int chunkRows = rowsPerChunk > 0 ? rowsPerChunk : 1;
+  uint64_t globalChunkIndex = 0;
   for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
   {
+    uint64_t batchChunkIndex = 0;
     const int batchRunBase = runBases[static_cast<size_t>(batchIndex)];
     const size_t offsetBase =
       static_cast<size_t>(batchIndex) * static_cast<size_t>(rowOffsetStride);
@@ -858,25 +882,104 @@ static void sim_scan_cuda_build_initial_handoff_chunks(
       if(chunkEnd > chunkStart)
       {
         chunks.push_back(
-          SimScanCudaInitialHandoffChunk(batchRunBase + chunkStart,
+          SimScanCudaInitialHandoffChunk(batchIndex,
+                                         batchChunkIndex,
+                                         batchRunBase + chunkStart,
                                          chunkEnd - chunkStart));
+        ++globalChunkIndex;
       }
+      ++batchChunkIndex;
     }
   }
+  (void)globalChunkIndex;
+}
+
+typedef std::pair<std::chrono::steady_clock::time_point,
+                  std::chrono::steady_clock::time_point>
+  SimScanCudaHostInterval;
+
+static vector<SimScanCudaHostInterval> sim_scan_cuda_merge_host_intervals(
+  vector<SimScanCudaHostInterval> intervals)
+{
+  vector<SimScanCudaHostInterval> merged;
+  if(intervals.empty())
+  {
+    return merged;
+  }
+  std::sort(intervals.begin(),intervals.end());
+  for(size_t intervalIndex = 0;
+      intervalIndex < intervals.size();
+      ++intervalIndex)
+  {
+    const SimScanCudaHostInterval &interval = intervals[intervalIndex];
+    if(interval.second <= interval.first)
+    {
+      continue;
+    }
+    if(merged.empty() || merged.back().second < interval.first)
+    {
+      merged.push_back(interval);
+    }
+    else if(merged.back().second < interval.second)
+    {
+      merged.back().second = interval.second;
+    }
+  }
+  return merged;
+}
+
+static double sim_scan_cuda_host_interval_overlap_seconds(
+  const vector<SimScanCudaHostInterval> &lhsIntervals,
+  const vector<SimScanCudaHostInterval> &rhsIntervals)
+{
+  const vector<SimScanCudaHostInterval> lhs =
+    sim_scan_cuda_merge_host_intervals(lhsIntervals);
+  const vector<SimScanCudaHostInterval> rhs =
+    sim_scan_cuda_merge_host_intervals(rhsIntervals);
+  size_t lhsIndex = 0;
+  size_t rhsIndex = 0;
+  int64_t overlapNanoseconds = 0;
+  while(lhsIndex < lhs.size() && rhsIndex < rhs.size())
+  {
+    const std::chrono::steady_clock::time_point overlapStart =
+      max(lhs[lhsIndex].first,rhs[rhsIndex].first);
+    const std::chrono::steady_clock::time_point overlapEnd =
+      min(lhs[lhsIndex].second,rhs[rhsIndex].second);
+    if(overlapEnd > overlapStart)
+    {
+      overlapNanoseconds +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          overlapEnd - overlapStart).count();
+    }
+    if(lhs[lhsIndex].second < rhs[rhsIndex].second)
+    {
+      ++lhsIndex;
+    }
+    else
+    {
+      ++rhsIndex;
+    }
+  }
+  return static_cast<double>(overlapNanoseconds) / 1.0e9;
 }
 
 static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
   SimScanCudaContext *context,
   const vector<SimScanCudaInitialHandoffChunk> &chunks,
   SimScanCudaInitialRunSummary *summaryDestination,
+  const vector<SimScanCudaInitialSummaryChunkConsumer> *chunkConsumers,
   double *asyncD2HSeconds,
   double *d2hWaitSeconds,
+  double *cpuApplySeconds,
+  double *cpuD2HOverlapSeconds,
   uint64_t *pinnedSlotsOut,
   uint64_t *pinnedBytesOut,
   uint64_t *pinnedAllocationFailuresOut,
   uint64_t *asyncCopiesOut,
   uint64_t *slotReuseWaitsOut,
   bool *slotsReusedAfterMaterializeOut,
+  uint64_t *chunksAppliedOut,
+  uint64_t *summariesAppliedOut,
   string *errorOut)
 {
   if(asyncD2HSeconds != NULL)
@@ -886,6 +989,14 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
   if(d2hWaitSeconds != NULL)
   {
     *d2hWaitSeconds = 0.0;
+  }
+  if(cpuApplySeconds != NULL)
+  {
+    *cpuApplySeconds = 0.0;
+  }
+  if(cpuD2HOverlapSeconds != NULL)
+  {
+    *cpuD2HOverlapSeconds = 0.0;
   }
   if(pinnedSlotsOut != NULL)
   {
@@ -910,6 +1021,14 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
   if(slotsReusedAfterMaterializeOut != NULL)
   {
     *slotsReusedAfterMaterializeOut = false;
+  }
+  if(chunksAppliedOut != NULL)
+  {
+    *chunksAppliedOut = 0;
+  }
+  if(summariesAppliedOut != NULL)
+  {
+    *summariesAppliedOut = 0;
   }
   if(context == NULL ||
      context->initialHandoffCopyStream == NULL ||
@@ -941,10 +1060,17 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
   vector<SimScanCudaInitialRunSummary *> slots(slotCount,NULL);
   vector<cudaEvent_t> slotDoneEvents(slotCount,NULL);
   vector<int> slotChunkIndex(slotCount,-1);
+  vector<std::chrono::steady_clock::time_point> slotD2HHostStart(slotCount);
+  vector<bool> slotHasD2HHostStart(slotCount,false);
+  vector<SimScanCudaHostInterval> d2hHostIntervals;
+  vector<SimScanCudaHostInterval> cpuApplyHostIntervals;
   cudaEvent_t copyStartEvent = NULL;
   cudaEvent_t copyStopEvent = NULL;
   uint64_t asyncCopyCount = 0;
   uint64_t slotReuseWaitCount = 0;
+  uint64_t chunksApplied = 0;
+  uint64_t summariesApplied = 0;
+  double cpuApplySecondsValue = 0.0;
 
   if(sim_scan_cuda_initial_pinned_async_force_alloc_fail_runtime())
   {
@@ -1015,9 +1141,11 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
     const std::chrono::steady_clock::time_point waitStart =
       std::chrono::steady_clock::now();
     cudaError_t waitStatus = cudaEventSynchronize(slotDoneEvents[slotIndex]);
+    const std::chrono::steady_clock::time_point waitEnd =
+      std::chrono::steady_clock::now();
     waitSeconds +=
       static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            std::chrono::steady_clock::now() - waitStart).count()) / 1.0e9;
+                            waitEnd - waitStart).count()) / 1.0e9;
     if(waitStatus != cudaSuccess)
     {
       if(errorOut != NULL)
@@ -1026,6 +1154,12 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
       }
       return false;
     }
+    if(slotHasD2HHostStart[slotIndex])
+    {
+      d2hHostIntervals.push_back(
+        SimScanCudaHostInterval(slotD2HHostStart[slotIndex],waitEnd));
+      slotHasD2HHostStart[slotIndex] = false;
+    }
     const SimScanCudaInitialHandoffChunk &chunk =
       chunks[static_cast<size_t>(chunkIndex)];
     // A ring slot is reusable only after the D2H event completes and the
@@ -1033,8 +1167,46 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
     memcpy(summaryDestination + chunk.summaryBase,
            slots[slotIndex],
            static_cast<size_t>(chunk.summaryCount) * sizeof(SimScanCudaInitialRunSummary));
+    if(chunkConsumers != NULL &&
+       chunk.batchIndex >= 0 &&
+       static_cast<size_t>(chunk.batchIndex) < chunkConsumers->size() &&
+       (*chunkConsumers)[static_cast<size_t>(chunk.batchIndex)])
+    {
+      SimScanCudaInitialSummaryChunk publicChunk;
+      publicChunk.batchIndex = chunk.batchIndex;
+      publicChunk.chunkIndex = chunk.chunkIndex;
+      publicChunk.summaryBase = static_cast<uint64_t>(chunk.summaryBase);
+      publicChunk.summaryCount = static_cast<uint64_t>(chunk.summaryCount);
+      publicChunk.summaries = summaryDestination + chunk.summaryBase;
+      const std::chrono::steady_clock::time_point cpuApplyStart =
+        std::chrono::steady_clock::now();
+      (*chunkConsumers)[static_cast<size_t>(chunk.batchIndex)](publicChunk);
+      const std::chrono::steady_clock::time_point cpuApplyEnd =
+        std::chrono::steady_clock::now();
+      cpuApplySecondsValue +=
+        static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              cpuApplyEnd - cpuApplyStart).count()) / 1.0e9;
+      cpuApplyHostIntervals.push_back(
+        SimScanCudaHostInterval(cpuApplyStart,cpuApplyEnd));
+      ++chunksApplied;
+      summariesApplied += static_cast<uint64_t>(chunk.summaryCount);
+    }
     slotChunkIndex[slotIndex] = -1;
     return true;
+  };
+  auto flushExpectedChunk = [&](size_t expectedChunkIndex) -> bool
+  {
+    const size_t slotIndex = expectedChunkIndex % slotCount;
+    if(slotChunkIndex[slotIndex] != static_cast<int>(expectedChunkIndex))
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut =
+          "SIM CUDA pinned async initial handoff slot order invariant failed";
+      }
+      return false;
+    }
+    return flushSlot(slotIndex);
   };
 
   // Stage 1 uses a global producer-complete event as the source-ready
@@ -1051,19 +1223,23 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
     return false;
   }
 
+  size_t nextFlushChunk = 0;
   for(size_t chunkIndex = 0; chunkIndex < chunks.size(); ++chunkIndex)
   {
     const size_t slotIndex = chunkIndex % slotCount;
     if(slotChunkIndex[slotIndex] >= 0)
     {
       ++slotReuseWaitCount;
-    }
-    if(!flushSlot(slotIndex))
-    {
-      cleanupAfterCopyStreamUse();
-      return false;
+      if(!flushExpectedChunk(nextFlushChunk))
+      {
+        cleanupAfterCopyStreamUse();
+        return false;
+      }
+      ++nextFlushChunk;
     }
     const SimScanCudaInitialHandoffChunk &chunk = chunks[chunkIndex];
+    slotD2HHostStart[slotIndex] = std::chrono::steady_clock::now();
+    slotHasD2HHostStart[slotIndex] = true;
     status = cudaMemcpyAsync(slots[slotIndex],
                              context->initialRunSummariesDevice + chunk.summaryBase,
                              static_cast<size_t>(chunk.summaryCount) *
@@ -1090,13 +1266,14 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
     cleanupAfterCopyStreamUse();
     return false;
   }
-  for(size_t slotIndex = 0; slotIndex < slotCount; ++slotIndex)
+  while(nextFlushChunk < chunks.size())
   {
-    if(!flushSlot(slotIndex))
+    if(!flushExpectedChunk(nextFlushChunk))
     {
       cleanupAfterCopyStreamUse();
       return false;
     }
+    ++nextFlushChunk;
   }
   const std::chrono::steady_clock::time_point finalWaitStart =
     std::chrono::steady_clock::now();
@@ -1127,6 +1304,16 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
   {
     *d2hWaitSeconds = waitSeconds;
   }
+  if(cpuApplySeconds != NULL)
+  {
+    *cpuApplySeconds = cpuApplySecondsValue;
+  }
+  if(cpuD2HOverlapSeconds != NULL)
+  {
+    *cpuD2HOverlapSeconds =
+      sim_scan_cuda_host_interval_overlap_seconds(cpuApplyHostIntervals,
+                                                  d2hHostIntervals);
+  }
   if(pinnedSlotsOut != NULL)
   {
     *pinnedSlotsOut = static_cast<uint64_t>(slotCount);
@@ -1147,6 +1334,14 @@ static bool sim_scan_cuda_copy_initial_summaries_pinned_async(
   if(slotsReusedAfterMaterializeOut != NULL)
   {
     *slotsReusedAfterMaterializeOut = true;
+  }
+  if(chunksAppliedOut != NULL)
+  {
+    *chunksAppliedOut = chunksApplied;
+  }
+  if(summariesAppliedOut != NULL)
+  {
+    *summariesAppliedOut = summariesApplied;
   }
 
   cudaEventDestroy(copyStopEvent);
@@ -13238,6 +13433,28 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     batchResult->initialHandoffPinnedAsyncSourceReadyMode =
       requestBatchResult.initialHandoffPinnedAsyncSourceReadyMode;
   }
+  batchResult->initialHandoffCpuPipelineRequested =
+    batchResult->initialHandoffCpuPipelineRequested ||
+    requestBatchResult.initialHandoffCpuPipelineRequested;
+  batchResult->initialHandoffCpuPipelineActive =
+    batchResult->initialHandoffCpuPipelineActive ||
+    requestBatchResult.initialHandoffCpuPipelineActive;
+  if(requestBatchResult.initialHandoffCpuPipelineDisabledReason !=
+     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED)
+  {
+    batchResult->initialHandoffCpuPipelineDisabledReason =
+      requestBatchResult.initialHandoffCpuPipelineDisabledReason;
+  }
+  batchResult->initialHandoffCpuPipelineChunksApplied +=
+    requestBatchResult.initialHandoffCpuPipelineChunksApplied;
+  batchResult->initialHandoffCpuPipelineSummariesApplied +=
+    requestBatchResult.initialHandoffCpuPipelineSummariesApplied;
+  batchResult->initialHandoffCpuPipelineChunksFinalized +=
+    requestBatchResult.initialHandoffCpuPipelineChunksFinalized;
+  batchResult->initialHandoffCpuPipelineFinalizeCount +=
+    requestBatchResult.initialHandoffCpuPipelineFinalizeCount;
+  batchResult->initialHandoffCpuPipelineOutOfOrderChunks +=
+    requestBatchResult.initialHandoffCpuPipelineOutOfOrderChunks;
   batchResult->usedInitialHashReducePath =
     batchResult->usedInitialHashReducePath || requestBatchResult.usedInitialHashReducePath;
   batchResult->usedInitialSegmentedReducePath =
@@ -13659,7 +13876,8 @@ bool sim_scan_cuda_enumerate_events_row_major_batch(const vector<SimScanCudaRequ
                                                             errorOut,
                                                             request.persistAllCandidateStatesOnDevice ?
                                                               &requestResult.persistentSafeStoreHandle :
-                                                              NULL);
+                                                              NULL,
+                                                            request.initialSummaryChunkConsumer);
     }
     else if(request.kind == SIM_SCAN_CUDA_REQUEST_REGION)
     {
@@ -13747,7 +13965,8 @@ static bool sim_scan_cuda_enumerate_initial_events_row_major_via_true_batch(cons
                                                                              uint64_t *outRunSummaryCount,
                                                                              SimScanCudaBatchResult *batchResult,
                                                                              string *errorOut,
-                                                                             SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle)
+                                                                             SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle,
+                                                                             SimScanCudaInitialSummaryChunkConsumer initialSummaryChunkConsumer)
 {
   vector<SimScanCudaInitialBatchRequest> requests(1);
   requests[0].A = A;
@@ -13762,6 +13981,7 @@ static bool sim_scan_cuda_enumerate_initial_events_row_major_via_true_batch(cons
   requests[0].proposalCandidates = proposalCandidates;
   requests[0].persistAllCandidateStatesOnDevice =
     (reduceCandidates || proposalCandidates) && outPersistentSafeStoreHandle != NULL;
+  requests[0].initialSummaryChunkConsumer = initialSummaryChunkConsumer;
 
   vector<SimScanCudaInitialBatchResult> results;
   SimScanCudaBatchResult trueBatchResult;
@@ -14563,7 +14783,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                       uint64_t *outRunSummaryCount,
                                                       SimScanCudaBatchResult *batchResult,
                                                       string *errorOut,
-                                                      SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle)
+                                                      SimCudaPersistentSafeStoreHandle *outPersistentSafeStoreHandle,
+                                                      SimScanCudaInitialSummaryChunkConsumer initialSummaryChunkConsumer)
 {
   if(outEventCount == NULL || outRunSummaryCount == NULL)
   {
@@ -14677,7 +14898,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                            outRunSummaryCount,
                                                                            batchResult,
                                                                            errorOut,
-                                                                           outPersistentSafeStoreHandle);
+                                                                           outPersistentSafeStoreHandle,
+                                                                           initialSummaryChunkConsumer);
   }
 
   int device = 0;
@@ -15433,6 +15655,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   bool anyReduceCandidates = false;
   bool anyProposalCandidates = false;
   bool anySummaryRequests = false;
+  bool allSummaryRequestsHaveChunkConsumer = true;
   bool anyHostAllCandidateStates = false;
   int deviceResidencyRequestCount = 0;
   int proposalRequestCount = 0;
@@ -15466,6 +15689,10 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     else
     {
       anySummaryRequests = true;
+      if(!requests[i].initialSummaryChunkConsumer)
+      {
+        allSummaryRequestsHaveChunkConsumer = false;
+      }
     }
   }
   if(anyReduceCandidates && anyProposalCandidates)
@@ -15968,6 +16195,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
 
   const bool requestInitialPinnedAsyncHandoff =
     sim_scan_cuda_initial_pinned_async_handoff_runtime();
+  const bool requestInitialPinnedAsyncCpuPipeline =
+    sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
   const bool initialChunkedHandoffRequested =
     sim_scan_cuda_initial_chunked_handoff_runtime();
   SimScanCudaInitialPinnedAsyncDisabledReason initialPinnedAsyncDisabledReason =
@@ -15975,6 +16204,12 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NONE :
     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED;
   bool initialPinnedAsyncHandoffEligible = false;
+  SimScanCudaInitialPinnedAsyncCpuPipelineDisabledReason
+    initialCpuPipelineDisabledReason =
+      requestInitialPinnedAsyncCpuPipeline ?
+      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NONE :
+      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED;
+  bool initialCpuPipelineEligible = false;
   if(requestInitialPinnedAsyncHandoff)
   {
     if(!initialChunkedHandoffRequested)
@@ -16005,6 +16240,43 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     else
     {
       initialPinnedAsyncHandoffEligible = true;
+    }
+  }
+  if(requestInitialPinnedAsyncCpuPipeline)
+  {
+    if(!requestInitialPinnedAsyncHandoff)
+    {
+      initialCpuPipelineDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_PINNED_ASYNC_OFF;
+    }
+    else if(!initialChunkedHandoffRequested)
+    {
+      initialCpuPipelineDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_CHUNKED_HANDOFF_OFF;
+    }
+    else if(!anySummaryRequests || anyCandidateExtraction)
+    {
+      initialCpuPipelineDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_UNSUPPORTED_PATH;
+    }
+    else if(!allSummaryRequestsHaveChunkConsumer)
+    {
+      initialCpuPipelineDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_UNSUPPORTED_PATH;
+    }
+    else if(totalRunSummaries <= 0)
+    {
+      initialCpuPipelineDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NO_SUMMARIES;
+    }
+    else if(!initialPinnedAsyncHandoffEligible)
+    {
+      initialCpuPipelineDisabledReason =
+        SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_UNSUPPORTED_PATH;
+    }
+    else
+    {
+      initialCpuPipelineEligible = true;
     }
   }
   vector<int> initialHandoffRunBasesHost;
@@ -16061,6 +16333,12 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialPinnedAsyncHandoffEligible = false;
       initialPinnedAsyncDisabledReason =
         SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NO_CHUNKS;
+      if(initialCpuPipelineEligible)
+      {
+        initialCpuPipelineEligible = false;
+        initialCpuPipelineDisabledReason =
+          SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NO_CHUNKS;
+      }
     }
   }
 
@@ -16464,6 +16742,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   uint64_t initialHandoffAsyncCopies = 0;
   uint64_t initialHandoffSlotReuseWaits = 0;
   bool initialHandoffSlotsReusedAfterMaterialize = false;
+  uint64_t initialHandoffCpuPipelineChunksApplied = 0;
+  uint64_t initialHandoffCpuPipelineSummariesApplied = 0;
   SimScanCudaInitialPinnedAsyncSourceReadyMode initialHandoffSourceReadyMode =
     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE;
   bool usedInitialPackedSummaryD2H = false;
@@ -16616,19 +16896,36 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       }
       if(initialPinnedAsyncHandoffEligible && !initialHandoffChunks.empty())
       {
+        vector<SimScanCudaInitialSummaryChunkConsumer> initialChunkConsumers;
+        const vector<SimScanCudaInitialSummaryChunkConsumer> *initialChunkConsumersPtr = NULL;
+        if(initialCpuPipelineEligible)
+        {
+          initialChunkConsumers.resize(static_cast<size_t>(batchSize));
+          for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+          {
+            initialChunkConsumers[static_cast<size_t>(batchIndex)] =
+              requests[static_cast<size_t>(batchIndex)].initialSummaryChunkConsumer;
+          }
+          initialChunkConsumersPtr = &initialChunkConsumers;
+        }
         const bool asyncCopied =
           sim_scan_cuda_copy_initial_summaries_pinned_async(
             context,
             initialHandoffChunks,
             summaryDestination,
+            initialChunkConsumersPtr,
             &initialHandoffAsyncD2HSeconds,
             &initialHandoffD2HWaitSeconds,
+            &initialHandoffCpuApplySeconds,
+            &initialHandoffCpuD2HOverlapSeconds,
             &initialHandoffPinnedSlots,
             &initialHandoffPinnedBytes,
             &initialHandoffPinnedAllocationFailures,
             &initialHandoffAsyncCopies,
             &initialHandoffSlotReuseWaits,
             &initialHandoffSlotsReusedAfterMaterialize,
+            &initialHandoffCpuPipelineChunksApplied,
+            &initialHandoffCpuPipelineSummariesApplied,
             errorOut);
         if(asyncCopied)
         {
@@ -16644,6 +16941,16 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         {
           initialHandoffPageableFallbacks = 1;
           initialHandoffSyncCopies = 1;
+          if(initialCpuPipelineEligible)
+          {
+            initialCpuPipelineEligible = false;
+            initialCpuPipelineDisabledReason =
+              SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_PINNED_ASYNC_FALLBACK;
+            initialHandoffCpuApplySeconds = 0.0;
+            initialHandoffCpuD2HOverlapSeconds = 0.0;
+            initialHandoffCpuPipelineChunksApplied = 0;
+            initialHandoffCpuPipelineSummariesApplied = 0;
+          }
         }
       }
       if(!copiedSummaries)
@@ -17071,6 +17378,19 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialPinnedAsyncDisabledReason;
     batchResult->initialHandoffPinnedAsyncSourceReadyMode =
       initialHandoffSourceReadyMode;
+    batchResult->initialHandoffCpuPipelineRequested =
+      requestInitialPinnedAsyncCpuPipeline;
+    batchResult->initialHandoffCpuPipelineActive =
+      initialCpuPipelineEligible &&
+      initialHandoffCpuPipelineChunksApplied > 0;
+    batchResult->initialHandoffCpuPipelineDisabledReason =
+      batchResult->initialHandoffCpuPipelineActive ?
+      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NONE :
+      initialCpuPipelineDisabledReason;
+    batchResult->initialHandoffCpuPipelineChunksApplied =
+      initialHandoffCpuPipelineChunksApplied;
+    batchResult->initialHandoffCpuPipelineSummariesApplied =
+      initialHandoffCpuPipelineSummariesApplied;
     batchResult->initialHandoffChunksTotal = initialHandoffChunksTotal;
     batchResult->initialHandoffPinnedSlots = initialHandoffPinnedSlots;
     batchResult->initialHandoffPinnedBytes = initialHandoffPinnedBytes;

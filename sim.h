@@ -2993,6 +2993,15 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    activeCount(0),
 					    disabledReason(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED),
 					    sourceReadyMode(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_SOURCE_READY_NONE),
+					    cpuPipelineRequestedCount(0),
+					    cpuPipelineActiveCount(0),
+					    cpuPipelineDisabledReason(
+					      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED),
+					    cpuPipelineChunksApplied(0),
+					    cpuPipelineSummariesApplied(0),
+					    cpuPipelineChunksFinalized(0),
+					    cpuPipelineFinalizeCount(0),
+					    cpuPipelineOutOfOrderChunks(0),
 					    chunkCount(0),
 					    pinnedSlots(0),
 					    pinnedBytes(0),
@@ -3015,6 +3024,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  uint64_t activeCount;
 					  SimScanCudaInitialPinnedAsyncDisabledReason disabledReason;
 					  SimScanCudaInitialPinnedAsyncSourceReadyMode sourceReadyMode;
+					  uint64_t cpuPipelineRequestedCount;
+					  uint64_t cpuPipelineActiveCount;
+					  SimScanCudaInitialPinnedAsyncCpuPipelineDisabledReason cpuPipelineDisabledReason;
+					  uint64_t cpuPipelineChunksApplied;
+					  uint64_t cpuPipelineSummariesApplied;
+					  uint64_t cpuPipelineChunksFinalized;
+					  uint64_t cpuPipelineFinalizeCount;
+					  uint64_t cpuPipelineOutOfOrderChunks;
 					  uint64_t chunkCount;
 					  uint64_t pinnedSlots;
 					  uint64_t pinnedBytes;
@@ -3081,6 +3098,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					inline bool simCudaInitialPinnedAsyncHandoffEnabledRuntime()
 					{
 					  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+					  return env != NULL && env[0] != '\0' && env[0] != '0';
+					}
+
+					inline bool simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime()
+					{
+					  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE");
 					  return env != NULL && env[0] != '\0' && env[0] != '0';
 					}
 
@@ -6651,6 +6674,56 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return count;
 				}
 
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineRequestedCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineActiveCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineDisabledReasonCode()
+				{
+				  static std::atomic<uint64_t> count(
+				    static_cast<uint64_t>(
+				      SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED));
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineChunksApplied()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineSummariesApplied()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineChunksFinalized()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineFinalizeCount()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
+				inline std::atomic<uint64_t> &simInitialPinnedAsyncCpuPipelineOutOfOrderChunks()
+				{
+				  static std::atomic<uint64_t> count(0);
+				  return count;
+				}
+
 				inline std::atomic<uint64_t> &simInitialPinnedAsyncHandoffPinnedSlotCount()
 				{
 				  static std::atomic<uint64_t> count(0);
@@ -7786,6 +7859,41 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				      static_cast<uint64_t>(batchResult.initialHandoffPinnedAsyncSourceReadyMode),
 				      std::memory_order_relaxed);
 				  }
+				  if(batchResult.initialHandoffCpuPipelineRequested)
+				  {
+				    simInitialPinnedAsyncCpuPipelineRequestedCount().fetch_add(
+				      1,
+				      std::memory_order_relaxed);
+				  }
+				  if(batchResult.initialHandoffCpuPipelineActive)
+				  {
+				    simInitialPinnedAsyncCpuPipelineActiveCount().fetch_add(
+				      1,
+				      std::memory_order_relaxed);
+				  }
+				  else if(batchResult.initialHandoffCpuPipelineDisabledReason !=
+				          SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED)
+				  {
+				    simInitialPinnedAsyncCpuPipelineDisabledReasonCode().store(
+				      static_cast<uint64_t>(
+				        batchResult.initialHandoffCpuPipelineDisabledReason),
+				      std::memory_order_relaxed);
+				  }
+				  simInitialPinnedAsyncCpuPipelineChunksApplied().fetch_add(
+				    batchResult.initialHandoffCpuPipelineChunksApplied,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncCpuPipelineSummariesApplied().fetch_add(
+				    batchResult.initialHandoffCpuPipelineSummariesApplied,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncCpuPipelineChunksFinalized().fetch_add(
+				    batchResult.initialHandoffCpuPipelineChunksFinalized,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncCpuPipelineFinalizeCount().fetch_add(
+				    batchResult.initialHandoffCpuPipelineFinalizeCount,
+				    std::memory_order_relaxed);
+				  simInitialPinnedAsyncCpuPipelineOutOfOrderChunks().fetch_add(
+				    batchResult.initialHandoffCpuPipelineOutOfOrderChunks,
+				    std::memory_order_relaxed);
 				  simInitialPinnedAsyncHandoffChunkCount().fetch_add(
 				    batchResult.initialHandoffChunksTotal,
 				    std::memory_order_relaxed);
@@ -8552,6 +8660,31 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return "unknown";
 					}
 
+					inline const char *simInitialPinnedAsyncCpuPipelineDisabledReasonLabel(
+					  SimScanCudaInitialPinnedAsyncCpuPipelineDisabledReason reason)
+					{
+					  switch(reason)
+					  {
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NOT_REQUESTED:
+					      return "not_requested";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NONE:
+					      return "none";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_PINNED_ASYNC_OFF:
+					      return "pinned_async_off";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_CHUNKED_HANDOFF_OFF:
+					      return "chunked_handoff_off";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_UNSUPPORTED_PATH:
+					      return "unsupported_path";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NO_SUMMARIES:
+					      return "no_summaries";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_NO_CHUNKS:
+					      return "no_chunks";
+					    case SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE_DISABLED_PINNED_ASYNC_FALLBACK:
+					      return "pinned_async_fallback";
+					  }
+					  return "unknown";
+					}
+
 						inline void getSimInitialChunkedHandoffStats(SimInitialChunkedHandoffStats &stats)
 						{
 					  stats.chunkCount =
@@ -8594,6 +8727,31 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 						    static_cast<SimScanCudaInitialPinnedAsyncSourceReadyMode>(
 						      simInitialPinnedAsyncHandoffSourceReadyModeCode().load(
 						        std::memory_order_relaxed));
+						  stats.cpuPipelineRequestedCount =
+						    simInitialPinnedAsyncCpuPipelineRequestedCount().load(
+						      std::memory_order_relaxed);
+						  stats.cpuPipelineActiveCount =
+						    simInitialPinnedAsyncCpuPipelineActiveCount().load(
+						      std::memory_order_relaxed);
+						  stats.cpuPipelineDisabledReason =
+						    static_cast<SimScanCudaInitialPinnedAsyncCpuPipelineDisabledReason>(
+						      simInitialPinnedAsyncCpuPipelineDisabledReasonCode().load(
+						        std::memory_order_relaxed));
+						  stats.cpuPipelineChunksApplied =
+						    simInitialPinnedAsyncCpuPipelineChunksApplied().load(
+						      std::memory_order_relaxed);
+						  stats.cpuPipelineSummariesApplied =
+						    simInitialPinnedAsyncCpuPipelineSummariesApplied().load(
+						      std::memory_order_relaxed);
+						  stats.cpuPipelineChunksFinalized =
+						    simInitialPinnedAsyncCpuPipelineChunksFinalized().load(
+						      std::memory_order_relaxed);
+						  stats.cpuPipelineFinalizeCount =
+						    simInitialPinnedAsyncCpuPipelineFinalizeCount().load(
+						      std::memory_order_relaxed);
+						  stats.cpuPipelineOutOfOrderChunks =
+						    simInitialPinnedAsyncCpuPipelineOutOfOrderChunks().load(
+						      std::memory_order_relaxed);
 						  stats.chunkCount =
 						    simInitialPinnedAsyncHandoffChunkCount().load(std::memory_order_relaxed);
 						  stats.pinnedSlots =
@@ -11035,6 +11193,129 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	  }
 	}
 
+	struct SimInitialPinnedAsyncCpuPipelineApplyState
+	{
+	  SimInitialPinnedAsyncCpuPipelineApplyState():
+	    logicalEventCount(0),
+	    maintainSafeStore(false),
+	    eventsSeenRecorded(false),
+	    chunksApplied(0),
+	    summariesApplied(0),
+	    chunksFinalized(0),
+	    finalizeCount(0),
+	    nextExpectedChunkIndex(0),
+	    outOfOrderChunks(0)
+	  {
+	  }
+
+	  uint64_t logicalEventCount;
+	  bool maintainSafeStore;
+	  bool eventsSeenRecorded;
+	  uint64_t chunksApplied;
+	  uint64_t summariesApplied;
+	  uint64_t chunksFinalized;
+	  uint64_t finalizeCount;
+	  uint64_t nextExpectedChunkIndex;
+	  uint64_t outOfOrderChunks;
+	};
+
+	inline void beginSimInitialPinnedAsyncCpuPipelineApply(
+	  uint64_t logicalEventCount,
+	  SimKernelContext &context,
+	  bool maintainSafeStore,
+	  SimInitialPinnedAsyncCpuPipelineApplyState &state)
+	{
+	  state = SimInitialPinnedAsyncCpuPipelineApplyState();
+	  state.logicalEventCount = logicalEventCount;
+	  state.maintainSafeStore = maintainSafeStore;
+	  SimCandidateStats *candidateStats = context.statsEnabled ? &context.stats : NULL;
+	  if(candidateStats != NULL && logicalEventCount > 0)
+	  {
+	    candidateStats->eventsSeen += logicalEventCount;
+	    state.eventsSeenRecorded = true;
+	  }
+	  if(maintainSafeStore && !context.safeCandidateStateStore.valid)
+	  {
+	    resetSimCandidateStateStore(context.safeCandidateStateStore,true);
+	  }
+	}
+
+	inline void applySimInitialPinnedAsyncCpuPipelineChunk(
+	  const SimScanCudaInitialRunSummary *summaries,
+	  int batchIndex,
+	  uint64_t chunkIndex,
+	  uint64_t summaryBase,
+	  size_t summaryCount,
+	  SimKernelContext &context,
+	  SimInitialPinnedAsyncCpuPipelineApplyState &state)
+	{
+	  (void)batchIndex;
+	  (void)summaryBase;
+	  if(chunkIndex < state.nextExpectedChunkIndex)
+	  {
+	    ++state.outOfOrderChunks;
+	  }
+	  state.nextExpectedChunkIndex = chunkIndex + 1;
+	  ++state.chunksApplied;
+	  if(summaries == NULL || summaryCount == 0)
+	  {
+	    return;
+	  }
+	  SimCandidateStats *candidateStats = context.statsEnabled ? &context.stats : NULL;
+	  SimCandidateStateStore *safeStore =
+	    state.maintainSafeStore ? &context.safeCandidateStateStore : NULL;
+	  if(safeStore != NULL && !safeStore->valid)
+	  {
+	    resetSimCandidateStateStore(*safeStore,true);
+	  }
+	  for(size_t summaryIndex = 0; summaryIndex < summaryCount; ++summaryIndex)
+	  {
+	    const SimScanCudaInitialRunSummary &summary = summaries[summaryIndex];
+	    applySimCudaInitialRunSummary(summary,context,candidateStats);
+	    if(safeStore != NULL)
+	    {
+	      upsertSimCandidateStateStoreSummary(summary,*safeStore);
+	    }
+	  }
+	  state.summariesApplied += static_cast<uint64_t>(summaryCount);
+	}
+
+	inline void finalizeSimInitialPinnedAsyncCpuPipelineApply(
+	  SimKernelContext &context,
+	  SimInitialPinnedAsyncCpuPipelineApplyState &state,
+	  bool pruneSafeStore)
+	{
+	  SimCandidateStats *candidateStats = context.statsEnabled ? &context.stats : NULL;
+	  if(candidateStats != NULL &&
+	     !state.eventsSeenRecorded &&
+	     state.logicalEventCount > 0)
+	  {
+	    candidateStats->eventsSeen += state.logicalEventCount;
+	    state.eventsSeenRecorded = true;
+	  }
+	  refreshSimRunningMin(context);
+	  if(state.maintainSafeStore && pruneSafeStore)
+	  {
+	    pruneSimSafeCandidateStateStore(context);
+	  }
+	  ++state.finalizeCount;
+	  state.chunksFinalized = state.chunksApplied;
+	}
+
+	inline void recordSimInitialPinnedAsyncCpuPipelineFinalizeStats(
+	  const SimInitialPinnedAsyncCpuPipelineApplyState &state)
+	{
+	  simInitialPinnedAsyncCpuPipelineChunksFinalized().fetch_add(
+	    state.chunksFinalized,
+	    std::memory_order_relaxed);
+	  simInitialPinnedAsyncCpuPipelineFinalizeCount().fetch_add(
+	    state.finalizeCount,
+	    std::memory_order_relaxed);
+	  simInitialPinnedAsyncCpuPipelineOutOfOrderChunks().fetch_add(
+	    state.outOfOrderChunks,
+	    std::memory_order_relaxed);
+	}
+
 	inline void applySimCudaInitialRunSummariesChunkedHandoff(
 	  const vector<SimScanCudaInitialRunSummary> &summaries,
 	  uint64_t logicalEventCount,
@@ -13012,6 +13293,11 @@ inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaIni
                                                      uint64_t eventCount,
                                                      SimKernelContext &context,
                                                      bool benchmarkEnabled);
+inline void finalizeSimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
+                                                        SimKernelContext &context,
+                                                        bool benchmarkEnabled,
+                                                        bool hostSafeStoreAlreadyUpdated,
+                                                        bool hostSafeStoreAlreadyPruned = false);
 struct SimBlockedWordsView
 {
   SimBlockedWordsView():
@@ -13131,6 +13417,13 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	      (simCudaInitialReducePersistOnDeviceRuntime() &&
 	       !simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime()) ||
 	      simCudaInitialProposalResidencyEnabledRuntime();
+	    const bool useInitialPinnedAsyncCpuPipeline =
+	      !reduceCandidates &&
+	      !proposalCandidates &&
+	      simCudaInitialChunkedHandoffEnabledRuntime() &&
+	      simCudaInitialPinnedAsyncHandoffEnabledRuntime() &&
+	      simCudaInitialPinnedAsyncCpuPipelineEnabledRuntime();
+	    SimInitialPinnedAsyncCpuPipelineApplyState initialCpuPipelineState;
 	    vector<SimScanCudaRequest> cudaRequests(1);
 	    cudaRequests[0].kind = SIM_SCAN_CUDA_REQUEST_INITIAL;
 	    cudaRequests[0].A = A;
@@ -13144,6 +13437,27 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    cudaRequests[0].reduceCandidates = reduceCandidates;
 	    cudaRequests[0].proposalCandidates = proposalCandidates;
 	    cudaRequests[0].persistAllCandidateStatesOnDevice = persistInitialCandidateStatesOnDevice;
+	    if(useInitialPinnedAsyncCpuPipeline)
+	    {
+	      const bool maintainSafeStore =
+	        simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
+	        simCudaProposalLoopEnabledRuntime();
+	      beginSimInitialPinnedAsyncCpuPipelineApply(0,
+	                                                context,
+	                                                maintainSafeStore,
+	                                                initialCpuPipelineState);
+	      cudaRequests[0].initialSummaryChunkConsumer =
+	        [&context,&initialCpuPipelineState](const SimScanCudaInitialSummaryChunk &chunk)
+	        {
+	          applySimInitialPinnedAsyncCpuPipelineChunk(chunk.summaries,
+	                                                    chunk.batchIndex,
+	                                                    chunk.chunkIndex,
+	                                                    chunk.summaryBase,
+	                                                    static_cast<size_t>(chunk.summaryCount),
+	                                                    context,
+	                                                    initialCpuPipelineState);
+	        };
+	    }
 	    vector<SimScanCudaRequestResult> cudaResults;
 		    if(sim_scan_cuda_init(device,&cudaError) &&
 		       sim_scan_cuda_enumerate_events_row_major_batch(cudaRequests,
@@ -13261,10 +13575,41 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	      }
 		      else
 		      {
-	        applySimCudaInitialRunSummariesToContext(cudaResults[0].initialRunSummaries,
-	                                                 cudaResults[0].eventCount,
-	                                                 context,
-	                                                 benchmarkEnabled);
+	        if(useInitialPinnedAsyncCpuPipeline &&
+	           cudaBatchResult.initialHandoffCpuPipelineActive)
+	        {
+	          initialCpuPipelineState.logicalEventCount = cudaResults[0].eventCount;
+	          if(context.statsEnabled && !initialCpuPipelineState.eventsSeenRecorded)
+	          {
+	            context.stats.eventsSeen += cudaResults[0].eventCount;
+	            initialCpuPipelineState.eventsSeenRecorded = true;
+	          }
+	          finalizeSimInitialPinnedAsyncCpuPipelineApply(context,
+	                                                        initialCpuPipelineState,
+	                                                        false);
+	          cudaBatchResult.initialHandoffCpuPipelineChunksFinalized +=
+	            initialCpuPipelineState.chunksFinalized;
+	          cudaBatchResult.initialHandoffCpuPipelineFinalizeCount +=
+	            initialCpuPipelineState.finalizeCount;
+	          cudaBatchResult.initialHandoffCpuPipelineOutOfOrderChunks +=
+	            initialCpuPipelineState.outOfOrderChunks;
+	          if(benchmarkEnabled)
+	          {
+	            recordSimInitialPinnedAsyncCpuPipelineFinalizeStats(
+	              initialCpuPipelineState);
+	          }
+	          finalizeSimCudaInitialRunSummariesToContext(cudaResults[0].initialRunSummaries,
+	                                                      context,
+	                                                      benchmarkEnabled,
+	                                                      true);
+	        }
+	        else
+	        {
+	          applySimCudaInitialRunSummariesToContext(cudaResults[0].initialRunSummaries,
+	                                                   cudaResults[0].eventCount,
+	                                                   context,
+	                                                   benchmarkEnabled);
+	        }
 	      }
 
 	      if(simCudaValidateEnabledRuntime() && !cudaRequests[0].proposalCandidates)
@@ -13813,6 +14158,154 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		  return true;
 		}
 
+		inline void finalizeSimCudaInitialRunSummariesToContext(
+		  const vector<SimScanCudaInitialRunSummary> &summaries,
+		  SimKernelContext &context,
+		  bool benchmarkEnabled,
+		  bool hostSafeStoreAlreadyUpdated,
+		  bool hostSafeStoreAlreadyPruned)
+		{
+		  const bool maintainSafeStore =
+		    simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
+		    simCudaProposalLoopEnabledRuntime();
+		  if(maintainSafeStore)
+		  {
+		    bool maintainedSafeStoreOnDevice = false;
+		    const bool initialSafeStoreHandoffRequested =
+		      simCudaInitialSafeStoreHandoffRequestedRuntime();
+		    const bool initialSafeStoreHandoffEnabled =
+		      simCudaInitialSafeStoreHandoffEnabledRuntime();
+		    if(initialSafeStoreHandoffRequested && !initialSafeStoreHandoffEnabled)
+		    {
+		      if(simLocateCudaFastShadowEnabledRuntime())
+		      {
+		        recordSimInitialSafeStoreHandoffRejectedFastShadow();
+		      }
+		      if(simCudaProposalLoopEnabledRuntime())
+		      {
+		        recordSimInitialSafeStoreHandoffRejectedProposalLoop();
+		      }
+		    }
+		    if(initialSafeStoreHandoffEnabled)
+		    {
+		      vector<SimScanCudaCandidateState> finalCandidateStates;
+		      collectSimContextCandidateStates(context,finalCandidateStates);
+		      SimCudaPersistentSafeStoreHandle builtGpuSafeStore;
+		      double deviceBuildSeconds = 0.0;
+		      double devicePruneSeconds = 0.0;
+		      double frontierUploadSeconds = 0.0;
+		      string gpuStoreError;
+		      if(sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_summaries(
+		           summaries,
+		           finalCandidateStates,
+		           static_cast<int>(context.runningMin),
+		           &builtGpuSafeStore,
+		           &deviceBuildSeconds,
+		           &devicePruneSeconds,
+		           &frontierUploadSeconds,
+		           &gpuStoreError))
+		      {
+		        if(benchmarkEnabled)
+		        {
+		          recordSimInitialSafeStoreDeviceBuildNanoseconds(simSecondsToNanoseconds(deviceBuildSeconds));
+		          recordSimInitialSafeStoreDevicePruneNanoseconds(simSecondsToNanoseconds(devicePruneSeconds));
+		          recordSimInitialSafeStoreFrontierBytesH2D(
+		            static_cast<uint64_t>(finalCandidateStates.size()) *
+		            static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)));
+		          recordSimInitialSafeStoreFrontierUploadNanoseconds(simSecondsToNanoseconds(frontierUploadSeconds));
+		        }
+		        resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+		        releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
+		        moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,builtGpuSafeStore);
+		        markSimGpuFrontierCacheSynchronized(context);
+		        context.initialSafeStoreHandoffActive = true;
+		        recordSimInitialSafeStoreHandoffCreated();
+		        recordSimInitialSafeStoreHandoffHostStoreEvicted();
+		        recordSimFrontierCacheRebuildFromHostFinalCandidates();
+		        maintainedSafeStoreOnDevice = true;
+		      }
+		      else
+		      {
+		        releaseSimCudaPersistentSafeCandidateStateStore(builtGpuSafeStore);
+		        recordSimInitialSafeStoreHandoffRejectedMissingGpuStore();
+		        if(simCudaValidateEnabledRuntime() && !gpuStoreError.empty())
+		        {
+		          fprintf(stderr,
+		                  "SIM CUDA initial safe-store device maintenance failed, falling back to host path: %s\n",
+		                  gpuStoreError.c_str());
+		        }
+		      }
+		    }
+
+		    if(!maintainedSafeStoreOnDevice)
+		    {
+		      if(!hostSafeStoreAlreadyUpdated)
+		      {
+		        const std::chrono::steady_clock::time_point safeStoreUpdateStart =
+		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+		        mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,context);
+		        if(benchmarkEnabled)
+		        {
+		          recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
+		        }
+		      }
+		      if(!hostSafeStoreAlreadyPruned)
+		      {
+		        const std::chrono::steady_clock::time_point safeStorePruneStart =
+		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+		        pruneSimSafeCandidateStateStore(context);
+		        if(benchmarkEnabled)
+		        {
+		          recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
+		        }
+		      }
+		      const bool wantSafeWorksetGpuMirror =
+		        simLocateCudaEnabledRuntime() &&
+		        simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET &&
+		        !simLocateCudaFastShadowEnabledRuntime();
+		      if(wantSafeWorksetGpuMirror)
+		      {
+		        const uint64_t storeBytesH2D =
+		          static_cast<uint64_t>(context.safeCandidateStateStore.states.size()) *
+		          static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+		        const std::chrono::steady_clock::time_point storeUploadStart =
+		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+		        string gpuStoreError;
+		        if(!uploadSimCudaPersistentSafeCandidateStateStore(context.safeCandidateStateStore.states,
+		                                                           context.gpuSafeCandidateStateStore,
+		                                                           &gpuStoreError))
+		        {
+		          releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
+		          context.initialSafeStoreHandoffActive = false;
+		          if(simCudaValidateEnabledRuntime() && !gpuStoreError.empty())
+		          {
+		            fprintf(stderr, "SIM CUDA initial safe-store mirror upload failed: %s\n", gpuStoreError.c_str());
+		          }
+		        }
+		        else
+		        {
+		          markSimGpuFrontierCacheSynchronized(context);
+		          context.initialSafeStoreHandoffActive = false;
+		          if(benchmarkEnabled)
+		          {
+		            recordSimInitialStoreBytesH2D(storeBytesH2D);
+		          }
+		        }
+		        if(benchmarkEnabled)
+		        {
+		          recordSimInitialStoreUploadNanoseconds(simElapsedNanoseconds(storeUploadStart));
+		        }
+		      }
+		      else if(context.gpuSafeCandidateStateStore.valid)
+		      {
+		        releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
+		        context.initialSafeStoreHandoffActive = false;
+		      }
+		    }
+		  }
+		  runSimCudaInitialFrontierTransducerShadowIfEnabled(summaries,context);
+		}
+
 		inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
 		                                                     uint64_t eventCount,
 		                                                     SimKernelContext &context,
@@ -13877,143 +14370,15 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  {
     recordSimInitialScanCpuContextApplyNanoseconds(simElapsedNanoseconds(contextApplyStart));
   }
-  if(maintainSafeStore)
-  {
-    bool maintainedSafeStoreOnDevice = false;
-    const bool initialSafeStoreHandoffRequested =
-      simCudaInitialSafeStoreHandoffRequestedRuntime();
-    const bool initialSafeStoreHandoffEnabled =
-      simCudaInitialSafeStoreHandoffEnabledRuntime();
-    if(initialSafeStoreHandoffRequested && !initialSafeStoreHandoffEnabled)
-    {
-      if(simLocateCudaFastShadowEnabledRuntime())
-      {
-        recordSimInitialSafeStoreHandoffRejectedFastShadow();
-      }
-      if(simCudaProposalLoopEnabledRuntime())
-      {
-        recordSimInitialSafeStoreHandoffRejectedProposalLoop();
-      }
-    }
-    if(initialSafeStoreHandoffEnabled)
-    {
-      vector<SimScanCudaCandidateState> finalCandidateStates;
-      collectSimContextCandidateStates(context,finalCandidateStates);
-      SimCudaPersistentSafeStoreHandle builtGpuSafeStore;
-      double deviceBuildSeconds = 0.0;
-      double devicePruneSeconds = 0.0;
-      double frontierUploadSeconds = 0.0;
-      string gpuStoreError;
-      if(sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_summaries(
-           summaries,
-           finalCandidateStates,
-           static_cast<int>(context.runningMin),
-           &builtGpuSafeStore,
-           &deviceBuildSeconds,
-           &devicePruneSeconds,
-           &frontierUploadSeconds,
-           &gpuStoreError))
-      {
-        if(benchmarkEnabled)
-        {
-          recordSimInitialSafeStoreDeviceBuildNanoseconds(simSecondsToNanoseconds(deviceBuildSeconds));
-          recordSimInitialSafeStoreDevicePruneNanoseconds(simSecondsToNanoseconds(devicePruneSeconds));
-          recordSimInitialSafeStoreFrontierBytesH2D(
-            static_cast<uint64_t>(finalCandidateStates.size()) *
-            static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)));
-          recordSimInitialSafeStoreFrontierUploadNanoseconds(simSecondsToNanoseconds(frontierUploadSeconds));
-        }
-        resetSimCandidateStateStore(context.safeCandidateStateStore,false);
-        releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
-        moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,builtGpuSafeStore);
-        markSimGpuFrontierCacheSynchronized(context);
-        context.initialSafeStoreHandoffActive = true;
-        recordSimInitialSafeStoreHandoffCreated();
-        recordSimInitialSafeStoreHandoffHostStoreEvicted();
-        recordSimFrontierCacheRebuildFromHostFinalCandidates();
-        maintainedSafeStoreOnDevice = true;
-      }
-      else
-      {
-        releaseSimCudaPersistentSafeCandidateStateStore(builtGpuSafeStore);
-        recordSimInitialSafeStoreHandoffRejectedMissingGpuStore();
-        if(simCudaValidateEnabledRuntime() && !gpuStoreError.empty())
-        {
-          fprintf(stderr,
-                  "SIM CUDA initial safe-store device maintenance failed, falling back to host path: %s\n",
-                  gpuStoreError.c_str());
-        }
-      }
-    }
-
-    if(!maintainedSafeStoreOnDevice)
-    {
-      if(!chunkedHandoffMaintainedHostSafeStore)
-      {
-        const std::chrono::steady_clock::time_point safeStoreUpdateStart =
-          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-        mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,context);
-        if(benchmarkEnabled)
-        {
-          recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
-        }
-        const std::chrono::steady_clock::time_point safeStorePruneStart =
-          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-        pruneSimSafeCandidateStateStore(context);
-        if(benchmarkEnabled)
-        {
-          recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
-        }
-      }
-      const bool wantSafeWorksetGpuMirror =
-        simLocateCudaEnabledRuntime() &&
-        simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET &&
-        !simLocateCudaFastShadowEnabledRuntime();
-      if(wantSafeWorksetGpuMirror)
-      {
-        const uint64_t storeBytesH2D =
-          static_cast<uint64_t>(context.safeCandidateStateStore.states.size()) *
-          static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
-        const std::chrono::steady_clock::time_point storeUploadStart =
-          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-        string gpuStoreError;
-        if(!uploadSimCudaPersistentSafeCandidateStateStore(context.safeCandidateStateStore.states,
-                                                           context.gpuSafeCandidateStateStore,
-                                                           &gpuStoreError))
-        {
-          releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
-          context.initialSafeStoreHandoffActive = false;
-          if(simCudaValidateEnabledRuntime() && !gpuStoreError.empty())
-          {
-            fprintf(stderr, "SIM CUDA initial safe-store mirror upload failed: %s\n", gpuStoreError.c_str());
-          }
-        }
-        else
-        {
-          markSimGpuFrontierCacheSynchronized(context);
-          context.initialSafeStoreHandoffActive = false;
-          if(benchmarkEnabled)
-          {
-            recordSimInitialStoreBytesH2D(storeBytesH2D);
-          }
-        }
-        if(benchmarkEnabled)
-        {
-          recordSimInitialStoreUploadNanoseconds(simElapsedNanoseconds(storeUploadStart));
-        }
-      }
-      else if(context.gpuSafeCandidateStateStore.valid)
-      {
-        releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
-        context.initialSafeStoreHandoffActive = false;
-      }
-    }
-  }
+	  finalizeSimCudaInitialRunSummariesToContext(summaries,
+	                                             context,
+	                                             benchmarkEnabled,
+	                                             chunkedHandoffMaintainedHostSafeStore,
+	                                             chunkedHandoffMaintainedHostSafeStore);
 	  if(benchmarkEnabled)
 	  {
 	    recordSimInitialScanCpuMergeNanoseconds(simElapsedNanoseconds(cpuMergeStart));
 	  }
-	  runSimCudaInitialFrontierTransducerShadowIfEnabled(summaries,context);
 	}
 
 inline bool collectSimCudaProposalStatesForLoop(int maxProposalCount,
