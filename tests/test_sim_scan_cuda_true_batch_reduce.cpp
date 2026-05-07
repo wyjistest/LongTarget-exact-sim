@@ -2123,6 +2123,10 @@ int main()
            singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
            1,
            "single proposal V3 selected-base upload skip") && ok;
+    ok = expect_equal_uint64(
+           singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3SelectedCompactSkips,
+           1,
+           "single proposal V3 selected compact skip") && ok;
     ok = expect_equal_uint64(singleProposalV3BatchResult.initialProposalV3SelectedCountClearSkips,
                              1,
                              "single proposal V3 selected-count clear skip") && ok;

@@ -2143,6 +2143,7 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   uint64_t *outSingleRequestStateBaseBufferEnsureSkips,
   uint64_t *outSingleRequestStateBaseUploadSkips,
   uint64_t *outSingleRequestSelectedBaseUploadSkips,
+  uint64_t *outSingleRequestSelectedCompactSkips,
   uint64_t *outSelectedCountClearSkips,
   string *errorOut)
 {
@@ -2167,6 +2168,10 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   if(outSingleRequestSelectedBaseUploadSkips != NULL)
   {
     *outSingleRequestSelectedBaseUploadSkips = 0;
+  }
+  if(outSingleRequestSelectedCompactSkips != NULL)
+  {
+    *outSingleRequestSelectedCompactSkips = 0;
   }
   if(outSingleRequestStateBaseBufferEnsureSkips != NULL)
   {
@@ -2360,25 +2365,45 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
 
   if(totalSelectedCount > 0)
   {
-    if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
-                                    &context->outputCandidateStatesCapacity,
-                                    static_cast<size_t>(totalSelectedCount),
-                                    errorOut))
+    outPackedSelectedStates->resize(static_cast<size_t>(totalSelectedCount));
+    if(batchSize == 1)
     {
-      return false;
-    }
-    const bool useImplicitSelectedBase = batchSize == 1;
-    const int *selectedBasesDevice = context->batchEventBasesDevice;
-    if(useImplicitSelectedBase)
-    {
-      selectedBasesDevice = NULL;
       if(outSingleRequestSelectedBaseUploadSkips != NULL)
       {
         *outSingleRequestSelectedBaseUploadSkips = 1;
       }
+      if(outSingleRequestSelectedCompactSkips != NULL)
+      {
+        *outSingleRequestSelectedCompactSkips = 1;
+      }
+      copyStart = std::chrono::steady_clock::now();
+      status = cudaMemcpy(outPackedSelectedStates->data(),
+                          context->batchCandidateStatesDevice,
+                          static_cast<size_t>(totalSelectedCount) *
+                            sizeof(SimScanCudaCandidateState),
+                          cudaMemcpyDeviceToHost);
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        outPackedSelectedStates->clear();
+        return false;
+      }
+      d2hSeconds += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                          std::chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
+    }
+    else if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                         &context->outputCandidateStatesCapacity,
+                                         static_cast<size_t>(totalSelectedCount),
+                                         errorOut))
+    {
+      return false;
     }
     else
     {
+      const int *selectedBasesDevice = context->batchEventBasesDevice;
       status = cudaMemcpy(context->batchEventBasesDevice,
                           selectedBases.data(),
                           static_cast<size_t>(batchSize) * sizeof(int),
@@ -2391,75 +2416,75 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
         }
         return false;
       }
-    }
 
-    status = cudaEventRecord(context->startEvent);
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
+      status = cudaEventRecord(context->startEvent);
+      if(status != cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
       }
-      return false;
-    }
 
-    const int compactThreads = 256;
-    const int compactBlocks = (clampedProposalCount + compactThreads - 1) / compactThreads;
-    sim_scan_compact_batch_selected_candidate_states_kernel<<<dim3(static_cast<unsigned int>(compactBlocks),
-                                                                   static_cast<unsigned int>(batchSize)),
-                                                             compactThreads>>>(
-      context->batchCandidateStatesDevice,
-      context->batchCandidateCountsDevice,
-      selectedBasesDevice,
-      clampedProposalCount,
-      context->outputCandidateStatesDevice);
-    status = cudaGetLastError();
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
+      const int compactThreads = 256;
+      const int compactBlocks = (clampedProposalCount + compactThreads - 1) / compactThreads;
+      sim_scan_compact_batch_selected_candidate_states_kernel<<<dim3(static_cast<unsigned int>(compactBlocks),
+                                                                     static_cast<unsigned int>(batchSize)),
+                                                               compactThreads>>>(
+        context->batchCandidateStatesDevice,
+        context->batchCandidateCountsDevice,
+        selectedBasesDevice,
+        clampedProposalCount,
+        context->outputCandidateStatesDevice);
+      status = cudaGetLastError();
+      if(status != cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
       }
-      return false;
-    }
 
-    status = cudaEventRecord(context->stopEvent);
-    if(status == cudaSuccess)
-    {
-      status = cudaEventSynchronize(context->stopEvent);
-    }
-    float compactElapsedMs = 0.0f;
-    if(status == cudaSuccess)
-    {
-      status = cudaEventElapsedTime(&compactElapsedMs, context->startEvent, context->stopEvent);
-    }
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
+      status = cudaEventRecord(context->stopEvent);
+      if(status == cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        status = cudaEventSynchronize(context->stopEvent);
       }
-      return false;
-    }
-    elapsedMs += compactElapsedMs;
+      float compactElapsedMs = 0.0f;
+      if(status == cudaSuccess)
+      {
+        status = cudaEventElapsedTime(&compactElapsedMs, context->startEvent, context->stopEvent);
+      }
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      elapsedMs += compactElapsedMs;
 
-    outPackedSelectedStates->resize(static_cast<size_t>(totalSelectedCount));
-    copyStart = std::chrono::steady_clock::now();
-    status = cudaMemcpy(outPackedSelectedStates->data(),
-                        context->outputCandidateStatesDevice,
-                        static_cast<size_t>(totalSelectedCount) * sizeof(SimScanCudaCandidateState),
-                        cudaMemcpyDeviceToHost);
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
+      copyStart = std::chrono::steady_clock::now();
+      status = cudaMemcpy(outPackedSelectedStates->data(),
+                          context->outputCandidateStatesDevice,
+                          static_cast<size_t>(totalSelectedCount) *
+                            sizeof(SimScanCudaCandidateState),
+                          cudaMemcpyDeviceToHost);
+      if(status != cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        outPackedSelectedStates->clear();
+        return false;
       }
-      outPackedSelectedStates->clear();
-      return false;
+      d2hSeconds += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                          std::chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
     }
-    d2hSeconds += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                        std::chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
   }
 
   if(outGpuSeconds != NULL)
@@ -13484,6 +13509,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips;
+  batchResult->initialTrueBatchSingleRequestProposalV3SelectedCompactSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestProposalV3SelectedCompactSkips;
   batchResult->initialTrueBatchEventBaseMaterializeSkips +=
     requestBatchResult.initialTrueBatchEventBaseMaterializeSkips;
   batchResult->initialTrueBatchEventBaseBufferEnsureSkips +=
@@ -16639,6 +16666,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips = 0;
+  uint64_t initialTrueBatchSingleRequestProposalV3SelectedCompactSkips = 0;
   uint64_t initialProposalV3SelectedCountClearSkips = 0;
   if(anyCandidateExtraction)
   {
@@ -16975,6 +17003,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                                                                                  &initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips,
                                                                                  &initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips,
                                                                                  &initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
+                                                                                 &initialTrueBatchSingleRequestProposalV3SelectedCompactSkips,
                                                                                  &initialProposalV3SelectedCountClearSkips,
                                                                                  errorOut))
       {
@@ -17854,6 +17883,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips;
     batchResult->initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips =
       initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips;
+    batchResult->initialTrueBatchSingleRequestProposalV3SelectedCompactSkips =
+      initialTrueBatchSingleRequestProposalV3SelectedCompactSkips;
     batchResult->initialTrueBatchEventBaseMaterializeSkips =
       initialTrueBatchEventBaseMaterializeSkips;
     batchResult->initialTrueBatchEventBaseBufferEnsureSkips =
