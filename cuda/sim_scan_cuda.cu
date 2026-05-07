@@ -13990,6 +13990,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationNoFilterCandidateCountD2HSkips;
   batchResult->regionPackedAggregationNoFilterCandidateCountScalarH2DSkips +=
     requestBatchResult.regionPackedAggregationNoFilterCandidateCountScalarH2DSkips;
+  batchResult->regionPackedAggregationSliceTempOutputBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationSliceTempOutputBufferEnsureSkips;
   batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
     requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
@@ -22265,7 +22267,8 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
                                                                                     uint64_t *outNoFilterReservedCopySkips = NULL,
                                                                                     int *outHostKnownCandidateCount = NULL,
                                                                                     bool deferNoFilterCandidateCountH2D = false,
-                                                                                    uint64_t *outNoFilterCandidateCountScalarH2DSkips = NULL)
+                                                                                    uint64_t *outNoFilterCandidateCountScalarH2DSkips = NULL,
+                                                                                    uint64_t *outSliceTempOutputBufferEnsureSkips = NULL)
 {
   if(context == NULL || summaryCount <= 0)
   {
@@ -22287,13 +22290,13 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
      !ensure_sim_scan_cuda_buffer(&context->reducedStatesDevice,
                                   &context->reducedStatesCapacity,
                                   static_cast<size_t>(summaryCount),
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
-                                  &context->outputCandidateStatesCapacity,
-                                  static_cast<size_t>(summaryCount),
                                   errorOut))
   {
     return false;
+  }
+  if(outSliceTempOutputBufferEnsureSkips != NULL)
+  {
+    *outSliceTempOutputBufferEnsureSkips += 1;
   }
 
   const int reduceThreads = 256;
@@ -24569,6 +24572,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   uint64_t noFilterReservedCopySkips = 0;
   const bool deferNoFilterCandidateCountH2D = orderedFirst.filterStartCoordCount == 0;
   uint64_t noFilterCandidateCountScalarH2DSkips = 0;
+  uint64_t sliceTempOutputBufferEnsureSkips = 0;
   for(size_t i = 0; i < requests.size(); ++i)
   {
     const int requestCapacity = requestCandidateCapacities[i];
@@ -24616,7 +24620,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                   &noFilterReservedCopySkips,
                                                                                   &requestCandidateCounts[i],
                                                                                   deferNoFilterCandidateCountH2D,
-                                                                                  &noFilterCandidateCountScalarH2DSkips))
+                                                                                  &noFilterCandidateCountScalarH2DSkips,
+                                                                                  &sliceTempOutputBufferEnsureSkips))
       {
         return false;
       }
@@ -24633,6 +24638,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       noFilterReservedCopySkips;
     batchResult->regionPackedAggregationNoFilterCandidateCountScalarH2DSkips +=
       noFilterCandidateCountScalarH2DSkips;
+    batchResult->regionPackedAggregationSliceTempOutputBufferEnsureSkips +=
+      sliceTempOutputBufferEnsureSkips;
   }
 
   if(outResult->runSummaryCount == 0)

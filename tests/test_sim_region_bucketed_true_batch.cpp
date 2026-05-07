@@ -356,6 +356,9 @@ static bool test_bucketed_region_path_matches_unbucketed_aggregation()
     ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationNoFilterCandidateCountScalarH2DSkips,
                              2,
                              "bucketed no-filter candidate count scalar H2D skips") && ok;
+    ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationSliceTempOutputBufferEnsureSkips,
+                             2,
+                             "bucketed slice temp output buffer ensure skips") && ok;
     ok = expect_equal_uint64(bucketedBatchResult.taskCount,
                              1,
                              "bucketed taskCount") && ok;
