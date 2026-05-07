@@ -16627,8 +16627,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     (!anyCandidateExtraction ||
      (anyReduceCandidates &&
       !anyProposalCandidates &&
-      deviceResidencyRequestCount == 0 &&
-      initialReduceBackend == SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_LEGACY) ||
+      deviceResidencyRequestCount == 0) ||
      (anyProposalCandidates &&
       !anyReduceCandidates &&
       deviceResidencyRequestCount == 0));

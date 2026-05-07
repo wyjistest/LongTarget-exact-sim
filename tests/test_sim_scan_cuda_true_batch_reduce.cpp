@@ -1155,6 +1155,21 @@ int main()
       run_true_batch_initial_reduce_backend(zeroRunReduceRequests,
                                             "legacy",
                                             &zeroRunReduceBatchResult);
+    SimScanCudaBatchResult zeroRunHashReduceBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> zeroRunHashReduceBatchResults =
+      run_true_batch_initial_reduce_hash(zeroRunReduceRequests,
+                                         NULL,
+                                         &zeroRunHashReduceBatchResult);
+    SimScanCudaBatchResult zeroRunSegmentedReduceBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> zeroRunSegmentedReduceBatchResults =
+      run_true_batch_initial_reduce_backend(zeroRunReduceRequests,
+                                            "segmented",
+                                            &zeroRunSegmentedReduceBatchResult);
+    SimScanCudaBatchResult zeroRunOrderedSegmentedV3ReduceBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> zeroRunOrderedSegmentedV3ReduceBatchResults =
+      run_true_batch_initial_reduce_backend(zeroRunReduceRequests,
+                                            "ordered_segmented_v3",
+                                            &zeroRunOrderedSegmentedV3ReduceBatchResult);
 
     std::vector<SimScanCudaInitialBatchResult> batchResults;
     SimScanCudaBatchResult batchResult;
@@ -1254,6 +1269,54 @@ int main()
     ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunReduceBatchResults.size()),
                              2,
                              "zero-run reduce true batch result count") && ok;
+    ok = expect_true(zeroRunHashReduceBatchResult.usedCuda,
+                     "zero-run hash reduce true batch usedCuda") && ok;
+    ok = expect_true(zeroRunHashReduceBatchResult.usedInitialDirectSummaryPath,
+                     "zero-run hash reduce true batch used direct-summary path") && ok;
+    ok = expect_equal_uint64(zeroRunHashReduceBatchResult.taskCount,
+                             2,
+                             "zero-run hash reduce true batch taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunHashReduceBatchResult.launchCount,
+                             0,
+                             "zero-run hash reduce true batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunHashReduceBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run hash reduce true batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunHashReduceBatchResults.size()),
+                             2,
+                             "zero-run hash reduce true batch result count") && ok;
+    ok = expect_true(zeroRunSegmentedReduceBatchResult.usedCuda,
+                     "zero-run segmented reduce true batch usedCuda") && ok;
+    ok = expect_true(zeroRunSegmentedReduceBatchResult.usedInitialDirectSummaryPath,
+                     "zero-run segmented reduce true batch used direct-summary path") && ok;
+    ok = expect_equal_uint64(zeroRunSegmentedReduceBatchResult.taskCount,
+                             2,
+                             "zero-run segmented reduce true batch taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunSegmentedReduceBatchResult.launchCount,
+                             0,
+                             "zero-run segmented reduce true batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunSegmentedReduceBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run segmented reduce true batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunSegmentedReduceBatchResults.size()),
+                             2,
+                             "zero-run segmented reduce true batch result count") && ok;
+    ok = expect_true(zeroRunOrderedSegmentedV3ReduceBatchResult.usedCuda,
+                     "zero-run ordered_segmented_v3 reduce true batch usedCuda") && ok;
+    ok = expect_true(zeroRunOrderedSegmentedV3ReduceBatchResult.usedInitialDirectSummaryPath,
+                     "zero-run ordered_segmented_v3 reduce true batch used direct-summary path") && ok;
+    ok = expect_equal_uint64(zeroRunOrderedSegmentedV3ReduceBatchResult.taskCount,
+                             2,
+                             "zero-run ordered_segmented_v3 reduce true batch taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunOrderedSegmentedV3ReduceBatchResult.launchCount,
+                             0,
+                             "zero-run ordered_segmented_v3 reduce true batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunOrderedSegmentedV3ReduceBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run ordered_segmented_v3 reduce true batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunOrderedSegmentedV3ReduceBatchResults.size()),
+                             2,
+                             "zero-run ordered_segmented_v3 reduce true batch result count") && ok;
     ok = expect_true(hashReduceBatchResult.usedInitialHashReducePath,
                      "hash reduce batch used hash path") && ok;
     ok = expect_true(!hashReduceBatchResult.initialHashReduceFallback,
