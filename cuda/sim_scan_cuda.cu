@@ -13427,6 +13427,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
   batchResult->initialTrueBatchSingleRequestCountCopySkips +=
     requestBatchResult.initialTrueBatchSingleRequestCountCopySkips;
+  batchResult->initialTrueBatchSingleRequestRunBaseBufferEnsureSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestRunBaseMaterializeSkips +=
     requestBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips;
   batchResult->initialTrueBatchEventBaseMaterializeSkips +=
@@ -15836,6 +15838,15 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   const size_t batchDiagCells = static_cast<size_t>(batchSize) * static_cast<size_t>(diagCapacity);
   const size_t batchRowCounts = static_cast<size_t>(batchSize) * static_cast<size_t>(rowCountStride);
   const size_t batchRowOffsets = static_cast<size_t>(batchSize) * static_cast<size_t>(rowOffsetStride);
+  const bool requestInitialPinnedAsyncHandoff =
+    sim_scan_cuda_initial_pinned_async_handoff_runtime();
+  const bool requestInitialPinnedAsyncCpuPipeline =
+    sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
+  const bool initialChunkedHandoffRequested =
+    sim_scan_cuda_initial_chunked_handoff_runtime();
+  const bool skipSingleRequestRunBaseBufferEnsure =
+    batchSize == 1 && !anyCandidateExtraction && !requestInitialPinnedAsyncHandoff;
+  uint64_t initialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
 
   if(!ensure_sim_scan_cuda_buffer(&context->batchBDevice,
                                   &context->batchBCapacityBytes,
@@ -15872,11 +15883,18 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
      !ensure_sim_scan_cuda_buffer(&context->batchEventScoreFloorsDevice,
                                   &context->batchEventScoreFloorsCapacity,
                                   static_cast<size_t>(batchSize),
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
-                                  &context->batchRunBasesCapacity,
-                                  static_cast<size_t>(batchSize),
                                   errorOut))
+  {
+    return false;
+  }
+  if(skipSingleRequestRunBaseBufferEnsure)
+  {
+    initialTrueBatchSingleRequestRunBaseBufferEnsureSkips += 1;
+  }
+  else if(!ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
+                                       &context->batchRunBasesCapacity,
+                                       static_cast<size_t>(batchSize),
+                                       errorOut))
   {
     return false;
   }
@@ -16224,14 +16242,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
 
   int maxRunsPerBatch = 0;
   int totalRunSummaries = 0;
-  const bool requestInitialPinnedAsyncHandoff =
-    sim_scan_cuda_initial_pinned_async_handoff_runtime();
-  const bool requestInitialPinnedAsyncCpuPipeline =
-    sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
-  const bool initialChunkedHandoffRequested =
-    sim_scan_cuda_initial_chunked_handoff_runtime();
   const bool skipSingleRequestRunBaseMaterialize =
-    batchSize == 1 && !anyCandidateExtraction && !requestInitialPinnedAsyncHandoff;
+    skipSingleRequestRunBaseBufferEnsure;
   if(batchSize == 1)
   {
     const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
@@ -17674,6 +17686,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestInputPackSkips;
     batchResult->initialTrueBatchSingleRequestCountCopySkips =
       initialTrueBatchSingleRequestCountCopySkips;
+    batchResult->initialTrueBatchSingleRequestRunBaseBufferEnsureSkips =
+      initialTrueBatchSingleRequestRunBaseBufferEnsureSkips;
     batchResult->initialTrueBatchSingleRequestRunBaseMaterializeSkips =
       initialTrueBatchSingleRequestRunBaseMaterializeSkips;
     batchResult->initialTrueBatchEventBaseMaterializeSkips =

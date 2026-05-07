@@ -208,6 +208,7 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_true_batch_single_request_prefix_skips`: initial true-batch wrapper telemetry for single-request event/run batch-prefix scans elided by direct base materialization
 - `benchmark.sim_initial_true_batch_single_request_input_pack_skips`: initial true-batch wrapper telemetry for single-request target/score-floor host batch-pack staging elided by direct H2D copies
 - `benchmark.sim_initial_true_batch_single_request_count_copy_skips`: initial true-batch wrapper telemetry for single-request per-task event/run total D2H copies elided by reusing scalar totals already copied from device
+- `benchmark.sim_initial_true_batch_single_request_run_base_buffer_ensure_skips`: initial true-batch wrapper telemetry for single-request summary-only run-base buffer allocation checks skipped
 - `benchmark.sim_initial_true_batch_single_request_run_base_materialize_skips`: initial true-batch wrapper telemetry for single-request summary-only run-base zero materialization elided by compacting summaries with base 0
 - `benchmark.sim_initial_true_batch_event_base_materialize_skips`: initial true-batch wrapper telemetry for event-base prefix materialization skipped because the wrapper consumes only event totals and row/run offsets
 - `benchmark.sim_initial_true_batch_event_base_buffer_ensure_skips`: initial true-batch wrapper telemetry for event-base buffer allocation checks skipped after event-base prefix materialization is removed
