@@ -1946,6 +1946,9 @@ int main()
                              "proposal batch baseline materialized candidate count") && ok;
     ok = expect_true(proposalBatchResult.initialProposalDirectTopKGpuSeconds == 0.0,
                      "proposal batch baseline direct-topK gpu seconds") && ok;
+    ok = expect_equal_uint64(proposalBatchResult.initialProposalDirectTopKCountClearSkips,
+                             static_cast<uint64_t>(proposalRequests.size()),
+                             "proposal batch baseline direct-topK count-clear skips") && ok;
     ok = expect_true(proposalBatchResult.initialBaseUploadSeconds == 0.0,
                      "proposal batch baseline base-upload seconds") && ok;
     ok = expect_equal_uint64(proposalBatchResult.initialReduceReplayStats.chunkCount, 0, "proposal batch replay chunks") && ok;

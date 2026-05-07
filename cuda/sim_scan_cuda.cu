@@ -1904,16 +1904,6 @@ static bool sim_scan_select_top_disjoint_candidate_states_from_device_locked(Sim
     return false;
   }
 
-  status = cudaMemset(context->candidateCountDevice,0,sizeof(int));
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
   sim_scan_select_top_disjoint_candidate_states_kernel<<<1,1>>>(statesDevice,
                                                                  stateCount,
                                                                  clampedProposalCount,
@@ -17687,8 +17677,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         if(useProposalV2Path)
         {
           proposalDirectTopKGpuSeconds += requestProposalGpuSeconds;
-          initialProposalDirectTopKCountClearSkips += 1;
         }
+        initialProposalDirectTopKCountClearSkips += 1;
         result.candidateStates.swap(proposalStates);
       }
     }
