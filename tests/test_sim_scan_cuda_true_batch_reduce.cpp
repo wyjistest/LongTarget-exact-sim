@@ -2031,6 +2031,11 @@ int main()
              regionPackedAggregationZeroRunTrueBatchRunCompactSkips,
            1,
            "zero-run homogeneous region aggregated run-compact skip") && ok;
+    ok = expect_equal_uint64(
+           zeroRunHomogeneousAggregatedBatchResult.
+             regionPackedAggregationZeroRunTrueBatchEventTotalsD2HSkips,
+           1,
+           "zero-run homogeneous region aggregated event totals d2h skip") && ok;
     ok = expect_equal_double(zeroRunHomogeneousAggregatedBatchResult.d2hSeconds,
                              0.0,
                              "zero-run homogeneous region aggregated totals d2h skipped") && ok;
