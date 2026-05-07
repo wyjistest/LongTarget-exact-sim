@@ -368,6 +368,9 @@ static bool test_bucketed_region_path_matches_unbucketed_aggregation()
     ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips,
                              1,
                              "bucketed initial summary totals buffer ensure skips") && ok;
+    ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationInitialRunSummaryBufferEnsureSkips,
+                             1,
+                             "bucketed initial run-summary buffer ensure skips") && ok;
     ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips,
                              1,
                              "bucketed no-filter initial candidate count buffer ensure skips") && ok;

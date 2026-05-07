@@ -13998,6 +13998,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationSummaryTotalsClearSkips;
   batchResult->regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips;
+  batchResult->regionPackedAggregationInitialRunSummaryBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationInitialRunSummaryBufferEnsureSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
   batchResult->regionPackedAggregationInitialEventBufferEnsureSkips +=
@@ -21745,6 +21747,16 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   const size_t batchDiagCells = static_cast<size_t>(batchSize) * static_cast<size_t>(diagCapacity);
   const size_t batchRowCounts = static_cast<size_t>(batchSize) * static_cast<size_t>(rowCountStride);
   const size_t batchRowOffsets = static_cast<size_t>(batchSize) * static_cast<size_t>(rowOffsetStride);
+  int maxSummaryEnd = 0;
+  for(size_t offset = 0; offset < requestCount; ++offset)
+  {
+    const SimScanCudaRequest &request = requests[requestBegin + offset];
+    const int requestRowCount = request.rowEnd - request.rowStart + 1;
+    const int requestColCount = request.colEnd - request.colStart + 1;
+    maxSummaryEnd = max(maxSummaryEnd,
+                        requestCandidateBases[requestBegin + offset] +
+                        requestRowCount * requestColCount);
+  }
 
   if(!ensure_sim_scan_cuda_buffer(&context->batchHScoreDevice,
                                   &context->batchHScoreCapacityCells,
@@ -21809,6 +21821,10 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
      !ensure_sim_scan_cuda_buffer(&context->batchAllCandidateCountsDevice,
                                   &context->batchAllCandidateCountsCapacity,
                                   static_cast<size_t>(batchSize),
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->initialRunSummariesDevice,
+                                  &context->initialRunSummariesCapacity,
+                                  static_cast<size_t>(maxSummaryEnd),
                                   errorOut))
   {
     return false;
@@ -24370,12 +24386,17 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   if(totalCandidateCapacity > 0 &&
+     !skipInitialSummaryTotalsBufferEnsure &&
      !ensure_sim_scan_cuda_buffer(&context->initialRunSummariesDevice,
                                   &context->initialRunSummariesCapacity,
                                   totalCandidateCapacity,
                                   errorOut))
   {
     return false;
+  }
+  if(totalCandidateCapacity > 0 && skipInitialSummaryTotalsBufferEnsure && batchResult != NULL)
+  {
+    batchResult->regionPackedAggregationInitialRunSummaryBufferEnsureSkips += 1;
   }
 
   if(maxRequestCandidateCapacity > 0 && batchResult != NULL)
