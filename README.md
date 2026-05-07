@@ -256,6 +256,7 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_ordered_replay_seconds`: ordered candidate-maintenance phase on the reducer path; today this is the same measured phase as `sim_initial_topk_seconds`, exposed under a more explicit name for reducer tuning
 - `benchmark.sim_initial_topk_seconds`: time spent maintaining the exact top-K candidate set on the experimental initial reducer path
 - `benchmark.sim_initial_segmented_tile_states_total` / `benchmark.sim_initial_segmented_grouped_states_total`: pre-group and post-group state totals reported by the segmented reducer path
+- `benchmark.sim_initial_ordered_segmented_v3_count_clear_skips`: ordered_segmented_v3 telemetry for batch candidate-count/running-min clears skipped because the v3 frontier reducer overwrites both arrays
 - `benchmark.sim_locate_seconds`: time spent in `locate()` / disjoint region expansion after traceback
 - `benchmark.sim_locate_gpu_seconds`: CUDA kernel time inside the locate backend (0 when locate stays on CPU)
 - `benchmark.sim_region_scan_gpu_seconds`: CUDA kernel time inside SIM region rescans

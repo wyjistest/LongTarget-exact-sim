@@ -7078,6 +7078,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3CountClearSkipCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simProposalGpuNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -8322,6 +8328,18 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		{
 		  tileStateCount = simInitialSegmentedTileStateCount().load(std::memory_order_relaxed);
 		  groupedStateCount = simInitialSegmentedGroupedStateCount().load(std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialOrderedSegmentedV3CountClearSkips(uint64_t countClearSkips)
+		{
+		  simInitialOrderedSegmentedV3CountClearSkipCount().fetch_add(countClearSkips,
+		                                                              std::memory_order_relaxed);
+		}
+
+		inline void getSimInitialOrderedSegmentedV3CountClearStats(uint64_t &countClearSkips)
+		{
+		  countClearSkips =
+		    simInitialOrderedSegmentedV3CountClearSkipCount().load(std::memory_order_relaxed);
 		}
 
 		inline void recordSimProposalGpuNanoseconds(uint64_t nanoseconds)
@@ -13841,6 +13859,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		            simSecondsToNanoseconds(cudaBatchResult.initialTopKSeconds));
 		          recordSimInitialSegmentedStateStats(cudaBatchResult.initialSegmentedTileStateCount,
 		                                             cudaBatchResult.initialSegmentedGroupedStateCount);
+		          recordSimInitialOrderedSegmentedV3CountClearSkips(
+		            cudaBatchResult.initialOrderedSegmentedV3CountClearSkips);
 			          recordSimInitialSummaryPackedD2H(
 			            cudaBatchResult.usedInitialPackedSummaryD2H,
 			            cudaBatchResult.initialSummaryPackedBytesD2H,

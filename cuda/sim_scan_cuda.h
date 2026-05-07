@@ -954,6 +954,7 @@ struct SimScanCudaBatchResult
     initialHandoffSlotsReusedAfterMaterialize(false),
     initialSegmentedTileStateCount(0),
     initialSegmentedGroupedStateCount(0),
+    initialOrderedSegmentedV3CountClearSkips(0),
     taskCount(0),
     launchCount(0),
     initialReduceReplayStats()
@@ -1159,6 +1160,7 @@ struct SimScanCudaBatchResult
   bool initialHandoffSlotsReusedAfterMaterialize;
   uint64_t initialSegmentedTileStateCount;
   uint64_t initialSegmentedGroupedStateCount;
+  uint64_t initialOrderedSegmentedV3CountClearSkips;
   uint64_t taskCount;
   uint64_t launchCount;
   SimScanCudaInitialReduceReplayStats initialReduceReplayStats;

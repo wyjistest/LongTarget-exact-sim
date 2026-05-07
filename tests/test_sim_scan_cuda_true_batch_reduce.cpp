@@ -1163,6 +1163,9 @@ int main()
                      "ordered_segmented_v3 batch recorded ordered replay gpu seconds") && ok;
     ok = expect_true(orderedSegmentedV3BatchResult.initialSegmentedCompactSeconds > 0.0,
                      "ordered_segmented_v3 batch recorded compact gpu seconds") && ok;
+    ok = expect_equal_uint64(orderedSegmentedV3BatchResult.initialOrderedSegmentedV3CountClearSkips,
+                             static_cast<uint64_t>(requests.size()) * 2,
+                             "ordered_segmented_v3 batch count-clear skips") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(orderedSegmentedV3BatchResults.size()),
                              2,
                              "ordered_segmented_v3 batch result count") && ok;
@@ -1352,6 +1355,9 @@ int main()
                      "single ordered_segmented_v3 backend recorded ordered replay gpu seconds") && ok;
     ok = expect_true(singleOrderedSegmentedV3BatchResult.initialSegmentedCompactSeconds > 0.0,
                      "single ordered_segmented_v3 backend recorded compact gpu seconds") && ok;
+    ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialOrderedSegmentedV3CountClearSkips,
+                             2,
+                             "single ordered_segmented_v3 backend count-clear skips") && ok;
     ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips,
                              1,
                              "single ordered_segmented_v3 backend run-base buffer ensure skip") && ok;

@@ -1393,6 +1393,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       simSecondsToNanoseconds(preparedBatch.cudaBatchResult.initialTopKSeconds));
     recordSimInitialSegmentedStateStats(preparedBatch.cudaBatchResult.initialSegmentedTileStateCount,
                                         preparedBatch.cudaBatchResult.initialSegmentedGroupedStateCount);
+    recordSimInitialOrderedSegmentedV3CountClearSkips(
+      preparedBatch.cudaBatchResult.initialOrderedSegmentedV3CountClearSkips);
     recordSimInitialSummaryPackedD2H(
       preparedBatch.cudaBatchResult.usedInitialPackedSummaryD2H,
       preparedBatch.cudaBatchResult.initialSummaryPackedBytesD2H,
@@ -2901,8 +2903,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   const double simInitialOrderedReplaySeconds = simInitialTopKSeconds;
   uint64_t simInitialSegmentedTileStates = 0;
   uint64_t simInitialSegmentedGroupedStates = 0;
+  uint64_t simInitialOrderedSegmentedV3CountClearSkips = 0;
   getSimInitialSegmentedStateStats(simInitialSegmentedTileStates,
                                    simInitialSegmentedGroupedStates);
+  getSimInitialOrderedSegmentedV3CountClearStats(simInitialOrderedSegmentedV3CountClearSkips);
   double simLocateSeconds = 0.0;
   double simLocateGpuSeconds = 0.0;
   double simRegionScanGpuSeconds = 0.0;
@@ -2975,6 +2979,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_topk_seconds="<<simInitialTopKSeconds<<endl;
   cerr<<"benchmark.sim_initial_segmented_tile_states_total="<<simInitialSegmentedTileStates<<endl;
   cerr<<"benchmark.sim_initial_segmented_grouped_states_total="<<simInitialSegmentedGroupedStates<<endl;
+  cerr<<"benchmark.sim_initial_ordered_segmented_v3_count_clear_skips="
+      <<simInitialOrderedSegmentedV3CountClearSkips<<endl;
   cerr<<"benchmark.sim_proposal_gpu_seconds="<<simProposalGpuSeconds<<endl;
   cerr<<"benchmark.sim_proposal_traceback_batch_gpu_seconds="<<simProposalTracebackBatchGpuSeconds<<endl;
   cerr<<"benchmark.sim_proposal_post_seconds="<<simProposalPostSeconds<<endl;

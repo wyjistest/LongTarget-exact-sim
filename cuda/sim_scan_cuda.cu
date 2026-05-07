@@ -13663,6 +13663,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialHandoffSlotsReusedAfterMaterialize;
   batchResult->initialSegmentedTileStateCount += requestBatchResult.initialSegmentedTileStateCount;
   batchResult->initialSegmentedGroupedStateCount += requestBatchResult.initialSegmentedGroupedStateCount;
+  batchResult->initialOrderedSegmentedV3CountClearSkips +=
+    requestBatchResult.initialOrderedSegmentedV3CountClearSkips;
   batchResult->taskCount += requestBatchResult.taskCount;
   batchResult->launchCount += requestBatchResult.launchCount;
   batchResult->initialReduceReplayStats.chunkCount += requestBatchResult.initialReduceReplayStats.chunkCount;
@@ -16628,6 +16630,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   double initialTopKSeconds = 0.0;
   uint64_t initialSegmentedTileStateCount = 0;
   uint64_t initialSegmentedGroupedStateCount = 0;
+  uint64_t initialOrderedSegmentedV3CountClearSkips = 0;
   bool usedInitialSegmentedReducePath = false;
   double proposalDirectTopKGpuSeconds = 0.0;
   double proposalV3GpuSeconds = 0.0;
@@ -16657,23 +16660,37 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       {
         return false;
       }
-      status = cudaMemset(context->batchCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
-      if(status != cudaSuccess)
+      if(useOrderedSegmentedV3TopKSelector)
       {
-        if(errorOut != NULL)
-        {
-          *errorOut = cuda_error_string(status);
-        }
-        return false;
+        initialOrderedSegmentedV3CountClearSkips += static_cast<uint64_t>(batchSize);
       }
-      status = cudaMemset(context->batchRunningMinsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
-      if(status != cudaSuccess)
+      else
       {
-        if(errorOut != NULL)
+        status = cudaMemset(context->batchCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
+        if(status != cudaSuccess)
         {
-          *errorOut = cuda_error_string(status);
+          if(errorOut != NULL)
+          {
+            *errorOut = cuda_error_string(status);
+          }
+          return false;
         }
-        return false;
+      }
+      if(useOrderedSegmentedV3TopKSelector)
+      {
+        initialOrderedSegmentedV3CountClearSkips += static_cast<uint64_t>(batchSize);
+      }
+      else
+      {
+        status = cudaMemset(context->batchRunningMinsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
+        if(status != cudaSuccess)
+        {
+          if(errorOut != NULL)
+          {
+            *errorOut = cuda_error_string(status);
+          }
+          return false;
+        }
       }
       if(sim_scan_cuda_initial_segmented_reduce_runtime())
       {
@@ -17877,6 +17894,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialHandoffSlotsReusedAfterMaterialize;
     batchResult->initialSegmentedTileStateCount = initialSegmentedTileStateCount;
     batchResult->initialSegmentedGroupedStateCount = initialSegmentedGroupedStateCount;
+    batchResult->initialOrderedSegmentedV3CountClearSkips =
+      initialOrderedSegmentedV3CountClearSkips;
     batchResult->taskCount = static_cast<uint64_t>(batchSize);
     batchResult->launchCount = 1;
     batchResult->initialReduceReplayStats = replayStats;
