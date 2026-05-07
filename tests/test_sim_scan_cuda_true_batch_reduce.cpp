@@ -1743,6 +1743,9 @@ int main()
         ok = expect_candidate_states_equal(regionTrueBatchResults[i].candidateStates,
                                            singleRegionResult.candidateStates,
                                            (labelPrefix + " true candidateStates").c_str()) && ok;
+        ok = expect_true(singleRegionBatchResult.
+                           regionSingleRequestFilterOutputBufferOverensureSkips > 0,
+                         (labelPrefix + " single filtered output buffer overensure skips").c_str()) && ok;
         ok = expect_true(regionTrueBatchResults[i].events.empty(),
                          (labelPrefix + " true events empty").c_str()) && ok;
         ok = expect_true(regionTrueBatchResults[i].rowOffsets.empty(),

@@ -14085,6 +14085,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestNoFilterReduceKeyBufferEnsureSkips;
   batchResult->regionSingleRequestSingleCandidateOutputBufferEnsureSkips +=
     requestBatchResult.regionSingleRequestSingleCandidateOutputBufferEnsureSkips;
+  batchResult->regionSingleRequestFilterOutputBufferOverensureSkips +=
+    requestBatchResult.regionSingleRequestFilterOutputBufferOverensureSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -20807,10 +20809,14 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
           {
             if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
                                             &context->outputCandidateStatesCapacity,
-                                            summaryCount,
+                                            static_cast<size_t>(reducedCandidateCount),
                                             errorOut))
             {
               return false;
+            }
+            if(batchResult != NULL && static_cast<size_t>(reducedCandidateCount) < summaryCount)
+            {
+              batchResult->regionSingleRequestFilterOutputBufferOverensureSkips += 1;
             }
             status = cudaMemset(context->filteredCandidateCountDevice,0,sizeof(int));
             if(status != cudaSuccess)
