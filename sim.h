@@ -6087,6 +6087,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialTrueBatchSingleRequestInputPackSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyEnabledCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7477,6 +7483,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                              std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialTrueBatchSingleRequestInputPackSkips(uint64_t inputPackSkips)
+					{
+					  simInitialTrueBatchSingleRequestInputPackSkipCount().fetch_add(inputPackSkips,
+					                                                                 std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialCpuFrontierFastApplyEnabled()
 					{
 					  simInitialCpuFrontierFastApplyEnabledCount().fetch_add(1, std::memory_order_relaxed);
@@ -8648,6 +8660,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  prefixSkips =
 					    simInitialTrueBatchSingleRequestPrefixSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialTrueBatchSingleRequestInputPackStats(uint64_t &inputPackSkips)
+					{
+					  inputPackSkips =
+					    simInitialTrueBatchSingleRequestInputPackSkipCount().load(std::memory_order_relaxed);
 					}
 
 					 inline void getSimInitialContextApplyChunkSkipStats(uint64_t &chunkCount,
@@ -13571,6 +13589,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 					            cudaBatchResult.initialSummaryHostCopyElisionEventCountCopySkips);
 				          recordSimInitialTrueBatchSingleRequestPrefixSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestPrefixSkips);
+				          recordSimInitialTrueBatchSingleRequestInputPackSkips(
+				            cudaBatchResult.initialTrueBatchSingleRequestInputPackSkips);
 					          recordSimInitialPinnedAsyncHandoffStats(cudaBatchResult);
 				          if(!cudaRequests[0].reduceCandidates &&
 				             !cudaRequests[0].proposalCandidates &&

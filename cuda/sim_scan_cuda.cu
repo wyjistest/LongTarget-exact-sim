@@ -13422,6 +13422,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialSummaryHostCopyElisionEventCountCopySkips;
   batchResult->initialTrueBatchSingleRequestPrefixSkips +=
     requestBatchResult.initialTrueBatchSingleRequestPrefixSkips;
+  batchResult->initialTrueBatchSingleRequestInputPackSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
   batchResult->usedInitialPinnedAsyncHandoff =
     batchResult->usedInitialPinnedAsyncHandoff ||
     requestBatchResult.usedInitialPinnedAsyncHandoff;
@@ -15891,19 +15893,29 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     return false;
   }
 
-  vector<char> packedB(packedBChars);
-  vector<int> eventScoreFloors(static_cast<size_t>(batchSize));
-  for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+  uint64_t initialTrueBatchSingleRequestInputPackSkips = 0;
+  if(batchSize == 1)
   {
-    memcpy(packedB.data() + static_cast<size_t>(batchIndex) * static_cast<size_t>(N + 1),
-           requests[static_cast<size_t>(batchIndex)].B,
-           targetBytesPerRequest);
-    eventScoreFloors[static_cast<size_t>(batchIndex)] = requests[static_cast<size_t>(batchIndex)].eventScoreFloor;
+    status = cudaMemcpy(context->batchBDevice,
+                        first.B,
+                        targetBytesPerRequest,
+                        cudaMemcpyHostToDevice);
+    initialTrueBatchSingleRequestInputPackSkips += 1;
   }
-  status = cudaMemcpy(context->batchBDevice,
-                      packedB.data(),
-                      packedBChars * sizeof(char),
-                      cudaMemcpyHostToDevice);
+  else
+  {
+    vector<char> packedB(packedBChars);
+    for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+    {
+      memcpy(packedB.data() + static_cast<size_t>(batchIndex) * static_cast<size_t>(N + 1),
+             requests[static_cast<size_t>(batchIndex)].B,
+             targetBytesPerRequest);
+    }
+    status = cudaMemcpy(context->batchBDevice,
+                        packedB.data(),
+                        packedBChars * sizeof(char),
+                        cudaMemcpyHostToDevice);
+  }
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -15912,10 +15924,27 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     }
     return false;
   }
-  status = cudaMemcpy(context->batchEventScoreFloorsDevice,
-                      eventScoreFloors.data(),
-                      static_cast<size_t>(batchSize) * sizeof(int),
-                      cudaMemcpyHostToDevice);
+  if(batchSize == 1)
+  {
+    status = cudaMemcpy(context->batchEventScoreFloorsDevice,
+                        &first.eventScoreFloor,
+                        sizeof(int),
+                        cudaMemcpyHostToDevice);
+    initialTrueBatchSingleRequestInputPackSkips += 1;
+  }
+  else
+  {
+    vector<int> eventScoreFloors(static_cast<size_t>(batchSize));
+    for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+    {
+      eventScoreFloors[static_cast<size_t>(batchIndex)] =
+        requests[static_cast<size_t>(batchIndex)].eventScoreFloor;
+    }
+    status = cudaMemcpy(context->batchEventScoreFloorsDevice,
+                        eventScoreFloors.data(),
+                        static_cast<size_t>(batchSize) * sizeof(int),
+                        cudaMemcpyHostToDevice);
+  }
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -17621,6 +17650,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialSummaryHostCopyElisionEventCountCopySkips;
     batchResult->initialTrueBatchSingleRequestPrefixSkips =
       initialTrueBatchSingleRequestPrefixSkips;
+    batchResult->initialTrueBatchSingleRequestInputPackSkips =
+      initialTrueBatchSingleRequestInputPackSkips;
     batchResult->initialHandoffPinnedAsyncRequested =
       requestInitialPinnedAsyncHandoff;
     batchResult->initialHandoffPinnedAsyncActive =

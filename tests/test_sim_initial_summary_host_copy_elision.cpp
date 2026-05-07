@@ -281,6 +281,9 @@ int main()
     ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestPrefixSkips,
                              2,
                              "default single-request batch prefix skips") && ok;
+    ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestInputPackSkips,
+                             2,
+                             "default single-request input pack skips") && ok;
     ok = expect_true(directBatchResult.usedInitialSummaryHostCopyElision,
                      "direct host-copy elision used") && ok;
     ok = expect_equal_uint64(directBatchResult.initialSummaryHostCopyElidedBytes,
@@ -295,6 +298,9 @@ int main()
     ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestPrefixSkips,
                              2,
                              "direct single-request batch prefix skips") && ok;
+    ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestInputPackSkips,
+                             2,
+                             "direct single-request input pack skips") && ok;
     ok = expect_true(packedDirectBatchResult.usedInitialPackedSummaryD2H,
                      "packed direct still uses packed D2H") && ok;
     ok = expect_true(packedDirectBatchResult.usedInitialSummaryHostCopyElision,
@@ -311,6 +317,9 @@ int main()
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestPrefixSkips,
                              2,
                              "packed direct single-request batch prefix skips") && ok;
+    ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestInputPackSkips,
+                             2,
+                             "packed direct single-request input pack skips") && ok;
     ok = expect_false(reduceBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce path does not use summary host-copy elision") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(defaultTrueBatchSummaries.size()),
@@ -356,6 +365,9 @@ int main()
     ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestPrefixSkips,
                              0,
                              "direct true-batch no single-request prefix skips") && ok;
+    ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestInputPackSkips,
+                             0,
+                             "direct true-batch no single-request input pack skips") && ok;
     ok = expect_true(packedDirectTrueBatchResult.usedInitialPackedSummaryD2H,
                      "packed direct true-batch still uses packed D2H") && ok;
     ok = expect_true(packedDirectTrueBatchResult.usedInitialSummaryHostCopyElision,
@@ -372,6 +384,9 @@ int main()
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestPrefixSkips,
                              0,
                              "packed direct true-batch no single-request prefix skips") && ok;
+    ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestInputPackSkips,
+                             0,
+                             "packed direct true-batch no single-request input pack skips") && ok;
     ok = expect_false(reduceTrueBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce true-batch does not use summary host-copy elision") && ok;
 

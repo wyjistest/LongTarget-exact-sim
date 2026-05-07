@@ -914,6 +914,7 @@ struct SimScanCudaBatchResult
     initialSummaryHostCopyElisionRunCountCopySkips(0),
     initialSummaryHostCopyElisionEventCountCopySkips(0),
     initialTrueBatchSingleRequestPrefixSkips(0),
+    initialTrueBatchSingleRequestInputPackSkips(0),
     initialHandoffPinnedAsyncRequested(false),
     initialHandoffPinnedAsyncActive(false),
     initialHandoffPinnedAsyncDisabledReason(SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NOT_REQUESTED),
@@ -1104,6 +1105,7 @@ struct SimScanCudaBatchResult
   uint64_t initialSummaryHostCopyElisionRunCountCopySkips;
   uint64_t initialSummaryHostCopyElisionEventCountCopySkips;
   uint64_t initialTrueBatchSingleRequestPrefixSkips;
+  uint64_t initialTrueBatchSingleRequestInputPackSkips;
   bool initialHandoffPinnedAsyncRequested;
   bool initialHandoffPinnedAsyncActive;
   SimScanCudaInitialPinnedAsyncDisabledReason initialHandoffPinnedAsyncDisabledReason;

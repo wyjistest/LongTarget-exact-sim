@@ -1411,6 +1411,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialSummaryHostCopyElisionEventCountCopySkips);
     recordSimInitialTrueBatchSingleRequestPrefixSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestPrefixSkips);
+    recordSimInitialTrueBatchSingleRequestInputPackSkips(
+      preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestInputPackSkips);
     recordSimInitialPinnedAsyncHandoffStats(preparedBatch.cudaBatchResult);
     if(!preparedBatch.usedInitialReduce &&
        !preparedBatch.usedInitialProposals &&
@@ -2317,6 +2319,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialSummaryHostCopyElisionRunCountCopySkips = 0;
   uint64_t simInitialSummaryHostCopyElisionEventCountCopySkips = 0;
   uint64_t simInitialTrueBatchSingleRequestPrefixSkips = 0;
+  uint64_t simInitialTrueBatchSingleRequestInputPackSkips = 0;
   SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
   SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
@@ -2348,6 +2351,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryHostCopyElisionRunCountCopySkips,
                                            simInitialSummaryHostCopyElisionEventCountCopySkips);
   getSimInitialTrueBatchSingleRequestPrefixStats(simInitialTrueBatchSingleRequestPrefixSkips);
+  getSimInitialTrueBatchSingleRequestInputPackStats(simInitialTrueBatchSingleRequestInputPackSkips);
   getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
@@ -2537,6 +2541,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSummaryHostCopyElisionEventCountCopySkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_prefix_skips="
       <<simInitialTrueBatchSingleRequestPrefixSkips<<endl;
+  cerr<<"benchmark.sim_initial_true_batch_single_request_input_pack_skips="
+      <<simInitialTrueBatchSingleRequestInputPackSkips<<endl;
   cerr<<"benchmark.sim_initial_handoff_pinned_async_enabled="
       <<((simCudaInitialChunkedHandoffEnabledRuntime() &&
           simCudaInitialPinnedAsyncHandoffEnabledRuntime()) ? 1 : 0)<<endl;
