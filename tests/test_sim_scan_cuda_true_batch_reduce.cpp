@@ -41,6 +41,16 @@ static bool expect_equal_int(int actual, int expected, const char *label)
     return false;
 }
 
+static bool expect_equal_double(double actual, double expected, const char *label)
+{
+    if (actual == expected)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+    return false;
+}
+
 static bool expect_summaries_equal(const std::vector<SimScanCudaInitialRunSummary> &actual,
                                    const std::vector<SimScanCudaInitialRunSummary> &expected,
                                    const char *label)
@@ -2021,6 +2031,9 @@ int main()
              regionPackedAggregationZeroRunTrueBatchRunCompactSkips,
            1,
            "zero-run homogeneous region aggregated run-compact skip") && ok;
+    ok = expect_equal_double(zeroRunHomogeneousAggregatedBatchResult.d2hSeconds,
+                             0.0,
+                             "zero-run homogeneous region aggregated totals d2h skipped") && ok;
 
     SimScanCudaRequest homogeneousRegionRequest0 = regionRequest0;
     homogeneousRegionRequest0.rowStart = 1;

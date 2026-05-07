@@ -24744,6 +24744,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     return false;
   }
 
+  vector<int> requestEventCounts(requests.size(),0);
+  vector<int> requestRunCounts(orderedRequests.size(),0);
+  vector<unsigned char> requestTotalsKnown(orderedRequests.size(),0);
+
   if(bucketedTrueBatchEnabled)
   {
     for(size_t groupIndex = 0; groupIndex < bucketedGroups.size(); ++groupIndex)
@@ -24770,6 +24774,22 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                              &groupNoBlockedMetadataUploadSkips))
         {
           return false;
+        }
+        if(groupEventCounts.size() != group.requestCount ||
+           groupRunCounts.size() != group.requestCount)
+        {
+          if(errorOut != NULL)
+          {
+            *errorOut = "SIM CUDA homogeneous region batch totals size mismatch";
+          }
+          return false;
+        }
+        for(size_t offset = 0; offset < group.requestCount; ++offset)
+        {
+          const size_t requestIndex = group.requestBegin + offset;
+          requestEventCounts[requestIndex] = groupEventCounts[offset];
+          requestRunCounts[requestIndex] = groupRunCounts[offset];
+          requestTotalsKnown[requestIndex] = 1;
         }
         if(batchResult != NULL)
         {
@@ -24854,6 +24874,22 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         {
           return false;
         }
+        if(groupEventCounts.size() != groupEnd - i ||
+           groupRunCounts.size() != groupEnd - i)
+        {
+          if(errorOut != NULL)
+          {
+            *errorOut = "SIM CUDA homogeneous region batch totals size mismatch";
+          }
+          return false;
+        }
+        for(size_t offset = 0; offset < groupEnd - i; ++offset)
+        {
+          const size_t requestIndex = i + offset;
+          requestEventCounts[requestIndex] = groupEventCounts[offset];
+          requestRunCounts[requestIndex] = groupRunCounts[offset];
+          requestTotalsKnown[requestIndex] = 1;
+        }
         if(batchResult != NULL)
         {
           batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
@@ -24900,13 +24936,20 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     }
   }
 
-  vector<int> requestEventCounts(requests.size(),0);
-  vector<int> requestRunCounts(orderedRequests.size(),0);
   vector<int> requestCandidateCounts(orderedRequests.size(),0);
   vector<int> packedCandidateBases(orderedRequests.size(),0);
   bool requestCandidateCountsKnownOnHost = orderedFirst.filterStartCoordCount == 0;
   double d2hSeconds = 0.0;
-  if(requestCount > 0)
+  bool requestTotalsKnownOnHost = requestCount > 0;
+  for(size_t i = 0; i < requestCount; ++i)
+  {
+    if(requestTotalsKnown[i] == 0)
+    {
+      requestTotalsKnownOnHost = false;
+      break;
+    }
+  }
+  if(requestCount > 0 && !requestTotalsKnownOnHost)
   {
     const chrono::steady_clock::time_point copyStart = chrono::steady_clock::now();
     status = cudaMemcpy(requestEventCounts.data(),
