@@ -1856,6 +1856,16 @@ int main()
                                regionPackedAggregationFinalReduceKeyBufferEnsureSkips,
                              1,
                              "region aggregated no-filter single-summary final reduce key buffer ensure skips") && ok;
+    SimScanCudaBatchResult noFilterSingleSummarySingleBatchResult;
+    const SimScanCudaRequestResult noFilterSingleSummarySingleResult =
+      run_single_region_reduce_all(noFilterSingleSummaryRequest0,
+                                   &noFilterSingleSummarySingleBatchResult);
+    ok = expect_candidate_states_equal(noFilterSingleSummarySingleResult.candidateStates,
+                                       noFilterSingleSummaryBaselineResults[0].candidateStates,
+                                       "single region no-filter single-summary candidateStates") && ok;
+    ok = expect_true(noFilterSingleSummarySingleBatchResult.
+                       regionSingleRequestSingleCandidateExtractSkips > 0,
+                     "single region no-filter single-candidate extract skips recorded") && ok;
 
     std::vector<uint64_t> singleSummaryFilterStartCoords;
     singleSummaryFilterStartCoords.push_back(pack_coord(1, 1));

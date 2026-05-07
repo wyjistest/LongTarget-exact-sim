@@ -20830,17 +20830,27 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
           }
           else
           {
-            sim_scan_extract_candidate_states_kernel<<<extractBlocks, extractThreads>>>(context->reducedStatesDevice,
-                                                                                         reducedCandidateCount,
-                                                                                         context->outputCandidateStatesDevice);
-            status = cudaGetLastError();
-            if(status != cudaSuccess)
+            if(reducedCandidateCount == 1)
             {
-              if(errorOut != NULL)
+              if(batchResult != NULL)
               {
-                *errorOut = cuda_error_string(status);
+                batchResult->regionSingleRequestSingleCandidateExtractSkips += 1;
               }
-              return false;
+            }
+            else
+            {
+              sim_scan_extract_candidate_states_kernel<<<extractBlocks, extractThreads>>>(context->reducedStatesDevice,
+                                                                                           reducedCandidateCount,
+                                                                                           context->outputCandidateStatesDevice);
+              status = cudaGetLastError();
+              if(status != cudaSuccess)
+              {
+                if(errorOut != NULL)
+                {
+                  *errorOut = cuda_error_string(status);
+                }
+                return false;
+              }
             }
           }
         }
@@ -20860,8 +20870,13 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
         if(materializeCandidateStatesToHost && outputCandidateCount > 0)
         {
           outCandidateStates->resize(static_cast<size_t>(outputCandidateCount));
+          const char *candidateStatesDevice =
+            (filterStartCoordCount == 0 && outputCandidateCount == 1) ?
+            reinterpret_cast<const char *>(context->reducedStatesDevice) +
+              offsetof(SimScanCudaCandidateReduceState,candidate) :
+            reinterpret_cast<const char *>(context->outputCandidateStatesDevice);
           status = cudaMemcpy(outCandidateStates->data(),
-                              context->outputCandidateStatesDevice,
+                              candidateStatesDevice,
                               static_cast<size_t>(outputCandidateCount) * sizeof(SimScanCudaCandidateState),
                               cudaMemcpyDeviceToHost);
           if(status != cudaSuccess)
