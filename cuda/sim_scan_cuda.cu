@@ -12274,6 +12274,20 @@ bool sim_scan_cuda_select_safe_workset_windows(const SimCudaPersistentSafeStoreH
     }
     return false;
   }
+  bool hasCandidatePathRows = false;
+  for(size_t row = 0; row < rowMinCols.size(); ++row)
+  {
+    if(rowMinCols[row] <= rowMaxCols[row])
+    {
+      hasCandidatePathRows = true;
+      break;
+    }
+  }
+  if(!hasCandidatePathRows)
+  {
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
   if(handle.stateCount == 0 || rowMinCols.empty())
   {
     clear_sim_scan_cuda_error(errorOut);

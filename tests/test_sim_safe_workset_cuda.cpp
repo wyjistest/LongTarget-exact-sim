@@ -70,6 +70,16 @@ static bool expect_equal_u64(uint64_t actual, uint64_t expected, const char *lab
     return false;
 }
 
+static bool expect_equal_double(double actual, double expected, const char *label)
+{
+    if (actual == expected)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+    return false;
+}
+
 static bool expect_equal_string(const std::string &actual,
                                 const std::string &expected,
                                 const char *label)
@@ -423,6 +433,71 @@ int main()
                   << error << "\n";
         return 2;
     }
+
+    const std::vector<int> emptyRowMinCols(pathSummary.rowMinCols.size(), 21);
+    const std::vector<int> emptyRowMaxCols(pathSummary.rowMaxCols.size(), 0);
+    SimScanCudaSafeWindowResult emptyDenseSafeWindowResult;
+    if (!sim_scan_cuda_select_safe_workset_windows(storeHandle,
+                                                   20,
+                                                   20,
+                                                   static_cast<int>(pathSummary.rowStart),
+                                                   emptyRowMinCols,
+                                                   emptyRowMaxCols,
+                                                   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_DENSE,
+                                                   32,
+                                                   &emptyDenseSafeWindowResult,
+                                                   &error))
+    {
+        std::cerr << "sim_scan_cuda_select_safe_workset_windows(empty dense) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    SimScanCudaSafeWindowResult emptySparseSafeWindowResult;
+    if (!sim_scan_cuda_select_safe_workset_windows(storeHandle,
+                                                   20,
+                                                   20,
+                                                   static_cast<int>(pathSummary.rowStart),
+                                                   emptyRowMinCols,
+                                                   emptyRowMaxCols,
+                                                   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1,
+                                                   32,
+                                                   &emptySparseSafeWindowResult,
+                                                   &error))
+    {
+        std::cerr << "sim_scan_cuda_select_safe_workset_windows(empty sparse) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    ok = expect_equal_size(emptyDenseSafeWindowResult.windows.size(),
+                           0,
+                           "empty dense safe-window returns no windows") && ok;
+    ok = expect_equal_size(emptyDenseSafeWindowResult.affectedStartCoords.size(),
+                           0,
+                           "empty dense safe-window returns no affected starts") && ok;
+    ok = expect_equal_double(emptyDenseSafeWindowResult.gpuSeconds,
+                             0.0,
+                             "empty dense safe-window gpu seconds skipped") && ok;
+    ok = expect_equal_double(emptyDenseSafeWindowResult.d2hSeconds,
+                             0.0,
+                             "empty dense safe-window d2h seconds skipped") && ok;
+    ok = expect_equal_u64(emptyDenseSafeWindowResult.coordBytesD2H,
+                          0,
+                          "empty dense safe-window d2h bytes skipped") && ok;
+    ok = expect_equal_size(emptySparseSafeWindowResult.windows.size(),
+                           0,
+                           "empty sparse safe-window returns no windows") && ok;
+    ok = expect_equal_size(emptySparseSafeWindowResult.affectedStartCoords.size(),
+                           0,
+                           "empty sparse safe-window returns no affected starts") && ok;
+    ok = expect_equal_double(emptySparseSafeWindowResult.gpuSeconds,
+                             0.0,
+                             "empty sparse safe-window gpu seconds skipped") && ok;
+    ok = expect_equal_double(emptySparseSafeWindowResult.d2hSeconds,
+                             0.0,
+                             "empty sparse safe-window d2h seconds skipped") && ok;
+    ok = expect_equal_u64(emptySparseSafeWindowResult.coordBytesD2H,
+                          0,
+                          "empty sparse safe-window d2h bytes skipped") && ok;
 
     SimSafeWindowExecutePlan safeWindowExecutePlan;
     if (!buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(20,
