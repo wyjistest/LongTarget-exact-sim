@@ -13994,6 +13994,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationFilterReservedCopySkips;
   batchResult->regionPackedAggregationSingleCandidateFinalReduceSkips +=
     requestBatchResult.regionPackedAggregationSingleCandidateFinalReduceSkips;
+  batchResult->regionPackedAggregationSingleRequestFinalReduceSkips +=
+    requestBatchResult.regionPackedAggregationSingleRequestFinalReduceSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -24667,7 +24669,18 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
 
   int reducedCandidateCount = 0;
   SimScanCudaCandidateState *finalCandidateStatesDevice = NULL;
-  if(packedCandidateCountInt == 1)
+  if(requests.size() == 1 && packedCandidateCountInt > 0)
+  {
+    reducedCandidateCount = packedCandidateCountInt;
+    finalCandidateStatesDevice =
+      context->batchCandidateStatesDevice + static_cast<ptrdiff_t>(requestCandidateBases[0]);
+    outResult->postAggregateCandidateStateCount = static_cast<uint64_t>(reducedCandidateCount);
+    if(batchResult != NULL)
+    {
+      batchResult->regionPackedAggregationSingleRequestFinalReduceSkips += 1;
+    }
+  }
+  else if(packedCandidateCountInt == 1)
   {
     for(size_t i = 0; i < requests.size(); ++i)
     {

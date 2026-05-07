@@ -1717,6 +1717,20 @@ int main()
                          (labelPrefix + " true rowOffsets empty").c_str()) && ok;
     }
 
+    SimScanCudaBatchResult singleRequestAggregatedBatchResult;
+    const SimScanCudaRegionAggregationResult singleRequestAggregatedResult =
+      run_region_aggregated_reduce_all(std::vector<SimScanCudaRequest>(1, regionRequest1),
+                                       &singleRequestAggregatedBatchResult);
+    ok = expect_equal_uint64(singleRequestAggregatedResult.postAggregateCandidateStateCount,
+                             static_cast<uint64_t>(regionBaselineBatchResults[1].candidateStates.size()),
+                             "single-request region aggregated postAggregateCandidateStateCount") && ok;
+    ok = expect_candidate_states_equal(singleRequestAggregatedResult.candidateStates,
+                                       regionBaselineBatchResults[1].candidateStates,
+                                       "single-request region aggregated candidateStates") && ok;
+    ok = expect_equal_uint64(singleRequestAggregatedBatchResult.regionPackedAggregationSingleRequestFinalReduceSkips,
+                             1,
+                             "single-request region aggregated final reduce skips") && ok;
+
     SimScanCudaBatchResult regionAggregatedBatchResult;
     const SimScanCudaRegionAggregationResult regionAggregatedResult =
       run_region_aggregated_reduce_all(regionRequests, &regionAggregatedBatchResult);
