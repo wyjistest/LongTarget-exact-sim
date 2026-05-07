@@ -2026,6 +2026,9 @@ int main()
     ok = expect_equal_uint64(zeroRunHomogeneousAggregatedBatchResult.taskCount,
                              1,
                              "zero-run homogeneous region aggregated taskCount fused") && ok;
+    ok = expect_equal_uint64(zeroRunHomogeneousAggregatedBatchResult.launchCount,
+                             0,
+                             "zero-run homogeneous region aggregated launchCount skipped") && ok;
     ok = expect_equal_uint64(
            zeroRunHomogeneousAggregatedBatchResult.
              regionPackedAggregationZeroRunTrueBatchRunCompactSkips,

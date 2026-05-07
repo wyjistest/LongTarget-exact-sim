@@ -24973,6 +24973,196 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     }
   }
 
+  const size_t requestCount = requests.size();
+  bool allRequestsHaveNoPossibleEvents = true;
+  for(size_t i = 0; i < orderedRequests.size(); ++i)
+  {
+    if(!sim_scan_cuda_region_request_has_no_possible_events(orderedRequests[i]))
+    {
+      allRequestsHaveNoPossibleEvents = false;
+      break;
+    }
+  }
+  if(allRequestsHaveNoPossibleEvents)
+  {
+    uint64_t skippedScanGroupCount = 0;
+    uint64_t skippedFusedRequestCount = 0;
+    uint64_t skippedZeroRunTrueBatchGroups = 0;
+    uint64_t skippedNoBlockedMetadataUploads = 0;
+    uint64_t skippedExactHomogeneousActualDimBuffers = 0;
+    bool skippedInitialSummaryTotalsBuffers = false;
+    SimScanCudaRegionBucketedTrueBatchStats skippedBucketedStats;
+
+    if(bucketedTrueBatchEnabled)
+    {
+      vector<SimScanCudaRegionBucketedTrueBatchShape> shapes;
+      shapes.reserve(orderedRequests.size());
+      for(size_t i = 0; i < orderedRequests.size(); ++i)
+      {
+        const SimScanCudaRequest &request = orderedRequests[i];
+        shapes.push_back(SimScanCudaRegionBucketedTrueBatchShape(request.rowEnd - request.rowStart + 1,
+                                                                 request.colEnd - request.colStart + 1));
+      }
+      vector<SimScanCudaRegionBucketedTrueBatchGroup> skippedBucketedGroups;
+      if(!sim_scan_cuda_region_bucketed_true_batch_plan(shapes,
+                                                        &skippedBucketedGroups,
+                                                        &skippedBucketedStats,
+                                                        errorOut))
+      {
+        return false;
+      }
+      skippedInitialSummaryTotalsBuffers =
+        skippedBucketedGroups.size() == 1 &&
+        skippedBucketedGroups[0].requestBegin == 0 &&
+        skippedBucketedGroups[0].requestCount == requestCount &&
+        requestCount > 1;
+      for(size_t groupIndex = 0; groupIndex < skippedBucketedGroups.size(); ++groupIndex)
+      {
+        const SimScanCudaRegionBucketedTrueBatchGroup &group = skippedBucketedGroups[groupIndex];
+        ++skippedScanGroupCount;
+        if(group.requestCount > 1)
+        {
+          skippedFusedRequestCount += static_cast<uint64_t>(group.requestCount);
+          skippedZeroRunTrueBatchGroups += 1;
+          bool hasBlockedMetadata = false;
+          for(size_t offset = 0; offset < group.requestCount; ++offset)
+          {
+            const SimScanCudaRequest &request = orderedRequests[group.requestBegin + offset];
+            if(request.blockedWords != NULL && request.blockedWordCount > 0)
+            {
+              hasBlockedMetadata = true;
+              break;
+            }
+          }
+          if(!hasBlockedMetadata)
+          {
+            skippedNoBlockedMetadataUploads += 1;
+          }
+        }
+      }
+    }
+    else
+    {
+      bool exactHomogeneousTrueBatchCoversAll = requestCount > 1;
+      if(exactHomogeneousTrueBatchCoversAll)
+      {
+        const int rowCount = orderedRequests[0].rowEnd - orderedRequests[0].rowStart + 1;
+        const int colCount = orderedRequests[0].colEnd - orderedRequests[0].colStart + 1;
+        for(size_t i = 1; i < orderedRequests.size(); ++i)
+        {
+          const SimScanCudaRequest &request = orderedRequests[i];
+          if(request.rowEnd - request.rowStart + 1 != rowCount ||
+             request.colEnd - request.colStart + 1 != colCount)
+          {
+            exactHomogeneousTrueBatchCoversAll = false;
+            break;
+          }
+        }
+      }
+      skippedInitialSummaryTotalsBuffers = exactHomogeneousTrueBatchCoversAll;
+
+      for(size_t i = 0; i < orderedRequests.size();)
+      {
+        const SimScanCudaRequest &request = orderedRequests[i];
+        const int rowCount = request.rowEnd - request.rowStart + 1;
+        const int colCount = request.colEnd - request.colStart + 1;
+        size_t groupEnd = i + 1;
+        while(groupEnd < orderedRequests.size())
+        {
+          const SimScanCudaRequest &candidate = orderedRequests[groupEnd];
+          if(candidate.rowEnd - candidate.rowStart + 1 != rowCount ||
+             candidate.colEnd - candidate.colStart + 1 != colCount)
+          {
+            break;
+          }
+          ++groupEnd;
+        }
+
+        ++skippedScanGroupCount;
+        if(groupEnd - i > 1)
+        {
+          skippedFusedRequestCount += static_cast<uint64_t>(groupEnd - i);
+          skippedZeroRunTrueBatchGroups += 1;
+          skippedExactHomogeneousActualDimBuffers += 1;
+          bool hasBlockedMetadata = false;
+          for(size_t offset = i; offset < groupEnd; ++offset)
+          {
+            const SimScanCudaRequest &groupRequest = orderedRequests[offset];
+            if(groupRequest.blockedWords != NULL && groupRequest.blockedWordCount > 0)
+            {
+              hasBlockedMetadata = true;
+              break;
+            }
+          }
+          if(!hasBlockedMetadata)
+          {
+            skippedNoBlockedMetadataUploads += 1;
+          }
+        }
+        i = groupEnd;
+      }
+    }
+
+    const SimScanCudaRequest &orderedFirst = orderedRequests[0];
+    outResult->affectedStartCount = static_cast<uint64_t>(max(orderedFirst.filterStartCoordCount,0));
+    outResult->runningMin = orderedFirst.seedRunningMin;
+    if(batchResult != NULL)
+    {
+      batchResult->usedCuda = true;
+      batchResult->usedRegionPackedAggregationPath = true;
+      batchResult->usedRegionTrueBatchPath = skippedFusedRequestCount > 0;
+      batchResult->usedRegionBucketedTrueBatchPath =
+        skippedBucketedStats.fusedRequests > 0;
+      batchResult->regionTrueBatchRequestCount = skippedFusedRequestCount;
+      batchResult->regionBucketedTrueBatchBatches = skippedBucketedStats.batches;
+      batchResult->regionBucketedTrueBatchRequests = skippedBucketedStats.requests;
+      batchResult->regionBucketedTrueBatchFusedRequests = skippedBucketedStats.fusedRequests;
+      batchResult->regionBucketedTrueBatchActualCells = skippedBucketedStats.actualCells;
+      batchResult->regionBucketedTrueBatchPaddedCells = skippedBucketedStats.paddedCells;
+      batchResult->regionBucketedTrueBatchPaddingCells = skippedBucketedStats.paddingCells;
+      batchResult->regionBucketedTrueBatchRejectedPadding = skippedBucketedStats.rejectedPadding;
+      batchResult->regionBucketedTrueBatchShadowMismatches = skippedBucketedStats.shadowMismatches;
+      batchResult->regionPackedAggregationRequestCount = static_cast<uint64_t>(requestCount);
+      batchResult->regionPackedAggregationZeroRunCandidateBufferEnsureSkips += 1;
+      batchResult->regionPackedAggregationZeroRunCandidateCountD2HSkips += 1;
+      batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
+        skippedZeroRunTrueBatchGroups;
+      batchResult->regionPackedAggregationZeroRunTrueBatchEventCountSkips +=
+        skippedZeroRunTrueBatchGroups;
+      batchResult->regionPackedAggregationZeroRunTrueBatchEventTotalsD2HSkips +=
+        skippedZeroRunTrueBatchGroups;
+      batchResult->regionPackedAggregationNoBlockedMetadataUploadSkips +=
+        skippedNoBlockedMetadataUploads;
+      batchResult->regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips +=
+        skippedExactHomogeneousActualDimBuffers;
+      if(skippedInitialSummaryTotalsBuffers)
+      {
+        batchResult->regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips += 1;
+        if(totalCandidateCapacity > 0)
+        {
+          batchResult->regionPackedAggregationInitialRunSummaryBufferEnsureSkips += 1;
+        }
+      }
+      if(maxRequestCandidateCapacity > 0)
+      {
+        batchResult->regionPackedAggregationInitialEventBufferEnsureSkips += 1;
+      }
+      if(requestCount > 0)
+      {
+        batchResult->regionPackedAggregationCandidateCountClearSkips += 1;
+        batchResult->regionPackedAggregationSummaryTotalsClearSkips += 1;
+      }
+      if(orderedFirst.filterStartCoordCount == 0)
+      {
+        batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips += 1;
+      }
+      batchResult->taskCount = skippedScanGroupCount;
+      batchResult->launchCount = 0;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   const SimScanCudaRequest &orderedFirst = orderedRequests[0];
   if(!ensure_sim_scan_cuda_capacity_locked(*context,orderedFirst.queryLength,orderedFirst.targetLength,errorOut))
   {
@@ -25025,7 +25215,6 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     }
   }
 
-  const size_t requestCount = requests.size();
   bool exactHomogeneousTrueBatchCoversAll = !bucketedTrueBatchEnabled && requestCount > 1;
   if(exactHomogeneousTrueBatchCoversAll)
   {
