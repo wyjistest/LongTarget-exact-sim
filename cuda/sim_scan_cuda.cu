@@ -13986,6 +13986,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
   batchResult->regionPackedAggregationZeroRunCandidateCountD2HSkips +=
     requestBatchResult.regionPackedAggregationZeroRunCandidateCountD2HSkips;
+  batchResult->regionPackedAggregationNoFilterCandidateCountD2HSkips +=
+    requestBatchResult.regionPackedAggregationNoFilterCandidateCountD2HSkips;
   batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
     requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
@@ -22258,7 +22260,8 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
                                                                                     int reservedOutputBase,
                                                                                     int reservedOutputCapacity,
                                                                                     string *errorOut,
-                                                                                    uint64_t *outNoFilterReservedCopySkips = NULL)
+                                                                                    uint64_t *outNoFilterReservedCopySkips = NULL,
+                                                                                    int *outHostKnownCandidateCount = NULL)
 {
   if(context == NULL || summaryCount <= 0)
   {
@@ -22413,6 +22416,10 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
     if(outNoFilterReservedCopySkips != NULL)
     {
       *outNoFilterReservedCopySkips += static_cast<uint64_t>(outputCandidateCount);
+    }
+    if(outHostKnownCandidateCount != NULL)
+    {
+      *outHostKnownCandidateCount = outputCandidateCount;
     }
     sim_scan_extract_candidate_states_kernel<<<extractBlocks, extractThreads>>>(context->reducedStatesDevice,
                                                                                  reducedCandidateCount,
@@ -24515,6 +24522,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   vector<int> requestRunCounts(orderedRequests.size(),0);
   vector<int> requestCandidateCounts(orderedRequests.size(),0);
   vector<int> packedCandidateBases(orderedRequests.size(),0);
+  bool requestCandidateCountsKnownOnHost = orderedFirst.filterStartCoordCount == 0;
   double d2hSeconds = 0.0;
   if(requestCount > 0)
   {
@@ -24589,7 +24597,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                   requestCandidateBases[i],
                                                                                   requestCapacity,
                                                                                   errorOut,
-                                                                                  &noFilterReservedCopySkips))
+                                                                                  &noFilterReservedCopySkips,
+                                                                                  &requestCandidateCounts[i]))
       {
         return false;
       }
@@ -24615,21 +24624,31 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
   else if(requestCount > 0)
   {
-    const chrono::steady_clock::time_point copyStart = chrono::steady_clock::now();
-    status = cudaMemcpy(requestCandidateCounts.data(),
-                        context->batchCandidateCountsDevice,
-                        requestCount * sizeof(int),
-                        cudaMemcpyDeviceToHost);
-    d2hSeconds +=
-      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
-                            chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
-    if(status != cudaSuccess)
+    if(requestCandidateCountsKnownOnHost)
     {
-      if(errorOut != NULL)
+      if(batchResult != NULL)
       {
-        *errorOut = cuda_error_string(status);
+        batchResult->regionPackedAggregationNoFilterCandidateCountD2HSkips += 1;
       }
-      return false;
+    }
+    else
+    {
+      const chrono::steady_clock::time_point copyStart = chrono::steady_clock::now();
+      status = cudaMemcpy(requestCandidateCounts.data(),
+                          context->batchCandidateCountsDevice,
+                          requestCount * sizeof(int),
+                          cudaMemcpyDeviceToHost);
+      d2hSeconds +=
+        static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                              chrono::steady_clock::now() - copyStart).count()) / 1.0e9;
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
     }
   }
 
