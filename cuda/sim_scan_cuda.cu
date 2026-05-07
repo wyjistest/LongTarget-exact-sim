@@ -13990,6 +13990,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
     requestBatchResult.regionPackedAggregationNoFilterReservedCopySkips;
+  batchResult->regionPackedAggregationFilterReservedCopySkips +=
+    requestBatchResult.regionPackedAggregationFilterReservedCopySkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -22349,6 +22351,8 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
   const int extractBlocks = (reducedCandidateCount + extractThreads - 1) / extractThreads;
   if(filterStartCoordCount > 0)
   {
+    SimScanCudaCandidateState *filterOutputStates =
+      context->batchCandidateStatesDevice + static_cast<ptrdiff_t>(reservedOutputBase);
     status = cudaMemset(context->filteredCandidateCountDevice,0,sizeof(int));
     if(status != cudaSuccess)
     {
@@ -22363,7 +22367,7 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
                                                                                                         reducedCandidateCount,
                                                                                                         context->filterStartCoordsDevice,
                                                                                                         filterStartCoordCount,
-                                                                                                        context->outputCandidateStatesDevice,
+                                                                                                        filterOutputStates,
                                                                                                         context->filteredCandidateCountDevice);
     status = cudaGetLastError();
     if(status != cudaSuccess)
@@ -22386,6 +22390,7 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
       }
       return false;
     }
+    return true;
   }
   else
   {
@@ -24625,6 +24630,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   int packedCandidateCountInt = 0;
+  uint64_t filterReservedCopySkips = 0;
   for(size_t i = 0; i < requests.size(); ++i)
   {
     const int requestCandidateCount = requestCandidateCounts[i];
@@ -24641,6 +24647,16 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     }
     packedCandidateBases[i] = packedCandidateCountInt;
     packedCandidateCountInt += requestCandidateCount;
+    if(orderedFirst.filterStartCoordCount > 0 && requestRunCounts[i] > 0)
+    {
+      filterReservedCopySkips += static_cast<uint64_t>(requestCandidateCount);
+    }
+  }
+
+  if(batchResult != NULL)
+  {
+    batchResult->regionPackedAggregationFilterReservedCopySkips +=
+      filterReservedCopySkips;
   }
 
   outResult->preAggregateCandidateStateCount = static_cast<uint64_t>(packedCandidateCountInt);
