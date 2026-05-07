@@ -14069,6 +14069,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationFinalReduceKeyBufferEnsureSkips;
   batchResult->regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips;
+  batchResult->regionSingleRequestNoFilterReduceKeyBufferEnsureSkips +=
+    requestBatchResult.regionSingleRequestNoFilterReduceKeyBufferEnsureSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -20683,10 +20685,11 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
                                         &context->summaryKeysCapacity,
                                         summaryCount,
                                         errorOut) ||
-           !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
-                                        &context->reducedKeysCapacity,
-                                        summaryCount,
-                                        errorOut) ||
+           (filterStartCoordCount > 0 &&
+            !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
+                                         &context->reducedKeysCapacity,
+                                         summaryCount,
+                                         errorOut)) ||
            !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
                                         &context->reduceStatesCapacity,
                                         summaryCount,
@@ -20701,6 +20704,10 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
                                         errorOut))
         {
           return false;
+        }
+        if(filterStartCoordCount == 0 && batchResult != NULL)
+        {
+          batchResult->regionSingleRequestNoFilterReduceKeyBufferEnsureSkips += 1;
         }
 
         const int reduceThreads = 256;
@@ -20729,17 +20736,34 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
                                      summaryKeysBegin,
                                      summaryKeysBegin + totalRunSummaries,
                                      reduceStatesBegin);
-          thrust::pair< thrust::device_ptr<uint64_t>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
-            thrust::reduce_by_key(thrust::device,
-                                  summaryKeysBegin,
-                                  summaryKeysBegin + totalRunSummaries,
-                                  reduceStatesBegin,
-                                  thrust::device_pointer_cast(context->reducedKeysDevice),
-                                  thrust::device_pointer_cast(context->reducedStatesDevice),
-                                  thrust::equal_to<uint64_t>(),
-                                  SimScanCudaCandidateReduceMergeOp());
-          reducedCandidateCount =
-            static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
+          if(filterStartCoordCount > 0)
+          {
+            thrust::pair< thrust::device_ptr<uint64_t>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
+              thrust::reduce_by_key(thrust::device,
+                                    summaryKeysBegin,
+                                    summaryKeysBegin + totalRunSummaries,
+                                    reduceStatesBegin,
+                                    thrust::device_pointer_cast(context->reducedKeysDevice),
+                                    thrust::device_pointer_cast(context->reducedStatesDevice),
+                                    thrust::equal_to<uint64_t>(),
+                                    SimScanCudaCandidateReduceMergeOp());
+            reducedCandidateCount =
+              static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
+          }
+          else
+          {
+            thrust::pair< thrust::discard_iterator<>, thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
+              thrust::reduce_by_key(thrust::device,
+                                    summaryKeysBegin,
+                                    summaryKeysBegin + totalRunSummaries,
+                                    reduceStatesBegin,
+                                    thrust::make_discard_iterator(),
+                                    thrust::device_pointer_cast(context->reducedStatesDevice),
+                                    thrust::equal_to<uint64_t>(),
+                                    SimScanCudaCandidateReduceMergeOp());
+            reducedCandidateCount =
+              static_cast<int>(reducedEnds.second - thrust::device_pointer_cast(context->reducedStatesDevice));
+          }
         }
         catch(const thrust::system_error &e)
         {

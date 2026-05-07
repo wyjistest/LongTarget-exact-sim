@@ -808,6 +808,7 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds(0.0),
     regionSingleRequestDirectReducePipelineAccountedGpuSeconds(0.0),
     regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds(0.0),
+    regionSingleRequestNoFilterReduceKeyBufferEnsureSkips(0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
     usedRegionBucketedTrueBatchPath(false),
@@ -1055,6 +1056,7 @@ struct SimScanCudaBatchResult
   double regionSingleRequestDirectReducePipelineCountSnapshotD2HSeconds;
   double regionSingleRequestDirectReducePipelineAccountedGpuSeconds;
   double regionSingleRequestDirectReducePipelineUnaccountedGpuSeconds;
+  uint64_t regionSingleRequestNoFilterReduceKeyBufferEnsureSkips;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
   bool usedRegionBucketedTrueBatchPath;

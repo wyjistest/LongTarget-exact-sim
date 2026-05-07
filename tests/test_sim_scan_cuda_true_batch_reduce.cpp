@@ -1924,6 +1924,15 @@ int main()
                                regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips,
                              expectedNoFilterSliceReduceKeyBufferEnsureSkips,
                              "region aggregated no-filter slice reduce key buffer ensure skips") && ok;
+    SimScanCudaBatchResult noFilterSingleRegionBatchResult;
+    const SimScanCudaRequestResult noFilterSingleRegionResult =
+      run_single_region_reduce_all(noFilterRegionRequest0, &noFilterSingleRegionBatchResult);
+    ok = expect_candidate_states_equal(noFilterSingleRegionResult.candidateStates,
+                                       noFilterRegionBaselineResults[0].candidateStates,
+                                       "single region no-filter candidateStates") && ok;
+    ok = expect_true(noFilterSingleRegionBatchResult.
+                       regionSingleRequestNoFilterReduceKeyBufferEnsureSkips > 0,
+                     "single region no-filter reduce key buffer ensure skips recorded") && ok;
 
     SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
     zeroRunRegionRequest0.eventScoreFloor = 1000000;
