@@ -2070,6 +2070,9 @@ int main()
     ok = expect_equal_uint64(proposalBatchResultV3.initialProposalV3SelectedStateCount,
                              static_cast<uint64_t>(proposalExpected0.size() + proposalExpected1.size()),
                              "proposal batch V3 selected count") && ok;
+    ok = expect_equal_uint64(proposalBatchResultV3.initialProposalV3SelectedCountClearSkips,
+                             static_cast<uint64_t>(proposalRequests.size()),
+                             "proposal batch V3 selected-count clear skips") && ok;
     ok = expect_true(proposalBatchResultV3.initialProposalV3GpuSeconds > 0.0,
                      "proposal batch V3 gpu seconds") && ok;
     ok = expect_true(proposalBatchResultV3.initialCountCopySeconds >= 0.0,
@@ -2114,6 +2117,9 @@ int main()
            singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
            1,
            "single proposal V3 selected-base upload skip") && ok;
+    ok = expect_equal_uint64(singleProposalV3BatchResult.initialProposalV3SelectedCountClearSkips,
+                             1,
+                             "single proposal V3 selected-count clear skip") && ok;
     if (singleProposalV3Results.size() == 1)
     {
         ok = expect_proposal_result_equal(singleProposalV3Results[0],

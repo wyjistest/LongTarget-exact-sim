@@ -2143,6 +2143,7 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   uint64_t *outSingleRequestStateBaseBufferEnsureSkips,
   uint64_t *outSingleRequestStateBaseUploadSkips,
   uint64_t *outSingleRequestSelectedBaseUploadSkips,
+  uint64_t *outSelectedCountClearSkips,
   string *errorOut)
 {
   if(outSelectedCounts == NULL || outPackedSelectedStates == NULL)
@@ -2174,6 +2175,10 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   if(outSingleRequestStateBaseUploadSkips != NULL)
   {
     *outSingleRequestStateBaseUploadSkips = 0;
+  }
+  if(outSelectedCountClearSkips != NULL)
+  {
+    *outSelectedCountClearSkips = 0;
   }
   if(context == NULL || statesDevice == NULL || stateCounts.empty() || maxProposalCount <= 0)
   {
@@ -2245,15 +2250,6 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
     }
   }
   cudaError_t status = cudaSuccess;
-  status = cudaMemset(context->batchCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
 
   status = cudaEventRecord(context->startEvent);
   if(status != cudaSuccess)
@@ -2469,6 +2465,10 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   if(outGpuSeconds != NULL)
   {
     *outGpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
+  }
+  if(outSelectedCountClearSkips != NULL)
+  {
+    *outSelectedCountClearSkips = static_cast<uint64_t>(batchSize);
   }
   if(outD2HSeconds != NULL)
   {
@@ -13638,6 +13638,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialProposalDirectTopKCountClearSkips;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
   batchResult->initialProposalV3SelectedStateCount += requestBatchResult.initialProposalV3SelectedStateCount;
+  batchResult->initialProposalV3SelectedCountClearSkips +=
+    requestBatchResult.initialProposalV3SelectedCountClearSkips;
   batchResult->initialProposalLogicalCandidateCount += requestBatchResult.initialProposalLogicalCandidateCount;
   batchResult->initialProposalMaterializedCandidateCount += requestBatchResult.initialProposalMaterializedCandidateCount;
   batchResult->initialSummaryPackedBytesD2H += requestBatchResult.initialSummaryPackedBytesD2H;
@@ -16634,6 +16636,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips = 0;
+  uint64_t initialProposalV3SelectedCountClearSkips = 0;
   if(anyCandidateExtraction)
   {
     if(anyReduceCandidates)
@@ -16955,6 +16958,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                                                                                  &initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips,
                                                                                  &initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips,
                                                                                  &initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
+                                                                                 &initialProposalV3SelectedCountClearSkips,
                                                                                  errorOut))
       {
         return false;
@@ -17768,6 +17772,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       useProposalV3Path ? static_cast<uint64_t>(proposalRequestCount) : 0;
     batchResult->initialProposalV3SelectedStateCount =
       useProposalV3Path ? static_cast<uint64_t>(packedSelectedProposalStates.size()) : 0;
+    batchResult->initialProposalV3SelectedCountClearSkips =
+      initialProposalV3SelectedCountClearSkips;
     batchResult->initialProposalLogicalCandidateCount =
       useProposalV2Path ? static_cast<uint64_t>(max(totalAllCandidateStates,0)) : 0;
     batchResult->initialProposalMaterializedCandidateCount = 0;
