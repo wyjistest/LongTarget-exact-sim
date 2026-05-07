@@ -159,10 +159,19 @@ static std::vector<SimScanCudaInitialRunSummary> run_summaries(bool packedD2H,
 }
 
 static std::vector<SimScanCudaInitialBatchResult> run_true_batch_summaries(
+    bool packedD2H,
     bool hostCopyElision,
     bool reduceCandidates,
     SimScanCudaBatchResult &batchResult)
 {
+    if (packedD2H)
+    {
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H", "1", 1);
+    }
+    else
+    {
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
+    }
     if (hostCopyElision)
     {
         setenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION", "1", 1);
@@ -171,7 +180,6 @@ static std::vector<SimScanCudaInitialBatchResult> run_true_batch_summaries(
     {
         unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
     }
-    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
 
     int scoreMatrix[128][128] = {};
     fill_score_matrix(scoreMatrix);
@@ -241,12 +249,15 @@ int main()
     (void)run_summaries(false, true, true, reduceBatchResult);
     SimScanCudaBatchResult defaultTrueBatchResult;
     const std::vector<SimScanCudaInitialBatchResult> defaultTrueBatchSummaries =
-        run_true_batch_summaries(false, false, defaultTrueBatchResult);
+        run_true_batch_summaries(false, false, false, defaultTrueBatchResult);
     SimScanCudaBatchResult directTrueBatchResult;
     const std::vector<SimScanCudaInitialBatchResult> directTrueBatchSummaries =
-        run_true_batch_summaries(true, false, directTrueBatchResult);
+        run_true_batch_summaries(false, true, false, directTrueBatchResult);
+    SimScanCudaBatchResult packedDirectTrueBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> packedDirectTrueBatchSummaries =
+        run_true_batch_summaries(true, true, false, packedDirectTrueBatchResult);
     SimScanCudaBatchResult reduceTrueBatchResult;
-    (void)run_true_batch_summaries(true, true, reduceTrueBatchResult);
+    (void)run_true_batch_summaries(false, true, true, reduceTrueBatchResult);
 
     const uint64_t expectedElidedBytes =
         static_cast<uint64_t>(defaultSummaries.size()) *
@@ -287,6 +298,9 @@ int main()
     ok = expect_equal_uint64(static_cast<uint64_t>(directTrueBatchSummaries.size()),
                              2,
                              "direct true-batch result count") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(packedDirectTrueBatchSummaries.size()),
+                             2,
+                             "packed direct true-batch result count") && ok;
     if (defaultTrueBatchSummaries.size() == 2 && directTrueBatchSummaries.size() == 2)
     {
         ok = expect_equal_summaries(directTrueBatchSummaries[0].initialRunSummaries,
@@ -296,6 +310,15 @@ int main()
                                     defaultTrueBatchSummaries[1].initialRunSummaries,
                                     "direct true-batch result 1 summaries") && ok;
     }
+    if (defaultTrueBatchSummaries.size() == 2 && packedDirectTrueBatchSummaries.size() == 2)
+    {
+        ok = expect_equal_summaries(packedDirectTrueBatchSummaries[0].initialRunSummaries,
+                                    defaultTrueBatchSummaries[0].initialRunSummaries,
+                                    "packed direct true-batch result 0 summaries") && ok;
+        ok = expect_equal_summaries(packedDirectTrueBatchSummaries[1].initialRunSummaries,
+                                    defaultTrueBatchSummaries[1].initialRunSummaries,
+                                    "packed direct true-batch result 1 summaries") && ok;
+    }
     ok = expect_false(defaultTrueBatchResult.usedInitialSummaryHostCopyElision,
                       "default true-batch host-copy elision disabled") && ok;
     ok = expect_true(directTrueBatchResult.usedInitialSummaryHostCopyElision,
@@ -303,6 +326,13 @@ int main()
     ok = expect_equal_uint64(directTrueBatchResult.initialSummaryHostCopyElidedBytes,
                              expectedTrueBatchElidedBytes,
                              "direct true-batch elided bytes") && ok;
+    ok = expect_true(packedDirectTrueBatchResult.usedInitialPackedSummaryD2H,
+                     "packed direct true-batch still uses packed D2H") && ok;
+    ok = expect_true(packedDirectTrueBatchResult.usedInitialSummaryHostCopyElision,
+                     "packed direct true-batch host-copy elision used") && ok;
+    ok = expect_equal_uint64(packedDirectTrueBatchResult.initialSummaryHostCopyElidedBytes,
+                             expectedTrueBatchElidedBytes,
+                             "packed direct true-batch elided bytes") && ok;
     ok = expect_false(reduceTrueBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce true-batch does not use summary host-copy elision") && ok;
 

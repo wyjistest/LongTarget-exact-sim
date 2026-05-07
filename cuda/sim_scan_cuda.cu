@@ -16752,7 +16752,6 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     anySummaryRequests &&
     totalRunSummaries > 0 &&
     !anyCandidateExtraction &&
-    (batchSize == 1 || !sim_scan_cuda_initial_packed_summary_d2h_runtime()) &&
     sim_scan_cuda_initial_summary_host_copy_elision_runtime();
   vector<int> hostCopyElisionRunBases;
   vector<int> hostCopyElisionRunCounts;
@@ -16922,12 +16921,35 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         }
         const std::chrono::steady_clock::time_point unpackStart =
           std::chrono::steady_clock::now();
-        for(size_t summaryIndex = 0;
-            summaryIndex < packedSummary16.size();
-            ++summaryIndex)
+        if(useInitialSummaryHostCopyElision && batchSize > 1)
         {
-          unpackSimScanCudaInitialRunSummary16(packedSummary16[summaryIndex],
-                                               summaryDestination[summaryIndex]);
+          for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+          {
+            const int summaryBase =
+              hostCopyElisionRunBases[static_cast<size_t>(batchIndex)];
+            const int summaryCount =
+              hostCopyElisionRunCounts[static_cast<size_t>(batchIndex)];
+            SimScanCudaInitialRunSummary *batchDestination =
+              results[static_cast<size_t>(batchIndex)].initialRunSummaries.data();
+            for(int localSummaryIndex = 0;
+                localSummaryIndex < summaryCount;
+                ++localSummaryIndex)
+            {
+              unpackSimScanCudaInitialRunSummary16(
+                packedSummary16[static_cast<size_t>(summaryBase + localSummaryIndex)],
+                batchDestination[localSummaryIndex]);
+            }
+          }
+        }
+        else
+        {
+          for(size_t summaryIndex = 0;
+              summaryIndex < packedSummary16.size();
+              ++summaryIndex)
+          {
+            unpackSimScanCudaInitialRunSummary16(packedSummary16[summaryIndex],
+                                                 summaryDestination[summaryIndex]);
+          }
         }
         initialSummaryUnpackSeconds +=
           static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
