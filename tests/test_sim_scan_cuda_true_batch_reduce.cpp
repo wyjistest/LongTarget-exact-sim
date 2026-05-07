@@ -1791,6 +1791,36 @@ int main()
            1,
            "zero-run region aggregated candidate-count d2h skip") && ok;
 
+    SimScanCudaRequest zeroRunHomogeneousRegionRequest0 = regionRequest0;
+    zeroRunHomogeneousRegionRequest0.eventScoreFloor = 1000000;
+    zeroRunHomogeneousRegionRequest0.rowStart = 1;
+    zeroRunHomogeneousRegionRequest0.rowEnd = 8;
+    zeroRunHomogeneousRegionRequest0.colStart = 1;
+    zeroRunHomogeneousRegionRequest0.colEnd = 8;
+    SimScanCudaRequest zeroRunHomogeneousRegionRequest1 = zeroRunHomogeneousRegionRequest0;
+    zeroRunHomogeneousRegionRequest1.rowStart = 9;
+    zeroRunHomogeneousRegionRequest1.rowEnd = 16;
+    zeroRunHomogeneousRegionRequest1.colStart = 9;
+    zeroRunHomogeneousRegionRequest1.colEnd = 16;
+    std::vector<SimScanCudaRequest> zeroRunHomogeneousRegionRequests;
+    zeroRunHomogeneousRegionRequests.push_back(zeroRunHomogeneousRegionRequest0);
+    zeroRunHomogeneousRegionRequests.push_back(zeroRunHomogeneousRegionRequest1);
+    SimScanCudaBatchResult zeroRunHomogeneousAggregatedBatchResult;
+    const SimScanCudaRegionAggregationResult zeroRunHomogeneousAggregatedResult =
+      run_region_aggregated_reduce_all(zeroRunHomogeneousRegionRequests,
+                                       &zeroRunHomogeneousAggregatedBatchResult);
+    ok = expect_equal_uint64(zeroRunHomogeneousAggregatedResult.runSummaryCount,
+                             0,
+                             "zero-run homogeneous region aggregated runSummaryCount") && ok;
+    ok = expect_equal_uint64(zeroRunHomogeneousAggregatedBatchResult.taskCount,
+                             1,
+                             "zero-run homogeneous region aggregated taskCount fused") && ok;
+    ok = expect_equal_uint64(
+           zeroRunHomogeneousAggregatedBatchResult.
+             regionPackedAggregationZeroRunTrueBatchRunCompactSkips,
+           1,
+           "zero-run homogeneous region aggregated run-compact skip") && ok;
+
     SimScanCudaRequest homogeneousRegionRequest0 = regionRequest0;
     homogeneousRegionRequest0.rowStart = 1;
     homogeneousRegionRequest0.rowEnd = 8;

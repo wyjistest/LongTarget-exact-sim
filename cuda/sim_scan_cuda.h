@@ -840,6 +840,7 @@ struct SimScanCudaBatchResult
     regionPackedAggregationRequestCount(0),
     regionPackedAggregationZeroRunCandidateBufferEnsureSkips(0),
     regionPackedAggregationZeroRunCandidateCountD2HSkips(0),
+    regionPackedAggregationZeroRunTrueBatchRunCompactSkips(0),
     regionSingleRequestDirectReduceAttempts(0),
     regionSingleRequestDirectReduceSuccesses(0),
     regionSingleRequestDirectReduceFallbacks(0),
@@ -1064,6 +1065,7 @@ struct SimScanCudaBatchResult
   uint64_t regionPackedAggregationRequestCount;
   uint64_t regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
   uint64_t regionPackedAggregationZeroRunCandidateCountD2HSkips;
+  uint64_t regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   uint64_t regionSingleRequestDirectReduceAttempts;
   uint64_t regionSingleRequestDirectReduceSuccesses;
   uint64_t regionSingleRequestDirectReduceFallbacks;

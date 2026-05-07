@@ -13986,6 +13986,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
   batchResult->regionPackedAggregationZeroRunCandidateCountD2HSkips +=
     requestBatchResult.regionPackedAggregationZeroRunCandidateCountD2HSkips;
+  batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
+    requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -21677,7 +21679,8 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   bool maskToActualDimensions,
   vector<int> *outEventCounts,
   vector<int> *outRunCounts,
-  string *errorOut)
+  string *errorOut,
+  uint64_t *outZeroRunCompactSkips = NULL)
 {
   if(context == NULL || outEventCounts == NULL || outRunCounts == NULL)
   {
@@ -21689,6 +21692,10 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   }
   outEventCounts->clear();
   outRunCounts->clear();
+  if(outZeroRunCompactSkips != NULL)
+  {
+    *outZeroRunCompactSkips = 0;
+  }
   if(requestCount == 0)
   {
     return true;
@@ -22179,6 +22186,7 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
     }
     return false;
   }
+  uint64_t groupRunCountTotal = 0;
   for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
   {
     const int runCount = (*outRunCounts)[static_cast<size_t>(batchIndex)];
@@ -22190,6 +22198,16 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
       }
       return false;
     }
+    groupRunCountTotal += static_cast<uint64_t>(runCount);
+  }
+
+  if(groupRunCountTotal == 0)
+  {
+    if(outZeroRunCompactSkips != NULL)
+    {
+      *outZeroRunCompactSkips = 1;
+    }
+    return true;
   }
 
   sim_scan_compact_region_run_summaries_direct_true_batch_kernel<<<dim3(static_cast<unsigned int>(executionRowCount),
@@ -24340,6 +24358,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       {
         vector<int> groupEventCounts;
         vector<int> groupRunCounts;
+        uint64_t groupZeroRunCompactSkips = 0;
         if(!sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_slices_locked(context,
                                                                                              orderedRequests,
                                                                                              group.requestBegin,
@@ -24350,9 +24369,15 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                              group.bucketed,
                                                                                              &groupEventCounts,
                                                                                              &groupRunCounts,
-                                                                                             errorOut))
+                                                                                             errorOut,
+                                                                                             &groupZeroRunCompactSkips))
         {
           return false;
+        }
+        if(batchResult != NULL)
+        {
+          batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
+            groupZeroRunCompactSkips;
         }
         ++scanGroupCount;
         fusedRequestCount += static_cast<uint64_t>(group.requestCount);
@@ -24412,6 +24437,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       {
         vector<int> groupEventCounts;
         vector<int> groupRunCounts;
+        uint64_t groupZeroRunCompactSkips = 0;
         if(!sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_slices_locked(context,
                                                                                              orderedRequests,
                                                                                              i,
@@ -24422,9 +24448,15 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                              false,
                                                                                              &groupEventCounts,
                                                                                              &groupRunCounts,
-                                                                                             errorOut))
+                                                                                             errorOut,
+                                                                                             &groupZeroRunCompactSkips))
         {
           return false;
+        }
+        if(batchResult != NULL)
+        {
+          batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
+            groupZeroRunCompactSkips;
         }
         ++scanGroupCount;
         fusedRequestCount += static_cast<uint64_t>(groupEnd - i);
