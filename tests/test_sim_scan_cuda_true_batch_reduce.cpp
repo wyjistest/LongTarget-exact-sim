@@ -1963,6 +1963,22 @@ int main()
     ok = expect_true(singleStateProposalV2BatchResult.initialProposalDirectTopKGpuSeconds == 0.0,
                      "single-state proposal V2 skips selector gpu work") && ok;
 
+    SimScanCudaBatchResult singleStateProposalV3BatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> singleStateProposalV3Results =
+      run_true_batch_initial_proposal_v3(singleStateProposalV2Requests,
+                                         &singleStateProposalV3BatchResult);
+    ok = expect_equal_uint64(static_cast<uint64_t>(singleStateProposalV3Results.size()),
+                             1,
+                             "single-state proposal V3 result count") && ok;
+    ok = expect_equal_uint64(singleStateProposalV3BatchResult.initialProposalV3SelectedStateCount,
+                             1,
+                             "single-state proposal V3 selected count") && ok;
+    ok = expect_equal_uint64(singleStateProposalV3BatchResult.initialProposalV3SingleStateSelectorSkips,
+                             1,
+                             "single-state proposal V3 selector skip") && ok;
+    ok = expect_true(singleStateProposalV3BatchResult.initialProposalV3GpuSeconds == 0.0,
+                     "single-state proposal V3 skips selector gpu work") && ok;
+
     SimScanCudaInitialBatchRequest proposalRequest1 = proposalRequest0;
     proposalRequest1.B = target1;
 

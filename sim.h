@@ -6165,6 +6165,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialProposalV3SingleStateSelectorSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7675,6 +7681,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                              std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialProposalV3SingleStateSelectorSkips(uint64_t singleStateSelectorSkips)
+					{
+					  simInitialProposalV3SingleStateSelectorSkipCount().fetch_add(singleStateSelectorSkips,
+					                                                               std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips(uint64_t selectedBaseUploadSkips)
 					{
 					  simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkipCount().fetch_add(selectedBaseUploadSkips,
@@ -8972,6 +8984,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  countClearSkips =
 					    simInitialProposalV3SelectedCountClearSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialProposalV3SingleStateSelectorStats(uint64_t &singleStateSelectorSkips)
+					{
+					  singleStateSelectorSkips =
+					    simInitialProposalV3SingleStateSelectorSkipCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadStats(uint64_t &selectedBaseUploadSkips)

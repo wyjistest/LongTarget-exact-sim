@@ -906,6 +906,7 @@ struct SimScanCudaBatchResult
     initialProposalV3RequestCount(0),
     initialProposalV3SelectedStateCount(0),
     initialProposalV3SelectedCountClearSkips(0),
+    initialProposalV3SingleStateSelectorSkips(0),
     initialProposalLogicalCandidateCount(0),
     initialProposalMaterializedCandidateCount(0),
     initialSummaryPackedBytesD2H(0),
@@ -1116,6 +1117,7 @@ struct SimScanCudaBatchResult
   uint64_t initialProposalV3RequestCount;
   uint64_t initialProposalV3SelectedStateCount;
   uint64_t initialProposalV3SelectedCountClearSkips;
+  uint64_t initialProposalV3SingleStateSelectorSkips;
   uint64_t initialProposalLogicalCandidateCount;
   uint64_t initialProposalMaterializedCandidateCount;
   uint64_t initialSummaryPackedBytesD2H;
