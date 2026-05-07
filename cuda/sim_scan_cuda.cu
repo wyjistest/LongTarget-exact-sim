@@ -9647,36 +9647,46 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
     return true;
   }
   const chrono::steady_clock::time_point compactWallStart = chrono::steady_clock::now();
-
-  cudaError_t status =
-    cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
+  const bool useSingleRequestImplicitOutputBase = batchSize == 1;
   const int extractThreads = 256;
   const int extractBlocks = (reducedCandidateCount + extractThreads - 1) / extractThreads;
-  sim_scan_count_batch_initial_safe_store_candidate_states_kernel<<<extractBlocks, extractThreads>>>(
-    context->batchReducedKeysDevice,
-    context->reducedStatesDevice,
-    reducedCandidateCount,
-    batchFinalCandidateStatesDevice,
-    batchFinalCandidateCountsDevice,
-    batchRunningMinsDevice,
-    context->batchAllCandidateCountsDevice);
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
+
+  cudaError_t status = cudaSuccess;
+  if(useSingleRequestImplicitOutputBase)
   {
-    if(errorOut != NULL)
+    if(batchResult != NULL)
     {
-      *errorOut = cuda_error_string(status);
+      batchResult->initialSegmentedSingleRequestAllCandidateCountKernelSkips += 1;
     }
-    return false;
+  }
+  else
+  {
+    status = cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    sim_scan_count_batch_initial_safe_store_candidate_states_kernel<<<extractBlocks, extractThreads>>>(
+      context->batchReducedKeysDevice,
+      context->reducedStatesDevice,
+      reducedCandidateCount,
+      batchFinalCandidateStatesDevice,
+      batchFinalCandidateCountsDevice,
+      batchRunningMinsDevice,
+      context->batchAllCandidateCountsDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
   }
   if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
                                   &context->outputCandidateStatesCapacity,
@@ -9689,7 +9699,6 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
   {
     return false;
   }
-  const bool useSingleRequestImplicitOutputBase = batchSize == 1;
   const int *outputBasesDevice = NULL;
   if(useSingleRequestImplicitOutputBase)
   {
@@ -9761,16 +9770,26 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
   {
     return false;
   }
-  status = cudaMemcpy(outCandidateCounts->data(),
-                      context->batchAllCandidateCountsDevice,
-                      static_cast<size_t>(batchSize) * sizeof(int),
-                      cudaMemcpyDeviceToHost);
-  if(status == cudaSuccess && !useSingleRequestImplicitOutputBase)
+  if(useSingleRequestImplicitOutputBase)
   {
-    status = cudaMemcpy(outCandidateBases->data(),
-                        context->batchEventBasesDevice,
+    status = cudaMemcpy(outCandidateCounts->data(),
+                        context->batchOutputCursorsDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+  }
+  else
+  {
+    status = cudaMemcpy(outCandidateCounts->data(),
+                        context->batchAllCandidateCountsDevice,
                         static_cast<size_t>(batchSize) * sizeof(int),
                         cudaMemcpyDeviceToHost);
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(outCandidateBases->data(),
+                          context->batchEventBasesDevice,
+                          static_cast<size_t>(batchSize) * sizeof(int),
+                          cudaMemcpyDeviceToHost);
+    }
   }
   if(status != cudaSuccess)
   {
@@ -13993,6 +14012,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialHandoffSlotsReusedAfterMaterialize;
   batchResult->initialSegmentedTileStateCount += requestBatchResult.initialSegmentedTileStateCount;
   batchResult->initialSegmentedGroupedStateCount += requestBatchResult.initialSegmentedGroupedStateCount;
+  batchResult->initialSegmentedSingleRequestAllCandidateCountKernelSkips +=
+    requestBatchResult.initialSegmentedSingleRequestAllCandidateCountKernelSkips;
   batchResult->initialOrderedSegmentedV3CountClearSkips +=
     requestBatchResult.initialOrderedSegmentedV3CountClearSkips;
   batchResult->taskCount += requestBatchResult.taskCount;

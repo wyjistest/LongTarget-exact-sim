@@ -313,6 +313,7 @@ grep -Eq '^benchmark\.sim_initial_segmented_compact_seconds=[0-9]+(\.[0-9]+)?$' 
 grep -Eq '^benchmark\.sim_initial_topk_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_segmented_tile_states_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_segmented_grouped_states_total=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_segmented_single_request_all_candidate_count_kernel_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_count_clear_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_reduce_chunks_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_reduce_chunks_replayed_total=[0-9]+$' "$STDERR_LOG"

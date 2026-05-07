@@ -7150,6 +7150,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simInitialSegmentedSingleRequestAllCandidateCountKernelSkipCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3CountClearSkipCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -8482,6 +8488,21 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		{
 		  tileStateCount = simInitialSegmentedTileStateCount().load(std::memory_order_relaxed);
 		  groupedStateCount = simInitialSegmentedGroupedStateCount().load(std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialSegmentedSingleRequestAllCandidateCountKernelSkips(
+		  uint64_t countKernelSkips)
+		{
+		  simInitialSegmentedSingleRequestAllCandidateCountKernelSkipCount().fetch_add(
+		    countKernelSkips,
+		    std::memory_order_relaxed);
+		}
+
+		inline void getSimInitialSegmentedSingleRequestAllCandidateCountKernelStats(
+		  uint64_t &countKernelSkips)
+		{
+		  countKernelSkips =
+		    simInitialSegmentedSingleRequestAllCandidateCountKernelSkipCount().load(std::memory_order_relaxed);
 		}
 
 		inline void recordSimInitialOrderedSegmentedV3CountClearSkips(uint64_t countClearSkips)
@@ -14094,6 +14115,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		            simSecondsToNanoseconds(cudaBatchResult.initialTopKSeconds));
 		          recordSimInitialSegmentedStateStats(cudaBatchResult.initialSegmentedTileStateCount,
 		                                             cudaBatchResult.initialSegmentedGroupedStateCount);
+		          recordSimInitialSegmentedSingleRequestAllCandidateCountKernelSkips(
+		            cudaBatchResult.initialSegmentedSingleRequestAllCandidateCountKernelSkips);
 		          recordSimInitialOrderedSegmentedV3CountClearSkips(
 		            cudaBatchResult.initialOrderedSegmentedV3CountClearSkips);
 			          recordSimInitialSummaryPackedD2H(

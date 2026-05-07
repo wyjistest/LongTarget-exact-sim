@@ -1197,6 +1197,9 @@ int main()
     ok = expect_true(segmentedBatchResult.initialSegmentedTileStateCount >=
                        segmentedBatchResult.initialSegmentedGroupedStateCount,
                      "segmented reduce batch tile/grouped count ordering") && ok;
+    ok = expect_equal_uint64(segmentedBatchResult.initialSegmentedSingleRequestAllCandidateCountKernelSkips,
+                             0,
+                             "segmented reduce batch count-kernel skip") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(segmentedBatchResults.size()),
                              2,
                              "segmented reduce batch result count") && ok;
@@ -1212,6 +1215,10 @@ int main()
                      "ordered_segmented_v3 batch recorded ordered replay gpu seconds") && ok;
     ok = expect_true(orderedSegmentedV3BatchResult.initialSegmentedCompactSeconds > 0.0,
                      "ordered_segmented_v3 batch recorded compact gpu seconds") && ok;
+    ok = expect_equal_uint64(
+           orderedSegmentedV3BatchResult.initialSegmentedSingleRequestAllCandidateCountKernelSkips,
+           0,
+           "ordered_segmented_v3 batch count-kernel skip") && ok;
     ok = expect_equal_uint64(orderedSegmentedV3BatchResult.initialOrderedSegmentedV3CountClearSkips,
                              static_cast<uint64_t>(requests.size()) * 2,
                              "ordered_segmented_v3 batch count-clear skips") && ok;
@@ -1398,6 +1405,10 @@ int main()
     ok = expect_equal_uint64(singleSegmentedBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips,
                              1,
                              "single segmented backend all-candidate base prefix skip") && ok;
+    ok = expect_equal_uint64(
+           singleSegmentedBatchResult.initialSegmentedSingleRequestAllCandidateCountKernelSkips,
+           1,
+           "single segmented backend count-kernel skip") && ok;
     ok = expect_summaries_equal(singleSummaryDirect0,
                                 expectedSummary0,
                                 "single summary direct 0 summaries") && ok;
@@ -1431,6 +1442,10 @@ int main()
     ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips,
                              1,
                              "single ordered_segmented_v3 backend all-candidate base prefix skip") && ok;
+    ok = expect_equal_uint64(
+           singleOrderedSegmentedV3BatchResult.initialSegmentedSingleRequestAllCandidateCountKernelSkips,
+           1,
+           "single ordered_segmented_v3 backend count-kernel skip") && ok;
     ok = expect_reduce_result_equal(singleOrderedSegmentedV3Result,
                                     orderedSegmentedV3BatchResults[0],
                                     "single ordered_segmented_v3 backend equals batch result 0") && ok;
