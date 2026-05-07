@@ -26589,6 +26589,52 @@ bool sim_scan_cuda_enumerate_region_events_row_major(const char *A,
     return false;
   }
 
+  SimScanCudaRequest noEventRequest;
+  noEventRequest.kind = SIM_SCAN_CUDA_REQUEST_REGION;
+  noEventRequest.A = A;
+  noEventRequest.B = B;
+  noEventRequest.queryLength = queryLength;
+  noEventRequest.targetLength = targetLength;
+  noEventRequest.rowStart = rowStart;
+  noEventRequest.rowEnd = rowEnd;
+  noEventRequest.colStart = colStart;
+  noEventRequest.colEnd = colEnd;
+  noEventRequest.gapOpen = gapOpen;
+  noEventRequest.gapExtend = gapExtend;
+  noEventRequest.scoreMatrix = scoreMatrix;
+  noEventRequest.eventScoreFloor = eventScoreFloor;
+  noEventRequest.blockedWords = blockedWords;
+  noEventRequest.blockedWordStart = blockedWordStart;
+  noEventRequest.blockedWordCount = blockedWordCount;
+  noEventRequest.blockedWordStride = blockedWordStride;
+  noEventRequest.reduceCandidates = reduceCandidates;
+  noEventRequest.reduceAllCandidateStates = reduceAllCandidateStates;
+  noEventRequest.filterStartCoords = filterStartCoords;
+  noEventRequest.filterStartCoordCount = filterStartCoordCount;
+  noEventRequest.seedCandidates = seedCandidates;
+  noEventRequest.seedCandidateCount = seedCandidateCount;
+  noEventRequest.seedRunningMin = seedRunningMin;
+  if(sim_scan_cuda_region_request_has_no_possible_events(noEventRequest))
+  {
+    *outRunningMin = seedRunningMin;
+    if(reduceCandidates)
+    {
+      outCandidateStates->assign(seedCandidates,seedCandidates + seedCandidateCount);
+    }
+    else if(!reduceAllCandidateStates)
+    {
+      outRowOffsets->assign(static_cast<size_t>(rowEnd - rowStart + 2),0);
+    }
+    if(batchResult != NULL)
+    {
+      batchResult->usedCuda = true;
+      batchResult->taskCount = 1;
+      batchResult->launchCount = 0;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   int device = 0;
   const int slot = simCudaWorkerSlotRuntime();
   const cudaError_t deviceStatus = cudaGetDevice(&device);

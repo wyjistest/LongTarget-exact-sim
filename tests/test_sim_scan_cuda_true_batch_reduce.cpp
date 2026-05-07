@@ -1976,6 +1976,56 @@ int main()
     zeroRunRegionRequest1.rowEnd = 16;
     zeroRunRegionRequest1.colStart = 4;
     zeroRunRegionRequest1.colEnd = 16;
+
+    SimScanCudaBatchResult zeroRunSingleRegionBatchResult;
+    const SimScanCudaRequestResult zeroRunSingleRegionResult =
+      run_single_region_reduce_all(zeroRunRegionRequest0, &zeroRunSingleRegionBatchResult);
+    ok = expect_equal_uint64(zeroRunSingleRegionResult.eventCount,
+                             0,
+                             "zero-run single region eventCount") && ok;
+    ok = expect_equal_uint64(zeroRunSingleRegionResult.runSummaryCount,
+                             0,
+                             "zero-run single region runSummaryCount") && ok;
+    ok = expect_true(zeroRunSingleRegionResult.candidateStates.empty(),
+                     "zero-run single region candidateStates empty") && ok;
+    ok = expect_equal_uint64(zeroRunSingleRegionBatchResult.taskCount,
+                             1,
+                             "zero-run single region taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunSingleRegionBatchResult.launchCount,
+                             0,
+                             "zero-run single region launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunSingleRegionBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run single region gpu seconds skipped") && ok;
+
+    SimScanCudaCandidateState zeroRunSeedState;
+    zeroRunSeedState.score = 17;
+    zeroRunSeedState.startI = 2;
+    zeroRunSeedState.startJ = 2;
+    zeroRunSeedState.endI = 4;
+    zeroRunSeedState.endJ = 4;
+    zeroRunSeedState.top = 3;
+    zeroRunSeedState.bot = 5;
+    zeroRunSeedState.left = 1;
+    zeroRunSeedState.right = 6;
+    SimScanCudaRequest zeroRunSeededRegionRequest = zeroRunRegionRequest0;
+    zeroRunSeededRegionRequest.reduceCandidates = true;
+    zeroRunSeededRegionRequest.reduceAllCandidateStates = false;
+    zeroRunSeededRegionRequest.seedCandidates = &zeroRunSeedState;
+    zeroRunSeededRegionRequest.seedCandidateCount = 1;
+    zeroRunSeededRegionRequest.seedRunningMin = 11;
+    SimScanCudaBatchResult zeroRunSeededRegionBatchResult;
+    const SimScanCudaRequestResult zeroRunSeededRegionResult =
+      run_single_region_reduce_all(zeroRunSeededRegionRequest, &zeroRunSeededRegionBatchResult);
+    std::vector<SimScanCudaCandidateState> expectedZeroRunSeededStates;
+    expectedZeroRunSeededStates.push_back(zeroRunSeedState);
+    ok = expect_candidate_states_equal(zeroRunSeededRegionResult.candidateStates,
+                                       expectedZeroRunSeededStates,
+                                       "zero-run seeded region preserves seed candidate") && ok;
+    ok = expect_equal_int(zeroRunSeededRegionResult.runningMin,
+                          zeroRunSeededRegionRequest.seedRunningMin,
+                          "zero-run seeded region runningMin") && ok;
+
     std::vector<SimScanCudaRequest> zeroRunRegionRequests;
     zeroRunRegionRequests.push_back(zeroRunRegionRequest0);
     zeroRunRegionRequests.push_back(zeroRunRegionRequest1);
