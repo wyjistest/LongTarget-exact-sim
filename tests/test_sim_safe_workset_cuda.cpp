@@ -1675,6 +1675,62 @@ int main()
                                        baselineResidencyContext.safeCandidateStateStore.states,
                                        "region residency no-materialize persistent store matches host safe store") && ok;
 
+    SimCudaPersistentSafeStoreHandle residencyCachedNoUpdateStoreHandle;
+    if (!uploadSimCudaPersistentSafeCandidateStateStore(expectedResidencyFrontierStates,
+                                                        residencyCachedNoUpdateStoreHandle,
+                                                        &error))
+    {
+        std::cerr << "uploadSimCudaPersistentSafeCandidateStateStore(residencyCachedNoUpdateStoreHandle) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    if (!sim_scan_cuda_update_persistent_safe_candidate_state_store(
+            std::vector<SimScanCudaCandidateState>(),
+            expectedResidencyFrontierStates,
+            static_cast<int>(baselineResidencyContext.runningMin),
+            &residencyCachedNoUpdateStoreHandle,
+            &error))
+    {
+        releaseSimCudaPersistentSafeCandidateStateStore(residencyCachedNoUpdateStoreHandle);
+        std::cerr << "prime frontier cache(residencyCachedNoUpdateStoreHandle) failed: "
+                  << error << "\n";
+        return 2;
+    }
+
+    std::vector<SimScanCudaRequest> residencyNoUpdateRequests = residencyRequests;
+    for (size_t requestIndex = 0; requestIndex < residencyNoUpdateRequests.size(); ++requestIndex)
+    {
+        residencyNoUpdateRequests[requestIndex].filterStartCoords = NULL;
+        residencyNoUpdateRequests[requestIndex].filterStartCoordCount = 0;
+        residencyNoUpdateRequests[requestIndex].eventScoreFloor =
+            static_cast<int>(baselineResidencyContext.runningMin);
+    }
+
+    SimScanCudaRegionResidencyResult residencyCachedNoUpdateResult;
+    SimScanCudaBatchResult residencyCachedNoUpdateBatchResult;
+    if (!sim_scan_cuda_apply_region_candidate_states_residency(
+            residencyNoUpdateRequests,
+            std::vector<SimScanCudaCandidateState>(),
+            static_cast<int>(baselineResidencyContext.runningMin),
+            &residencyCachedNoUpdateStoreHandle,
+            &residencyCachedNoUpdateResult,
+            &residencyCachedNoUpdateBatchResult,
+            &error))
+    {
+        releaseSimCudaPersistentSafeCandidateStateStore(residencyCachedNoUpdateStoreHandle);
+        std::cerr << "sim_scan_cuda_apply_region_candidate_states_residency(cached no update) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    releaseSimCudaPersistentSafeCandidateStateStore(residencyCachedNoUpdateStoreHandle);
+
+    ok = expect_candidate_states_equal(residencyCachedNoUpdateResult.frontierStates,
+                                       expectedResidencyFrontierStates,
+                                       "region residency cached no-update frontier states match cached frontier") && ok;
+    ok = expect_equal_u64(residencyCachedNoUpdateBatchResult.regionResidencyCachedFrontierNoUpdateSkips,
+                          1,
+                          "region residency cached no-update merge/count d2h skip") && ok;
+
     const char *previousSafeWorksetDeviceMaintenance =
         getenv("LONGTARGET_ENABLE_SIM_CUDA_SAFE_WORKSET_DEVICE_MAINTENANCE");
     const bool hadPreviousSafeWorksetDeviceMaintenance =

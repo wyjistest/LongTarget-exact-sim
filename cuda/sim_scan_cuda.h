@@ -813,6 +813,7 @@ struct SimScanCudaBatchResult
     regionSingleRequestSingleCandidateExtractSkips(0),
     regionSingleRequestSingleCandidateOutputBufferEnsureSkips(0),
     regionSingleRequestFilterOutputBufferOverensureSkips(0),
+    regionResidencyCachedFrontierNoUpdateSkips(0),
     usedCuda(false),
     usedRegionTrueBatchPath(false),
     usedRegionBucketedTrueBatchPath(false),
@@ -1069,6 +1070,7 @@ struct SimScanCudaBatchResult
   uint64_t regionSingleRequestSingleCandidateExtractSkips;
   uint64_t regionSingleRequestSingleCandidateOutputBufferEnsureSkips;
   uint64_t regionSingleRequestFilterOutputBufferOverensureSkips;
+  uint64_t regionResidencyCachedFrontierNoUpdateSkips;
   bool usedCuda;
   bool usedRegionTrueBatchPath;
   bool usedRegionBucketedTrueBatchPath;

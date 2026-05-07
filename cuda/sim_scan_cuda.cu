@@ -13880,6 +13880,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceCoopTotalGpuSeconds;
   batchResult->regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips +=
     requestBatchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips;
+  batchResult->regionResidencyCachedFrontierNoUpdateSkips +=
+    requestBatchResult.regionResidencyCachedFrontierNoUpdateSkips;
   sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(requestBatchResult,batchResult);
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
@@ -25650,6 +25652,8 @@ bool sim_scan_cuda_apply_region_candidate_states_residency(const vector<SimScanC
   const int zero = 0;
   SimScanCudaCandidateState *frontierBufferDevice = context->candidateStatesDevice;
   const bool canReuseCachedFrontier = filteredSeedCandidates.empty() && handle->frontierValid;
+  const int updatedStateCount = aggregatedDeviceResult.candidateStateCount;
+  bool skipCachedFrontierNoUpdate = false;
   if(canReuseCachedFrontier)
   {
     if(trackedStartCoordCount > 0)
@@ -25689,14 +25693,21 @@ bool sim_scan_cuda_apply_region_candidate_states_residency(const vector<SimScanC
     }
     else
     {
-      const int frontierCount = static_cast<int>(handle->frontierCount);
-      status = cudaMemcpy(context->candidateCountDevice,
-                          &frontierCount,
-                          sizeof(int),
-                          cudaMemcpyHostToDevice);
       frontierBufferDevice = sim_scan_cuda_handle_frontier_states_device(*handle);
+      if(updatedStateCount == 0)
+      {
+        skipCachedFrontierNoUpdate = true;
+      }
+      else
+      {
+        const int frontierCount = static_cast<int>(handle->frontierCount);
+        status = cudaMemcpy(context->candidateCountDevice,
+                            &frontierCount,
+                            sizeof(int),
+                            cudaMemcpyHostToDevice);
+      }
     }
-    if(status == cudaSuccess)
+    if(status == cudaSuccess && !skipCachedFrontierNoUpdate)
     {
       status = cudaMemcpy(context->runningMinDevice,
                           &handle->frontierRunningMin,
@@ -25726,7 +25737,7 @@ bool sim_scan_cuda_apply_region_candidate_states_residency(const vector<SimScanC
                           cudaMemcpyHostToDevice);
     }
   }
-  if(status == cudaSuccess)
+  if(status == cudaSuccess && !skipCachedFrontierNoUpdate)
   {
     status = cudaMemcpy(context->runningMinDevice,
                         &zero,
@@ -25742,48 +25753,66 @@ bool sim_scan_cuda_apply_region_candidate_states_residency(const vector<SimScanC
     return false;
   }
 
-  const int updatedStateCount = aggregatedDeviceResult.candidateStateCount;
-
-  sim_scan_merge_candidate_states_into_frontier_kernel<<<1, sim_scan_initial_reduce_threads>>>(
-    updatedStateCount > 0 ? aggregatedDeviceResult.candidateStatesDevice : NULL,
-    updatedStateCount,
-    frontierBufferDevice,
-    context->candidateCountDevice,
-    context->runningMinDevice);
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
   double residencyD2HSeconds = 0.0;
   int frontierCount = 0;
-  const chrono::steady_clock::time_point countCopyStart = chrono::steady_clock::now();
-  status = cudaMemcpy(&frontierCount,
-                      context->candidateCountDevice,
-                      sizeof(int),
-                      cudaMemcpyDeviceToHost);
-  if(status == cudaSuccess)
+  if(skipCachedFrontierNoUpdate)
   {
-    status = cudaMemcpy(&outResult->runningMin,
+    if(handle->frontierCount > static_cast<size_t>(sim_scan_cuda_max_candidates))
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = "region residency frontier count overflow";
+      }
+      return false;
+    }
+    frontierCount = static_cast<int>(handle->frontierCount);
+    outResult->runningMin = handle->frontierRunningMin;
+    if(batchResult != NULL)
+    {
+      ++batchResult->regionResidencyCachedFrontierNoUpdateSkips;
+    }
+  }
+  else
+  {
+    sim_scan_merge_candidate_states_into_frontier_kernel<<<1, sim_scan_initial_reduce_threads>>>(
+      updatedStateCount > 0 ? aggregatedDeviceResult.candidateStatesDevice : NULL,
+      updatedStateCount,
+      frontierBufferDevice,
+      context->candidateCountDevice,
+      context->runningMinDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+
+    const chrono::steady_clock::time_point countCopyStart = chrono::steady_clock::now();
+    status = cudaMemcpy(&frontierCount,
+                        context->candidateCountDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(&outResult->runningMin,
                         context->runningMinDevice,
                         sizeof(int),
                         cudaMemcpyDeviceToHost);
-  }
-  residencyD2HSeconds +=
-    static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
-                          chrono::steady_clock::now() - countCopyStart).count()) / 1.0e9;
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
     }
-    return false;
+    residencyD2HSeconds +=
+      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                            chrono::steady_clock::now() - countCopyStart).count()) / 1.0e9;
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
   }
   if(frontierCount < 0 || frontierCount > sim_scan_cuda_max_candidates)
   {
