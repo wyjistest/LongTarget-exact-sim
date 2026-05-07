@@ -841,6 +841,7 @@ struct SimScanCudaBatchResult
     regionPackedAggregationZeroRunCandidateBufferEnsureSkips(0),
     regionPackedAggregationZeroRunCandidateCountD2HSkips(0),
     regionPackedAggregationNoFilterCandidateCountD2HSkips(0),
+    regionPackedAggregationNoFilterCandidateCountScalarH2DSkips(0),
     regionPackedAggregationZeroRunTrueBatchRunCompactSkips(0),
     regionPackedAggregationNoFilterReservedCopySkips(0),
     regionPackedAggregationFilterReservedCopySkips(0),
@@ -1071,6 +1072,7 @@ struct SimScanCudaBatchResult
   uint64_t regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
   uint64_t regionPackedAggregationZeroRunCandidateCountD2HSkips;
   uint64_t regionPackedAggregationNoFilterCandidateCountD2HSkips;
+  uint64_t regionPackedAggregationNoFilterCandidateCountScalarH2DSkips;
   uint64_t regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   uint64_t regionPackedAggregationNoFilterReservedCopySkips;
   uint64_t regionPackedAggregationFilterReservedCopySkips;

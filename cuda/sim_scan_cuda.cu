@@ -13988,6 +13988,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationZeroRunCandidateCountD2HSkips;
   batchResult->regionPackedAggregationNoFilterCandidateCountD2HSkips +=
     requestBatchResult.regionPackedAggregationNoFilterCandidateCountD2HSkips;
+  batchResult->regionPackedAggregationNoFilterCandidateCountScalarH2DSkips +=
+    requestBatchResult.regionPackedAggregationNoFilterCandidateCountScalarH2DSkips;
   batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
     requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
@@ -22261,7 +22263,9 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
                                                                                     int reservedOutputCapacity,
                                                                                     string *errorOut,
                                                                                     uint64_t *outNoFilterReservedCopySkips = NULL,
-                                                                                    int *outHostKnownCandidateCount = NULL)
+                                                                                    int *outHostKnownCandidateCount = NULL,
+                                                                                    bool deferNoFilterCandidateCountH2D = false,
+                                                                                    uint64_t *outNoFilterCandidateCountScalarH2DSkips = NULL)
 {
   if(context == NULL || summaryCount <= 0)
   {
@@ -22401,17 +22405,27 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
   }
   else
   {
-    status = cudaMemcpy(context->batchCandidateCountsDevice + requestIndex,
-                        &outputCandidateCount,
-                        sizeof(int),
-                        cudaMemcpyHostToDevice);
-    if(status != cudaSuccess)
+    if(deferNoFilterCandidateCountH2D)
     {
-      if(errorOut != NULL)
+      if(outNoFilterCandidateCountScalarH2DSkips != NULL)
       {
-        *errorOut = cuda_error_string(status);
+        *outNoFilterCandidateCountScalarH2DSkips += 1;
       }
-      return false;
+    }
+    else
+    {
+      status = cudaMemcpy(context->batchCandidateCountsDevice + requestIndex,
+                          &outputCandidateCount,
+                          sizeof(int),
+                          cudaMemcpyHostToDevice);
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
     }
     if(outNoFilterReservedCopySkips != NULL)
     {
@@ -24553,6 +24567,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
 
   bool candidateOutputBufferEnsured = false;
   uint64_t noFilterReservedCopySkips = 0;
+  const bool deferNoFilterCandidateCountH2D = orderedFirst.filterStartCoordCount == 0;
+  uint64_t noFilterCandidateCountScalarH2DSkips = 0;
   for(size_t i = 0; i < requests.size(); ++i)
   {
     const int requestCapacity = requestCandidateCapacities[i];
@@ -24598,7 +24614,9 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                   requestCapacity,
                                                                                   errorOut,
                                                                                   &noFilterReservedCopySkips,
-                                                                                  &requestCandidateCounts[i]))
+                                                                                  &requestCandidateCounts[i],
+                                                                                  deferNoFilterCandidateCountH2D,
+                                                                                  &noFilterCandidateCountScalarH2DSkips))
       {
         return false;
       }
@@ -24613,6 +24631,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   {
     batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
       noFilterReservedCopySkips;
+    batchResult->regionPackedAggregationNoFilterCandidateCountScalarH2DSkips +=
+      noFilterCandidateCountScalarH2DSkips;
   }
 
   if(outResult->runSummaryCount == 0)
@@ -24751,10 +24771,21 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       return false;
     }
 
-    status = cudaMemcpy(context->batchEventBasesDevice,
-                        requestCandidateBases.data(),
-                        requestCount * sizeof(int),
-                        cudaMemcpyHostToDevice);
+    status = cudaSuccess;
+    if(deferNoFilterCandidateCountH2D)
+    {
+      status = cudaMemcpy(context->batchCandidateCountsDevice,
+                          requestCandidateCounts.data(),
+                          requestCount * sizeof(int),
+                          cudaMemcpyHostToDevice);
+    }
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(context->batchEventBasesDevice,
+                          requestCandidateBases.data(),
+                          requestCount * sizeof(int),
+                          cudaMemcpyHostToDevice);
+    }
     if(status == cudaSuccess)
     {
       status = cudaMemcpy(context->batchRunBasesDevice,
