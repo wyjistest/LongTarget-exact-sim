@@ -6207,6 +6207,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialProposalOnlineOutputBufferOverensureSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialProposalDirectTopKCountClearSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7816,6 +7822,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialProposalOnlineOutputBufferOverensureSkips(
+					  uint64_t outputBufferOverensureSkips)
+					{
+					  simInitialProposalOnlineOutputBufferOverensureSkipCount().fetch_add(
+					    outputBufferOverensureSkips,
+					    std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialProposalDirectTopKCountClearSkips(uint64_t countClearSkips)
 					{
 					  simInitialProposalDirectTopKCountClearSkipCount().fetch_add(countClearSkips,
@@ -9227,6 +9241,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  outputBufferOverensureSkips =
 					    simInitialAllCandidateOutputBufferOverensureSkipCount().load(
+					      std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialProposalOnlineOutputBufferOverensureStats(
+					  uint64_t &outputBufferOverensureSkips)
+					{
+					  outputBufferOverensureSkips =
+					    simInitialProposalOnlineOutputBufferOverensureSkipCount().load(
 					      std::memory_order_relaxed);
 					}
 
@@ -14277,6 +14299,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 				            cudaBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips);
 				          recordSimInitialAllCandidateOutputBufferOverensureSkips(
 				            cudaBatchResult.initialAllCandidateOutputBufferOverensureSkips);
+				          recordSimInitialProposalOnlineOutputBufferOverensureSkips(
+				            cudaBatchResult.initialProposalOnlineOutputBufferOverensureSkips);
 				          recordSimInitialHashReduceSingleRequestBaseBufferEnsureSkips(
 				            cudaBatchResult.initialHashReduceSingleRequestBaseBufferEnsureSkips);
 				          recordSimInitialHashReduceSingleRequestBaseUploadSkips(

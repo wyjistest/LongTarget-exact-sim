@@ -2801,6 +2801,12 @@ int main()
     ok = expect_equal_uint64(singleProposalOnline1.allCandidateStateCount,
                              static_cast<uint64_t>(proposalExpectedAll1.size()),
                              "single proposal online 1 allCandidateStateCount") && ok;
+    ok = expect_equal_uint64(singleProposalOnlineBatch0.initialProposalOnlineOutputBufferOverensureSkips,
+                             1,
+                             "single proposal online 0 output buffer overensure skip") && ok;
+    ok = expect_equal_uint64(singleProposalOnlineBatch1.initialProposalOnlineOutputBufferOverensureSkips,
+                             1,
+                             "single proposal online 1 output buffer overensure skip") && ok;
     ok = expect_candidate_states_equal(singleProposalOnline0.candidateStates,
                                        proposalExpected0,
                                        "single proposal online 0 candidateStates") && ok;

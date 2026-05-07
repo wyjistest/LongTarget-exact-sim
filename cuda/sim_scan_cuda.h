@@ -968,6 +968,7 @@ struct SimScanCudaBatchResult
     initialTrueBatchSingleRequestAllCandidateBasePrefixSkips(0),
     initialAllCandidateReduceKeyBufferEnsureSkips(0),
     initialAllCandidateOutputBufferOverensureSkips(0),
+    initialProposalOnlineOutputBufferOverensureSkips(0),
     initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips(0),
     initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips(0),
     initialTrueBatchSingleRequestProposalV3StateCountUploadSkips(0),
@@ -1222,6 +1223,7 @@ struct SimScanCudaBatchResult
   uint64_t initialTrueBatchSingleRequestAllCandidateBasePrefixSkips;
   uint64_t initialAllCandidateReduceKeyBufferEnsureSkips;
   uint64_t initialAllCandidateOutputBufferOverensureSkips;
+  uint64_t initialProposalOnlineOutputBufferOverensureSkips;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips;
   uint64_t initialTrueBatchSingleRequestProposalV3StateCountUploadSkips;

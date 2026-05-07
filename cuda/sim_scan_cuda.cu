@@ -13943,6 +13943,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialAllCandidateReduceKeyBufferEnsureSkips;
   batchResult->initialAllCandidateOutputBufferOverensureSkips +=
     requestBatchResult.initialAllCandidateOutputBufferOverensureSkips;
+  batchResult->initialProposalOnlineOutputBufferOverensureSkips +=
+    requestBatchResult.initialProposalOnlineOutputBufferOverensureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=
@@ -14676,6 +14678,7 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
                                                                   bool *outFallback,
                                                                   double *outDiagSeconds,
                                                                   double *outOnlineReduceSeconds,
+                                                                  uint64_t *outOutputBufferOverensureSkips,
                                                                   string *errorOut)
 {
   if(context == NULL ||
@@ -14698,6 +14701,10 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
   *outFallback = false;
   *outDiagSeconds = 0.0;
   *outOnlineReduceSeconds = 0.0;
+  if(outOutputBufferOverensureSkips != NULL)
+  {
+    *outOutputBufferOverensureSkips = 0;
+  }
   if(M <= 0 || N <= 0)
   {
     return true;
@@ -14725,10 +14732,6 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
                                   errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->proposalOnlineHashStatesDevice,
                                   &context->proposalOnlineHashStatesCapacity,
-                                  hashCapacity,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
-                                  &context->outputCandidateStatesCapacity,
                                   hashCapacity,
                                   errorOut))
   {
@@ -14945,6 +14948,41 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
     return false;
   }
 
+  int uniqueCount = 0;
+  status = cudaMemcpy(&uniqueCount,
+                      context->filteredCandidateCountDevice,
+                      sizeof(int),
+                      cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(uniqueCount < 0 || static_cast<size_t>(uniqueCount) > hashCapacity)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "SIM CUDA proposal online unique count overflow";
+    }
+    return false;
+  }
+  if(uniqueCount > 0 &&
+     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                  &context->outputCandidateStatesCapacity,
+                                  static_cast<size_t>(uniqueCount),
+                                  errorOut))
+  {
+    return false;
+  }
+  if(outOutputBufferOverensureSkips != NULL &&
+     static_cast<size_t>(uniqueCount) < hashCapacity)
+  {
+    *outOutputBufferOverensureSkips = 1;
+  }
+
   status = cudaMemcpy(context->candidateCountDevice,&zero,sizeof(int),cudaMemcpyHostToDevice);
   if(status != cudaSuccess)
   {
@@ -14956,30 +14994,34 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
   }
 
   const std::chrono::steady_clock::time_point compactStart = std::chrono::steady_clock::now();
-  const int threads = 256;
-  const int blocks = static_cast<int>((hashCapacity + static_cast<size_t>(threads) - 1) / static_cast<size_t>(threads));
-  sim_scan_compact_online_candidate_states_kernel<<<blocks, threads>>>(context->proposalOnlineHashFlagsDevice,
-                                                                       context->proposalOnlineHashStatesDevice,
-                                                                       hashCapacity,
-                                                                       context->outputCandidateStatesDevice,
-                                                                       context->candidateCountDevice);
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
+  if(uniqueCount > 0)
   {
-    if(errorOut != NULL)
+    const int threads = 256;
+    const int blocks =
+      static_cast<int>((hashCapacity + static_cast<size_t>(threads) - 1) / static_cast<size_t>(threads));
+    sim_scan_compact_online_candidate_states_kernel<<<blocks, threads>>>(context->proposalOnlineHashFlagsDevice,
+                                                                         context->proposalOnlineHashStatesDevice,
+                                                                         hashCapacity,
+                                                                         context->outputCandidateStatesDevice,
+                                                                         context->candidateCountDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
     {
-      *errorOut = cuda_error_string(status);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
     }
-    return false;
-  }
-  status = cudaDeviceSynchronize();
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
+    status = cudaDeviceSynchronize();
+    if(status != cudaSuccess)
     {
-      *errorOut = cuda_error_string(status);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
     }
-    return false;
   }
   *outOnlineReduceSeconds =
     static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -14998,19 +15040,6 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
     return false;
   }
 
-  int uniqueCount = 0;
-  status = cudaMemcpy(&uniqueCount,
-                      context->filteredCandidateCountDevice,
-                      sizeof(int),
-                      cudaMemcpyDeviceToHost);
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
   if(uniqueCount != *outAllCandidateCount)
   {
     if(errorOut != NULL)
@@ -15614,6 +15643,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
   bool proposalOnlineFallback = false;
   double initialDiagSeconds = 0.0;
   double initialOnlineReduceSeconds = 0.0;
+  uint64_t initialProposalOnlineOutputBufferOverensureSkips = 0;
   const bool useProposalStreamingPath =
     proposalCandidates &&
     !reduceCandidates &&
@@ -15640,6 +15670,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                               &proposalOnlineFallback,
                                                               &initialDiagSeconds,
                                                               &initialOnlineReduceSeconds,
+                                                              &initialProposalOnlineOutputBufferOverensureSkips,
                                                               errorOut))
     {
       return false;
@@ -16247,6 +16278,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
       allCandidateReduceKeyBufferEnsureSkips;
     batchResult->initialAllCandidateOutputBufferOverensureSkips =
       allCandidateOutputBufferOverensureSkips;
+    batchResult->initialProposalOnlineOutputBufferOverensureSkips =
+      initialProposalOnlineOutputBufferOverensureSkips;
     batchResult->initialDiagSeconds = initialDiagSeconds;
     batchResult->initialOnlineReduceSeconds = initialOnlineReduceSeconds;
     batchResult->initialWaitSeconds = batchResult->d2hSeconds;
