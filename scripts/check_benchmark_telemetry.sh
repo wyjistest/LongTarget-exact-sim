@@ -194,6 +194,7 @@ grep -Eq '^benchmark\.sim_initial_proposal_direct_topk_count_clear_skips=[0-9]+$
 grep -Eq '^benchmark\.sim_initial_proposal_direct_topk_single_state_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_hash_reduce_single_request_base_buffer_ensure_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_hash_reduce_single_request_base_upload_skips=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_hash_reduce_single_request_count_kernel_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_proposal_v3_selected_count_clear_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_proposal_v3_single_state_selector_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_proposal_v3_state_base_buffer_ensure_skips=[0-9]+$' "$STDERR_LOG"

@@ -6195,6 +6195,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialHashReduceSingleRequestCountKernelSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialProposalV3SelectedCountClearSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7775,6 +7781,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                                  std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialHashReduceSingleRequestCountKernelSkips(
+					  uint64_t countKernelSkips)
+					{
+					  simInitialHashReduceSingleRequestCountKernelSkipCount().fetch_add(
+					    countKernelSkips,
+					    std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialProposalV3SelectedCountClearSkips(uint64_t countClearSkips)
 					{
 					  simInitialProposalV3SelectedCountClearSkipCount().fetch_add(countClearSkips,
@@ -9150,6 +9164,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  baseUploadSkips =
 					    simInitialHashReduceSingleRequestBaseUploadSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialHashReduceSingleRequestCountKernelStats(
+					  uint64_t &countKernelSkips)
+					{
+					  countKernelSkips =
+					    simInitialHashReduceSingleRequestCountKernelSkipCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialProposalV3SelectedCountClearStats(uint64_t &countClearSkips)
@@ -14169,6 +14190,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 				            cudaBatchResult.initialHashReduceSingleRequestBaseBufferEnsureSkips);
 				          recordSimInitialHashReduceSingleRequestBaseUploadSkips(
 				            cudaBatchResult.initialHashReduceSingleRequestBaseUploadSkips);
+				          recordSimInitialHashReduceSingleRequestCountKernelSkips(
+				            cudaBatchResult.initialHashReduceSingleRequestCountKernelSkips);
 				          recordSimInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips);
 				          recordSimInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips(

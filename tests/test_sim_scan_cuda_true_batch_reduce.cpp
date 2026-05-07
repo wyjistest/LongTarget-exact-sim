@@ -1179,6 +1179,9 @@ int main()
                      "hash reduce batch no fallback") && ok;
     ok = expect_true(hashReduceBatchResult.initialHashReduceSeconds > 0.0,
                      "hash reduce batch recorded gpu seconds") && ok;
+    ok = expect_equal_uint64(hashReduceBatchResult.initialHashReduceSingleRequestCountKernelSkips,
+                             0,
+                             "hash reduce batch count-kernel skip") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(hashReduceBatchResults.size()),
                              2,
                              "hash reduce batch result count") && ok;
@@ -1374,6 +1377,9 @@ int main()
     ok = expect_equal_uint64(singleHashBatchResult.initialHashReduceSingleRequestBaseUploadSkips,
                              1,
                              "single hash backend hash-reduce base upload skip") && ok;
+    ok = expect_equal_uint64(singleHashBatchResult.initialHashReduceSingleRequestCountKernelSkips,
+                             1,
+                             "single hash backend hash-reduce count-kernel skip") && ok;
     ok = expect_reduce_result_equal(singleHashResult,
                                     hashReduceBatchResults[0],
                                     "single hash backend equals batch hash result 0") && ok;

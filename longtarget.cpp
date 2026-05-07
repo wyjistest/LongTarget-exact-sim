@@ -1451,6 +1451,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialHashReduceSingleRequestBaseBufferEnsureSkips);
     recordSimInitialHashReduceSingleRequestBaseUploadSkips(
       preparedBatch.cudaBatchResult.initialHashReduceSingleRequestBaseUploadSkips);
+    recordSimInitialHashReduceSingleRequestCountKernelSkips(
+      preparedBatch.cudaBatchResult.initialHashReduceSingleRequestCountKernelSkips);
     recordSimInitialProposalV3SelectedCountClearSkips(
       preparedBatch.cudaBatchResult.initialProposalV3SelectedCountClearSkips);
     recordSimInitialProposalV3SingleStateSelectorSkips(
@@ -2395,6 +2397,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialProposalDirectTopKSingleStateSkips = 0;
   uint64_t simInitialHashReduceSingleRequestBaseBufferEnsureSkips = 0;
   uint64_t simInitialHashReduceSingleRequestBaseUploadSkips = 0;
+  uint64_t simInitialHashReduceSingleRequestCountKernelSkips = 0;
   uint64_t simInitialProposalV3SelectedCountClearSkips = 0;
   uint64_t simInitialProposalV3SingleStateSelectorSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
@@ -2468,6 +2471,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialHashReduceSingleRequestBaseBufferEnsureSkips);
   getSimInitialHashReduceSingleRequestBaseUploadStats(
     simInitialHashReduceSingleRequestBaseUploadSkips);
+  getSimInitialHashReduceSingleRequestCountKernelStats(
+    simInitialHashReduceSingleRequestCountKernelSkips);
   getSimInitialProposalV3SelectedCountClearStats(simInitialProposalV3SelectedCountClearSkips);
   getSimInitialProposalV3SingleStateSelectorStats(simInitialProposalV3SingleStateSelectorSkips);
   getSimInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureStats(
@@ -2709,6 +2714,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialHashReduceSingleRequestBaseBufferEnsureSkips<<endl;
   cerr<<"benchmark.sim_initial_hash_reduce_single_request_base_upload_skips="
       <<simInitialHashReduceSingleRequestBaseUploadSkips<<endl;
+  cerr<<"benchmark.sim_initial_hash_reduce_single_request_count_kernel_skips="
+      <<simInitialHashReduceSingleRequestCountKernelSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_v3_selected_count_clear_skips="
       <<simInitialProposalV3SelectedCountClearSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_v3_single_state_selector_skips="

@@ -10048,88 +10048,107 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
     return true;
   }
 
-  status = cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
-  if(status != cudaSuccess)
-  {
-    cudaEventDestroy(hashStartEvent);
-    cudaEventDestroy(hashStopEvent);
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
   const int countThreads = 256;
   const int countBlocks = static_cast<int>((hashCapacity + static_cast<size_t>(countThreads) - 1) /
                                            static_cast<size_t>(countThreads));
-  sim_scan_count_batch_hash_reduce_states_kernel<<<countBlocks, countThreads>>>(context->batchHashKeysDevice,
-                                                                                context->batchHashFlagsDevice,
-                                                                                hashCapacity,
-                                                                                context->batchAllCandidateCountsDevice);
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
+  if(batchSize == 1 &&
+     !ensure_sim_scan_cuda_buffer(&context->batchOutputCursorsDevice,
+                                  &context->batchOutputCursorsCapacity,
+                                  static_cast<size_t>(batchSize),
+                                  errorOut))
   {
     cudaEventDestroy(hashStartEvent);
     cudaEventDestroy(hashStopEvent);
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
     return false;
   }
 
   vector<int> groupedCounts(static_cast<size_t>(batchSize),0);
-  status = cudaMemcpy(groupedCounts.data(),
-                      context->batchAllCandidateCountsDevice,
-                      static_cast<size_t>(batchSize) * sizeof(int),
-                      cudaMemcpyDeviceToHost);
-  if(status != cudaSuccess)
+  if(batchSize == 1)
   {
-    cudaEventDestroy(hashStartEvent);
-    cudaEventDestroy(hashStopEvent);
-    if(errorOut != NULL)
+    if(batchResult != NULL)
     {
-      *errorOut = cuda_error_string(status);
+      batchResult->initialHashReduceSingleRequestCountKernelSkips += 1;
     }
-    return false;
   }
-
-  int reducedCandidateCount = 0;
-  vector<int> groupedBases(static_cast<size_t>(batchSize),0);
-  for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+  else
   {
-    const int count = groupedCounts[static_cast<size_t>(batchIndex)];
-    if(count < 0)
+    status = cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
+    if(status != cudaSuccess)
     {
       cudaEventDestroy(hashStartEvent);
       cudaEventDestroy(hashStopEvent);
       if(errorOut != NULL)
       {
-        *errorOut = "SIM CUDA batched hash reduce count underflow";
+        *errorOut = cuda_error_string(status);
       }
       return false;
     }
-    groupedBases[static_cast<size_t>(batchIndex)] = reducedCandidateCount;
-    reducedCandidateCount += count;
-  }
-  if(reducedCandidateCount < 0 || reducedCandidateCount > summaryCount)
-  {
-    cudaEventDestroy(hashStartEvent);
-    cudaEventDestroy(hashStopEvent);
-    if(errorOut != NULL)
+    sim_scan_count_batch_hash_reduce_states_kernel<<<countBlocks, countThreads>>>(context->batchHashKeysDevice,
+                                                                                  context->batchHashFlagsDevice,
+                                                                                  hashCapacity,
+                                                                                  context->batchAllCandidateCountsDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
     {
-      *errorOut = "SIM CUDA batched hash reduce count overflow";
+      cudaEventDestroy(hashStartEvent);
+      cudaEventDestroy(hashStopEvent);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
     }
-    return false;
+    status = cudaMemcpy(groupedCounts.data(),
+                        context->batchAllCandidateCountsDevice,
+                        static_cast<size_t>(batchSize) * sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      cudaEventDestroy(hashStartEvent);
+      cudaEventDestroy(hashStopEvent);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
   }
 
-  if(reducedCandidateCount > 0)
+  int reducedCandidateCount = 0;
+  vector<int> groupedBases(static_cast<size_t>(batchSize),0);
+  if(batchSize != 1)
   {
-    const bool useSingleRequestImplicitOutputBase =
-      batchSize == 1 &&
-      !groupedBases.empty() &&
-      groupedBases[0] == 0;
+    for(int batchIndex = 0; batchIndex < batchSize; ++batchIndex)
+    {
+      const int count = groupedCounts[static_cast<size_t>(batchIndex)];
+      if(count < 0)
+      {
+        cudaEventDestroy(hashStartEvent);
+        cudaEventDestroy(hashStopEvent);
+        if(errorOut != NULL)
+        {
+          *errorOut = "SIM CUDA batched hash reduce count underflow";
+        }
+        return false;
+      }
+      groupedBases[static_cast<size_t>(batchIndex)] = reducedCandidateCount;
+      reducedCandidateCount += count;
+    }
+    if(reducedCandidateCount < 0 || reducedCandidateCount > summaryCount)
+    {
+      cudaEventDestroy(hashStartEvent);
+      cudaEventDestroy(hashStopEvent);
+      if(errorOut != NULL)
+      {
+        *errorOut = "SIM CUDA batched hash reduce count overflow";
+      }
+      return false;
+    }
+  }
+
+  if(batchSize == 1 || reducedCandidateCount > 0)
+  {
+    const bool useSingleRequestImplicitOutputBase = batchSize == 1;
     const int *groupedBasesDevice = NULL;
     if(useSingleRequestImplicitOutputBase)
     {
@@ -10166,7 +10185,11 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
       }
       groupedBasesDevice = context->batchEventBasesDevice;
     }
-    status = cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
+    int *compactCursorsDevice =
+      useSingleRequestImplicitOutputBase ?
+      context->batchOutputCursorsDevice :
+      context->batchAllCandidateCountsDevice;
+    status = cudaMemset(compactCursorsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
     if(status != cudaSuccess)
     {
       cudaEventDestroy(hashStartEvent);
@@ -10177,13 +10200,12 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
       }
       return false;
     }
-
     sim_scan_compact_batch_hash_reduce_states_kernel<<<countBlocks, countThreads>>>(context->batchHashKeysDevice,
                                                                                      context->batchHashFlagsDevice,
                                                                                      context->batchHashStatesDevice,
                                                                                      hashCapacity,
                                                                                      groupedBasesDevice,
-                                                                                     context->batchAllCandidateCountsDevice,
+                                                                                     compactCursorsDevice,
                                                                                      context->batchReducedKeysDevice,
                                                                                      context->reducedStatesDevice);
     status = cudaGetLastError();
@@ -10196,6 +10218,33 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
         *errorOut = cuda_error_string(status);
       }
       return false;
+    }
+    if(useSingleRequestImplicitOutputBase)
+    {
+      status = cudaMemcpy(&reducedCandidateCount,
+                          context->batchOutputCursorsDevice,
+                          sizeof(int),
+                          cudaMemcpyDeviceToHost);
+      if(status != cudaSuccess)
+      {
+        cudaEventDestroy(hashStartEvent);
+        cudaEventDestroy(hashStopEvent);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      if(reducedCandidateCount < 0 || reducedCandidateCount > summaryCount)
+      {
+        cudaEventDestroy(hashStartEvent);
+        cudaEventDestroy(hashStopEvent);
+        if(errorOut != NULL)
+        {
+          *errorOut = "SIM CUDA single-request hash reduce count overflow";
+        }
+        return false;
+      }
     }
   }
 
@@ -13983,6 +14032,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialHashReduceSingleRequestBaseBufferEnsureSkips;
   batchResult->initialHashReduceSingleRequestBaseUploadSkips +=
     requestBatchResult.initialHashReduceSingleRequestBaseUploadSkips;
+  batchResult->initialHashReduceSingleRequestCountKernelSkips +=
+    requestBatchResult.initialHashReduceSingleRequestCountKernelSkips;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
   batchResult->initialProposalV3SelectedStateCount += requestBatchResult.initialProposalV3SelectedStateCount;
   batchResult->initialProposalV3SelectedCountClearSkips +=
