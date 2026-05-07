@@ -287,6 +287,9 @@ int main()
     ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestCountCopySkips,
                              2,
                              "default single-request count copy skips") && ok;
+    ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "default event-base materialize skip") && ok;
     ok = expect_true(directBatchResult.usedInitialSummaryHostCopyElision,
                      "direct host-copy elision used") && ok;
     ok = expect_equal_uint64(directBatchResult.initialSummaryHostCopyElidedBytes,
@@ -307,6 +310,9 @@ int main()
     ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestCountCopySkips,
                              2,
                              "direct single-request count copy skips") && ok;
+    ok = expect_equal_uint64(directBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "direct event-base materialize skip") && ok;
     ok = expect_true(packedDirectBatchResult.usedInitialPackedSummaryD2H,
                      "packed direct still uses packed D2H") && ok;
     ok = expect_true(packedDirectBatchResult.usedInitialSummaryHostCopyElision,
@@ -329,6 +335,9 @@ int main()
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestCountCopySkips,
                              2,
                              "packed direct single-request count copy skips") && ok;
+    ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "packed direct event-base materialize skip") && ok;
     ok = expect_false(reduceBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce path does not use summary host-copy elision") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(defaultTrueBatchSummaries.size()),
@@ -360,6 +369,9 @@ int main()
     }
     ok = expect_false(defaultTrueBatchResult.usedInitialSummaryHostCopyElision,
                       "default true-batch host-copy elision disabled") && ok;
+    ok = expect_equal_uint64(defaultTrueBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "default true-batch event-base materialize skip") && ok;
     ok = expect_true(directTrueBatchResult.usedInitialSummaryHostCopyElision,
                      "direct true-batch host-copy elision used") && ok;
     ok = expect_equal_uint64(directTrueBatchResult.initialSummaryHostCopyElidedBytes,
@@ -380,6 +392,9 @@ int main()
     ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestCountCopySkips,
                              0,
                              "direct true-batch no single-request count copy skips") && ok;
+    ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "direct true-batch event-base materialize skip") && ok;
     ok = expect_true(packedDirectTrueBatchResult.usedInitialPackedSummaryD2H,
                      "packed direct true-batch still uses packed D2H") && ok;
     ok = expect_true(packedDirectTrueBatchResult.usedInitialSummaryHostCopyElision,
@@ -402,11 +417,17 @@ int main()
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestCountCopySkips,
                              0,
                              "packed direct true-batch no single-request count copy skips") && ok;
+    ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "packed direct true-batch event-base materialize skip") && ok;
     ok = expect_false(reduceTrueBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce true-batch does not use summary host-copy elision") && ok;
     ok = expect_equal_uint64(reduceTrueBatchResult.initialTrueBatchSingleRequestCountCopySkips,
                              0,
                              "reduce true-batch no single-request count copy skips") && ok;
+    ok = expect_equal_uint64(reduceTrueBatchResult.initialTrueBatchEventBaseMaterializeSkips,
+                             1,
+                             "reduce true-batch event-base materialize skip") && ok;
 
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");

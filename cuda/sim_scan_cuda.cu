@@ -13426,6 +13426,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
   batchResult->initialTrueBatchSingleRequestCountCopySkips +=
     requestBatchResult.initialTrueBatchSingleRequestCountCopySkips;
+  batchResult->initialTrueBatchEventBaseMaterializeSkips +=
+    requestBatchResult.initialTrueBatchEventBaseMaterializeSkips;
   batchResult->usedInitialPinnedAsyncHandoff =
     batchResult->usedInitialPinnedAsyncHandoff ||
     requestBatchResult.usedInitialPinnedAsyncHandoff;
@@ -16119,19 +16121,11 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   vector<int> totalEventsPerTask(static_cast<size_t>(batchSize),0);
   vector<int> totalRunsPerTask(static_cast<size_t>(batchSize),0);
   uint64_t initialTrueBatchSingleRequestPrefixSkips = 0;
+  uint64_t initialTrueBatchEventBaseMaterializeSkips = 0;
   int totalEvents = 0;
   if(batchSize == 1)
   {
     const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
-    status = cudaMemset(context->batchEventBasesDevice,0,sizeof(int));
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
-      {
-        *errorOut = cuda_error_string(status);
-      }
-      return false;
-    }
     status = cudaMemcpy(&totalEvents,
                         context->batchEventTotalsDevice,
                         sizeof(int),
@@ -16148,15 +16142,12 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                             std::chrono::steady_clock::now() - countCopyStart).count()) / 1.0e9;
     initialTrueBatchSingleRequestPrefixSkips += 1;
+    initialTrueBatchEventBaseMaterializeSkips += 1;
   }
   else
   {
     try
     {
-      thrust::exclusive_scan(thrust::device,
-                             thrust::device_pointer_cast(context->batchEventTotalsDevice),
-                             thrust::device_pointer_cast(context->batchEventTotalsDevice + batchSize),
-                             thrust::device_pointer_cast(context->batchEventBasesDevice));
       const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
       totalEvents = thrust::reduce(thrust::device,
                                    thrust::device_pointer_cast(context->batchEventTotalsDevice),
@@ -16166,6 +16157,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialCountCopySeconds +=
         static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                               std::chrono::steady_clock::now() - countCopyStart).count()) / 1.0e9;
+      initialTrueBatchEventBaseMaterializeSkips += 1;
     }
     catch(const thrust::system_error &e)
     {
@@ -17670,6 +17662,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestInputPackSkips;
     batchResult->initialTrueBatchSingleRequestCountCopySkips =
       initialTrueBatchSingleRequestCountCopySkips;
+    batchResult->initialTrueBatchEventBaseMaterializeSkips =
+      initialTrueBatchEventBaseMaterializeSkips;
     batchResult->initialHandoffPinnedAsyncRequested =
       requestInitialPinnedAsyncHandoff;
     batchResult->initialHandoffPinnedAsyncActive =

@@ -178,6 +178,7 @@ grep -Eq '^benchmark\.sim_initial_summary_host_copy_elision_event_count_copy_ski
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_prefix_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_input_pack_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_count_copy_skips=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_true_batch_event_base_materialize_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_enabled=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_requested=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_active=0$' "$STDERR_LOG"
