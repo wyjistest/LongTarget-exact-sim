@@ -13996,6 +13996,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationCandidateCountClearSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
+  batchResult->regionPackedAggregationFinalCompactBaseBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationFinalCompactBaseBufferEnsureSkips;
   batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
     requestBatchResult.regionPackedAggregationZeroRunTrueBatchRunCompactSkips;
   batchResult->regionPackedAggregationNoFilterReservedCopySkips +=
@@ -24305,15 +24307,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
      !ensure_sim_scan_cuda_buffer(&context->batchRunTotalsDevice,
                                   &context->batchRunTotalsCapacity,
                                   requestCount,
-                                  errorOut) ||
-      !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
-                                   &context->batchEventBasesCapacity,
-                                   requestCount,
-                                   errorOut) ||
-      !ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
-                                   &context->batchRunBasesCapacity,
-                                   requestCount,
-                                   errorOut)))
+                                  errorOut)))
   {
     return false;
   }
@@ -24570,6 +24564,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
 
   bool candidateOutputBufferEnsured = false;
   bool candidateCountBufferEnsured = false;
+  bool finalCompactBaseBuffersEnsured = false;
   uint64_t noFilterReservedCopySkips = 0;
   const bool deferNoFilterCandidateCountH2D = orderedFirst.filterStartCoordCount == 0;
   uint64_t noFilterCandidateCountScalarH2DSkips = 0;
@@ -24740,6 +24735,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     if(batchResult != NULL)
     {
       batchResult->regionPackedAggregationSingleRequestFinalReduceSkips += 1;
+      batchResult->regionPackedAggregationFinalCompactBaseBufferEnsureSkips += 1;
     }
   }
   else if(packedCandidateCountInt == 1)
@@ -24766,6 +24762,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     if(batchResult != NULL)
     {
       batchResult->regionPackedAggregationSingleCandidateFinalReduceSkips += 1;
+      batchResult->regionPackedAggregationFinalCompactBaseBufferEnsureSkips += 1;
     }
   }
   else if(packedCandidateCountInt > 0)
@@ -24794,6 +24791,21 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       return false;
     }
 
+    if(!finalCompactBaseBuffersEnsured)
+    {
+      if(!ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
+                                      &context->batchEventBasesCapacity,
+                                      requestCount,
+                                      errorOut) ||
+         !ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
+                                      &context->batchRunBasesCapacity,
+                                      requestCount,
+                                      errorOut))
+      {
+        return false;
+      }
+      finalCompactBaseBuffersEnsured = true;
+    }
     status = cudaSuccess;
     if(deferNoFilterCandidateCountH2D)
     {
