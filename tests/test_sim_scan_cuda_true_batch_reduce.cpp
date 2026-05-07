@@ -1053,6 +1053,32 @@ int main()
     const int gapExtend = 4;
     const int eventScoreFloor = 5;
 
+    SimScanCudaInitialBatchRequest freshProposalV3Request;
+    freshProposalV3Request.A = query;
+    freshProposalV3Request.B = target0;
+    freshProposalV3Request.queryLength = queryLength;
+    freshProposalV3Request.targetLength = targetLength;
+    freshProposalV3Request.gapOpen = gapOpen;
+    freshProposalV3Request.gapExtend = gapExtend;
+    freshProposalV3Request.scoreMatrix = scoreMatrix;
+    freshProposalV3Request.eventScoreFloor = eventScoreFloor;
+    freshProposalV3Request.proposalCandidates = true;
+    std::vector<SimScanCudaInitialBatchRequest> freshProposalV3Requests;
+    freshProposalV3Requests.push_back(freshProposalV3Request);
+    SimScanCudaBatchResult freshProposalV3BatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> freshProposalV3Results =
+      run_true_batch_initial_proposal_v3(freshProposalV3Requests,
+                                         &freshProposalV3BatchResult);
+    const SimScanCudaInitialBatchResult freshProposalExpected =
+      run_single_initial_proposal(query,
+                                  target0,
+                                  queryLength,
+                                  targetLength,
+                                  gapOpen,
+                                  gapExtend,
+                                  scoreMatrix,
+                                  eventScoreFloor);
+
     SimScanCudaInitialBatchRequest request0;
     request0.A = query;
     request0.B = target0;
@@ -1117,6 +1143,21 @@ int main()
     }
 
     bool ok = true;
+    ok = expect_equal_uint64(static_cast<uint64_t>(freshProposalV3Results.size()),
+                             1,
+                             "fresh single proposal V3 result count") && ok;
+    ok = expect_true(freshProposalV3BatchResult.usedInitialProposalV3Path,
+                     "fresh single proposal V3 used V3 path") && ok;
+    ok = expect_equal_uint64(
+           freshProposalV3BatchResult.initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips,
+           1,
+           "fresh single proposal V3 all-candidate count buffer ensure skip") && ok;
+    if (freshProposalV3Results.size() == 1)
+    {
+        ok = expect_proposal_result_equal(freshProposalV3Results[0],
+                                          freshProposalExpected,
+                                          "fresh single proposal V3 result") && ok;
+    }
     ok = expect_true(batchResult.usedCuda, "batch usedCuda") && ok;
     ok = expect_equal_uint64(batchResult.taskCount, 2, "batch taskCount") && ok;
     ok = expect_equal_uint64(batchResult.launchCount, 1, "batch launchCount") && ok;

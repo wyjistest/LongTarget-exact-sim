@@ -2341,10 +2341,25 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   {
     return false;
   }
+  cudaError_t status = cudaSuccess;
   const int *stateBasesDevice = context->batchEventBasesDevice;
+  const int *stateCountsDevice = context->batchAllCandidateCountsDevice;
   if(useImplicitStateBase)
   {
     stateBasesDevice = NULL;
+    status = cudaMemcpy(context->candidateCountDevice,
+                        &stateCounts[0],
+                        sizeof(int),
+                        cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    stateCountsDevice = context->candidateCountDevice;
     if(outSingleRequestStateBaseBufferEnsureSkips != NULL)
     {
       *outSingleRequestStateBaseBufferEnsureSkips = 1;
@@ -2363,10 +2378,10 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
     {
       return false;
     }
-    cudaError_t status = cudaMemcpy(context->batchEventBasesDevice,
-                                    stateBases.data(),
-                                    static_cast<size_t>(batchSize) * sizeof(int),
-                                    cudaMemcpyHostToDevice);
+    status = cudaMemcpy(context->batchEventBasesDevice,
+                        stateBases.data(),
+                        static_cast<size_t>(batchSize) * sizeof(int),
+                        cudaMemcpyHostToDevice);
     if(status != cudaSuccess)
     {
       if(errorOut != NULL)
@@ -2376,8 +2391,6 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
       return false;
     }
   }
-  cudaError_t status = cudaSuccess;
-
   status = cudaEventRecord(context->startEvent);
   if(status != cudaSuccess)
   {
@@ -2416,7 +2429,7 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_true_batch_lock
   sim_scan_select_top_disjoint_batch_candidate_reduce_states_kernel<<<static_cast<unsigned int>(batchSize), 1>>>(
     statesDevice,
     stateBasesDevice,
-    context->batchAllCandidateCountsDevice,
+    stateCountsDevice,
     batchSize,
     clampedProposalCount,
     context->batchCandidateStatesDevice,
