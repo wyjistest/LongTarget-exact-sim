@@ -13435,6 +13435,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestTargetBufferSkips;
   batchResult->initialTrueBatchSingleRequestMatrixBufferSkips +=
     requestBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips;
+  batchResult->initialTrueBatchSingleRequestDiagBufferSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestDiagBufferSkips;
   batchResult->initialTrueBatchSingleRequestMetadataBufferSkips +=
     requestBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips;
   batchResult->initialTrueBatchSingleRequestEventScoreFloorUploadSkips +=
@@ -15860,6 +15862,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     sim_scan_cuda_initial_chunked_handoff_runtime();
   const bool skipSingleRequestTargetBuffer = batchSize == 1;
   const bool skipSingleRequestMatrixBuffer = batchSize == 1;
+  const bool skipSingleRequestDiagBuffer = batchSize == 1;
   const bool skipSingleRequestMetadataBuffer =
     batchSize == 1 && !anyCandidateExtraction;
   const bool skipSingleRequestEventScoreFloorUpload = batchSize == 1;
@@ -15869,6 +15872,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     skipSingleRequestEventScoreFloorUpload ? first.eventScoreFloor : 0;
   uint64_t initialTrueBatchSingleRequestTargetBufferSkips = 0;
   uint64_t initialTrueBatchSingleRequestMatrixBufferSkips = 0;
+  uint64_t initialTrueBatchSingleRequestDiagBufferSkips = 0;
   uint64_t initialTrueBatchSingleRequestMetadataBufferSkips = 0;
   uint64_t initialTrueBatchSingleRequestEventScoreFloorUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
@@ -15948,7 +15952,11 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   {
     return false;
   }
-  if(!ensure_sim_scan_cuda_true_batch_diag_capacity_locked(*context,batchDiagCells,errorOut))
+  if(skipSingleRequestDiagBuffer)
+  {
+    initialTrueBatchSingleRequestDiagBufferSkips += 1;
+  }
+  else if(!ensure_sim_scan_cuda_true_batch_diag_capacity_locked(*context,batchDiagCells,errorOut))
   {
     return false;
   }
@@ -16043,20 +16051,20 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     return false;
   }
 
-  int *ppH = context->batchDiagH0;
-  uint64_t *ppHc = context->batchDiagHc0;
-  int *prevH = context->batchDiagH1;
-  uint64_t *prevHc = context->batchDiagHc1;
-  int *curH = context->batchDiagH2;
-  uint64_t *curHc = context->batchDiagHc2;
-  int *prevD = context->batchDiagD1;
-  uint64_t *prevDc = context->batchDiagDc1;
-  int *curD = context->batchDiagD2;
-  uint64_t *curDc = context->batchDiagDc2;
-  int *prevF = context->batchDiagF1;
-  uint64_t *prevFc = context->batchDiagFc1;
-  int *curF = context->batchDiagF2;
-  uint64_t *curFc = context->batchDiagFc2;
+  int *ppH = skipSingleRequestDiagBuffer ? context->diagH0 : context->batchDiagH0;
+  uint64_t *ppHc = skipSingleRequestDiagBuffer ? context->diagHc0 : context->batchDiagHc0;
+  int *prevH = skipSingleRequestDiagBuffer ? context->diagH1 : context->batchDiagH1;
+  uint64_t *prevHc = skipSingleRequestDiagBuffer ? context->diagHc1 : context->batchDiagHc1;
+  int *curH = skipSingleRequestDiagBuffer ? context->diagH2 : context->batchDiagH2;
+  uint64_t *curHc = skipSingleRequestDiagBuffer ? context->diagHc2 : context->batchDiagHc2;
+  int *prevD = skipSingleRequestDiagBuffer ? context->diagD1 : context->batchDiagD1;
+  uint64_t *prevDc = skipSingleRequestDiagBuffer ? context->diagDc1 : context->batchDiagDc1;
+  int *curD = skipSingleRequestDiagBuffer ? context->diagD2 : context->batchDiagD2;
+  uint64_t *curDc = skipSingleRequestDiagBuffer ? context->diagDc2 : context->batchDiagDc2;
+  int *prevF = skipSingleRequestDiagBuffer ? context->diagF1 : context->batchDiagF1;
+  uint64_t *prevFc = skipSingleRequestDiagBuffer ? context->diagFc1 : context->batchDiagFc1;
+  int *curF = skipSingleRequestDiagBuffer ? context->diagF2 : context->batchDiagF2;
+  uint64_t *curFc = skipSingleRequestDiagBuffer ? context->diagFc2 : context->batchDiagFc2;
   int *initialHScoreDevice =
     skipSingleRequestMatrixBuffer ? context->HScoreDevice : context->batchHScoreDevice;
   uint64_t *initialHCoordDevice =
@@ -17751,6 +17759,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestTargetBufferSkips;
     batchResult->initialTrueBatchSingleRequestMatrixBufferSkips =
       initialTrueBatchSingleRequestMatrixBufferSkips;
+    batchResult->initialTrueBatchSingleRequestDiagBufferSkips =
+      initialTrueBatchSingleRequestDiagBufferSkips;
     batchResult->initialTrueBatchSingleRequestMetadataBufferSkips =
       initialTrueBatchSingleRequestMetadataBufferSkips;
     batchResult->initialTrueBatchSingleRequestEventScoreFloorUploadSkips =

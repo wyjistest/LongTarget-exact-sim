@@ -290,6 +290,9 @@ int main()
     ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips,
                              1,
                              "default single-request matrix buffer skip") && ok;
+    ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestDiagBufferSkips,
+                             1,
+                             "default single-request diag buffer skip") && ok;
     ok = expect_equal_uint64(defaultBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips,
                              1,
                              "default single-request metadata buffer skip") && ok;
@@ -334,6 +337,9 @@ int main()
     ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips,
                              1,
                              "direct single-request matrix buffer skip") && ok;
+    ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestDiagBufferSkips,
+                             1,
+                             "direct single-request diag buffer skip") && ok;
     ok = expect_equal_uint64(directBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips,
                              1,
                              "direct single-request metadata buffer skip") && ok;
@@ -380,6 +386,9 @@ int main()
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips,
                              1,
                              "packed direct single-request matrix buffer skip") && ok;
+    ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestDiagBufferSkips,
+                             1,
+                             "packed direct single-request diag buffer skip") && ok;
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips,
                              1,
                              "packed direct single-request metadata buffer skip") && ok;
@@ -412,6 +421,9 @@ int main()
     ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips,
                              0,
                              "reduce single-request no true-batch matrix buffer skip") && ok;
+    ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestDiagBufferSkips,
+                             0,
+                             "reduce single-request no true-batch diag buffer skip") && ok;
     ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips,
                              0,
                              "reduce single-request no true-batch metadata buffer skip") && ok;
@@ -479,6 +491,9 @@ int main()
     ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips,
                              0,
                              "direct true-batch no single-request matrix buffer skip") && ok;
+    ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestDiagBufferSkips,
+                             0,
+                             "direct true-batch no single-request diag buffer skip") && ok;
     ok = expect_equal_uint64(directTrueBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips,
                              0,
                              "direct true-batch no single-request metadata buffer skip") && ok;
@@ -525,6 +540,9 @@ int main()
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestMatrixBufferSkips,
                              0,
                              "packed direct true-batch no single-request matrix buffer skip") && ok;
+    ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestDiagBufferSkips,
+                             0,
+                             "packed direct true-batch no single-request diag buffer skip") && ok;
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialTrueBatchSingleRequestMetadataBufferSkips,
                              0,
                              "packed direct true-batch no single-request metadata buffer skip") && ok;
