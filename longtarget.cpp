@@ -1431,6 +1431,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips);
     recordSimInitialTrueBatchSingleRequestRunBaseMaterializeSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips);
+    recordSimInitialTrueBatchSingleRequestAllCandidateCountSkips(
+      preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestAllCandidateCountSkips);
     recordSimInitialProposalDirectTopKCountClearSkips(
       preparedBatch.cudaBatchResult.initialProposalDirectTopKCountClearSkips);
     recordSimInitialProposalV3SelectedCountClearSkips(
@@ -2362,6 +2364,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialTrueBatchSingleRequestCountCopySkips = 0;
   uint64_t simInitialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestRunBaseMaterializeSkips = 0;
+  uint64_t simInitialTrueBatchSingleRequestAllCandidateCountSkips = 0;
   uint64_t simInitialProposalDirectTopKCountClearSkips = 0;
   uint64_t simInitialProposalV3SelectedCountClearSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
@@ -2417,6 +2420,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialTrueBatchSingleRequestRunBaseBufferEnsureSkips);
   getSimInitialTrueBatchSingleRequestRunBaseMaterializeStats(
     simInitialTrueBatchSingleRequestRunBaseMaterializeSkips);
+  getSimInitialTrueBatchSingleRequestAllCandidateCountStats(
+    simInitialTrueBatchSingleRequestAllCandidateCountSkips);
   getSimInitialProposalDirectTopKCountClearStats(simInitialProposalDirectTopKCountClearSkips);
   getSimInitialProposalV3SelectedCountClearStats(simInitialProposalV3SelectedCountClearSkips);
   getSimInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureStats(
@@ -2636,6 +2641,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialTrueBatchSingleRequestRunBaseBufferEnsureSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_run_base_materialize_skips="
       <<simInitialTrueBatchSingleRequestRunBaseMaterializeSkips<<endl;
+  cerr<<"benchmark.sim_initial_true_batch_single_request_all_candidate_count_skips="
+      <<simInitialTrueBatchSingleRequestAllCandidateCountSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_direct_topk_count_clear_skips="
       <<simInitialProposalDirectTopKCountClearSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_v3_selected_count_clear_skips="

@@ -10094,6 +10094,26 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch(SimScanCu
     return true;
   }
 
+  const bool useSingleRequestImplicitAllCandidateCount =
+    batchSize == 1 &&
+    batchFinalCandidateStatesDevice == NULL &&
+    batchFinalCandidateCountsDevice == NULL &&
+    batchRunningMinsDevice == NULL;
+  if(useSingleRequestImplicitAllCandidateCount)
+  {
+    (*outCandidateCounts)[0] = reducedCandidateCount;
+    if(outCandidateBases != NULL)
+    {
+      (*outCandidateBases)[0] = 0;
+    }
+    *outTotalCandidateCount = reducedCandidateCount;
+    if(batchResult != NULL)
+    {
+      batchResult->initialTrueBatchSingleRequestAllCandidateCountSkips += 1;
+    }
+    return true;
+  }
+
   cudaError_t status =
     cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
   if(status != cudaSuccess)
@@ -13503,6 +13523,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestRunBaseMaterializeSkips +=
     requestBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips;
+  batchResult->initialTrueBatchSingleRequestAllCandidateCountSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestAllCandidateCountSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=
