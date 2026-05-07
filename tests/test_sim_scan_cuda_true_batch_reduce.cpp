@@ -1848,6 +1848,10 @@ int main()
                                regionPackedAggregationSingleSummaryRequestReduceSkips,
                              2,
                              "region aggregated filter single-summary request reduce skips") && ok;
+    ok = expect_equal_uint64(filterSingleSummaryAggregatedBatchResult.
+                               regionPackedAggregationSingleSummaryFilterKernelFusions,
+                             2,
+                             "region aggregated filter single-summary kernel fusions") && ok;
 
     SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
     zeroRunRegionRequest0.eventScoreFloor = 1000000;
