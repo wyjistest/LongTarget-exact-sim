@@ -16599,6 +16599,38 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     }
   }
 
+  if(!anyCandidateExtraction)
+  {
+    bool allRequestsHaveNoEvents = true;
+    for(size_t i = 0; i < requests.size(); ++i)
+    {
+      const SimScanCudaInitialBatchRequest &request = requests[i];
+      if(!sim_scan_cuda_request_shape_has_no_possible_events(request.queryLength,
+                                                             request.targetLength,
+                                                             request.scoreMatrix,
+                                                             request.gapOpen,
+                                                             request.gapExtend,
+                                                             request.eventScoreFloor))
+      {
+        allRequestsHaveNoEvents = false;
+        break;
+      }
+    }
+    if(allRequestsHaveNoEvents)
+    {
+      outResults->assign(requests.size(),SimScanCudaInitialBatchResult());
+      if(batchResult != NULL)
+      {
+        batchResult->usedCuda = true;
+        batchResult->usedInitialDirectSummaryPath = true;
+        batchResult->taskCount = static_cast<uint64_t>(batchSize);
+        batchResult->launchCount = 0;
+      }
+      clear_sim_scan_cuda_error(errorOut);
+      return true;
+    }
+  }
+
   int device = 0;
   const int slot = simCudaWorkerSlotRuntime();
   const cudaError_t deviceStatus = cudaGetDevice(&device);
