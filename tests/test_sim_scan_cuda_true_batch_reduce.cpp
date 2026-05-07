@@ -1866,6 +1866,9 @@ int main()
     ok = expect_true(noFilterSingleSummarySingleBatchResult.
                        regionSingleRequestSingleCandidateExtractSkips > 0,
                      "single region no-filter single-candidate extract skips recorded") && ok;
+    ok = expect_true(noFilterSingleSummarySingleBatchResult.
+                       regionSingleRequestSingleCandidateOutputBufferEnsureSkips > 0,
+                     "single region no-filter single-candidate output buffer ensure skips recorded") && ok;
 
     std::vector<uint64_t> singleSummaryFilterStartCoords;
     singleSummaryFilterStartCoords.push_back(pack_coord(1, 1));
