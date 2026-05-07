@@ -618,9 +618,18 @@ static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceCandidateCount,
                              0,
                              "zero direct candidate count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceRunSummaryCount,
+                             0,
+                             "zero direct run summary count") && ok;
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
                              1,
                              "zero direct pipeline request count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineFilterReduceLaunchCount,
+                             0,
+                             "zero direct filter-reduce launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount,
+                             0,
+                             "zero direct candidate-prefix launches") && ok;
     ok = expect_equal_uint64(
            batchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips,
            1,
@@ -628,6 +637,12 @@ static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount,
                              0,
                              "zero direct candidate compact launches") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceFilterReduceGpuSeconds,
+                            "zero direct filter-reduce gpu seconds") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceCandidateCountD2HSeconds,
+                            "zero direct candidate-count d2h seconds") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReducePipelineCandidatePrefixGpuSeconds,
+                            "zero direct candidate-prefix gpu seconds") && ok;
     ok = expect_zero_double(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds,
                             "zero direct candidate compact gpu seconds") && ok;
     return ok;

@@ -23408,84 +23408,40 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       static_cast<uint64_t>(max(runSummaryCount,0));
   }
 
-  if(!sim_scan_cuda_record_event(context->regionDirectReduceStartEvent,errorOut))
-  {
-    return false;
-  }
-  const int filterThreads = 256;
-  if(useDeferredCounts)
-  {
-    sim_scan_region_direct_reduce_filter_summaries_kernel<<<request.filterStartCoordCount, filterThreads>>>(
-      context->initialRunSummariesDevice,
-      0,
-      context->batchRunTotalsDevice,
-      maxEventsAllowed,
-      context->filterStartCoordsDevice,
-      request.filterStartCoordCount,
-      context->batchEventBasesDevice,
-      context->outputCandidateStatesDevice);
-  }
-  else
-  {
-    sim_scan_region_direct_reduce_filter_summaries_kernel<<<request.filterStartCoordCount, filterThreads>>>(
-      context->initialRunSummariesDevice,
-      runSummaryCount,
-      NULL,
-      maxEventsAllowed,
-      context->filterStartCoordsDevice,
-      request.filterStartCoordCount,
-      context->batchEventBasesDevice,
-      context->outputCandidateStatesDevice);
-  }
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-  if(usePipelineTelemetry && batchResult != NULL)
-  {
-    batchResult->regionSingleRequestDirectReducePipelineFilterReduceLaunchCount += 1;
-  }
-  if(!sim_scan_cuda_record_event(context->regionDirectReduceStopEvent,errorOut))
-  {
-    return false;
-  }
-
-  sim_scan_prefix_sum_kernel<<<1, 1>>>(context->batchEventBasesDevice,
-                                       request.filterStartCoordCount,
-                                       context->batchRunBasesDevice,
-                                       context->candidateCountDevice);
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-  if(usePipelineTelemetry && batchResult != NULL)
-  {
-    batchResult->regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount += 1;
-  }
-  if(!sim_scan_cuda_record_event(context->regionDirectPrefixStopEvent,errorOut))
-  {
-    return false;
-  }
-
   int candidateCount = 0;
-  if(!useDeferredCounts)
+  const bool shouldReduceCandidates = useDeferredCounts || runSummaryCount > 0;
+  const int filterThreads = 256;
+  if(shouldReduceCandidates)
   {
-    const chrono::steady_clock::time_point candidateCopyStart = chrono::steady_clock::now();
-    status = cudaMemcpy(&candidateCount,context->candidateCountDevice,sizeof(int),cudaMemcpyDeviceToHost);
-    candidateCountD2HSeconds =
-      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
-                            chrono::steady_clock::now() - candidateCopyStart).count()) / 1.0e9;
-    d2hSeconds += candidateCountD2HSeconds;
+    if(!sim_scan_cuda_record_event(context->regionDirectReduceStartEvent,errorOut))
+    {
+      return false;
+    }
+    if(useDeferredCounts)
+    {
+      sim_scan_region_direct_reduce_filter_summaries_kernel<<<request.filterStartCoordCount, filterThreads>>>(
+        context->initialRunSummariesDevice,
+        0,
+        context->batchRunTotalsDevice,
+        maxEventsAllowed,
+        context->filterStartCoordsDevice,
+        request.filterStartCoordCount,
+        context->batchEventBasesDevice,
+        context->outputCandidateStatesDevice);
+    }
+    else
+    {
+      sim_scan_region_direct_reduce_filter_summaries_kernel<<<request.filterStartCoordCount, filterThreads>>>(
+        context->initialRunSummariesDevice,
+        runSummaryCount,
+        NULL,
+        maxEventsAllowed,
+        context->filterStartCoordsDevice,
+        request.filterStartCoordCount,
+        context->batchEventBasesDevice,
+        context->outputCandidateStatesDevice);
+    }
+    status = cudaGetLastError();
     if(status != cudaSuccess)
     {
       if(errorOut != NULL)
@@ -23494,13 +23450,61 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
       }
       return false;
     }
-    if(candidateCount < 0 || candidateCount > request.filterStartCoordCount)
+    if(usePipelineTelemetry && batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineFilterReduceLaunchCount += 1;
+    }
+    if(!sim_scan_cuda_record_event(context->regionDirectReduceStopEvent,errorOut))
+    {
+      return false;
+    }
+
+    sim_scan_prefix_sum_kernel<<<1, 1>>>(context->batchEventBasesDevice,
+                                         request.filterStartCoordCount,
+                                         context->batchRunBasesDevice,
+                                         context->candidateCountDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
     {
       if(errorOut != NULL)
       {
-        *errorOut = "SIM CUDA direct region compact candidate count overflow";
+        *errorOut = cuda_error_string(status);
       }
       return false;
+    }
+    if(usePipelineTelemetry && batchResult != NULL)
+    {
+      batchResult->regionSingleRequestDirectReducePipelineCandidatePrefixLaunchCount += 1;
+    }
+    if(!sim_scan_cuda_record_event(context->regionDirectPrefixStopEvent,errorOut))
+    {
+      return false;
+    }
+
+    if(!useDeferredCounts)
+    {
+      const chrono::steady_clock::time_point candidateCopyStart = chrono::steady_clock::now();
+      status = cudaMemcpy(&candidateCount,context->candidateCountDevice,sizeof(int),cudaMemcpyDeviceToHost);
+      candidateCountD2HSeconds =
+        static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                              chrono::steady_clock::now() - candidateCopyStart).count()) / 1.0e9;
+      d2hSeconds += candidateCountD2HSeconds;
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      if(candidateCount < 0 || candidateCount > request.filterStartCoordCount)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = "SIM CUDA direct region compact candidate count overflow";
+        }
+        return false;
+      }
     }
   }
 
@@ -23637,14 +23641,16 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
                                     context->regionDirectDpStopEvent,
                                     &dpGpuSeconds,
                                     errorOut) ||
-     !sim_scan_cuda_elapsed_seconds(context->regionDirectReduceStartEvent,
-                                    context->regionDirectReduceStopEvent,
-                                    &filterReduceGpuSeconds,
-                                    errorOut) ||
-     !sim_scan_cuda_elapsed_seconds(context->regionDirectReduceStopEvent,
-                                    context->regionDirectPrefixStopEvent,
-                                    &prefixGpuSeconds,
-                                    errorOut) ||
+     (shouldReduceCandidates &&
+      !sim_scan_cuda_elapsed_seconds(context->regionDirectReduceStartEvent,
+                                     context->regionDirectReduceStopEvent,
+                                     &filterReduceGpuSeconds,
+                                     errorOut)) ||
+     (shouldReduceCandidates &&
+      !sim_scan_cuda_elapsed_seconds(context->regionDirectReduceStopEvent,
+                                     context->regionDirectPrefixStopEvent,
+                                     &prefixGpuSeconds,
+                                     errorOut)) ||
      (shouldCompactCandidates &&
       !sim_scan_cuda_elapsed_seconds(context->regionDirectCompactStartEvent,
                                      context->stopEvent,
