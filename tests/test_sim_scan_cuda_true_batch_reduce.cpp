@@ -2025,6 +2025,9 @@ int main()
                              "proposal batch V2 materialized candidate count") && ok;
     ok = expect_true(proposalBatchResultV2.initialProposalDirectTopKGpuSeconds > 0.0,
                      "proposal batch V2 direct-topK gpu seconds") && ok;
+    ok = expect_equal_uint64(proposalBatchResultV2.initialProposalDirectTopKCountClearSkips,
+                             static_cast<uint64_t>(proposalRequests.size()),
+                             "proposal batch V2 direct-topK count-clear skips") && ok;
     ok = expect_true(proposalBatchResultV2.initialBaseUploadSeconds == 0.0,
                      "proposal batch V2 base-upload seconds") && ok;
     ok = expect_true(!proposalBatchResultV2.usedInitialProposalV3Path,
@@ -2113,6 +2116,29 @@ int main()
         ok = expect_proposal_result_equal(singleProposalV3Results[0],
                                           proposalBatchResults[0],
                                           "single proposal V3 result") && ok;
+    }
+
+    std::vector<SimScanCudaInitialBatchRequest> singleProposalV2Requests;
+    singleProposalV2Requests.push_back(proposalRequest0);
+    SimScanCudaBatchResult singleProposalV2BatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> singleProposalV2Results =
+      run_true_batch_initial_proposal_v2(singleProposalV2Requests, &singleProposalV2BatchResult);
+    ok = expect_equal_uint64(static_cast<uint64_t>(singleProposalV2Results.size()),
+                             1,
+                             "single proposal V2 result count") && ok;
+    ok = expect_true(singleProposalV2BatchResult.usedInitialProposalV2Path,
+                     "single proposal V2 used V2 path") && ok;
+    ok = expect_equal_uint64(singleProposalV2BatchResult.initialProposalV2RequestCount,
+                             1,
+                             "single proposal V2 request count") && ok;
+    ok = expect_equal_uint64(singleProposalV2BatchResult.initialProposalDirectTopKCountClearSkips,
+                             1,
+                             "single proposal V2 direct-topK count-clear skip") && ok;
+    if (singleProposalV2Results.size() == 1)
+    {
+        ok = expect_proposal_result_equal(singleProposalV2Results[0],
+                                          proposalBatchResults[0],
+                                          "single proposal V2 result") && ok;
     }
 
     const SimScanCudaInitialBatchResult singleProposal0 =

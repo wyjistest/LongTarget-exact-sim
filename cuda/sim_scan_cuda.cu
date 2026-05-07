@@ -2058,16 +2058,6 @@ static bool sim_scan_select_top_disjoint_candidate_reduce_states_from_device_loc
     return false;
   }
 
-  status = cudaMemset(context->candidateCountDevice,0,sizeof(int));
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
   sim_scan_select_top_disjoint_candidate_reduce_states_kernel<<<1,1>>>(statesDevice,
                                                                         stateCount,
                                                                         clampedProposalCount,
@@ -13654,6 +13644,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced;
   batchResult->initialDeviceResidencyRequestCount += requestBatchResult.initialDeviceResidencyRequestCount;
   batchResult->initialProposalV2RequestCount += requestBatchResult.initialProposalV2RequestCount;
+  batchResult->initialProposalDirectTopKCountClearSkips +=
+    requestBatchResult.initialProposalDirectTopKCountClearSkips;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
   batchResult->initialProposalV3SelectedStateCount += requestBatchResult.initialProposalV3SelectedStateCount;
   batchResult->initialProposalLogicalCandidateCount += requestBatchResult.initialProposalLogicalCandidateCount;
@@ -16648,6 +16640,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   double proposalDirectTopKGpuSeconds = 0.0;
   double proposalV3GpuSeconds = 0.0;
   double proposalSelectD2HSeconds = 0.0;
+  uint64_t initialProposalDirectTopKCountClearSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips = 0;
@@ -17694,6 +17687,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         if(useProposalV2Path)
         {
           proposalDirectTopKGpuSeconds += requestProposalGpuSeconds;
+          initialProposalDirectTopKCountClearSkips += 1;
         }
         result.candidateStates.swap(proposalStates);
       }
@@ -17778,6 +17772,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       static_cast<uint64_t>(max(deviceResidencyRequestCount,0));
     batchResult->initialProposalV2RequestCount =
       useProposalV2Path ? static_cast<uint64_t>(proposalRequestCount) : 0;
+    batchResult->initialProposalDirectTopKCountClearSkips =
+      initialProposalDirectTopKCountClearSkips;
     batchResult->initialProposalV3RequestCount =
       useProposalV3Path ? static_cast<uint64_t>(proposalRequestCount) : 0;
     batchResult->initialProposalV3SelectedStateCount =
