@@ -119,6 +119,49 @@ int main()
     ok = expect_equal_size(emptyResults.size(), 0, "empty batch results") && ok;
     ok = expect_true(error.empty(), "empty batch error") && ok;
 
+    const std::string emptyQuery = " ";
+    const std::string emptyTarget = " ";
+    const std::string insertOnlyTarget = " ACG";
+    const std::string deleteOnlyQuery = " ACG";
+    std::vector<SimTracebackCudaBatchRequest> gapOnlyRequests;
+    gapOnlyRequests.push_back(make_request(emptyQuery, insertOnlyTarget));
+    gapOnlyRequests.push_back(make_request(deleteOnlyQuery, emptyTarget));
+    std::vector<SimTracebackCudaBatchItemResult> gapOnlyResults;
+    SimTracebackCudaBatchResult gapOnlyBatchResult;
+    error.clear();
+    if (!sim_traceback_cuda_traceback_global_affine_batch(gapOnlyRequests,
+                                                          &gapOnlyResults,
+                                                          &gapOnlyBatchResult,
+                                                          &error))
+    {
+        std::cerr << "gap-only batch should succeed, got error: " << error << "\n";
+        return 1;
+    }
+    const std::vector<unsigned char> expectedInsertOnlyOps(3, 1);
+    const std::vector<unsigned char> expectedDeleteOnlyOps(3, 2);
+    ok = expect_equal_size(gapOnlyResults.size(), 2, "gap-only batch results") && ok;
+    ok = expect_equal_uint64(gapOnlyBatchResult.requestCount, 2, "gap-only batch requestCount") && ok;
+    ok = expect_equal_uint64(gapOnlyBatchResult.successCount, 2, "gap-only batch successCount") && ok;
+    ok = expect_equal_uint64(gapOnlyBatchResult.cudaCount, 0, "gap-only batch cudaCount skipped") && ok;
+    ok = expect_equal_bool(gapOnlyBatchResult.usedCuda, false, "gap-only batch usedCuda skipped") && ok;
+    if (gapOnlyResults.size() == 2)
+    {
+        ok = expect_equal_bool(gapOnlyResults[0].success, true, "gap-only result 0 success") && ok;
+        ok = expect_equal_bool(gapOnlyResults[1].success, true, "gap-only result 1 success") && ok;
+        ok = expect_equal_bool(gapOnlyResults[0].tracebackResult.usedCuda,
+                               false,
+                               "gap-only result 0 usedCuda skipped") && ok;
+        ok = expect_equal_bool(gapOnlyResults[1].tracebackResult.usedCuda,
+                               false,
+                               "gap-only result 1 usedCuda skipped") && ok;
+        ok = expect_ops_equal(gapOnlyResults[0].opsReversed,
+                              expectedInsertOnlyOps,
+                              "gap-only result 0 ops") && ok;
+        ok = expect_ops_equal(gapOnlyResults[1].opsReversed,
+                              expectedDeleteOnlyOps,
+                              "gap-only result 1 ops") && ok;
+    }
+
     if (!sim_traceback_cuda_is_built())
     {
         std::cerr << "CUDA support is not built\n";

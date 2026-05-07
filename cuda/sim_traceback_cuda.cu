@@ -1628,8 +1628,16 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
       item.error = "invalid blocked word stride";
       continue;
     }
-    if(request.queryLength == 0 && request.targetLength == 0)
+    if(request.queryLength == 0 || request.targetLength == 0)
     {
+      if(request.targetLength > 0)
+      {
+        item.opsReversed.assign(static_cast<size_t>(request.targetLength),static_cast<unsigned char>(1));
+      }
+      else if(request.queryLength > 0)
+      {
+        item.opsReversed.assign(static_cast<size_t>(request.queryLength),static_cast<unsigned char>(2));
+      }
       item.success = true;
       if(batchResult != NULL)
       {
