@@ -674,6 +674,53 @@ static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
     return ok;
 }
 
+static bool test_direct_reduce_high_threshold_skips_dp()
+{
+    int scoreMatrix[128][128];
+    initialize_score_matrix(scoreMatrix);
+    const std::string query = "ACGTACGT";
+    const std::string target = "ACGTAAAACGT";
+    const int eventScoreFloor = 1000000;
+    const std::vector<uint64_t> filter =
+      all_start_coords(static_cast<int>(query.size()), static_cast<int>(target.size()));
+
+    clear_direct_env();
+    setenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE", "1", 1);
+    setenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY", "1", 1);
+    SimScanCudaRequest request =
+      make_region_request(query, target, scoreMatrix, &filter, eventScoreFloor);
+    std::vector<SimScanCudaRequest> requests(1, request);
+    SimScanCudaRegionAggregationResult result;
+    SimScanCudaBatchResult batchResult;
+    if (!run_region_aggregated(requests, &result, &batchResult))
+    {
+        clear_direct_env();
+        return false;
+    }
+    clear_direct_env();
+
+    bool ok = expect_true(batchResult.usedRegionSingleRequestDirectReducePath,
+                          "high-threshold direct path used") && true;
+    ok = expect_equal_uint64(static_cast<uint64_t>(result.candidateStates.size()),
+                             0,
+                             "high-threshold candidate state size") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceEventCount,
+                             0,
+                             "high-threshold event count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReduceRunSummaryCount,
+                             0,
+                             "high-threshold run summary count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
+                             1,
+                             "high-threshold pipeline request count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineDiagLaunchCount,
+                             0,
+                             "high-threshold diag launches") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReduceDpGpuSeconds,
+                            "high-threshold dp gpu seconds") && ok;
+    return ok;
+}
+
 static bool test_direct_reduce_shadow_matches_authoritative()
 {
     int scoreMatrix[128][128];
@@ -1476,6 +1523,7 @@ int main()
     ok = test_direct_reduce_deferred_counts_match_authoritative() && ok;
     ok = test_direct_reduce_deferred_counts_handles_zero_candidates() && ok;
     ok = test_direct_reduce_zero_candidates_skips_compact_buffer_ensure() && ok;
+    ok = test_direct_reduce_high_threshold_skips_dp() && ok;
     ok = test_direct_reduce_shadow_matches_authoritative() && ok;
     ok = test_direct_reduce_matches_gapped_event_runs() && ok;
     ok = test_direct_reduce_matches_offset_region() && ok;

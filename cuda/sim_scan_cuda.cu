@@ -23368,6 +23368,38 @@ static bool sim_scan_cuda_region_single_request_direct_reduce_eligible(const vec
   return true;
 }
 
+static bool sim_scan_cuda_region_request_has_no_possible_events(const SimScanCudaRequest &request)
+{
+  if(request.scoreMatrix == NULL || request.gapOpen < 0 || request.gapExtend < 0)
+  {
+    return false;
+  }
+  const int rowCount = request.rowEnd - request.rowStart + 1;
+  const int colCount = request.colEnd - request.colStart + 1;
+  if(rowCount <= 0 || colCount <= 0)
+  {
+    return true;
+  }
+
+  int maxSubstitutionScore = 0;
+  for(int row = 0; row < 128; ++row)
+  {
+    for(int col = 0; col < 128; ++col)
+    {
+      maxSubstitutionScore = max(maxSubstitutionScore,request.scoreMatrix[row][col]);
+    }
+  }
+  if(maxSubstitutionScore <= 0)
+  {
+    return request.eventScoreFloor >= 0;
+  }
+
+  const int maxAlignedCells = min(rowCount,colCount);
+  const int64_t maxPossibleScore =
+    static_cast<int64_t>(maxAlignedCells) * static_cast<int64_t>(maxSubstitutionScore);
+  return static_cast<int64_t>(request.eventScoreFloor) >= maxPossibleScore;
+}
+
 static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
   const SimScanCudaBatchResult &directBatchResult,
   SimScanCudaBatchResult *batchResult)
@@ -23620,6 +23652,89 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     return true;
   }
 
+  const bool useDeferredCounts =
+    sim_scan_cuda_region_direct_reduce_deferred_counts_runtime();
+  const bool usePipelineTelemetry =
+    sim_scan_cuda_region_direct_reduce_pipeline_telemetry_runtime();
+  if(!sim_scan_cuda_validate_region_request_inputs(request.A,
+                                                   request.B,
+                                                   request.queryLength,
+                                                   request.targetLength,
+                                                   request.rowStart,
+                                                   request.rowEnd,
+                                                   request.colStart,
+                                                   request.colEnd,
+                                                   request.gapOpen,
+                                                   request.gapExtend,
+                                                   request.scoreMatrix,
+                                                   request.blockedWords,
+                                                   request.blockedWordStart,
+                                                   request.blockedWordCount,
+                                                   request.blockedWordStride,
+                                                   request.reduceCandidates,
+                                                   request.reduceAllCandidateStates,
+                                                   request.filterStartCoords,
+                                                   request.filterStartCoordCount,
+                                                   request.seedCandidates,
+                                                   request.seedCandidateCount,
+                                                   errorOut))
+  {
+    return false;
+  }
+  if(sim_scan_cuda_region_request_has_no_possible_events(request))
+  {
+    outResult->candidateStatesDevice = NULL;
+    outResult->candidateStateCount = 0;
+    outResult->eventCount = 0;
+    outResult->runSummaryCount = 0;
+    outResult->preAggregateCandidateStateCount = 0;
+    outResult->postAggregateCandidateStateCount = 0;
+    outResult->affectedStartCount = static_cast<uint64_t>(max(request.filterStartCoordCount,0));
+    outResult->runningMin = request.seedRunningMin;
+    if(batchResult != NULL)
+    {
+      batchResult->usedCuda = true;
+      batchResult->usedRegionSingleRequestDirectReducePath = true;
+      batchResult->usedRegionSingleRequestDirectReduceDeferredCounts = useDeferredCounts;
+      batchResult->regionSingleRequestDirectReduceSuccesses = 1;
+      batchResult->regionSingleRequestDirectReduceAffectedStartCount =
+        static_cast<uint64_t>(max(request.filterStartCoordCount,0));
+      batchResult->regionSingleRequestDirectReduceZeroRunEventCountD2HSkips += 1;
+      batchResult->regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips += 1;
+      batchResult->taskCount = 1;
+      batchResult->launchCount = 0;
+      if(usePipelineTelemetry)
+      {
+        const uint64_t rowCountU64 = static_cast<uint64_t>(rowCount);
+        const uint64_t colCountU64 = static_cast<uint64_t>(colCount);
+        const uint64_t diagCountU64 = static_cast<uint64_t>(rowCount + colCount - 1);
+        const uint64_t filterCountU64 =
+          static_cast<uint64_t>(max(request.filterStartCoordCount,0));
+        batchResult->regionSingleRequestDirectReducePipelineRequestCount = 1;
+        batchResult->regionSingleRequestDirectReducePipelineRowCountTotal = rowCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineRowCountMax = rowCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineColCountTotal = colCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineColCountMax = colCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineCellCountTotal =
+          rowCountU64 * colCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineCellCountMax =
+          rowCountU64 * colCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineDiagCountTotal = diagCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineDiagCountMax = diagCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineFilterStartCountTotal =
+          filterCountU64;
+        batchResult->regionSingleRequestDirectReducePipelineFilterStartCountMax =
+          filterCountU64;
+      }
+    }
+    if(outHandled != NULL)
+    {
+      *outHandled = true;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   if(!ensure_sim_scan_cuda_capacity_locked(*context,
                                            request.queryLength,
                                            request.targetLength,
@@ -23650,10 +23765,6 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     return true;
   }
   const int maxEventsAllowed = static_cast<int>(maxEventsAllowedSize);
-  const bool useDeferredCounts =
-    sim_scan_cuda_region_direct_reduce_deferred_counts_runtime();
-  const bool usePipelineTelemetry =
-    sim_scan_cuda_region_direct_reduce_pipeline_telemetry_runtime();
 
   const size_t hashCapacity =
     sim_scan_cuda_region_single_request_direct_hash_capacity_runtime(request.filterStartCoordCount);
