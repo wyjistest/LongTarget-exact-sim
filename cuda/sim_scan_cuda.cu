@@ -15685,24 +15685,56 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
     }
     return false;
   }
-  const bool skipNoEventInitialRequest =
-    outPersistentSafeStoreHandle == NULL &&
+  const bool noEventInitialRequest =
     sim_scan_cuda_request_shape_has_no_possible_events(queryLength,
                                                        targetLength,
                                                        scoreMatrix,
                                                        gapOpen,
                                                        gapExtend,
-                                                       eventScoreFloor) &&
+                                                       eventScoreFloor);
+  const bool skipNoEventInitialRequest =
+    noEventInitialRequest &&
     ((reduceCandidates && !proposalCandidates) ||
      (proposalCandidates &&
       !reduceCandidates &&
+      outPersistentSafeStoreHandle == NULL &&
       !sim_scan_cuda_initial_proposal_online_runtime() &&
       !sim_scan_cuda_initial_proposal_streaming_runtime()));
   if(skipNoEventInitialRequest)
   {
+    if(outPersistentSafeStoreHandle != NULL)
+    {
+      int device = 0;
+      const cudaError_t deviceStatus = cudaGetDevice(&device);
+      if(deviceStatus != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(deviceStatus);
+        }
+        return false;
+      }
+      if(device < 0)
+      {
+        device = 0;
+      }
+      if(!sim_scan_cuda_clone_persistent_safe_store_from_device_locked(NULL,
+                                                                       0,
+                                                                       device,
+                                                                       simCudaWorkerSlotRuntime(),
+                                                                       outPersistentSafeStoreHandle,
+                                                                       errorOut))
+      {
+        return false;
+      }
+    }
     if(batchResult != NULL)
     {
       batchResult->usedCuda = true;
+      batchResult->usedInitialDeviceResidencyPath =
+        reduceCandidates && !proposalCandidates && outPersistentSafeStoreHandle != NULL;
+      batchResult->initialDeviceResidencyRequestCount =
+        batchResult->usedInitialDeviceResidencyPath ? 1u : 0u;
       batchResult->taskCount = 1;
       batchResult->launchCount = 0;
     }
@@ -16628,18 +16660,56 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     allRequestsHaveNoEvents &&
     (!anyCandidateExtraction ||
      (anyReduceCandidates &&
-      !anyProposalCandidates &&
-      deviceResidencyRequestCount == 0) ||
+      !anyProposalCandidates) ||
      (anyProposalCandidates &&
       !anyReduceCandidates &&
       deviceResidencyRequestCount == 0));
   if(skipNoEventInitialBatch)
   {
     outResults->assign(requests.size(),SimScanCudaInitialBatchResult());
+    if(anyReduceCandidates && !anyProposalCandidates && deviceResidencyRequestCount > 0)
+    {
+      int device = 0;
+      const cudaError_t deviceStatus = cudaGetDevice(&device);
+      if(deviceStatus != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(deviceStatus);
+        }
+        return false;
+      }
+      if(device < 0)
+      {
+        device = 0;
+      }
+      const int slot = simCudaWorkerSlotRuntime();
+      for(size_t resultIndex = 0; resultIndex < outResults->size(); ++resultIndex)
+      {
+        if(!requests[resultIndex].persistAllCandidateStatesOnDevice)
+        {
+          continue;
+        }
+        if(!sim_scan_cuda_clone_persistent_safe_store_from_device_locked(
+             NULL,
+             0,
+             device,
+             slot,
+             &(*outResults)[resultIndex].persistentSafeStoreHandle,
+             errorOut))
+        {
+          return false;
+        }
+      }
+    }
     if(batchResult != NULL)
     {
       batchResult->usedCuda = true;
       batchResult->usedInitialDirectSummaryPath = true;
+      batchResult->usedInitialDeviceResidencyPath =
+        anyReduceCandidates && !anyProposalCandidates && deviceResidencyRequestCount > 0;
+      batchResult->initialDeviceResidencyRequestCount =
+        static_cast<uint64_t>(max(deviceResidencyRequestCount,0));
       batchResult->taskCount = static_cast<uint64_t>(batchSize);
       batchResult->launchCount = 0;
     }

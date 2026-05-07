@@ -1908,6 +1908,60 @@ int main()
                          "empty residency batch persistent store valid") && ok;
     }
 
+    SimScanCudaBatchResult zeroRunSingleResidencyBatchResult;
+    const SimScanCudaInitialBatchResult zeroRunSingleResidency =
+      run_single_initial_reduce_residency(query,
+                                          target0,
+                                          queryLength,
+                                          targetLength,
+                                          gapOpen,
+                                          gapExtend,
+                                          scoreMatrix,
+                                          zeroRunSummaryEventScoreFloor,
+                                          &zeroRunSingleResidencyBatchResult);
+    SimScanCudaInitialBatchRequest zeroRunResidencyRequest = zeroRunReduceRequest0;
+    zeroRunResidencyRequest.persistAllCandidateStatesOnDevice = true;
+    std::vector<SimScanCudaInitialBatchRequest> zeroRunResidencyRequests(1, zeroRunResidencyRequest);
+    std::vector<SimScanCudaInitialBatchResult> zeroRunResidencyBatchResults;
+    SimScanCudaBatchResult zeroRunResidencyBatchResult;
+    if (!sim_scan_cuda_enumerate_initial_events_row_major_true_batch(zeroRunResidencyRequests,
+                                                                     &zeroRunResidencyBatchResults,
+                                                                     &zeroRunResidencyBatchResult,
+                                                                     &error))
+    {
+        std::cerr << "zero-run initial true batch residency failed: " << error << "\n";
+        return 2;
+    }
+    ok = expect_true(zeroRunSingleResidencyBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run single residency used device residency path") && ok;
+    ok = expect_equal_uint64(zeroRunSingleResidencyBatchResult.launchCount,
+                             0,
+                             "zero-run single residency launchCount skipped") && ok;
+    ok = expect_true(zeroRunSingleResidencyBatchResult.gpuSeconds == 0.0,
+                     "zero-run single residency gpu seconds skipped") && ok;
+    ok = expect_true(zeroRunSingleResidency.persistentSafeStoreHandle.valid,
+                     "zero-run single residency persistent store valid") && ok;
+    ok = expect_true(zeroRunResidencyBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run residency batch used device residency path") && ok;
+    ok = expect_equal_uint64(zeroRunResidencyBatchResult.launchCount,
+                             0,
+                             "zero-run residency batch launchCount skipped") && ok;
+    ok = expect_true(zeroRunResidencyBatchResult.gpuSeconds == 0.0,
+                     "zero-run residency batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunResidencyBatchResults.size()),
+                             1,
+                             "zero-run residency batch result count") && ok;
+    if (zeroRunResidencyBatchResults.size() == 1)
+    {
+        ok = expect_true(zeroRunResidencyBatchResults[0].persistentSafeStoreHandle.valid,
+                         "zero-run residency batch persistent store valid") && ok;
+        ok = expect_equal_uint64(zeroRunResidencyBatchResults[0].allCandidateStateCount,
+                                 0,
+                                 "zero-run residency batch allCandidateStateCount") && ok;
+        ok = expect_true(zeroRunResidencyBatchResults[0].candidateStates.empty(),
+                         "zero-run residency batch candidateStates empty") && ok;
+    }
+
     const std::string regionQuery(16, 'A');
     const std::string regionTarget(16, 'A');
     std::vector<uint64_t> regionFilterStartCoords;
