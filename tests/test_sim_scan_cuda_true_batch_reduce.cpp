@@ -1143,6 +1143,18 @@ int main()
     const std::vector<SimScanCudaInitialBatchResult> zeroRunSummaryBatchResults =
       run_true_batch_initial_summaries(zeroRunSummaryRequests,
                                        &zeroRunSummaryBatchResult);
+    SimScanCudaInitialBatchRequest zeroRunReduceRequest0 = request0;
+    zeroRunReduceRequest0.eventScoreFloor = zeroRunSummaryEventScoreFloor;
+    SimScanCudaInitialBatchRequest zeroRunReduceRequest1 = request1;
+    zeroRunReduceRequest1.eventScoreFloor = zeroRunSummaryEventScoreFloor;
+    std::vector<SimScanCudaInitialBatchRequest> zeroRunReduceRequests;
+    zeroRunReduceRequests.push_back(zeroRunReduceRequest0);
+    zeroRunReduceRequests.push_back(zeroRunReduceRequest1);
+    SimScanCudaBatchResult zeroRunReduceBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> zeroRunReduceBatchResults =
+      run_true_batch_initial_reduce_backend(zeroRunReduceRequests,
+                                            "legacy",
+                                            &zeroRunReduceBatchResult);
 
     std::vector<SimScanCudaInitialBatchResult> batchResults;
     SimScanCudaBatchResult batchResult;
@@ -1224,6 +1236,24 @@ int main()
     ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunSummaryBatchResults.size()),
                              2,
                              "zero-run summary true batch result count") && ok;
+    ok = expect_true(zeroRunReduceBatchResult.usedCuda,
+                     "zero-run reduce true batch usedCuda") && ok;
+    ok = expect_true(zeroRunReduceBatchResult.usedInitialDirectSummaryPath,
+                     "zero-run reduce true batch used direct-summary path") && ok;
+    ok = expect_true(!zeroRunReduceBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run reduce true batch no residency path") && ok;
+    ok = expect_equal_uint64(zeroRunReduceBatchResult.taskCount,
+                             2,
+                             "zero-run reduce true batch taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunReduceBatchResult.launchCount,
+                             0,
+                             "zero-run reduce true batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunReduceBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run reduce true batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunReduceBatchResults.size()),
+                             2,
+                             "zero-run reduce true batch result count") && ok;
     ok = expect_true(hashReduceBatchResult.usedInitialHashReducePath,
                      "hash reduce batch used hash path") && ok;
     ok = expect_true(!hashReduceBatchResult.initialHashReduceFallback,
@@ -1674,6 +1704,45 @@ int main()
                          "zero-run summary batch result 0 allCandidateStates empty") && ok;
         ok = expect_true(zeroRunSummaryBatchResults[1].allCandidateStates.empty(),
                          "zero-run summary batch result 1 allCandidateStates empty") && ok;
+    }
+    if (zeroRunReduceBatchResults.size() == 2)
+    {
+        ok = expect_equal_uint64(zeroRunReduceBatchResults[0].eventCount,
+                                 0,
+                                 "zero-run reduce batch result 0 eventCount") && ok;
+        ok = expect_equal_uint64(zeroRunReduceBatchResults[1].eventCount,
+                                 0,
+                                 "zero-run reduce batch result 1 eventCount") && ok;
+        ok = expect_equal_uint64(zeroRunReduceBatchResults[0].runSummaryCount,
+                                 0,
+                                 "zero-run reduce batch result 0 runSummaryCount") && ok;
+        ok = expect_equal_uint64(zeroRunReduceBatchResults[1].runSummaryCount,
+                                 0,
+                                 "zero-run reduce batch result 1 runSummaryCount") && ok;
+        ok = expect_equal_uint64(zeroRunReduceBatchResults[0].allCandidateStateCount,
+                                 0,
+                                 "zero-run reduce batch result 0 allCandidateStateCount") && ok;
+        ok = expect_equal_uint64(zeroRunReduceBatchResults[1].allCandidateStateCount,
+                                 0,
+                                 "zero-run reduce batch result 1 allCandidateStateCount") && ok;
+        ok = expect_equal_int(zeroRunReduceBatchResults[0].runningMin,
+                              0,
+                              "zero-run reduce batch result 0 runningMin") && ok;
+        ok = expect_equal_int(zeroRunReduceBatchResults[1].runningMin,
+                              0,
+                              "zero-run reduce batch result 1 runningMin") && ok;
+        ok = expect_true(zeroRunReduceBatchResults[0].initialRunSummaries.empty(),
+                         "zero-run reduce batch result 0 summaries empty") && ok;
+        ok = expect_true(zeroRunReduceBatchResults[1].initialRunSummaries.empty(),
+                         "zero-run reduce batch result 1 summaries empty") && ok;
+        ok = expect_true(zeroRunReduceBatchResults[0].candidateStates.empty(),
+                         "zero-run reduce batch result 0 candidateStates empty") && ok;
+        ok = expect_true(zeroRunReduceBatchResults[1].candidateStates.empty(),
+                         "zero-run reduce batch result 1 candidateStates empty") && ok;
+        ok = expect_true(zeroRunReduceBatchResults[0].allCandidateStates.empty(),
+                         "zero-run reduce batch result 0 allCandidateStates empty") && ok;
+        ok = expect_true(zeroRunReduceBatchResults[1].allCandidateStates.empty(),
+                         "zero-run reduce batch result 1 allCandidateStates empty") && ok;
     }
 
     const char *emptyTarget = "TTTTTTTT";

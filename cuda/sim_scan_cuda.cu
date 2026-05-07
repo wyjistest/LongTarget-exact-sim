@@ -16531,10 +16531,13 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     anyProposalCandidates && !anyReduceCandidates && sim_scan_cuda_initial_proposal_v3_runtime();
   const bool useProposalV2Path =
     anyProposalCandidates && !anyReduceCandidates && !useProposalV3Path && sim_scan_cuda_initial_proposal_v2_runtime();
+  const SimScanCudaInitialReduceBackend initialReduceBackend =
+    anyReduceCandidates ?
+    sim_scan_cuda_initial_reduce_backend_runtime() :
+    SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_LEGACY;
   const bool useOrderedSegmentedV3ReduceBackend =
     anyReduceCandidates &&
-    sim_scan_cuda_initial_reduce_backend_runtime() ==
-      SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_ORDERED_SEGMENTED_V3;
+    initialReduceBackend == SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_ORDERED_SEGMENTED_V3;
   const bool useOrderedSegmentedV3Shadow =
     useOrderedSegmentedV3ReduceBackend &&
     sim_scan_cuda_initial_ordered_segmented_v3_shadow_runtime();
@@ -16599,36 +16602,40 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     }
   }
 
-  if(!anyCandidateExtraction)
+  bool allRequestsHaveNoEvents = true;
+  for(size_t i = 0; i < requests.size(); ++i)
   {
-    bool allRequestsHaveNoEvents = true;
-    for(size_t i = 0; i < requests.size(); ++i)
+    const SimScanCudaInitialBatchRequest &request = requests[i];
+    if(!sim_scan_cuda_request_shape_has_no_possible_events(request.queryLength,
+                                                           request.targetLength,
+                                                           request.scoreMatrix,
+                                                           request.gapOpen,
+                                                           request.gapExtend,
+                                                           request.eventScoreFloor))
     {
-      const SimScanCudaInitialBatchRequest &request = requests[i];
-      if(!sim_scan_cuda_request_shape_has_no_possible_events(request.queryLength,
-                                                             request.targetLength,
-                                                             request.scoreMatrix,
-                                                             request.gapOpen,
-                                                             request.gapExtend,
-                                                             request.eventScoreFloor))
-      {
-        allRequestsHaveNoEvents = false;
-        break;
-      }
+      allRequestsHaveNoEvents = false;
+      break;
     }
-    if(allRequestsHaveNoEvents)
+  }
+  const bool skipNoEventInitialBatch =
+    allRequestsHaveNoEvents &&
+    (!anyCandidateExtraction ||
+     (anyReduceCandidates &&
+      !anyProposalCandidates &&
+      deviceResidencyRequestCount == 0 &&
+      initialReduceBackend == SIM_SCAN_CUDA_INITIAL_REDUCE_BACKEND_LEGACY));
+  if(skipNoEventInitialBatch)
+  {
+    outResults->assign(requests.size(),SimScanCudaInitialBatchResult());
+    if(batchResult != NULL)
     {
-      outResults->assign(requests.size(),SimScanCudaInitialBatchResult());
-      if(batchResult != NULL)
-      {
-        batchResult->usedCuda = true;
-        batchResult->usedInitialDirectSummaryPath = true;
-        batchResult->taskCount = static_cast<uint64_t>(batchSize);
-        batchResult->launchCount = 0;
-      }
-      clear_sim_scan_cuda_error(errorOut);
-      return true;
+      batchResult->usedCuda = true;
+      batchResult->usedInitialDirectSummaryPath = true;
+      batchResult->taskCount = static_cast<uint64_t>(batchSize);
+      batchResult->launchCount = 0;
     }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
   }
 
   int device = 0;
