@@ -499,6 +499,50 @@ int main()
                           0,
                           "empty sparse safe-window d2h bytes skipped") && ok;
 
+    SimTracebackPathSummary noSeedSummary;
+    noSeedSummary.valid = true;
+    noSeedSummary.rowStart = 15;
+    noSeedSummary.rowEnd = 17;
+    noSeedSummary.colStart = 1;
+    noSeedSummary.colEnd = 2;
+    noSeedSummary.stepCount = 3;
+    noSeedSummary.rowMinCols = {1, 1, 1};
+    noSeedSummary.rowMaxCols = {2, 2, 2};
+
+    SimScanCudaSafeWindowResult noSeedSparseSafeWindowResult;
+    if (!sim_scan_cuda_select_safe_workset_windows(storeHandle,
+                                                   20,
+                                                   20,
+                                                   static_cast<int>(noSeedSummary.rowStart),
+                                                   std::vector<int>(noSeedSummary.rowMinCols.begin(),
+                                                                    noSeedSummary.rowMinCols.end()),
+                                                   std::vector<int>(noSeedSummary.rowMaxCols.begin(),
+                                                                    noSeedSummary.rowMaxCols.end()),
+                                                   SIM_SCAN_CUDA_SAFE_WINDOW_PLANNER_SPARSE_V1,
+                                                   32,
+                                                   &noSeedSparseSafeWindowResult,
+                                                   &error))
+    {
+        std::cerr << "sim_scan_cuda_select_safe_workset_windows(no-seed sparse) failed: "
+                  << error << "\n";
+        return 2;
+    }
+    ok = expect_equal_size(noSeedSparseSafeWindowResult.windows.size(),
+                           0,
+                           "no-seed sparse safe-window returns no windows") && ok;
+    ok = expect_equal_size(noSeedSparseSafeWindowResult.affectedStartCoords.size(),
+                           0,
+                           "no-seed sparse safe-window returns no affected starts") && ok;
+    ok = expect_equal_u64(noSeedSparseSafeWindowResult.affectedCandidateCount,
+                          0,
+                          "no-seed sparse safe-window affected candidate count") && ok;
+    ok = expect_equal_double(noSeedSparseSafeWindowResult.d2hSeconds,
+                             0.0,
+                             "no-seed sparse safe-window d2h seconds skipped") && ok;
+    ok = expect_equal_u64(noSeedSparseSafeWindowResult.coordBytesD2H,
+                          0,
+                          "no-seed sparse safe-window d2h bytes skipped") && ok;
+
     SimSafeWindowExecutePlan safeWindowExecutePlan;
     if (!buildSimSafeWindowExecutePlanFromCudaCandidateStateStore(20,
                                                                   20,

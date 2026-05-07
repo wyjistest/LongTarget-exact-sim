@@ -12028,6 +12028,40 @@ static bool sim_scan_cuda_select_safe_workset_windows_sparse_v1_locked(
     }
     return false;
   }
+  if(seedCandidateCount == 0)
+  {
+    status = cudaEventRecord(context->stopEvent);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    status = cudaEventSynchronize(context->stopEvent);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    float gpuMilliseconds = 0.0f;
+    status = cudaEventElapsedTime(&gpuMilliseconds,context->startEvent,context->stopEvent);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    outResult->gpuSeconds = static_cast<double>(gpuMilliseconds) / 1000.0;
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
 
   int seedIntervalCount = 0;
   if(!sim_scan_cuda_build_sparse_row_intervals_from_candidate_states_locked(context,
