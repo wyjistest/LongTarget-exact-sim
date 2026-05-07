@@ -2083,6 +2083,30 @@ int main()
         }
     }
 
+    std::vector<SimScanCudaInitialBatchRequest> singleProposalV3Requests;
+    singleProposalV3Requests.push_back(proposalRequest0);
+    SimScanCudaBatchResult singleProposalV3BatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> singleProposalV3Results =
+      run_true_batch_initial_proposal_v3(singleProposalV3Requests, &singleProposalV3BatchResult);
+    ok = expect_equal_uint64(static_cast<uint64_t>(singleProposalV3Results.size()),
+                             1,
+                             "single proposal V3 result count") && ok;
+    ok = expect_true(singleProposalV3BatchResult.usedInitialProposalV3Path,
+                     "single proposal V3 used V3 path") && ok;
+    ok = expect_equal_uint64(singleProposalV3BatchResult.initialProposalV3RequestCount,
+                             1,
+                             "single proposal V3 request count") && ok;
+    ok = expect_equal_uint64(
+           singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
+           1,
+           "single proposal V3 selected-base upload skip") && ok;
+    if (singleProposalV3Results.size() == 1)
+    {
+        ok = expect_proposal_result_equal(singleProposalV3Results[0],
+                                          proposalBatchResults[0],
+                                          "single proposal V3 result") && ok;
+    }
+
     const SimScanCudaInitialBatchResult singleProposal0 =
       run_single_initial_proposal(query,
                                   target0,

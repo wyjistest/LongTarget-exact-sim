@@ -6141,6 +6141,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialTrueBatchEventBaseMaterializeSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7597,6 +7603,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                                          std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips(uint64_t selectedBaseUploadSkips)
+					{
+					  simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkipCount().fetch_add(selectedBaseUploadSkips,
+					                                                                                   std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialTrueBatchEventBaseMaterializeSkips(uint64_t eventBaseMaterializeSkips)
 					{
 					  simInitialTrueBatchEventBaseMaterializeSkipCount().fetch_add(eventBaseMaterializeSkips,
@@ -8834,6 +8846,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  runBaseMaterializeSkips =
 					    simInitialTrueBatchSingleRequestRunBaseMaterializeSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadStats(uint64_t &selectedBaseUploadSkips)
+					{
+					  selectedBaseUploadSkips =
+					    simInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkipCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialTrueBatchEventBaseMaterializeStats(uint64_t &eventBaseMaterializeSkips)
@@ -13787,6 +13805,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 				            cudaBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips);
 				          recordSimInitialTrueBatchSingleRequestRunBaseMaterializeSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips);
+				          recordSimInitialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips(
+				            cudaBatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips);
 				          recordSimInitialTrueBatchEventBaseMaterializeSkips(
 				            cudaBatchResult.initialTrueBatchEventBaseMaterializeSkips);
 				          recordSimInitialTrueBatchEventBaseBufferEnsureSkips(

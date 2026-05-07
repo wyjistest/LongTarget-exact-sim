@@ -923,6 +923,7 @@ struct SimScanCudaBatchResult
     initialTrueBatchSingleRequestCountCopySkips(0),
     initialTrueBatchSingleRequestRunBaseBufferEnsureSkips(0),
     initialTrueBatchSingleRequestRunBaseMaterializeSkips(0),
+    initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips(0),
     initialTrueBatchEventBaseMaterializeSkips(0),
     initialTrueBatchEventBaseBufferEnsureSkips(0),
     initialHandoffPinnedAsyncRequested(false),
@@ -1124,6 +1125,7 @@ struct SimScanCudaBatchResult
   uint64_t initialTrueBatchSingleRequestCountCopySkips;
   uint64_t initialTrueBatchSingleRequestRunBaseBufferEnsureSkips;
   uint64_t initialTrueBatchSingleRequestRunBaseMaterializeSkips;
+  uint64_t initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips;
   uint64_t initialTrueBatchEventBaseMaterializeSkips;
   uint64_t initialTrueBatchEventBaseBufferEnsureSkips;
   bool initialHandoffPinnedAsyncRequested;
