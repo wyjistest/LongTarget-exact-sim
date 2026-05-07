@@ -347,6 +347,9 @@ static bool test_bucketed_region_path_matches_unbucketed_aggregation()
     ok = expect_equal_uint64(bucketedBatchResult.regionBucketedTrueBatchShadowMismatches,
                              0,
                              "bucketed shadow mismatches") && ok;
+    ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationNoFilterReservedCopySkips,
+                             bucketedResult.preAggregateCandidateStateCount,
+                             "bucketed no-filter reserved copy skips") && ok;
     ok = expect_equal_uint64(bucketedBatchResult.taskCount,
                              1,
                              "bucketed taskCount") && ok;
