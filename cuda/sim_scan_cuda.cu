@@ -13418,6 +13418,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialSummaryHostCopyElisionBaseCopyReuses;
   batchResult->initialSummaryHostCopyElisionRunCountCopySkips +=
     requestBatchResult.initialSummaryHostCopyElisionRunCountCopySkips;
+  batchResult->initialSummaryHostCopyElisionEventCountCopySkips +=
+    requestBatchResult.initialSummaryHostCopyElisionEventCountCopySkips;
   batchResult->usedInitialPinnedAsyncHandoff =
     batchResult->usedInitialPinnedAsyncHandoff ||
     requestBatchResult.usedInitialPinnedAsyncHandoff;
@@ -16738,6 +16740,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   uint64_t initialSummaryHostCopyElisionCountCopyReuses = 0;
   uint64_t initialSummaryHostCopyElisionBaseCopyReuses = 0;
   uint64_t initialSummaryHostCopyElisionRunCountCopySkips = 0;
+  uint64_t initialSummaryHostCopyElisionEventCountCopySkips = 0;
   uint64_t initialSummaryPackedBytesD2H = 0;
   uint64_t initialSummaryUnpackedEquivalentBytesD2H = 0;
   uint64_t initialSummaryPackedD2HFallbacks = 0;
@@ -17158,17 +17161,25 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   }
 
   const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
-  status = cudaMemcpy(totalEventsPerTask.data(),
-                      context->batchEventTotalsDevice,
-                      static_cast<size_t>(batchSize) * sizeof(int),
-                      cudaMemcpyDeviceToHost);
-  if(status != cudaSuccess)
+  if(useInitialSummaryHostCopyElision && batchSize == 1)
   {
-    if(errorOut != NULL)
+    totalEventsPerTask[0] = totalEvents;
+    initialSummaryHostCopyElisionEventCountCopySkips = 1;
+  }
+  else
+  {
+    status = cudaMemcpy(totalEventsPerTask.data(),
+                        context->batchEventTotalsDevice,
+                        static_cast<size_t>(batchSize) * sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
     {
-      *errorOut = cuda_error_string(status);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
     }
-    return false;
   }
   if(useInitialSummaryHostCopyElision &&
      hostCopyElisionRunCounts.size() == static_cast<size_t>(batchSize))
@@ -17538,6 +17549,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialSummaryHostCopyElisionBaseCopyReuses;
     batchResult->initialSummaryHostCopyElisionRunCountCopySkips =
       initialSummaryHostCopyElisionRunCountCopySkips;
+    batchResult->initialSummaryHostCopyElisionEventCountCopySkips =
+      initialSummaryHostCopyElisionEventCountCopySkips;
     batchResult->initialHandoffPinnedAsyncRequested =
       requestInitialPinnedAsyncHandoff;
     batchResult->initialHandoffPinnedAsyncActive =

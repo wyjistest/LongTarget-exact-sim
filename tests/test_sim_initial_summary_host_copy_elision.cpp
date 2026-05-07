@@ -286,6 +286,9 @@ int main()
     ok = expect_equal_uint64(directBatchResult.initialSummaryHostCopyElisionRunCountCopySkips,
                              1,
                              "direct run-count copy skip") && ok;
+    ok = expect_equal_uint64(directBatchResult.initialSummaryHostCopyElisionEventCountCopySkips,
+                             1,
+                             "direct event-count copy skip") && ok;
     ok = expect_true(packedDirectBatchResult.usedInitialPackedSummaryD2H,
                      "packed direct still uses packed D2H") && ok;
     ok = expect_true(packedDirectBatchResult.usedInitialSummaryHostCopyElision,
@@ -296,6 +299,9 @@ int main()
     ok = expect_equal_uint64(packedDirectBatchResult.initialSummaryHostCopyElisionRunCountCopySkips,
                              1,
                              "packed direct run-count copy skip") && ok;
+    ok = expect_equal_uint64(packedDirectBatchResult.initialSummaryHostCopyElisionEventCountCopySkips,
+                             1,
+                             "packed direct event-count copy skip") && ok;
     ok = expect_false(reduceBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce path does not use summary host-copy elision") && ok;
     ok = expect_equal_uint64(static_cast<uint64_t>(defaultTrueBatchSummaries.size()),

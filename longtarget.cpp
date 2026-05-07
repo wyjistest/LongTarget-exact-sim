@@ -1407,7 +1407,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialSummaryHostCopyElidedBytes,
       preparedBatch.cudaBatchResult.initialSummaryHostCopyElisionCountCopyReuses,
       preparedBatch.cudaBatchResult.initialSummaryHostCopyElisionBaseCopyReuses,
-      preparedBatch.cudaBatchResult.initialSummaryHostCopyElisionRunCountCopySkips);
+      preparedBatch.cudaBatchResult.initialSummaryHostCopyElisionRunCountCopySkips,
+      preparedBatch.cudaBatchResult.initialSummaryHostCopyElisionEventCountCopySkips);
     recordSimInitialPinnedAsyncHandoffStats(preparedBatch.cudaBatchResult);
     if(!preparedBatch.usedInitialReduce &&
        !preparedBatch.usedInitialProposals &&
@@ -2312,6 +2313,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialSummaryHostCopyElisionCountCopyReuses = 0;
   uint64_t simInitialSummaryHostCopyElisionBaseCopyReuses = 0;
   uint64_t simInitialSummaryHostCopyElisionRunCountCopySkips = 0;
+  uint64_t simInitialSummaryHostCopyElisionEventCountCopySkips = 0;
   SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
   SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
@@ -2340,7 +2342,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryHostCopyElidedBytes,
                                            simInitialSummaryHostCopyElisionCountCopyReuses,
                                            simInitialSummaryHostCopyElisionBaseCopyReuses,
-                                           simInitialSummaryHostCopyElisionRunCountCopySkips);
+                                           simInitialSummaryHostCopyElisionRunCountCopySkips,
+                                           simInitialSummaryHostCopyElisionEventCountCopySkips);
   getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
@@ -2526,6 +2529,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSummaryHostCopyElisionBaseCopyReuses<<endl;
   cerr<<"benchmark.sim_initial_summary_host_copy_elision_run_count_copy_skips="
       <<simInitialSummaryHostCopyElisionRunCountCopySkips<<endl;
+  cerr<<"benchmark.sim_initial_summary_host_copy_elision_event_count_copy_skips="
+      <<simInitialSummaryHostCopyElisionEventCountCopySkips<<endl;
   cerr<<"benchmark.sim_initial_handoff_pinned_async_enabled="
       <<((simCudaInitialChunkedHandoffEnabledRuntime() &&
           simCudaInitialPinnedAsyncHandoffEnabledRuntime()) ? 1 : 0)<<endl;
