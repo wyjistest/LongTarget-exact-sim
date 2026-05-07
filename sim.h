@@ -5391,6 +5391,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionResidencyCachedFrontierNoUpdateStoreRefreshSkipCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionPackedRequestCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -7362,6 +7368,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    std::memory_order_relaxed);
 		}
 
+		inline void recordSimRegionResidencyCachedFrontierNoUpdateStoreRefreshSkips(uint64_t skipCount)
+		{
+		  simRegionResidencyCachedFrontierNoUpdateStoreRefreshSkipCount().fetch_add(
+		    skipCount,
+		    std::memory_order_relaxed);
+		}
+
 		inline void recordSimRegionPackedRequests(uint64_t requestCount,
 		                                          uint64_t zeroRunCandidateBufferEnsureSkips = 0,
 		                                          uint64_t candidateBufferHighWaterEnsureSkips = 0)
@@ -8701,7 +8714,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		                                      uint64_t &summaryBytesD2H,
 		                                      double &cpuMergeSeconds,
 		                                      uint64_t &locateCells,
-		                                      uint64_t &residencyCachedFrontierNoUpdateSkips)
+		                                      uint64_t &residencyCachedFrontierNoUpdateSkips,
+		                                      uint64_t &residencyCachedFrontierNoUpdateStoreRefreshSkips)
 		{
 		  eventCount = simRegionEventCount().load(std::memory_order_relaxed);
 		  summaryCount = simRegionCandidateSummaryCount().load(std::memory_order_relaxed);
@@ -8711,6 +8725,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  locateCells = simLocateTotalCellCount().load(std::memory_order_relaxed);
 		  residencyCachedFrontierNoUpdateSkips =
 		    simRegionResidencyCachedFrontierNoUpdateSkipCount().load(std::memory_order_relaxed);
+		  residencyCachedFrontierNoUpdateStoreRefreshSkips =
+		    simRegionResidencyCachedFrontierNoUpdateStoreRefreshSkipCount().load(std::memory_order_relaxed);
 		}
 
 		inline uint64_t getSimRegionPackedRequestCount()
@@ -18086,6 +18102,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
       recordSimRegionResidencyCachedFrontierNoUpdateSkips(
         cudaBatchResult.regionResidencyCachedFrontierNoUpdateSkips);
+      recordSimRegionResidencyCachedFrontierNoUpdateStoreRefreshSkips(
+        cudaBatchResult.regionResidencyCachedFrontierNoUpdateStoreRefreshSkips);
       if(recordSafeWindowExecTelemetry)
       {
         recordSimSafeWindowExecGeometry(workset);

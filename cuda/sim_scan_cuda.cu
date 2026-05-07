@@ -13882,6 +13882,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips;
   batchResult->regionResidencyCachedFrontierNoUpdateSkips +=
     requestBatchResult.regionResidencyCachedFrontierNoUpdateSkips;
+  batchResult->regionResidencyCachedFrontierNoUpdateStoreRefreshSkips +=
+    requestBatchResult.regionResidencyCachedFrontierNoUpdateStoreRefreshSkips;
   sim_scan_cuda_accumulate_region_direct_reduce_pipeline_stats(requestBatchResult,batchResult);
   batchResult->usedCuda = batchResult->usedCuda || requestBatchResult.usedCuda;
   batchResult->usedRegionTrueBatchPath =
@@ -25849,28 +25851,38 @@ bool sim_scan_cuda_apply_region_candidate_states_residency(const vector<SimScanC
     }
   }
 
-  if(!sim_scan_cuda_cache_persistent_safe_store_frontier_from_device_locked(
-       frontierCount > 0 ? frontierBufferDevice : NULL,
-       frontierCount,
-       outResult->runningMin,
-       handle,
-       errorOut))
+  if(skipCachedFrontierNoUpdate)
   {
-    return false;
+    if(batchResult != NULL)
+    {
+      ++batchResult->regionResidencyCachedFrontierNoUpdateStoreRefreshSkips;
+    }
   }
-  if(!sim_scan_cuda_rebuild_persistent_safe_candidate_state_store_from_device_locked(
-       context,
-       trackedStartCoordCount > 0 ? context->filterStartCoordsDevice : NULL,
-       trackedStartCoordCount,
-       updatedStateCount > 0 ? aggregatedDeviceResult.candidateStatesDevice : NULL,
-       updatedStateCount,
-       frontierCount > 0 ? frontierBufferDevice : NULL,
-       frontierCount,
-       outResult->runningMin,
-       handle,
-       errorOut))
+  else
   {
-    return false;
+    if(!sim_scan_cuda_cache_persistent_safe_store_frontier_from_device_locked(
+         frontierCount > 0 ? frontierBufferDevice : NULL,
+         frontierCount,
+         outResult->runningMin,
+         handle,
+         errorOut))
+    {
+      return false;
+    }
+    if(!sim_scan_cuda_rebuild_persistent_safe_candidate_state_store_from_device_locked(
+         context,
+         trackedStartCoordCount > 0 ? context->filterStartCoordsDevice : NULL,
+         trackedStartCoordCount,
+         updatedStateCount > 0 ? aggregatedDeviceResult.candidateStatesDevice : NULL,
+         updatedStateCount,
+         frontierCount > 0 ? frontierBufferDevice : NULL,
+         frontierCount,
+         outResult->runningMin,
+         handle,
+         errorOut))
+    {
+      return false;
+    }
   }
 
   double residencyGpuSeconds = 0.0;

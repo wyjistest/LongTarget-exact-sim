@@ -2342,13 +2342,15 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   double simRegionCpuMergeSeconds = 0.0;
   uint64_t simLocateTotalCells = 0;
   uint64_t simRegionResidencyCachedFrontierNoUpdateSkips = 0;
+  uint64_t simRegionResidencyCachedFrontierNoUpdateStoreRefreshSkips = 0;
   getSimRegionReductionStats(simRegionEventsTotal,
                              simRegionCandidateSummariesTotal,
                              simRegionEventBytesD2H,
                              simRegionSummaryBytesD2H,
                              simRegionCpuMergeSeconds,
                              simLocateTotalCells,
-                             simRegionResidencyCachedFrontierNoUpdateSkips);
+                             simRegionResidencyCachedFrontierNoUpdateSkips,
+                             simRegionResidencyCachedFrontierNoUpdateStoreRefreshSkips);
   cerr<<"benchmark.sim_region_events_total="<<simRegionEventsTotal<<endl;
   cerr<<"benchmark.sim_region_candidate_summaries_total="<<simRegionCandidateSummariesTotal<<endl;
   cerr<<"benchmark.sim_region_event_bytes_d2h="<<simRegionEventBytesD2H<<endl;
@@ -2356,6 +2358,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_region_cpu_merge_seconds="<<simRegionCpuMergeSeconds<<endl;
   cerr<<"benchmark.sim_region_residency_cached_frontier_no_update_skips="
       <<simRegionResidencyCachedFrontierNoUpdateSkips<<endl;
+  cerr<<"benchmark.sim_region_residency_cached_frontier_no_update_store_refresh_skips="
+      <<simRegionResidencyCachedFrontierNoUpdateStoreRefreshSkips<<endl;
   cerr<<"benchmark.sim_locate_total_cells="<<simLocateTotalCells<<endl;
   uint64_t simInitialEventsTotal = 0;
   uint64_t simInitialRunSummariesTotal = 0;

@@ -1730,6 +1730,10 @@ int main()
     ok = expect_equal_u64(residencyCachedNoUpdateBatchResult.regionResidencyCachedFrontierNoUpdateSkips,
                           1,
                           "region residency cached no-update merge/count d2h skip") && ok;
+    ok = expect_equal_u64(
+             residencyCachedNoUpdateBatchResult.regionResidencyCachedFrontierNoUpdateStoreRefreshSkips,
+             1,
+             "region residency cached no-update store refresh skip") && ok;
 
     const char *previousSafeWorksetDeviceMaintenance =
         getenv("LONGTARGET_ENABLE_SIM_CUDA_SAFE_WORKSET_DEVICE_MAINTENANCE");
