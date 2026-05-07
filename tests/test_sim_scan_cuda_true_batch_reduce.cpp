@@ -2814,6 +2814,33 @@ int main()
                                        proposalExpected1,
                                        "single proposal online 1 candidateStates") && ok;
 
+    SimScanCudaBatchResult zeroCandidateOnlineBatch;
+    const SimScanCudaInitialBatchResult zeroCandidateOnline =
+      run_single_initial_proposal_online(query,
+                                         target0,
+                                         queryLength,
+                                         targetLength,
+                                         gapOpen,
+                                         gapExtend,
+                                         scoreMatrix,
+                                         1000000,
+                                         NULL,
+                                         &zeroCandidateOnlineBatch);
+    ok = expect_true(zeroCandidateOnlineBatch.usedInitialProposalOnlinePath,
+                     "zero-candidate proposal online used online path") && ok;
+    ok = expect_equal_uint64(zeroCandidateOnline.runSummaryCount,
+                             0,
+                             "zero-candidate proposal online runSummaryCount") && ok;
+    ok = expect_equal_uint64(zeroCandidateOnline.allCandidateStateCount,
+                             0,
+                             "zero-candidate proposal online allCandidateStateCount") && ok;
+    ok = expect_true(zeroCandidateOnline.candidateStates.empty(),
+                     "zero-candidate proposal online candidateStates empty") && ok;
+    ok = expect_equal_uint64(
+           zeroCandidateOnlineBatch.initialProposalOnlineZeroCandidateCountCopySkips,
+           1,
+           "zero-candidate proposal online candidate-count copy skip") && ok;
+
     SimScanCudaBatchResult onlineFallbackBatchResult;
     const SimScanCudaInitialBatchResult onlineFallbackDense =
       run_single_initial_proposal_online(denseQuery.c_str(),

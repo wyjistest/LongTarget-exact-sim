@@ -1447,6 +1447,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialAllCandidateOutputBufferOverensureSkips);
     recordSimInitialProposalOnlineOutputBufferOverensureSkips(
       preparedBatch.cudaBatchResult.initialProposalOnlineOutputBufferOverensureSkips);
+    recordSimInitialProposalOnlineZeroCandidateCountCopySkips(
+      preparedBatch.cudaBatchResult.initialProposalOnlineZeroCandidateCountCopySkips);
     recordSimInitialProposalDirectTopKCountClearSkips(
       preparedBatch.cudaBatchResult.initialProposalDirectTopKCountClearSkips);
     recordSimInitialProposalDirectTopKSingleStateSkips(
@@ -2399,6 +2401,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialTrueBatchSingleRequestAllCandidateBasePrefixSkips = 0;
   uint64_t simInitialAllCandidateOutputBufferOverensureSkips = 0;
   uint64_t simInitialProposalOnlineOutputBufferOverensureSkips = 0;
+  uint64_t simInitialProposalOnlineZeroCandidateCountCopySkips = 0;
   uint64_t simInitialProposalDirectTopKCountClearSkips = 0;
   uint64_t simInitialProposalDirectTopKSingleStateSkips = 0;
   uint64_t simInitialHashReduceSingleRequestBaseBufferEnsureSkips = 0;
@@ -2475,6 +2478,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialAllCandidateOutputBufferOverensureSkips);
   getSimInitialProposalOnlineOutputBufferOverensureStats(
     simInitialProposalOnlineOutputBufferOverensureSkips);
+  getSimInitialProposalOnlineZeroCandidateCountCopyStats(
+    simInitialProposalOnlineZeroCandidateCountCopySkips);
   getSimInitialProposalDirectTopKCountClearStats(simInitialProposalDirectTopKCountClearSkips);
   getSimInitialProposalDirectTopKSingleStateStats(simInitialProposalDirectTopKSingleStateSkips);
   getSimInitialHashReduceSingleRequestBaseBufferEnsureStats(
@@ -2720,6 +2725,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialAllCandidateOutputBufferOverensureSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_online_output_buffer_overensure_skips="
       <<simInitialProposalOnlineOutputBufferOverensureSkips<<endl;
+  cerr<<"benchmark.sim_initial_proposal_online_zero_candidate_count_copy_skips="
+      <<simInitialProposalOnlineZeroCandidateCountCopySkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_direct_topk_count_clear_skips="
       <<simInitialProposalDirectTopKCountClearSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_direct_topk_single_state_skips="

@@ -13945,6 +13945,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialAllCandidateOutputBufferOverensureSkips;
   batchResult->initialProposalOnlineOutputBufferOverensureSkips +=
     requestBatchResult.initialProposalOnlineOutputBufferOverensureSkips;
+  batchResult->initialProposalOnlineZeroCandidateCountCopySkips +=
+    requestBatchResult.initialProposalOnlineZeroCandidateCountCopySkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=
@@ -14679,6 +14681,7 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
                                                                   double *outDiagSeconds,
                                                                   double *outOnlineReduceSeconds,
                                                                   uint64_t *outOutputBufferOverensureSkips,
+                                                                  uint64_t *outZeroCandidateCountCopySkips,
                                                                   string *errorOut)
 {
   if(context == NULL ||
@@ -14704,6 +14707,10 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
   if(outOutputBufferOverensureSkips != NULL)
   {
     *outOutputBufferOverensureSkips = 0;
+  }
+  if(outZeroCandidateCountCopySkips != NULL)
+  {
+    *outZeroCandidateCountCopySkips = 0;
   }
   if(M <= 0 || N <= 0)
   {
@@ -14983,19 +14990,19 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
     *outOutputBufferOverensureSkips = 1;
   }
 
-  status = cudaMemcpy(context->candidateCountDevice,&zero,sizeof(int),cudaMemcpyHostToDevice);
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
   const std::chrono::steady_clock::time_point compactStart = std::chrono::steady_clock::now();
   if(uniqueCount > 0)
   {
+    status = cudaMemcpy(context->candidateCountDevice,&zero,sizeof(int),cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+
     const int threads = 256;
     const int blocks =
       static_cast<int>((hashCapacity + static_cast<size_t>(threads) - 1) / static_cast<size_t>(threads));
@@ -15023,21 +15030,32 @@ static bool sim_scan_cuda_build_proposal_candidates_online_locked(SimScanCudaCon
       return false;
     }
   }
+  else
+  {
+    *outAllCandidateCount = 0;
+    if(outZeroCandidateCountCopySkips != NULL)
+    {
+      *outZeroCandidateCountCopySkips = 1;
+    }
+  }
   *outOnlineReduceSeconds =
     static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::steady_clock::now() - compactStart).count()) / 1.0e9;
 
-  status = cudaMemcpy(outAllCandidateCount,
-                      context->candidateCountDevice,
-                      sizeof(int),
-                      cudaMemcpyDeviceToHost);
-  if(status != cudaSuccess)
+  if(uniqueCount > 0)
   {
-    if(errorOut != NULL)
+    status = cudaMemcpy(outAllCandidateCount,
+                        context->candidateCountDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
     {
-      *errorOut = cuda_error_string(status);
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
     }
-    return false;
   }
 
   if(uniqueCount != *outAllCandidateCount)
@@ -15644,6 +15662,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
   double initialDiagSeconds = 0.0;
   double initialOnlineReduceSeconds = 0.0;
   uint64_t initialProposalOnlineOutputBufferOverensureSkips = 0;
+  uint64_t initialProposalOnlineZeroCandidateCountCopySkips = 0;
   const bool useProposalStreamingPath =
     proposalCandidates &&
     !reduceCandidates &&
@@ -15671,6 +15690,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                               &initialDiagSeconds,
                                                               &initialOnlineReduceSeconds,
                                                               &initialProposalOnlineOutputBufferOverensureSkips,
+                                                              &initialProposalOnlineZeroCandidateCountCopySkips,
                                                               errorOut))
     {
       return false;
@@ -16280,6 +16300,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
       allCandidateOutputBufferOverensureSkips;
     batchResult->initialProposalOnlineOutputBufferOverensureSkips =
       initialProposalOnlineOutputBufferOverensureSkips;
+    batchResult->initialProposalOnlineZeroCandidateCountCopySkips =
+      initialProposalOnlineZeroCandidateCountCopySkips;
     batchResult->initialDiagSeconds = initialDiagSeconds;
     batchResult->initialOnlineReduceSeconds = initialOnlineReduceSeconds;
     batchResult->initialWaitSeconds = batchResult->d2hSeconds;
