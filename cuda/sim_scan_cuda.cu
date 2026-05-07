@@ -7895,7 +7895,8 @@ __global__ void sim_scan_compact_batch_hash_reduce_states_kernel(const SimScanCu
 
   const int batchIndex = static_cast<int>(hashKeys[slot].batchIndex);
   const int localIndex = atomicAdd(batchOutputCursors + batchIndex,1);
-  const int outputIndex = batchOutputBases[batchIndex] + localIndex;
+  const int outputBase = batchOutputBases == NULL ? 0 : batchOutputBases[batchIndex];
+  const int outputIndex = outputBase + localIndex;
   outputKeys[outputIndex] = hashKeys[slot];
   outputStates[outputIndex] = hashStates[slot];
 }
@@ -9885,12 +9886,13 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_legacy(Si
 }
 
 static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimScanCudaContext *context,
-                                                                            int summaryCount,
-                                                                            int batchSize,
-                                                                            int *outReducedCandidateCount,
-                                                                            bool *outUsedHashPath,
-                                                                            double *outHashReduceSeconds,
-                                                                            string *errorOut)
+  int summaryCount,
+  int batchSize,
+  int *outReducedCandidateCount,
+  bool *outUsedHashPath,
+  double *outHashReduceSeconds,
+  SimScanCudaBatchResult *batchResult,
+  string *errorOut)
 {
   if(outReducedCandidateCount == NULL || outUsedHashPath == NULL || outHashReduceSeconds == NULL)
   {
@@ -9925,10 +9927,6 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
      !ensure_sim_scan_cuda_buffer(&context->batchHashStatesDevice,
                                   &context->batchHashStatesCapacity,
                                   hashCapacity,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
-                                  &context->batchEventBasesCapacity,
-                                  static_cast<size_t>(batchSize),
                                   errorOut))
   {
     return false;
@@ -10109,19 +10107,45 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
 
   if(reducedCandidateCount > 0)
   {
-    status = cudaMemcpy(context->batchEventBasesDevice,
-                        groupedBases.data(),
-                        static_cast<size_t>(batchSize) * sizeof(int),
-                        cudaMemcpyHostToDevice);
-    if(status != cudaSuccess)
+    const bool useSingleRequestImplicitOutputBase =
+      batchSize == 1 &&
+      !groupedBases.empty() &&
+      groupedBases[0] == 0;
+    const int *groupedBasesDevice = NULL;
+    if(useSingleRequestImplicitOutputBase)
     {
-      cudaEventDestroy(hashStartEvent);
-      cudaEventDestroy(hashStopEvent);
-      if(errorOut != NULL)
+      if(batchResult != NULL)
       {
-        *errorOut = cuda_error_string(status);
+        batchResult->initialHashReduceSingleRequestBaseBufferEnsureSkips += 1;
+        batchResult->initialHashReduceSingleRequestBaseUploadSkips += 1;
       }
-      return false;
+    }
+    else
+    {
+      if(!ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
+                                      &context->batchEventBasesCapacity,
+                                      static_cast<size_t>(batchSize),
+                                      errorOut))
+      {
+        cudaEventDestroy(hashStartEvent);
+        cudaEventDestroy(hashStopEvent);
+        return false;
+      }
+      status = cudaMemcpy(context->batchEventBasesDevice,
+                          groupedBases.data(),
+                          static_cast<size_t>(batchSize) * sizeof(int),
+                          cudaMemcpyHostToDevice);
+      if(status != cudaSuccess)
+      {
+        cudaEventDestroy(hashStartEvent);
+        cudaEventDestroy(hashStopEvent);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      groupedBasesDevice = context->batchEventBasesDevice;
     }
     status = cudaMemset(context->batchAllCandidateCountsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
     if(status != cudaSuccess)
@@ -10139,7 +10163,7 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_hash(SimS
                                                                                      context->batchHashFlagsDevice,
                                                                                      context->batchHashStatesDevice,
                                                                                      hashCapacity,
-                                                                                     context->batchEventBasesDevice,
+                                                                                     groupedBasesDevice,
                                                                                      context->batchAllCandidateCountsDevice,
                                                                                      context->batchReducedKeysDevice,
                                                                                      context->reducedStatesDevice);
@@ -10267,6 +10291,7 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch(SimScanCu
                                                                         &reducedCandidateCount,
                                                                         &usedHashReducePath,
                                                                         &hashReduceSeconds,
+                                                                        batchResult,
                                                                         errorOut))
     {
       return false;
@@ -13935,6 +13960,10 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialProposalDirectTopKCountClearSkips;
   batchResult->initialProposalDirectTopKSingleStateSkips +=
     requestBatchResult.initialProposalDirectTopKSingleStateSkips;
+  batchResult->initialHashReduceSingleRequestBaseBufferEnsureSkips +=
+    requestBatchResult.initialHashReduceSingleRequestBaseBufferEnsureSkips;
+  batchResult->initialHashReduceSingleRequestBaseUploadSkips +=
+    requestBatchResult.initialHashReduceSingleRequestBaseUploadSkips;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
   batchResult->initialProposalV3SelectedStateCount += requestBatchResult.initialProposalV3SelectedStateCount;
   batchResult->initialProposalV3SelectedCountClearSkips +=

@@ -222,6 +222,8 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_true_batch_single_request_all_candidate_base_prefix_skips`: initial true-batch wrapper telemetry for single-request all-candidate output-base prefix scans skipped because the only compact base is 0
 - `benchmark.sim_initial_proposal_direct_topk_count_clear_skips`: initial proposal direct-topK telemetry for selector count clears skipped because the selector kernel overwrites the count output
 - `benchmark.sim_initial_proposal_direct_topk_single_state_skips`: initial proposal direct-topK telemetry for single-state selector work skipped by copying the only candidate state directly
+- `benchmark.sim_initial_hash_reduce_single_request_base_buffer_ensure_skips`: initial hash-reduce telemetry for single-request compact base buffer allocation checks skipped by using implicit base 0
+- `benchmark.sim_initial_hash_reduce_single_request_base_upload_skips`: initial hash-reduce telemetry for single-request compact base H2D uploads skipped by using implicit base 0
 - `benchmark.sim_initial_proposal_v3_selected_count_clear_skips`: initial proposal V3 telemetry for selected-count clears skipped because the batched selector kernel overwrites each selected count output
 - `benchmark.sim_initial_proposal_v3_single_state_selector_skips`: initial proposal V3 telemetry for single-request single-state selector work skipped by copying the only candidate state directly
 - `benchmark.sim_initial_true_batch_single_request_proposal_v3_state_base_buffer_ensure_skips`: initial true-batch proposal V3 telemetry for single-request state-base buffer allocation checks skipped by selecting with implicit input base 0

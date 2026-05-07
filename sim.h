@@ -6183,6 +6183,18 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialHashReduceSingleRequestBaseBufferEnsureSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
+					inline std::atomic<uint64_t> &simInitialHashReduceSingleRequestBaseUploadSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialProposalV3SelectedCountClearSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7743,6 +7755,20 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                               std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialHashReduceSingleRequestBaseBufferEnsureSkips(
+					  uint64_t baseBufferEnsureSkips)
+					{
+					  simInitialHashReduceSingleRequestBaseBufferEnsureSkipCount().fetch_add(
+					    baseBufferEnsureSkips,
+					    std::memory_order_relaxed);
+					}
+
+					inline void recordSimInitialHashReduceSingleRequestBaseUploadSkips(uint64_t baseUploadSkips)
+					{
+					  simInitialHashReduceSingleRequestBaseUploadSkipCount().fetch_add(baseUploadSkips,
+					                                                                  std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialProposalV3SelectedCountClearSkips(uint64_t countClearSkips)
 					{
 					  simInitialProposalV3SelectedCountClearSkipCount().fetch_add(countClearSkips,
@@ -9090,6 +9116,19 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  singleStateSkips =
 					    simInitialProposalDirectTopKSingleStateSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialHashReduceSingleRequestBaseBufferEnsureStats(
+					  uint64_t &baseBufferEnsureSkips)
+					{
+					  baseBufferEnsureSkips =
+					    simInitialHashReduceSingleRequestBaseBufferEnsureSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialHashReduceSingleRequestBaseUploadStats(uint64_t &baseUploadSkips)
+					{
+					  baseUploadSkips =
+					    simInitialHashReduceSingleRequestBaseUploadSkipCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialProposalV3SelectedCountClearStats(uint64_t &countClearSkips)
@@ -14103,6 +14142,10 @@ inline void runSimCandidateLoop(const SimRequest &request,
 				            cudaBatchResult.initialTrueBatchSingleRequestAllCandidateBaseUploadSkips);
 				          recordSimInitialTrueBatchSingleRequestAllCandidateBasePrefixSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips);
+				          recordSimInitialHashReduceSingleRequestBaseBufferEnsureSkips(
+				            cudaBatchResult.initialHashReduceSingleRequestBaseBufferEnsureSkips);
+				          recordSimInitialHashReduceSingleRequestBaseUploadSkips(
+				            cudaBatchResult.initialHashReduceSingleRequestBaseUploadSkips);
 				          recordSimInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips(
 				            cudaBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips);
 				          recordSimInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips(
