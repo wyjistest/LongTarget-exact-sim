@@ -304,6 +304,88 @@ static bool run_case(const std::string &name,
     return ok;
 }
 
+static bool check_empty_spans_skip_ordered_segmented_v3_gpu_work()
+{
+    const std::vector<SimScanCudaInitialRunSummary> summaries = {
+        make_summary(17, 3, 4, 5, 6),
+        make_summary(18, 7, 8, 9, 10)
+    };
+    const std::vector<int> runBases(3, 0);
+    const std::vector<int> runTotals(3, 0);
+    std::vector<SimScanCudaInitialBatchResult> results;
+    SimScanCudaBatchResult batchResult;
+    std::string error;
+    if (!sim_scan_cuda_reduce_initial_ordered_segmented_v3_for_test(summaries,
+                                                                    runBases,
+                                                                    runTotals,
+                                                                    &results,
+                                                                    &batchResult,
+                                                                    &error))
+    {
+        std::cerr << "empty-span ordered_segmented_v3 reducer failed: "
+                  << error << "\n";
+        return false;
+    }
+    bool ok = true;
+    if (results.size() != runTotals.size())
+    {
+        std::cerr << "empty-span ordered_segmented_v3 result count expected "
+                  << runTotals.size() << ", got " << results.size() << "\n";
+        return false;
+    }
+    for (size_t i = 0; i < results.size(); ++i)
+    {
+        const std::string label = "empty-span ordered_segmented_v3 result " +
+                                  std::to_string(i);
+        if (results[i].eventCount != 0 || results[i].runSummaryCount != 0 ||
+            results[i].allCandidateStateCount != 0)
+        {
+            std::cerr << label << " should report zero counts\n";
+            ok = false;
+        }
+        if (!results[i].candidateStates.empty() ||
+            !results[i].allCandidateStates.empty() ||
+            results[i].runningMin != 0)
+        {
+            std::cerr << label << " should keep an empty frontier\n";
+            ok = false;
+        }
+    }
+    if (!batchResult.usedCuda || !batchResult.usedInitialSegmentedReducePath)
+    {
+        std::cerr << "empty-span ordered_segmented_v3 should still report the requested path\n";
+        ok = false;
+    }
+    if (batchResult.taskCount != runTotals.size())
+    {
+        std::cerr << "empty-span ordered_segmented_v3 taskCount expected "
+                  << runTotals.size() << ", got " << batchResult.taskCount << "\n";
+        ok = false;
+    }
+    if (batchResult.launchCount != 0)
+    {
+        std::cerr << "empty-span ordered_segmented_v3 should skip GPU launches, got "
+                  << batchResult.launchCount << "\n";
+        ok = false;
+    }
+    if (batchResult.gpuSeconds != 0.0 ||
+        batchResult.initialSegmentedReduceSeconds != 0.0 ||
+        batchResult.initialOrderedReplaySeconds != 0.0 ||
+        batchResult.initialTopKSeconds != 0.0 ||
+        batchResult.initialSegmentedCompactSeconds != 0.0)
+    {
+        std::cerr << "empty-span ordered_segmented_v3 should report zero GPU seconds\n";
+        ok = false;
+    }
+    if (batchResult.initialSegmentedTileStateCount != 0 ||
+        batchResult.initialSegmentedGroupedStateCount != 0)
+    {
+        std::cerr << "empty-span ordered_segmented_v3 should report zero reduced state counts\n";
+        ok = false;
+    }
+    return ok;
+}
+
 } // namespace
 
 int main()
@@ -332,6 +414,7 @@ int main()
                   false,
                   false,
                   true) && ok;
+    ok = check_empty_spans_skip_ordered_segmented_v3_gpu_work() && ok;
 
     if (!ok)
     {

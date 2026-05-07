@@ -19068,6 +19068,19 @@ bool sim_scan_cuda_reduce_initial_ordered_segmented_v3_for_test(
     clear_sim_scan_cuda_error(errorOut);
     return true;
   }
+  if(maxRunsPerBatch == 0)
+  {
+    if(batchResult != NULL)
+    {
+      batchResult->usedCuda = true;
+      batchResult->usedInitialSegmentedReducePath = true;
+      batchResult->initialSegmentedFallback = false;
+      batchResult->taskCount = static_cast<uint64_t>(taskCount);
+      batchResult->launchCount = 0;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
 
   int device = 0;
   const int slot = simCudaWorkerSlotRuntime();
