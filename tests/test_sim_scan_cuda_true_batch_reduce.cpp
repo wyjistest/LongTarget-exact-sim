@@ -1297,6 +1297,12 @@ int main()
                      "single hash backend recorded hash gpu seconds") && ok;
     ok = expect_true(singleHashBatchResult.usedInitialDirectSummaryPath,
                      "single hash backend used batch summary path") && ok;
+    ok = expect_equal_uint64(singleHashBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips,
+                             1,
+                             "single hash backend run-base buffer ensure skip") && ok;
+    ok = expect_equal_uint64(singleHashBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
+                             1,
+                             "single hash backend run-base materialize skip") && ok;
     ok = expect_reduce_result_equal(singleHashResult,
                                     hashReduceBatchResults[0],
                                     "single hash backend equals batch hash result 0") && ok;
@@ -1319,6 +1325,12 @@ int main()
                      "single segmented backend tile/grouped count ordering") && ok;
     ok = expect_true(singleSegmentedBatchResult.usedInitialDirectSummaryPath,
                      "single segmented backend used batch summary path") && ok;
+    ok = expect_equal_uint64(singleSegmentedBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips,
+                             1,
+                             "single segmented backend run-base buffer ensure skip") && ok;
+    ok = expect_equal_uint64(singleSegmentedBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
+                             1,
+                             "single segmented backend run-base materialize skip") && ok;
     ok = expect_summaries_equal(singleSummaryDirect0,
                                 expectedSummary0,
                                 "single summary direct 0 summaries") && ok;
@@ -1340,6 +1352,12 @@ int main()
                      "single ordered_segmented_v3 backend recorded ordered replay gpu seconds") && ok;
     ok = expect_true(singleOrderedSegmentedV3BatchResult.initialSegmentedCompactSeconds > 0.0,
                      "single ordered_segmented_v3 backend recorded compact gpu seconds") && ok;
+    ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips,
+                             1,
+                             "single ordered_segmented_v3 backend run-base buffer ensure skip") && ok;
+    ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
+                             1,
+                             "single ordered_segmented_v3 backend run-base materialize skip") && ok;
     ok = expect_reduce_result_equal(singleOrderedSegmentedV3Result,
                                     orderedSegmentedV3BatchResults[0],
                                     "single ordered_segmented_v3 backend equals batch result 0") && ok;

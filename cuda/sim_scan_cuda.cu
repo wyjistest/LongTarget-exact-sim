@@ -7313,7 +7313,7 @@ __global__ void sim_scan_reduce_initial_candidate_states_true_batch_kernel(const
 
   const int tid = static_cast<int>(threadIdx.x);
   const int candidateBase = batchIndex * sim_scan_cuda_max_candidates;
-  const int summaryBase = runBases[batchIndex];
+  const int summaryBase = runBases != NULL ? runBases[batchIndex] : 0;
   const int summaryCount = runTotals[batchIndex];
   unsigned long long localChunkCount = 0;
   unsigned long long localChunkReplayedCount = 0;
@@ -7592,7 +7592,8 @@ __global__ void sim_scan_init_batch_candidate_reduce_states_from_summaries_kerne
     return;
   }
 
-  const int summaryIndex = runBases[batchIndex] + localIndex;
+  const int summaryBase = runBases != NULL ? runBases[batchIndex] : 0;
+  const int summaryIndex = summaryBase + localIndex;
   summaryKeys[summaryIndex].batchIndex = static_cast<uint32_t>(batchIndex);
   summaryKeys[summaryIndex].startCoord = summaries[summaryIndex].startCoord;
   initSimScanCudaCandidateReduceStateFromInitialRunSummary(summaries[summaryIndex],
@@ -8714,7 +8715,7 @@ __global__ void sim_scan_reduce_frontier_chunk_transducer_segmented_shadow_kerne
   __shared__ uint64_t sharedHashCoords[sim_scan_candidate_hash_capacity];
   __shared__ int sharedHashSlots[sim_scan_candidate_hash_capacity];
 
-  const int summaryBase = runBases[taskIndex];
+  const int summaryBase = runBases != NULL ? runBases[taskIndex] : 0;
   const int summaryCount = max(runTotals[taskIndex],0);
   const int effectiveChunkSize = chunkSize > 0 ? chunkSize : 1;
   int candidateCount = 0;
@@ -8889,7 +8890,7 @@ static bool sim_scan_reduce_initial_ordered_segmented_v3_frontiers_true_batch(
     clear_sim_scan_cuda_error(errorOut);
     return true;
   }
-  if(summariesDevice == NULL || runBasesDevice == NULL || runTotalsDevice == NULL)
+  if(summariesDevice == NULL || runTotalsDevice == NULL)
   {
     if(errorOut != NULL)
     {
@@ -8953,7 +8954,7 @@ static bool sim_scan_reduce_initial_ordered_replay_frontiers_true_batch(
     clear_sim_scan_cuda_error(errorOut);
     return true;
   }
-  if(summariesDevice == NULL || runBasesDevice == NULL || runTotalsDevice == NULL)
+  if(summariesDevice == NULL || runTotalsDevice == NULL)
   {
     if(errorOut != NULL)
     {
@@ -15867,7 +15868,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     batchSize == 1 && !anyCandidateExtraction;
   const bool skipSingleRequestEventScoreFloorUpload = batchSize == 1;
   const bool skipSingleRequestRunBaseBufferEnsure =
-    batchSize == 1 && !anyCandidateExtraction;
+    batchSize == 1;
   const int singleEventScoreFloor =
     skipSingleRequestEventScoreFloorUpload ? first.eventScoreFloor : 0;
   uint64_t initialTrueBatchSingleRequestTargetBufferSkips = 0;
@@ -16314,6 +16315,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   int totalRunSummaries = 0;
   const bool skipSingleRequestRunBaseMaterialize =
     skipSingleRequestRunBaseBufferEnsure;
+  const int *initialRunBasesDevice =
+    skipSingleRequestRunBaseMaterialize ? NULL : context->batchRunBasesDevice;
   if(batchSize == 1)
   {
     const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
@@ -16563,7 +16566,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       singleEventScoreFloor,
       initialRunOffsetsDevice,
       rowOffsetStride,
-      skipSingleRequestRunBaseMaterialize ? NULL : context->batchRunBasesDevice,
+      initialRunBasesDevice,
       context->initialRunSummariesDevice);
     status = cudaGetLastError();
     if(status != cudaSuccess)
@@ -16639,7 +16642,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
           if(!sim_scan_reduce_candidate_states_from_summaries_true_batch(context,
                                                                          context->initialRunSummariesDevice,
                                                                          static_cast<int>(totalRunSummaries),
-                                                                         context->batchRunBasesDevice,
+                                                                         initialRunBasesDevice,
                                                                          context->batchRunTotalsDevice,
                                                                          batchSize,
                                                                          maxRunsPerBatch,
@@ -16662,7 +16665,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
           if(!sim_scan_reduce_initial_ordered_segmented_v3_frontiers_true_batch(
                context,
                context->initialRunSummariesDevice,
-               context->batchRunBasesDevice,
+               initialRunBasesDevice,
                context->batchRunTotalsDevice,
                batchSize,
                reduceChunkSize,
@@ -16696,7 +16699,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
           if(!sim_scan_reduce_initial_ordered_replay_frontiers_true_batch(
                context,
                context->initialRunSummariesDevice,
-               context->batchRunBasesDevice,
+               initialRunBasesDevice,
                context->batchRunTotalsDevice,
                batchSize,
                reduceChunkSize,
@@ -16709,7 +16712,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
           if(!sim_scan_reduce_candidate_states_from_summaries_true_batch_segmented(context,
                                                                                    context->initialRunSummariesDevice,
                                                                                    static_cast<int>(totalRunSummaries),
-                                                                                   context->batchRunBasesDevice,
+                                                                                   initialRunBasesDevice,
                                                                                    context->batchRunTotalsDevice,
                                                                                    batchSize,
                                                                                    maxRunsPerBatch,
@@ -16762,7 +16765,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         }
         sim_scan_reduce_initial_candidate_states_true_batch_kernel<<<static_cast<unsigned int>(batchSize),
                                                                      sim_scan_initial_reduce_threads>>>(context->initialRunSummariesDevice,
-                                                                                                         context->batchRunBasesDevice,
+                                                                                                         initialRunBasesDevice,
                                                                                                          context->batchRunTotalsDevice,
                                                                                                          batchSize,
                                                                                                          context->batchCandidateStatesDevice,
@@ -16803,7 +16806,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         if(!sim_scan_prepare_all_candidate_states_from_summaries_true_batch(context,
                                                                             context->initialRunSummariesDevice,
                                                                             static_cast<int>(totalRunSummaries),
-                                                                            context->batchRunBasesDevice,
+                                                                            initialRunBasesDevice,
                                                                             context->batchRunTotalsDevice,
                                                                             batchSize,
                                                                             maxRunsPerBatch,
@@ -16824,7 +16827,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       if(!sim_scan_reduce_candidate_states_from_summaries_true_batch(context,
                                                                      context->initialRunSummariesDevice,
                                                                      static_cast<int>(totalRunSummaries),
-                                                                     context->batchRunBasesDevice,
+                                                                     initialRunBasesDevice,
                                                                      context->batchRunTotalsDevice,
                                                                      batchSize,
                                                                      maxRunsPerBatch,
@@ -16846,7 +16849,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       if(!sim_scan_prepare_all_candidate_states_from_summaries_true_batch(context,
                                                                           context->initialRunSummariesDevice,
                                                                           static_cast<int>(totalRunSummaries),
-                                                                          context->batchRunBasesDevice,
+                                                                          initialRunBasesDevice,
                                                                           context->batchRunTotalsDevice,
                                                                           batchSize,
                                                                           maxRunsPerBatch,
