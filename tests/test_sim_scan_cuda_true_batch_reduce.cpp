@@ -1269,6 +1269,38 @@ int main()
       run_single_initial_reduce(query, target0, queryLength, targetLength, gapOpen, gapExtend, scoreMatrix, eventScoreFloor);
     const SimScanCudaInitialBatchResult expected1 =
       run_single_initial_reduce(query, target1, queryLength, targetLength, gapOpen, gapExtend, scoreMatrix, eventScoreFloor);
+    const int zeroRunInitialEventScoreFloor = 1000000;
+    SimScanCudaBatchResult zeroRunInitialBatchResult;
+    const SimScanCudaInitialBatchResult zeroRunInitial =
+      run_single_initial_reduce_backend("legacy",
+                                        query,
+                                        target0,
+                                        queryLength,
+                                        targetLength,
+                                        gapOpen,
+                                        gapExtend,
+                                        scoreMatrix,
+                                        zeroRunInitialEventScoreFloor,
+                                        &zeroRunInitialBatchResult);
+    ok = expect_equal_uint64(zeroRunInitial.eventCount,
+                             0,
+                             "zero-run initial legacy eventCount") && ok;
+    ok = expect_equal_uint64(zeroRunInitial.runSummaryCount,
+                             0,
+                             "zero-run initial legacy runSummaryCount") && ok;
+    ok = expect_true(zeroRunInitial.candidateStates.empty(),
+                     "zero-run initial legacy candidateStates empty") && ok;
+    ok = expect_true(zeroRunInitial.allCandidateStates.empty(),
+                     "zero-run initial legacy allCandidateStates empty") && ok;
+    ok = expect_equal_uint64(zeroRunInitialBatchResult.taskCount,
+                             1,
+                             "zero-run initial legacy taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunInitialBatchResult.launchCount,
+                             0,
+                             "zero-run initial legacy launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunInitialBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run initial legacy gpu seconds skipped") && ok;
     SimScanCudaBatchResult singleResidencyBatchResult;
     const SimScanCudaInitialBatchResult singleResidency =
       run_single_initial_reduce_residency(query,

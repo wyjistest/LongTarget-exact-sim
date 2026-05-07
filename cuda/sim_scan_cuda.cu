@@ -281,6 +281,41 @@ size_t sim_scan_cuda_next_power_of_two(size_t value)
   return capacity;
 }
 
+static bool sim_scan_cuda_request_shape_has_no_possible_events(int rowCount,
+                                                               int colCount,
+                                                               const int scoreMatrix[128][128],
+                                                               int gapOpen,
+                                                               int gapExtend,
+                                                               int eventScoreFloor)
+{
+  if(scoreMatrix == NULL || gapOpen < 0 || gapExtend < 0)
+  {
+    return false;
+  }
+  if(rowCount <= 0 || colCount <= 0)
+  {
+    return true;
+  }
+
+  int maxSubstitutionScore = 0;
+  for(int row = 0; row < 128; ++row)
+  {
+    for(int col = 0; col < 128; ++col)
+    {
+      maxSubstitutionScore = max(maxSubstitutionScore,scoreMatrix[row][col]);
+    }
+  }
+  if(maxSubstitutionScore <= 0)
+  {
+    return eventScoreFloor >= 0;
+  }
+
+  const int maxAlignedCells = min(rowCount,colCount);
+  const int64_t maxPossibleScore =
+    static_cast<int64_t>(maxAlignedCells) * static_cast<int64_t>(maxSubstitutionScore);
+  return static_cast<int64_t>(eventScoreFloor) >= maxPossibleScore;
+}
+
 size_t sim_scan_cuda_initial_hash_reduce_capacity_runtime(int summaryCount)
 {
   const size_t minCapacity = 8;
@@ -15640,6 +15675,34 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                            initialSummaryChunkConsumer);
   }
 
+  if(scoreMatrix == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing score matrix";
+    }
+    return false;
+  }
+  if(reduceCandidates &&
+     !proposalCandidates &&
+     outPersistentSafeStoreHandle == NULL &&
+     sim_scan_cuda_request_shape_has_no_possible_events(queryLength,
+                                                        targetLength,
+                                                        scoreMatrix,
+                                                        gapOpen,
+                                                        gapExtend,
+                                                        eventScoreFloor))
+  {
+    if(batchResult != NULL)
+    {
+      batchResult->usedCuda = true;
+      batchResult->taskCount = 1;
+      batchResult->launchCount = 0;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   int device = 0;
   const int slot = simCudaWorkerSlotRuntime();
   const cudaError_t deviceStatus = cudaGetDevice(&device);
@@ -23370,34 +23433,14 @@ static bool sim_scan_cuda_region_single_request_direct_reduce_eligible(const vec
 
 static bool sim_scan_cuda_region_request_has_no_possible_events(const SimScanCudaRequest &request)
 {
-  if(request.scoreMatrix == NULL || request.gapOpen < 0 || request.gapExtend < 0)
-  {
-    return false;
-  }
   const int rowCount = request.rowEnd - request.rowStart + 1;
   const int colCount = request.colEnd - request.colStart + 1;
-  if(rowCount <= 0 || colCount <= 0)
-  {
-    return true;
-  }
-
-  int maxSubstitutionScore = 0;
-  for(int row = 0; row < 128; ++row)
-  {
-    for(int col = 0; col < 128; ++col)
-    {
-      maxSubstitutionScore = max(maxSubstitutionScore,request.scoreMatrix[row][col]);
-    }
-  }
-  if(maxSubstitutionScore <= 0)
-  {
-    return request.eventScoreFloor >= 0;
-  }
-
-  const int maxAlignedCells = min(rowCount,colCount);
-  const int64_t maxPossibleScore =
-    static_cast<int64_t>(maxAlignedCells) * static_cast<int64_t>(maxSubstitutionScore);
-  return static_cast<int64_t>(request.eventScoreFloor) >= maxPossibleScore;
+  return sim_scan_cuda_request_shape_has_no_possible_events(rowCount,
+                                                            colCount,
+                                                            request.scoreMatrix,
+                                                            request.gapOpen,
+                                                            request.gapExtend,
+                                                            request.eventScoreFloor);
 }
 
 static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
