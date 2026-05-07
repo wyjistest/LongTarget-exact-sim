@@ -1875,6 +1875,10 @@ int main()
     ok = expect_equal_uint64(homogeneousAggregatedBatchResult.launchCount,
                              1,
                              "region aggregated homogeneous launchCount fused") && ok;
+    ok = expect_equal_uint64(homogeneousAggregatedBatchResult.
+                               regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips,
+                             1,
+                             "region aggregated homogeneous initial summary totals buffer ensure skips") && ok;
 
     SimScanCudaRequest regroupedRegionRequest0 = regionRequest0;
     regroupedRegionRequest0.rowStart = 1;

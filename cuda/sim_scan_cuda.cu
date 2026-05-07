@@ -24328,12 +24328,29 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   const size_t requestCount = requests.size();
+  bool exactHomogeneousTrueBatchCoversAll = !bucketedTrueBatchEnabled && requestCount > 1;
+  if(exactHomogeneousTrueBatchCoversAll)
+  {
+    const int rowCount = orderedRequests[0].rowEnd - orderedRequests[0].rowStart + 1;
+    const int colCount = orderedRequests[0].colEnd - orderedRequests[0].colStart + 1;
+    for(size_t i = 1; i < orderedRequests.size(); ++i)
+    {
+      const SimScanCudaRequest &request = orderedRequests[i];
+      if(request.rowEnd - request.rowStart + 1 != rowCount ||
+         request.colEnd - request.colStart + 1 != colCount)
+      {
+        exactHomogeneousTrueBatchCoversAll = false;
+        break;
+      }
+    }
+  }
   const bool skipInitialSummaryTotalsBufferEnsure =
-    bucketedTrueBatchEnabled &&
-    bucketedGroups.size() == 1 &&
-    bucketedGroups[0].requestBegin == 0 &&
-    bucketedGroups[0].requestCount == requestCount &&
-    requestCount > 1;
+    (bucketedTrueBatchEnabled &&
+     bucketedGroups.size() == 1 &&
+     bucketedGroups[0].requestBegin == 0 &&
+     bucketedGroups[0].requestCount == requestCount &&
+     requestCount > 1) ||
+    exactHomogeneousTrueBatchCoversAll;
   if(requestCount > 0 &&
      !skipInitialSummaryTotalsBufferEnsure &&
      (!ensure_sim_scan_cuda_buffer(&context->batchEventTotalsDevice,
