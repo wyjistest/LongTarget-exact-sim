@@ -94,6 +94,7 @@ static void fill_score_matrix(int scoreMatrix[128][128])
 
 static std::vector<SimScanCudaInitialRunSummary> run_summaries(bool packedD2H,
                                                                 bool hostCopyElision,
+                                                                bool pinnedAsyncHandoff,
                                                                 bool reduceCandidates,
                                                                 SimScanCudaBatchResult &batchResult)
 {
@@ -113,6 +114,19 @@ static std::vector<SimScanCudaInitialRunSummary> run_summaries(bool packedD2H,
     {
         unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
     }
+    if (pinnedAsyncHandoff)
+    {
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF", "1", 1);
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF", "1", 1);
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK", "2", 1);
+    }
+    else
+    {
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK");
+    }
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE");
 
     int scoreMatrix[128][128] = {};
     fill_score_matrix(scoreMatrix);
@@ -238,15 +252,18 @@ int main()
     bool ok = true;
     SimScanCudaBatchResult defaultBatchResult;
     const std::vector<SimScanCudaInitialRunSummary> defaultSummaries =
-        run_summaries(false, false, false, defaultBatchResult);
+        run_summaries(false, false, false, false, defaultBatchResult);
     SimScanCudaBatchResult directBatchResult;
     const std::vector<SimScanCudaInitialRunSummary> directSummaries =
-        run_summaries(false, true, false, directBatchResult);
+        run_summaries(false, true, false, false, directBatchResult);
     SimScanCudaBatchResult packedDirectBatchResult;
     const std::vector<SimScanCudaInitialRunSummary> packedDirectSummaries =
-        run_summaries(true, true, false, packedDirectBatchResult);
+        run_summaries(true, true, false, false, packedDirectBatchResult);
+    SimScanCudaBatchResult pinnedAsyncBatchResult;
+    const std::vector<SimScanCudaInitialRunSummary> pinnedAsyncSummaries =
+        run_summaries(false, false, true, false, pinnedAsyncBatchResult);
     SimScanCudaBatchResult reduceBatchResult;
-    (void)run_summaries(false, true, true, reduceBatchResult);
+    (void)run_summaries(false, true, false, true, reduceBatchResult);
     SimScanCudaBatchResult defaultTrueBatchResult;
     const std::vector<SimScanCudaInitialBatchResult> defaultTrueBatchSummaries =
         run_true_batch_summaries(false, false, false, defaultTrueBatchResult);
@@ -273,6 +290,7 @@ int main()
     ok = expect_true(!defaultSummaries.empty(), "default summaries non-empty") && ok;
     ok = expect_equal_summaries(directSummaries, defaultSummaries, "direct elision exact summaries") && ok;
     ok = expect_equal_summaries(packedDirectSummaries, defaultSummaries, "packed direct elision exact summaries") && ok;
+    ok = expect_equal_summaries(pinnedAsyncSummaries, defaultSummaries, "pinned async exact summaries") && ok;
     ok = expect_false(defaultBatchResult.usedInitialSummaryHostCopyElision,
                       "default host-copy elision disabled") && ok;
     ok = expect_equal_uint64(defaultBatchResult.initialSummaryHostCopyElidedBytes,
@@ -410,6 +428,16 @@ int main()
     ok = expect_equal_uint64(packedDirectBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips,
                              1,
                              "packed direct single-request run-base buffer ensure skip") && ok;
+    ok = expect_true(pinnedAsyncBatchResult.usedInitialPinnedAsyncHandoff,
+                     "pinned async handoff used") && ok;
+    ok = expect_true(pinnedAsyncBatchResult.initialHandoffPinnedAsyncActive,
+                     "pinned async handoff active") && ok;
+    ok = expect_equal_uint64(pinnedAsyncBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
+                             1,
+                             "pinned async single-request run-base materialize skip") && ok;
+    ok = expect_equal_uint64(pinnedAsyncBatchResult.initialTrueBatchSingleRequestRunBaseBufferEnsureSkips,
+                             1,
+                             "pinned async single-request run-base buffer ensure skip") && ok;
     ok = expect_false(reduceBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce path does not use summary host-copy elision") && ok;
     ok = expect_equal_uint64(reduceBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips,
@@ -584,6 +612,10 @@ int main()
 
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_HANDOFF");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PINNED_ASYNC_CPU_PIPELINE");
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK");
     if (!ok)
     {
         return 1;

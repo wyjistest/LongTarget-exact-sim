@@ -198,6 +198,8 @@ check-sim-initial-pinned-async-handoff:
 	grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_requested_batches=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_active_batches=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_pinned_async_disabled_reason=none$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
+	grep -Eq '^benchmark\.sim_initial_true_batch_single_request_run_base_buffer_ensure_skips=48$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
+	grep -Eq '^benchmark\.sim_initial_true_batch_single_request_run_base_materialize_skips=48$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_source_ready_mode=global_stop_event$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_chunks_total=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_pinned_slots=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_handoff/stderr.log
@@ -294,6 +296,8 @@ check-sim-initial-pinned-async-cpu-pipeline:
 	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_requested=1$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_active=1$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_disabled_reason=none$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_true_batch_single_request_run_base_buffer_ensure_skips=48$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
+	grep -Eq '^benchmark\.sim_initial_true_batch_single_request_run_base_materialize_skips=48$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_chunks_applied=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_summaries_applied=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log
 	grep -Eq '^benchmark\.sim_initial_handoff_cpu_pipeline_chunks_finalized=[1-9][0-9]*$$' .tmp/sample_exactness_cuda_sim_region_locate_pinned_async_cpu_pipeline/stderr.log

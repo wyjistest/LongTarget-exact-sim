@@ -15867,7 +15867,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     batchSize == 1 && !anyCandidateExtraction;
   const bool skipSingleRequestEventScoreFloorUpload = batchSize == 1;
   const bool skipSingleRequestRunBaseBufferEnsure =
-    batchSize == 1 && !anyCandidateExtraction && !requestInitialPinnedAsyncHandoff;
+    batchSize == 1 && !anyCandidateExtraction;
   const int singleEventScoreFloor =
     skipSingleRequestEventScoreFloorUpload ? first.eventScoreFloor : 0;
   uint64_t initialTrueBatchSingleRequestTargetBufferSkips = 0;
@@ -16480,17 +16480,20 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     const std::chrono::steady_clock::time_point handoffOffsetCopyStart =
       std::chrono::steady_clock::now();
     initialHandoffRunBasesHost.assign(static_cast<size_t>(batchSize),0);
-    status = cudaMemcpy(initialHandoffRunBasesHost.data(),
-                        context->batchRunBasesDevice,
-                        static_cast<size_t>(batchSize) * sizeof(int),
-                        cudaMemcpyDeviceToHost);
-    if(status != cudaSuccess)
+    if(!skipSingleRequestRunBaseMaterialize)
     {
-      if(errorOut != NULL)
+      status = cudaMemcpy(initialHandoffRunBasesHost.data(),
+                          context->batchRunBasesDevice,
+                          static_cast<size_t>(batchSize) * sizeof(int),
+                          cudaMemcpyDeviceToHost);
+      if(status != cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
       }
-      return false;
     }
     initialHandoffRunOffsetsHost.assign(
       static_cast<size_t>(batchSize) * static_cast<size_t>(rowOffsetStride),
