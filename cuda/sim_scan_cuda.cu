@@ -14058,6 +14058,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationSingleSummaryFilterKernelFusions;
   batchResult->regionPackedAggregationSingleRequestFinalReduceSkips +=
     requestBatchResult.regionPackedAggregationSingleRequestFinalReduceSkips;
+  batchResult->regionPackedAggregationAlreadyPackedFinalCompactSkips +=
+    requestBatchResult.regionPackedAggregationAlreadyPackedFinalCompactSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -24923,6 +24925,19 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
 
   int reducedCandidateCount = 0;
   SimScanCudaCandidateState *finalCandidateStatesDevice = NULL;
+  bool alreadyPackedFinalCandidates = packedCandidateCountInt > 0;
+  for(size_t i = 0; i < requests.size(); ++i)
+  {
+    if(requestCandidateCounts[i] <= 0)
+    {
+      continue;
+    }
+    if(requestCandidateBases[i] != packedCandidateBases[i])
+    {
+      alreadyPackedFinalCandidates = false;
+      break;
+    }
+  }
   if(requests.size() == 1 && packedCandidateCountInt > 0)
   {
     reducedCandidateCount = packedCandidateCountInt;
@@ -24964,10 +24979,21 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
   else if(packedCandidateCountInt > 0)
   {
-    if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
-                                    &context->outputCandidateStatesCapacity,
-                                    static_cast<size_t>(packedCandidateCountInt),
-                                    errorOut) ||
+    SimScanCudaCandidateState *packedCandidateStatesDevice = context->outputCandidateStatesDevice;
+    if(alreadyPackedFinalCandidates)
+    {
+      packedCandidateStatesDevice = context->batchCandidateStatesDevice;
+      if(batchResult != NULL)
+      {
+        batchResult->regionPackedAggregationAlreadyPackedFinalCompactSkips += 1;
+        batchResult->regionPackedAggregationFinalCompactBaseBufferEnsureSkips += 1;
+      }
+    }
+    if((!alreadyPackedFinalCandidates &&
+        !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                     &context->outputCandidateStatesCapacity,
+                                     static_cast<size_t>(packedCandidateCountInt),
+                                     errorOut)) ||
        !ensure_sim_scan_cuda_buffer(&context->summaryKeysDevice,
                                     &context->summaryKeysCapacity,
                                     static_cast<size_t>(packedCandidateCountInt),
@@ -24988,86 +25014,90 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       return false;
     }
 
-    if(!finalCompactBaseBuffersEnsured)
+    if(!alreadyPackedFinalCandidates)
     {
-      if(!ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
-                                      &context->batchEventBasesCapacity,
-                                      requestCount,
-                                      errorOut) ||
-         !ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
-                                      &context->batchRunBasesCapacity,
-                                      requestCount,
-                                      errorOut))
+      if(!finalCompactBaseBuffersEnsured)
       {
-        return false;
-      }
-      finalCompactBaseBuffersEnsured = true;
-    }
-    status = cudaSuccess;
-    if(deferNoFilterCandidateCountH2D)
-    {
-      if(!candidateCountBufferEnsured)
-      {
-        if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
-                                        &context->batchCandidateCountsCapacity,
+        if(!ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
+                                        &context->batchEventBasesCapacity,
+                                        requestCount,
+                                        errorOut) ||
+           !ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
+                                        &context->batchRunBasesCapacity,
                                         requestCount,
                                         errorOut))
         {
           return false;
         }
-        candidateCountBufferEnsured = true;
+        finalCompactBaseBuffersEnsured = true;
       }
-      status = cudaMemcpy(context->batchCandidateCountsDevice,
-                          requestCandidateCounts.data(),
-                          requestCount * sizeof(int),
-                          cudaMemcpyHostToDevice);
-    }
-    if(status == cudaSuccess)
-    {
-      status = cudaMemcpy(context->batchEventBasesDevice,
-                          requestCandidateBases.data(),
-                          requestCount * sizeof(int),
-                          cudaMemcpyHostToDevice);
-    }
-    if(status == cudaSuccess)
-    {
-      status = cudaMemcpy(context->batchRunBasesDevice,
-                          packedCandidateBases.data(),
-                          requestCount * sizeof(int),
-                          cudaMemcpyHostToDevice);
-    }
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
+      status = cudaSuccess;
+      if(deferNoFilterCandidateCountH2D)
       {
-        *errorOut = cuda_error_string(status);
+        if(!candidateCountBufferEnsured)
+        {
+          if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
+                                          &context->batchCandidateCountsCapacity,
+                                          requestCount,
+                                          errorOut))
+          {
+            return false;
+          }
+          candidateCountBufferEnsured = true;
+        }
+        status = cudaMemcpy(context->batchCandidateCountsDevice,
+                            requestCandidateCounts.data(),
+                            requestCount * sizeof(int),
+                            cudaMemcpyHostToDevice);
       }
-      return false;
-    }
+      if(status == cudaSuccess)
+      {
+        status = cudaMemcpy(context->batchEventBasesDevice,
+                            requestCandidateBases.data(),
+                            requestCount * sizeof(int),
+                            cudaMemcpyHostToDevice);
+      }
+      if(status == cudaSuccess)
+      {
+        status = cudaMemcpy(context->batchRunBasesDevice,
+                            packedCandidateBases.data(),
+                            requestCount * sizeof(int),
+                            cudaMemcpyHostToDevice);
+      }
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
 
-    const int compactThreads = 256;
-    const int compactBlocks = (maxRequestCandidateCapacity + compactThreads - 1) / compactThreads;
-    sim_scan_compact_batch_reserved_candidate_states_kernel<<<dim3(static_cast<unsigned int>(compactBlocks),
-                                                                   static_cast<unsigned int>(requestCount)),
-                                                             compactThreads>>>(context->batchCandidateStatesDevice,
-                                                                               context->batchCandidateCountsDevice,
-                                                                               context->batchEventBasesDevice,
-                                                                               context->batchRunBasesDevice,
-                                                                               context->outputCandidateStatesDevice);
-    status = cudaGetLastError();
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
+      const int compactThreads = 256;
+      const int compactBlocks = (maxRequestCandidateCapacity + compactThreads - 1) / compactThreads;
+      sim_scan_compact_batch_reserved_candidate_states_kernel<<<dim3(static_cast<unsigned int>(compactBlocks),
+                                                                     static_cast<unsigned int>(requestCount)),
+                                                               compactThreads>>>(context->batchCandidateStatesDevice,
+                                                                                 context->batchCandidateCountsDevice,
+                                                                                 context->batchEventBasesDevice,
+                                                                                 context->batchRunBasesDevice,
+                                                                                 context->outputCandidateStatesDevice);
+      status = cudaGetLastError();
+      if(status != cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
       }
-      return false;
+      packedCandidateStatesDevice = context->outputCandidateStatesDevice;
     }
 
     const int reduceThreads = 256;
     const int reduceBlocks = (packedCandidateCountInt + reduceThreads - 1) / reduceThreads;
     sim_scan_init_candidate_reduce_states_from_candidate_states_kernel<<<reduceBlocks, reduceThreads>>>(
-      context->outputCandidateStatesDevice,
+      packedCandidateStatesDevice,
       packedCandidateCountInt,
       context->summaryKeysDevice,
       context->reduceStatesDevice,

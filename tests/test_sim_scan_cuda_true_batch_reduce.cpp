@@ -1815,6 +1815,14 @@ int main()
                                regionPackedAggregationSingleSummaryRequestReduceSkips,
                              2,
                              "region aggregated no-filter single-summary request reduce skips") && ok;
+    ok = expect_equal_uint64(noFilterSingleSummaryAggregatedBatchResult.
+                               regionPackedAggregationAlreadyPackedFinalCompactSkips,
+                             1,
+                             "region aggregated no-filter single-summary already-packed final compact skips") && ok;
+    ok = expect_equal_uint64(noFilterSingleSummaryAggregatedBatchResult.
+                               regionPackedAggregationFinalCompactBaseBufferEnsureSkips,
+                             1,
+                             "region aggregated no-filter single-summary final compact base buffer ensure skips") && ok;
 
     std::vector<uint64_t> singleSummaryFilterStartCoords;
     singleSummaryFilterStartCoords.push_back(pack_coord(1, 1));
