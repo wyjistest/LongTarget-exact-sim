@@ -158,6 +158,64 @@ static std::vector<SimScanCudaInitialRunSummary> run_summaries(bool packedD2H,
     return summaries;
 }
 
+static std::vector<SimScanCudaInitialBatchResult> run_true_batch_summaries(
+    bool hostCopyElision,
+    bool reduceCandidates,
+    SimScanCudaBatchResult &batchResult)
+{
+    if (hostCopyElision)
+    {
+        setenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION", "1", 1);
+    }
+    else
+    {
+        unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
+    }
+    unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
+
+    int scoreMatrix[128][128] = {};
+    fill_score_matrix(scoreMatrix);
+
+    const char *query = "ACGTACGT";
+    const char *target0 = "ACGTACGT";
+    const char *target1 = "ACGGACGT";
+    const int queryLength = 8;
+    const int targetLength = 8;
+    const int gapOpen = 16;
+    const int gapExtend = 4;
+    const int eventScoreFloor = 5;
+
+    SimScanCudaInitialBatchRequest request0;
+    request0.A = query;
+    request0.B = target0;
+    request0.queryLength = queryLength;
+    request0.targetLength = targetLength;
+    request0.gapOpen = gapOpen;
+    request0.gapExtend = gapExtend;
+    request0.scoreMatrix = scoreMatrix;
+    request0.eventScoreFloor = eventScoreFloor;
+    request0.reduceCandidates = reduceCandidates;
+
+    SimScanCudaInitialBatchRequest request1 = request0;
+    request1.B = target1;
+
+    std::vector<SimScanCudaInitialBatchRequest> requests;
+    requests.push_back(request0);
+    requests.push_back(request1);
+
+    std::vector<SimScanCudaInitialBatchResult> results;
+    std::string error;
+    if (!sim_scan_cuda_enumerate_initial_events_row_major_true_batch(requests,
+                                                                     &results,
+                                                                     &batchResult,
+                                                                     &error))
+    {
+        std::cerr << "true-batch initial summary run failed: " << error << "\n";
+        std::exit(2);
+    }
+    return results;
+}
+
 } // namespace
 
 int main()
@@ -181,10 +239,25 @@ int main()
         run_summaries(true, true, false, packedDirectBatchResult);
     SimScanCudaBatchResult reduceBatchResult;
     (void)run_summaries(false, true, true, reduceBatchResult);
+    SimScanCudaBatchResult defaultTrueBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> defaultTrueBatchSummaries =
+        run_true_batch_summaries(false, false, defaultTrueBatchResult);
+    SimScanCudaBatchResult directTrueBatchResult;
+    const std::vector<SimScanCudaInitialBatchResult> directTrueBatchSummaries =
+        run_true_batch_summaries(true, false, directTrueBatchResult);
+    SimScanCudaBatchResult reduceTrueBatchResult;
+    (void)run_true_batch_summaries(true, true, reduceTrueBatchResult);
 
     const uint64_t expectedElidedBytes =
         static_cast<uint64_t>(defaultSummaries.size()) *
         static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
+    uint64_t expectedTrueBatchElidedBytes = 0;
+    for (size_t batchIndex = 0; batchIndex < defaultTrueBatchSummaries.size(); ++batchIndex)
+    {
+        expectedTrueBatchElidedBytes +=
+            static_cast<uint64_t>(defaultTrueBatchSummaries[batchIndex].initialRunSummaries.size()) *
+            static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
+    }
 
     ok = expect_true(!defaultSummaries.empty(), "default summaries non-empty") && ok;
     ok = expect_equal_summaries(directSummaries, defaultSummaries, "direct elision exact summaries") && ok;
@@ -208,6 +281,30 @@ int main()
                              "packed direct elided bytes") && ok;
     ok = expect_false(reduceBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce path does not use summary host-copy elision") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(defaultTrueBatchSummaries.size()),
+                             2,
+                             "default true-batch result count") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(directTrueBatchSummaries.size()),
+                             2,
+                             "direct true-batch result count") && ok;
+    if (defaultTrueBatchSummaries.size() == 2 && directTrueBatchSummaries.size() == 2)
+    {
+        ok = expect_equal_summaries(directTrueBatchSummaries[0].initialRunSummaries,
+                                    defaultTrueBatchSummaries[0].initialRunSummaries,
+                                    "direct true-batch result 0 summaries") && ok;
+        ok = expect_equal_summaries(directTrueBatchSummaries[1].initialRunSummaries,
+                                    defaultTrueBatchSummaries[1].initialRunSummaries,
+                                    "direct true-batch result 1 summaries") && ok;
+    }
+    ok = expect_false(defaultTrueBatchResult.usedInitialSummaryHostCopyElision,
+                      "default true-batch host-copy elision disabled") && ok;
+    ok = expect_true(directTrueBatchResult.usedInitialSummaryHostCopyElision,
+                     "direct true-batch host-copy elision used") && ok;
+    ok = expect_equal_uint64(directTrueBatchResult.initialSummaryHostCopyElidedBytes,
+                             expectedTrueBatchElidedBytes,
+                             "direct true-batch elided bytes") && ok;
+    ok = expect_false(reduceTrueBatchResult.usedInitialSummaryHostCopyElision,
+                      "reduce true-batch does not use summary host-copy elision") && ok;
 
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H");
     unsetenv("LONGTARGET_SIM_CUDA_INITIAL_SUMMARY_HOST_COPY_ELISION");
