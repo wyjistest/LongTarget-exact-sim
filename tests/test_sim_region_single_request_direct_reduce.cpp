@@ -631,6 +631,10 @@ static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
                              0,
                              "zero direct candidate-prefix launches") && ok;
     ok = expect_equal_uint64(
+           batchResult.regionSingleRequestDirectReduceZeroRunEventCountD2HSkips,
+           1,
+           "zero direct event-count d2h skip") && ok;
+    ok = expect_equal_uint64(
            batchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips,
            1,
            "zero direct compact buffer ensure skip") && ok;

@@ -14118,6 +14118,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
         requestBatchResult.regionSingleRequestDirectReduceHashCapacity);
   batchResult->regionSingleRequestDirectReduceCandidateCount +=
     requestBatchResult.regionSingleRequestDirectReduceCandidateCount;
+  batchResult->regionSingleRequestDirectReduceZeroRunEventCountD2HSkips +=
+    requestBatchResult.regionSingleRequestDirectReduceZeroRunEventCountD2HSkips;
   batchResult->regionSingleRequestDirectReduceEventCount +=
     requestBatchResult.regionSingleRequestDirectReduceEventCount;
   batchResult->regionSingleRequestDirectReduceRunSummaryCount +=
@@ -23794,18 +23796,32 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   if(!useDeferredCounts)
   {
     const chrono::steady_clock::time_point countCopyStart = chrono::steady_clock::now();
-    const chrono::steady_clock::time_point eventCopyStart = chrono::steady_clock::now();
-    status = cudaMemcpy(&eventCount,context->batchEventTotalsDevice,sizeof(int),cudaMemcpyDeviceToHost);
-    eventCountD2HSeconds =
+    const chrono::steady_clock::time_point runCopyStart = chrono::steady_clock::now();
+    status = cudaMemcpy(&runSummaryCount,context->batchRunTotalsDevice,sizeof(int),cudaMemcpyDeviceToHost);
+    runCountD2HSeconds =
       static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
-                            chrono::steady_clock::now() - eventCopyStart).count()) / 1.0e9;
+                            chrono::steady_clock::now() - runCopyStart).count()) / 1.0e9;
     if(status == cudaSuccess)
     {
-      const chrono::steady_clock::time_point runCopyStart = chrono::steady_clock::now();
-      status = cudaMemcpy(&runSummaryCount,context->batchRunTotalsDevice,sizeof(int),cudaMemcpyDeviceToHost);
-      runCountD2HSeconds =
-        static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
-                              chrono::steady_clock::now() - runCopyStart).count()) / 1.0e9;
+      if(runSummaryCount == 0)
+      {
+        eventCount = 0;
+        if(batchResult != NULL)
+        {
+          batchResult->regionSingleRequestDirectReduceZeroRunEventCountD2HSkips += 1;
+        }
+      }
+      else
+      {
+        const chrono::steady_clock::time_point eventCopyStart = chrono::steady_clock::now();
+        status = cudaMemcpy(&eventCount,
+                            context->batchEventTotalsDevice,
+                            sizeof(int),
+                            cudaMemcpyDeviceToHost);
+        eventCountD2HSeconds =
+          static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                                chrono::steady_clock::now() - eventCopyStart).count()) / 1.0e9;
+      }
     }
     countD2HSeconds =
       static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
