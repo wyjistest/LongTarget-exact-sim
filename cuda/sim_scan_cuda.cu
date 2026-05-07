@@ -13996,6 +13996,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationCandidateCountClearSkips;
   batchResult->regionPackedAggregationSummaryTotalsClearSkips +=
     requestBatchResult.regionPackedAggregationSummaryTotalsClearSkips;
+  batchResult->regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
   batchResult->regionPackedAggregationInitialEventBufferEnsureSkips +=
@@ -24302,8 +24304,38 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     filterUploaded = true;
   }
 
+  uint64_t scanGroupCount = 0;
+  uint64_t fusedRequestCount = 0;
+  SimScanCudaRegionBucketedTrueBatchStats bucketedStats;
+  vector<SimScanCudaRegionBucketedTrueBatchGroup> bucketedGroups;
+  if(bucketedTrueBatchEnabled)
+  {
+    vector<SimScanCudaRegionBucketedTrueBatchShape> shapes;
+    shapes.reserve(orderedRequests.size());
+    for(size_t i = 0; i < orderedRequests.size(); ++i)
+    {
+      const SimScanCudaRequest &request = orderedRequests[i];
+      shapes.push_back(SimScanCudaRegionBucketedTrueBatchShape(request.rowEnd - request.rowStart + 1,
+                                                               request.colEnd - request.colStart + 1));
+    }
+    if(!sim_scan_cuda_region_bucketed_true_batch_plan(shapes,
+                                                      &bucketedGroups,
+                                                      &bucketedStats,
+                                                      errorOut))
+    {
+      return false;
+    }
+  }
+
   const size_t requestCount = requests.size();
+  const bool skipInitialSummaryTotalsBufferEnsure =
+    bucketedTrueBatchEnabled &&
+    bucketedGroups.size() == 1 &&
+    bucketedGroups[0].requestBegin == 0 &&
+    bucketedGroups[0].requestCount == requestCount &&
+    requestCount > 1;
   if(requestCount > 0 &&
+     !skipInitialSummaryTotalsBufferEnsure &&
      (!ensure_sim_scan_cuda_buffer(&context->batchEventTotalsDevice,
                                    &context->batchEventTotalsCapacity,
                                    requestCount,
@@ -24314,6 +24346,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                   errorOut)))
   {
     return false;
+  }
+  if(skipInitialSummaryTotalsBufferEnsure && batchResult != NULL)
+  {
+    batchResult->regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips += 1;
   }
 
   if(totalCandidateCapacity > 0 &&
@@ -24345,29 +24381,6 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       *errorOut = cuda_error_string(status);
     }
     return false;
-  }
-
-  uint64_t scanGroupCount = 0;
-  uint64_t fusedRequestCount = 0;
-  SimScanCudaRegionBucketedTrueBatchStats bucketedStats;
-  vector<SimScanCudaRegionBucketedTrueBatchGroup> bucketedGroups;
-  if(bucketedTrueBatchEnabled)
-  {
-    vector<SimScanCudaRegionBucketedTrueBatchShape> shapes;
-    shapes.reserve(orderedRequests.size());
-    for(size_t i = 0; i < orderedRequests.size(); ++i)
-    {
-      const SimScanCudaRequest &request = orderedRequests[i];
-      shapes.push_back(SimScanCudaRegionBucketedTrueBatchShape(request.rowEnd - request.rowStart + 1,
-                                                               request.colEnd - request.colStart + 1));
-    }
-    if(!sim_scan_cuda_region_bucketed_true_batch_plan(shapes,
-                                                      &bucketedGroups,
-                                                      &bucketedStats,
-                                                      errorOut))
-    {
-      return false;
-    }
   }
 
   if(bucketedTrueBatchEnabled)
