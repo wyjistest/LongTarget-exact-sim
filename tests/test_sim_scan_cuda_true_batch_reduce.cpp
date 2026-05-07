@@ -1786,6 +1786,10 @@ int main()
            zeroRunAggregatedBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips,
            1,
            "zero-run region aggregated candidate buffer ensure skip") && ok;
+    ok = expect_equal_uint64(
+           zeroRunAggregatedBatchResult.regionPackedAggregationZeroRunCandidateCountD2HSkips,
+           1,
+           "zero-run region aggregated candidate-count d2h skip") && ok;
 
     SimScanCudaRequest homogeneousRegionRequest0 = regionRequest0;
     homogeneousRegionRequest0.rowStart = 1;

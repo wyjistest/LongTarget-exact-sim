@@ -13984,6 +13984,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->regionPackedAggregationRequestCount += requestBatchResult.regionPackedAggregationRequestCount;
   batchResult->regionPackedAggregationZeroRunCandidateBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
+  batchResult->regionPackedAggregationZeroRunCandidateCountD2HSkips +=
+    requestBatchResult.regionPackedAggregationZeroRunCandidateCountD2HSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -24547,7 +24549,14 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     batchResult->regionPackedAggregationZeroRunCandidateBufferEnsureSkips += 1;
   }
 
-  if(requestCount > 0)
+  if(outResult->runSummaryCount == 0)
+  {
+    if(batchResult != NULL)
+    {
+      batchResult->regionPackedAggregationZeroRunCandidateCountD2HSkips += 1;
+    }
+  }
+  else if(requestCount > 0)
   {
     const chrono::steady_clock::time_point copyStart = chrono::steady_clock::now();
     status = cudaMemcpy(requestCandidateCounts.data(),
