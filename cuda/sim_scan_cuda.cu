@@ -13998,6 +13998,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationSummaryTotalsClearSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
+  batchResult->regionPackedAggregationInitialEventBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationInitialEventBufferEnsureSkips;
   batchResult->regionPackedAggregationFinalCompactBaseBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationFinalCompactBaseBufferEnsureSkips;
   batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
@@ -24323,13 +24325,9 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     return false;
   }
 
-  if(maxRequestCandidateCapacity > 0 &&
-     !ensure_sim_scan_cuda_buffer(&context->eventsDevice,
-                                  &context->eventsCapacity,
-                                  static_cast<size_t>(maxRequestCandidateCapacity),
-                                  errorOut))
+  if(maxRequestCandidateCapacity > 0 && batchResult != NULL)
   {
-    return false;
+    batchResult->regionPackedAggregationInitialEventBufferEnsureSkips += 1;
   }
 
   cudaError_t status = cudaSuccess;
