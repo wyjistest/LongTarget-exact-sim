@@ -5977,7 +5977,8 @@ __global__ void sim_scan_compact_initial_run_summaries_direct_true_batch_kernel(
 
   if(tid == 0)
   {
-    outputCursor = runBases[batchIndex] + runOffsets[batchIndex * runOffsetStride + row];
+    const int runBase = runBases != NULL ? runBases[batchIndex] : 0;
+    outputCursor = runBase + runOffsets[batchIndex * runOffsetStride + row];
   }
   __syncthreads();
 
@@ -13426,6 +13427,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
   batchResult->initialTrueBatchSingleRequestCountCopySkips +=
     requestBatchResult.initialTrueBatchSingleRequestCountCopySkips;
+  batchResult->initialTrueBatchSingleRequestRunBaseMaterializeSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips;
   batchResult->initialTrueBatchEventBaseMaterializeSkips +=
     requestBatchResult.initialTrueBatchEventBaseMaterializeSkips;
   batchResult->initialTrueBatchEventBaseBufferEnsureSkips +=
@@ -16119,6 +16122,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   vector<int> totalEventsPerTask(static_cast<size_t>(batchSize),0);
   vector<int> totalRunsPerTask(static_cast<size_t>(batchSize),0);
   uint64_t initialTrueBatchSingleRequestPrefixSkips = 0;
+  uint64_t initialTrueBatchSingleRequestRunBaseMaterializeSkips = 0;
   uint64_t initialTrueBatchEventBaseMaterializeSkips = 0;
   const uint64_t initialTrueBatchEventBaseBufferEnsureSkips = 1;
   int totalEvents = 0;
@@ -16220,17 +16224,32 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
 
   int maxRunsPerBatch = 0;
   int totalRunSummaries = 0;
+  const bool requestInitialPinnedAsyncHandoff =
+    sim_scan_cuda_initial_pinned_async_handoff_runtime();
+  const bool requestInitialPinnedAsyncCpuPipeline =
+    sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
+  const bool initialChunkedHandoffRequested =
+    sim_scan_cuda_initial_chunked_handoff_runtime();
+  const bool skipSingleRequestRunBaseMaterialize =
+    batchSize == 1 && !anyCandidateExtraction && !requestInitialPinnedAsyncHandoff;
   if(batchSize == 1)
   {
     const std::chrono::steady_clock::time_point countCopyStart = std::chrono::steady_clock::now();
-    status = cudaMemset(context->batchRunBasesDevice,0,sizeof(int));
-    if(status != cudaSuccess)
+    if(!skipSingleRequestRunBaseMaterialize)
     {
-      if(errorOut != NULL)
+      status = cudaMemset(context->batchRunBasesDevice,0,sizeof(int));
+      if(status != cudaSuccess)
       {
-        *errorOut = cuda_error_string(status);
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
       }
-      return false;
+    }
+    else
+    {
+      initialTrueBatchSingleRequestRunBaseMaterializeSkips += 1;
     }
     status = cudaMemcpy(&totalRunSummaries,
                         context->batchRunTotalsDevice,
@@ -16291,12 +16310,6 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     return false;
   }
 
-  const bool requestInitialPinnedAsyncHandoff =
-    sim_scan_cuda_initial_pinned_async_handoff_runtime();
-  const bool requestInitialPinnedAsyncCpuPipeline =
-    sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
-  const bool initialChunkedHandoffRequested =
-    sim_scan_cuda_initial_chunked_handoff_runtime();
   SimScanCudaInitialPinnedAsyncDisabledReason initialPinnedAsyncDisabledReason =
     requestInitialPinnedAsyncHandoff ?
     SIM_SCAN_CUDA_INITIAL_PINNED_ASYNC_DISABLED_NONE :
@@ -16464,7 +16477,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       context->batchEventScoreFloorsDevice,
       context->batchRunOffsetsDevice,
       rowOffsetStride,
-      context->batchRunBasesDevice,
+      skipSingleRequestRunBaseMaterialize ? NULL : context->batchRunBasesDevice,
       context->initialRunSummariesDevice);
     status = cudaGetLastError();
     if(status != cudaSuccess)
@@ -17661,6 +17674,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestInputPackSkips;
     batchResult->initialTrueBatchSingleRequestCountCopySkips =
       initialTrueBatchSingleRequestCountCopySkips;
+    batchResult->initialTrueBatchSingleRequestRunBaseMaterializeSkips =
+      initialTrueBatchSingleRequestRunBaseMaterializeSkips;
     batchResult->initialTrueBatchEventBaseMaterializeSkips =
       initialTrueBatchEventBaseMaterializeSkips;
     batchResult->initialTrueBatchEventBaseBufferEnsureSkips =
