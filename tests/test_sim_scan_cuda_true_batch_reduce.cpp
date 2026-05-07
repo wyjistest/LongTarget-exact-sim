@@ -1971,6 +1971,54 @@ int main()
                              static_cast<uint64_t>(regionRequests.size()),
                              "region true batch result count") && ok;
 
+    SimScanCudaRequest zeroRunRegionTrueBatchRequest0 = regionRequest0;
+    zeroRunRegionTrueBatchRequest0.eventScoreFloor = 1000000;
+    SimScanCudaRequest zeroRunRegionTrueBatchRequest1 = regionRequest1;
+    zeroRunRegionTrueBatchRequest1.eventScoreFloor = 1000000;
+    std::vector<SimScanCudaRequest> zeroRunRegionTrueBatchRequests;
+    zeroRunRegionTrueBatchRequests.push_back(zeroRunRegionTrueBatchRequest0);
+    zeroRunRegionTrueBatchRequests.push_back(zeroRunRegionTrueBatchRequest1);
+    SimScanCudaBatchResult zeroRunRegionTrueBatchBatchResult;
+    const std::vector<SimScanCudaRequestResult> zeroRunRegionTrueBatchResults =
+      run_region_batch_reduce_all(zeroRunRegionTrueBatchRequests,
+                                  true,
+                                  &zeroRunRegionTrueBatchBatchResult);
+    ok = expect_true(zeroRunRegionTrueBatchBatchResult.usedCuda,
+                     "zero-run region true batch usedCuda") && ok;
+    ok = expect_true(zeroRunRegionTrueBatchBatchResult.usedRegionTrueBatchPath,
+                     "zero-run region true batch uses true-batch path") && ok;
+    ok = expect_equal_uint64(zeroRunRegionTrueBatchBatchResult.regionTrueBatchRequestCount,
+                             static_cast<uint64_t>(zeroRunRegionTrueBatchRequests.size()),
+                             "zero-run region true batch request count") && ok;
+    ok = expect_equal_uint64(zeroRunRegionTrueBatchBatchResult.taskCount,
+                             static_cast<uint64_t>(zeroRunRegionTrueBatchRequests.size()),
+                             "zero-run region true batch taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunRegionTrueBatchBatchResult.launchCount,
+                             0,
+                             "zero-run region true batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunRegionTrueBatchBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run region true batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunRegionTrueBatchResults.size()),
+                             static_cast<uint64_t>(zeroRunRegionTrueBatchRequests.size()),
+                             "zero-run region true batch result count") && ok;
+    for (size_t i = 0; i < zeroRunRegionTrueBatchResults.size(); ++i)
+    {
+        const std::string labelPrefix = "zero-run region true batch result " + std::to_string(i);
+        ok = expect_equal_uint64(zeroRunRegionTrueBatchResults[i].eventCount,
+                                 0,
+                                 (labelPrefix + " eventCount").c_str()) && ok;
+        ok = expect_equal_uint64(zeroRunRegionTrueBatchResults[i].runSummaryCount,
+                                 0,
+                                 (labelPrefix + " runSummaryCount").c_str()) && ok;
+        ok = expect_true(zeroRunRegionTrueBatchResults[i].candidateStates.empty(),
+                         (labelPrefix + " candidateStates empty").c_str()) && ok;
+        ok = expect_true(zeroRunRegionTrueBatchResults[i].events.empty(),
+                         (labelPrefix + " events empty").c_str()) && ok;
+        ok = expect_true(zeroRunRegionTrueBatchResults[i].rowOffsets.empty(),
+                         (labelPrefix + " rowOffsets empty").c_str()) && ok;
+    }
+
     for (size_t i = 0; i < regionRequests.size() &&
                        i < regionBaselineBatchResults.size() &&
                        i < regionTrueBatchResults.size(); ++i)

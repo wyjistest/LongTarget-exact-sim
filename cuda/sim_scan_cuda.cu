@@ -14508,6 +14508,8 @@ static bool sim_scan_cuda_upload_region_filter_start_coords_locked(SimScanCudaCo
                                                                    int filterStartCoordCount,
                                                                    string *errorOut);
 
+static bool sim_scan_cuda_region_request_has_no_possible_events(const SimScanCudaRequest &request);
+
 static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *context,
                                                         int queryLength,
                                                         int targetLength,
@@ -23213,6 +23215,30 @@ static bool sim_scan_cuda_enumerate_region_events_row_major_true_batch(const vec
     {
       return false;
     }
+  }
+
+  bool allRequestsHaveNoEvents = true;
+  for(size_t i = 0; i < requests.size(); ++i)
+  {
+    if(!sim_scan_cuda_region_request_has_no_possible_events(requests[i]))
+    {
+      allRequestsHaveNoEvents = false;
+      break;
+    }
+  }
+  if(allRequestsHaveNoEvents)
+  {
+    outResults->assign(requests.size(),SimScanCudaRequestResult());
+    if(batchResult != NULL)
+    {
+      batchResult->usedCuda = true;
+      batchResult->usedRegionTrueBatchPath = true;
+      batchResult->regionTrueBatchRequestCount = static_cast<uint64_t>(requests.size());
+      batchResult->taskCount = static_cast<uint64_t>(requests.size());
+      batchResult->launchCount = 0;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
   }
 
   int device = 0;
