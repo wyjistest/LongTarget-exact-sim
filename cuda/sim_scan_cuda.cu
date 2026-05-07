@@ -9390,6 +9390,7 @@ static bool sim_scan_init_batch_candidate_reduce_states_from_summaries(SimScanCu
                                                                        const int *runTotalsDevice,
                                                                        int batchSize,
                                                                        int maxRunsPerBatch,
+                                                                       bool needsAllCandidateCountBuffer,
                                                                        string *errorOut)
 {
   if(context == NULL || summaryCount <= 0 || batchSize <= 0 || maxRunsPerBatch <= 0)
@@ -9413,7 +9414,11 @@ static bool sim_scan_init_batch_candidate_reduce_states_from_summaries(SimScanCu
      !ensure_sim_scan_cuda_buffer(&context->reducedStatesDevice,
                                   &context->reducedStatesCapacity,
                                   stateCount,
-                                  errorOut) ||
+                                  errorOut))
+  {
+    return false;
+  }
+  if(needsAllCandidateCountBuffer &&
      !ensure_sim_scan_cuda_buffer(&context->batchAllCandidateCountsDevice,
                                   &context->batchAllCandidateCountsCapacity,
                                   static_cast<size_t>(batchSize),
@@ -9476,6 +9481,7 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch_segmented
                                                                  runTotalsDevice,
                                                                  batchSize,
                                                                  maxRunsPerBatch,
+                                                                 true,
                                                                  errorOut))
   {
     return false;
@@ -10144,6 +10150,14 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch(SimScanCu
     return true;
   }
 
+  const bool useSingleRequestImplicitAllCandidateCount =
+    batchSize == 1 &&
+    batchFinalCandidateStatesDevice == NULL &&
+    batchFinalCandidateCountsDevice == NULL &&
+    batchRunningMinsDevice == NULL;
+  const bool needsAllCandidateCountBuffer =
+    !useSingleRequestImplicitAllCandidateCount ||
+    sim_scan_cuda_initial_hash_reduce_runtime();
   if(!sim_scan_init_batch_candidate_reduce_states_from_summaries(context,
                                                                  summariesDevice,
                                                                  summaryCount,
@@ -10151,9 +10165,16 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch(SimScanCu
                                                                  runTotalsDevice,
                                                                  batchSize,
                                                                  maxRunsPerBatch,
+                                                                 needsAllCandidateCountBuffer,
                                                                  errorOut))
   {
     return false;
+  }
+  if(useSingleRequestImplicitAllCandidateCount &&
+     !needsAllCandidateCountBuffer &&
+     batchResult != NULL)
+  {
+    batchResult->initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips += 1;
   }
 
   int reducedCandidateCount = 0;
@@ -10216,11 +10237,6 @@ static bool sim_scan_reduce_candidate_states_from_summaries_true_batch(SimScanCu
     return true;
   }
 
-  const bool useSingleRequestImplicitAllCandidateCount =
-    batchSize == 1 &&
-    batchFinalCandidateStatesDevice == NULL &&
-    batchFinalCandidateCountsDevice == NULL &&
-    batchRunningMinsDevice == NULL;
   if(useSingleRequestImplicitAllCandidateCount)
   {
     (*outCandidateCounts)[0] = reducedCandidateCount;
@@ -13648,6 +13664,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips;
   batchResult->initialTrueBatchSingleRequestAllCandidateCountSkips +=
     requestBatchResult.initialTrueBatchSingleRequestAllCandidateCountSkips;
+  batchResult->initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=

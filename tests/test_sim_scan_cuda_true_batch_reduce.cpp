@@ -2200,6 +2200,10 @@ int main()
            singleProposalV3BatchResult.initialTrueBatchSingleRequestAllCandidateCountSkips,
            1,
            "single proposal V3 all-candidate count skip") && ok;
+    ok = expect_equal_uint64(
+           singleProposalV3BatchResult.initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips,
+           1,
+           "single proposal V3 all-candidate count buffer ensure skip") && ok;
     ok = expect_equal_uint64(singleProposalV3BatchResult.initialProposalV3SelectedCountClearSkips,
                              1,
                              "single proposal V3 selected-count clear skip") && ok;
@@ -2229,6 +2233,10 @@ int main()
     ok = expect_equal_uint64(singleProposalV2BatchResult.initialTrueBatchSingleRequestAllCandidateCountSkips,
                              1,
                              "single proposal V2 all-candidate count skip") && ok;
+    ok = expect_equal_uint64(
+           singleProposalV2BatchResult.initialTrueBatchSingleRequestAllCandidateCountBufferEnsureSkips,
+           1,
+           "single proposal V2 all-candidate count buffer ensure skip") && ok;
     if (singleProposalV2Results.size() == 1)
     {
         ok = expect_proposal_result_equal(singleProposalV2Results[0],
