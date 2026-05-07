@@ -14035,6 +14035,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->regionPackedAggregationRequestCount += requestBatchResult.regionPackedAggregationRequestCount;
   batchResult->regionPackedAggregationZeroRunCandidateBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
+  batchResult->regionPackedAggregationCandidateBufferHighWaterEnsureSkips +=
+    requestBatchResult.regionPackedAggregationCandidateBufferHighWaterEnsureSkips;
   batchResult->regionPackedAggregationZeroRunCandidateCountD2HSkips +=
     requestBatchResult.regionPackedAggregationZeroRunCandidateCountD2HSkips;
   batchResult->regionPackedAggregationNoFilterCandidateCountD2HSkips +=
@@ -24875,6 +24877,17 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   bool candidateOutputBufferEnsured = false;
   bool candidateCountBufferEnsured = false;
   bool finalCompactBaseBuffersEnsured = false;
+  size_t candidateOutputHighWater = 0;
+  for(size_t i = 0; i < requests.size(); ++i)
+  {
+    const int requestRunCount = requestRunCounts[i];
+    if(requestRunCount > 0 && requestRunCount <= requestCandidateCapacities[i])
+    {
+      candidateOutputHighWater =
+        max(candidateOutputHighWater,
+            static_cast<size_t>(requestCandidateBases[i]) + static_cast<size_t>(requestRunCount));
+    }
+  }
   uint64_t noFilterReservedCopySkips = 0;
   const bool deferNoFilterCandidateCountH2D = orderedFirst.filterStartCoordCount == 0;
   uint64_t noFilterCandidateCountScalarH2DSkips = 0;
@@ -24920,12 +24933,18 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
       }
       if(!candidateOutputBufferEnsured)
       {
+        const size_t candidateOutputCapacity =
+          candidateOutputHighWater > 0 ? candidateOutputHighWater : totalCandidateCapacity;
         if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
                                         &context->batchCandidateStatesCapacity,
-                                        totalCandidateCapacity,
+                                        candidateOutputCapacity,
                                         errorOut))
         {
           return false;
+        }
+        if(batchResult != NULL && candidateOutputCapacity < totalCandidateCapacity)
+        {
+          batchResult->regionPackedAggregationCandidateBufferHighWaterEnsureSkips += 1;
         }
         candidateOutputBufferEnsured = true;
       }

@@ -1943,6 +1943,9 @@ int main()
                                regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips,
                              expectedNoFilterSliceReduceKeyBufferEnsureSkips,
                              "region aggregated no-filter slice reduce key buffer ensure skips") && ok;
+    ok = expect_true(noFilterRegionAggregatedBatchResult.
+                       regionPackedAggregationCandidateBufferHighWaterEnsureSkips > 0,
+                     "region aggregated no-filter candidate buffer high-water ensure skips recorded") && ok;
     SimScanCudaBatchResult noFilterSingleRegionBatchResult;
     const SimScanCudaRequestResult noFilterSingleRegionResult =
       run_single_region_reduce_all(noFilterRegionRequest0, &noFilterSingleRegionBatchResult);

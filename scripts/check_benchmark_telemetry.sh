@@ -386,6 +386,7 @@ grep -Eq '^benchmark\.sim_region_bucketed_true_batch_padding_cells=[0-9]+$' "$ST
 grep -Eq '^benchmark\.sim_region_bucketed_true_batch_rejected_padding=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_bucketed_true_batch_shadow_mismatches=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_packed_zero_run_candidate_buffer_ensure_skips=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_region_packed_candidate_buffer_high_water_ensure_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_enabled=[01]$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_deferred_counts_enabled=[01]$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_shadow_enabled=[01]$' "$STDERR_LOG"

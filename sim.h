@@ -5397,6 +5397,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionPackedCandidateBufferHighWaterEnsureSkipCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchBatchCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -7332,11 +7338,15 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		}
 
 		inline void recordSimRegionPackedRequests(uint64_t requestCount,
-		                                          uint64_t zeroRunCandidateBufferEnsureSkips = 0)
+		                                          uint64_t zeroRunCandidateBufferEnsureSkips = 0,
+		                                          uint64_t candidateBufferHighWaterEnsureSkips = 0)
 		{
 		  simRegionPackedRequestCount().fetch_add(requestCount, std::memory_order_relaxed);
 		  simRegionPackedZeroRunCandidateBufferEnsureSkipCount().fetch_add(
 		    zeroRunCandidateBufferEnsureSkips,
+		    std::memory_order_relaxed);
+		  simRegionPackedCandidateBufferHighWaterEnsureSkipCount().fetch_add(
+		    candidateBufferHighWaterEnsureSkips,
 		    std::memory_order_relaxed);
 		}
 
@@ -8667,6 +8677,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		inline uint64_t getSimRegionPackedZeroRunCandidateBufferEnsureSkipCount()
 		{
 		  return simRegionPackedZeroRunCandidateBufferEnsureSkipCount().load(std::memory_order_relaxed);
+		}
+
+		inline uint64_t getSimRegionPackedCandidateBufferHighWaterEnsureSkipCount()
+		{
+		  return simRegionPackedCandidateBufferHighWaterEnsureSkipCount().load(std::memory_order_relaxed);
 		}
 
 		inline void getSimRegionBucketedTrueBatchStats(uint64_t &batches,
@@ -18000,7 +18015,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       {
         recordSimRegionPackedRequests(
           cudaBatchResult.regionPackedAggregationRequestCount,
-          cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
+          cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips,
+          cudaBatchResult.regionPackedAggregationCandidateBufferHighWaterEnsureSkips);
       }
       recordSimRegionBucketedTrueBatch(cudaBatchResult);
       recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
@@ -18087,7 +18103,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     {
       recordSimRegionPackedRequests(
         cudaBatchResult.regionPackedAggregationRequestCount,
-        cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
+        cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips,
+        cudaBatchResult.regionPackedAggregationCandidateBufferHighWaterEnsureSkips);
     }
     recordSimRegionBucketedTrueBatch(cudaBatchResult);
     recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
@@ -18357,7 +18374,8 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
       {
         recordSimRegionPackedRequests(
           cudaBatchResult.regionPackedAggregationRequestCount,
-          cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
+          cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips,
+          cudaBatchResult.regionPackedAggregationCandidateBufferHighWaterEnsureSkips);
       }
       recordSimRegionBucketedTrueBatch(cudaBatchResult);
       recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
@@ -18413,7 +18431,8 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
     {
       recordSimRegionPackedRequests(
         cudaBatchResult.regionPackedAggregationRequestCount,
-        cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
+        cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips,
+        cudaBatchResult.regionPackedAggregationCandidateBufferHighWaterEnsureSkips);
     }
     recordSimRegionBucketedTrueBatch(cudaBatchResult);
     recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
