@@ -624,6 +624,15 @@ static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRequestCount,
                              1,
                              "zero direct pipeline request count") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineEventCountLaunchCount,
+                             0,
+                             "zero direct event-count launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineEventPrefixLaunchCount,
+                             0,
+                             "zero direct event-prefix launches") && ok;
+    ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineRunCompactLaunchCount,
+                             0,
+                             "zero direct run-compact launches") && ok;
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineFilterReduceLaunchCount,
                              0,
                              "zero direct filter-reduce launches") && ok;

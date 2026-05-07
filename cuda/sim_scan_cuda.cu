@@ -6189,6 +6189,64 @@ __global__ void sim_scan_count_initial_run_summaries_direct_true_batch_kernel(co
   }
 }
 
+__global__ void sim_scan_count_initial_run_summaries_direct_region_kernel(const int *HScoreMat,
+                                                                          const uint64_t *HCoordMat,
+                                                                          int leadingDim,
+                                                                          int rowStart,
+                                                                          int rowCount,
+                                                                          int colStart,
+                                                                          int colCount,
+                                                                          int eventScoreFloor,
+                                                                          int *runCounts)
+{
+  const int localRow = static_cast<int>(blockIdx.x);
+  if(localRow >= rowCount)
+  {
+    return;
+  }
+
+  const int row = rowStart + localRow;
+  int localCount = 0;
+  for(int localCol = static_cast<int>(threadIdx.x);
+      localCol < colCount;
+      localCol += static_cast<int>(blockDim.x))
+  {
+    const int col = colStart + localCol;
+    const size_t matIndex =
+      static_cast<size_t>(row) * static_cast<size_t>(leadingDim) + static_cast<size_t>(col);
+    const int score = HScoreMat[matIndex];
+    const uint64_t startCoord = HCoordMat[matIndex];
+    int prevScore = 0;
+    uint64_t prevStartCoord = 0;
+    if(localCol > 0)
+    {
+      prevScore = HScoreMat[matIndex - 1];
+      prevStartCoord = HCoordMat[matIndex - 1];
+    }
+    localCount +=
+      score > eventScoreFloor &&
+      (localCol == 0 || prevScore <= eventScoreFloor || startCoord != prevStartCoord) ?
+      1 :
+      0;
+  }
+
+  extern __shared__ int shared[];
+  shared[threadIdx.x] = localCount;
+  __syncthreads();
+  for(unsigned int offset = blockDim.x / 2; offset > 0; offset >>= 1)
+  {
+    if(threadIdx.x < offset)
+    {
+      shared[threadIdx.x] += shared[threadIdx.x + offset];
+    }
+    __syncthreads();
+  }
+  if(threadIdx.x == 0)
+  {
+    runCounts[localRow] = shared[0];
+  }
+}
+
 __global__ void sim_scan_compact_initial_run_summaries_direct_true_batch_kernel(const int *HScoreMat,
                                                                                 const uint64_t *HCoordMat,
                                                                                 int leadingDim,
@@ -21729,6 +21787,129 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
   const int countThreads = 256;
   const int countBlocks = rowCount;
   const size_t countSharedBytes = static_cast<size_t>(countThreads) * sizeof(int);
+  const int compactThreads = 256;
+  const int compactBlocks = rowCount;
+  const int summaryThreads = 256;
+  const int summaryBlocks = rowCount;
+  const size_t summarySharedBytes = static_cast<size_t>(summaryThreads) * sizeof(int);
+  const bool enableZeroRunDirectEventKernelSkip = batchResult != NULL;
+  if(enableZeroRunDirectEventKernelSkip)
+  {
+    if(recordPipelineTelemetry)
+    {
+      if(!sim_scan_cuda_record_event(context->regionDirectPipelineEventCountStopEvent,errorOut) ||
+         !sim_scan_cuda_record_event(context->regionDirectPipelineEventPrefixStopEvent,errorOut))
+      {
+        return false;
+      }
+    }
+    sim_scan_count_initial_run_summaries_direct_region_kernel<<<summaryBlocks,
+                                                                summaryThreads,
+                                                                summarySharedBytes>>>(
+      context->HScoreDevice,
+      context->HCoordDevice,
+      context->leadingDim,
+      rowStart,
+      rowCount,
+      colStart,
+      colCount,
+      eventScoreFloor,
+      context->rowCountsDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(recordPipelineTelemetry)
+    {
+      if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunCountStopEvent,errorOut))
+      {
+        return false;
+      }
+    }
+
+    sim_scan_prefix_sum_kernel<<<1, 1>>>(context->rowCountsDevice,
+                                         rowCount,
+                                         context->runOffsetsDevice,
+                                         context->eventCountDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+
+    sim_scan_store_scalar_at_index_kernel<<<1, 1>>>(context->eventCountDevice,
+                                                    context->batchRunTotalsDevice,
+                                                    requestIndex);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    int runSummaryCount = 0;
+    status = cudaMemcpy(&runSummaryCount,context->eventCountDevice,sizeof(int),cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(runSummaryCount < 0 || runSummaryCount > static_cast<int>(maxEventsAllowed))
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = "SIM CUDA direct region run summary count overflow";
+      }
+      return false;
+    }
+    if(recordPipelineTelemetry)
+    {
+      if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunPrefixStopEvent,errorOut))
+      {
+        return false;
+      }
+    }
+    if(runSummaryCount == 0)
+    {
+      if(recordPipelineTelemetry)
+      {
+        batchResult->regionSingleRequestDirectReducePipelineRunCountLaunchCount += 1;
+        batchResult->regionSingleRequestDirectReducePipelineRunPrefixLaunchCount += 1;
+      }
+      status = cudaMemset(context->batchEventTotalsDevice + requestIndex,0,sizeof(int));
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      if(recordPipelineTelemetry)
+      {
+        if(!sim_scan_cuda_record_event(context->regionDirectPipelineRunCompactStopEvent,errorOut))
+        {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+
   sim_scan_count_row_events_region_kernel<<<countBlocks, countThreads, countSharedBytes>>>(context->HScoreDevice,
                                                                                            context->leadingDim,
                                                                                            rowStart,
@@ -21795,8 +21976,6 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
     return true;
   }
 
-  const int compactThreads = 256;
-  const int compactBlocks = rowCount;
   sim_scan_compact_row_events_region_kernel<<<compactBlocks, compactThreads>>>(context->HScoreDevice,
                                                                                context->HCoordDevice,
                                                                                context->leadingDim,
@@ -21817,13 +21996,13 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
     return false;
   }
 
-  const int summaryThreads = 256;
-  const int summaryBlocks = rowCount;
-  const size_t summarySharedBytes = static_cast<size_t>(summaryThreads) * sizeof(int);
-  sim_scan_count_region_run_summaries_kernel<<<summaryBlocks, summaryThreads, summarySharedBytes>>>(context->eventsDevice,
-                                                                                                    context->rowOffsetsDevice,
-                                                                                                    rowCount,
-                                                                                                    context->rowCountsDevice);
+  sim_scan_count_region_run_summaries_kernel<<<summaryBlocks,
+                                               summaryThreads,
+                                               summarySharedBytes>>>(
+    context->eventsDevice,
+    context->rowOffsetsDevice,
+    rowCount,
+    context->rowCountsDevice);
   status = cudaGetLastError();
   if(status != cudaSuccess)
   {
@@ -21876,12 +22055,15 @@ static bool sim_scan_cuda_execute_region_request_to_reserved_slice_locked(SimSca
       return false;
     }
   }
-  sim_scan_compact_region_run_summaries_kernel<<<summaryBlocks, summaryThreads, summarySharedBytes>>>(context->eventsDevice,
-                                                                                                      context->rowOffsetsDevice,
-                                                                                                      rowCount,
-                                                                                                      context->runOffsetsDevice,
-                                                                                                      context->initialRunSummariesDevice +
-                                                                                                        static_cast<size_t>(reservedOutputBase));
+
+  sim_scan_compact_region_run_summaries_kernel<<<summaryBlocks,
+                                                 summaryThreads,
+                                                 summarySharedBytes>>>(
+    context->eventsDevice,
+    context->rowOffsetsDevice,
+    rowCount,
+    context->runOffsetsDevice,
+    context->initialRunSummariesDevice + static_cast<size_t>(reservedOutputBase));
   status = cudaGetLastError();
   if(status != cudaSuccess)
   {
