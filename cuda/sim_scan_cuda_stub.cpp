@@ -308,11 +308,13 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(co
                                                                               int maxProposalCount,
                                                                               vector<SimScanCudaCandidateState> *outSelectedStates,
                                                                               string *errorOut,
-                                                                              bool *outUsedFrontierCache)
+                                                                              bool *outUsedFrontierCache,
+                                                                              uint64_t *outSingleStateDirectD2HSkips)
 {
   (void)handle;
   (void)maxProposalCount;
   (void)outUsedFrontierCache;
+  (void)outSingleStateDirectD2HSkips;
   if(outSelectedStates != NULL)
   {
     outSelectedStates->clear();

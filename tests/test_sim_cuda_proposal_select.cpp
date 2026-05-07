@@ -28,6 +28,16 @@ static bool expect_equal_size(size_t actual, size_t expected, const char *label)
     return false;
 }
 
+static bool expect_equal_uint64(uint64_t actual, uint64_t expected, const char *label)
+{
+    if (actual == expected)
+    {
+        return true;
+    }
+    std::cerr << label << ": expected " << expected << ", got " << actual << "\n";
+    return false;
+}
+
 static bool expect_equal_bool(bool actual, bool expected, const char *label)
 {
     if (actual == expected)
@@ -287,6 +297,93 @@ int main()
     ok = expect_equal_size(emptyFrontierProposals.size(),
                            0,
                            "persistent selector honors empty frontier cache") && ok;
+
+    std::vector<SimScanCudaCandidateState> singlePersistentStoreState;
+    singlePersistentStoreState.push_back(candidateStates[4]);
+    SimCudaPersistentSafeStoreHandle singlePersistentStoreHandle;
+    if (!sim_scan_cuda_upload_persistent_safe_candidate_state_store(singlePersistentStoreState.data(),
+                                                                    singlePersistentStoreState.size(),
+                                                                    &singlePersistentStoreHandle,
+                                                                    &error))
+    {
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&persistentStoreHandle);
+        std::cerr << "single persistent store upload failed: " << error << "\n";
+        return 2;
+    }
+
+    std::vector<SimScanCudaCandidateState> singleStoreProposals;
+    uint64_t singleStoreDirectD2HSkips = 0;
+    if (!sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(
+            singlePersistentStoreHandle,
+            3,
+            &singleStoreProposals,
+            &error,
+            NULL,
+            &singleStoreDirectD2HSkips))
+    {
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&singlePersistentStoreHandle);
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&persistentStoreHandle);
+        std::cerr << "single persistent store selector failed: " << error << "\n";
+        return 2;
+    }
+    ok = expect_equal_uint64(singleStoreDirectD2HSkips,
+                             1,
+                             "single persistent selector direct D2H skip") && ok;
+    ok = expect_equal_size(singleStoreProposals.size(),
+                           1,
+                           "single persistent selector proposal count") && ok;
+    if (singleStoreProposals.size() == 1)
+    {
+        ok = expect_state_equal(singleStoreProposals[0],
+                                singlePersistentStoreState[0],
+                                "single persistent selector proposal[0]") && ok;
+    }
+
+    std::vector<SimScanCudaCandidateState> singleFrontierState;
+    singleFrontierState.push_back(candidateStates[1]);
+    if (!set_frontier_cache(singlePersistentStoreHandle,
+                            singleFrontierState,
+                            0,
+                            &error))
+    {
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&singlePersistentStoreHandle);
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&persistentStoreHandle);
+        std::cerr << "set_frontier_cache(single) failed: " << error << "\n";
+        return 2;
+    }
+
+    std::vector<SimScanCudaCandidateState> singleFrontierProposals;
+    bool usedSingleFrontierCache = false;
+    uint64_t singleFrontierDirectD2HSkips = 0;
+    if (!sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(
+            singlePersistentStoreHandle,
+            3,
+            &singleFrontierProposals,
+            &error,
+            &usedSingleFrontierCache,
+            &singleFrontierDirectD2HSkips))
+    {
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&singlePersistentStoreHandle);
+        sim_scan_cuda_release_persistent_safe_candidate_state_store(&persistentStoreHandle);
+        std::cerr << "single frontier persistent store selector failed: " << error << "\n";
+        return 2;
+    }
+    ok = expect_equal_bool(usedSingleFrontierCache,
+                           true,
+                           "single persistent selector uses frontier cache") && ok;
+    ok = expect_equal_uint64(singleFrontierDirectD2HSkips,
+                             1,
+                             "single frontier persistent selector direct D2H skip") && ok;
+    ok = expect_equal_size(singleFrontierProposals.size(),
+                           1,
+                           "single frontier persistent selector proposal count") && ok;
+    if (singleFrontierProposals.size() == 1)
+    {
+        ok = expect_state_equal(singleFrontierProposals[0],
+                                singleFrontierState[0],
+                                "single frontier persistent selector proposal[0]") && ok;
+    }
+    sim_scan_cuda_release_persistent_safe_candidate_state_store(&singlePersistentStoreHandle);
 
     std::vector<uint64_t> erasedStartCoords(1, simScanCudaCandidateStateStartCoord(frontierSubsetStates[0]));
     if (!set_frontier_cache(persistentStoreHandle, frontierSubsetStates, 0, &error))

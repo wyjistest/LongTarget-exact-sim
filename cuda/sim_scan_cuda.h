@@ -1371,7 +1371,8 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(co
                                                                               int maxProposalCount,
                                                                               std::vector<SimScanCudaCandidateState> *outSelectedStates,
                                                                               std::string *errorOut,
-                                                                              bool *outUsedFrontierCache = NULL);
+                                                                              bool *outUsedFrontierCache = NULL,
+                                                                              uint64_t *outSingleStateDirectD2HSkips = NULL);
 
 bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_summaries(
   const std::vector<SimScanCudaInitialRunSummary> &summaries,

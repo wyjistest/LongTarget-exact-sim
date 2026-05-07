@@ -12489,7 +12489,8 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(co
                                                                               int maxProposalCount,
                                                                               vector<SimScanCudaCandidateState> *outSelectedStates,
                                                                               string *errorOut,
-                                                                              bool *outUsedFrontierCache)
+                                                                              bool *outUsedFrontierCache,
+                                                                              uint64_t *outSingleStateDirectD2HSkips)
 {
   if(outSelectedStates == NULL)
   {
@@ -12503,6 +12504,10 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(co
   if(outUsedFrontierCache != NULL)
   {
     *outUsedFrontierCache = false;
+  }
+  if(outSingleStateDirectD2HSkips != NULL)
+  {
+    *outSingleStateDirectD2HSkips = 0;
   }
   if(maxProposalCount <= 0 || !handle.valid)
   {
@@ -12554,6 +12559,29 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(co
   if(!ensure_sim_scan_cuda_initialized_locked(*context,handle.device,errorOut))
   {
     return false;
+  }
+  if(sourceStateCount == 1)
+  {
+    outSelectedStates->resize(1);
+    const cudaError_t status = cudaMemcpy(outSelectedStates->data(),
+                                          sourceStatesDevice,
+                                          sizeof(SimScanCudaCandidateState),
+                                          cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      outSelectedStates->clear();
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(outSingleStateDirectD2HSkips != NULL)
+    {
+      *outSingleStateDirectD2HSkips = 1;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
   }
   if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
                                   &context->outputCandidateStatesCapacity,
