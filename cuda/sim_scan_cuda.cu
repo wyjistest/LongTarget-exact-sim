@@ -13954,6 +13954,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->regionBucketedTrueBatchShadowMismatches +=
     requestBatchResult.regionBucketedTrueBatchShadowMismatches;
   batchResult->regionPackedAggregationRequestCount += requestBatchResult.regionPackedAggregationRequestCount;
+  batchResult->regionPackedAggregationZeroRunCandidateBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -24219,14 +24221,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   if(totalCandidateCapacity > 0 &&
-     (!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
-                                   &context->batchCandidateStatesCapacity,
-                                   totalCandidateCapacity,
-                                   errorOut) ||
-      !ensure_sim_scan_cuda_buffer(&context->initialRunSummariesDevice,
-                                   &context->initialRunSummariesCapacity,
-                                   totalCandidateCapacity,
-                                   errorOut)))
+     !ensure_sim_scan_cuda_buffer(&context->initialRunSummariesDevice,
+                                  &context->initialRunSummariesCapacity,
+                                  totalCandidateCapacity,
+                                  errorOut))
   {
     return false;
   }
@@ -24457,6 +24455,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     }
   }
 
+  bool candidateOutputBufferEnsured = false;
   for(size_t i = 0; i < requests.size(); ++i)
   {
     const int requestCapacity = requestCandidateCapacities[i];
@@ -24480,18 +24479,36 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
     }
     outResult->eventCount += static_cast<uint64_t>(requestEventCount);
     outResult->runSummaryCount += static_cast<uint64_t>(requestRunCount);
-    if(requestRunCount > 0 &&
-       !sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_locked(context,
-                                                                                requestCandidateBases[i],
-                                                                                requestRunCount,
-                                                                                first.filterStartCoordCount,
-                                                                                static_cast<int>(i),
-                                                                                requestCandidateBases[i],
-                                                                                requestCapacity,
-                                                                                errorOut))
+    if(requestRunCount > 0)
     {
-      return false;
+      if(!candidateOutputBufferEnsured)
+      {
+        if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
+                                        &context->batchCandidateStatesCapacity,
+                                        totalCandidateCapacity,
+                                        errorOut))
+        {
+          return false;
+        }
+        candidateOutputBufferEnsured = true;
+      }
+      if(!sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_locked(context,
+                                                                                  requestCandidateBases[i],
+                                                                                  requestRunCount,
+                                                                                  first.filterStartCoordCount,
+                                                                                  static_cast<int>(i),
+                                                                                  requestCandidateBases[i],
+                                                                                  requestCapacity,
+                                                                                  errorOut))
+      {
+        return false;
+      }
     }
+  }
+
+  if(outResult->runSummaryCount == 0 && batchResult != NULL)
+  {
+    batchResult->regionPackedAggregationZeroRunCandidateBufferEnsureSkips += 1;
   }
 
   if(requestCount > 0)

@@ -5391,6 +5391,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionPackedZeroRunCandidateBufferEnsureSkipCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionBucketedTrueBatchBatchCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -7307,9 +7313,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simRegionSummaryBytesD2HCount().fetch_add(byteCount, std::memory_order_relaxed);
 		}
 
-		inline void recordSimRegionPackedRequests(uint64_t requestCount)
+		inline void recordSimRegionPackedRequests(uint64_t requestCount,
+		                                          uint64_t zeroRunCandidateBufferEnsureSkips = 0)
 		{
 		  simRegionPackedRequestCount().fetch_add(requestCount, std::memory_order_relaxed);
+		  simRegionPackedZeroRunCandidateBufferEnsureSkipCount().fetch_add(
+		    zeroRunCandidateBufferEnsureSkips,
+		    std::memory_order_relaxed);
 		}
 
 		inline void recordSimRegionBucketedTrueBatch(const SimScanCudaBatchResult &batchResult)
@@ -8620,6 +8630,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		inline uint64_t getSimRegionPackedRequestCount()
 		{
 		  return simRegionPackedRequestCount().load(std::memory_order_relaxed);
+		}
+
+		inline uint64_t getSimRegionPackedZeroRunCandidateBufferEnsureSkipCount()
+		{
+		  return simRegionPackedZeroRunCandidateBufferEnsureSkipCount().load(std::memory_order_relaxed);
 		}
 
 		inline void getSimRegionBucketedTrueBatchStats(uint64_t &batches,
@@ -17935,7 +17950,9 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       }
       if(cudaBatchResult.usedRegionPackedAggregationPath)
       {
-        recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
+        recordSimRegionPackedRequests(
+          cudaBatchResult.regionPackedAggregationRequestCount,
+          cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
       }
       recordSimRegionBucketedTrueBatch(cudaBatchResult);
       recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
@@ -18020,7 +18037,9 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     }
     if(cudaBatchResult.usedRegionPackedAggregationPath)
     {
-      recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
+      recordSimRegionPackedRequests(
+        cudaBatchResult.regionPackedAggregationRequestCount,
+        cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
     }
     recordSimRegionBucketedTrueBatch(cudaBatchResult);
     recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
@@ -18288,7 +18307,9 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
       recordSimRegionSummaryBytesD2H(0);
       if(cudaBatchResult.usedRegionPackedAggregationPath)
       {
-        recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
+        recordSimRegionPackedRequests(
+          cudaBatchResult.regionPackedAggregationRequestCount,
+          cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
       }
       recordSimRegionBucketedTrueBatch(cudaBatchResult);
       recordSimRegionSingleRequestDirectReduce(cudaBatchResult);
@@ -18342,7 +18363,9 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
                                    static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)));
     if(cudaBatchResult.usedRegionPackedAggregationPath)
     {
-      recordSimRegionPackedRequests(cudaBatchResult.regionPackedAggregationRequestCount);
+      recordSimRegionPackedRequests(
+        cudaBatchResult.regionPackedAggregationRequestCount,
+        cudaBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips);
     }
     recordSimRegionBucketedTrueBatch(cudaBatchResult);
     recordSimRegionSingleRequestDirectReduce(cudaBatchResult);

@@ -3083,6 +3083,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_locate_seconds="<<simLocateSeconds<<endl;
   cerr<<"benchmark.sim_locate_gpu_seconds="<<simLocateGpuSeconds<<endl;
 	  cerr<<"benchmark.sim_region_packed_requests="<<getSimRegionPackedRequestCount()<<endl;
+	  cerr<<"benchmark.sim_region_packed_zero_run_candidate_buffer_ensure_skips="
+	      <<getSimRegionPackedZeroRunCandidateBufferEnsureSkipCount()<<endl;
 	  SimRegionSchedulerShapeTelemetryStats simRegionSchedulerShapeStats;
 	  getSimRegionSchedulerShapeTelemetryStats(simRegionSchedulerShapeStats);
 	  cerr<<"benchmark.sim_region_scheduler_shape_telemetry_enabled="

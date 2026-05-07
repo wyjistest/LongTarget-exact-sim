@@ -1758,6 +1758,35 @@ int main()
                              static_cast<uint64_t>(regionRequests.size()),
                              "region aggregated batch packed aggregation request count") && ok;
 
+    SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
+    zeroRunRegionRequest0.eventScoreFloor = 1000000;
+    SimScanCudaRequest zeroRunRegionRequest1 = zeroRunRegionRequest0;
+    zeroRunRegionRequest1.rowStart = 5;
+    zeroRunRegionRequest1.rowEnd = 16;
+    zeroRunRegionRequest1.colStart = 4;
+    zeroRunRegionRequest1.colEnd = 16;
+    std::vector<SimScanCudaRequest> zeroRunRegionRequests;
+    zeroRunRegionRequests.push_back(zeroRunRegionRequest0);
+    zeroRunRegionRequests.push_back(zeroRunRegionRequest1);
+
+    SimScanCudaBatchResult zeroRunAggregatedBatchResult;
+    const SimScanCudaRegionAggregationResult zeroRunAggregatedResult =
+      run_region_aggregated_reduce_all(zeroRunRegionRequests, &zeroRunAggregatedBatchResult);
+    ok = expect_true(zeroRunAggregatedBatchResult.usedRegionPackedAggregationPath,
+                     "zero-run region aggregated uses packed aggregation path") && ok;
+    ok = expect_equal_uint64(zeroRunAggregatedResult.runSummaryCount,
+                             0,
+                             "zero-run region aggregated runSummaryCount") && ok;
+    ok = expect_equal_uint64(zeroRunAggregatedResult.preAggregateCandidateStateCount,
+                             0,
+                             "zero-run region aggregated preAggregateCandidateStateCount") && ok;
+    ok = expect_true(zeroRunAggregatedResult.candidateStates.empty(),
+                     "zero-run region aggregated candidateStates empty") && ok;
+    ok = expect_equal_uint64(
+           zeroRunAggregatedBatchResult.regionPackedAggregationZeroRunCandidateBufferEnsureSkips,
+           1,
+           "zero-run region aggregated candidate buffer ensure skip") && ok;
+
     SimScanCudaRequest homogeneousRegionRequest0 = regionRequest0;
     homogeneousRegionRequest0.rowStart = 1;
     homogeneousRegionRequest0.rowEnd = 8;
