@@ -1910,6 +1910,31 @@ int main()
     proposalRequest0.proposalCandidates = true;
     proposalRequest0.persistAllCandidateStatesOnDevice = false;
 
+    const char *singleStateQuery = "AA";
+    const char *singleStateTarget = "AA";
+    SimScanCudaBatchResult singleStateProposalBatchResult;
+    const SimScanCudaInitialBatchResult singleStateProposal =
+      run_single_initial_proposal(singleStateQuery,
+                                  singleStateTarget,
+                                  1,
+                                  1,
+                                  gapOpen,
+                                  gapExtend,
+                                  scoreMatrix,
+                                  4,
+                                  &singleStateProposalBatchResult);
+    ok = expect_equal_uint64(singleStateProposal.allCandidateStateCount,
+                             1,
+                             "single-state proposal allCandidateStateCount") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(singleStateProposal.candidateStates.size()),
+                             1,
+                             "single-state proposal candidate count") && ok;
+    ok = expect_equal_uint64(singleStateProposalBatchResult.initialProposalDirectTopKSingleStateSkips,
+                             1,
+                             "single-state proposal direct-topK single-state skip") && ok;
+    ok = expect_true(singleStateProposalBatchResult.proposalSelectGpuSeconds == 0.0,
+                     "single-state proposal skips selector gpu work") && ok;
+
     SimScanCudaInitialBatchRequest proposalRequest1 = proposalRequest0;
     proposalRequest1.B = target1;
 

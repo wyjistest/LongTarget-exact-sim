@@ -1848,6 +1848,7 @@ static bool sim_scan_select_top_disjoint_candidate_states_from_device_locked(Sim
                                                                              int maxProposalCount,
                                                                              vector<SimScanCudaCandidateState> *outSelectedStates,
                                                                              double *outGpuSeconds,
+                                                                             uint64_t *outSingleStateSkips,
                                                                              string *errorOut)
 {
   if(outSelectedStates == NULL)
@@ -1863,6 +1864,10 @@ static bool sim_scan_select_top_disjoint_candidate_states_from_device_locked(Sim
   {
     *outGpuSeconds = 0.0;
   }
+  if(outSingleStateSkips != NULL)
+  {
+    *outSingleStateSkips = 0;
+  }
   if(context == NULL || statesDevice == NULL || stateCount <= 0 || maxProposalCount <= 0)
   {
     clear_sim_scan_cuda_error(errorOut);
@@ -1870,6 +1875,30 @@ static bool sim_scan_select_top_disjoint_candidate_states_from_device_locked(Sim
   }
 
   const int clampedProposalCount = min(maxProposalCount, sim_scan_cuda_max_candidates);
+  if(stateCount == 1)
+  {
+    outSelectedStates->resize(1);
+    const cudaError_t status = cudaMemcpy(outSelectedStates->data(),
+                                          statesDevice,
+                                          sizeof(SimScanCudaCandidateState),
+                                          cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      outSelectedStates->clear();
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(outSingleStateSkips != NULL)
+    {
+      *outSingleStateSkips = 1;
+    }
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+
   cudaError_t status = cudaEventRecord(context->startEvent);
   if(status != cudaSuccess)
   {
@@ -12257,6 +12286,7 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states_from_persistent_store(co
     maxProposalCount,
     outSelectedStates,
     &unusedGpuSeconds,
+    NULL,
     errorOut);
 }
 
@@ -13685,6 +13715,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
   batchResult->initialProposalV2RequestCount += requestBatchResult.initialProposalV2RequestCount;
   batchResult->initialProposalDirectTopKCountClearSkips +=
     requestBatchResult.initialProposalDirectTopKCountClearSkips;
+  batchResult->initialProposalDirectTopKSingleStateSkips +=
+    requestBatchResult.initialProposalDirectTopKSingleStateSkips;
   batchResult->initialProposalV3RequestCount += requestBatchResult.initialProposalV3RequestCount;
   batchResult->initialProposalV3SelectedStateCount += requestBatchResult.initialProposalV3SelectedStateCount;
   batchResult->initialProposalV3SelectedCountClearSkips +=
@@ -15456,6 +15488,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
   int reducedCandidateCount = 0;
   int reducedRunningMin = 0;
   double proposalSelectGpuSeconds = 0.0;
+  uint64_t initialProposalDirectTopKSingleStateSkips = 0;
   SimScanCudaInitialReduceReplayStats replayStats;
   if(totalRunSummaries > 0 && !usedProposalOnlinePath)
   {
@@ -15707,6 +15740,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                                                                            sim_scan_cuda_max_candidates,
                                                                            outCandidateStates,
                                                                            &proposalSelectGpuSeconds,
+                                                                           &initialProposalDirectTopKSingleStateSkips,
                                                                            errorOut))
       {
         return false;
@@ -15741,6 +15775,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major(const char *A,
                             std::chrono::steady_clock::now() - d2hStart).count()) / 1.0e9;
     batchResult->initialScanTailSeconds = batchResult->d2hSeconds;
     batchResult->proposalSelectGpuSeconds = proposalSelectGpuSeconds;
+    batchResult->initialProposalDirectTopKSingleStateSkips =
+      initialProposalDirectTopKSingleStateSkips;
     batchResult->initialDiagSeconds = initialDiagSeconds;
     batchResult->initialOnlineReduceSeconds = initialOnlineReduceSeconds;
     batchResult->initialWaitSeconds = batchResult->d2hSeconds;
@@ -16685,6 +16721,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   double proposalV3GpuSeconds = 0.0;
   double proposalSelectD2HSeconds = 0.0;
   uint64_t initialProposalDirectTopKCountClearSkips = 0;
+  uint64_t initialProposalDirectTopKSingleStateSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips = 0;
@@ -17721,6 +17758,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       {
         vector<SimScanCudaCandidateState> proposalStates;
         double requestProposalGpuSeconds = 0.0;
+        uint64_t requestProposalSingleStateSkips = 0;
         const bool selectedOk =
           useProposalV2Path ?
           sim_scan_select_top_disjoint_candidate_reduce_states_from_device_locked(context,
@@ -17736,6 +17774,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                                                                            sim_scan_cuda_max_candidates,
                                                                            &proposalStates,
                                                                            &requestProposalGpuSeconds,
+                                                                           &requestProposalSingleStateSkips,
                                                                            errorOut);
         if(!selectedOk)
         {
@@ -17750,6 +17789,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
         {
           proposalDirectTopKGpuSeconds += requestProposalGpuSeconds;
         }
+        initialProposalDirectTopKSingleStateSkips += requestProposalSingleStateSkips;
         initialProposalDirectTopKCountClearSkips += 1;
         result.candidateStates.swap(proposalStates);
       }
@@ -17836,6 +17876,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       useProposalV2Path ? static_cast<uint64_t>(proposalRequestCount) : 0;
     batchResult->initialProposalDirectTopKCountClearSkips =
       initialProposalDirectTopKCountClearSkips;
+    batchResult->initialProposalDirectTopKSingleStateSkips =
+      initialProposalDirectTopKSingleStateSkips;
     batchResult->initialProposalV3RequestCount =
       useProposalV3Path ? static_cast<uint64_t>(proposalRequestCount) : 0;
     batchResult->initialProposalV3SelectedStateCount =
@@ -19526,6 +19568,7 @@ bool sim_scan_cuda_select_top_disjoint_candidate_states(const vector<SimScanCuda
                                                                           clampedProposalCount,
                                                                           outSelectedStates,
                                                                           &unusedGpuSeconds,
+                                                                          NULL,
                                                                           errorOut);
 }
 

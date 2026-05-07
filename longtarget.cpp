@@ -1435,6 +1435,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestAllCandidateCountSkips);
     recordSimInitialProposalDirectTopKCountClearSkips(
       preparedBatch.cudaBatchResult.initialProposalDirectTopKCountClearSkips);
+    recordSimInitialProposalDirectTopKSingleStateSkips(
+      preparedBatch.cudaBatchResult.initialProposalDirectTopKSingleStateSkips);
     recordSimInitialProposalV3SelectedCountClearSkips(
       preparedBatch.cudaBatchResult.initialProposalV3SelectedCountClearSkips);
     recordSimInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips(
@@ -2366,6 +2368,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialTrueBatchSingleRequestRunBaseMaterializeSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestAllCandidateCountSkips = 0;
   uint64_t simInitialProposalDirectTopKCountClearSkips = 0;
+  uint64_t simInitialProposalDirectTopKSingleStateSkips = 0;
   uint64_t simInitialProposalV3SelectedCountClearSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestProposalV3StateBaseUploadSkips = 0;
@@ -2423,6 +2426,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   getSimInitialTrueBatchSingleRequestAllCandidateCountStats(
     simInitialTrueBatchSingleRequestAllCandidateCountSkips);
   getSimInitialProposalDirectTopKCountClearStats(simInitialProposalDirectTopKCountClearSkips);
+  getSimInitialProposalDirectTopKSingleStateStats(simInitialProposalDirectTopKSingleStateSkips);
   getSimInitialProposalV3SelectedCountClearStats(simInitialProposalV3SelectedCountClearSkips);
   getSimInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureStats(
     simInitialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips);
@@ -2645,6 +2649,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialTrueBatchSingleRequestAllCandidateCountSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_direct_topk_count_clear_skips="
       <<simInitialProposalDirectTopKCountClearSkips<<endl;
+  cerr<<"benchmark.sim_initial_proposal_direct_topk_single_state_skips="
+      <<simInitialProposalDirectTopKSingleStateSkips<<endl;
   cerr<<"benchmark.sim_initial_proposal_v3_selected_count_clear_skips="
       <<simInitialProposalV3SelectedCountClearSkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_single_request_proposal_v3_state_base_buffer_ensure_skips="

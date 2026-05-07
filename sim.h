@@ -6153,6 +6153,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialProposalDirectTopKSingleStateSkipCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialProposalV3SelectedCountClearSkipCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7657,6 +7663,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                              std::memory_order_relaxed);
 					}
 
+					inline void recordSimInitialProposalDirectTopKSingleStateSkips(uint64_t singleStateSkips)
+					{
+					  simInitialProposalDirectTopKSingleStateSkipCount().fetch_add(singleStateSkips,
+					                                                               std::memory_order_relaxed);
+					}
+
 					inline void recordSimInitialProposalV3SelectedCountClearSkips(uint64_t countClearSkips)
 					{
 					  simInitialProposalV3SelectedCountClearSkipCount().fetch_add(countClearSkips,
@@ -8948,6 +8960,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					{
 					  countClearSkips =
 					    simInitialProposalDirectTopKCountClearSkipCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialProposalDirectTopKSingleStateStats(uint64_t &singleStateSkips)
+					{
+					  singleStateSkips =
+					    simInitialProposalDirectTopKSingleStateSkipCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialProposalV3SelectedCountClearStats(uint64_t &countClearSkips)
