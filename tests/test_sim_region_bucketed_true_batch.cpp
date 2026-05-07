@@ -377,6 +377,9 @@ static bool test_bucketed_region_path_matches_unbucketed_aggregation()
     ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationInitialEventBufferEnsureSkips,
                              1,
                              "bucketed initial event buffer ensure skips") && ok;
+    ok = expect_equal_uint64(bucketedBatchResult.regionPackedAggregationNoBlockedMetadataUploadSkips,
+                             1,
+                             "bucketed no-blocked metadata upload skips") && ok;
     ok = expect_equal_uint64(bucketedBatchResult.taskCount,
                              1,
                              "bucketed taskCount") && ok;

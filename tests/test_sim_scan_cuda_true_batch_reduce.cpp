@@ -1887,6 +1887,10 @@ int main()
                                regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips,
                              1,
                              "region aggregated homogeneous actual-dim buffer ensure skips") && ok;
+    ok = expect_equal_uint64(homogeneousAggregatedBatchResult.
+                               regionPackedAggregationNoBlockedMetadataUploadSkips,
+                             1,
+                             "region aggregated homogeneous no-blocked metadata upload skips") && ok;
 
     SimScanCudaRequest regroupedRegionRequest0 = regionRequest0;
     regroupedRegionRequest0.rowStart = 1;

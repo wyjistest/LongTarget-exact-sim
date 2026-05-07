@@ -14002,6 +14002,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationInitialRunSummaryBufferEnsureSkips;
   batchResult->regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips;
+  batchResult->regionPackedAggregationNoBlockedMetadataUploadSkips +=
+    requestBatchResult.regionPackedAggregationNoBlockedMetadataUploadSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
   batchResult->regionPackedAggregationInitialEventBufferEnsureSkips +=
@@ -21710,7 +21712,8 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   vector<int> *outEventCounts,
   vector<int> *outRunCounts,
   string *errorOut,
-  uint64_t *outZeroRunCompactSkips = NULL)
+  uint64_t *outZeroRunCompactSkips = NULL,
+  uint64_t *outNoBlockedMetadataUploadSkips = NULL)
 {
   if(context == NULL || outEventCounts == NULL || outRunCounts == NULL)
   {
@@ -21725,6 +21728,10 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   if(outZeroRunCompactSkips != NULL)
   {
     *outZeroRunCompactSkips = 0;
+  }
+  if(outNoBlockedMetadataUploadSkips != NULL)
+  {
+    *outNoBlockedMetadataUploadSkips = 0;
   }
   if(requestCount == 0)
   {
@@ -21780,14 +21787,14 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
                                   &context->batchRunOffsetsCapacity,
                                   batchRowOffsets,
                                   errorOut) ||
-	     !ensure_sim_scan_cuda_buffer(&context->batchEventTotalsDevice,
-	                                  &context->batchEventTotalsCapacity,
-	                                  requestBegin + static_cast<size_t>(batchSize),
-	                                  errorOut) ||
-	     !ensure_sim_scan_cuda_buffer(&context->batchRunTotalsDevice,
-	                                  &context->batchRunTotalsCapacity,
-	                                  requestBegin + static_cast<size_t>(batchSize),
-	                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->batchEventTotalsDevice,
+                                  &context->batchEventTotalsCapacity,
+                                  requestBegin + static_cast<size_t>(batchSize),
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->batchRunTotalsDevice,
+                                  &context->batchRunTotalsCapacity,
+                                  requestBegin + static_cast<size_t>(batchSize),
+                                  errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->batchEventScoreFloorsDevice,
                                   &context->batchEventScoreFloorsCapacity,
                                   static_cast<size_t>(batchSize),
@@ -21802,14 +21809,6 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
                                   errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->summaryRowMaxColsDevice,
                                   &context->summaryRowMaxColsCapacity,
-                                  static_cast<size_t>(batchSize),
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->rowIntervalOffsetsDevice,
-                                  &context->rowIntervalOffsetsCapacity,
-                                  static_cast<size_t>(batchSize),
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchRunningMinsDevice,
-                                  &context->batchRunningMinsCapacity,
                                   static_cast<size_t>(batchSize),
                                   errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->batchAllCandidateCountsDevice,
@@ -21940,20 +21939,6 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   }
   if(status == cudaSuccess)
   {
-    status = cudaMemcpy(context->rowIntervalOffsetsDevice,
-                        blockedBases.data(),
-                        static_cast<size_t>(batchSize) * sizeof(int),
-                        cudaMemcpyHostToDevice);
-  }
-  if(status == cudaSuccess)
-  {
-    status = cudaMemcpy(context->batchRunningMinsDevice,
-                        blockedStarts.data(),
-                        static_cast<size_t>(batchSize) * sizeof(int),
-                        cudaMemcpyHostToDevice);
-  }
-  if(status == cudaSuccess)
-  {
     status = cudaMemcpy(context->batchAllCandidateCountsDevice,
                         blockedCounts.data(),
                         static_cast<size_t>(batchSize) * sizeof(int),
@@ -21983,19 +21968,43 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
   }
 
   const uint64_t *blockedWordsDevice = NULL;
+  const int *blockedBasesDevice = NULL;
+  const int *blockedStartsDevice = NULL;
   if(totalBlockedWords > 0)
   {
-    if(!ensure_sim_scan_cuda_buffer(&context->blockedWordsDevice,
+    if(!ensure_sim_scan_cuda_buffer(&context->rowIntervalOffsetsDevice,
+                                    &context->rowIntervalOffsetsCapacity,
+                                    static_cast<size_t>(batchSize),
+                                    errorOut) ||
+       !ensure_sim_scan_cuda_buffer(&context->batchRunningMinsDevice,
+                                    &context->batchRunningMinsCapacity,
+                                    static_cast<size_t>(batchSize),
+                                    errorOut) ||
+       !ensure_sim_scan_cuda_buffer(&context->blockedWordsDevice,
                                     &context->blockedWordsCapacityWords,
                                     totalBlockedWords,
                                     errorOut))
     {
       return false;
     }
-    status = cudaMemcpy(context->blockedWordsDevice,
-                        packedBlockedWords.data(),
-                        totalBlockedWords * sizeof(uint64_t),
+    status = cudaMemcpy(context->rowIntervalOffsetsDevice,
+                        blockedBases.data(),
+                        static_cast<size_t>(batchSize) * sizeof(int),
                         cudaMemcpyHostToDevice);
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(context->batchRunningMinsDevice,
+                          blockedStarts.data(),
+                          static_cast<size_t>(batchSize) * sizeof(int),
+                          cudaMemcpyHostToDevice);
+    }
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(context->blockedWordsDevice,
+                          packedBlockedWords.data(),
+                          totalBlockedWords * sizeof(uint64_t),
+                          cudaMemcpyHostToDevice);
+    }
     if(status != cudaSuccess)
     {
       if(errorOut != NULL)
@@ -22004,7 +22013,13 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
       }
       return false;
     }
+    blockedBasesDevice = context->rowIntervalOffsetsDevice;
+    blockedStartsDevice = context->batchRunningMinsDevice;
     blockedWordsDevice = context->blockedWordsDevice;
+  }
+  else if(outNoBlockedMetadataUploadSkips != NULL)
+  {
+    *outNoBlockedMetadataUploadSkips = 1;
   }
 
   const int QR = first.gapOpen + first.gapExtend;
@@ -22061,8 +22076,8 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
       context->summaryRowMaxColsDevice,
       actualRowCountsDevice,
       actualColCountsDevice,
-      context->rowIntervalOffsetsDevice,
-      context->batchRunningMinsDevice,
+      blockedBasesDevice,
+      blockedStartsDevice,
       context->batchAllCandidateCountsDevice,
       blockedWordsDevice,
       ppH,
@@ -24439,6 +24454,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         vector<int> groupEventCounts;
         vector<int> groupRunCounts;
         uint64_t groupZeroRunCompactSkips = 0;
+        uint64_t groupNoBlockedMetadataUploadSkips = 0;
         if(!sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_slices_locked(context,
                                                                                              orderedRequests,
                                                                                              group.requestBegin,
@@ -24450,7 +24466,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                              &groupEventCounts,
                                                                                              &groupRunCounts,
                                                                                              errorOut,
-                                                                                             &groupZeroRunCompactSkips))
+                                                                                             &groupZeroRunCompactSkips,
+                                                                                             &groupNoBlockedMetadataUploadSkips))
         {
           return false;
         }
@@ -24458,6 +24475,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         {
           batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
             groupZeroRunCompactSkips;
+          batchResult->regionPackedAggregationNoBlockedMetadataUploadSkips +=
+            groupNoBlockedMetadataUploadSkips;
         }
         ++scanGroupCount;
         fusedRequestCount += static_cast<uint64_t>(group.requestCount);
@@ -24518,6 +24537,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         vector<int> groupEventCounts;
         vector<int> groupRunCounts;
         uint64_t groupZeroRunCompactSkips = 0;
+        uint64_t groupNoBlockedMetadataUploadSkips = 0;
         if(!sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_slices_locked(context,
                                                                                              orderedRequests,
                                                                                              i,
@@ -24529,7 +24549,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
                                                                                              &groupEventCounts,
                                                                                              &groupRunCounts,
                                                                                              errorOut,
-                                                                                             &groupZeroRunCompactSkips))
+                                                                                             &groupZeroRunCompactSkips,
+                                                                                             &groupNoBlockedMetadataUploadSkips))
         {
           return false;
         }
@@ -24537,6 +24558,8 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         {
           batchResult->regionPackedAggregationZeroRunTrueBatchRunCompactSkips +=
             groupZeroRunCompactSkips;
+          batchResult->regionPackedAggregationNoBlockedMetadataUploadSkips +=
+            groupNoBlockedMetadataUploadSkips;
         }
         ++scanGroupCount;
         fusedRequestCount += static_cast<uint64_t>(groupEnd - i);
