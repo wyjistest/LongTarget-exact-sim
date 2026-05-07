@@ -628,6 +628,8 @@ static bool test_direct_reduce_zero_candidates_skips_compact_buffer_ensure()
     ok = expect_equal_uint64(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactLaunchCount,
                              0,
                              "zero direct candidate compact launches") && ok;
+    ok = expect_zero_double(batchResult.regionSingleRequestDirectReducePipelineCandidateCompactGpuSeconds,
+                            "zero direct candidate compact gpu seconds") && ok;
     return ok;
 }
 

@@ -23520,7 +23520,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     batchResult->regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips += 1;
   }
 
-  if(!sim_scan_cuda_record_event(context->regionDirectCompactStartEvent,errorOut))
+  if(shouldCompactCandidates &&
+     !sim_scan_cuda_record_event(context->regionDirectCompactStartEvent,errorOut))
   {
     return false;
   }
@@ -23644,10 +23645,11 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
                                     context->regionDirectPrefixStopEvent,
                                     &prefixGpuSeconds,
                                     errorOut) ||
-     !sim_scan_cuda_elapsed_seconds(context->regionDirectCompactStartEvent,
-                                    context->stopEvent,
-                                    &compactKernelGpuSeconds,
-                                    errorOut))
+     (shouldCompactCandidates &&
+      !sim_scan_cuda_elapsed_seconds(context->regionDirectCompactStartEvent,
+                                     context->stopEvent,
+                                     &compactKernelGpuSeconds,
+                                     errorOut)))
   {
     return false;
   }
