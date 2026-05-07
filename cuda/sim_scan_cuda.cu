@@ -13428,6 +13428,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestCountCopySkips;
   batchResult->initialTrueBatchEventBaseMaterializeSkips +=
     requestBatchResult.initialTrueBatchEventBaseMaterializeSkips;
+  batchResult->initialTrueBatchEventBaseBufferEnsureSkips +=
+    requestBatchResult.initialTrueBatchEventBaseBufferEnsureSkips;
   batchResult->usedInitialPinnedAsyncHandoff =
     batchResult->usedInitialPinnedAsyncHandoff ||
     requestBatchResult.usedInitialPinnedAsyncHandoff;
@@ -15868,10 +15870,6 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                                   &context->batchEventScoreFloorsCapacity,
                                   static_cast<size_t>(batchSize),
                                   errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
-                                  &context->batchEventBasesCapacity,
-                                  static_cast<size_t>(batchSize),
-                                  errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->batchRunBasesDevice,
                                   &context->batchRunBasesCapacity,
                                   static_cast<size_t>(batchSize),
@@ -16122,6 +16120,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   vector<int> totalRunsPerTask(static_cast<size_t>(batchSize),0);
   uint64_t initialTrueBatchSingleRequestPrefixSkips = 0;
   uint64_t initialTrueBatchEventBaseMaterializeSkips = 0;
+  const uint64_t initialTrueBatchEventBaseBufferEnsureSkips = 1;
   int totalEvents = 0;
   if(batchSize == 1)
   {
@@ -17664,6 +17663,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestCountCopySkips;
     batchResult->initialTrueBatchEventBaseMaterializeSkips =
       initialTrueBatchEventBaseMaterializeSkips;
+    batchResult->initialTrueBatchEventBaseBufferEnsureSkips =
+      initialTrueBatchEventBaseBufferEnsureSkips;
     batchResult->initialHandoffPinnedAsyncRequested =
       requestInitialPinnedAsyncHandoff;
     batchResult->initialHandoffPinnedAsyncActive =

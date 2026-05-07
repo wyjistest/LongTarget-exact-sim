@@ -1417,6 +1417,8 @@ static inline bool longtarget_execute_window_pipeline_batch_cpu(const vector<Exa
       preparedBatch.cudaBatchResult.initialTrueBatchSingleRequestCountCopySkips);
     recordSimInitialTrueBatchEventBaseMaterializeSkips(
       preparedBatch.cudaBatchResult.initialTrueBatchEventBaseMaterializeSkips);
+    recordSimInitialTrueBatchEventBaseBufferEnsureSkips(
+      preparedBatch.cudaBatchResult.initialTrueBatchEventBaseBufferEnsureSkips);
     recordSimInitialPinnedAsyncHandoffStats(preparedBatch.cudaBatchResult);
     if(!preparedBatch.usedInitialReduce &&
        !preparedBatch.usedInitialProposals &&
@@ -2326,6 +2328,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialTrueBatchSingleRequestInputPackSkips = 0;
   uint64_t simInitialTrueBatchSingleRequestCountCopySkips = 0;
   uint64_t simInitialTrueBatchEventBaseMaterializeSkips = 0;
+  uint64_t simInitialTrueBatchEventBaseBufferEnsureSkips = 0;
   SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
   SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
@@ -2360,6 +2363,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   getSimInitialTrueBatchSingleRequestInputPackStats(simInitialTrueBatchSingleRequestInputPackSkips);
   getSimInitialTrueBatchSingleRequestCountCopyStats(simInitialTrueBatchSingleRequestCountCopySkips);
   getSimInitialTrueBatchEventBaseMaterializeStats(simInitialTrueBatchEventBaseMaterializeSkips);
+  getSimInitialTrueBatchEventBaseBufferEnsureStats(simInitialTrueBatchEventBaseBufferEnsureSkips);
   getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
@@ -2555,6 +2559,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialTrueBatchSingleRequestCountCopySkips<<endl;
   cerr<<"benchmark.sim_initial_true_batch_event_base_materialize_skips="
       <<simInitialTrueBatchEventBaseMaterializeSkips<<endl;
+  cerr<<"benchmark.sim_initial_true_batch_event_base_buffer_ensure_skips="
+      <<simInitialTrueBatchEventBaseBufferEnsureSkips<<endl;
   cerr<<"benchmark.sim_initial_handoff_pinned_async_enabled="
       <<((simCudaInitialChunkedHandoffEnabledRuntime() &&
           simCudaInitialPinnedAsyncHandoffEnabledRuntime()) ? 1 : 0)<<endl;
