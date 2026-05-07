@@ -2586,6 +2586,24 @@ int main()
     proposalRequests.push_back(proposalRequest0);
     proposalRequests.push_back(proposalRequest1);
 
+    SimScanCudaInitialBatchRequest zeroRunProposalRequest0 = proposalRequest0;
+    zeroRunProposalRequest0.eventScoreFloor = zeroRunSummaryEventScoreFloor;
+    SimScanCudaInitialBatchRequest zeroRunProposalRequest1 = proposalRequest1;
+    zeroRunProposalRequest1.eventScoreFloor = zeroRunSummaryEventScoreFloor;
+    std::vector<SimScanCudaInitialBatchRequest> zeroRunProposalRequests;
+    zeroRunProposalRequests.push_back(zeroRunProposalRequest0);
+    zeroRunProposalRequests.push_back(zeroRunProposalRequest1);
+    SimScanCudaBatchResult zeroRunProposalBatchResult;
+    std::vector<SimScanCudaInitialBatchResult> zeroRunProposalBatchResults;
+    if (!sim_scan_cuda_enumerate_initial_events_row_major_true_batch(zeroRunProposalRequests,
+                                                                     &zeroRunProposalBatchResults,
+                                                                     &zeroRunProposalBatchResult,
+                                                                     &error))
+    {
+        std::cerr << "zero-run proposal true batch failed: " << error << "\n";
+        return 2;
+    }
+
     std::vector<SimScanCudaInitialBatchResult> proposalBatchResults;
     SimScanCudaBatchResult proposalBatchResult;
     if (!sim_scan_cuda_enumerate_initial_events_row_major_true_batch(proposalRequests,
@@ -2598,6 +2616,24 @@ int main()
     }
 
     ok = expect_equal_uint64(static_cast<uint64_t>(proposalBatchResults.size()), 2, "proposal batch result count") && ok;
+    ok = expect_true(zeroRunProposalBatchResult.usedCuda,
+                     "zero-run proposal true batch usedCuda") && ok;
+    ok = expect_true(zeroRunProposalBatchResult.usedInitialDirectSummaryPath,
+                     "zero-run proposal true batch used direct-summary path") && ok;
+    ok = expect_true(!zeroRunProposalBatchResult.usedInitialDeviceResidencyPath,
+                     "zero-run proposal true batch no residency path") && ok;
+    ok = expect_equal_uint64(zeroRunProposalBatchResult.taskCount,
+                             2,
+                             "zero-run proposal true batch taskCount") && ok;
+    ok = expect_equal_uint64(zeroRunProposalBatchResult.launchCount,
+                             0,
+                             "zero-run proposal true batch launchCount skipped") && ok;
+    ok = expect_equal_double(zeroRunProposalBatchResult.gpuSeconds,
+                             0.0,
+                             "zero-run proposal true batch gpu seconds skipped") && ok;
+    ok = expect_equal_uint64(static_cast<uint64_t>(zeroRunProposalBatchResults.size()),
+                             2,
+                             "zero-run proposal true batch result count") && ok;
     ok = expect_true(!proposalBatchResult.usedInitialProposalV2Path,
                      "proposal batch baseline no V2 path") && ok;
     ok = expect_true(!proposalBatchResult.usedInitialProposalV2DirectTopKPath,
@@ -2682,6 +2718,43 @@ int main()
                          "proposal batch result 0 persistent store invalid") && ok;
         ok = expect_true(!proposalBatchResults[1].persistentSafeStoreHandle.valid,
                          "proposal batch result 1 persistent store invalid") && ok;
+    }
+    if (zeroRunProposalBatchResults.size() == 2)
+    {
+        ok = expect_equal_uint64(zeroRunProposalBatchResults[0].eventCount,
+                                 0,
+                                 "zero-run proposal batch result 0 eventCount") && ok;
+        ok = expect_equal_uint64(zeroRunProposalBatchResults[1].eventCount,
+                                 0,
+                                 "zero-run proposal batch result 1 eventCount") && ok;
+        ok = expect_equal_uint64(zeroRunProposalBatchResults[0].runSummaryCount,
+                                 0,
+                                 "zero-run proposal batch result 0 runSummaryCount") && ok;
+        ok = expect_equal_uint64(zeroRunProposalBatchResults[1].runSummaryCount,
+                                 0,
+                                 "zero-run proposal batch result 1 runSummaryCount") && ok;
+        ok = expect_equal_uint64(zeroRunProposalBatchResults[0].allCandidateStateCount,
+                                 0,
+                                 "zero-run proposal batch result 0 allCandidateStateCount") && ok;
+        ok = expect_equal_uint64(zeroRunProposalBatchResults[1].allCandidateStateCount,
+                                 0,
+                                 "zero-run proposal batch result 1 allCandidateStateCount") && ok;
+        ok = expect_true(zeroRunProposalBatchResults[0].initialRunSummaries.empty(),
+                         "zero-run proposal batch result 0 summaries empty") && ok;
+        ok = expect_true(zeroRunProposalBatchResults[1].initialRunSummaries.empty(),
+                         "zero-run proposal batch result 1 summaries empty") && ok;
+        ok = expect_true(zeroRunProposalBatchResults[0].candidateStates.empty(),
+                         "zero-run proposal batch result 0 candidateStates empty") && ok;
+        ok = expect_true(zeroRunProposalBatchResults[1].candidateStates.empty(),
+                         "zero-run proposal batch result 1 candidateStates empty") && ok;
+        ok = expect_true(zeroRunProposalBatchResults[0].allCandidateStates.empty(),
+                         "zero-run proposal batch result 0 allCandidateStates empty") && ok;
+        ok = expect_true(zeroRunProposalBatchResults[1].allCandidateStates.empty(),
+                         "zero-run proposal batch result 1 allCandidateStates empty") && ok;
+        ok = expect_true(!zeroRunProposalBatchResults[0].persistentSafeStoreHandle.valid,
+                         "zero-run proposal batch result 0 persistent store invalid") && ok;
+        ok = expect_true(!zeroRunProposalBatchResults[1].persistentSafeStoreHandle.valid,
+                         "zero-run proposal batch result 1 persistent store invalid") && ok;
     }
 
     SimScanCudaBatchResult proposalBatchResultV2;
