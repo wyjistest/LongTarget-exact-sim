@@ -181,6 +181,19 @@ static std::vector<SimScanCudaCandidateState> aggregate_region_candidate_states_
     return aggregated;
 }
 
+static uint64_t count_multi_summary_results(const std::vector<SimScanCudaRequestResult> &results)
+{
+    uint64_t count = 0;
+    for (size_t i = 0; i < results.size(); ++i)
+    {
+        if (results[i].runSummaryCount > 1)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
 static bool expect_candidate_states_equal(const std::vector<SimScanCudaCandidateState> &actual,
                                           const std::vector<SimScanCudaCandidateState> &expected,
                                           const char *label)
@@ -1864,6 +1877,37 @@ int main()
                                regionPackedAggregationSingleSummaryFilterKernelFusions,
                              2,
                              "region aggregated filter single-summary kernel fusions") && ok;
+
+    SimScanCudaRequest noFilterRegionRequest0 = regionRequest0;
+    noFilterRegionRequest0.filterStartCoords = NULL;
+    noFilterRegionRequest0.filterStartCoordCount = 0;
+    SimScanCudaRequest noFilterRegionRequest1 = regionRequest1;
+    noFilterRegionRequest1.filterStartCoords = NULL;
+    noFilterRegionRequest1.filterStartCoordCount = 0;
+    std::vector<SimScanCudaRequest> noFilterRegionRequests;
+    noFilterRegionRequests.push_back(noFilterRegionRequest0);
+    noFilterRegionRequests.push_back(noFilterRegionRequest1);
+    SimScanCudaBatchResult noFilterRegionBaselineBatchResult;
+    const std::vector<SimScanCudaRequestResult> noFilterRegionBaselineResults =
+      run_region_batch_reduce_all(noFilterRegionRequests,
+                                  false,
+                                  &noFilterRegionBaselineBatchResult);
+    SimScanCudaBatchResult noFilterRegionAggregatedBatchResult;
+    const SimScanCudaRegionAggregationResult noFilterRegionAggregatedResult =
+      run_region_aggregated_reduce_all(noFilterRegionRequests, &noFilterRegionAggregatedBatchResult);
+    const std::vector<SimScanCudaCandidateState> expectedNoFilterRegionStates =
+      aggregate_region_candidate_states_host(noFilterRegionBaselineResults);
+    const uint64_t expectedNoFilterSliceReduceKeyBufferEnsureSkips =
+      count_multi_summary_results(noFilterRegionBaselineResults);
+    ok = expect_candidate_states_equal(noFilterRegionAggregatedResult.candidateStates,
+                                       expectedNoFilterRegionStates,
+                                       "region aggregated no-filter candidateStates") && ok;
+    ok = expect_true(expectedNoFilterSliceReduceKeyBufferEnsureSkips > 0,
+                     "region aggregated no-filter has multi-summary slices") && ok;
+    ok = expect_equal_uint64(noFilterRegionAggregatedBatchResult.
+                               regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips,
+                             expectedNoFilterSliceReduceKeyBufferEnsureSkips,
+                             "region aggregated no-filter slice reduce key buffer ensure skips") && ok;
 
     SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
     zeroRunRegionRequest0.eventScoreFloor = 1000000;

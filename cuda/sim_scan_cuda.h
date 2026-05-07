@@ -861,6 +861,7 @@ struct SimScanCudaBatchResult
     regionPackedAggregationSingleRequestFinalReduceSkips(0),
     regionPackedAggregationAlreadyPackedFinalCompactSkips(0),
     regionPackedAggregationFinalReduceKeyBufferEnsureSkips(0),
+    regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips(0),
     regionSingleRequestDirectReduceAttempts(0),
     regionSingleRequestDirectReduceSuccesses(0),
     regionSingleRequestDirectReduceFallbacks(0),
@@ -1106,6 +1107,7 @@ struct SimScanCudaBatchResult
   uint64_t regionPackedAggregationSingleRequestFinalReduceSkips;
   uint64_t regionPackedAggregationAlreadyPackedFinalCompactSkips;
   uint64_t regionPackedAggregationFinalReduceKeyBufferEnsureSkips;
+  uint64_t regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips;
   uint64_t regionSingleRequestDirectReduceAttempts;
   uint64_t regionSingleRequestDirectReduceSuccesses;
   uint64_t regionSingleRequestDirectReduceFallbacks;
