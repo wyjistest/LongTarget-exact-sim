@@ -1952,6 +1952,9 @@ int main()
     ok = expect_true(noFilterSingleRegionBatchResult.
                        regionSingleRequestNoFilterReduceKeyBufferEnsureSkips > 0,
                      "single region no-filter reduce key buffer ensure skips recorded") && ok;
+    ok = expect_true(noFilterSingleRegionBatchResult.
+                       regionSingleRequestNoFilterOutputBufferOverensureSkips > 0,
+                     "single region no-filter output buffer overensure skips recorded") && ok;
 
     SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
     zeroRunRegionRequest0.eventScoreFloor = 1000000;

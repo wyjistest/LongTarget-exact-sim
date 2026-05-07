@@ -5487,6 +5487,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionSingleRequestNoFilterOutputBufferOverensureSkipCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simRegionSingleRequestFilterOutputBufferOverensureSkipCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -7376,6 +7382,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simRegionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkipCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips,
 		    std::memory_order_relaxed);
+		  simRegionSingleRequestNoFilterOutputBufferOverensureSkipCount().fetch_add(
+		    batchResult.regionSingleRequestNoFilterOutputBufferOverensureSkips,
+		    std::memory_order_relaxed);
 		  simRegionSingleRequestFilterOutputBufferOverensureSkipCount().fetch_add(
 		    batchResult.regionSingleRequestFilterOutputBufferOverensureSkips,
 		    std::memory_order_relaxed);
@@ -8768,6 +8777,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		                                                       uint64_t &shadowMismatches,
 		                                                       uint64_t &hashCapacityMax,
 		                                                       uint64_t &zeroCandidateCompactBufferEnsureSkips,
+		                                                       uint64_t &noFilterOutputBufferOverensureSkips,
 		                                                       uint64_t &filterOutputBufferOverensureSkips,
 		                                                       uint64_t &candidateCount,
 		                                                       uint64_t &eventCount,
@@ -8793,6 +8803,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  zeroCandidateCompactBufferEnsureSkips =
 		    simRegionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkipCount().load(
 		      std::memory_order_relaxed);
+		  noFilterOutputBufferOverensureSkips =
+		    simRegionSingleRequestNoFilterOutputBufferOverensureSkipCount().load(std::memory_order_relaxed);
 		  filterOutputBufferOverensureSkips =
 		    simRegionSingleRequestFilterOutputBufferOverensureSkipCount().load(std::memory_order_relaxed);
 		  candidateCount =

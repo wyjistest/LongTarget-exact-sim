@@ -3217,6 +3217,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simRegionSingleRequestDirectReduceShadowMismatches = 0;
   uint64_t simRegionSingleRequestDirectReduceHashCapacityMax = 0;
   uint64_t simRegionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips = 0;
+  uint64_t simRegionSingleRequestNoFilterOutputBufferOverensureSkips = 0;
   uint64_t simRegionSingleRequestFilterOutputBufferOverensureSkips = 0;
   uint64_t simRegionSingleRequestDirectReduceCandidates = 0;
   uint64_t simRegionSingleRequestDirectReduceEvents = 0;
@@ -3238,6 +3239,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simRegionSingleRequestDirectReduceShadowMismatches,
     simRegionSingleRequestDirectReduceHashCapacityMax,
     simRegionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips,
+    simRegionSingleRequestNoFilterOutputBufferOverensureSkips,
     simRegionSingleRequestFilterOutputBufferOverensureSkips,
     simRegionSingleRequestDirectReduceCandidates,
     simRegionSingleRequestDirectReduceEvents,
@@ -3271,6 +3273,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionSingleRequestDirectReduceHashCapacityMax<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_zero_candidate_compact_buffer_ensure_skips="
       <<simRegionSingleRequestDirectReduceZeroCandidateCompactBufferEnsureSkips<<endl;
+  cerr<<"benchmark.sim_region_single_request_no_filter_output_buffer_overensure_skips="
+      <<simRegionSingleRequestNoFilterOutputBufferOverensureSkips<<endl;
   cerr<<"benchmark.sim_region_single_request_filter_output_buffer_overensure_skips="
       <<simRegionSingleRequestFilterOutputBufferOverensureSkips<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_candidates="

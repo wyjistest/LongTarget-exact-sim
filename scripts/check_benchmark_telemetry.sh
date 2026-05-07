@@ -401,6 +401,7 @@ grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_overflows=[0-9]+$'
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_shadow_mismatches=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_hash_capacity_max=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_zero_candidate_compact_buffer_ensure_skips=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_region_single_request_no_filter_output_buffer_overensure_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_filter_output_buffer_overensure_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_candidates=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_region_single_request_direct_reduce_events=[0-9]+$' "$STDERR_LOG"

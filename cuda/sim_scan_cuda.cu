@@ -14083,6 +14083,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationNoFilterSliceReduceKeyBufferEnsureSkips;
   batchResult->regionSingleRequestNoFilterReduceKeyBufferEnsureSkips +=
     requestBatchResult.regionSingleRequestNoFilterReduceKeyBufferEnsureSkips;
+  batchResult->regionSingleRequestNoFilterOutputBufferOverensureSkips +=
+    requestBatchResult.regionSingleRequestNoFilterOutputBufferOverensureSkips;
   batchResult->regionSingleRequestSingleCandidateOutputBufferEnsureSkips +=
     requestBatchResult.regionSingleRequestSingleCandidateOutputBufferEnsureSkips;
   batchResult->regionSingleRequestFilterOutputBufferOverensureSkips +=
@@ -20870,10 +20872,14 @@ static bool sim_scan_cuda_execute_region_request_locked(SimScanCudaContext *cont
             {
               if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
                                               &context->outputCandidateStatesCapacity,
-                                              summaryCount,
+                                              static_cast<size_t>(reducedCandidateCount),
                                               errorOut))
               {
                 return false;
+              }
+              if(batchResult != NULL && static_cast<size_t>(reducedCandidateCount) < summaryCount)
+              {
+                batchResult->regionSingleRequestNoFilterOutputBufferOverensureSkips += 1;
               }
               sim_scan_extract_candidate_states_kernel<<<extractBlocks, extractThreads>>>(context->reducedStatesDevice,
                                                                                            reducedCandidateCount,
