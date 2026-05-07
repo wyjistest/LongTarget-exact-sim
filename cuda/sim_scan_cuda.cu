@@ -14000,6 +14000,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationInitialSummaryTotalsBufferEnsureSkips;
   batchResult->regionPackedAggregationInitialRunSummaryBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationInitialRunSummaryBufferEnsureSkips;
+  batchResult->regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips +=
+    requestBatchResult.regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
   batchResult->regionPackedAggregationInitialEventBufferEnsureSkips +=
@@ -21794,14 +21796,6 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
                                   &context->batchRunBasesCapacity,
                                   static_cast<size_t>(batchSize),
                                   errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
-                                  &context->batchEventBasesCapacity,
-                                  requestBegin + static_cast<size_t>(batchSize),
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
-                                  &context->batchCandidateCountsCapacity,
-                                  requestBegin + static_cast<size_t>(batchSize),
-                                  errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->summaryRowMinColsDevice,
                                   &context->summaryRowMinColsCapacity,
                                   static_cast<size_t>(batchSize),
@@ -21828,6 +21822,20 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
                                   errorOut))
   {
     return false;
+  }
+  if(maskToActualDimensions)
+  {
+    if(!ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
+                                    &context->batchEventBasesCapacity,
+                                    requestBegin + static_cast<size_t>(batchSize),
+                                    errorOut) ||
+       !ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
+                                    &context->batchCandidateCountsCapacity,
+                                    requestBegin + static_cast<size_t>(batchSize),
+                                    errorOut))
+    {
+      return false;
+    }
   }
   if(!ensure_sim_scan_cuda_true_batch_diag_capacity_locked(*context,batchDiagCells,errorOut))
   {
@@ -24532,6 +24540,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         }
         ++scanGroupCount;
         fusedRequestCount += static_cast<uint64_t>(groupEnd - i);
+        if(batchResult != NULL && groupEnd - i > 1)
+        {
+          batchResult->regionPackedAggregationExactHomogeneousActualDimBufferEnsureSkips += 1;
+        }
         i = groupEnd;
         continue;
       }
