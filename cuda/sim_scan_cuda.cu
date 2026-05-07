@@ -13994,6 +13994,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationSliceTempOutputBufferEnsureSkips;
   batchResult->regionPackedAggregationCandidateCountClearSkips +=
     requestBatchResult.regionPackedAggregationCandidateCountClearSkips;
+  batchResult->regionPackedAggregationSummaryTotalsClearSkips +=
+    requestBatchResult.regionPackedAggregationSummaryTotalsClearSkips;
   batchResult->regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips +=
     requestBatchResult.regionPackedAggregationNoFilterInitialCandidateCountBufferEnsureSkips;
   batchResult->regionPackedAggregationFinalCompactBaseBufferEnsureSkips +=
@@ -24331,25 +24333,10 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   cudaError_t status = cudaSuccess;
-  if(requestCount > 0)
+  if(requestCount > 0 && batchResult != NULL)
   {
-    status = cudaMemset(context->batchEventTotalsDevice,0,requestCount * sizeof(int));
-    if(status == cudaSuccess)
-    {
-      status = cudaMemset(context->batchRunTotalsDevice,0,requestCount * sizeof(int));
-    }
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
-      {
-        *errorOut = cuda_error_string(status);
-      }
-      return false;
-    }
-    if(batchResult != NULL)
-    {
-      batchResult->regionPackedAggregationCandidateCountClearSkips += 1;
-    }
+    batchResult->regionPackedAggregationCandidateCountClearSkips += 1;
+    batchResult->regionPackedAggregationSummaryTotalsClearSkips += 1;
   }
 
   status = cudaEventRecord(context->startEvent);
