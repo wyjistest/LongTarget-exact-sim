@@ -19687,6 +19687,22 @@ bool sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
     clear_sim_scan_cuda_error(errorOut);
     return true;
   }
+  bool allRunsEmpty = true;
+  for(size_t taskIndex = 0; taskIndex < runTotals.size(); ++taskIndex)
+  {
+    if(runTotals[taskIndex] != 0)
+    {
+      allRunsEmpty = false;
+      break;
+    }
+  }
+  if(allRunsEmpty)
+  {
+    outResults->assign(static_cast<size_t>(taskCount),
+                       SimScanCudaFrontierTransducerSegmentedShadowResult());
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
 
   int device = 0;
   const int slot = simCudaWorkerSlotRuntime();

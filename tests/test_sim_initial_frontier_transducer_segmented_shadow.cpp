@@ -763,6 +763,68 @@ static bool analyze_batch(const std::vector<TestCase> &tests,
     return ok;
 }
 
+static bool check_all_zero_segmented_shadow_skips_gpu_work()
+{
+    const std::vector<SimScanCudaInitialRunSummary> summaries;
+    const std::vector<int> runBases(3, 0);
+    const std::vector<int> runTotals(3, 0);
+    std::vector<SimScanCudaFrontierTransducerSegmentedShadowResult> results;
+    double shadowSeconds = -1.0;
+    std::string error;
+    if (!sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
+            summaries,
+            runBases,
+            runTotals,
+            2,
+            &results,
+            &shadowSeconds,
+            &error))
+    {
+        std::cerr << "all-zero segmented shadow call failed: " << error << "\n";
+        return false;
+    }
+    if (shadowSeconds != 0.0)
+    {
+        std::cerr << "all-zero segmented shadow should skip GPU timing, got "
+                  << shadowSeconds << "\n";
+        return false;
+    }
+    if (results.size() != runTotals.size())
+    {
+        std::cerr << "all-zero segmented shadow result count expected "
+                  << runTotals.size() << ", got " << results.size() << "\n";
+        return false;
+    }
+
+    FrontierState emptyState;
+    emptyState.runningMin = 0;
+    const SimScanCudaFrontierDigest emptyDigest = digest_frontier_state(emptyState);
+    const SimScanCudaFrontierTransducerShadowStats emptyStats =
+        cpu_segmented_stats(summaries, 2);
+    for (size_t i = 0; i < results.size(); ++i)
+    {
+        if (!results[i].candidateStates.empty() || results[i].runningMin != 0)
+        {
+            std::cerr << "all-zero segmented shadow result " << i
+                      << " should have an empty frontier\n";
+            return false;
+        }
+        if (!digests_equal(results[i].digest, emptyDigest))
+        {
+            std::cerr << "all-zero segmented shadow digest mismatch for result "
+                      << i << "\n";
+            return false;
+        }
+        if (!stats_equal(results[i].stats, emptyStats))
+        {
+            std::cerr << "all-zero segmented shadow stats mismatch for result "
+                      << i << "\n";
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool write_mismatches(const std::vector<std::string> &mismatches)
 {
     const std::string path = std::string(kArtifactDir) + "/segmented_shadow_mismatches.jsonl";
@@ -942,6 +1004,10 @@ int main()
     }
 
     if (!ensure_directory(".tmp") || !ensure_directory(kArtifactDir))
+    {
+        return 1;
+    }
+    if (!check_all_zero_segmented_shadow_skips_gpu_work())
     {
         return 1;
     }
