@@ -9623,6 +9623,7 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
   vector<int> *outCandidateCounts,
   vector<int> *outCandidateBases,
   double *outCompactSeconds,
+  SimScanCudaBatchResult *batchResult,
   string *errorOut)
 {
   if(outTotalCandidateCount == NULL ||
@@ -9680,10 +9681,6 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
                                   &context->outputCandidateStatesCapacity,
                                   static_cast<size_t>(reducedCandidateCount),
                                   errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
-                                  &context->batchEventBasesCapacity,
-                                  static_cast<size_t>(batchSize),
-                                  errorOut) ||
      !ensure_sim_scan_cuda_buffer(&context->batchOutputCursorsDevice,
                                   &context->batchOutputCursorsCapacity,
                                   static_cast<size_t>(batchSize),
@@ -9691,24 +9688,45 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
   {
     return false;
   }
+  const bool useSingleRequestImplicitOutputBase = batchSize == 1;
+  const int *outputBasesDevice = NULL;
+  if(useSingleRequestImplicitOutputBase)
+  {
+    if(batchResult != NULL)
+    {
+      batchResult->initialTrueBatchSingleRequestAllCandidateBaseBufferEnsureSkips += 1;
+      batchResult->initialTrueBatchSingleRequestAllCandidateBasePrefixSkips += 1;
+    }
+  }
+  else if(!ensure_sim_scan_cuda_buffer(&context->batchEventBasesDevice,
+                                       &context->batchEventBasesCapacity,
+                                       static_cast<size_t>(batchSize),
+                                       errorOut))
+  {
+    return false;
+  }
   if(!sim_scan_cuda_begin_aux_timing(context,errorOut))
   {
     return false;
   }
-  try
+  if(!useSingleRequestImplicitOutputBase)
   {
-    thrust::exclusive_scan(thrust::device,
-                           thrust::device_pointer_cast(context->batchAllCandidateCountsDevice),
-                           thrust::device_pointer_cast(context->batchAllCandidateCountsDevice) + batchSize,
-                           thrust::device_pointer_cast(context->batchEventBasesDevice));
-  }
-  catch(const thrust::system_error &e)
-  {
-    if(errorOut != NULL)
+    try
     {
-      *errorOut = e.what();
+      thrust::exclusive_scan(thrust::device,
+                             thrust::device_pointer_cast(context->batchAllCandidateCountsDevice),
+                             thrust::device_pointer_cast(context->batchAllCandidateCountsDevice) + batchSize,
+                             thrust::device_pointer_cast(context->batchEventBasesDevice));
     }
-    return false;
+    catch(const thrust::system_error &e)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = e.what();
+      }
+      return false;
+    }
+    outputBasesDevice = context->batchEventBasesDevice;
   }
   status = cudaMemset(context->batchOutputCursorsDevice,0,static_cast<size_t>(batchSize) * sizeof(int));
   if(status != cudaSuccess)
@@ -9726,7 +9744,7 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
     batchFinalCandidateStatesDevice,
     batchFinalCandidateCountsDevice,
     batchRunningMinsDevice,
-    context->batchEventBasesDevice,
+    outputBasesDevice,
     context->batchOutputCursorsDevice,
     context->outputCandidateStatesDevice);
   status = cudaGetLastError();
@@ -9746,7 +9764,7 @@ static bool sim_scan_compact_batch_initial_safe_store_candidate_states_from_redu
                       context->batchAllCandidateCountsDevice,
                       static_cast<size_t>(batchSize) * sizeof(int),
                       cudaMemcpyDeviceToHost);
-  if(status == cudaSuccess)
+  if(status == cudaSuccess && !useSingleRequestImplicitOutputBase)
   {
     status = cudaMemcpy(outCandidateBases->data(),
                         context->batchEventBasesDevice,
@@ -13749,6 +13767,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestAllCandidateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestAllCandidateBaseUploadSkips +=
     requestBatchResult.initialTrueBatchSingleRequestAllCandidateBaseUploadSkips;
+  batchResult->initialTrueBatchSingleRequestAllCandidateBasePrefixSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips +=
     requestBatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips;
   batchResult->initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips +=
@@ -17040,6 +17060,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                &allCandidateCountsPerTask,
                &prunedCandidateBasesPerTask,
                &initialSegmentedCompactSeconds,
+               batchResult,
                errorOut))
           {
             return false;
@@ -17088,6 +17109,7 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
                &allCandidateCountsPerTask,
                &prunedCandidateBasesPerTask,
                &initialSegmentedCompactSeconds,
+               batchResult,
                errorOut))
           {
             return false;
@@ -18656,6 +18678,7 @@ bool sim_scan_cuda_reduce_initial_ordered_segmented_v3_for_test(
        &allCandidateCountsPerTask,
        &prunedCandidateBasesPerTask,
        &compactSeconds,
+       batchResult,
        errorOut))
   {
     return false;

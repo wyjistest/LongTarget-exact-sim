@@ -1389,6 +1389,9 @@ int main()
     ok = expect_equal_uint64(singleSegmentedBatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
                              1,
                              "single segmented backend run-base materialize skip") && ok;
+    ok = expect_equal_uint64(singleSegmentedBatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips,
+                             1,
+                             "single segmented backend all-candidate base prefix skip") && ok;
     ok = expect_summaries_equal(singleSummaryDirect0,
                                 expectedSummary0,
                                 "single summary direct 0 summaries") && ok;
@@ -1419,6 +1422,9 @@ int main()
     ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialTrueBatchSingleRequestRunBaseMaterializeSkips,
                              1,
                              "single ordered_segmented_v3 backend run-base materialize skip") && ok;
+    ok = expect_equal_uint64(singleOrderedSegmentedV3BatchResult.initialTrueBatchSingleRequestAllCandidateBasePrefixSkips,
+                             1,
+                             "single ordered_segmented_v3 backend all-candidate base prefix skip") && ok;
     ok = expect_reduce_result_equal(singleOrderedSegmentedV3Result,
                                     orderedSegmentedV3BatchResults[0],
                                     "single ordered_segmented_v3 backend equals batch result 0") && ok;
