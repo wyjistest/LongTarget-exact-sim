@@ -22340,8 +22340,80 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
     return true;
   }
 
-  if(summaryCount == 1 && filterStartCoordCount == 0)
+  if(summaryCount == 1)
   {
+    if(outSingleSummaryRequestReduceSkips != NULL)
+    {
+      *outSingleSummaryRequestReduceSkips += 1;
+    }
+    if(filterStartCoordCount > 0)
+    {
+      if(!ensure_sim_scan_cuda_buffer(&context->summaryKeysDevice,
+                                      &context->summaryKeysCapacity,
+                                      1,
+                                      errorOut) ||
+         !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
+                                      &context->reduceStatesCapacity,
+                                      1,
+                                      errorOut))
+      {
+        return false;
+      }
+      sim_scan_init_candidate_reduce_states_from_summaries_kernel<<<1, 1>>>(
+        context->initialRunSummariesDevice + static_cast<size_t>(summaryBase),
+        1,
+        context->summaryKeysDevice,
+        context->reduceStatesDevice);
+      cudaError_t status = cudaGetLastError();
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      SimScanCudaCandidateState *filterOutputStates =
+        context->batchCandidateStatesDevice + static_cast<ptrdiff_t>(reservedOutputBase);
+      status = cudaMemset(context->filteredCandidateCountDevice,0,sizeof(int));
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      sim_scan_filter_candidate_states_by_allowed_start_coords_kernel<<<1, 1>>>(context->summaryKeysDevice,
+                                                                                context->reduceStatesDevice,
+                                                                                1,
+                                                                                context->filterStartCoordsDevice,
+                                                                                filterStartCoordCount,
+                                                                                filterOutputStates,
+                                                                                context->filteredCandidateCountDevice);
+      status = cudaGetLastError();
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      sim_scan_store_scalar_at_index_kernel<<<1, 1>>>(context->filteredCandidateCountDevice,
+                                                      context->batchCandidateCountsDevice,
+                                                      requestIndex);
+      status = cudaGetLastError();
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      return true;
+    }
     if(deferNoFilterCandidateCountH2D)
     {
       if(outNoFilterCandidateCountScalarH2DSkips != NULL)
@@ -22373,10 +22445,6 @@ static bool sim_scan_cuda_reduce_region_summary_slice_to_reserved_candidates_loc
     if(outHostKnownCandidateCount != NULL)
     {
       *outHostKnownCandidateCount = 1;
-    }
-    if(outSingleSummaryRequestReduceSkips != NULL)
-    {
-      *outSingleSummaryRequestReduceSkips += 1;
     }
     sim_scan_copy_single_summary_to_candidate_state_kernel<<<1, 1>>>(
       context->initialRunSummariesDevice + static_cast<size_t>(summaryBase),
