@@ -915,6 +915,7 @@ struct SimScanCudaBatchResult
     initialSummaryHostCopyElisionEventCountCopySkips(0),
     initialTrueBatchSingleRequestPrefixSkips(0),
     initialTrueBatchSingleRequestInputPackSkips(0),
+    initialTrueBatchSingleRequestEventScoreFloorUploadSkips(0),
     initialTrueBatchSingleRequestCountCopySkips(0),
     initialTrueBatchSingleRequestRunBaseBufferEnsureSkips(0),
     initialTrueBatchSingleRequestRunBaseMaterializeSkips(0),
@@ -1111,6 +1112,7 @@ struct SimScanCudaBatchResult
   uint64_t initialSummaryHostCopyElisionEventCountCopySkips;
   uint64_t initialTrueBatchSingleRequestPrefixSkips;
   uint64_t initialTrueBatchSingleRequestInputPackSkips;
+  uint64_t initialTrueBatchSingleRequestEventScoreFloorUploadSkips;
   uint64_t initialTrueBatchSingleRequestCountCopySkips;
   uint64_t initialTrueBatchSingleRequestRunBaseBufferEnsureSkips;
   uint64_t initialTrueBatchSingleRequestRunBaseMaterializeSkips;

@@ -177,6 +177,7 @@ grep -Eq '^benchmark\.sim_initial_summary_host_copy_elision_run_count_copy_skips
 grep -Eq '^benchmark\.sim_initial_summary_host_copy_elision_event_count_copy_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_prefix_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_input_pack_skips=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_true_batch_single_request_event_score_floor_upload_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_count_copy_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_run_base_buffer_ensure_skips=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_true_batch_single_request_run_base_materialize_skips=[0-9]+$' "$STDERR_LOG"

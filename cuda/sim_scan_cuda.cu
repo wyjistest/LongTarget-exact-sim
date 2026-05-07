@@ -5578,6 +5578,7 @@ __global__ void sim_scan_count_row_events_true_batch_kernel(const int *HScoreMat
                                                             const int *actualRowCounts,
                                                             const int *actualColCounts,
                                                             const int *eventScoreFloors,
+                                                            int singleEventScoreFloor,
                                                             int rowCountStride,
                                                             int *rowCounts)
 {
@@ -5588,7 +5589,8 @@ __global__ void sim_scan_count_row_events_true_batch_kernel(const int *HScoreMat
     return;
   }
 
-  const int eventScoreFloor = eventScoreFloors[batchIndex];
+  const int eventScoreFloor =
+    eventScoreFloors != NULL ? eventScoreFloors[batchIndex] : singleEventScoreFloor;
   const int actualRowCount = actualRowCounts != NULL ? actualRowCounts[batchIndex] : M;
   const int actualColCount = actualColCounts != NULL ? actualColCounts[batchIndex] : N;
   if(row > actualRowCount)
@@ -5874,6 +5876,7 @@ __global__ void sim_scan_count_initial_run_summaries_direct_true_batch_kernel(co
                                                                               const int *actualRowCounts,
                                                                               const int *actualColCounts,
                                                                               const int *eventScoreFloors,
+                                                                              int singleEventScoreFloor,
                                                                               int rowCountStride,
                                                                               int *runCounts)
 {
@@ -5884,7 +5887,8 @@ __global__ void sim_scan_count_initial_run_summaries_direct_true_batch_kernel(co
     return;
   }
 
-  const int eventScoreFloor = eventScoreFloors[batchIndex];
+  const int eventScoreFloor =
+    eventScoreFloors != NULL ? eventScoreFloors[batchIndex] : singleEventScoreFloor;
   const int actualRowCount = actualRowCounts != NULL ? actualRowCounts[batchIndex] : M;
   const int actualColCount = actualColCounts != NULL ? actualColCounts[batchIndex] : N;
   if(row > actualRowCount)
@@ -5955,6 +5959,7 @@ __global__ void sim_scan_compact_initial_run_summaries_direct_true_batch_kernel(
                                                                                 int M,
                                                                                 int N,
                                                                                 const int *eventScoreFloors,
+                                                                                int singleEventScoreFloor,
                                                                                 const int *runOffsets,
                                                                                 int runOffsetStride,
                                                                                 const int *runBases,
@@ -5968,7 +5973,8 @@ __global__ void sim_scan_compact_initial_run_summaries_direct_true_batch_kernel(
   }
 
   const int tid = static_cast<int>(threadIdx.x);
-  const int eventScoreFloor = eventScoreFloors[batchIndex];
+  const int eventScoreFloor =
+    eventScoreFloors != NULL ? eventScoreFloors[batchIndex] : singleEventScoreFloor;
   const size_t rowBase = static_cast<size_t>(batchIndex) * static_cast<size_t>(matrixStride) +
                          static_cast<size_t>(row) * static_cast<size_t>(leadingDim);
   extern __shared__ int shared[];
@@ -13425,6 +13431,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.initialTrueBatchSingleRequestPrefixSkips;
   batchResult->initialTrueBatchSingleRequestInputPackSkips +=
     requestBatchResult.initialTrueBatchSingleRequestInputPackSkips;
+  batchResult->initialTrueBatchSingleRequestEventScoreFloorUploadSkips +=
+    requestBatchResult.initialTrueBatchSingleRequestEventScoreFloorUploadSkips;
   batchResult->initialTrueBatchSingleRequestCountCopySkips +=
     requestBatchResult.initialTrueBatchSingleRequestCountCopySkips;
   batchResult->initialTrueBatchSingleRequestRunBaseBufferEnsureSkips +=
@@ -15844,8 +15852,12 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     sim_scan_cuda_initial_pinned_async_cpu_pipeline_runtime();
   const bool initialChunkedHandoffRequested =
     sim_scan_cuda_initial_chunked_handoff_runtime();
+  const bool skipSingleRequestEventScoreFloorUpload = batchSize == 1;
   const bool skipSingleRequestRunBaseBufferEnsure =
     batchSize == 1 && !anyCandidateExtraction && !requestInitialPinnedAsyncHandoff;
+  const int singleEventScoreFloor =
+    skipSingleRequestEventScoreFloorUpload ? first.eventScoreFloor : 0;
+  uint64_t initialTrueBatchSingleRequestEventScoreFloorUploadSkips = 0;
   uint64_t initialTrueBatchSingleRequestRunBaseBufferEnsureSkips = 0;
 
   if(!ensure_sim_scan_cuda_buffer(&context->batchBDevice,
@@ -15879,11 +15891,18 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
      !ensure_sim_scan_cuda_buffer(&context->batchRunTotalsDevice,
                                   &context->batchRunTotalsCapacity,
                                   static_cast<size_t>(batchSize),
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->batchEventScoreFloorsDevice,
-                                  &context->batchEventScoreFloorsCapacity,
-                                  static_cast<size_t>(batchSize),
                                   errorOut))
+  {
+    return false;
+  }
+  if(skipSingleRequestEventScoreFloorUpload)
+  {
+    initialTrueBatchSingleRequestEventScoreFloorUploadSkips += 1;
+  }
+  else if(!ensure_sim_scan_cuda_buffer(&context->batchEventScoreFloorsDevice,
+                                       &context->batchEventScoreFloorsCapacity,
+                                       static_cast<size_t>(batchSize),
+                                       errorOut))
   {
     return false;
   }
@@ -15949,10 +15968,6 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
   }
   if(batchSize == 1)
   {
-    status = cudaMemcpy(context->batchEventScoreFloorsDevice,
-                        &first.eventScoreFloor,
-                        sizeof(int),
-                        cudaMemcpyHostToDevice);
     initialTrueBatchSingleRequestInputPackSkips += 1;
   }
   else
@@ -16102,7 +16117,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     N,
     NULL,
     NULL,
-    context->batchEventScoreFloorsDevice,
+    skipSingleRequestEventScoreFloorUpload ? NULL : context->batchEventScoreFloorsDevice,
+    singleEventScoreFloor,
     rowCountStride,
     context->batchRowCountsDevice);
   status = cudaGetLastError();
@@ -16210,7 +16226,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
     N,
     NULL,
     NULL,
-    context->batchEventScoreFloorsDevice,
+    skipSingleRequestEventScoreFloorUpload ? NULL : context->batchEventScoreFloorsDevice,
+    singleEventScoreFloor,
     rowCountStride,
     context->batchRowCountsDevice);
   status = cudaGetLastError();
@@ -16486,7 +16503,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       matrixStride,
       M,
       N,
-      context->batchEventScoreFloorsDevice,
+      skipSingleRequestEventScoreFloorUpload ? NULL : context->batchEventScoreFloorsDevice,
+      singleEventScoreFloor,
       context->batchRunOffsetsDevice,
       rowOffsetStride,
       skipSingleRequestRunBaseMaterialize ? NULL : context->batchRunBasesDevice,
@@ -17684,6 +17702,8 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       initialTrueBatchSingleRequestPrefixSkips;
     batchResult->initialTrueBatchSingleRequestInputPackSkips =
       initialTrueBatchSingleRequestInputPackSkips;
+    batchResult->initialTrueBatchSingleRequestEventScoreFloorUploadSkips =
+      initialTrueBatchSingleRequestEventScoreFloorUploadSkips;
     batchResult->initialTrueBatchSingleRequestCountCopySkips =
       initialTrueBatchSingleRequestCountCopySkips;
     batchResult->initialTrueBatchSingleRequestRunBaseBufferEnsureSkips =
@@ -21430,6 +21450,7 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
     actualRowCountsDevice,
     actualColCountsDevice,
     context->batchEventScoreFloorsDevice,
+    0,
     rowCountStride,
     context->batchRowCountsDevice);
   status = cudaGetLastError();
@@ -21502,6 +21523,7 @@ static bool sim_scan_cuda_execute_homogeneous_region_request_batch_to_reserved_s
     actualRowCountsDevice,
     actualColCountsDevice,
     context->batchEventScoreFloorsDevice,
+    0,
     rowCountStride,
     context->batchRowCountsDevice);
   status = cudaGetLastError();
