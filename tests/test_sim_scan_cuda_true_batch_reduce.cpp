@@ -1760,6 +1760,9 @@ int main()
     ok = expect_equal_uint64(regionAggregatedBatchResult.regionPackedAggregationFilterReservedCopySkips,
                              regionAggregatedResult.postAggregateCandidateStateCount,
                              "region aggregated filter reserved copy skips") && ok;
+    ok = expect_equal_uint64(regionAggregatedBatchResult.regionPackedAggregationSingleCandidateFinalReduceSkips,
+                             1,
+                             "region aggregated single-candidate final reduce skips") && ok;
 
     SimScanCudaRequest zeroRunRegionRequest0 = regionRequest0;
     zeroRunRegionRequest0.eventScoreFloor = 1000000;

@@ -13992,6 +13992,8 @@ static void sim_scan_cuda_accumulate_batch_result(const SimScanCudaBatchResult &
     requestBatchResult.regionPackedAggregationNoFilterReservedCopySkips;
   batchResult->regionPackedAggregationFilterReservedCopySkips +=
     requestBatchResult.regionPackedAggregationFilterReservedCopySkips;
+  batchResult->regionPackedAggregationSingleCandidateFinalReduceSkips +=
+    requestBatchResult.regionPackedAggregationSingleCandidateFinalReduceSkips;
   batchResult->regionSingleRequestDirectReduceAttempts +=
     requestBatchResult.regionSingleRequestDirectReduceAttempts;
   batchResult->regionSingleRequestDirectReduceSuccesses +=
@@ -24664,7 +24666,34 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   outResult->runningMin = orderedFirst.seedRunningMin;
 
   int reducedCandidateCount = 0;
-  if(packedCandidateCountInt > 0)
+  SimScanCudaCandidateState *finalCandidateStatesDevice = NULL;
+  if(packedCandidateCountInt == 1)
+  {
+    for(size_t i = 0; i < requests.size(); ++i)
+    {
+      if(requestCandidateCounts[i] == 1)
+      {
+        finalCandidateStatesDevice =
+          context->batchCandidateStatesDevice + static_cast<ptrdiff_t>(requestCandidateBases[i]);
+        break;
+      }
+    }
+    if(finalCandidateStatesDevice == NULL)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = "SIM CUDA aggregated region single candidate base missing";
+      }
+      return false;
+    }
+    reducedCandidateCount = 1;
+    outResult->postAggregateCandidateStateCount = 1;
+    if(batchResult != NULL)
+    {
+      batchResult->regionPackedAggregationSingleCandidateFinalReduceSkips += 1;
+    }
+  }
+  else if(packedCandidateCountInt > 0)
   {
     if(!ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
                                     &context->outputCandidateStatesCapacity,
@@ -24803,6 +24832,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
         }
         return false;
       }
+      finalCandidateStatesDevice = context->batchCandidateStatesDevice;
     }
   }
 
@@ -24826,7 +24856,7 @@ static bool sim_scan_cuda_enumerate_region_candidate_states_aggregated_device_lo
   }
 
   outResult->candidateStatesDevice =
-    reducedCandidateCount > 0 ? context->batchCandidateStatesDevice : NULL;
+    reducedCandidateCount > 0 ? finalCandidateStatesDevice : NULL;
   outResult->candidateStateCount = reducedCandidateCount;
 
   if(batchResult != NULL)
