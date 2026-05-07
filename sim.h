@@ -6063,6 +6063,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  return count;
 					}
 
+					inline std::atomic<uint64_t> &simInitialSummaryHostCopyElisionBaseCopyReuseCount()
+					{
+					  static std::atomic<uint64_t> count(0);
+					  return count;
+					}
+
 					inline std::atomic<uint64_t> &simInitialCpuFrontierFastApplyEnabledCount()
 					{
 					  static std::atomic<uint64_t> count(0);
@@ -7423,7 +7429,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                  uint64_t unpackNanoseconds,
 					                                                  uint64_t resultMaterializeNanoseconds,
 				                                                  uint64_t elidedBytes,
-				                                                  uint64_t countCopyReuses)
+				                                                  uint64_t countCopyReuses,
+				                                                  uint64_t baseCopyReuses)
 				{
 				  if(usedHostCopyElision)
 				  {
@@ -7436,6 +7443,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  simInitialSummaryHostCopyElidedByteCount().fetch_add(elidedBytes, std::memory_order_relaxed);
 					  simInitialSummaryHostCopyElisionCountCopyReuseCount().fetch_add(countCopyReuses,
 					                                                                  std::memory_order_relaxed);
+					  simInitialSummaryHostCopyElisionBaseCopyReuseCount().fetch_add(baseCopyReuses,
+					                                                                 std::memory_order_relaxed);
 					}
 
 					inline void recordSimInitialCpuFrontierFastApplyEnabled()
@@ -8577,7 +8586,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					                                                    double &unpackSeconds,
 					                                                    double &resultMaterializeSeconds,
 					                                                    uint64_t &elidedBytes,
-					                                                    uint64_t &countCopyReuses)
+					                                                    uint64_t &countCopyReuses,
+					                                                    uint64_t &baseCopyReuses)
 				{
 				  enabledCount =
 				    simInitialSummaryHostCopyElisionEnabledCount().load(std::memory_order_relaxed);
@@ -8594,6 +8604,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				    simInitialSummaryHostCopyElidedByteCount().load(std::memory_order_relaxed);
 				  countCopyReuses =
 				    simInitialSummaryHostCopyElisionCountCopyReuseCount().load(std::memory_order_relaxed);
+				  baseCopyReuses =
+				    simInitialSummaryHostCopyElisionBaseCopyReuseCount().load(std::memory_order_relaxed);
 					}
 
 					 inline void getSimInitialContextApplyChunkSkipStats(uint64_t &chunkCount,
@@ -13511,7 +13523,8 @@ inline void runSimCandidateLoop(const SimRequest &request,
 				            simSecondsToNanoseconds(cudaBatchResult.initialSummaryUnpackSeconds),
 				            simSecondsToNanoseconds(cudaBatchResult.initialSummaryResultMaterializeSeconds),
 				            cudaBatchResult.initialSummaryHostCopyElidedBytes,
-				            cudaBatchResult.initialSummaryHostCopyElisionCountCopyReuses);
+				            cudaBatchResult.initialSummaryHostCopyElisionCountCopyReuses,
+				            cudaBatchResult.initialSummaryHostCopyElisionBaseCopyReuses);
 				          recordSimInitialPinnedAsyncHandoffStats(cudaBatchResult);
 				          if(!cudaRequests[0].reduceCandidates &&
 				             !cudaRequests[0].proposalCandidates &&

@@ -329,6 +329,9 @@ int main()
     ok = expect_equal_uint64(directTrueBatchResult.initialSummaryHostCopyElisionCountCopyReuses,
                              1,
                              "direct true-batch count-copy reuse") && ok;
+    ok = expect_equal_uint64(directTrueBatchResult.initialSummaryHostCopyElisionBaseCopyReuses,
+                             1,
+                             "direct true-batch base-copy reuse") && ok;
     ok = expect_true(packedDirectTrueBatchResult.usedInitialPackedSummaryD2H,
                      "packed direct true-batch still uses packed D2H") && ok;
     ok = expect_true(packedDirectTrueBatchResult.usedInitialSummaryHostCopyElision,
@@ -339,6 +342,9 @@ int main()
     ok = expect_equal_uint64(packedDirectTrueBatchResult.initialSummaryHostCopyElisionCountCopyReuses,
                              1,
                              "packed direct true-batch count-copy reuse") && ok;
+    ok = expect_equal_uint64(packedDirectTrueBatchResult.initialSummaryHostCopyElisionBaseCopyReuses,
+                             1,
+                             "packed direct true-batch base-copy reuse") && ok;
     ok = expect_false(reduceTrueBatchResult.usedInitialSummaryHostCopyElision,
                       "reduce true-batch does not use summary host-copy elision") && ok;
 
