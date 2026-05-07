@@ -2097,6 +2097,14 @@ int main()
                              1,
                              "single proposal V3 request count") && ok;
     ok = expect_equal_uint64(
+           singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3StateBaseBufferEnsureSkips,
+           1,
+           "single proposal V3 state-base buffer ensure skip") && ok;
+    ok = expect_equal_uint64(
+           singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3StateBaseUploadSkips,
+           1,
+           "single proposal V3 state-base upload skip") && ok;
+    ok = expect_equal_uint64(
            singleProposalV3BatchResult.initialTrueBatchSingleRequestProposalV3SelectedBaseUploadSkips,
            1,
            "single proposal V3 selected-base upload skip") && ok;
