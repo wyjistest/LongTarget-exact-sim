@@ -168,6 +168,12 @@ int main()
     sharedRequests.push_back(request);
     sharedRequests[1].rowStart = 2;
     sharedRequests[1].colStart = 2;
+    std::vector<uint64_t> blockedWords(static_cast<size_t>(request.queryLength + 1), 0);
+    for (size_t i = 0; i < sharedRequests.size(); ++i)
+    {
+        sharedRequests[i].blockedWords = blockedWords.data();
+        sharedRequests[i].blockedWordStride = 1;
+    }
 
     batchResults.clear();
     batchResult = SimLocateCudaBatchResult();
@@ -192,6 +198,12 @@ int main()
     ok = expect_equal_u64(batchResult.scoreMatrixH2DCacheHits,
                           0,
                           "first shared-input batch has no score matrix cache hit") && ok;
+    ok = expect_equal_u64(batchResult.blockedWordsH2DCopies,
+                          1,
+                          "first shared-input batch uploads blocked words") && ok;
+    ok = expect_equal_u64(batchResult.blockedWordsH2DCacheHits,
+                          0,
+                          "first shared-input batch has no blocked words cache hit") && ok;
 
     batchResults.clear();
     batchResult = SimLocateCudaBatchResult();
@@ -216,6 +228,12 @@ int main()
     ok = expect_equal_u64(batchResult.scoreMatrixH2DCacheHits,
                           1,
                           "cached shared-input batch records score matrix cache hit") && ok;
+    ok = expect_equal_u64(batchResult.blockedWordsH2DCopies,
+                          0,
+                          "cached shared-input batch skips blocked words upload") && ok;
+    ok = expect_equal_u64(batchResult.blockedWordsH2DCacheHits,
+                          1,
+                          "cached shared-input batch records blocked words cache hit") && ok;
 
     return ok ? 0 : 1;
 }

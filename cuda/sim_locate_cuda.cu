@@ -149,6 +149,10 @@ struct SimLocateCudaContext
     scoreMatrixCacheValid(false),
     scoreMatrixCacheHash(0),
     blockedWordsDevice(NULL),
+    blockedWordsCacheValid(false),
+    blockedWordsCacheCount(0),
+    blockedWordsCacheStride(0),
+    blockedWordsCacheHash(0),
     candidatesDevice(NULL),
     CCDevice(NULL),
     DDDevice(NULL),
@@ -204,6 +208,11 @@ struct SimLocateCudaContext
   uint64_t scoreMatrixCacheHash;
   int scoreMatrixHostCache[128 * 128];
   uint64_t *blockedWordsDevice;
+  bool blockedWordsCacheValid;
+  size_t blockedWordsCacheCount;
+  int blockedWordsCacheStride;
+  uint64_t blockedWordsCacheHash;
+  vector<uint64_t> blockedWordsHostCache;
   SimScanCudaCandidateState *candidatesDevice;
 
   int *CCDevice;
@@ -357,6 +366,61 @@ static void sim_locate_cuda_store_score_matrix_cache(SimLocateCudaContext &conte
   }
   context.scoreMatrixCacheHash = hash;
   context.scoreMatrixCacheValid = true;
+}
+
+static uint64_t sim_locate_cuda_words_hash(const uint64_t *words,size_t count)
+{
+  uint64_t hash = 1469598103934665603ull;
+  for(size_t i = 0; i < count; ++i)
+  {
+    hash ^= words[i];
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+static void sim_locate_cuda_invalidate_blocked_words_cache(SimLocateCudaContext &context)
+{
+  context.blockedWordsCacheValid = false;
+  context.blockedWordsCacheCount = 0;
+  context.blockedWordsCacheStride = 0;
+  context.blockedWordsCacheHash = 0;
+  context.blockedWordsHostCache.clear();
+}
+
+static bool sim_locate_cuda_blocked_words_cache_matches(const SimLocateCudaContext &context,
+                                                        const SimLocateCudaRequest &request,
+                                                        size_t count,
+                                                        uint64_t hash)
+{
+  if(!context.blockedWordsCacheValid ||
+     context.blockedWordsCacheCount != count ||
+     context.blockedWordsCacheStride != request.blockedWordStride ||
+     context.blockedWordsCacheHash != hash ||
+     context.blockedWordsHostCache.size() != count)
+  {
+    return false;
+  }
+  for(size_t i = 0; i < count; ++i)
+  {
+    if(context.blockedWordsHostCache[i] != request.blockedWords[i])
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void sim_locate_cuda_store_blocked_words_cache(SimLocateCudaContext &context,
+                                                      const SimLocateCudaRequest &request,
+                                                      size_t count,
+                                                      uint64_t hash)
+{
+  context.blockedWordsHostCache.assign(request.blockedWords,request.blockedWords + count);
+  context.blockedWordsCacheCount = count;
+  context.blockedWordsCacheStride = request.blockedWordStride;
+  context.blockedWordsCacheHash = hash;
+  context.blockedWordsCacheValid = true;
 }
 
 static mutex sim_locate_cuda_contexts_mutex;
@@ -513,6 +577,7 @@ static void free_sim_locate_cuda_capacity_locked(SimLocateCudaContext &context)
   sim_locate_cuda_invalidate_input_cache(context);
   context.scoreMatrixCacheValid = false;
   context.scoreMatrixCacheHash = 0;
+  sim_locate_cuda_invalidate_blocked_words_cache(context);
 }
 
 static bool ensure_sim_locate_cuda_initialized_locked(SimLocateCudaContext &context,
@@ -1550,9 +1615,11 @@ bool sim_locate_cuda_locate_region(const SimLocateCudaRequest &request,
                         cudaMemcpyHostToDevice);
     if(status != cudaSuccess)
     {
+      sim_locate_cuda_invalidate_blocked_words_cache(*context);
       if(errorOut != NULL) *errorOut = cuda_error_string(status);
       return false;
     }
+    sim_locate_cuda_invalidate_blocked_words_cache(*context);
   }
 
   if(request.candidateCount > 0)
@@ -1871,14 +1938,32 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
   {
     const size_t blockedWordCount =
       static_cast<size_t>(base.queryLength + 1) * static_cast<size_t>(base.blockedWordStride);
-    status = cudaMemcpy(context->blockedWordsDevice,
-                        base.blockedWords,
-                        blockedWordCount * sizeof(uint64_t),
-                        cudaMemcpyHostToDevice);
-    if(status != cudaSuccess)
+    const uint64_t blockedWordsHash =
+      sim_locate_cuda_words_hash(base.blockedWords,blockedWordCount);
+    if(sim_locate_cuda_blocked_words_cache_matches(*context,base,blockedWordCount,blockedWordsHash))
     {
-      if(errorOut != NULL) *errorOut = cuda_error_string(status);
-      return false;
+      if(batchResult != NULL)
+      {
+        batchResult->blockedWordsH2DCacheHits = 1;
+      }
+    }
+    else
+    {
+      status = cudaMemcpy(context->blockedWordsDevice,
+                          base.blockedWords,
+                          blockedWordCount * sizeof(uint64_t),
+                          cudaMemcpyHostToDevice);
+      if(status != cudaSuccess)
+      {
+        sim_locate_cuda_invalidate_blocked_words_cache(*context);
+        if(errorOut != NULL) *errorOut = cuda_error_string(status);
+        return false;
+      }
+      sim_locate_cuda_store_blocked_words_cache(*context,base,blockedWordCount,blockedWordsHash);
+      if(batchResult != NULL)
+      {
+        batchResult->blockedWordsH2DCopies = 1;
+      }
     }
   }
   if(base.candidateCount > 0)
