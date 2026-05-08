@@ -163,5 +163,47 @@ int main()
                               "single-request batch expansionCellCount") && ok;
     }
 
+    std::vector<SimLocateCudaRequest> sharedRequests;
+    sharedRequests.push_back(request);
+    sharedRequests.push_back(request);
+    sharedRequests[1].rowStart = 2;
+    sharedRequests[1].colStart = 2;
+
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(sharedRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "shared-input locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "shared-input batch path") && ok;
+    ok = expect_equal_u64(batchResult.scoreMatrixH2DCopies,
+                          1,
+                          "first shared-input batch uploads score matrix") && ok;
+    ok = expect_equal_u64(batchResult.scoreMatrixH2DCacheHits,
+                          0,
+                          "first shared-input batch has no score matrix cache hit") && ok;
+
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(sharedRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "cached shared-input locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "cached shared-input batch path") && ok;
+    ok = expect_equal_u64(batchResult.scoreMatrixH2DCopies,
+                          0,
+                          "cached shared-input batch skips score matrix upload") && ok;
+    ok = expect_equal_u64(batchResult.scoreMatrixH2DCacheHits,
+                          1,
+                          "cached shared-input batch records score matrix cache hit") && ok;
+
     return ok ? 0 : 1;
 }

@@ -141,6 +141,8 @@ struct SimLocateCudaContext
     ADevice(NULL),
     BDevice(NULL),
     scoreMatrixDevice(NULL),
+    scoreMatrixCacheValid(false),
+    scoreMatrixCacheHash(0),
     blockedWordsDevice(NULL),
     candidatesDevice(NULL),
     CCDevice(NULL),
@@ -186,6 +188,9 @@ struct SimLocateCudaContext
   char *ADevice;
   char *BDevice;
   int *scoreMatrixDevice;
+  bool scoreMatrixCacheValid;
+  uint64_t scoreMatrixCacheHash;
+  int scoreMatrixHostCache[128 * 128];
   uint64_t *blockedWordsDevice;
   SimScanCudaCandidateState *candidatesDevice;
 
@@ -222,6 +227,50 @@ struct SimLocateCudaContext
   cudaEvent_t startEvent;
   cudaEvent_t stopEvent;
 };
+
+static uint64_t sim_locate_cuda_score_matrix_hash(const int (*scoreMatrix)[128])
+{
+  const int *values = &scoreMatrix[0][0];
+  uint64_t hash = 1469598103934665603ull;
+  for(size_t i = 0; i < static_cast<size_t>(128 * 128); ++i)
+  {
+    hash ^= static_cast<uint64_t>(static_cast<unsigned int>(values[i]));
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+static bool sim_locate_cuda_score_matrix_cache_matches(const SimLocateCudaContext &context,
+                                                       const int (*scoreMatrix)[128],
+                                                       uint64_t hash)
+{
+  if(!context.scoreMatrixCacheValid || context.scoreMatrixCacheHash != hash)
+  {
+    return false;
+  }
+  const int *values = &scoreMatrix[0][0];
+  for(size_t i = 0; i < static_cast<size_t>(128 * 128); ++i)
+  {
+    if(context.scoreMatrixHostCache[i] != values[i])
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void sim_locate_cuda_store_score_matrix_cache(SimLocateCudaContext &context,
+                                                     const int (*scoreMatrix)[128],
+                                                     uint64_t hash)
+{
+  const int *values = &scoreMatrix[0][0];
+  for(size_t i = 0; i < static_cast<size_t>(128 * 128); ++i)
+  {
+    context.scoreMatrixHostCache[i] = values[i];
+  }
+  context.scoreMatrixCacheHash = hash;
+  context.scoreMatrixCacheValid = true;
+}
 
 static mutex sim_locate_cuda_contexts_mutex;
 static vector< vector< unique_ptr<SimLocateCudaContext> > > sim_locate_cuda_contexts;
@@ -374,6 +423,8 @@ static void free_sim_locate_cuda_capacity_locked(SimLocateCudaContext &context)
   context.blockedCapacityWords = 0;
   context.candidateCapacity = 0;
   context.batchCapacity = 0;
+  context.scoreMatrixCacheValid = false;
+  context.scoreMatrixCacheHash = 0;
 }
 
 static bool ensure_sim_locate_cuda_initialized_locked(SimLocateCudaContext &context,
@@ -1392,9 +1443,11 @@ bool sim_locate_cuda_locate_region(const SimLocateCudaRequest &request,
                       cudaMemcpyHostToDevice);
   if(status != cudaSuccess)
   {
+    context->scoreMatrixCacheValid = false;
     if(errorOut != NULL) *errorOut = cuda_error_string(status);
     return false;
   }
+  context->scoreMatrixCacheValid = false;
 
   if(request.blockedWords != NULL && request.blockedWordStride > 0)
   {
@@ -1675,14 +1728,31 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     if(errorOut != NULL) *errorOut = cuda_error_string(status);
     return false;
   }
-  status = cudaMemcpy(context->scoreMatrixDevice,
-                      base.scoreMatrix,
-                      static_cast<size_t>(128 * 128) * sizeof(int),
-                      cudaMemcpyHostToDevice);
-  if(status != cudaSuccess)
+  const uint64_t scoreMatrixHash = sim_locate_cuda_score_matrix_hash(base.scoreMatrix);
+  if(sim_locate_cuda_score_matrix_cache_matches(*context,base.scoreMatrix,scoreMatrixHash))
   {
-    if(errorOut != NULL) *errorOut = cuda_error_string(status);
-    return false;
+    if(batchResult != NULL)
+    {
+      batchResult->scoreMatrixH2DCacheHits = 1;
+    }
+  }
+  else
+  {
+    status = cudaMemcpy(context->scoreMatrixDevice,
+                        base.scoreMatrix,
+                        static_cast<size_t>(128 * 128) * sizeof(int),
+                        cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      context->scoreMatrixCacheValid = false;
+      if(errorOut != NULL) *errorOut = cuda_error_string(status);
+      return false;
+    }
+    sim_locate_cuda_store_score_matrix_cache(*context,base.scoreMatrix,scoreMatrixHash);
+    if(batchResult != NULL)
+    {
+      batchResult->scoreMatrixH2DCopies = 1;
+    }
   }
   if(base.blockedWords != NULL && base.blockedWordStride > 0)
   {
