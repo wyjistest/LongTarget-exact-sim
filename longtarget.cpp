@@ -1807,6 +1807,23 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_locate_mode="<<simLocateMode<<endl;
   cerr<<"benchmark.sim_locate_fast_passes="<<simLocateFastCalls<<endl;
   cerr<<"benchmark.sim_locate_fast_fallbacks="<<simLocateFastFallbacks<<endl;
+  uint64_t simLocateBatchCalls = 0;
+  uint64_t simLocateBatchRequests = 0;
+  uint64_t simLocateBatchSharedInputRequests = 0;
+  uint64_t simLocateBatchSerialFallbackRequests = 0;
+  uint64_t simLocateBatchLaunches = 0;
+  getSimLocateBatchTelemetryStats(simLocateBatchCalls,
+                                  simLocateBatchRequests,
+                                  simLocateBatchSharedInputRequests,
+                                  simLocateBatchSerialFallbackRequests,
+                                  simLocateBatchLaunches);
+  cerr<<"benchmark.sim_locate_batch_calls="<<simLocateBatchCalls<<endl;
+  cerr<<"benchmark.sim_locate_batch_requests="<<simLocateBatchRequests<<endl;
+  cerr<<"benchmark.sim_locate_batch_shared_input_requests="
+      <<simLocateBatchSharedInputRequests<<endl;
+  cerr<<"benchmark.sim_locate_batch_serial_fallback_requests="
+      <<simLocateBatchSerialFallbackRequests<<endl;
+  cerr<<"benchmark.sim_locate_batch_launches="<<simLocateBatchLaunches<<endl;
   uint64_t simSafeWorksetPassCount = 0;
   uint64_t simSafeWorksetFallbackInvalidStoreCount = 0;
   uint64_t simSafeWorksetFallbackNoAffectedStartCount = 0;

@@ -241,6 +241,7 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_initial_segmented_tile_states_total` / `benchmark.sim_initial_segmented_grouped_states_total`: pre-group and post-group state totals reported by the segmented reducer path
 - `benchmark.sim_locate_seconds`: time spent in `locate()` / disjoint region expansion after traceback
 - `benchmark.sim_locate_gpu_seconds`: CUDA kernel time inside the locate backend (0 when locate stays on CPU)
+- `benchmark.sim_locate_batch_calls` / `benchmark.sim_locate_batch_requests` / `benchmark.sim_locate_batch_shared_input_requests` / `benchmark.sim_locate_batch_serial_fallback_requests` / `benchmark.sim_locate_batch_launches`: locate batch decomposition counters for distinguishing shared-input CUDA batches from serial per-request fallback without changing dispatch
 - `benchmark.sim_region_scan_gpu_seconds`: CUDA kernel time inside SIM region rescans
 - `benchmark.sim_region_d2h_seconds`: result handoff time while bringing SIM region-rescan data back to host
 - `benchmark.sim_materialize_seconds`: total time spent materializing accepted candidates

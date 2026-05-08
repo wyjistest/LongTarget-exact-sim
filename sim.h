@@ -3811,6 +3811,36 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simLocateBatchCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simLocateBatchRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simLocateBatchSharedInputRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simLocateBatchSerialFallbackRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simLocateBatchLaunchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline void recordSimLocateBackend(bool usedCuda)
 		{
 		  if(usedCuda)
@@ -3827,6 +3857,31 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		{
 		  cpuCalls = simLocateCpuCallCount().load(std::memory_order_relaxed);
 		  cudaCalls = simLocateCudaCallCount().load(std::memory_order_relaxed);
+		}
+
+		inline void recordSimLocateBatchTelemetry(const SimLocateCudaBatchResult &batchResult)
+		{
+		  simLocateBatchCallCount().fetch_add(1, std::memory_order_relaxed);
+		  simLocateBatchRequestCount().fetch_add(batchResult.taskCount, std::memory_order_relaxed);
+		  simLocateBatchSharedInputRequestCount().fetch_add(batchResult.sharedInputRequestCount,
+		                                                   std::memory_order_relaxed);
+		  simLocateBatchSerialFallbackRequestCount().fetch_add(batchResult.serialFallbackRequestCount,
+		                                                       std::memory_order_relaxed);
+		  simLocateBatchLaunchCount().fetch_add(batchResult.launchCount, std::memory_order_relaxed);
+		}
+
+		inline void getSimLocateBatchTelemetryStats(uint64_t &batchCalls,
+		                                           uint64_t &batchRequests,
+		                                           uint64_t &sharedInputRequests,
+		                                           uint64_t &serialFallbackRequests,
+		                                           uint64_t &launches)
+		{
+		  batchCalls = simLocateBatchCallCount().load(std::memory_order_relaxed);
+		  batchRequests = simLocateBatchRequestCount().load(std::memory_order_relaxed);
+		  sharedInputRequests = simLocateBatchSharedInputRequestCount().load(std::memory_order_relaxed);
+		  serialFallbackRequests =
+		    simLocateBatchSerialFallbackRequestCount().load(std::memory_order_relaxed);
+		  launches = simLocateBatchLaunchCount().load(std::memory_order_relaxed);
 		}
 
 		inline std::atomic<uint64_t> &simLocateExactModeCallCount()
@@ -18534,15 +18589,17 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
 	                                                                               context,
 	                                                                               prepared));
 	            vector<SimLocateResult> locateBatchResults;
+	            SimLocateCudaBatchResult locateBatchTelemetry;
 	            string cudaError;
 	            const int device = simCudaDeviceRuntime();
 	            if(sim_locate_cuda_init(device,&cudaError) &&
 	               sim_locate_cuda_locate_region_batch(locateRequests,
 	                                                  &locateBatchResults,
-	                                                  NULL,
+	                                                  &locateBatchTelemetry,
 	                                                  &cudaError) &&
 	               locateBatchResults.size() == 2)
             {
+              recordSimLocateBatchTelemetry(locateBatchTelemetry);
               const SimLocateResult &boundedResult = locateBatchResults[0];
               exactPrecheckResult.attempted = true;
               exactPrecheckResult.confirmedNoUpdate = !boundedResult.hasUpdateRegion;
