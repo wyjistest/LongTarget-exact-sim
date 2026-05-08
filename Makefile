@@ -659,6 +659,9 @@ CALC_SCORE_CUDA_TELEMETRY_TEST_SOURCES := tests/test_calc_score_cuda_telemetry.c
 SIM_LOCATE_UPDATE_TEST_TARGET ?= tests/test_sim_locate_update
 SIM_LOCATE_UPDATE_TEST_SOURCES := tests/test_sim_locate_update.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_LOCATE_CUDA_BATCH_TEST_TARGET ?= tests/test_sim_locate_cuda_batch
+SIM_LOCATE_CUDA_BATCH_TEST_SOURCES := tests/test_sim_locate_cuda_batch.cpp cuda/sim_locate_cuda.o cuda/sim_scan_cuda_stub.cpp
+
 SIM_SAFE_WORKSET_CUDA_TEST_TARGET ?= tests/test_sim_safe_workset_cuda
 SIM_SAFE_WORKSET_CUDA_TEST_SOURCES := tests/test_sim_safe_workset_cuda.cpp cuda/sim_scan_cuda.o cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -723,6 +726,8 @@ build-sim-initial-summary-host-copy-elision-test: $(SIM_INITIAL_SUMMARY_HOST_COP
 build-calc-score-cuda-telemetry-test: $(CALC_SCORE_CUDA_TELEMETRY_TEST_TARGET)
 
 build-sim-locate-update-test: $(SIM_LOCATE_UPDATE_TEST_TARGET)
+
+build-sim-locate-cuda-batch-test: $(SIM_LOCATE_CUDA_BATCH_TEST_TARGET)
 
 build-sim-safe-workset-cuda-test: $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
 
@@ -808,6 +813,9 @@ $(CALC_SCORE_CUDA_TELEMETRY_TEST_TARGET): $(CALC_SCORE_CUDA_TELEMETRY_TEST_SOURC
 
 $(SIM_LOCATE_UPDATE_TEST_TARGET): $(SIM_LOCATE_UPDATE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_LOCATE_UPDATE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_LOCATE_CUDA_BATCH_TEST_TARGET): $(SIM_LOCATE_CUDA_BATCH_TEST_SOURCES) cuda/sim_locate_cuda.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_LOCATE_CUDA_BATCH_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET): $(SIM_SAFE_WORKSET_CUDA_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(SIM_SAFE_WORKSET_CUDA_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
@@ -920,6 +928,9 @@ check-calc-score-cuda-v2-shadow:
 
 check-sim-locate-update: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 	./$(SIM_LOCATE_UPDATE_TEST_TARGET)
+
+check-sim-locate-cuda-batch: $(SIM_LOCATE_CUDA_BATCH_TEST_TARGET)
+	./$(SIM_LOCATE_CUDA_BATCH_TEST_TARGET)
 
 check-sim-safe-workset-cuda: $(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)
 	./$(SIM_SAFE_WORKSET_CUDA_TEST_TARGET)

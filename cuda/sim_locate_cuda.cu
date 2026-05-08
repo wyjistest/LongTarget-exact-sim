@@ -1552,6 +1552,35 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     }
   }
 
+  if(requests.size() == 1)
+  {
+    SimLocateResult result;
+    if(!sim_locate_cuda_locate_region(requests[0],&result,errorOut))
+    {
+      outResults->clear();
+      if(batchResult != NULL)
+      {
+        *batchResult = SimLocateCudaBatchResult();
+      }
+      return false;
+    }
+    outResults->assign(1,result);
+    if(batchResult != NULL)
+    {
+      batchResult->gpuSeconds = result.gpuSeconds;
+      batchResult->usedCuda = result.usedCuda;
+      batchResult->taskCount = 1;
+      batchResult->launchCount = result.usedCuda ? 1 : 0;
+      batchResult->usedSharedInputBatchPath = false;
+      batchResult->singleRequestBatchSkips = 1;
+    }
+    if(errorOut != NULL)
+    {
+      errorOut->clear();
+    }
+    return true;
+  }
+
   if(!sim_locate_cuda_requests_share_inputs(requests))
   {
     vector<SimLocateResult> results;
