@@ -590,6 +590,9 @@ FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cp
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
 
+PREALIGN_CUDA_TOPK_TEST_TARGET ?= tests/test_prealign_cuda_topk
+PREALIGN_CUDA_TOPK_TEST_SOURCES := tests/test_prealign_cuda_topk.cpp cuda/prealign_cuda.o
+
 SIM_SCAN_BATCH_TEST_TARGET ?= tests/test_sim_scan_batch
 SIM_SCAN_BATCH_TEST_SOURCES := tests/test_sim_scan_batch.cpp cuda/sim_scan_cuda_stub.cpp
 
@@ -681,6 +684,8 @@ build-fasim-cigar-test: $(FASIM_CIGAR_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
 
+build-prealign-cuda-topk-test: $(PREALIGN_CUDA_TOPK_TEST_TARGET)
+
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
 
 build-sim-scan-cuda-true-batch-reduce-test: $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET)
@@ -744,6 +749,9 @@ $(FASIM_CIGAR_TEST_TARGET): $(FASIM_CIGAR_TEST_SOURCES) $(FASIM_HEADERS) cuda/pr
 
 $(PREALIGN_SHARED_TEST_TARGET): $(PREALIGN_SHARED_TEST_SOURCES) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_SHARED_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(PREALIGN_CUDA_TOPK_TEST_TARGET): $(PREALIGN_CUDA_TOPK_TEST_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(PREALIGN_CUDA_TOPK_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_SCAN_BATCH_TEST_TARGET): $(SIM_SCAN_BATCH_TEST_SOURCES) cuda/sim_scan_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_SCAN_BATCH_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -837,6 +845,9 @@ check-fasim-cigar: $(FASIM_CIGAR_TEST_TARGET)
 
 check-prealign-shared: $(PREALIGN_SHARED_TEST_TARGET)
 	./$(PREALIGN_SHARED_TEST_TARGET)
+
+check-prealign-cuda-topk: $(PREALIGN_CUDA_TOPK_TEST_TARGET)
+	./$(PREALIGN_CUDA_TOPK_TEST_TARGET)
 
 check-sim-scan-batch: $(SIM_SCAN_BATCH_TEST_TARGET)
 	./$(SIM_SCAN_BATCH_TEST_TARGET)
@@ -1085,6 +1096,7 @@ check-longtarget-lite-output:
 		check-smoke-cuda-avx2 check-matrix-cuda check-matrix-cuda-avx2 \
 		build-fasim-cigar-test check-fasim-cigar \
 		build-prealign-shared-test check-prealign-shared \
+		build-prealign-cuda-topk-test check-prealign-cuda-topk \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
 			build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \

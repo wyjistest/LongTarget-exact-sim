@@ -673,8 +673,11 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
     return false;
   }
 
+  const int requestedTopK = topK;
+  const int effectiveTopK = min(requestedTopK,targetLength);
   const size_t targetsBytes = static_cast<size_t>(taskCount) * static_cast<size_t>(targetLength) * sizeof(uint8_t);
-  const size_t peaksBytes = static_cast<size_t>(taskCount) * static_cast<size_t>(topK) * sizeof(PreAlignCudaPeak);
+  const size_t peaksBytes =
+    static_cast<size_t>(taskCount) * static_cast<size_t>(effectiveTopK) * sizeof(PreAlignCudaPeak);
 
   PreAlignCudaContext *context = NULL;
   mutex *contextMutex = NULL;
@@ -688,7 +691,7 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   {
     return false;
   }
-  if(!ensure_prealign_cuda_capacity_locked(*context,taskCount,targetLength,topK,errorOut))
+  if(!ensure_prealign_cuda_capacity_locked(*context,taskCount,targetLength,effectiveTopK,errorOut))
   {
     return false;
   }
@@ -710,7 +713,7 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   const int threadsPerBlock = 32;
   size_t sharedBytes = static_cast<size_t>(3) * static_cast<size_t>(handle.segLen) * 32u * sizeof(int16_t);
   sharedBytes = (sharedBytes + sizeof(int) - 1) & ~(static_cast<size_t>(sizeof(int) - 1));
-  sharedBytes += static_cast<size_t>(2) * static_cast<size_t>(topK) * sizeof(int);
+  sharedBytes += static_cast<size_t>(2) * static_cast<size_t>(effectiveTopK) * sizeof(int);
 
   status = cudaEventRecord(context->startEvent);
   if(status == cudaSuccess)
@@ -720,7 +723,7 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
                                                                         taskCount,
                                                                         targetLength,
                                                                         handle.segLen,
-                                                                        topK,
+                                                                        effectiveTopK,
                                                                         context->peaksDevice);
     status = cudaGetLastError();
   }
@@ -748,8 +751,8 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
     return false;
   }
 
-  vector<PreAlignCudaPeak> peaks(static_cast<size_t>(taskCount) * static_cast<size_t>(topK));
-  status = cudaMemcpy(peaks.data(), context->peaksDevice, peaksBytes, cudaMemcpyDeviceToHost);
+  vector<PreAlignCudaPeak> compactPeaks(static_cast<size_t>(taskCount) * static_cast<size_t>(effectiveTopK));
+  status = cudaMemcpy(compactPeaks.data(), context->peaksDevice, peaksBytes, cudaMemcpyDeviceToHost);
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -759,11 +762,30 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
     return false;
   }
 
+  PreAlignCudaPeak invalidPeak;
+  invalidPeak.score = -1;
+  invalidPeak.position = -1;
+  vector<PreAlignCudaPeak> peaks(static_cast<size_t>(taskCount) * static_cast<size_t>(requestedTopK),invalidPeak);
+  for(int taskIndex = 0; taskIndex < taskCount; ++taskIndex)
+  {
+    const PreAlignCudaPeak *src =
+      compactPeaks.data() + static_cast<size_t>(taskIndex) * static_cast<size_t>(effectiveTopK);
+    PreAlignCudaPeak *dst =
+      peaks.data() + static_cast<size_t>(taskIndex) * static_cast<size_t>(requestedTopK);
+    for(int k = 0; k < effectiveTopK; ++k)
+    {
+      dst[k] = src[k];
+    }
+  }
+
   outPeaks->swap(peaks);
   if(batchResult != NULL)
   {
     batchResult->usedCuda = true;
     batchResult->gpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
+    batchResult->requestedTopK = requestedTopK;
+    batchResult->effectiveTopK = effectiveTopK;
+    batchResult->topKClampedCount = (effectiveTopK < requestedTopK) ? 1u : 0u;
   }
   return true;
 }
