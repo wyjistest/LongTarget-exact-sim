@@ -659,6 +659,9 @@ SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_SOURCES := tests/test_sim_initial_sum
 CALC_SCORE_CUDA_TELEMETRY_TEST_TARGET ?= tests/test_calc_score_cuda_telemetry
 CALC_SCORE_CUDA_TELEMETRY_TEST_SOURCES := tests/test_calc_score_cuda_telemetry.cpp cuda/calc_score_cuda_stub.cpp cuda/sim_scan_cuda_stub.cpp cuda/prealign_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+CALC_SCORE_CUDA_V2_REDUCE_TEST_TARGET ?= tests/test_calc_score_cuda_v2_reduce
+CALC_SCORE_CUDA_V2_REDUCE_TEST_SOURCES := tests/test_calc_score_cuda_v2_reduce.cpp cuda/calc_score_cuda.o
+
 SIM_LOCATE_UPDATE_TEST_TARGET ?= tests/test_sim_locate_update
 SIM_LOCATE_UPDATE_TEST_SOURCES := tests/test_sim_locate_update.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -729,6 +732,8 @@ build-sim-initial-summary-packed-d2h-test: $(SIM_INITIAL_SUMMARY_PACKED_D2H_TEST
 build-sim-initial-summary-host-copy-elision-test: $(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET)
 
 build-calc-score-cuda-telemetry-test: $(CALC_SCORE_CUDA_TELEMETRY_TEST_TARGET)
+
+build-calc-score-cuda-v2-reduce-test: $(CALC_SCORE_CUDA_V2_REDUCE_TEST_TARGET)
 
 build-sim-locate-update-test: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 
@@ -818,6 +823,9 @@ $(SIM_INITIAL_SUMMARY_HOST_COPY_ELISION_TEST_TARGET): $(SIM_INITIAL_SUMMARY_HOST
 
 $(CALC_SCORE_CUDA_TELEMETRY_TEST_TARGET): $(CALC_SCORE_CUDA_TELEMETRY_TEST_SOURCES) longtarget.cpp exact_sim.h sim.h stats.h rules.h cuda/calc_score_cuda.h cuda/sim_scan_cuda.h cuda/prealign_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(CALC_SCORE_CUDA_TELEMETRY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(CALC_SCORE_CUDA_V2_REDUCE_TEST_TARGET): $(CALC_SCORE_CUDA_V2_REDUCE_TEST_SOURCES) cuda/calc_score_cuda.h cuda/sim_cuda_runtime.h
+	$(CXX) $(CPPFLAGS) -I$(CUDA_HOME)/include $(CXXFLAGS) $(ARCH_FLAGS) $(SIMD_FLAGS) $(PTHREAD_FLAGS) $(CALC_SCORE_CUDA_V2_REDUCE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_LOCATE_UPDATE_TEST_TARGET): $(SIM_LOCATE_UPDATE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h cuda/sim_locate_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_LOCATE_UPDATE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -936,6 +944,9 @@ check-calc-score-cuda-telemetry: $(CALC_SCORE_CUDA_TELEMETRY_TEST_TARGET)
 check-calc-score-cuda-v2-shadow:
 	$(MAKE) build-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) sh ./scripts/check_calc_score_cuda_v2_shadow.sh
+
+check-calc-score-cuda-v2-reduce: $(CALC_SCORE_CUDA_V2_REDUCE_TEST_TARGET)
+	./$(CALC_SCORE_CUDA_V2_REDUCE_TEST_TARGET)
 
 check-sim-locate-update: $(SIM_LOCATE_UPDATE_TEST_TARGET)
 	./$(SIM_LOCATE_UPDATE_TEST_TARGET)
@@ -1123,7 +1134,7 @@ check-longtarget-lite-output:
 				build-sim-safe-window-fine-execution-test check-sim-safe-window-fine-execution \
 				build-sim-locate-update-test check-sim-locate-update \
 			build-exact-sim-two-stage-threshold-test check-exact-sim-two-stage-threshold \
-				check-calc-score-cuda-v2-shadow check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
+				build-calc-score-cuda-v2-reduce-test check-calc-score-cuda-v2-reduce check-calc-score-cuda-v2-shadow check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
 		check-sim-cuda-region-docs check-longtarget-lite-output check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \

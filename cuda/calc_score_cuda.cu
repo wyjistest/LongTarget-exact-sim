@@ -245,6 +245,21 @@ __global__ void calc_score_cuda_kernel_v2(const int16_t *profileFwd,
   }
 }
 
+__global__ void calc_score_cuda_reduce_orientation_scores_kernel(const int *orientationScores,
+                                                                 size_t scoreCount,
+                                                                 int *outScores)
+{
+  const size_t idx = static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
+                     static_cast<size_t>(threadIdx.x);
+  if(idx >= scoreCount)
+  {
+    return;
+  }
+  const int fwdScore = orientationScores[idx * 2u];
+  const int revScore = orientationScores[idx * 2u + 1u];
+  outScores[idx] = fwdScore > revScore ? fwdScore : revScore;
+}
+
 static inline string cuda_error_string(cudaError_t error)
 {
   const char *message = cudaGetErrorString(error);
@@ -912,6 +927,38 @@ static bool calc_score_cuda_copy_v1_scores_locked(CalcScoreCudaBatchContext &con
   return true;
 }
 
+static bool calc_score_cuda_reduce_v2_scores_locked(CalcScoreCudaBatchContext &context,
+                                                    size_t scoreCount,
+                                                    string *errorOut)
+{
+  if(context.orientationScoresDevice == NULL || context.scoresDevice == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing CUDA v2 reduce buffers";
+    }
+    return false;
+  }
+
+  const int threadsPerBlock = 256;
+  const unsigned int blocks =
+    static_cast<unsigned int>((scoreCount + static_cast<size_t>(threadsPerBlock) - 1u) /
+                              static_cast<size_t>(threadsPerBlock));
+  calc_score_cuda_reduce_orientation_scores_kernel<<<blocks, threadsPerBlock>>>(context.orientationScoresDevice,
+                                                                                scoreCount,
+                                                                                context.scoresDevice);
+  const cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  return true;
+}
+
 static bool calc_score_cuda_copy_reduce_v2_scores_locked(CalcScoreCudaBatchContext &context,
                                                          size_t scoreCount,
                                                          vector<int> *outPairScores,
@@ -1054,7 +1101,6 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
   const size_t permutationsBytes =
     static_cast<size_t>(requiredPermutationCount) * static_cast<size_t>(targetLength) * sizeof(uint16_t);
   const size_t scoresBytes = scoreCount * sizeof(int);
-  const size_t orientationScoresBytes = scoreCount * 2u * sizeof(int);
 
   lock_guard<mutex> lock(*contextMutex);
   if(!ensure_calc_score_cuda_batch_initialized_locked(*context,device,errorOut))
@@ -1128,18 +1174,21 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
                                      &pipelineV2KernelSeconds,
                                      &v2SyncWaitSeconds,
                                      &v2Error) &&
-       calc_score_cuda_copy_reduce_v2_scores_locked(*context,
-                                                    scoreCount,
-                                                    outPairScores,
-                                                    collectTelemetry,
-                                                    &pipelineV2ScoreD2HSeconds,
-                                                    &pipelineV2HostReduceSeconds,
-                                                    &v2Error))
+       calc_score_cuda_reduce_v2_scores_locked(*context,
+                                               scoreCount,
+                                               &v2Error) &&
+       calc_score_cuda_copy_v1_scores_locked(*context,
+                                             scoreCount,
+                                             outPairScores,
+                                             collectTelemetry,
+                                             &pipelineV2ScoreD2HSeconds,
+                                             &v2Error))
     {
       pipelineV2Used = true;
       kernelSeconds = pipelineV2KernelSeconds;
       scoreD2HSeconds = pipelineV2ScoreD2HSeconds;
       syncWaitSeconds = v2SyncWaitSeconds;
+      pipelineV2HostReduceSeconds = 0.0;
       computed = true;
     }
     else
@@ -1241,9 +1290,7 @@ bool calc_score_cuda_compute_pair_max_scores(const CalcScoreCudaQueryHandle &han
     batchResult->pipelineV2HostReduceSeconds = pipelineV2HostReduceSeconds;
     batchResult->targetBytesH2D = static_cast<uint64_t>(targetsBytes);
     batchResult->permutationBytesH2D = static_cast<uint64_t>(permutationsBytes);
-    batchResult->scoreBytesD2H = static_cast<uint64_t>(pipelineV2Enabled && !pipelineV2ShadowEnabled && pipelineV2Used ?
-                                                        orientationScoresBytes :
-                                                        scoresBytes);
+    batchResult->scoreBytesD2H = static_cast<uint64_t>(scoresBytes);
     batchResult->usedCuda = true;
   }
   return true;
