@@ -1592,6 +1592,21 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
     }
     return true;
   };
+  const auto scoreMatricesEqual = [](const int (*lhs)[128],const int (*rhs)[128]) -> bool
+  {
+    if(lhs == rhs)
+    {
+      return true;
+    }
+    for(size_t i = 0; i < static_cast<size_t>(128 * 128); ++i)
+    {
+      if((&lhs[0][0])[i] != (&rhs[0][0])[i])
+      {
+        return false;
+      }
+    }
+    return true;
+  };
   for(size_t i = 1; i < requests.size(); ++i)
   {
     const SimLocateCudaRequest &request = requests[i];
@@ -1599,7 +1614,7 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
        request.targetLength != base.targetLength ||
        !bytesEqual(request.A,base.A,static_cast<size_t>(base.queryLength + 1)) ||
        !bytesEqual(request.B,base.B,static_cast<size_t>(base.targetLength + 1)) ||
-       request.scoreMatrix != base.scoreMatrix ||
+       !scoreMatricesEqual(request.scoreMatrix,base.scoreMatrix) ||
        request.blockedWords != base.blockedWords ||
        request.blockedWordStride != base.blockedWordStride ||
        request.candidates != base.candidates ||

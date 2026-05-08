@@ -330,5 +330,25 @@ int main()
                           1,
                           "copied-input batch uses one launch") && ok;
 
+    int scoreMatrixCopy[128][128];
+    fill_score_matrix(scoreMatrixCopy);
+    std::vector<SimLocateCudaRequest> copiedMatrixRequests;
+    copiedMatrixRequests.push_back(request);
+    copiedMatrixRequests.push_back(make_request(query, target, scoreMatrixCopy));
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(copiedMatrixRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "copied-matrix locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "copied-matrix batch still shares matrix content") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          1,
+                          "copied-matrix batch uses one launch") && ok;
+
     return ok ? 0 : 1;
 }
