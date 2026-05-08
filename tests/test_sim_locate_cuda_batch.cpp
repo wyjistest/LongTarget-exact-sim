@@ -441,6 +441,9 @@ int main()
     ok = expect_equal_u64(batchResult.launchCount,
                           2,
                           "interleaved mixed batch groups non-contiguous shared requests") && ok;
+    ok = expect_equal_u64(batchResult.requestValidationCount,
+                          interleavedMixedRequests.size(),
+                          "interleaved mixed batch skips verified subgroup request revalidation") && ok;
     ok = expect_equal_u64(batchResult.wholeBatchSharedInputDeepCompareCount,
                           0,
                           "interleaved mixed batch skips verified subgroup whole-batch deep compare") && ok;

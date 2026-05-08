@@ -329,6 +329,7 @@ struct SimLocateCudaBatchResult
     candidateH2DCacheHits(0),
     requestH2DCopies(0),
     requestH2DCacheHits(0),
+    requestValidationCount(0),
     wholeBatchSharedInputDeepCompareCount(0),
     mixedFallbackSignatureCandidateCheckCount(0),
     mixedFallbackSharedInputDeepCompareCount(0)
@@ -351,6 +352,7 @@ struct SimLocateCudaBatchResult
   uint64_t candidateH2DCacheHits;
   uint64_t requestH2DCopies;
   uint64_t requestH2DCacheHits;
+  uint64_t requestValidationCount;
   uint64_t wholeBatchSharedInputDeepCompareCount;
   uint64_t mixedFallbackSignatureCandidateCheckCount;
   uint64_t mixedFallbackSharedInputDeepCompareCount;
