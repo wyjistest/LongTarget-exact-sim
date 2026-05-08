@@ -1888,6 +1888,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   getSimSafeWorksetTimingStats(simSafeWorksetBuildNanoseconds,
                                simSafeWorksetMergeNanoseconds,
                                simSafeWorksetTotalNanoseconds);
+  const SimSafeWorksetMergeBreakdownStats simSafeWorksetMergeBreakdown =
+    getSimSafeWorksetMergeBreakdownStats();
   cerr<<"benchmark.sim_safe_workset_affected_starts="<<simSafeWorksetAffectedStartCount<<endl;
   cerr<<"benchmark.sim_safe_workset_unique_affected_starts="<<simSafeWorksetUniqueAffectedStartCount<<endl;
   cerr<<"benchmark.sim_safe_workset_input_bands="<<simSafeWorksetInputBandCount<<endl;
@@ -1901,6 +1903,28 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_safe_workset_build_seconds="<<(static_cast<double>(simSafeWorksetBuildNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_seconds="<<(static_cast<double>(simSafeWorksetMergeNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_total_seconds="<<(static_cast<double>(simSafeWorksetTotalNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_materialize_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_MATERIALIZE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_candidate_erase_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_ERASE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_upsert_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_candidate_apply_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_upload_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPLOAD_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_unique_start_keys="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_UNIQUE_START_KEY_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_duplicate_states="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_DUPLICATE_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_candidate_updates="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_updates="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_residency_updates="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_builder_calls_after_safe_window="
       <<getSimSafeWorksetBuilderCallsAfterSafeWindow()<<endl;
   uint64_t simSafeStoreRefreshAttemptCount = 0;

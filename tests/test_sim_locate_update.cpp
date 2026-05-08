@@ -1292,6 +1292,8 @@ int main()
     getSimSafeWorksetTimingStats(safeWorksetBuildNanoseconds,
                                  safeWorksetMergeNanoseconds,
                                  safeWorksetTotalNanoseconds);
+    const SimSafeWorksetMergeBreakdownStats safeWorksetMergeBreakdownBefore =
+        getSimSafeWorksetMergeBreakdownStats();
     getSimSafeWindowStats(safeWindowCount,
                           safeWindowAffectedStartCount,
                           safeWindowCoordBytesD2H,
@@ -1427,6 +1429,19 @@ int main()
     recordSimSafeWorksetCudaBatch(5, 2);
     recordSimSafeWorksetCudaTrueBatch(7);
     recordSimSafeWorksetMerge(4, 17);
+    SimSafeWorksetMergeBreakdownStats safeWorksetMergeBreakdownDelta;
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_MATERIALIZE_NANOSECONDS, 3);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_ERASE_NANOSECONDS, 5);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS, 7);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS, 11);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_NANOSECONDS, 13);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPLOAD_NANOSECONDS, 17);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_UNIQUE_START_KEY_COUNT, 19);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_DUPLICATE_STATE_COUNT, 23);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT, 29);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT, 31);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT, 37);
+    recordSimSafeWorksetMergeBreakdown(safeWorksetMergeBreakdownDelta);
     recordSimSafeWorksetTotalNanoseconds(29);
     recordSimSafeWindowExecGeometry(safeWindowExec);
     recordSimSafeWindowAttempt();
@@ -1484,6 +1499,8 @@ int main()
     getSimSafeWorksetTimingStats(safeWorksetBuildNanoseconds,
                                  safeWorksetMergeNanoseconds,
                                  safeWorksetTotalNanoseconds);
+    const SimSafeWorksetMergeBreakdownStats safeWorksetMergeBreakdownAfter =
+        getSimSafeWorksetMergeBreakdownStats();
     getSimSafeWindowStats(safeWindowCount,
                           safeWindowAffectedStartCount,
                           safeWindowCoordBytesD2H,
@@ -1572,6 +1589,17 @@ int main()
     ok = expect_equal_u64(safeWorksetTotalNanoseconds,
                           safeWorksetTotalNanosecondsBefore + 29,
                           "safe_workset total timing increments") && ok;
+    for(size_t fieldIndex = 0;
+        fieldIndex < SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT;
+        ++fieldIndex)
+    {
+      const SimSafeWorksetMergeBreakdownField field =
+          static_cast<SimSafeWorksetMergeBreakdownField>(fieldIndex);
+      ok = expect_equal_u64(safeWorksetMergeBreakdownAfter.get(field),
+                            safeWorksetMergeBreakdownBefore.get(field) +
+                                safeWorksetMergeBreakdownDelta.get(field),
+                            "safe_workset merge breakdown increments") && ok;
+    }
     ok = expect_equal_u64(safeWindowCount,
                           safeWindowCountBefore + 3,
                           "safe window count increments") && ok;

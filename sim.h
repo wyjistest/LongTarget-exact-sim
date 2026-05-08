@@ -710,6 +710,23 @@ inline vector<uint64_t> makeSortedUniqueSimStartCoords(const vector<uint64_t> &s
   return uniqueCoords;
 }
 
+inline uint64_t countUniqueSimCandidateStateStartCoords(const vector<SimScanCudaCandidateState> &states)
+{
+  if(states.empty())
+  {
+    return 0;
+  }
+  vector<uint64_t> startCoords;
+  startCoords.reserve(states.size());
+  for(size_t stateIndex = 0; stateIndex < states.size(); ++stateIndex)
+  {
+    startCoords.push_back(simScanCudaCandidateStateStartCoord(states[stateIndex]));
+  }
+  sort(startCoords.begin(),startCoords.end());
+  return static_cast<uint64_t>(unique(startCoords.begin(),startCoords.end()) -
+                               startCoords.begin());
+}
+
 inline bool simCandidateStateIntersectsPathSummary(const SimScanCudaCandidateState &candidate,
                                                    const SimTracebackPathSummary &summary)
 {
@@ -4139,6 +4156,68 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		enum SimSafeWorksetMergeBreakdownField
+		{
+		  SIM_SAFE_WORKSET_MERGE_MATERIALIZE_NANOSECONDS = 0,
+		  SIM_SAFE_WORKSET_MERGE_CANDIDATE_ERASE_NANOSECONDS = 1,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS = 2,
+		  SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS = 3,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_NANOSECONDS = 4,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPLOAD_NANOSECONDS = 5,
+		  SIM_SAFE_WORKSET_MERGE_UNIQUE_START_KEY_COUNT = 6,
+		  SIM_SAFE_WORKSET_MERGE_DUPLICATE_STATE_COUNT = 7,
+		  SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT = 8,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT = 9,
+		  SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT = 10,
+		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 11
+		};
+
+		struct SimSafeWorksetMergeBreakdownStats
+		{
+		  uint64_t values[SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT];
+
+		  SimSafeWorksetMergeBreakdownStats()
+		  {
+		    for(size_t fieldIndex = 0;
+		        fieldIndex < SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT;
+		        ++fieldIndex)
+		    {
+		      values[fieldIndex] = 0;
+		    }
+		  }
+
+		  uint64_t get(SimSafeWorksetMergeBreakdownField field) const
+		  {
+		    return values[static_cast<size_t>(field)];
+		  }
+
+		  void add(SimSafeWorksetMergeBreakdownField field,uint64_t value)
+		  {
+		    values[static_cast<size_t>(field)] += value;
+		  }
+		};
+
+		struct SimSafeWorksetMergeBreakdownAtomicStats
+		{
+		  std::atomic<uint64_t> values[SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT];
+
+		  SimSafeWorksetMergeBreakdownAtomicStats()
+		  {
+		    for(size_t fieldIndex = 0;
+		        fieldIndex < SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT;
+		        ++fieldIndex)
+		    {
+		      values[fieldIndex].store(0,std::memory_order_relaxed);
+		    }
+		  }
+		};
+
+		inline SimSafeWorksetMergeBreakdownAtomicStats &simSafeWorksetMergeBreakdownAtomicStats()
+		{
+		  static SimSafeWorksetMergeBreakdownAtomicStats stats;
+		  return stats;
+		}
+
 		inline std::atomic<uint64_t> &simSafeStoreRefreshAttemptCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -4601,6 +4680,19 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simSafeWorksetMergeNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
 		}
 
+		inline void recordSimSafeWorksetMergeBreakdown(const SimSafeWorksetMergeBreakdownStats &delta)
+		{
+		  SimSafeWorksetMergeBreakdownAtomicStats &stats =
+		    simSafeWorksetMergeBreakdownAtomicStats();
+		  for(size_t fieldIndex = 0;
+		      fieldIndex < SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT;
+		      ++fieldIndex)
+		  {
+		    stats.values[fieldIndex].fetch_add(delta.values[fieldIndex],
+		                                       std::memory_order_relaxed);
+		  }
+		}
+
 		inline void recordSimSafeWorksetTotalNanoseconds(uint64_t nanoseconds)
 		{
 		  simSafeWorksetTotalNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -4993,6 +5085,21 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  buildNanoseconds = simSafeWorksetBuildNanoseconds().load(std::memory_order_relaxed);
 		  mergeNanoseconds = simSafeWorksetMergeNanoseconds().load(std::memory_order_relaxed);
 		  totalNanoseconds = simSafeWorksetTotalNanoseconds().load(std::memory_order_relaxed);
+		}
+
+		inline SimSafeWorksetMergeBreakdownStats getSimSafeWorksetMergeBreakdownStats()
+		{
+		  SimSafeWorksetMergeBreakdownStats snapshot;
+		  SimSafeWorksetMergeBreakdownAtomicStats &stats =
+		    simSafeWorksetMergeBreakdownAtomicStats();
+		  for(size_t fieldIndex = 0;
+		      fieldIndex < SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT;
+		      ++fieldIndex)
+		  {
+		    snapshot.values[fieldIndex] =
+		      stats.values[fieldIndex].load(std::memory_order_relaxed);
+		  }
+		  return snapshot;
 		}
 
 		inline void getSimSafeStoreRefreshStats(uint64_t &attemptCount,
@@ -17338,12 +17445,16 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
 
     const std::chrono::steady_clock::time_point cpuMergeStart =
       benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    const std::chrono::steady_clock::time_point candidateApplyStart =
+      benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     applySimCudaReducedCandidates(residencyResult.frontierStates,
                                   residencyResult.runningMin,
                                   context);
     markSimGpuFrontierCacheSynchronized(context);
     recordSimFrontierCacheRebuildFromResidency();
     resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+    const uint64_t candidateApplyNanoseconds =
+      benchmarkEnabled ? simElapsedNanoseconds(candidateApplyStart) : 0;
 
     if(benchmarkEnabled)
     {
@@ -17353,11 +17464,33 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       {
         recordSimSafeWorksetMerge(residencyResult.updatedStateCount,
                                   cpuMergeNanoseconds);
+        const uint64_t frontierStateCount =
+          static_cast<uint64_t>(residencyResult.frontierStates.size());
+        SimSafeWorksetMergeBreakdownStats mergeBreakdown;
+        mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS,
+                           candidateApplyNanoseconds);
+        const uint64_t uniqueStartKeyCount =
+          countUniqueSimCandidateStateStartCoords(residencyResult.frontierStates);
+        mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_UNIQUE_START_KEY_COUNT,
+                           uniqueStartKeyCount);
+        mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_DUPLICATE_STATE_COUNT,
+                           frontierStateCount - uniqueStartKeyCount);
+        mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT,
+                           frontierStateCount);
+        mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT,
+                           residencyResult.updatedStateCount);
+        recordSimSafeWorksetMergeBreakdown(mergeBreakdown);
       }
     }
     else if(recordTelemetry)
     {
       recordSimSafeWorksetMerge(residencyResult.updatedStateCount,0);
+      SimSafeWorksetMergeBreakdownStats mergeBreakdown;
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT,
+                         static_cast<uint64_t>(residencyResult.frontierStates.size()));
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT,
+                         residencyResult.updatedStateCount);
+      recordSimSafeWorksetMergeBreakdown(mergeBreakdown);
     }
     if(recordTelemetry)
     {
@@ -17423,11 +17556,28 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
 
   const std::chrono::steady_clock::time_point cpuMergeStart =
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  std::chrono::steady_clock::time_point mergeStageStart = cpuMergeStart;
+  SimSafeWorksetMergeBreakdownStats mergeBreakdown;
   vector<SimScanCudaCandidateState> updatedAffectedStates;
   updatedAffectedStates.swap(aggregatedResult.candidateStates);
+  if(benchmarkEnabled)
+  {
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_MATERIALIZE_NANOSECONDS,
+                       simElapsedNanoseconds(mergeStageStart));
+    mergeStageStart = std::chrono::steady_clock::now();
+  }
+  const uint64_t returnedStateCount = static_cast<uint64_t>(updatedAffectedStates.size());
+  mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT,
+                     returnedStateCount);
 
   // 受影响的 start 必须按本轮重扫结果整体重建；否则“本轮没有返回 state”的旧候选会以 stale 形式残留。
   eraseSimCandidatesBySortedUniqueStartCoords(uniqueAffected,context);
+  if(benchmarkEnabled)
+  {
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_ERASE_NANOSECONDS,
+                       simElapsedNanoseconds(mergeStageStart));
+    mergeStageStart = std::chrono::steady_clock::now();
+  }
   if(context.safeCandidateStateStore.valid)
   {
     eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(uniqueAffected,context);
@@ -17436,13 +17586,34 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       upsertSimCandidateStateStoreState(updatedAffectedStates[stateIndex],
                                         context.safeCandidateStateStore);
     }
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT,
+                       returnedStateCount);
+  }
+  if(benchmarkEnabled)
+  {
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS,
+                       simElapsedNanoseconds(mergeStageStart));
+    mergeStageStart = std::chrono::steady_clock::now();
   }
   mergeSimCudaCandidateStatesIntoContext(updatedAffectedStates,context);
+  if(benchmarkEnabled)
+  {
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS,
+                       simElapsedNanoseconds(mergeStageStart));
+    mergeStageStart = std::chrono::steady_clock::now();
+  }
   if(context.safeCandidateStateStore.valid)
   {
     pruneSimSafeCandidateStateStore(context);
   }
-  if(context.gpuSafeCandidateStateStore.valid)
+  if(benchmarkEnabled)
+  {
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_NANOSECONDS,
+                       simElapsedNanoseconds(mergeStageStart));
+    mergeStageStart = std::chrono::steady_clock::now();
+  }
+  const bool hadGpuSafeCandidateStateStore = context.gpuSafeCandidateStateStore.valid;
+  if(hadGpuSafeCandidateStateStore)
   {
     string gpuStoreError;
     if(!updateSimCudaPersistentSafeCandidateStateStore(updatedAffectedStates,
@@ -17460,6 +17631,11 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       }
     }
   }
+  if(benchmarkEnabled && hadGpuSafeCandidateStateStore)
+  {
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPLOAD_NANOSECONDS,
+                       simElapsedNanoseconds(mergeStageStart));
+  }
 
   if(benchmarkEnabled)
   {
@@ -17467,13 +17643,20 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     recordSimRegionCpuMergeNanoseconds(cpuMergeNanoseconds);
     if(recordTelemetry)
     {
-      recordSimSafeWorksetMerge(static_cast<uint64_t>(updatedAffectedStates.size()),
-                                cpuMergeNanoseconds);
+      const uint64_t uniqueReturnedStartKeyCount =
+        countUniqueSimCandidateStateStartCoords(updatedAffectedStates);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_UNIQUE_START_KEY_COUNT,
+                         uniqueReturnedStartKeyCount);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_DUPLICATE_STATE_COUNT,
+                         returnedStateCount - uniqueReturnedStartKeyCount);
+      recordSimSafeWorksetMerge(returnedStateCount,cpuMergeNanoseconds);
+      recordSimSafeWorksetMergeBreakdown(mergeBreakdown);
     }
   }
   else if(recordTelemetry)
   {
-    recordSimSafeWorksetMerge(static_cast<uint64_t>(updatedAffectedStates.size()),0);
+    recordSimSafeWorksetMerge(returnedStateCount,0);
+    recordSimSafeWorksetMergeBreakdown(mergeBreakdown);
   }
   if(recordTelemetry)
   {
