@@ -441,6 +441,9 @@ int main()
     ok = expect_equal_u64(batchResult.launchCount,
                           2,
                           "interleaved mixed batch groups non-contiguous shared requests") && ok;
+    ok = expect_equal_u64(batchResult.wholeBatchSharedInputDeepCompareCount,
+                          0,
+                          "interleaved mixed batch skips verified subgroup whole-batch deep compare") && ok;
 
     const std::string mixedTarget2 = " ACGTAA";
     const std::string mixedTarget3 = " ACGTAAA";
@@ -469,7 +472,7 @@ int main()
                           "signature-filtered mixed batch groups only matching shared requests") && ok;
     ok = expect_equal_u64(batchResult.wholeBatchSharedInputDeepCompareCount,
                           0,
-                          "signature-filtered mixed batch skips whole-batch deep compare") && ok;
+                          "signature-filtered mixed batch skips verified subgroup whole-batch deep compare") && ok;
     ok = expect_equal_u64(batchResult.mixedFallbackSignatureCandidateCheckCount,
                           1,
                           "signature-filtered mixed batch checks only same-signature candidates") && ok;

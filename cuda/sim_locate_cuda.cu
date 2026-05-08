@@ -1786,6 +1786,12 @@ bool sim_locate_cuda_init(int device,string *errorOut)
   return ensure_sim_locate_cuda_initialized_locked(*context,device,errorOut);
 }
 
+static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaRequest> &requests,
+                                                     vector<SimLocateResult> *outResults,
+                                                     SimLocateCudaBatchResult *batchResult,
+                                                     string *errorOut,
+                                                     bool sharedInputsVerified);
+
 bool sim_locate_cuda_locate_region(const SimLocateCudaRequest &request,
                                    SimLocateResult *outResult,
                                    string *errorOut)
@@ -2045,6 +2051,19 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
                                          SimLocateCudaBatchResult *batchResult,
                                          string *errorOut)
 {
+  return sim_locate_cuda_locate_region_batch_impl(requests,
+                                                 outResults,
+                                                 batchResult,
+                                                 errorOut,
+                                                 false);
+}
+
+static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaRequest> &requests,
+                                                     vector<SimLocateResult> *outResults,
+                                                     SimLocateCudaBatchResult *batchResult,
+                                                     string *errorOut,
+                                                     bool sharedInputsVerified)
+{
   if(outResults == NULL)
   {
     if(errorOut != NULL)
@@ -2104,20 +2123,23 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     return true;
   }
 
-  vector<SimLocateCudaSharedInputSignature> sharedInputSignatures(requests.size());
+  vector<SimLocateCudaSharedInputSignature> sharedInputSignatures;
   map<SimLocateCudaSharedInputSignature, vector<size_t> > signatureBuckets;
-  for(size_t i = 0; i < requests.size(); ++i)
-  {
-    sharedInputSignatures[i] = sim_locate_cuda_shared_input_signature(requests[i]);
-    signatureBuckets[sharedInputSignatures[i]].push_back(i);
-  }
-
   uint64_t wholeBatchSharedInputDeepCompareCount = 0;
-  bool requestsShareInputs = false;
-  if(signatureBuckets.size() == 1)
+  bool requestsShareInputs = sharedInputsVerified;
+  if(!requestsShareInputs)
   {
-    ++wholeBatchSharedInputDeepCompareCount;
-    requestsShareInputs = sim_locate_cuda_requests_share_inputs(requests);
+    sharedInputSignatures.resize(requests.size());
+    for(size_t i = 0; i < requests.size(); ++i)
+    {
+      sharedInputSignatures[i] = sim_locate_cuda_shared_input_signature(requests[i]);
+      signatureBuckets[sharedInputSignatures[i]].push_back(i);
+    }
+    if(signatureBuckets.size() == 1)
+    {
+      ++wholeBatchSharedInputDeepCompareCount;
+      requestsShareInputs = sim_locate_cuda_requests_share_inputs(requests);
+    }
   }
   if(!requestsShareInputs)
   {
@@ -2179,10 +2201,11 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       {
         vector<SimLocateResult> subgroupResults;
         SimLocateCudaBatchResult subgroupBatchResult;
-        if(!sim_locate_cuda_locate_region_batch(subgroup,
-                                                &subgroupResults,
-                                                &subgroupBatchResult,
-                                                errorOut))
+        if(!sim_locate_cuda_locate_region_batch_impl(subgroup,
+                                                     &subgroupResults,
+                                                     &subgroupBatchResult,
+                                                     errorOut,
+                                                     true))
         {
           outResults->clear();
           if(batchResult != NULL)
@@ -2223,6 +2246,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         candidateH2DCacheHits += subgroupBatchResult.candidateH2DCacheHits;
         requestH2DCopies += subgroupBatchResult.requestH2DCopies;
         requestH2DCacheHits += subgroupBatchResult.requestH2DCacheHits;
+        wholeBatchSharedInputDeepCompareCount +=
+          subgroupBatchResult.wholeBatchSharedInputDeepCompareCount;
         mixedFallbackSignatureCandidateCheckCount +=
           subgroupBatchResult.mixedFallbackSignatureCandidateCheckCount;
         mixedFallbackSharedInputDeepCompareCount +=
