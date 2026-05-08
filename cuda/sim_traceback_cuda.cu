@@ -2007,6 +2007,20 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
       batchResult->usedCuda = true;
     }
 
+    vector<unsigned char> chunkOpsHost(opsBytes);
+    if(opsBytes > 0)
+    {
+      status = cudaMemcpy(chunkOpsHost.data(),
+                          opsDevice,
+                          opsBytes,
+                          cudaMemcpyDeviceToHost);
+      if(status != cudaSuccess) return failChunk(status);
+      if(batchResult != NULL)
+      {
+        batchResult->bulkOpsD2HCopies += 1;
+      }
+    }
+
     for(size_t localIndex = 0; localIndex < chunkCount; ++localIndex)
     {
       SimTracebackCudaBatchItemResult &item = (*outResults)[pendingIndices[chunkStart + localIndex]];
@@ -2017,11 +2031,9 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
       vector<unsigned char> ops(static_cast<size_t>(opsLen));
       if(opsLen > 0)
       {
-        status = cudaMemcpy(ops.data(),
-                            opsDevice + static_cast<size_t>(localIndex) * static_cast<size_t>(opsStride),
-                            static_cast<size_t>(opsLen) * sizeof(unsigned char),
-                            cudaMemcpyDeviceToHost);
-        if(status != cudaSuccess) return failChunk(status);
+        const unsigned char *row =
+          chunkOpsHost.data() + static_cast<size_t>(localIndex) * static_cast<size_t>(opsStride);
+        ops.assign(row,row + opsLen);
       }
 
       item.success = true;

@@ -66,7 +66,9 @@ struct SimTracebackCudaBatchResult
     requestCount(0),
     successCount(0),
     cudaCount(0),
-    singleCudaRequestBatchSkips(0)
+    singleCudaRequestBatchSkips(0),
+    bulkOpsD2HCopies(0),
+    perRequestOpsD2HCopies(0)
   {
   }
 
@@ -76,6 +78,8 @@ struct SimTracebackCudaBatchResult
   uint64_t successCount;
   uint64_t cudaCount;
   uint64_t singleCudaRequestBatchSkips;
+  uint64_t bulkOpsD2HCopies;
+  uint64_t perRequestOpsD2HCopies;
 };
 
 bool sim_traceback_cuda_is_built();

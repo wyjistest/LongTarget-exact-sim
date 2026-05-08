@@ -310,6 +310,12 @@ int main()
     ok = expect_equal_uint64(batchResult.singleCudaRequestBatchSkips,
                              0,
                              "valid multi-request batch does not skip batch path") && ok;
+    ok = expect_equal_uint64(batchResult.bulkOpsD2HCopies,
+                             1,
+                             "valid multi-request batch uses one bulk ops D2H") && ok;
+    ok = expect_equal_uint64(batchResult.perRequestOpsD2HCopies,
+                             0,
+                             "valid multi-request batch skips per-request ops D2H") && ok;
     if (batchResults.size() == 2)
     {
         ok = expect_equal_bool(batchResults[0].success, true, "batch result 0 success") && ok;
@@ -377,6 +383,9 @@ int main()
     ok = expect_equal_uint64(batchResult.singleCudaRequestBatchSkips,
                              1,
                              "single-pending batch skips batch allocation path") && ok;
+    ok = expect_equal_uint64(batchResult.bulkOpsD2HCopies,
+                             0,
+                             "single-pending batch does not bulk copy ops") && ok;
     if (batchResults.size() == 2)
     {
         ok = expect_equal_bool(batchResults[0].success, true, "single-pending gap result success") && ok;
