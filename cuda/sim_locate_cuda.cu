@@ -140,6 +140,11 @@ struct SimLocateCudaContext
     batchCapacity(0),
     ADevice(NULL),
     BDevice(NULL),
+    inputCacheValid(false),
+    inputCacheQueryLength(0),
+    inputCacheTargetLength(0),
+    inputCacheAHash(0),
+    inputCacheBHash(0),
     scoreMatrixDevice(NULL),
     scoreMatrixCacheValid(false),
     scoreMatrixCacheHash(0),
@@ -187,6 +192,13 @@ struct SimLocateCudaContext
 
   char *ADevice;
   char *BDevice;
+  bool inputCacheValid;
+  int inputCacheQueryLength;
+  int inputCacheTargetLength;
+  uint64_t inputCacheAHash;
+  uint64_t inputCacheBHash;
+  vector<char> inputACache;
+  vector<char> inputBCache;
   int *scoreMatrixDevice;
   bool scoreMatrixCacheValid;
   uint64_t scoreMatrixCacheHash;
@@ -227,6 +239,81 @@ struct SimLocateCudaContext
   cudaEvent_t startEvent;
   cudaEvent_t stopEvent;
 };
+
+static uint64_t sim_locate_cuda_bytes_hash(const char *bytes,size_t count)
+{
+  uint64_t hash = 1469598103934665603ull;
+  for(size_t i = 0; i < count; ++i)
+  {
+    hash ^= static_cast<uint64_t>(static_cast<unsigned char>(bytes[i]));
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+static bool sim_locate_cuda_cached_bytes_match(const vector<char> &cached,
+                                               const char *bytes,
+                                               size_t count)
+{
+  if(cached.size() != count)
+  {
+    return false;
+  }
+  for(size_t i = 0; i < count; ++i)
+  {
+    if(cached[i] != bytes[i])
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void sim_locate_cuda_invalidate_input_cache(SimLocateCudaContext &context)
+{
+  context.inputCacheValid = false;
+  context.inputCacheQueryLength = 0;
+  context.inputCacheTargetLength = 0;
+  context.inputCacheAHash = 0;
+  context.inputCacheBHash = 0;
+  context.inputACache.clear();
+  context.inputBCache.clear();
+}
+
+static bool sim_locate_cuda_input_cache_matches(const SimLocateCudaContext &context,
+                                                const SimLocateCudaRequest &request,
+                                                uint64_t aHash,
+                                                uint64_t bHash)
+{
+  if(!context.inputCacheValid ||
+     context.inputCacheQueryLength != request.queryLength ||
+     context.inputCacheTargetLength != request.targetLength ||
+     context.inputCacheAHash != aHash ||
+     context.inputCacheBHash != bHash)
+  {
+    return false;
+  }
+  const size_t aBytes = static_cast<size_t>(request.queryLength + 1) * sizeof(char);
+  const size_t bBytes = static_cast<size_t>(request.targetLength + 1) * sizeof(char);
+  return sim_locate_cuda_cached_bytes_match(context.inputACache,request.A,aBytes) &&
+    sim_locate_cuda_cached_bytes_match(context.inputBCache,request.B,bBytes);
+}
+
+static void sim_locate_cuda_store_input_cache(SimLocateCudaContext &context,
+                                              const SimLocateCudaRequest &request,
+                                              uint64_t aHash,
+                                              uint64_t bHash)
+{
+  const size_t aBytes = static_cast<size_t>(request.queryLength + 1) * sizeof(char);
+  const size_t bBytes = static_cast<size_t>(request.targetLength + 1) * sizeof(char);
+  context.inputACache.assign(request.A,request.A + aBytes);
+  context.inputBCache.assign(request.B,request.B + bBytes);
+  context.inputCacheQueryLength = request.queryLength;
+  context.inputCacheTargetLength = request.targetLength;
+  context.inputCacheAHash = aHash;
+  context.inputCacheBHash = bHash;
+  context.inputCacheValid = true;
+}
 
 static uint64_t sim_locate_cuda_score_matrix_hash(const int (*scoreMatrix)[128])
 {
@@ -423,6 +510,7 @@ static void free_sim_locate_cuda_capacity_locked(SimLocateCudaContext &context)
   context.blockedCapacityWords = 0;
   context.candidateCapacity = 0;
   context.batchCapacity = 0;
+  sim_locate_cuda_invalidate_input_cache(context);
   context.scoreMatrixCacheValid = false;
   context.scoreMatrixCacheHash = 0;
 }
@@ -1425,6 +1513,7 @@ bool sim_locate_cuda_locate_region(const SimLocateCudaRequest &request,
                                   cudaMemcpyHostToDevice);
   if(status != cudaSuccess)
   {
+    sim_locate_cuda_invalidate_input_cache(*context);
     if(errorOut != NULL) *errorOut = cuda_error_string(status);
     return false;
   }
@@ -1434,9 +1523,11 @@ bool sim_locate_cuda_locate_region(const SimLocateCudaRequest &request,
                       cudaMemcpyHostToDevice);
   if(status != cudaSuccess)
   {
+    sim_locate_cuda_invalidate_input_cache(*context);
     if(errorOut != NULL) *errorOut = cuda_error_string(status);
     return false;
   }
+  sim_locate_cuda_invalidate_input_cache(*context);
   status = cudaMemcpy(context->scoreMatrixDevice,
                       request.scoreMatrix,
                       static_cast<size_t>(128 * 128) * sizeof(int),
@@ -1710,23 +1801,45 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     return false;
   }
 
-  cudaError_t status = cudaMemcpy(context->ADevice,
-                                  base.A,
-                                  static_cast<size_t>(base.queryLength + 1) * sizeof(char),
-                                  cudaMemcpyHostToDevice);
-  if(status != cudaSuccess)
+  const size_t aBytes = static_cast<size_t>(base.queryLength + 1) * sizeof(char);
+  const size_t bBytes = static_cast<size_t>(base.targetLength + 1) * sizeof(char);
+  const uint64_t aHash = sim_locate_cuda_bytes_hash(base.A,aBytes);
+  const uint64_t bHash = sim_locate_cuda_bytes_hash(base.B,bBytes);
+  cudaError_t status = cudaSuccess;
+  if(sim_locate_cuda_input_cache_matches(*context,base,aHash,bHash))
   {
-    if(errorOut != NULL) *errorOut = cuda_error_string(status);
-    return false;
+    if(batchResult != NULL)
+    {
+      batchResult->inputH2DCacheHits = 2;
+    }
   }
-  status = cudaMemcpy(context->BDevice,
-                      base.B,
-                      static_cast<size_t>(base.targetLength + 1) * sizeof(char),
-                      cudaMemcpyHostToDevice);
-  if(status != cudaSuccess)
+  else
   {
-    if(errorOut != NULL) *errorOut = cuda_error_string(status);
-    return false;
+    status = cudaMemcpy(context->ADevice,
+                        base.A,
+                        aBytes,
+                        cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      sim_locate_cuda_invalidate_input_cache(*context);
+      if(errorOut != NULL) *errorOut = cuda_error_string(status);
+      return false;
+    }
+    status = cudaMemcpy(context->BDevice,
+                        base.B,
+                        bBytes,
+                        cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      sim_locate_cuda_invalidate_input_cache(*context);
+      if(errorOut != NULL) *errorOut = cuda_error_string(status);
+      return false;
+    }
+    sim_locate_cuda_store_input_cache(*context,base,aHash,bHash);
+    if(batchResult != NULL)
+    {
+      batchResult->inputH2DCopies = 2;
+    }
   }
   const uint64_t scoreMatrixHash = sim_locate_cuda_score_matrix_hash(base.scoreMatrix);
   if(sim_locate_cuda_score_matrix_cache_matches(*context,base.scoreMatrix,scoreMatrixHash))

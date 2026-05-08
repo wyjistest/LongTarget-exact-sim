@@ -180,6 +180,12 @@ int main()
     ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
                            true,
                            "shared-input batch path") && ok;
+    ok = expect_equal_u64(batchResult.inputH2DCopies,
+                          2,
+                          "first shared-input batch uploads query and target") && ok;
+    ok = expect_equal_u64(batchResult.inputH2DCacheHits,
+                          0,
+                          "first shared-input batch has no input cache hit") && ok;
     ok = expect_equal_u64(batchResult.scoreMatrixH2DCopies,
                           1,
                           "first shared-input batch uploads score matrix") && ok;
@@ -198,6 +204,12 @@ int main()
     ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
                            true,
                            "cached shared-input batch path") && ok;
+    ok = expect_equal_u64(batchResult.inputH2DCopies,
+                          0,
+                          "cached shared-input batch skips query and target uploads") && ok;
+    ok = expect_equal_u64(batchResult.inputH2DCacheHits,
+                          2,
+                          "cached shared-input batch records input cache hits") && ok;
     ok = expect_equal_u64(batchResult.scoreMatrixH2DCopies,
                           0,
                           "cached shared-input batch skips score matrix upload") && ok;
