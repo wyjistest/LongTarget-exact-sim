@@ -328,7 +328,8 @@ struct SimLocateCudaBatchResult
     candidateH2DCopies(0),
     candidateH2DCacheHits(0),
     requestH2DCopies(0),
-    requestH2DCacheHits(0)
+    requestH2DCacheHits(0),
+    mixedFallbackSharedInputDeepCompareCount(0)
   {
   }
 
@@ -348,6 +349,7 @@ struct SimLocateCudaBatchResult
   uint64_t candidateH2DCacheHits;
   uint64_t requestH2DCopies;
   uint64_t requestH2DCacheHits;
+  uint64_t mixedFallbackSharedInputDeepCompareCount;
 };
 
 bool sim_locate_cuda_is_built();

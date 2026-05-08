@@ -454,6 +454,67 @@ static uint64_t sim_locate_cuda_candidate_hash(const SimScanCudaCandidateState *
   return hash;
 }
 
+struct SimLocateCudaSharedInputSignature
+{
+  int queryLength;
+  int targetLength;
+  uint64_t aHash;
+  uint64_t bHash;
+  uint64_t scoreMatrixHash;
+  bool blockedWordsActive;
+  int blockedWordStride;
+  uint64_t blockedWordsHash;
+  int candidateCount;
+  uint64_t candidatesHash;
+};
+
+static SimLocateCudaSharedInputSignature
+sim_locate_cuda_shared_input_signature(const SimLocateCudaRequest &request)
+{
+  SimLocateCudaSharedInputSignature signature;
+  signature.queryLength = request.queryLength;
+  signature.targetLength = request.targetLength;
+  signature.aHash =
+    sim_locate_cuda_bytes_hash(request.A,static_cast<size_t>(request.queryLength + 1));
+  signature.bHash =
+    sim_locate_cuda_bytes_hash(request.B,static_cast<size_t>(request.targetLength + 1));
+  signature.scoreMatrixHash = sim_locate_cuda_score_matrix_hash(request.scoreMatrix);
+  signature.blockedWordsActive = request.blockedWords != NULL && request.blockedWordStride > 0;
+  signature.blockedWordStride = signature.blockedWordsActive ? request.blockedWordStride : 0;
+  signature.blockedWordsHash = 0;
+  if(signature.blockedWordsActive)
+  {
+    const size_t blockedWordCount =
+      static_cast<size_t>(request.queryLength + 1) * static_cast<size_t>(request.blockedWordStride);
+    signature.blockedWordsHash =
+      sim_locate_cuda_words_hash(request.blockedWords,blockedWordCount);
+  }
+  signature.candidateCount = request.candidateCount;
+  signature.candidatesHash = 0;
+  if(request.candidateCount > 0)
+  {
+    signature.candidatesHash =
+      sim_locate_cuda_candidate_hash(request.candidates,request.candidateCount);
+  }
+  return signature;
+}
+
+static bool sim_locate_cuda_shared_input_signatures_match(
+  const SimLocateCudaSharedInputSignature &lhs,
+  const SimLocateCudaSharedInputSignature &rhs)
+{
+  return lhs.queryLength == rhs.queryLength &&
+    lhs.targetLength == rhs.targetLength &&
+    lhs.aHash == rhs.aHash &&
+    lhs.bHash == rhs.bHash &&
+    lhs.scoreMatrixHash == rhs.scoreMatrixHash &&
+    lhs.blockedWordsActive == rhs.blockedWordsActive &&
+    lhs.blockedWordStride == rhs.blockedWordStride &&
+    lhs.blockedWordsHash == rhs.blockedWordsHash &&
+    lhs.candidateCount == rhs.candidateCount &&
+    lhs.candidatesHash == rhs.candidatesHash;
+}
+
 static void sim_locate_cuda_invalidate_candidates_cache(SimLocateCudaContext &context)
 {
   context.candidatesCacheValid = false;
@@ -2045,8 +2106,14 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     uint64_t candidateH2DCacheHits = 0;
     uint64_t requestH2DCopies = 0;
     uint64_t requestH2DCacheHits = 0;
+    uint64_t mixedFallbackSharedInputDeepCompareCount = 0;
 
     vector<char> processed(requests.size(), 0);
+    vector<SimLocateCudaSharedInputSignature> sharedInputSignatures(requests.size());
+    for(size_t i = 0; i < requests.size(); ++i)
+    {
+      sharedInputSignatures[i] = sim_locate_cuda_shared_input_signature(requests[i]);
+    }
     for(size_t i = 0; i < requests.size(); )
     {
       if(processed[i])
@@ -2064,9 +2131,15 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         {
           continue;
         }
+        if(!sim_locate_cuda_shared_input_signatures_match(sharedInputSignatures[i],
+                                                          sharedInputSignatures[candidateIndex]))
+        {
+          continue;
+        }
         vector<SimLocateCudaRequest> candidateGroup;
         candidateGroup.push_back(requests[i]);
         candidateGroup.push_back(requests[candidateIndex]);
+        ++mixedFallbackSharedInputDeepCompareCount;
         if(sim_locate_cuda_requests_share_inputs(candidateGroup))
         {
           subgroup.push_back(requests[candidateIndex]);
@@ -2122,6 +2195,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         candidateH2DCacheHits += subgroupBatchResult.candidateH2DCacheHits;
         requestH2DCopies += subgroupBatchResult.requestH2DCopies;
         requestH2DCacheHits += subgroupBatchResult.requestH2DCacheHits;
+        mixedFallbackSharedInputDeepCompareCount +=
+          subgroupBatchResult.mixedFallbackSharedInputDeepCompareCount;
         ++i;
       }
       else
@@ -2163,6 +2238,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       batchResult->candidateH2DCacheHits = candidateH2DCacheHits;
       batchResult->requestH2DCopies = requestH2DCopies;
       batchResult->requestH2DCacheHits = requestH2DCacheHits;
+      batchResult->mixedFallbackSharedInputDeepCompareCount =
+        mixedFallbackSharedInputDeepCompareCount;
     }
     if(errorOut != NULL)
     {

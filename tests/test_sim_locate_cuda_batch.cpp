@@ -439,5 +439,34 @@ int main()
                           2,
                           "interleaved mixed batch groups non-contiguous shared requests") && ok;
 
+    const std::string mixedTarget2 = " ACGTAA";
+    const std::string mixedTarget3 = " ACGTAAA";
+    std::vector<SimLocateCudaRequest> signatureFilteredMixedRequests;
+    signatureFilteredMixedRequests.push_back(request);
+    signatureFilteredMixedRequests.push_back(make_request(query, mixedTarget, scoreMatrix));
+    signatureFilteredMixedRequests.push_back(make_request(query, mixedTarget2, scoreMatrix));
+    signatureFilteredMixedRequests.push_back(request);
+    signatureFilteredMixedRequests.push_back(make_request(query, mixedTarget3, scoreMatrix));
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(signatureFilteredMixedRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "signature-filtered mixed locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_size(batchResults.size(),
+                           signatureFilteredMixedRequests.size(),
+                           "signature-filtered mixed batch result size") && ok;
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "signature-filtered mixed batch uses shared subgroup") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          4,
+                          "signature-filtered mixed batch groups only matching shared requests") && ok;
+    ok = expect_equal_u64(batchResult.mixedFallbackSharedInputDeepCompareCount,
+                          1,
+                          "signature-filtered mixed batch skips deep compares for signature mismatches") && ok;
+
     return ok ? 0 : 1;
 }
