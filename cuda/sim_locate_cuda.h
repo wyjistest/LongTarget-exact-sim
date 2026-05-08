@@ -317,7 +317,9 @@ struct SimLocateCudaBatchResult
     usedCuda(false),
     taskCount(0),
     launchCount(0),
-    usedSharedInputBatchPath(false)
+    usedSharedInputBatchPath(false),
+    sharedInputRequestCount(0),
+    serialFallbackRequestCount(0)
   {
   }
 
@@ -326,6 +328,8 @@ struct SimLocateCudaBatchResult
   uint64_t taskCount;
   uint64_t launchCount;
   bool usedSharedInputBatchPath;
+  uint64_t sharedInputRequestCount;
+  uint64_t serialFallbackRequestCount;
 };
 
 bool sim_locate_cuda_is_built();

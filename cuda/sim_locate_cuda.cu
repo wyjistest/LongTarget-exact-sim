@@ -1580,6 +1580,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       batchResult->taskCount = static_cast<uint64_t>(requests.size());
       batchResult->launchCount = static_cast<uint64_t>(requests.size());
       batchResult->usedSharedInputBatchPath = false;
+      batchResult->sharedInputRequestCount = 0;
+      batchResult->serialFallbackRequestCount = static_cast<uint64_t>(requests.size());
     }
     if(errorOut != NULL)
     {
@@ -1802,6 +1804,9 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     batchResult->taskCount = static_cast<uint64_t>(requests.size());
     batchResult->launchCount = 1;
     batchResult->usedSharedInputBatchPath = requests.size() > 1;
+    batchResult->sharedInputRequestCount =
+      batchResult->usedSharedInputBatchPath ? static_cast<uint64_t>(requests.size()) : 0;
+    batchResult->serialFallbackRequestCount = 0;
   }
   if(errorOut != NULL)
   {

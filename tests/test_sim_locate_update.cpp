@@ -374,6 +374,12 @@ int main()
                            "default locate batch shared-input path") && ok;
     ok = expect_equal_u64(defaultBatchResult.taskCount, 0, "default locate batch taskCount") && ok;
     ok = expect_equal_u64(defaultBatchResult.launchCount, 0, "default locate batch launchCount") && ok;
+    ok = expect_equal_u64(defaultBatchResult.sharedInputRequestCount,
+                          0,
+                          "default locate batch shared-input request count") && ok;
+    ok = expect_equal_u64(defaultBatchResult.serialFallbackRequestCount,
+                          0,
+                          "default locate batch serial fallback request count") && ok;
 
     std::string error;
     SimLocateCudaRequest stubRequest;
@@ -417,6 +423,12 @@ int main()
     ok = expect_equal_bool(defaultBatchResult.usedSharedInputBatchPath,
                            false,
                            "empty locate batch shared-input path") && ok;
+    ok = expect_equal_u64(defaultBatchResult.sharedInputRequestCount,
+                          0,
+                          "empty locate batch shared-input request count") && ok;
+    ok = expect_equal_u64(defaultBatchResult.serialFallbackRequestCount,
+                          0,
+                          "empty locate batch serial fallback request count") && ok;
 
     std::vector<SimLocateCudaRequest> locateBatchRequests(2, stubRequest);
     emptyLocateBatchResults.push_back(SimLocateResult());
@@ -437,6 +449,12 @@ int main()
                            "failed locate batch shared-input path") && ok;
     ok = expect_equal_u64(defaultBatchResult.taskCount, 0, "failed locate batch taskCount") && ok;
     ok = expect_equal_u64(defaultBatchResult.launchCount, 0, "failed locate batch launchCount") && ok;
+    ok = expect_equal_u64(defaultBatchResult.sharedInputRequestCount,
+                          0,
+                          "failed locate batch shared-input request count") && ok;
+    ok = expect_equal_u64(defaultBatchResult.serialFallbackRequestCount,
+                          0,
+                          "failed locate batch serial fallback request count") && ok;
     ok = expect_true(error == "CUDA support not built", "stub locate batch error") && ok;
 
     std::vector<SimScanCudaCandidateState> fastBoundsCandidates(2);
@@ -825,6 +843,55 @@ int main()
     const uint64_t locateSafeWorksetCallsBefore = locateSafeWorksetCalls;
     const uint64_t locateFastFallbacksBefore = locateFastFallbacks;
     recordSimLocateMode(SIM_LOCATE_CUDA_MODE_SAFE_WORKSET);
+    uint64_t locateBatchCalls = 0;
+    uint64_t locateBatchRequestCount = 0;
+    uint64_t locateBatchSharedInputRequests = 0;
+    uint64_t locateBatchSerialFallbackRequests = 0;
+    uint64_t locateBatchLaunches = 0;
+    getSimLocateBatchTelemetryStats(locateBatchCalls,
+                                    locateBatchRequestCount,
+                                    locateBatchSharedInputRequests,
+                                    locateBatchSerialFallbackRequests,
+                                    locateBatchLaunches);
+    const uint64_t locateBatchCallsBefore = locateBatchCalls;
+    const uint64_t locateBatchRequestsBefore = locateBatchRequestCount;
+    const uint64_t locateBatchSharedInputRequestsBefore = locateBatchSharedInputRequests;
+    const uint64_t locateBatchSerialFallbackRequestsBefore = locateBatchSerialFallbackRequests;
+    const uint64_t locateBatchLaunchesBefore = locateBatchLaunches;
+    SimLocateCudaBatchResult locateBatchTelemetry;
+    locateBatchTelemetry.taskCount = 5;
+    locateBatchTelemetry.launchCount = 2;
+    locateBatchTelemetry.usedSharedInputBatchPath = true;
+    locateBatchTelemetry.sharedInputRequestCount = 5;
+    locateBatchTelemetry.serialFallbackRequestCount = 0;
+    recordSimLocateBatchTelemetry(locateBatchTelemetry);
+    locateBatchTelemetry = SimLocateCudaBatchResult();
+    locateBatchTelemetry.taskCount = 3;
+    locateBatchTelemetry.launchCount = 3;
+    locateBatchTelemetry.usedSharedInputBatchPath = false;
+    locateBatchTelemetry.sharedInputRequestCount = 0;
+    locateBatchTelemetry.serialFallbackRequestCount = 3;
+    recordSimLocateBatchTelemetry(locateBatchTelemetry);
+    getSimLocateBatchTelemetryStats(locateBatchCalls,
+                                    locateBatchRequestCount,
+                                    locateBatchSharedInputRequests,
+                                    locateBatchSerialFallbackRequests,
+                                    locateBatchLaunches);
+    ok = expect_equal_u64(locateBatchCalls,
+                          locateBatchCallsBefore + 2,
+                          "locate batch telemetry call count") && ok;
+    ok = expect_equal_u64(locateBatchRequestCount,
+                          locateBatchRequestsBefore + 8,
+                          "locate batch telemetry request count") && ok;
+    ok = expect_equal_u64(locateBatchSharedInputRequests,
+                          locateBatchSharedInputRequestsBefore + 5,
+                          "locate batch telemetry shared-input request count") && ok;
+    ok = expect_equal_u64(locateBatchSerialFallbackRequests,
+                          locateBatchSerialFallbackRequestsBefore + 3,
+                          "locate batch telemetry serial fallback request count") && ok;
+    ok = expect_equal_u64(locateBatchLaunches,
+                          locateBatchLaunchesBefore + 5,
+                          "locate batch telemetry launch count") && ok;
     getSimLocateModeCounts(locateExactCalls,
                            locateFastCalls,
                            locateSafeWorksetCalls,
