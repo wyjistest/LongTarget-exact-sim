@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <mutex>
+#include <map>
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -468,6 +469,36 @@ struct SimLocateCudaSharedInputSignature
   uint64_t candidatesHash;
 };
 
+static bool operator<(const SimLocateCudaSharedInputSignature &lhs,
+                      const SimLocateCudaSharedInputSignature &rhs)
+{
+  if(lhs.queryLength != rhs.queryLength) return lhs.queryLength < rhs.queryLength;
+  if(lhs.targetLength != rhs.targetLength) return lhs.targetLength < rhs.targetLength;
+  if(lhs.aHash != rhs.aHash) return lhs.aHash < rhs.aHash;
+  if(lhs.bHash != rhs.bHash) return lhs.bHash < rhs.bHash;
+  if(lhs.scoreMatrixHash != rhs.scoreMatrixHash)
+  {
+    return lhs.scoreMatrixHash < rhs.scoreMatrixHash;
+  }
+  if(lhs.blockedWordsActive != rhs.blockedWordsActive)
+  {
+    return lhs.blockedWordsActive < rhs.blockedWordsActive;
+  }
+  if(lhs.blockedWordStride != rhs.blockedWordStride)
+  {
+    return lhs.blockedWordStride < rhs.blockedWordStride;
+  }
+  if(lhs.blockedWordsHash != rhs.blockedWordsHash)
+  {
+    return lhs.blockedWordsHash < rhs.blockedWordsHash;
+  }
+  if(lhs.candidateCount != rhs.candidateCount)
+  {
+    return lhs.candidateCount < rhs.candidateCount;
+  }
+  return lhs.candidatesHash < rhs.candidatesHash;
+}
+
 static SimLocateCudaSharedInputSignature
 sim_locate_cuda_shared_input_signature(const SimLocateCudaRequest &request)
 {
@@ -497,22 +528,6 @@ sim_locate_cuda_shared_input_signature(const SimLocateCudaRequest &request)
       sim_locate_cuda_candidate_hash(request.candidates,request.candidateCount);
   }
   return signature;
-}
-
-static bool sim_locate_cuda_shared_input_signatures_match(
-  const SimLocateCudaSharedInputSignature &lhs,
-  const SimLocateCudaSharedInputSignature &rhs)
-{
-  return lhs.queryLength == rhs.queryLength &&
-    lhs.targetLength == rhs.targetLength &&
-    lhs.aHash == rhs.aHash &&
-    lhs.bHash == rhs.bHash &&
-    lhs.scoreMatrixHash == rhs.scoreMatrixHash &&
-    lhs.blockedWordsActive == rhs.blockedWordsActive &&
-    lhs.blockedWordStride == rhs.blockedWordStride &&
-    lhs.blockedWordsHash == rhs.blockedWordsHash &&
-    lhs.candidateCount == rhs.candidateCount &&
-    lhs.candidatesHash == rhs.candidatesHash;
 }
 
 static void sim_locate_cuda_invalidate_candidates_cache(SimLocateCudaContext &context)
@@ -2106,13 +2121,16 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     uint64_t candidateH2DCacheHits = 0;
     uint64_t requestH2DCopies = 0;
     uint64_t requestH2DCacheHits = 0;
+    uint64_t mixedFallbackSignatureCandidateCheckCount = 0;
     uint64_t mixedFallbackSharedInputDeepCompareCount = 0;
 
     vector<char> processed(requests.size(), 0);
     vector<SimLocateCudaSharedInputSignature> sharedInputSignatures(requests.size());
+    map<SimLocateCudaSharedInputSignature, vector<size_t> > signatureBuckets;
     for(size_t i = 0; i < requests.size(); ++i)
     {
       sharedInputSignatures[i] = sim_locate_cuda_shared_input_signature(requests[i]);
+      signatureBuckets[sharedInputSignatures[i]].push_back(i);
     }
     for(size_t i = 0; i < requests.size(); )
     {
@@ -2125,17 +2143,19 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       vector<size_t> subgroupIndices;
       subgroup.push_back(requests[i]);
       subgroupIndices.push_back(i);
-      for(size_t candidateIndex = i + 1; candidateIndex < requests.size(); ++candidateIndex)
+      const vector<size_t> &candidateIndices = signatureBuckets[sharedInputSignatures[i]];
+      for(size_t candidateOffset = 0; candidateOffset < candidateIndices.size(); ++candidateOffset)
       {
+        const size_t candidateIndex = candidateIndices[candidateOffset];
+        if(candidateIndex <= i)
+        {
+          continue;
+        }
         if(processed[candidateIndex])
         {
           continue;
         }
-        if(!sim_locate_cuda_shared_input_signatures_match(sharedInputSignatures[i],
-                                                          sharedInputSignatures[candidateIndex]))
-        {
-          continue;
-        }
+        ++mixedFallbackSignatureCandidateCheckCount;
         vector<SimLocateCudaRequest> candidateGroup;
         candidateGroup.push_back(requests[i]);
         candidateGroup.push_back(requests[candidateIndex]);
@@ -2195,6 +2215,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         candidateH2DCacheHits += subgroupBatchResult.candidateH2DCacheHits;
         requestH2DCopies += subgroupBatchResult.requestH2DCopies;
         requestH2DCacheHits += subgroupBatchResult.requestH2DCacheHits;
+        mixedFallbackSignatureCandidateCheckCount +=
+          subgroupBatchResult.mixedFallbackSignatureCandidateCheckCount;
         mixedFallbackSharedInputDeepCompareCount +=
           subgroupBatchResult.mixedFallbackSharedInputDeepCompareCount;
         ++i;
@@ -2238,6 +2260,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       batchResult->candidateH2DCacheHits = candidateH2DCacheHits;
       batchResult->requestH2DCopies = requestH2DCopies;
       batchResult->requestH2DCacheHits = requestH2DCacheHits;
+      batchResult->mixedFallbackSignatureCandidateCheckCount =
+        mixedFallbackSignatureCandidateCheckCount;
       batchResult->mixedFallbackSharedInputDeepCompareCount =
         mixedFallbackSharedInputDeepCompareCount;
     }
