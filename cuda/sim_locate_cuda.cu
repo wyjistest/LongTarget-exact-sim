@@ -154,6 +154,9 @@ struct SimLocateCudaContext
     blockedWordsCacheStride(0),
     blockedWordsCacheHash(0),
     candidatesDevice(NULL),
+    candidatesCacheValid(false),
+    candidatesCacheCount(0),
+    candidatesCacheHash(0),
     CCDevice(NULL),
     DDDevice(NULL),
     RRDevice(NULL),
@@ -214,6 +217,10 @@ struct SimLocateCudaContext
   uint64_t blockedWordsCacheHash;
   vector<uint64_t> blockedWordsHostCache;
   SimScanCudaCandidateState *candidatesDevice;
+  bool candidatesCacheValid;
+  int candidatesCacheCount;
+  uint64_t candidatesCacheHash;
+  vector<SimScanCudaCandidateState> candidatesHostCache;
 
   int *CCDevice;
   int *DDDevice;
@@ -423,6 +430,75 @@ static void sim_locate_cuda_store_blocked_words_cache(SimLocateCudaContext &cont
   context.blockedWordsCacheValid = true;
 }
 
+static uint64_t sim_locate_cuda_candidate_hash(const SimScanCudaCandidateState *candidates,
+                                               int count)
+{
+  uint64_t hash = 1469598103934665603ull;
+  for(int i = 0; i < count; ++i)
+  {
+    const SimScanCudaCandidateState &candidate = candidates[i];
+    const int values[] = {candidate.score, candidate.startI, candidate.startJ,
+                          candidate.endI, candidate.endJ, candidate.top,
+                          candidate.bot, candidate.left, candidate.right};
+    for(size_t j = 0; j < sizeof(values) / sizeof(values[0]); ++j)
+    {
+      hash ^= static_cast<uint64_t>(static_cast<unsigned int>(values[j]));
+      hash *= 1099511628211ull;
+    }
+  }
+  return hash;
+}
+
+static void sim_locate_cuda_invalidate_candidates_cache(SimLocateCudaContext &context)
+{
+  context.candidatesCacheValid = false;
+  context.candidatesCacheCount = 0;
+  context.candidatesCacheHash = 0;
+  context.candidatesHostCache.clear();
+}
+
+static bool sim_locate_cuda_candidates_cache_matches(const SimLocateCudaContext &context,
+                                                     const SimLocateCudaRequest &request,
+                                                     uint64_t hash)
+{
+  if(!context.candidatesCacheValid ||
+     context.candidatesCacheCount != request.candidateCount ||
+     context.candidatesCacheHash != hash ||
+     context.candidatesHostCache.size() != static_cast<size_t>(request.candidateCount))
+  {
+    return false;
+  }
+  for(int i = 0; i < request.candidateCount; ++i)
+  {
+    const SimScanCudaCandidateState &cached = context.candidatesHostCache[static_cast<size_t>(i)];
+    const SimScanCudaCandidateState &candidate = request.candidates[i];
+    if(cached.score != candidate.score ||
+       cached.startI != candidate.startI ||
+       cached.startJ != candidate.startJ ||
+       cached.endI != candidate.endI ||
+       cached.endJ != candidate.endJ ||
+       cached.top != candidate.top ||
+       cached.bot != candidate.bot ||
+       cached.left != candidate.left ||
+       cached.right != candidate.right)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void sim_locate_cuda_store_candidates_cache(SimLocateCudaContext &context,
+                                                  const SimLocateCudaRequest &request,
+                                                  uint64_t hash)
+{
+  context.candidatesHostCache.assign(request.candidates,
+                                     request.candidates + request.candidateCount);
+  context.candidatesCacheCount = request.candidateCount;
+  context.candidatesCacheHash = hash;
+  context.candidatesCacheValid = true;
+}
+
 static mutex sim_locate_cuda_contexts_mutex;
 static vector< vector< unique_ptr<SimLocateCudaContext> > > sim_locate_cuda_contexts;
 static vector< vector< unique_ptr<mutex> > > sim_locate_cuda_context_mutexes;
@@ -578,6 +654,7 @@ static void free_sim_locate_cuda_capacity_locked(SimLocateCudaContext &context)
   context.scoreMatrixCacheValid = false;
   context.scoreMatrixCacheHash = 0;
   sim_locate_cuda_invalidate_blocked_words_cache(context);
+  sim_locate_cuda_invalidate_candidates_cache(context);
 }
 
 static bool ensure_sim_locate_cuda_initialized_locked(SimLocateCudaContext &context,
@@ -1630,9 +1707,11 @@ bool sim_locate_cuda_locate_region(const SimLocateCudaRequest &request,
                         cudaMemcpyHostToDevice);
     if(status != cudaSuccess)
     {
+      sim_locate_cuda_invalidate_candidates_cache(*context);
       if(errorOut != NULL) *errorOut = cuda_error_string(status);
       return false;
     }
+    sim_locate_cuda_invalidate_candidates_cache(*context);
   }
 
   status = cudaEventRecord(context->startEvent);
@@ -1968,14 +2047,32 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
   }
   if(base.candidateCount > 0)
   {
-    status = cudaMemcpy(context->candidatesDevice,
-                        base.candidates,
-                        static_cast<size_t>(base.candidateCount) * sizeof(SimScanCudaCandidateState),
-                        cudaMemcpyHostToDevice);
-    if(status != cudaSuccess)
+    const uint64_t candidatesHash =
+      sim_locate_cuda_candidate_hash(base.candidates,base.candidateCount);
+    if(sim_locate_cuda_candidates_cache_matches(*context,base,candidatesHash))
     {
-      if(errorOut != NULL) *errorOut = cuda_error_string(status);
-      return false;
+      if(batchResult != NULL)
+      {
+        batchResult->candidateH2DCacheHits = 1;
+      }
+    }
+    else
+    {
+      status = cudaMemcpy(context->candidatesDevice,
+                          base.candidates,
+                          static_cast<size_t>(base.candidateCount) * sizeof(SimScanCudaCandidateState),
+                          cudaMemcpyHostToDevice);
+      if(status != cudaSuccess)
+      {
+        sim_locate_cuda_invalidate_candidates_cache(*context);
+        if(errorOut != NULL) *errorOut = cuda_error_string(status);
+        return false;
+      }
+      sim_locate_cuda_store_candidates_cache(*context,base,candidatesHash);
+      if(batchResult != NULL)
+      {
+        batchResult->candidateH2DCopies = 1;
+      }
     }
   }
 
