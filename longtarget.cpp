@@ -1890,6 +1890,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                simSafeWorksetTotalNanoseconds);
   const SimSafeWorksetMergeBreakdownStats simSafeWorksetMergeBreakdown =
     getSimSafeWorksetMergeBreakdownStats();
+  const SimSafeStoreMergeStructureShadowStats simSafeStoreMergeStructureShadow =
+    getSimSafeStoreMergeStructureShadowStats();
   cerr<<"benchmark.sim_safe_workset_affected_starts="<<simSafeWorksetAffectedStartCount<<endl;
   cerr<<"benchmark.sim_safe_workset_unique_affected_starts="<<simSafeWorksetUniqueAffectedStartCount<<endl;
   cerr<<"benchmark.sim_safe_workset_input_bands="<<simSafeWorksetInputBandCount<<endl;
@@ -1945,6 +1947,31 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_prune_kept_states="
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_enabled="
+      <<(simSafeStoreMergeStructureShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_calls="
+      <<simSafeStoreMergeStructureShadow.calls<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_seconds="
+      <<(static_cast<double>(simSafeStoreMergeStructureShadow.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_digest_mismatches="
+      <<simSafeStoreMergeStructureShadow.digestMismatches<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_size_mismatches="
+      <<simSafeStoreMergeStructureShadow.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_candidate_mismatches="
+      <<simSafeStoreMergeStructureShadow.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_est_current_scanned_states="
+      <<simSafeStoreMergeStructureShadow.estCurrentScannedStates<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_est_compact_scanned_states="
+      <<simSafeStoreMergeStructureShadow.estCompactScannedStates<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_est_saved_scans="
+      <<simSafeStoreMergeStructureShadow.estSavedScans<<endl;
+  const double simSafeStoreMergeStructureShadowPruneRemovedRatio =
+    simSafeStoreMergeStructureShadow.pruneScannedStates == 0
+      ? 0.0
+      : static_cast<double>(simSafeStoreMergeStructureShadow.pruneRemovedStates) /
+        static_cast<double>(simSafeStoreMergeStructureShadow.pruneScannedStates);
+  cerr<<"benchmark.sim_safe_store_merge_shadow_prune_removed_ratio="
+      <<simSafeStoreMergeStructureShadowPruneRemovedRatio<<endl;
   cerr<<"benchmark.sim_safe_workset_builder_calls_after_safe_window="
       <<getSimSafeWorksetBuilderCallsAfterSafeWindow()<<endl;
   uint64_t simSafeStoreRefreshAttemptCount = 0;
