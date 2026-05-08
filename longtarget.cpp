@@ -1909,6 +1909,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_ERASE_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_upsert_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_upsert_loop_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_LOOP_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_candidate_apply_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_seconds="
@@ -1925,6 +1929,22 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_residency_updates="
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_affected_start_keys="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_AFFECTED_START_KEY_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_size_before="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_BEFORE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_size_after_erase="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_ERASE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_size_after_upsert="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_UPSERT_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_size_after_prune="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_PRUNE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_prune_scanned_states="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_SCANNED_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_prune_removed_states="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_prune_kept_states="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_builder_calls_after_safe_window="
       <<getSimSafeWorksetBuilderCallsAfterSafeWindow()<<endl;
   uint64_t simSafeStoreRefreshAttemptCount = 0;

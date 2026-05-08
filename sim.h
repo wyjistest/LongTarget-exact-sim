@@ -4169,7 +4169,17 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT = 8,
 		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT = 9,
 		  SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT = 10,
-		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 11
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_NANOSECONDS = 11,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_LOOP_NANOSECONDS = 12,
+		  SIM_SAFE_WORKSET_MERGE_AFFECTED_START_KEY_COUNT = 13,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_BEFORE_COUNT = 14,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_ERASE_COUNT = 15,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_UPSERT_COUNT = 16,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_PRUNE_COUNT = 17,
+		  SIM_SAFE_WORKSET_MERGE_PRUNE_SCANNED_STATE_COUNT = 18,
+		  SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT = 19,
+		  SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT = 20,
+		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 21
 		};
 
 		struct SimSafeWorksetMergeBreakdownStats
@@ -17558,6 +17568,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   std::chrono::steady_clock::time_point mergeStageStart = cpuMergeStart;
   SimSafeWorksetMergeBreakdownStats mergeBreakdown;
+  uint64_t safeStoreEraseNanoseconds = 0;
+  uint64_t safeStoreUpsertLoopNanoseconds = 0;
   vector<SimScanCudaCandidateState> updatedAffectedStates;
   updatedAffectedStates.swap(aggregatedResult.candidateStates);
   if(benchmarkEnabled)
@@ -17569,6 +17581,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   const uint64_t returnedStateCount = static_cast<uint64_t>(updatedAffectedStates.size());
   mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT,
                      returnedStateCount);
+  mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_AFFECTED_START_KEY_COUNT,
+                     static_cast<uint64_t>(uniqueAffected.size()));
 
   // 受影响的 start 必须按本轮重扫结果整体重建；否则“本轮没有返回 state”的旧候选会以 stale 形式残留。
   eraseSimCandidatesBySortedUniqueStartCoords(uniqueAffected,context);
@@ -17580,19 +17594,45 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   }
   if(context.safeCandidateStateStore.valid)
   {
+    const uint64_t safeStoreSizeBefore =
+      static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_BEFORE_COUNT,
+                       safeStoreSizeBefore);
     eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(uniqueAffected,context);
+    if(benchmarkEnabled)
+    {
+      safeStoreEraseNanoseconds = simElapsedNanoseconds(mergeStageStart);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_NANOSECONDS,
+                         safeStoreEraseNanoseconds);
+      mergeStageStart = std::chrono::steady_clock::now();
+    }
+    const uint64_t safeStoreSizeAfterErase =
+      static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_ERASE_COUNT,
+                       safeStoreSizeAfterErase);
     for(size_t stateIndex = 0; stateIndex < updatedAffectedStates.size(); ++stateIndex)
     {
       upsertSimCandidateStateStoreState(updatedAffectedStates[stateIndex],
                                         context.safeCandidateStateStore);
     }
+    if(benchmarkEnabled)
+    {
+      safeStoreUpsertLoopNanoseconds = simElapsedNanoseconds(mergeStageStart);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_LOOP_NANOSECONDS,
+                         safeStoreUpsertLoopNanoseconds);
+      mergeStageStart = std::chrono::steady_clock::now();
+    }
+    const uint64_t safeStoreSizeAfterUpsert =
+      static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_UPSERT_COUNT,
+                       safeStoreSizeAfterUpsert);
     mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT,
                        returnedStateCount);
   }
   if(benchmarkEnabled)
   {
     mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS,
-                       simElapsedNanoseconds(mergeStageStart));
+                       safeStoreEraseNanoseconds + safeStoreUpsertLoopNanoseconds);
     mergeStageStart = std::chrono::steady_clock::now();
   }
   mergeSimCudaCandidateStatesIntoContext(updatedAffectedStates,context);
@@ -17604,7 +17644,19 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   }
   if(context.safeCandidateStateStore.valid)
   {
+    const uint64_t safeStoreSizeBeforePrune =
+      static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
     pruneSimSafeCandidateStateStore(context);
+    const uint64_t safeStoreSizeAfterPrune =
+      static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_PRUNE_COUNT,
+                       safeStoreSizeAfterPrune);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_PRUNE_SCANNED_STATE_COUNT,
+                       safeStoreSizeBeforePrune);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT,
+                       safeStoreSizeBeforePrune - safeStoreSizeAfterPrune);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT,
+                       safeStoreSizeAfterPrune);
   }
   if(benchmarkEnabled)
   {
