@@ -396,5 +396,26 @@ int main()
                           1,
                           "copied-candidate batch uses one launch") && ok;
 
+    const std::string mixedTarget = " ACGTA";
+    std::vector<SimLocateCudaRequest> mixedRequests;
+    mixedRequests.push_back(request);
+    mixedRequests.push_back(request);
+    mixedRequests.push_back(make_request(query, mixedTarget, scoreMatrix));
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(mixedRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "mixed locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_size(batchResults.size(), mixedRequests.size(), "mixed batch result size") && ok;
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "mixed batch uses shared subgroup") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          2,
+                          "mixed batch uses shared subgroup plus singleton launch") && ok;
+
     return ok ? 0 : 1;
 }

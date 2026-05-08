@@ -2030,23 +2030,105 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
 
   if(!sim_locate_cuda_requests_share_inputs(requests))
   {
-    vector<SimLocateResult> results;
-    results.reserve(requests.size());
+    vector<SimLocateResult> results(requests.size());
     double totalGpuSeconds = 0.0;
-    for(size_t i = 0; i < requests.size(); ++i)
+    uint64_t launchCount = 0;
+    bool usedSharedSubgroup = false;
+    uint64_t singleRequestBatchSkips = 0;
+    uint64_t inputH2DCopies = 0;
+    uint64_t inputH2DCacheHits = 0;
+    uint64_t scoreMatrixH2DCopies = 0;
+    uint64_t scoreMatrixH2DCacheHits = 0;
+    uint64_t blockedWordsH2DCopies = 0;
+    uint64_t blockedWordsH2DCacheHits = 0;
+    uint64_t candidateH2DCopies = 0;
+    uint64_t candidateH2DCacheHits = 0;
+    uint64_t requestH2DCopies = 0;
+    uint64_t requestH2DCacheHits = 0;
+
+    for(size_t i = 0; i < requests.size(); )
     {
-      SimLocateResult result;
-      if(!sim_locate_cuda_locate_region(requests[i],&result,errorOut))
+      vector<SimLocateCudaRequest> subgroup;
+      subgroup.push_back(requests[i]);
+      size_t groupEnd = i + 1;
+      while(groupEnd < requests.size())
       {
-        outResults->clear();
-        if(batchResult != NULL)
+        subgroup.push_back(requests[groupEnd]);
+        if(!sim_locate_cuda_requests_share_inputs(subgroup))
         {
-          *batchResult = SimLocateCudaBatchResult();
+          subgroup.pop_back();
+          break;
         }
-        return false;
+        ++groupEnd;
       }
-      totalGpuSeconds += result.gpuSeconds;
-      results.push_back(result);
+
+      if(subgroup.size() > 1)
+      {
+        vector<SimLocateResult> subgroupResults;
+        SimLocateCudaBatchResult subgroupBatchResult;
+        if(!sim_locate_cuda_locate_region_batch(subgroup,
+                                                &subgroupResults,
+                                                &subgroupBatchResult,
+                                                errorOut))
+        {
+          outResults->clear();
+          if(batchResult != NULL)
+          {
+            *batchResult = SimLocateCudaBatchResult();
+          }
+          return false;
+        }
+        if(subgroupResults.size() != subgroup.size())
+        {
+          outResults->clear();
+          if(batchResult != NULL)
+          {
+            *batchResult = SimLocateCudaBatchResult();
+          }
+          if(errorOut != NULL)
+          {
+            *errorOut = "locate subgroup result count mismatch";
+          }
+          return false;
+        }
+        for(size_t groupIndex = 0; groupIndex < subgroupResults.size(); ++groupIndex)
+        {
+          results[i + groupIndex] = subgroupResults[groupIndex];
+        }
+        totalGpuSeconds += subgroupBatchResult.gpuSeconds;
+        launchCount += subgroupBatchResult.launchCount;
+        usedSharedSubgroup = usedSharedSubgroup || subgroupBatchResult.usedSharedInputBatchPath;
+        singleRequestBatchSkips += subgroupBatchResult.singleRequestBatchSkips;
+        inputH2DCopies += subgroupBatchResult.inputH2DCopies;
+        inputH2DCacheHits += subgroupBatchResult.inputH2DCacheHits;
+        scoreMatrixH2DCopies += subgroupBatchResult.scoreMatrixH2DCopies;
+        scoreMatrixH2DCacheHits += subgroupBatchResult.scoreMatrixH2DCacheHits;
+        blockedWordsH2DCopies += subgroupBatchResult.blockedWordsH2DCopies;
+        blockedWordsH2DCacheHits += subgroupBatchResult.blockedWordsH2DCacheHits;
+        candidateH2DCopies += subgroupBatchResult.candidateH2DCopies;
+        candidateH2DCacheHits += subgroupBatchResult.candidateH2DCacheHits;
+        requestH2DCopies += subgroupBatchResult.requestH2DCopies;
+        requestH2DCacheHits += subgroupBatchResult.requestH2DCacheHits;
+        i = groupEnd;
+      }
+      else
+      {
+        SimLocateResult result;
+        if(!sim_locate_cuda_locate_region(requests[i],&result,errorOut))
+        {
+          outResults->clear();
+          if(batchResult != NULL)
+          {
+            *batchResult = SimLocateCudaBatchResult();
+          }
+          return false;
+        }
+        totalGpuSeconds += result.gpuSeconds;
+        launchCount += result.usedCuda ? 1 : 0;
+        singleRequestBatchSkips += 1;
+        results[i] = result;
+        ++i;
+      }
     }
     *outResults = results;
     if(batchResult != NULL)
@@ -2054,8 +2136,19 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       batchResult->gpuSeconds = totalGpuSeconds;
       batchResult->usedCuda = true;
       batchResult->taskCount = static_cast<uint64_t>(requests.size());
-      batchResult->launchCount = static_cast<uint64_t>(requests.size());
-      batchResult->usedSharedInputBatchPath = false;
+      batchResult->launchCount = launchCount;
+      batchResult->usedSharedInputBatchPath = usedSharedSubgroup;
+      batchResult->singleRequestBatchSkips = singleRequestBatchSkips;
+      batchResult->inputH2DCopies = inputH2DCopies;
+      batchResult->inputH2DCacheHits = inputH2DCacheHits;
+      batchResult->scoreMatrixH2DCopies = scoreMatrixH2DCopies;
+      batchResult->scoreMatrixH2DCacheHits = scoreMatrixH2DCacheHits;
+      batchResult->blockedWordsH2DCopies = blockedWordsH2DCopies;
+      batchResult->blockedWordsH2DCacheHits = blockedWordsH2DCacheHits;
+      batchResult->candidateH2DCopies = candidateH2DCopies;
+      batchResult->candidateH2DCacheHits = candidateH2DCacheHits;
+      batchResult->requestH2DCopies = requestH2DCopies;
+      batchResult->requestH2DCacheHits = requestH2DCacheHits;
     }
     if(errorOut != NULL)
     {
