@@ -373,5 +373,28 @@ int main()
                           1,
                           "copied-blocked batch uses one launch") && ok;
 
+    std::vector<SimScanCudaCandidateState> candidatesCopy = candidates;
+    std::vector<SimLocateCudaRequest> copiedCandidateRequests;
+    copiedCandidateRequests.push_back(request);
+    copiedCandidateRequests.push_back(request);
+    copiedCandidateRequests[0].candidates = candidates.data();
+    copiedCandidateRequests[0].candidateCount = static_cast<int>(candidates.size());
+    copiedCandidateRequests[1].candidates = candidatesCopy.data();
+    copiedCandidateRequests[1].candidateCount = static_cast<int>(candidatesCopy.size());
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(copiedCandidateRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "copied-candidate locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "copied-candidate batch still shares candidate content") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          1,
+                          "copied-candidate batch uses one launch") && ok;
+
     return ok ? 0 : 1;
 }

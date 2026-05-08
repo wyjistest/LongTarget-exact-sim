@@ -1635,6 +1635,40 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
     }
     return true;
   };
+  const auto candidatesEqual = [](const SimLocateCudaRequest &lhs,
+                                  const SimLocateCudaRequest &rhs) -> bool
+  {
+    if(lhs.candidateCount != rhs.candidateCount)
+    {
+      return false;
+    }
+    if(lhs.candidateCount <= 0)
+    {
+      return true;
+    }
+    if(lhs.candidates == rhs.candidates)
+    {
+      return true;
+    }
+    for(int i = 0; i < lhs.candidateCount; ++i)
+    {
+      const SimScanCudaCandidateState &left = lhs.candidates[i];
+      const SimScanCudaCandidateState &right = rhs.candidates[i];
+      if(left.score != right.score ||
+         left.startI != right.startI ||
+         left.startJ != right.startJ ||
+         left.endI != right.endI ||
+         left.endJ != right.endJ ||
+         left.top != right.top ||
+         left.bot != right.bot ||
+         left.left != right.left ||
+         left.right != right.right)
+      {
+        return false;
+      }
+    }
+    return true;
+  };
   for(size_t i = 1; i < requests.size(); ++i)
   {
     const SimLocateCudaRequest &request = requests[i];
@@ -1644,8 +1678,7 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
        !bytesEqual(request.B,base.B,static_cast<size_t>(base.targetLength + 1)) ||
        !scoreMatricesEqual(request.scoreMatrix,base.scoreMatrix) ||
        !blockedWordsEqual(request,base) ||
-       request.candidates != base.candidates ||
-       request.candidateCount != base.candidateCount)
+       !candidatesEqual(request,base))
     {
       return false;
     }
