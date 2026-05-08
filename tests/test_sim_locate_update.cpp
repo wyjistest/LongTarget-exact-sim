@@ -1294,6 +1294,8 @@ int main()
                                  safeWorksetTotalNanoseconds);
     const SimSafeWorksetMergeBreakdownStats safeWorksetMergeBreakdownBefore =
         getSimSafeWorksetMergeBreakdownStats();
+    const SimSafeStoreMergeStructureShadowStats safeStoreMergeStructureShadowBefore =
+        getSimSafeStoreMergeStructureShadowStats();
     getSimSafeWindowStats(safeWindowCount,
                           safeWindowAffectedStartCount,
                           safeWindowCoordBytesD2H,
@@ -1452,6 +1454,18 @@ int main()
     safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT, 73);
     safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT, 79);
     recordSimSafeWorksetMergeBreakdown(safeWorksetMergeBreakdownDelta);
+    SimSafeStoreMergeStructureShadowStats safeStoreMergeStructureShadowDelta;
+    safeStoreMergeStructureShadowDelta.calls = 2;
+    safeStoreMergeStructureShadowDelta.nanoseconds = 3;
+    safeStoreMergeStructureShadowDelta.digestMismatches = 5;
+    safeStoreMergeStructureShadowDelta.sizeMismatches = 7;
+    safeStoreMergeStructureShadowDelta.candidateMismatches = 11;
+    safeStoreMergeStructureShadowDelta.estCurrentScannedStates = 13;
+    safeStoreMergeStructureShadowDelta.estCompactScannedStates = 17;
+    safeStoreMergeStructureShadowDelta.estSavedScans = 19;
+    safeStoreMergeStructureShadowDelta.pruneScannedStates = 23;
+    safeStoreMergeStructureShadowDelta.pruneRemovedStates = 29;
+    recordSimSafeStoreMergeStructureShadow(safeStoreMergeStructureShadowDelta);
     recordSimSafeWorksetTotalNanoseconds(29);
     recordSimSafeWindowExecGeometry(safeWindowExec);
     recordSimSafeWindowAttempt();
@@ -1511,6 +1525,8 @@ int main()
                                  safeWorksetTotalNanoseconds);
     const SimSafeWorksetMergeBreakdownStats safeWorksetMergeBreakdownAfter =
         getSimSafeWorksetMergeBreakdownStats();
+    const SimSafeStoreMergeStructureShadowStats safeStoreMergeStructureShadowAfter =
+        getSimSafeStoreMergeStructureShadowStats();
     getSimSafeWindowStats(safeWindowCount,
                           safeWindowAffectedStartCount,
                           safeWindowCoordBytesD2H,
@@ -1610,6 +1626,36 @@ int main()
                                 safeWorksetMergeBreakdownDelta.get(field),
                             "safe_workset merge breakdown increments") && ok;
     }
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.calls,
+                          safeStoreMergeStructureShadowBefore.calls + 2,
+                          "safe-store merge structure shadow calls increment") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.nanoseconds,
+                          safeStoreMergeStructureShadowBefore.nanoseconds + 3,
+                          "safe-store merge structure shadow timing increments") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.digestMismatches,
+                          safeStoreMergeStructureShadowBefore.digestMismatches + 5,
+                          "safe-store merge structure shadow digest mismatches increment") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.sizeMismatches,
+                          safeStoreMergeStructureShadowBefore.sizeMismatches + 7,
+                          "safe-store merge structure shadow size mismatches increment") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.candidateMismatches,
+                          safeStoreMergeStructureShadowBefore.candidateMismatches + 11,
+                          "safe-store merge structure shadow candidate mismatches increment") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.estCurrentScannedStates,
+                          safeStoreMergeStructureShadowBefore.estCurrentScannedStates + 13,
+                          "safe-store merge structure shadow current scan estimate increments") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.estCompactScannedStates,
+                          safeStoreMergeStructureShadowBefore.estCompactScannedStates + 17,
+                          "safe-store merge structure shadow compact scan estimate increments") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.estSavedScans,
+                          safeStoreMergeStructureShadowBefore.estSavedScans + 19,
+                          "safe-store merge structure shadow saved scan estimate increments") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.pruneScannedStates,
+                          safeStoreMergeStructureShadowBefore.pruneScannedStates + 23,
+                          "safe-store merge structure shadow prune scanned states increment") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.pruneRemovedStates,
+                          safeStoreMergeStructureShadowBefore.pruneRemovedStates + 29,
+                          "safe-store merge structure shadow prune removed states increment") && ok;
     ok = expect_equal_u64(safeWindowCount,
                           safeWindowCountBefore + 3,
                           "safe window count increments") && ok;
