@@ -162,6 +162,7 @@ When SIM CUDA region scan is enabled, benchmark output now also includes region-
 - `benchmark.sim_region_event_bytes_d2h`: raw region event bytes copied device-to-host
 - `benchmark.sim_region_summary_bytes_d2h`: reduced candidate summary bytes copied device-to-host
 - `benchmark.sim_region_cpu_merge_seconds`: CPU time spent replaying CUDA region events into exact candidate maintenance
+- `benchmark.sim_region_calls` / `benchmark.sim_region_requests` / `benchmark.sim_region_launches` / `benchmark.sim_region_batch_calls` / `benchmark.sim_region_batch_requests` / `benchmark.sim_region_serial_fallback_requests`: telemetry-only region scan decomposition derived from the existing region backend accounting; this does not change dispatch or scheduler authority
 - `benchmark.sim_locate_total_cells`: total cell count visited by `locate()` while updating candidates after traceback
 - `benchmark.sim_locate_backend`: whether the locate phase ran on `cpu`, `cuda`, or a `mixed` fallback path
 - `benchmark.sim_locate_mode`: whether locate used the exact path, the experimental `fast` path, or a mixed result because of fallbacks

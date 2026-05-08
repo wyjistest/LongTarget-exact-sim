@@ -892,6 +892,51 @@ int main()
     ok = expect_equal_u64(locateBatchLaunches,
                           locateBatchLaunchesBefore + 5,
                           "locate batch telemetry launch count") && ok;
+
+    uint64_t regionCalls = 0;
+    uint64_t regionRequests = 0;
+    uint64_t regionLaunches = 0;
+    uint64_t regionBatchCalls = 0;
+    uint64_t regionBatchRequests = 0;
+    uint64_t regionSerialFallbackRequests = 0;
+    getSimRegionScanTelemetryStats(regionCalls,
+                                   regionRequests,
+                                   regionLaunches,
+                                   regionBatchCalls,
+                                   regionBatchRequests,
+                                   regionSerialFallbackRequests);
+    const uint64_t regionCallsBefore = regionCalls;
+    const uint64_t regionRequestsBefore = regionRequests;
+    const uint64_t regionLaunchesBefore = regionLaunches;
+    const uint64_t regionBatchCallsBefore = regionBatchCalls;
+    const uint64_t regionBatchRequestsBefore = regionBatchRequests;
+    const uint64_t regionSerialFallbackRequestsBefore = regionSerialFallbackRequests;
+    recordSimRegionScanBackend(true, 4, 2);
+    recordSimRegionScanBackend(false, 1, 1);
+    getSimRegionScanTelemetryStats(regionCalls,
+                                   regionRequests,
+                                   regionLaunches,
+                                   regionBatchCalls,
+                                   regionBatchRequests,
+                                   regionSerialFallbackRequests);
+    ok = expect_equal_u64(regionCalls,
+                          regionCallsBefore + 2,
+                          "region telemetry call count") && ok;
+    ok = expect_equal_u64(regionRequests,
+                          regionRequestsBefore + 5,
+                          "region telemetry request count") && ok;
+    ok = expect_equal_u64(regionLaunches,
+                          regionLaunchesBefore + 3,
+                          "region telemetry launch count") && ok;
+    ok = expect_equal_u64(regionBatchCalls,
+                          regionBatchCallsBefore + 1,
+                          "region telemetry batch call count") && ok;
+    ok = expect_equal_u64(regionBatchRequests,
+                          regionBatchRequestsBefore + 4,
+                          "region telemetry batch request count") && ok;
+    ok = expect_equal_u64(regionSerialFallbackRequests,
+                          regionSerialFallbackRequestsBefore + 1,
+                          "region telemetry serial fallback request count") && ok;
     getSimLocateModeCounts(locateExactCalls,
                            locateFastCalls,
                            locateSafeWorksetCalls,

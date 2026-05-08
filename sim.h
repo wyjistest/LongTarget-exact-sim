@@ -3780,16 +3780,54 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionScanRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionScanLaunchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionScanBatchCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionScanBatchRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionScanSerialFallbackRequestCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 			inline void recordSimRegionScanBackend(bool usedCuda,uint64_t taskCount = 1,uint64_t launchCount = 1)
 			{
 			  recordSimScanBatch(taskCount,launchCount);
+			  simRegionScanRequestCount().fetch_add(taskCount, std::memory_order_relaxed);
+			  simRegionScanLaunchCount().fetch_add(launchCount, std::memory_order_relaxed);
 			  if(usedCuda)
 			  {
 			    simRegionScanCudaCallCount().fetch_add(1, std::memory_order_relaxed);
+			    if(taskCount > 1 || launchCount > 1)
+			    {
+			      simRegionScanBatchCallCount().fetch_add(1, std::memory_order_relaxed);
+			      simRegionScanBatchRequestCount().fetch_add(taskCount, std::memory_order_relaxed);
+			    }
 		  }
 		  else
 		  {
 		    simRegionScanCpuCallCount().fetch_add(1, std::memory_order_relaxed);
+		    simRegionScanSerialFallbackRequestCount().fetch_add(taskCount, std::memory_order_relaxed);
 		  }
 		}
 
@@ -3797,6 +3835,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		{
 		  cpuCalls = simRegionScanCpuCallCount().load(std::memory_order_relaxed);
 		  cudaCalls = simRegionScanCudaCallCount().load(std::memory_order_relaxed);
+		}
+
+		inline void getSimRegionScanTelemetryStats(uint64_t &calls,
+		                                          uint64_t &requests,
+		                                          uint64_t &launches,
+		                                          uint64_t &batchCalls,
+		                                          uint64_t &batchRequests,
+		                                          uint64_t &serialFallbackRequests)
+		{
+		  calls =
+		    simRegionScanCpuCallCount().load(std::memory_order_relaxed) +
+		    simRegionScanCudaCallCount().load(std::memory_order_relaxed);
+		  requests = simRegionScanRequestCount().load(std::memory_order_relaxed);
+		  launches = simRegionScanLaunchCount().load(std::memory_order_relaxed);
+		  batchCalls = simRegionScanBatchCallCount().load(std::memory_order_relaxed);
+		  batchRequests = simRegionScanBatchRequestCount().load(std::memory_order_relaxed);
+		  serialFallbackRequests =
+		    simRegionScanSerialFallbackRequestCount().load(std::memory_order_relaxed);
 		}
 
 		inline std::atomic<uint64_t> &simLocateCpuCallCount()
