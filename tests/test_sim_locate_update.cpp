@@ -1441,6 +1441,16 @@ int main()
     safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_CANDIDATE_UPDATE_COUNT, 29);
     safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPDATE_COUNT, 31);
     safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_RESIDENCY_UPDATE_COUNT, 37);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_NANOSECONDS, 41);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_LOOP_NANOSECONDS, 43);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_AFFECTED_START_KEY_COUNT, 47);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_BEFORE_COUNT, 53);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_ERASE_COUNT, 59);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_UPSERT_COUNT, 61);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_PRUNE_COUNT, 67);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_PRUNE_SCANNED_STATE_COUNT, 71);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT, 73);
+    safeWorksetMergeBreakdownDelta.add(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT, 79);
     recordSimSafeWorksetMergeBreakdown(safeWorksetMergeBreakdownDelta);
     recordSimSafeWorksetTotalNanoseconds(29);
     recordSimSafeWindowExecGeometry(safeWindowExec);
