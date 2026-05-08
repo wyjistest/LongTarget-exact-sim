@@ -1883,6 +1883,9 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
     vector<SimTracebackCudaDeviceBatchRequest> requestMeta(chunkCount);
     vector<char> AHost(aBytes,0);
     vector<char> BHost(bBytes,0);
+    vector<uint64_t> blockedWordsHost(blockedSliceStrideWords > 0 ?
+                                      static_cast<size_t>(chunkCount) * blockedSliceStrideWords : 0u,
+                                      0u);
     for(size_t localIndex = 0; localIndex < chunkCount; ++localIndex)
     {
       const SimTracebackCudaBatchRequest &request = normalizedRequests[pendingIndices[chunkStart + localIndex]];
@@ -1911,16 +1914,14 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
          request.blockedWordCount > 0 &&
          request.queryLength > 0)
       {
-        uint64_t *requestBlockedWordsDevice =
-          blockedWordsDevice + static_cast<size_t>(localIndex) * blockedSliceStrideWords;
-        status = cudaMemcpy2D(requestBlockedWordsDevice,
-                              static_cast<size_t>(blockedStride) * sizeof(uint64_t),
-                              request.blockedWords,
-                              static_cast<size_t>(request.blockedWordStride) * sizeof(uint64_t),
-                              static_cast<size_t>(request.blockedWordCount) * sizeof(uint64_t),
-                              static_cast<size_t>(request.queryLength),
-                              cudaMemcpyHostToDevice);
-        if(status != cudaSuccess) return failChunk(status);
+        uint64_t *requestBlockedWordsHost =
+          blockedWordsHost.data() + static_cast<size_t>(localIndex) * blockedSliceStrideWords;
+        for(int row = 0; row < request.queryLength; ++row)
+        {
+          memcpy(requestBlockedWordsHost + static_cast<size_t>(row) * static_cast<size_t>(blockedStride),
+                 request.blockedWords + static_cast<size_t>(row) * static_cast<size_t>(request.blockedWordStride),
+                 static_cast<size_t>(request.blockedWordCount) * sizeof(uint64_t));
+        }
       }
     }
 
@@ -1931,6 +1932,18 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
     if(batchResult != NULL)
     {
       batchResult->bulkInputH2DCopies += 2;
+    }
+    if(blockedBytes > 0)
+    {
+      status = cudaMemcpy(blockedWordsDevice,
+                          blockedWordsHost.data(),
+                          blockedBytes,
+                          cudaMemcpyHostToDevice);
+      if(status != cudaSuccess) return failChunk(status);
+      if(batchResult != NULL)
+      {
+        batchResult->bulkBlockedWordsH2DCopies += 1;
+      }
     }
 
     status = cudaMemcpy(requestMetaDevice,

@@ -70,7 +70,9 @@ struct SimTracebackCudaBatchResult
     bulkOpsD2HCopies(0),
     perRequestOpsD2HCopies(0),
     bulkInputH2DCopies(0),
-    perRequestInputH2DCopies(0)
+    perRequestInputH2DCopies(0),
+    bulkBlockedWordsH2DCopies(0),
+    perRequestBlockedWordsH2DCopies(0)
   {
   }
 
@@ -84,6 +86,8 @@ struct SimTracebackCudaBatchResult
   uint64_t perRequestOpsD2HCopies;
   uint64_t bulkInputH2DCopies;
   uint64_t perRequestInputH2DCopies;
+  uint64_t bulkBlockedWordsH2DCopies;
+  uint64_t perRequestBlockedWordsH2DCopies;
 };
 
 bool sim_traceback_cuda_is_built();

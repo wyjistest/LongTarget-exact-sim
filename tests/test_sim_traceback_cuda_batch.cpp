@@ -338,6 +338,41 @@ int main()
         ok = expect_ops_equal(batchResults[1].opsReversed, singleOps1, "batch result 1 ops") && ok;
     }
 
+    std::vector<uint64_t> blockedWords0(static_cast<size_t>(requests[0].queryLength) * 2u, 0u);
+    std::vector<uint64_t> blockedWords1(static_cast<size_t>(requests[1].queryLength) * 2u, 0u);
+    std::vector<SimTracebackCudaBatchRequest> blockedRequests = requests;
+    blockedRequests[0].blockedWords = blockedWords0.data();
+    blockedRequests[0].blockedWordStart = 0;
+    blockedRequests[0].blockedWordCount = 1;
+    blockedRequests[0].blockedWordStride = 2;
+    blockedRequests[1].blockedWords = blockedWords1.data();
+    blockedRequests[1].blockedWordStart = 0;
+    blockedRequests[1].blockedWordCount = 1;
+    blockedRequests[1].blockedWordStride = 2;
+    batchResults.clear();
+    batchResult = SimTracebackCudaBatchResult();
+    error.clear();
+    if (!sim_traceback_cuda_traceback_global_affine_batch(blockedRequests,
+                                                          &batchResults,
+                                                          &batchResult,
+                                                          &error))
+    {
+        std::cerr << "blocked batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_size(batchResults.size(), 2, "blocked batch size") && ok;
+    ok = expect_equal_uint64(batchResult.bulkBlockedWordsH2DCopies,
+                             1,
+                             "blocked batch uses one bulk blockedWords H2D") && ok;
+    ok = expect_equal_uint64(batchResult.perRequestBlockedWordsH2DCopies,
+                             0,
+                             "blocked batch skips per-request blockedWords H2D") && ok;
+    if (batchResults.size() == 2)
+    {
+        ok = expect_ops_equal(batchResults[0].opsReversed, singleOps0, "blocked batch result 0 ops") && ok;
+        ok = expect_ops_equal(batchResults[1].opsReversed, singleOps1, "blocked batch result 1 ops") && ok;
+    }
+
     requests.push_back(make_request(query0, target0));
     requests[1].queryLength = -1;
     batchResults.clear();
