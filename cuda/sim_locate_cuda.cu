@@ -2046,20 +2046,32 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     uint64_t requestH2DCopies = 0;
     uint64_t requestH2DCacheHits = 0;
 
+    vector<char> processed(requests.size(), 0);
     for(size_t i = 0; i < requests.size(); )
     {
-      vector<SimLocateCudaRequest> subgroup;
-      subgroup.push_back(requests[i]);
-      size_t groupEnd = i + 1;
-      while(groupEnd < requests.size())
+      if(processed[i])
       {
-        subgroup.push_back(requests[groupEnd]);
-        if(!sim_locate_cuda_requests_share_inputs(subgroup))
+        ++i;
+        continue;
+      }
+      vector<SimLocateCudaRequest> subgroup;
+      vector<size_t> subgroupIndices;
+      subgroup.push_back(requests[i]);
+      subgroupIndices.push_back(i);
+      for(size_t candidateIndex = i + 1; candidateIndex < requests.size(); ++candidateIndex)
+      {
+        if(processed[candidateIndex])
         {
-          subgroup.pop_back();
-          break;
+          continue;
         }
-        ++groupEnd;
+        vector<SimLocateCudaRequest> candidateGroup;
+        candidateGroup.push_back(requests[i]);
+        candidateGroup.push_back(requests[candidateIndex]);
+        if(sim_locate_cuda_requests_share_inputs(candidateGroup))
+        {
+          subgroup.push_back(requests[candidateIndex]);
+          subgroupIndices.push_back(candidateIndex);
+        }
       }
 
       if(subgroup.size() > 1)
@@ -2093,7 +2105,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         }
         for(size_t groupIndex = 0; groupIndex < subgroupResults.size(); ++groupIndex)
         {
-          results[i + groupIndex] = subgroupResults[groupIndex];
+          results[subgroupIndices[groupIndex]] = subgroupResults[groupIndex];
+          processed[subgroupIndices[groupIndex]] = 1;
         }
         totalGpuSeconds += subgroupBatchResult.gpuSeconds;
         launchCount += subgroupBatchResult.launchCount;
@@ -2109,7 +2122,7 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         candidateH2DCacheHits += subgroupBatchResult.candidateH2DCacheHits;
         requestH2DCopies += subgroupBatchResult.requestH2DCopies;
         requestH2DCacheHits += subgroupBatchResult.requestH2DCacheHits;
-        i = groupEnd;
+        ++i;
       }
       else
       {
@@ -2127,6 +2140,7 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
         launchCount += result.usedCuda ? 1 : 0;
         singleRequestBatchSkips += 1;
         results[i] = result;
+        processed[i] = 1;
         ++i;
       }
     }

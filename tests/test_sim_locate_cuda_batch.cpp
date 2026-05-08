@@ -417,5 +417,27 @@ int main()
                           2,
                           "mixed batch uses shared subgroup plus singleton launch") && ok;
 
+    std::vector<SimLocateCudaRequest> interleavedMixedRequests;
+    interleavedMixedRequests.push_back(request);
+    interleavedMixedRequests.push_back(make_request(query, mixedTarget, scoreMatrix));
+    interleavedMixedRequests.push_back(request);
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(interleavedMixedRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "interleaved mixed locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_size(batchResults.size(),
+                           interleavedMixedRequests.size(),
+                           "interleaved mixed batch result size") && ok;
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "interleaved mixed batch uses shared subgroup") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          2,
+                          "interleaved mixed batch groups non-contiguous shared requests") && ok;
+
     return ok ? 0 : 1;
 }
