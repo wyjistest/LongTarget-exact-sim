@@ -482,6 +482,9 @@ int main()
     ok = expect_equal_u64(batchResult.mixedFallbackPairCompareVectorBuildCount,
                           0,
                           "signature-filtered mixed batch skips pair compare vector build") && ok;
+    ok = expect_equal_u64(batchResult.mixedFallbackSubgroupReserveCount,
+                          4,
+                          "signature-filtered mixed batch reserves subgroup vectors") && ok;
     ok = expect_equal_u64(batchResult.mixedFallbackSharedInputDeepCompareCount,
                           1,
                           "signature-filtered mixed batch skips deep compares for signature mismatches") && ok;

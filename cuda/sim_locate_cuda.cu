@@ -2174,6 +2174,7 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
     uint64_t requestH2DCacheHits = 0;
     uint64_t mixedFallbackSignatureCandidateCheckCount = 0;
     uint64_t mixedFallbackPairCompareVectorBuildCount = 0;
+    uint64_t mixedFallbackSubgroupReserveCount = 0;
     uint64_t mixedFallbackSharedInputDeepCompareCount = 0;
 
     vector<char> processed(requests.size(), 0);
@@ -2186,9 +2187,12 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
       }
       vector<SimLocateCudaRequest> subgroup;
       vector<size_t> subgroupIndices;
+      const vector<size_t> &candidateIndices = signatureBuckets[sharedInputSignatures[i]];
+      subgroup.reserve(candidateIndices.size());
+      subgroupIndices.reserve(candidateIndices.size());
+      ++mixedFallbackSubgroupReserveCount;
       subgroup.push_back(requests[i]);
       subgroupIndices.push_back(i);
-      const vector<size_t> &candidateIndices = signatureBuckets[sharedInputSignatures[i]];
       for(size_t candidateOffset = 0; candidateOffset < candidateIndices.size(); ++candidateOffset)
       {
         const size_t candidateIndex = candidateIndices[candidateOffset];
@@ -2266,6 +2270,8 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
           subgroupBatchResult.mixedFallbackSignatureCandidateCheckCount;
         mixedFallbackPairCompareVectorBuildCount +=
           subgroupBatchResult.mixedFallbackPairCompareVectorBuildCount;
+        mixedFallbackSubgroupReserveCount +=
+          subgroupBatchResult.mixedFallbackSubgroupReserveCount;
         mixedFallbackSharedInputDeepCompareCount +=
           subgroupBatchResult.mixedFallbackSharedInputDeepCompareCount;
         ++i;
@@ -2316,6 +2322,8 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
         mixedFallbackSignatureCandidateCheckCount;
       batchResult->mixedFallbackPairCompareVectorBuildCount =
         mixedFallbackPairCompareVectorBuildCount;
+      batchResult->mixedFallbackSubgroupReserveCount =
+        mixedFallbackSubgroupReserveCount;
       batchResult->mixedFallbackSharedInputDeepCompareCount =
         mixedFallbackSharedInputDeepCompareCount;
     }
