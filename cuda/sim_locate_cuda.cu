@@ -170,6 +170,8 @@ struct SimLocateCudaContext
     XXDevice(NULL),
     YYDevice(NULL),
     batchRequestsDevice(NULL),
+    batchRequestsCacheValid(false),
+    batchRequestsCacheHash(0),
     batchResultsDevice(NULL),
     batchCCDevice(NULL),
     batchDDDevice(NULL),
@@ -236,6 +238,9 @@ struct SimLocateCudaContext
   int *YYDevice;
 
   SimLocateCudaDeviceRequest *batchRequestsDevice;
+  bool batchRequestsCacheValid;
+  uint64_t batchRequestsCacheHash;
+  vector<SimLocateCudaDeviceRequest> batchRequestsHostCache;
   SimLocateCudaDeviceResult *batchResultsDevice;
   int *batchCCDevice;
   int *batchDDDevice;
@@ -497,6 +502,70 @@ static void sim_locate_cuda_store_candidates_cache(SimLocateCudaContext &context
   context.candidatesCacheCount = request.candidateCount;
   context.candidatesCacheHash = hash;
   context.candidatesCacheValid = true;
+}
+
+static uint64_t sim_locate_cuda_batch_requests_hash(const vector<SimLocateCudaDeviceRequest> &requests)
+{
+  uint64_t hash = 1469598103934665603ull;
+  for(size_t i = 0; i < requests.size(); ++i)
+  {
+    const SimLocateCudaDeviceRequest &request = requests[i];
+    const int values[] = {request.rowStart, request.rowEnd, request.colStart,
+                          request.colEnd, request.minRowBound, request.minColBound,
+                          request.runningMin, request.gapOpen, request.gapExtend};
+    for(size_t j = 0; j < sizeof(values) / sizeof(values[0]); ++j)
+    {
+      hash ^= static_cast<uint64_t>(static_cast<unsigned int>(values[j]));
+      hash *= 1099511628211ull;
+    }
+  }
+  return hash;
+}
+
+static void sim_locate_cuda_invalidate_batch_requests_cache(SimLocateCudaContext &context)
+{
+  context.batchRequestsCacheValid = false;
+  context.batchRequestsCacheHash = 0;
+  context.batchRequestsHostCache.clear();
+}
+
+static bool sim_locate_cuda_batch_requests_cache_matches(const SimLocateCudaContext &context,
+                                                         const vector<SimLocateCudaDeviceRequest> &requests,
+                                                         uint64_t hash)
+{
+  if(!context.batchRequestsCacheValid ||
+     context.batchRequestsCacheHash != hash ||
+     context.batchRequestsHostCache.size() != requests.size())
+  {
+    return false;
+  }
+  for(size_t i = 0; i < requests.size(); ++i)
+  {
+    const SimLocateCudaDeviceRequest &cached = context.batchRequestsHostCache[i];
+    const SimLocateCudaDeviceRequest &request = requests[i];
+    if(cached.rowStart != request.rowStart ||
+       cached.rowEnd != request.rowEnd ||
+       cached.colStart != request.colStart ||
+       cached.colEnd != request.colEnd ||
+       cached.minRowBound != request.minRowBound ||
+       cached.minColBound != request.minColBound ||
+       cached.runningMin != request.runningMin ||
+       cached.gapOpen != request.gapOpen ||
+       cached.gapExtend != request.gapExtend)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void sim_locate_cuda_store_batch_requests_cache(SimLocateCudaContext &context,
+                                                       const vector<SimLocateCudaDeviceRequest> &requests,
+                                                       uint64_t hash)
+{
+  context.batchRequestsHostCache = requests;
+  context.batchRequestsCacheHash = hash;
+  context.batchRequestsCacheValid = true;
 }
 
 static mutex sim_locate_cuda_contexts_mutex;
@@ -884,6 +953,7 @@ static bool ensure_sim_locate_cuda_batch_capacity_locked(SimLocateCudaContext &c
     context.batchXXDevice = NULL;
     context.batchYYDevice = NULL;
     context.batchCapacity = 0;
+    sim_locate_cuda_invalidate_batch_requests_cache(context);
   };
 
   if(batchCount <= 0)
@@ -2089,14 +2159,31 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     deviceRequests[i].gapOpen = requests[i].gapOpen;
     deviceRequests[i].gapExtend = requests[i].gapExtend;
   }
-  status = cudaMemcpy(context->batchRequestsDevice,
-                      deviceRequests.data(),
-                      static_cast<size_t>(deviceRequests.size()) * sizeof(SimLocateCudaDeviceRequest),
-                      cudaMemcpyHostToDevice);
-  if(status != cudaSuccess)
+  const uint64_t requestHash = sim_locate_cuda_batch_requests_hash(deviceRequests);
+  if(sim_locate_cuda_batch_requests_cache_matches(*context,deviceRequests,requestHash))
   {
-    if(errorOut != NULL) *errorOut = cuda_error_string(status);
-    return false;
+    if(batchResult != NULL)
+    {
+      batchResult->requestH2DCacheHits = 1;
+    }
+  }
+  else
+  {
+    status = cudaMemcpy(context->batchRequestsDevice,
+                        deviceRequests.data(),
+                        static_cast<size_t>(deviceRequests.size()) * sizeof(SimLocateCudaDeviceRequest),
+                        cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      sim_locate_cuda_invalidate_batch_requests_cache(*context);
+      if(errorOut != NULL) *errorOut = cuda_error_string(status);
+      return false;
+    }
+    sim_locate_cuda_store_batch_requests_cache(*context,deviceRequests,requestHash);
+    if(batchResult != NULL)
+    {
+      batchResult->requestH2DCopies = 1;
+    }
   }
 
   status = cudaEventRecord(context->startEvent);

@@ -326,7 +326,9 @@ struct SimLocateCudaBatchResult
     blockedWordsH2DCopies(0),
     blockedWordsH2DCacheHits(0),
     candidateH2DCopies(0),
-    candidateH2DCacheHits(0)
+    candidateH2DCacheHits(0),
+    requestH2DCopies(0),
+    requestH2DCacheHits(0)
   {
   }
 
@@ -344,6 +346,8 @@ struct SimLocateCudaBatchResult
   uint64_t blockedWordsH2DCacheHits;
   uint64_t candidateH2DCopies;
   uint64_t candidateH2DCacheHits;
+  uint64_t requestH2DCopies;
+  uint64_t requestH2DCacheHits;
 };
 
 bool sim_locate_cuda_is_built();

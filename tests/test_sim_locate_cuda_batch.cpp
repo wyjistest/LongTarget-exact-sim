@@ -222,6 +222,12 @@ int main()
     ok = expect_equal_u64(batchResult.candidateH2DCacheHits,
                           0,
                           "first shared-input batch has no candidate cache hit") && ok;
+    ok = expect_equal_u64(batchResult.requestH2DCopies,
+                          1,
+                          "first shared-input batch uploads request metadata") && ok;
+    ok = expect_equal_u64(batchResult.requestH2DCacheHits,
+                          0,
+                          "first shared-input batch has no request metadata cache hit") && ok;
 
     batchResults.clear();
     batchResult = SimLocateCudaBatchResult();
@@ -258,6 +264,12 @@ int main()
     ok = expect_equal_u64(batchResult.candidateH2DCacheHits,
                           1,
                           "cached shared-input batch records candidate cache hit") && ok;
+    ok = expect_equal_u64(batchResult.requestH2DCopies,
+                          0,
+                          "cached shared-input batch skips request metadata upload") && ok;
+    ok = expect_equal_u64(batchResult.requestH2DCacheHits,
+                          1,
+                          "cached shared-input batch records request metadata cache hit") && ok;
 
     return ok ? 0 : 1;
 }
