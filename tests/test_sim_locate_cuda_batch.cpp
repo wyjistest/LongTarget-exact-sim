@@ -310,5 +310,25 @@ int main()
                           1,
                           "gap-differing batch uses one launch") && ok;
 
+    const std::string queryCopy = query;
+    const std::string targetCopy = target;
+    std::vector<SimLocateCudaRequest> copiedInputRequests;
+    copiedInputRequests.push_back(request);
+    copiedInputRequests.push_back(make_request(queryCopy, targetCopy, scoreMatrix));
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(copiedInputRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "copied-input locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "copied-input batch still shares input content") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          1,
+                          "copied-input batch uses one launch") && ok;
+
     return ok ? 0 : 1;
 }

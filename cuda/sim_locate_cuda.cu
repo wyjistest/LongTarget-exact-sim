@@ -1577,13 +1577,28 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
     return true;
   }
   const SimLocateCudaRequest &base = requests[0];
+  const auto bytesEqual = [](const char *lhs,const char *rhs,size_t count) -> bool
+  {
+    if(lhs == rhs)
+    {
+      return true;
+    }
+    for(size_t i = 0; i < count; ++i)
+    {
+      if(lhs[i] != rhs[i])
+      {
+        return false;
+      }
+    }
+    return true;
+  };
   for(size_t i = 1; i < requests.size(); ++i)
   {
     const SimLocateCudaRequest &request = requests[i];
-    if(request.A != base.A ||
-       request.B != base.B ||
-       request.queryLength != base.queryLength ||
+    if(request.queryLength != base.queryLength ||
        request.targetLength != base.targetLength ||
+       !bytesEqual(request.A,base.A,static_cast<size_t>(base.queryLength + 1)) ||
+       !bytesEqual(request.B,base.B,static_cast<size_t>(base.targetLength + 1)) ||
        request.scoreMatrix != base.scoreMatrix ||
        request.blockedWords != base.blockedWords ||
        request.blockedWordStride != base.blockedWordStride ||
