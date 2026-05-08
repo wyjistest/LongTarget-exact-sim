@@ -1881,6 +1881,8 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
     if(status != cudaSuccess) return failChunk(status);
 
     vector<SimTracebackCudaDeviceBatchRequest> requestMeta(chunkCount);
+    vector<char> AHost(aBytes,0);
+    vector<char> BHost(bBytes,0);
     for(size_t localIndex = 0; localIndex < chunkCount; ++localIndex)
     {
       const SimTracebackCudaBatchRequest &request = normalizedRequests[pendingIndices[chunkStart + localIndex]];
@@ -1897,16 +1899,12 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
       meta.blockedWordStride = blockedStride;
       requestMeta[localIndex] = meta;
 
-      status = cudaMemcpy(ADevice + static_cast<size_t>(localIndex) * static_cast<size_t>(queryStride),
-                          request.A,
-                          static_cast<size_t>(request.queryLength + 1) * sizeof(char),
-                          cudaMemcpyHostToDevice);
-      if(status != cudaSuccess) return failChunk(status);
-      status = cudaMemcpy(BDevice + static_cast<size_t>(localIndex) * static_cast<size_t>(targetStride),
-                          request.B,
-                          static_cast<size_t>(request.targetLength + 1) * sizeof(char),
-                          cudaMemcpyHostToDevice);
-      if(status != cudaSuccess) return failChunk(status);
+      memcpy(AHost.data() + static_cast<size_t>(localIndex) * static_cast<size_t>(queryStride),
+             request.A,
+             static_cast<size_t>(request.queryLength + 1) * sizeof(char));
+      memcpy(BHost.data() + static_cast<size_t>(localIndex) * static_cast<size_t>(targetStride),
+             request.B,
+             static_cast<size_t>(request.targetLength + 1) * sizeof(char));
 
       if(blockedSliceStrideWords > 0 &&
          request.blockedWords != NULL &&
@@ -1924,6 +1922,15 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
                               cudaMemcpyHostToDevice);
         if(status != cudaSuccess) return failChunk(status);
       }
+    }
+
+    status = cudaMemcpy(ADevice,AHost.data(),aBytes,cudaMemcpyHostToDevice);
+    if(status != cudaSuccess) return failChunk(status);
+    status = cudaMemcpy(BDevice,BHost.data(),bBytes,cudaMemcpyHostToDevice);
+    if(status != cudaSuccess) return failChunk(status);
+    if(batchResult != NULL)
+    {
+      batchResult->bulkInputH2DCopies += 2;
     }
 
     status = cudaMemcpy(requestMetaDevice,

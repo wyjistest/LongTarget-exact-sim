@@ -316,6 +316,12 @@ int main()
     ok = expect_equal_uint64(batchResult.perRequestOpsD2HCopies,
                              0,
                              "valid multi-request batch skips per-request ops D2H") && ok;
+    ok = expect_equal_uint64(batchResult.bulkInputH2DCopies,
+                             2,
+                             "valid multi-request batch bulk uploads A and B") && ok;
+    ok = expect_equal_uint64(batchResult.perRequestInputH2DCopies,
+                             0,
+                             "valid multi-request batch skips per-request input H2D") && ok;
     if (batchResults.size() == 2)
     {
         ok = expect_equal_bool(batchResults[0].success, true, "batch result 0 success") && ok;
@@ -386,6 +392,9 @@ int main()
     ok = expect_equal_uint64(batchResult.bulkOpsD2HCopies,
                              0,
                              "single-pending batch does not bulk copy ops") && ok;
+    ok = expect_equal_uint64(batchResult.bulkInputH2DCopies,
+                             0,
+                             "single-pending batch does not bulk upload inputs") && ok;
     if (batchResults.size() == 2)
     {
         ok = expect_equal_bool(batchResults[0].success, true, "single-pending gap result success") && ok;
