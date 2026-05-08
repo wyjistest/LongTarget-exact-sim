@@ -290,5 +290,25 @@ int main()
                           1,
                           "runningMin-differing batch uses one launch") && ok;
 
+    std::vector<SimLocateCudaRequest> gapRequests;
+    gapRequests.push_back(request);
+    gapRequests.push_back(request);
+    gapRequests[1].gapOpen = request.gapOpen + 1;
+    gapRequests[1].gapExtend = request.gapExtend + 1;
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(gapRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "gap-differing locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "gap-differing batch still shares inputs") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          1,
+                          "gap-differing batch uses one launch") && ok;
+
     return ok ? 0 : 1;
 }
