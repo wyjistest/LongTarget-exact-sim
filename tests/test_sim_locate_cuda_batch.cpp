@@ -289,6 +289,9 @@ int main()
     ok = expect_equal_u64(batchResult.launchCount,
                           1,
                           "runningMin-differing batch uses one launch") && ok;
+    ok = expect_equal_u64(batchResult.wholeBatchSharedInputDeepCompareCount,
+                          1,
+                          "runningMin-differing batch records whole-batch deep compare") && ok;
 
     std::vector<SimLocateCudaRequest> gapRequests;
     gapRequests.push_back(request);
@@ -464,6 +467,9 @@ int main()
     ok = expect_equal_u64(batchResult.launchCount,
                           4,
                           "signature-filtered mixed batch groups only matching shared requests") && ok;
+    ok = expect_equal_u64(batchResult.wholeBatchSharedInputDeepCompareCount,
+                          0,
+                          "signature-filtered mixed batch skips whole-batch deep compare") && ok;
     ok = expect_equal_u64(batchResult.mixedFallbackSignatureCandidateCheckCount,
                           1,
                           "signature-filtered mixed batch checks only same-signature candidates") && ok;

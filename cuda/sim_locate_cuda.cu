@@ -2104,7 +2104,22 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     return true;
   }
 
-  if(!sim_locate_cuda_requests_share_inputs(requests))
+  vector<SimLocateCudaSharedInputSignature> sharedInputSignatures(requests.size());
+  map<SimLocateCudaSharedInputSignature, vector<size_t> > signatureBuckets;
+  for(size_t i = 0; i < requests.size(); ++i)
+  {
+    sharedInputSignatures[i] = sim_locate_cuda_shared_input_signature(requests[i]);
+    signatureBuckets[sharedInputSignatures[i]].push_back(i);
+  }
+
+  uint64_t wholeBatchSharedInputDeepCompareCount = 0;
+  bool requestsShareInputs = false;
+  if(signatureBuckets.size() == 1)
+  {
+    ++wholeBatchSharedInputDeepCompareCount;
+    requestsShareInputs = sim_locate_cuda_requests_share_inputs(requests);
+  }
+  if(!requestsShareInputs)
   {
     vector<SimLocateResult> results(requests.size());
     double totalGpuSeconds = 0.0;
@@ -2125,13 +2140,6 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     uint64_t mixedFallbackSharedInputDeepCompareCount = 0;
 
     vector<char> processed(requests.size(), 0);
-    vector<SimLocateCudaSharedInputSignature> sharedInputSignatures(requests.size());
-    map<SimLocateCudaSharedInputSignature, vector<size_t> > signatureBuckets;
-    for(size_t i = 0; i < requests.size(); ++i)
-    {
-      sharedInputSignatures[i] = sim_locate_cuda_shared_input_signature(requests[i]);
-      signatureBuckets[sharedInputSignatures[i]].push_back(i);
-    }
     for(size_t i = 0; i < requests.size(); )
     {
       if(processed[i])
@@ -2260,6 +2268,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
       batchResult->candidateH2DCacheHits = candidateH2DCacheHits;
       batchResult->requestH2DCopies = requestH2DCopies;
       batchResult->requestH2DCacheHits = requestH2DCacheHits;
+      batchResult->wholeBatchSharedInputDeepCompareCount =
+        wholeBatchSharedInputDeepCompareCount;
       batchResult->mixedFallbackSignatureCandidateCheckCount =
         mixedFallbackSignatureCandidateCheckCount;
       batchResult->mixedFallbackSharedInputDeepCompareCount =
@@ -2578,6 +2588,8 @@ bool sim_locate_cuda_locate_region_batch(const vector<SimLocateCudaRequest> &req
     batchResult->taskCount = static_cast<uint64_t>(requests.size());
     batchResult->launchCount = 1;
     batchResult->usedSharedInputBatchPath = requests.size() > 1;
+    batchResult->wholeBatchSharedInputDeepCompareCount =
+      wholeBatchSharedInputDeepCompareCount;
   }
   if(errorOut != NULL)
   {
