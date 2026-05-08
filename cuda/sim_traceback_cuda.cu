@@ -1669,6 +1669,47 @@ bool sim_traceback_cuda_traceback_global_affine_batch(const vector<SimTracebackC
     return true;
   }
 
+  if(pendingIndices.size() == 1)
+  {
+    const size_t requestIndex = pendingIndices[0];
+    const SimTracebackCudaBatchRequest &request = normalizedRequests[requestIndex];
+    SimTracebackCudaBatchItemResult &item = (*outResults)[requestIndex];
+    SimTracebackCudaResult singleResult;
+    vector<unsigned char> ops;
+    if(!sim_traceback_cuda_traceback_global_affine(request.A,
+                                                   request.B,
+                                                   request.queryLength,
+                                                   request.targetLength,
+                                                   request.matchScore,
+                                                   request.mismatchScore,
+                                                   request.gapOpen,
+                                                   request.gapExtend,
+                                                   request.globalColStart,
+                                                   request.blockedWords,
+                                                   request.blockedWordStart,
+                                                   request.blockedWordCount,
+                                                   request.blockedWordStride,
+                                                   &ops,
+                                                   &singleResult,
+                                                   errorOut))
+    {
+      return false;
+    }
+    item.success = true;
+    item.error.clear();
+    item.opsReversed.swap(ops);
+    item.tracebackResult = singleResult;
+    if(batchResult != NULL)
+    {
+      batchResult->successCount += 1;
+      batchResult->cudaCount += singleResult.usedCuda ? 1 : 0;
+      batchResult->usedCuda = batchResult->usedCuda || singleResult.usedCuda;
+      batchResult->gpuSeconds += singleResult.gpuSeconds;
+      batchResult->singleCudaRequestBatchSkips += 1;
+    }
+    return true;
+  }
+
   if(!sim_traceback_cuda_init(simCudaDeviceRuntime(), errorOut))
   {
     return false;

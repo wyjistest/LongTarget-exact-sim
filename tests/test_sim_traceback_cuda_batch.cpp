@@ -307,6 +307,9 @@ int main()
     ok = expect_equal_uint64(batchResult.successCount, 2, "valid batch successCount") && ok;
     ok = expect_equal_uint64(batchResult.cudaCount, 2, "valid batch cudaCount") && ok;
     ok = expect_equal_bool(batchResult.usedCuda, true, "valid batch usedCuda") && ok;
+    ok = expect_equal_uint64(batchResult.singleCudaRequestBatchSkips,
+                             0,
+                             "valid multi-request batch does not skip batch path") && ok;
     if (batchResults.size() == 2)
     {
         ok = expect_equal_bool(batchResults[0].success, true, "batch result 0 success") && ok;
@@ -351,6 +354,45 @@ int main()
         ok = expect_true(!batchResults[1].error.empty(), "mixed batch result 1 error") && ok;
         ok = expect_ops_equal(batchResults[0].opsReversed, singleOps0, "mixed batch result 0 ops") && ok;
         ok = expect_ops_equal(batchResults[2].opsReversed, singleOps0, "mixed batch result 2 ops") && ok;
+    }
+
+    std::vector<SimTracebackCudaBatchRequest> singlePendingRequests;
+    singlePendingRequests.push_back(make_request(emptyQuery, insertOnlyTarget));
+    singlePendingRequests.push_back(make_request(query0, target0));
+    batchResults.clear();
+    batchResult = SimTracebackCudaBatchResult();
+    error.clear();
+    if (!sim_traceback_cuda_traceback_global_affine_batch(singlePendingRequests,
+                                                          &batchResults,
+                                                          &batchResult,
+                                                          &error))
+    {
+        std::cerr << "single-pending batch should succeed, got error: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_size(batchResults.size(), 2, "single-pending batch size") && ok;
+    ok = expect_equal_uint64(batchResult.requestCount, 2, "single-pending batch requestCount") && ok;
+    ok = expect_equal_uint64(batchResult.successCount, 2, "single-pending batch successCount") && ok;
+    ok = expect_equal_uint64(batchResult.cudaCount, 1, "single-pending batch cudaCount") && ok;
+    ok = expect_equal_uint64(batchResult.singleCudaRequestBatchSkips,
+                             1,
+                             "single-pending batch skips batch allocation path") && ok;
+    if (batchResults.size() == 2)
+    {
+        ok = expect_equal_bool(batchResults[0].success, true, "single-pending gap result success") && ok;
+        ok = expect_equal_bool(batchResults[1].success, true, "single-pending cuda result success") && ok;
+        ok = expect_equal_bool(batchResults[0].tracebackResult.usedCuda,
+                               false,
+                               "single-pending gap result usedCuda") && ok;
+        ok = expect_equal_bool(batchResults[1].tracebackResult.usedCuda,
+                               true,
+                               "single-pending cuda result usedCuda") && ok;
+        ok = expect_ops_equal(batchResults[0].opsReversed,
+                              expectedInsertOnlyOps,
+                              "single-pending gap result ops") && ok;
+        ok = expect_ops_equal(batchResults[1].opsReversed,
+                              singleOps0,
+                              "single-pending cuda result ops") && ok;
     }
 
     return ok ? 0 : 1;
