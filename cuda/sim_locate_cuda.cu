@@ -1607,6 +1607,34 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
     }
     return true;
   };
+  const auto blockedWordsEqual = [](const SimLocateCudaRequest &lhs,
+                                    const SimLocateCudaRequest &rhs) -> bool
+  {
+    const bool lhsActive = lhs.blockedWords != NULL && lhs.blockedWordStride > 0;
+    const bool rhsActive = rhs.blockedWords != NULL && rhs.blockedWordStride > 0;
+    if(lhsActive != rhsActive)
+    {
+      return false;
+    }
+    if(!lhsActive)
+    {
+      return true;
+    }
+    if(lhs.blockedWordStride != rhs.blockedWordStride)
+    {
+      return false;
+    }
+    const size_t count =
+      static_cast<size_t>(lhs.queryLength + 1) * static_cast<size_t>(lhs.blockedWordStride);
+    for(size_t i = 0; i < count; ++i)
+    {
+      if(lhs.blockedWords[i] != rhs.blockedWords[i])
+      {
+        return false;
+      }
+    }
+    return true;
+  };
   for(size_t i = 1; i < requests.size(); ++i)
   {
     const SimLocateCudaRequest &request = requests[i];
@@ -1615,8 +1643,7 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
        !bytesEqual(request.A,base.A,static_cast<size_t>(base.queryLength + 1)) ||
        !bytesEqual(request.B,base.B,static_cast<size_t>(base.targetLength + 1)) ||
        !scoreMatricesEqual(request.scoreMatrix,base.scoreMatrix) ||
-       request.blockedWords != base.blockedWords ||
-       request.blockedWordStride != base.blockedWordStride ||
+       !blockedWordsEqual(request,base) ||
        request.candidates != base.candidates ||
        request.candidateCount != base.candidateCount)
     {

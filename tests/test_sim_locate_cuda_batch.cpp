@@ -350,5 +350,28 @@ int main()
                           1,
                           "copied-matrix batch uses one launch") && ok;
 
+    std::vector<uint64_t> blockedWordsCopy(blockedWords.size(), 0);
+    std::vector<SimLocateCudaRequest> copiedBlockedRequests;
+    copiedBlockedRequests.push_back(request);
+    copiedBlockedRequests.push_back(request);
+    copiedBlockedRequests[0].blockedWords = blockedWords.data();
+    copiedBlockedRequests[0].blockedWordStride = 1;
+    copiedBlockedRequests[1].blockedWords = blockedWordsCopy.data();
+    copiedBlockedRequests[1].blockedWordStride = 1;
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(copiedBlockedRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "copied-blocked locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "copied-blocked batch still shares blocked word content") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          1,
+                          "copied-blocked batch uses one launch") && ok;
+
     return ok ? 0 : 1;
 }
