@@ -1766,6 +1766,25 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simRegionBackend = (simRegionCpuCalls == 0) ? "cuda" : "mixed";
   }
   cerr<<"benchmark.sim_region_backend="<<simRegionBackend<<endl;
+  uint64_t simRegionCalls = 0;
+  uint64_t simRegionRequests = 0;
+  uint64_t simRegionLaunches = 0;
+  uint64_t simRegionBatchCalls = 0;
+  uint64_t simRegionBatchRequests = 0;
+  uint64_t simRegionSerialFallbackRequests = 0;
+  getSimRegionScanTelemetryStats(simRegionCalls,
+                                 simRegionRequests,
+                                 simRegionLaunches,
+                                 simRegionBatchCalls,
+                                 simRegionBatchRequests,
+                                 simRegionSerialFallbackRequests);
+  cerr<<"benchmark.sim_region_calls="<<simRegionCalls<<endl;
+  cerr<<"benchmark.sim_region_requests="<<simRegionRequests<<endl;
+  cerr<<"benchmark.sim_region_launches="<<simRegionLaunches<<endl;
+  cerr<<"benchmark.sim_region_batch_calls="<<simRegionBatchCalls<<endl;
+  cerr<<"benchmark.sim_region_batch_requests="<<simRegionBatchRequests<<endl;
+  cerr<<"benchmark.sim_region_serial_fallback_requests="
+      <<simRegionSerialFallbackRequests<<endl;
 
   uint64_t simLocateCpuCalls = 0;
   uint64_t simLocateCudaCalls = 0;
