@@ -271,5 +271,24 @@ int main()
                           1,
                           "cached shared-input batch records request metadata cache hit") && ok;
 
+    std::vector<SimLocateCudaRequest> runningMinRequests;
+    runningMinRequests.push_back(request);
+    runningMinRequests.push_back(request);
+    runningMinRequests[1].runningMin = request.runningMin + 1;
+    batchResults.clear();
+    batchResult = SimLocateCudaBatchResult();
+    error.clear();
+    if (!sim_locate_cuda_locate_region_batch(runningMinRequests, &batchResults, &batchResult, &error))
+    {
+        std::cerr << "runningMin-differing locate batch failed: " << error << "\n";
+        return 1;
+    }
+    ok = expect_equal_bool(batchResult.usedSharedInputBatchPath,
+                           true,
+                           "runningMin-differing batch still shares inputs") && ok;
+    ok = expect_equal_u64(batchResult.launchCount,
+                          1,
+                          "runningMin-differing batch uses one launch") && ok;
+
     return ok ? 0 : 1;
 }

@@ -1584,7 +1584,6 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
        request.B != base.B ||
        request.queryLength != base.queryLength ||
        request.targetLength != base.targetLength ||
-       request.runningMin != base.runningMin ||
        request.gapOpen != base.gapOpen ||
        request.gapExtend != base.gapExtend ||
        request.scoreMatrix != base.scoreMatrix ||
