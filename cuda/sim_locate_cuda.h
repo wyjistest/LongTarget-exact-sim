@@ -332,6 +332,7 @@ struct SimLocateCudaBatchResult
     requestValidationCount(0),
     wholeBatchSharedInputDeepCompareCount(0),
     mixedFallbackSignatureCandidateCheckCount(0),
+    mixedFallbackPairCompareVectorBuildCount(0),
     mixedFallbackSharedInputDeepCompareCount(0)
   {
   }
@@ -355,6 +356,7 @@ struct SimLocateCudaBatchResult
   uint64_t requestValidationCount;
   uint64_t wholeBatchSharedInputDeepCompareCount;
   uint64_t mixedFallbackSignatureCandidateCheckCount;
+  uint64_t mixedFallbackPairCompareVectorBuildCount;
   uint64_t mixedFallbackSharedInputDeepCompareCount;
 };
 

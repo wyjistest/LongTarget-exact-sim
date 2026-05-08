@@ -1646,13 +1646,9 @@ static bool sim_locate_cuda_validate_request(const SimLocateCudaRequest &request
   return true;
 }
 
-static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequest> &requests)
+static bool sim_locate_cuda_requests_share_inputs_pair(const SimLocateCudaRequest &base,
+                                                       const SimLocateCudaRequest &request)
 {
-  if(requests.empty())
-  {
-    return true;
-  }
-  const SimLocateCudaRequest &base = requests[0];
   const auto bytesEqual = [](const char *lhs,const char *rhs,size_t count) -> bool
   {
     if(lhs == rhs)
@@ -1745,16 +1741,25 @@ static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequ
     }
     return true;
   };
+  return request.queryLength == base.queryLength &&
+    request.targetLength == base.targetLength &&
+    bytesEqual(request.A,base.A,static_cast<size_t>(base.queryLength + 1)) &&
+    bytesEqual(request.B,base.B,static_cast<size_t>(base.targetLength + 1)) &&
+    scoreMatricesEqual(request.scoreMatrix,base.scoreMatrix) &&
+    blockedWordsEqual(request,base) &&
+    candidatesEqual(request,base);
+}
+
+static bool sim_locate_cuda_requests_share_inputs(const vector<SimLocateCudaRequest> &requests)
+{
+  if(requests.empty())
+  {
+    return true;
+  }
+  const SimLocateCudaRequest &base = requests[0];
   for(size_t i = 1; i < requests.size(); ++i)
   {
-    const SimLocateCudaRequest &request = requests[i];
-    if(request.queryLength != base.queryLength ||
-       request.targetLength != base.targetLength ||
-       !bytesEqual(request.A,base.A,static_cast<size_t>(base.queryLength + 1)) ||
-       !bytesEqual(request.B,base.B,static_cast<size_t>(base.targetLength + 1)) ||
-       !scoreMatricesEqual(request.scoreMatrix,base.scoreMatrix) ||
-       !blockedWordsEqual(request,base) ||
-       !candidatesEqual(request,base))
+    if(!sim_locate_cuda_requests_share_inputs_pair(base,requests[i]))
     {
       return false;
     }
@@ -2168,6 +2173,7 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
     uint64_t requestH2DCopies = 0;
     uint64_t requestH2DCacheHits = 0;
     uint64_t mixedFallbackSignatureCandidateCheckCount = 0;
+    uint64_t mixedFallbackPairCompareVectorBuildCount = 0;
     uint64_t mixedFallbackSharedInputDeepCompareCount = 0;
 
     vector<char> processed(requests.size(), 0);
@@ -2195,11 +2201,8 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
           continue;
         }
         ++mixedFallbackSignatureCandidateCheckCount;
-        vector<SimLocateCudaRequest> candidateGroup;
-        candidateGroup.push_back(requests[i]);
-        candidateGroup.push_back(requests[candidateIndex]);
         ++mixedFallbackSharedInputDeepCompareCount;
-        if(sim_locate_cuda_requests_share_inputs(candidateGroup))
+        if(sim_locate_cuda_requests_share_inputs_pair(requests[i],requests[candidateIndex]))
         {
           subgroup.push_back(requests[candidateIndex]);
           subgroupIndices.push_back(candidateIndex);
@@ -2261,6 +2264,8 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
           subgroupBatchResult.wholeBatchSharedInputDeepCompareCount;
         mixedFallbackSignatureCandidateCheckCount +=
           subgroupBatchResult.mixedFallbackSignatureCandidateCheckCount;
+        mixedFallbackPairCompareVectorBuildCount +=
+          subgroupBatchResult.mixedFallbackPairCompareVectorBuildCount;
         mixedFallbackSharedInputDeepCompareCount +=
           subgroupBatchResult.mixedFallbackSharedInputDeepCompareCount;
         ++i;
@@ -2309,6 +2314,8 @@ static bool sim_locate_cuda_locate_region_batch_impl(const vector<SimLocateCudaR
         wholeBatchSharedInputDeepCompareCount;
       batchResult->mixedFallbackSignatureCandidateCheckCount =
         mixedFallbackSignatureCandidateCheckCount;
+      batchResult->mixedFallbackPairCompareVectorBuildCount =
+        mixedFallbackPairCompareVectorBuildCount;
       batchResult->mixedFallbackSharedInputDeepCompareCount =
         mixedFallbackSharedInputDeepCompareCount;
     }
