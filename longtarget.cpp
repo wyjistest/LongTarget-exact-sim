@@ -2418,6 +2418,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
   SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
   SimInitialSafeStoreRebuildStats simInitialSafeStoreRebuildStats;
+  SimInitialSafeStorePrecombineShadowStats simInitialSafeStorePrecombineShadowStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
   uint64_t simInitialExactFrontierReplayFrontierStates = 0;
   uint64_t simInitialExactFrontierReplayDeviceSafeStores = 0;
@@ -2444,6 +2445,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryHostCopyElidedBytes);
   getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
   simInitialSafeStoreRebuildStats = getSimInitialSafeStoreRebuildStats();
+  simInitialSafeStorePrecombineShadowStats =
+    getSimInitialSafeStorePrecombineShadowStats();
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
 	                                          simInitialContextApplyChunkReplayedTotal,
@@ -2964,6 +2967,28 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreRebuildStats.pruneKeptFrontier<<endl;
   cerr<<"benchmark.sim_initial_safe_store_prune_index_rebuild_seconds="
       <<(static_cast<double>(simInitialSafeStoreRebuildStats.pruneIndexRebuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_enabled="
+      <<(simCudaInitialSafeStorePrecombineShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_calls="
+      <<simInitialSafeStorePrecombineShadowStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_size_mismatches="
+      <<simInitialSafeStorePrecombineShadowStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_candidate_mismatches="
+      <<simInitialSafeStorePrecombineShadowStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_order_mismatches="
+      <<simInitialSafeStorePrecombineShadowStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_digest_mismatches="
+      <<simInitialSafeStorePrecombineShadowStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_input_summaries="
+      <<simInitialSafeStorePrecombineShadowStats.inputSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_unique_states="
+      <<simInitialSafeStorePrecombineShadowStats.uniqueStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_duplicate_summaries="
+      <<simInitialSafeStorePrecombineShadowStats.duplicateSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_est_saved_upserts="
+      <<simInitialSafeStorePrecombineShadowStats.estSavedUpserts<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;

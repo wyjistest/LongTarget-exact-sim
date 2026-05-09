@@ -1943,6 +1943,79 @@ int main()
         ok = expect_equal_int(mergedStoreState->left, 3, "safe store merges left bound") && ok;
         ok = expect_equal_int(mergedStoreState->right, 9, "safe store merges right bound") && ok;
     }
+    const SimInitialSafeStorePrecombineShadowStats precombineShadowBefore =
+        getSimInitialSafeStorePrecombineShadowStats();
+    const SimInitialSafeStorePrecombineShadowStats precombineShadowDelta =
+        runSimInitialSafeStorePrecombineShadow(
+            safeStoreSummaries,
+            safeStoreContext.safeCandidateStateStore);
+    ok = expect_equal_u64(precombineShadowDelta.calls,
+                          1,
+                          "initial safe-store precombine shadow runs once") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.inputSummaries,
+                          5,
+                          "initial safe-store precombine shadow records input summaries") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.uniqueStates,
+                          4,
+                          "initial safe-store precombine shadow records unique states") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.duplicateSummaries,
+                          1,
+                          "initial safe-store precombine shadow records duplicate summaries") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.estSavedUpserts,
+                          1,
+                          "initial safe-store precombine shadow estimates saved upserts") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.sizeMismatches,
+                          0,
+                          "initial safe-store precombine shadow size matches") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.candidateMismatches,
+                          0,
+                          "initial safe-store precombine shadow candidates match") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.orderMismatches,
+                          0,
+                          "initial safe-store precombine shadow order matches") && ok;
+    ok = expect_equal_u64(precombineShadowDelta.digestMismatches,
+                          0,
+                          "initial safe-store precombine shadow digest matches") && ok;
+    recordSimInitialSafeStorePrecombineShadow(precombineShadowDelta);
+    const SimInitialSafeStorePrecombineShadowStats precombineShadowAfter =
+        getSimInitialSafeStorePrecombineShadowStats();
+    ok = expect_equal_u64(precombineShadowAfter.calls - precombineShadowBefore.calls,
+                          1,
+                          "initial safe-store precombine shadow call count increments") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.inputSummaries -
+                              precombineShadowBefore.inputSummaries,
+                          5,
+                          "initial safe-store precombine shadow input summary count increments") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.uniqueStates -
+                              precombineShadowBefore.uniqueStates,
+                          4,
+                          "initial safe-store precombine shadow unique-state count increments") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.duplicateSummaries -
+                              precombineShadowBefore.duplicateSummaries,
+                          1,
+                          "initial safe-store precombine shadow duplicate-summary count increments") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.estSavedUpserts -
+                              precombineShadowBefore.estSavedUpserts,
+                          1,
+                          "initial safe-store precombine shadow saved-upsert estimate increments") && ok;
+    ok = expect_true(precombineShadowAfter.nanoseconds >= precombineShadowBefore.nanoseconds,
+                     "initial safe-store precombine shadow timing is monotonic") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.sizeMismatches -
+                              precombineShadowBefore.sizeMismatches,
+                          0,
+                          "initial safe-store precombine shadow size mismatch count stays zero") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.candidateMismatches -
+                              precombineShadowBefore.candidateMismatches,
+                          0,
+                          "initial safe-store precombine shadow candidate mismatch count stays zero") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.orderMismatches -
+                              precombineShadowBefore.orderMismatches,
+                          0,
+                          "initial safe-store precombine shadow order mismatch count stays zero") && ok;
+    ok = expect_equal_u64(precombineShadowAfter.digestMismatches -
+                              precombineShadowBefore.digestMismatches,
+                          0,
+                          "initial safe-store precombine shadow digest mismatch count stays zero") && ok;
     SimInitialSafeStoreRebuildStats safeStorePruneStats;
     pruneSimSafeCandidateStateStore(safeStoreContext, &safeStorePruneStats);
     recordSimInitialSafeStoreRebuildStats(safeStorePruneStats);
