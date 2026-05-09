@@ -2420,6 +2420,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   SimInitialSafeStoreRebuildStats simInitialSafeStoreRebuildStats;
   SimInitialSafeStorePruneIndexShadowStats simInitialSafeStorePruneIndexShadowStats;
   SimInitialSafeStorePrecombineShadowStats simInitialSafeStorePrecombineShadowStats;
+  SimInitialCandidateContainerShadowStats simInitialCandidateContainerShadowStats;
   SimInitialContextApplyBreakdownStats simInitialContextApplyBreakdownStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
   uint64_t simInitialExactFrontierReplayFrontierStates = 0;
@@ -2451,6 +2452,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getSimInitialSafeStorePruneIndexShadowStats();
   simInitialSafeStorePrecombineShadowStats =
     getSimInitialSafeStorePrecombineShadowStats();
+  simInitialCandidateContainerShadowStats =
+    getSimInitialCandidateContainerShadowStats();
   simInitialContextApplyBreakdownStats =
     getSimInitialContextApplyBreakdownStats();
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
@@ -3071,6 +3074,56 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_candidate_churn_index_rebuilds="
       <<simInitialContextApplyBreakdownStats.get(
           SIM_INITIAL_CANDIDATE_CHURN_INDEX_REBUILDS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_enabled="
+      <<(simCudaInitialCandidateContainerShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_calls="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_CALLS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_seconds="
+      <<(static_cast<double>(simInitialCandidateContainerShadowStats.get(
+           SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_state_mismatches="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STATE_MISMATCHES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_size_mismatches="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_SIZE_MISMATCHES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_digest_mismatches="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_DIGEST_MISMATCHES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_order_mismatches="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_ORDER_MISMATCHES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_floor_mismatches="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_FLOOR_MISMATCHES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_min_candidate_mismatches="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_MIN_CANDIDATE_MISMATCHES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_events="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EVENTS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_active_candidates="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_ACTIVE_CANDIDATES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_stale_entries="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STALE_ENTRIES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_lazy_pops="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_LAZY_POPS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_est_saved_erasures="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_ERASURES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_est_saved_index_rebuilds="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_INDEX_REBUILDS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_high_water_entries="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_HIGH_WATER_ENTRIES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_container_shadow_compaction_estimate="
+      <<simInitialCandidateContainerShadowStats.get(
+          SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_COMPACTION_ESTIMATE)<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;

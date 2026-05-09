@@ -2861,6 +2861,16 @@ inline bool simCudaInitialSafeStorePruneIndexShadowEnabledRuntime()
   return enabled;
 }
 
+inline bool simCudaInitialCandidateContainerShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_CANDIDATE_CONTAINER_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 			inline bool simLocateCudaFastShadowEnabledRuntime()
 			{
 		  static const bool enabled = []()
@@ -3065,6 +3075,22 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  SIM_INITIAL_CANDIDATE_CHURN_HEAP_BUILDS,
 				  SIM_INITIAL_CANDIDATE_CHURN_HEAP_UPDATES,
 				  SIM_INITIAL_CANDIDATE_CHURN_INDEX_REBUILDS,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_CALLS,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_NANOSECONDS,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STATE_MISMATCHES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_SIZE_MISMATCHES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_DIGEST_MISMATCHES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_ORDER_MISMATCHES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_FLOOR_MISMATCHES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_MIN_CANDIDATE_MISMATCHES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EVENTS,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_ACTIVE_CANDIDATES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STALE_ENTRIES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_LAZY_POPS,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_ERASURES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_INDEX_REBUILDS,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_HIGH_WATER_ENTRIES,
+				  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_COMPACTION_ESTIMATE,
 				  SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT
 				};
 
@@ -3093,6 +3119,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 
 				typedef SimInitialContextApplyBreakdownStats SimInitialCandidateReplayStructureStats;
 				typedef SimInitialContextApplyBreakdownStats SimInitialCandidateChurnStats;
+				typedef SimInitialContextApplyBreakdownStats SimInitialCandidateContainerShadowStats;
+				inline void recordSimInitialContextApplyBreakdown(
+				  const SimInitialContextApplyBreakdownStats &stats);
+				inline SimInitialContextApplyBreakdownStats getSimInitialContextApplyBreakdownStats();
 
 				struct SimInitialCandidateReplayApplyMetadata
 				{
@@ -5325,6 +5355,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.estSavedUpserts.fetch_add(delta.estSavedUpserts,std::memory_order_relaxed);
 		}
 
+		inline void recordSimInitialCandidateContainerShadow(
+		  const SimInitialCandidateContainerShadowStats &delta)
+		{
+		  recordSimInitialContextApplyBreakdown(delta);
+		}
+
 		inline void recordSimRegionDeferredCountValidate(const SimRegionDeferredCountValidateStats &delta)
 		{
 		  SimRegionDeferredCountValidateAtomicStats &stats =
@@ -5847,6 +5883,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.duplicateSummaries = stats.duplicateSummaries.load(std::memory_order_relaxed);
 		  snapshot.estSavedUpserts = stats.estSavedUpserts.load(std::memory_order_relaxed);
 		  return snapshot;
+		}
+
+		inline SimInitialCandidateContainerShadowStats
+		getSimInitialCandidateContainerShadowStats()
+		{
+		  return getSimInitialContextApplyBreakdownStats();
 		}
 
 		inline SimRegionDeferredCountValidateStats getSimRegionDeferredCountValidateStats()
@@ -10924,6 +10966,12 @@ inline bool simCudaCandidateStateVectorsEqualOrdered(
 inline bool simCudaCandidateStateVectorsEqualAsSet(
   const vector<SimScanCudaCandidateState> &lhs,
   const vector<SimScanCudaCandidateState> &rhs);
+inline SimScanCudaFrontierDigest digestSimCudaFrontierStatesForTransducerShadow(
+  const vector<SimScanCudaCandidateState> &states,
+  int runningMin);
+inline void recordSimInitialCandidateContainerShadowIfEnabled(
+  const SimKernelContext &context,
+  const SimInitialContextApplyBreakdownStats &replayStats);
 
 inline long simCurrentCandidateFloor(const SimKernelContext &context)
 {
@@ -10946,6 +10994,23 @@ inline long refreshSimRunningMin(SimKernelContext &context)
 {
   context.runningMin = simCurrentCandidateFloor(context);
   return context.runningMin;
+}
+
+inline int simMinCandidateIndexByScan(const SimKernelContext &context)
+{
+  if(context.candidateCount <= 0)
+  {
+    return -1;
+  }
+  int minIndex = 0;
+  for(long candidateIndex = 1; candidateIndex < context.candidateCount; ++candidateIndex)
+  {
+    if(context.candidates[candidateIndex].SCORE < context.candidates[minIndex].SCORE)
+    {
+      minIndex = static_cast<int>(candidateIndex);
+    }
+  }
+  return minIndex;
 }
 
 inline SimScanCudaCandidateState makeSimScanCudaCandidateState(const SimCandidate &candidate)
@@ -13410,6 +13475,7 @@ inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSu
     {
       breakdownStats.values[i] += replayStats.values[i];
     }
+    recordSimInitialCandidateContainerShadowIfEnabled(context,replayStats);
     recordSimInitialContextApplyBreakdown(breakdownStats);
   }
 }
@@ -13499,6 +13565,7 @@ inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
     {
       breakdownStats.values[i] += replayStats.values[i];
     }
+    recordSimInitialCandidateContainerShadowIfEnabled(context,replayStats);
     recordSimInitialContextApplyBreakdown(breakdownStats);
   }
   if(statsOut != NULL)
@@ -15628,6 +15695,99 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  return simCudaCandidateStateVectorsEqualOrdered(
 	    simCudaSortedCandidateStatesForShadow(lhs),
 	    simCudaSortedCandidateStatesForShadow(rhs));
+	}
+
+	inline SimInitialCandidateContainerShadowStats
+	runSimInitialCandidateContainerShadowEstimator(
+	  const SimKernelContext &context,
+	  const SimInitialContextApplyBreakdownStats &replayStats)
+	{
+	  SimInitialCandidateContainerShadowStats stats;
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_CALLS,1);
+	  const std::chrono::steady_clock::time_point start =
+	    std::chrono::steady_clock::now();
+	  vector<SimScanCudaCandidateState> states;
+	  collectSimContextCandidateStates(context,states);
+	  const uint64_t events =
+	    replayStats.get(SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT);
+	  const uint64_t activeCandidates = static_cast<uint64_t>(states.size());
+	  const uint64_t estSavedErasures =
+	    replayStats.get(SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT);
+	  const uint64_t estSavedIndexRebuilds =
+	    replayStats.get(SIM_INITIAL_CANDIDATE_CHURN_INDEX_REBUILDS);
+	  uint64_t highWaterEntries =
+	    replayStats.get(SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT);
+	  if(highWaterEntries < activeCandidates)
+	  {
+	    highWaterEntries = activeCandidates;
+	  }
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EVENTS,events);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_ACTIVE_CANDIDATES,
+	            activeCandidates);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_ERASURES,
+	            estSavedErasures);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_INDEX_REBUILDS,
+	            estSavedIndexRebuilds);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_HIGH_WATER_ENTRIES,
+	            highWaterEntries);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STALE_ENTRIES,
+	            highWaterEntries - activeCandidates);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_LAZY_POPS,
+	            estSavedErasures);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_COMPACTION_ESTIMATE,
+	            highWaterEntries);
+
+	  const long computedFloor = simCurrentCandidateFloor(context);
+	  const bool floorMismatch = computedFloor != context.runningMin;
+	  const uint64_t floorMismatches = floorMismatch ? 1 : 0;
+	  const uint64_t sizeMismatches =
+	    states.size() == static_cast<size_t>(context.candidateCount) ? 0 : 1;
+	  const SimScanCudaFrontierDigest digest =
+	    digestSimCudaFrontierStatesForTransducerShadow(
+	      states,
+	      static_cast<int>(context.runningMin));
+	  const uint64_t digestMismatches =
+	    (digest.candidateCount == static_cast<int>(context.candidateCount) &&
+	     digest.runningMin == static_cast<int>(context.runningMin)) ? 0 : 1;
+	  vector<SimScanCudaCandidateState> orderedStates;
+	  collectSimContextCandidateStates(context,orderedStates);
+	  const uint64_t orderMismatches =
+	    simCudaCandidateStateVectorsEqualOrdered(states,orderedStates) ? 0 : 1;
+	  const int minCandidateIndex = simMinCandidateIndexByScan(context);
+	  const uint64_t minCandidateMismatches =
+	    (minCandidateIndex < 0 ||
+	     context.candidates[minCandidateIndex].SCORE == context.runningMin) ? 0 : 1;
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_SIZE_MISMATCHES,
+	            sizeMismatches);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_DIGEST_MISMATCHES,
+	            digestMismatches);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_ORDER_MISMATCHES,
+	            orderMismatches);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_FLOOR_MISMATCHES,
+	            floorMismatches);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_MIN_CANDIDATE_MISMATCHES,
+	            minCandidateMismatches);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STATE_MISMATCHES,
+	            (sizeMismatches != 0 ||
+	             digestMismatches != 0 ||
+	             orderMismatches != 0 ||
+	             floorMismatches != 0 ||
+	             minCandidateMismatches != 0) ? 1 : 0);
+	  stats.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_NANOSECONDS,
+	            simElapsedNanoseconds(start));
+	  return stats;
+	}
+
+	inline void recordSimInitialCandidateContainerShadowIfEnabled(
+	  const SimKernelContext &context,
+	  const SimInitialContextApplyBreakdownStats &replayStats)
+	{
+	  if(!simCudaInitialCandidateContainerShadowEnabledRuntime())
+	  {
+	    return;
+	  }
+	  recordSimInitialCandidateContainerShadow(
+	    runSimInitialCandidateContainerShadowEstimator(context,replayStats));
 	}
 
 	inline bool simCudaCandidateStatesContainStartCoord(

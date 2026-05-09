@@ -2072,6 +2072,48 @@ int main()
 	                            label.c_str()) && ok;
 	    }
 
+	    const SimInitialCandidateContainerShadowStats containerShadowBefore =
+	        getSimInitialCandidateContainerShadowStats();
+	    SimInitialCandidateContainerShadowStats containerShadowDelta;
+	    containerShadowDelta.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_CALLS,1);
+	    containerShadowDelta.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_NANOSECONDS,11);
+	    containerShadowDelta.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STATE_MISMATCHES,13);
+	    containerShadowDelta.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_ERASURES,53);
+	    containerShadowDelta.add(SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_HIGH_WATER_ENTRIES,61);
+	    recordSimInitialCandidateContainerShadow(containerShadowDelta);
+	    const SimInitialCandidateContainerShadowStats containerShadowAfter =
+	        getSimInitialCandidateContainerShadowStats();
+	    ok = expect_equal_u64(containerShadowAfter.get(
+	                              SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_CALLS) -
+	                              containerShadowBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_CALLS),
+	                          1,
+	                          "initial candidate container shadow call count increments") && ok;
+	    ok = expect_equal_u64(containerShadowAfter.get(
+	                              SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_NANOSECONDS) -
+	                              containerShadowBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_NANOSECONDS),
+	                          11,
+	                          "initial candidate container shadow timing increments") && ok;
+	    ok = expect_equal_u64(containerShadowAfter.get(
+	                              SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STATE_MISMATCHES) -
+	                              containerShadowBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_STATE_MISMATCHES),
+	                          13,
+	                          "initial candidate container shadow state mismatch increments") && ok;
+	    ok = expect_equal_u64(containerShadowAfter.get(
+	                              SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_ERASURES) -
+	                              containerShadowBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_EST_SAVED_ERASURES),
+	                          53,
+	                          "initial candidate container shadow saved erasure increments") && ok;
+	    ok = expect_equal_u64(containerShadowAfter.get(
+	                              SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_HIGH_WATER_ENTRIES) -
+	                              containerShadowBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_CONTAINER_SHADOW_HIGH_WATER_ENTRIES),
+	                          61,
+	                          "initial candidate container shadow high-water increments") && ok;
+
 	    SimKernelContext safeStoreContext(16, 16);
     initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, safeStoreContext);
     addnodeIndexed(20, 1, 1, 4, 4, safeStoreContext);
