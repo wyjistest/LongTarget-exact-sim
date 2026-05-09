@@ -788,6 +788,7 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceCandidateCountD2HSeconds(0.0),
     regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds(0.0),
+    regionDeferredCountValidateSeconds(0.0),
     regionSingleRequestDirectReduceFusedDpGpuSeconds(0.0),
     regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow(0.0),
     regionSingleRequestDirectReduceFusedTotalGpuSeconds(0.0),
@@ -849,6 +850,14 @@ struct SimScanCudaBatchResult
     regionSingleRequestDirectReduceRunSummaryCount(0),
     regionSingleRequestDirectReduceAffectedStartCount(0),
     regionSingleRequestDirectReduceReduceWorkItems(0),
+    regionDeferredCountValidateCalls(0),
+    regionDeferredCountEventMismatches(0),
+    regionDeferredCountRunMismatches(0),
+    regionDeferredCountCandidateMismatches(0),
+    regionDeferredCountTotalMismatches(0),
+    regionDeferredCountValidateFallbacks(0),
+    regionDeferredCountValidateScalarCopies(0),
+    regionDeferredCountValidateSnapshotCopies(0),
     regionSingleRequestDirectReduceFusedDpAttempts(0),
     regionSingleRequestDirectReduceFusedDpEligible(0),
     regionSingleRequestDirectReduceFusedDpSuccesses(0),
@@ -973,6 +982,7 @@ struct SimScanCudaBatchResult
   double regionSingleRequestDirectReduceCountD2HSeconds;
   double regionSingleRequestDirectReduceCandidateCountD2HSeconds;
   double regionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds;
+  double regionDeferredCountValidateSeconds;
   double regionSingleRequestDirectReduceFusedDpGpuSeconds;
   double regionSingleRequestDirectReduceFusedOracleDpGpuSecondsShadow;
   double regionSingleRequestDirectReduceFusedTotalGpuSeconds;
@@ -1034,6 +1044,14 @@ struct SimScanCudaBatchResult
   uint64_t regionSingleRequestDirectReduceRunSummaryCount;
   uint64_t regionSingleRequestDirectReduceAffectedStartCount;
   uint64_t regionSingleRequestDirectReduceReduceWorkItems;
+  uint64_t regionDeferredCountValidateCalls;
+  uint64_t regionDeferredCountEventMismatches;
+  uint64_t regionDeferredCountRunMismatches;
+  uint64_t regionDeferredCountCandidateMismatches;
+  uint64_t regionDeferredCountTotalMismatches;
+  uint64_t regionDeferredCountValidateFallbacks;
+  uint64_t regionDeferredCountValidateScalarCopies;
+  uint64_t regionDeferredCountValidateSnapshotCopies;
   uint64_t regionSingleRequestDirectReduceFusedDpAttempts;
   uint64_t regionSingleRequestDirectReduceFusedDpEligible;
   uint64_t regionSingleRequestDirectReduceFusedDpSuccesses;

@@ -1296,6 +1296,8 @@ int main()
         getSimSafeWorksetMergeBreakdownStats();
     const SimSafeStoreMergeStructureShadowStats safeStoreMergeStructureShadowBefore =
         getSimSafeStoreMergeStructureShadowStats();
+    const SimRegionDeferredCountValidateStats regionDeferredCountValidateBefore =
+        getSimRegionDeferredCountValidateStats();
     getSimSafeWindowStats(safeWindowCount,
                           safeWindowAffectedStartCount,
                           safeWindowCoordBytesD2H,
@@ -1467,6 +1469,17 @@ int main()
     safeStoreMergeStructureShadowDelta.pruneScannedStates = 23;
     safeStoreMergeStructureShadowDelta.pruneRemovedStates = 29;
     recordSimSafeStoreMergeStructureShadow(safeStoreMergeStructureShadowDelta);
+    SimRegionDeferredCountValidateStats regionDeferredCountValidateDelta;
+    regionDeferredCountValidateDelta.calls = 3;
+    regionDeferredCountValidateDelta.nanoseconds = 5;
+    regionDeferredCountValidateDelta.eventMismatches = 7;
+    regionDeferredCountValidateDelta.runMismatches = 11;
+    regionDeferredCountValidateDelta.candidateMismatches = 13;
+    regionDeferredCountValidateDelta.totalMismatches = 17;
+    regionDeferredCountValidateDelta.fallbacks = 19;
+    regionDeferredCountValidateDelta.scalarCopies = 23;
+    regionDeferredCountValidateDelta.snapshotCopies = 29;
+    recordSimRegionDeferredCountValidate(regionDeferredCountValidateDelta);
     recordSimSafeWorksetTotalNanoseconds(29);
     recordSimSafeWindowExecGeometry(safeWindowExec);
     recordSimSafeWindowAttempt();
@@ -1528,6 +1541,8 @@ int main()
         getSimSafeWorksetMergeBreakdownStats();
     const SimSafeStoreMergeStructureShadowStats safeStoreMergeStructureShadowAfter =
         getSimSafeStoreMergeStructureShadowStats();
+    const SimRegionDeferredCountValidateStats regionDeferredCountValidateAfter =
+        getSimRegionDeferredCountValidateStats();
     getSimSafeWindowStats(safeWindowCount,
                           safeWindowAffectedStartCount,
                           safeWindowCoordBytesD2H,
@@ -1660,6 +1675,33 @@ int main()
     ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.pruneRemovedStates,
                           safeStoreMergeStructureShadowBefore.pruneRemovedStates + 29,
                           "safe-store merge structure shadow prune removed states increment") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.calls,
+                          regionDeferredCountValidateBefore.calls + 3,
+                          "region deferred-count validation calls increment") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.nanoseconds,
+                          regionDeferredCountValidateBefore.nanoseconds + 5,
+                          "region deferred-count validation timing increments") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.eventMismatches,
+                          regionDeferredCountValidateBefore.eventMismatches + 7,
+                          "region deferred-count validation event mismatches increment") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.runMismatches,
+                          regionDeferredCountValidateBefore.runMismatches + 11,
+                          "region deferred-count validation run mismatches increment") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.candidateMismatches,
+                          regionDeferredCountValidateBefore.candidateMismatches + 13,
+                          "region deferred-count validation candidate mismatches increment") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.totalMismatches,
+                          regionDeferredCountValidateBefore.totalMismatches + 17,
+                          "region deferred-count validation total mismatches increment") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.fallbacks,
+                          regionDeferredCountValidateBefore.fallbacks + 19,
+                          "region deferred-count validation fallback increments") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.scalarCopies,
+                          regionDeferredCountValidateBefore.scalarCopies + 23,
+                          "region deferred-count validation scalar copy increments") && ok;
+    ok = expect_equal_u64(regionDeferredCountValidateAfter.snapshotCopies,
+                          regionDeferredCountValidateBefore.snapshotCopies + 29,
+                          "region deferred-count validation snapshot copy increments") && ok;
     ok = expect_equal_u64(safeWindowCount,
                           safeWindowCountBefore + 3,
                           "safe window count increments") && ok;

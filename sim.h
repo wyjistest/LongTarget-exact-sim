@@ -4304,6 +4304,64 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return stats;
 		}
 
+		struct SimRegionDeferredCountValidateStats
+		{
+		  SimRegionDeferredCountValidateStats():
+		    calls(0),
+		    nanoseconds(0),
+		    eventMismatches(0),
+		    runMismatches(0),
+		    candidateMismatches(0),
+		    totalMismatches(0),
+		    fallbacks(0),
+		    scalarCopies(0),
+		    snapshotCopies(0)
+		  {
+		  }
+
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t eventMismatches;
+		  uint64_t runMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t totalMismatches;
+		  uint64_t fallbacks;
+		  uint64_t scalarCopies;
+		  uint64_t snapshotCopies;
+		};
+
+		struct SimRegionDeferredCountValidateAtomicStats
+		{
+		  SimRegionDeferredCountValidateAtomicStats()
+		  {
+		    calls.store(0,std::memory_order_relaxed);
+		    nanoseconds.store(0,std::memory_order_relaxed);
+		    eventMismatches.store(0,std::memory_order_relaxed);
+		    runMismatches.store(0,std::memory_order_relaxed);
+		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    totalMismatches.store(0,std::memory_order_relaxed);
+		    fallbacks.store(0,std::memory_order_relaxed);
+		    scalarCopies.store(0,std::memory_order_relaxed);
+		    snapshotCopies.store(0,std::memory_order_relaxed);
+		  }
+
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> eventMismatches;
+		  std::atomic<uint64_t> runMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> totalMismatches;
+		  std::atomic<uint64_t> fallbacks;
+		  std::atomic<uint64_t> scalarCopies;
+		  std::atomic<uint64_t> snapshotCopies;
+		};
+
+		inline SimRegionDeferredCountValidateAtomicStats &simRegionDeferredCountValidateAtomicStats()
+		{
+		  static SimRegionDeferredCountValidateAtomicStats stats;
+		  return stats;
+		}
+
 		inline std::atomic<uint64_t> &simSafeStoreRefreshAttemptCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -4796,6 +4854,21 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.pruneRemovedStates.fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
 		}
 
+		inline void recordSimRegionDeferredCountValidate(const SimRegionDeferredCountValidateStats &delta)
+		{
+		  SimRegionDeferredCountValidateAtomicStats &stats =
+		    simRegionDeferredCountValidateAtomicStats();
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.eventMismatches.fetch_add(delta.eventMismatches,std::memory_order_relaxed);
+		  stats.runMismatches.fetch_add(delta.runMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.totalMismatches.fetch_add(delta.totalMismatches,std::memory_order_relaxed);
+		  stats.fallbacks.fetch_add(delta.fallbacks,std::memory_order_relaxed);
+		  stats.scalarCopies.fetch_add(delta.scalarCopies,std::memory_order_relaxed);
+		  stats.snapshotCopies.fetch_add(delta.snapshotCopies,std::memory_order_relaxed);
+		}
+
 		inline void recordSimSafeWorksetTotalNanoseconds(uint64_t nanoseconds)
 		{
 		  simSafeWorksetTotalNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -5221,6 +5294,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.estSavedScans = stats.estSavedScans.load(std::memory_order_relaxed);
 		  snapshot.pruneScannedStates = stats.pruneScannedStates.load(std::memory_order_relaxed);
 		  snapshot.pruneRemovedStates = stats.pruneRemovedStates.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimRegionDeferredCountValidateStats getSimRegionDeferredCountValidateStats()
+		{
+		  SimRegionDeferredCountValidateStats snapshot;
+		  SimRegionDeferredCountValidateAtomicStats &stats =
+		    simRegionDeferredCountValidateAtomicStats();
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.eventMismatches = stats.eventMismatches.load(std::memory_order_relaxed);
+		  snapshot.runMismatches = stats.runMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.totalMismatches = stats.totalMismatches.load(std::memory_order_relaxed);
+		  snapshot.fallbacks = stats.fallbacks.load(std::memory_order_relaxed);
+		  snapshot.scalarCopies = stats.scalarCopies.load(std::memory_order_relaxed);
+		  snapshot.snapshotCopies = stats.snapshotCopies.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
 
@@ -7514,6 +7605,25 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simRegionSingleRequestDirectReduceWorkItemCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReduceReduceWorkItems,
 		    std::memory_order_relaxed);
+		  SimRegionDeferredCountValidateStats deferredCountValidateDelta;
+		  deferredCountValidateDelta.calls = batchResult.regionDeferredCountValidateCalls;
+		  deferredCountValidateDelta.nanoseconds =
+		    simSecondsToNanoseconds(batchResult.regionDeferredCountValidateSeconds);
+		  deferredCountValidateDelta.eventMismatches =
+		    batchResult.regionDeferredCountEventMismatches;
+		  deferredCountValidateDelta.runMismatches =
+		    batchResult.regionDeferredCountRunMismatches;
+		  deferredCountValidateDelta.candidateMismatches =
+		    batchResult.regionDeferredCountCandidateMismatches;
+		  deferredCountValidateDelta.totalMismatches =
+		    batchResult.regionDeferredCountTotalMismatches;
+		  deferredCountValidateDelta.fallbacks =
+		    batchResult.regionDeferredCountValidateFallbacks;
+		  deferredCountValidateDelta.scalarCopies =
+		    batchResult.regionDeferredCountValidateScalarCopies;
+		  deferredCountValidateDelta.snapshotCopies =
+		    batchResult.regionDeferredCountValidateSnapshotCopies;
+		  recordSimRegionDeferredCountValidate(deferredCountValidateDelta);
 		  simRegionSingleRequestDirectReduceFusedDpAttemptCount().fetch_add(
 		    batchResult.regionSingleRequestDirectReduceFusedDpAttempts,
 		    std::memory_order_relaxed);
