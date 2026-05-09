@@ -2840,6 +2840,16 @@ inline bool simSafeStoreMergeStructureShadowEnabledRuntime()
   return enabled;
 }
 
+inline bool simCudaInitialSafeStorePrecombineShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_PRECOMBINE_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 			inline bool simLocateCudaFastShadowEnabledRuntime()
 			{
 		  static const bool enabled = []()
@@ -4352,6 +4362,68 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return stats;
 		}
 
+		struct SimInitialSafeStorePrecombineShadowStats
+			{
+			  SimInitialSafeStorePrecombineShadowStats():
+			    calls(0),
+			    nanoseconds(0),
+			    sizeMismatches(0),
+			    candidateMismatches(0),
+			    orderMismatches(0),
+			    digestMismatches(0),
+			    inputSummaries(0),
+			    uniqueStates(0),
+			    duplicateSummaries(0),
+			    estSavedUpserts(0)
+		  {
+		  }
+
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t sizeMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
+		  uint64_t digestMismatches;
+		  uint64_t inputSummaries;
+		  uint64_t uniqueStates;
+		  uint64_t duplicateSummaries;
+		  uint64_t estSavedUpserts;
+		};
+
+		struct SimInitialSafeStorePrecombineShadowAtomicStats
+		{
+			  SimInitialSafeStorePrecombineShadowAtomicStats()
+			  {
+			    calls.store(0,std::memory_order_relaxed);
+			    nanoseconds.store(0,std::memory_order_relaxed);
+			    sizeMismatches.store(0,std::memory_order_relaxed);
+			    candidateMismatches.store(0,std::memory_order_relaxed);
+			    orderMismatches.store(0,std::memory_order_relaxed);
+			    digestMismatches.store(0,std::memory_order_relaxed);
+			    inputSummaries.store(0,std::memory_order_relaxed);
+			    uniqueStates.store(0,std::memory_order_relaxed);
+			    duplicateSummaries.store(0,std::memory_order_relaxed);
+			    estSavedUpserts.store(0,std::memory_order_relaxed);
+			  }
+
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> sizeMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
+		  std::atomic<uint64_t> digestMismatches;
+		  std::atomic<uint64_t> inputSummaries;
+		  std::atomic<uint64_t> uniqueStates;
+		  std::atomic<uint64_t> duplicateSummaries;
+		  std::atomic<uint64_t> estSavedUpserts;
+		};
+
+		inline SimInitialSafeStorePrecombineShadowAtomicStats &simInitialSafeStorePrecombineShadowAtomicStats()
+		{
+		  static SimInitialSafeStorePrecombineShadowAtomicStats stats;
+		  return stats;
+		}
+
 		struct SimRegionDeferredCountValidateStats
 		{
 		  SimRegionDeferredCountValidateStats():
@@ -4920,6 +4992,22 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		                                                              std::memory_order_relaxed);
 		}
 
+		inline void recordSimInitialSafeStorePrecombineShadow(const SimInitialSafeStorePrecombineShadowStats &delta)
+		{
+		  SimInitialSafeStorePrecombineShadowAtomicStats &stats =
+		    simInitialSafeStorePrecombineShadowAtomicStats();
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+		  stats.inputSummaries.fetch_add(delta.inputSummaries,std::memory_order_relaxed);
+		  stats.uniqueStates.fetch_add(delta.uniqueStates,std::memory_order_relaxed);
+		  stats.duplicateSummaries.fetch_add(delta.duplicateSummaries,std::memory_order_relaxed);
+		  stats.estSavedUpserts.fetch_add(delta.estSavedUpserts,std::memory_order_relaxed);
+		}
+
 		inline void recordSimRegionDeferredCountValidate(const SimRegionDeferredCountValidateStats &delta)
 		{
 		  SimRegionDeferredCountValidateAtomicStats &stats =
@@ -5392,6 +5480,25 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    simInitialSafeStorePruneKeptFrontierCount().load(std::memory_order_relaxed);
 		  snapshot.pruneIndexRebuildNanoseconds =
 		    simInitialSafeStorePruneIndexRebuildNanoseconds().load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStorePrecombineShadowStats getSimInitialSafeStorePrecombineShadowStats()
+		{
+		  SimInitialSafeStorePrecombineShadowStats snapshot;
+		  SimInitialSafeStorePrecombineShadowAtomicStats &stats =
+		    simInitialSafeStorePrecombineShadowAtomicStats();
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
+		  snapshot.inputSummaries = stats.inputSummaries.load(std::memory_order_relaxed);
+		  snapshot.uniqueStates = stats.uniqueStates.load(std::memory_order_relaxed);
+		  snapshot.duplicateSummaries = stats.duplicateSummaries.load(std::memory_order_relaxed);
+		  snapshot.estSavedUpserts = stats.estSavedUpserts.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
 
@@ -10376,6 +10483,9 @@ inline void invalidateSimSafeCandidateStateStore(SimKernelContext &context);
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
                                                          SimKernelContext &context,
                                                          SimInitialSafeStoreRebuildStats *stats = NULL);
+inline SimInitialSafeStorePrecombineShadowStats
+runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary> &summaries,
+                                       const SimCandidateStateStore &realStore);
 inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
                                             SimInitialSafeStoreRebuildStats *stats = NULL);
 inline void eraseSimSafeCandidateStateStoreStartCoords(const vector<uint64_t> &startCoords,
@@ -10835,6 +10945,60 @@ inline uint64_t simCandidateStateStoreFingerprint(const SimCandidateStateStore &
     hash = simRegionSchedulerShapeHashCombine(hash,stateFingerprints[stateIndex]);
   }
   return hash;
+}
+
+inline SimInitialSafeStorePrecombineShadowStats
+runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary> &summaries,
+                                       const SimCandidateStateStore &realStore)
+{
+  const std::chrono::steady_clock::time_point shadowStart =
+    std::chrono::steady_clock::now();
+
+  SimCandidateStateStore shadowStore;
+  resetSimCandidateStateStore(shadowStore,realStore.valid);
+  shadowStore.states.reserve(summaries.size());
+  for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
+  {
+    upsertSimCandidateStateStoreSummary(summaries[summaryIndex],shadowStore);
+  }
+
+  SimInitialSafeStorePrecombineShadowStats stats;
+  stats.calls = 1;
+  stats.nanoseconds = simElapsedNanoseconds(shadowStart);
+  stats.inputSummaries = static_cast<uint64_t>(summaries.size());
+  stats.uniqueStates = static_cast<uint64_t>(shadowStore.states.size());
+  if(stats.inputSummaries > stats.uniqueStates)
+  {
+    stats.duplicateSummaries = stats.inputSummaries - stats.uniqueStates;
+    stats.estSavedUpserts = stats.duplicateSummaries;
+  }
+
+  const bool sizeMatch = shadowStore.valid == realStore.valid &&
+                         shadowStore.states.size() == realStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(shadowStore.states,realStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(shadowStore.states,realStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(shadowStore) !=
+     simCandidateStateStoreFingerprint(realStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  return stats;
 }
 
 inline SimSafeStoreMergeStructureShadowStats
@@ -15072,6 +15236,27 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		        if(benchmarkEnabled)
 		        {
 		          recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
+		        }
+		        if(benchmarkEnabled && simCudaInitialSafeStorePrecombineShadowEnabledRuntime())
+		        {
+		          const SimInitialSafeStorePrecombineShadowStats shadowStats =
+		            runSimInitialSafeStorePrecombineShadow(summaries,
+		                                                   context.safeCandidateStateStore);
+		          recordSimInitialSafeStorePrecombineShadow(shadowStats);
+		          if((shadowStats.digestMismatches != 0 ||
+		              shadowStats.sizeMismatches != 0 ||
+		              shadowStats.candidateMismatches != 0 ||
+		              shadowStats.orderMismatches != 0) &&
+		             simCudaValidateEnabledRuntime())
+		          {
+		            fprintf(stderr,
+		                    "SIM CUDA initial safe-store precombine shadow mismatch: "
+		                    "digest=%llu size=%llu candidate=%llu order=%llu\n",
+		                    static_cast<unsigned long long>(shadowStats.digestMismatches),
+		                    static_cast<unsigned long long>(shadowStats.sizeMismatches),
+		                    static_cast<unsigned long long>(shadowStats.candidateMismatches),
+		                    static_cast<unsigned long long>(shadowStats.orderMismatches));
+		          }
 		        }
 		      }
 		      if(!hostSafeStoreAlreadyPruned)
