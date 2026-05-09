@@ -2052,6 +2052,7 @@ int main()
                               precombineShadowBefore.digestMismatches,
                           0,
                           "initial safe-store precombine shadow digest mismatch count stays zero") && ok;
+    SimKernelContext safeStoreContextBeforePrune = safeStoreContext;
     SimInitialSafeStoreRebuildStats safeStorePruneStats;
     pruneSimSafeCandidateStateStore(safeStoreContext, &safeStorePruneStats);
     recordSimInitialSafeStoreRebuildStats(safeStorePruneStats);
@@ -2092,6 +2093,58 @@ int main()
                      "safe store keeps extra above floor") && ok;
     ok = expect_true(find_candidate_state(safeStoreContext.safeCandidateStateStore, 4, 4) == NULL,
                      "safe store drops extra below floor") && ok;
+    const SimInitialSafeStorePruneIndexShadowStats pruneIndexShadowBefore =
+        getSimInitialSafeStorePruneIndexShadowStats();
+    const SimInitialSafeStorePruneIndexShadowStats pruneIndexShadowDelta =
+        runSimInitialSafeStorePruneIndexShadow(
+            safeStoreContextBeforePrune,
+            safeStoreContext.safeCandidateStateStore,
+            safeStorePruneStats);
+    ok = expect_equal_u64(pruneIndexShadowDelta.calls,
+                          1,
+                          "initial prune/index shadow runs once") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.statesScanned,
+                          4,
+                          "initial prune/index shadow records scanned states") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.statesKept,
+                          3,
+                          "initial prune/index shadow records kept states") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.statesRemoved,
+                          1,
+                          "initial prune/index shadow records removed states") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.sizeMismatches,
+                          0,
+                          "initial prune/index shadow size matches") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.candidateMismatches,
+                          0,
+                          "initial prune/index shadow candidates match") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.orderMismatches,
+                          0,
+                          "initial prune/index shadow order matches") && ok;
+    ok = expect_equal_u64(pruneIndexShadowDelta.digestMismatches,
+                          0,
+                          "initial prune/index shadow digest matches") && ok;
+    recordSimInitialSafeStorePruneIndexShadow(pruneIndexShadowDelta);
+    const SimInitialSafeStorePruneIndexShadowStats pruneIndexShadowAfter =
+        getSimInitialSafeStorePruneIndexShadowStats();
+    ok = expect_equal_u64(pruneIndexShadowAfter.calls -
+                              pruneIndexShadowBefore.calls,
+                          1,
+                          "initial prune/index shadow call count increments") && ok;
+    ok = expect_equal_u64(pruneIndexShadowAfter.statesScanned -
+                              pruneIndexShadowBefore.statesScanned,
+                          4,
+                          "initial prune/index shadow scanned-state count increments") && ok;
+    ok = expect_equal_u64(pruneIndexShadowAfter.statesKept -
+                              pruneIndexShadowBefore.statesKept,
+                          3,
+                          "initial prune/index shadow kept-state count increments") && ok;
+    ok = expect_equal_u64(pruneIndexShadowAfter.statesRemoved -
+                              pruneIndexShadowBefore.statesRemoved,
+                          1,
+                          "initial prune/index shadow removed-state count increments") && ok;
+    ok = expect_true(pruneIndexShadowAfter.nanoseconds >= pruneIndexShadowBefore.nanoseconds,
+                     "initial prune/index shadow timing is monotonic") && ok;
 
     std::vector<uint64_t> erasedStartCoords(1, packSimCoord(2, 2));
     eraseSimSafeCandidateStateStoreStartCoords(erasedStartCoords, safeStoreContext);
