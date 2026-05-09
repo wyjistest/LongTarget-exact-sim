@@ -2000,6 +2000,42 @@ int main()
                           "initial safe-store precombine shadow saved-upsert estimate increments") && ok;
     ok = expect_true(precombineShadowAfter.nanoseconds >= precombineShadowBefore.nanoseconds,
                      "initial safe-store precombine shadow timing is monotonic") && ok;
+    ok = expect_true(precombineShadowDelta.buildNanoseconds >=
+                         precombineShadowDelta.groupBuildNanoseconds,
+                     "initial safe-store precombine shadow build includes group build") && ok;
+    ok = expect_true(precombineShadowDelta.buildNanoseconds >=
+                         precombineShadowDelta.allocNanoseconds,
+                     "initial safe-store precombine shadow build includes allocation timing") && ok;
+    ok = expect_true(precombineShadowDelta.compareNanoseconds >=
+                         precombineShadowDelta.digestNanoseconds,
+                     "initial safe-store precombine shadow compare includes digest timing") && ok;
+    ok = expect_true(precombineShadowDelta.compareNanoseconds >=
+                         precombineShadowDelta.orderCompareNanoseconds,
+                     "initial safe-store precombine shadow compare includes order compare timing") && ok;
+    ok = expect_true(precombineShadowAfter.buildNanoseconds -
+                         precombineShadowBefore.buildNanoseconds >=
+                     precombineShadowDelta.buildNanoseconds,
+                     "initial safe-store precombine shadow build timing increments") && ok;
+    ok = expect_true(precombineShadowAfter.groupBuildNanoseconds -
+                         precombineShadowBefore.groupBuildNanoseconds >=
+                     precombineShadowDelta.groupBuildNanoseconds,
+                     "initial safe-store precombine shadow group build timing increments") && ok;
+    ok = expect_true(precombineShadowAfter.allocNanoseconds -
+                         precombineShadowBefore.allocNanoseconds >=
+                     precombineShadowDelta.allocNanoseconds,
+                     "initial safe-store precombine shadow allocation timing increments") && ok;
+    ok = expect_true(precombineShadowAfter.compareNanoseconds -
+                         precombineShadowBefore.compareNanoseconds >=
+                     precombineShadowDelta.compareNanoseconds,
+                     "initial safe-store precombine shadow compare timing increments") && ok;
+    ok = expect_true(precombineShadowAfter.digestNanoseconds -
+                         precombineShadowBefore.digestNanoseconds >=
+                     precombineShadowDelta.digestNanoseconds,
+                     "initial safe-store precombine shadow digest timing increments") && ok;
+    ok = expect_true(precombineShadowAfter.orderCompareNanoseconds -
+                         precombineShadowBefore.orderCompareNanoseconds >=
+                     precombineShadowDelta.orderCompareNanoseconds,
+                     "initial safe-store precombine shadow order compare timing increments") && ok;
     ok = expect_equal_u64(precombineShadowAfter.sizeMismatches -
                               precombineShadowBefore.sizeMismatches,
                           0,
