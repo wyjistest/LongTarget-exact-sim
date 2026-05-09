@@ -1460,6 +1460,7 @@ int main()
     safeStoreMergeStructureShadowDelta.digestMismatches = 5;
     safeStoreMergeStructureShadowDelta.sizeMismatches = 7;
     safeStoreMergeStructureShadowDelta.candidateMismatches = 11;
+    safeStoreMergeStructureShadowDelta.orderMismatches = 13;
     safeStoreMergeStructureShadowDelta.estCurrentScannedStates = 13;
     safeStoreMergeStructureShadowDelta.estCompactScannedStates = 17;
     safeStoreMergeStructureShadowDelta.estSavedScans = 19;
@@ -1641,6 +1642,9 @@ int main()
     ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.candidateMismatches,
                           safeStoreMergeStructureShadowBefore.candidateMismatches + 11,
                           "safe-store merge structure shadow candidate mismatches increment") && ok;
+    ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.orderMismatches,
+                          safeStoreMergeStructureShadowBefore.orderMismatches + 13,
+                          "safe-store merge structure shadow order mismatches increment") && ok;
     ok = expect_equal_u64(safeStoreMergeStructureShadowAfter.estCurrentScannedStates,
                           safeStoreMergeStructureShadowBefore.estCurrentScannedStates + 13,
                           "safe-store merge structure shadow current scan estimate increments") && ok;

@@ -1959,6 +1959,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simSafeStoreMergeStructureShadow.sizeMismatches<<endl;
   cerr<<"benchmark.sim_safe_store_merge_shadow_candidate_mismatches="
       <<simSafeStoreMergeStructureShadow.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_order_mismatches="
+      <<simSafeStoreMergeStructureShadow.orderMismatches<<endl;
   cerr<<"benchmark.sim_safe_store_merge_shadow_est_current_scanned_states="
       <<simSafeStoreMergeStructureShadow.estCurrentScannedStates<<endl;
   cerr<<"benchmark.sim_safe_store_merge_shadow_est_compact_scanned_states="
