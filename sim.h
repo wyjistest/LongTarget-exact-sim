@@ -27,6 +27,7 @@
 #include <chrono>
 #include <limits>
 #include <mutex>
+#include <memory>
 #if defined(__SSE2__) || defined(__AVX2__)
 #include <immintrin.h>
 #endif
@@ -2850,6 +2851,16 @@ inline bool simCudaInitialSafeStorePrecombineShadowEnabledRuntime()
   return enabled;
 }
 
+inline bool simCudaInitialSafeStorePruneIndexShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_PRUNE_INDEX_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 			inline bool simLocateCudaFastShadowEnabledRuntime()
 			{
 		  static const bool enabled = []()
@@ -4362,6 +4373,76 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return stats;
 		}
 
+		struct SimInitialSafeStorePruneIndexShadowStats
+		{
+		  SimInitialSafeStorePruneIndexShadowStats():
+		    calls(0),
+		    nanoseconds(0),
+		    scanNanoseconds(0),
+		    compactNanoseconds(0),
+		    indexRebuildNanoseconds(0),
+		    statesScanned(0),
+		    statesKept(0),
+		    statesRemoved(0),
+		    sizeMismatches(0),
+		    candidateMismatches(0),
+		    orderMismatches(0),
+		    digestMismatches(0)
+		  {
+		  }
+
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t scanNanoseconds;
+		  uint64_t compactNanoseconds;
+		  uint64_t indexRebuildNanoseconds;
+		  uint64_t statesScanned;
+		  uint64_t statesKept;
+		  uint64_t statesRemoved;
+		  uint64_t sizeMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
+		  uint64_t digestMismatches;
+		};
+
+		struct SimInitialSafeStorePruneIndexShadowAtomicStats
+		{
+		  SimInitialSafeStorePruneIndexShadowAtomicStats()
+		  {
+		    calls.store(0,std::memory_order_relaxed);
+		    nanoseconds.store(0,std::memory_order_relaxed);
+		    scanNanoseconds.store(0,std::memory_order_relaxed);
+		    compactNanoseconds.store(0,std::memory_order_relaxed);
+		    indexRebuildNanoseconds.store(0,std::memory_order_relaxed);
+		    statesScanned.store(0,std::memory_order_relaxed);
+		    statesKept.store(0,std::memory_order_relaxed);
+		    statesRemoved.store(0,std::memory_order_relaxed);
+		    sizeMismatches.store(0,std::memory_order_relaxed);
+		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    orderMismatches.store(0,std::memory_order_relaxed);
+		    digestMismatches.store(0,std::memory_order_relaxed);
+		  }
+
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> scanNanoseconds;
+		  std::atomic<uint64_t> compactNanoseconds;
+		  std::atomic<uint64_t> indexRebuildNanoseconds;
+		  std::atomic<uint64_t> statesScanned;
+		  std::atomic<uint64_t> statesKept;
+		  std::atomic<uint64_t> statesRemoved;
+		  std::atomic<uint64_t> sizeMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
+		  std::atomic<uint64_t> digestMismatches;
+		};
+
+		inline SimInitialSafeStorePruneIndexShadowAtomicStats &simInitialSafeStorePruneIndexShadowAtomicStats()
+		{
+		  static SimInitialSafeStorePruneIndexShadowAtomicStats stats;
+		  return stats;
+		}
+
 		struct SimInitialSafeStorePrecombineShadowStats
 			{
 			  SimInitialSafeStorePrecombineShadowStats():
@@ -4998,6 +5079,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.pruneRemovedStates.fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
 		}
 
+		inline void recordSimInitialSafeStorePruneIndexShadow(const SimInitialSafeStorePruneIndexShadowStats &delta)
+		{
+		  SimInitialSafeStorePruneIndexShadowAtomicStats &stats =
+		    simInitialSafeStorePruneIndexShadowAtomicStats();
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.scanNanoseconds.fetch_add(delta.scanNanoseconds,std::memory_order_relaxed);
+		  stats.compactNanoseconds.fetch_add(delta.compactNanoseconds,std::memory_order_relaxed);
+		  stats.indexRebuildNanoseconds.fetch_add(delta.indexRebuildNanoseconds,std::memory_order_relaxed);
+		  stats.statesScanned.fetch_add(delta.statesScanned,std::memory_order_relaxed);
+		  stats.statesKept.fetch_add(delta.statesKept,std::memory_order_relaxed);
+		  stats.statesRemoved.fetch_add(delta.statesRemoved,std::memory_order_relaxed);
+		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+		}
+
 		inline void recordSimInitialSafeStoreRebuildStats(const SimInitialSafeStoreRebuildStats &delta)
 		{
 		  simInitialSafeStoreUpdateCallCount().fetch_add(delta.updateCalls,std::memory_order_relaxed);
@@ -5478,6 +5577,28 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.estSavedScans = stats.estSavedScans.load(std::memory_order_relaxed);
 		  snapshot.pruneScannedStates = stats.pruneScannedStates.load(std::memory_order_relaxed);
 		  snapshot.pruneRemovedStates = stats.pruneRemovedStates.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStorePruneIndexShadowStats getSimInitialSafeStorePruneIndexShadowStats()
+		{
+		  SimInitialSafeStorePruneIndexShadowStats snapshot;
+		  SimInitialSafeStorePruneIndexShadowAtomicStats &stats =
+		    simInitialSafeStorePruneIndexShadowAtomicStats();
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.scanNanoseconds = stats.scanNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.compactNanoseconds = stats.compactNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.indexRebuildNanoseconds =
+		    stats.indexRebuildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.statesScanned = stats.statesScanned.load(std::memory_order_relaxed);
+		  snapshot.statesKept = stats.statesKept.load(std::memory_order_relaxed);
+		  snapshot.statesRemoved = stats.statesRemoved.load(std::memory_order_relaxed);
+		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
 
@@ -10931,7 +11052,10 @@ inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
 }
 
 inline void pruneSimCandidateStateStoreShadow(SimCandidateStateStore &store,
-                                              const SimKernelContext &context)
+                                              const SimKernelContext &context,
+                                              uint64_t *scanNanoseconds = NULL,
+                                              uint64_t *compactNanoseconds = NULL,
+                                              uint64_t *indexRebuildNanoseconds = NULL)
 {
   if(!store.valid)
   {
@@ -10941,6 +11065,8 @@ inline void pruneSimCandidateStateStoreShadow(SimCandidateStateStore &store,
   const long floor = context.runningMin;
   vector<SimScanCudaCandidateState> keptStates;
   keptStates.reserve(store.states.size());
+  const std::chrono::steady_clock::time_point scanStart =
+    scanNanoseconds != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(size_t stateIndex = 0; stateIndex < store.states.size(); ++stateIndex)
   {
     const SimScanCudaCandidateState &state = store.states[stateIndex];
@@ -10955,8 +11081,24 @@ inline void pruneSimCandidateStateStoreShadow(SimCandidateStateStore &store,
       keptStates.push_back(state);
     }
   }
+  if(scanNanoseconds != NULL)
+  {
+    *scanNanoseconds = simElapsedNanoseconds(scanStart);
+  }
+  const std::chrono::steady_clock::time_point compactStart =
+    compactNanoseconds != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   store.states.swap(keptStates);
+  if(compactNanoseconds != NULL)
+  {
+    *compactNanoseconds = simElapsedNanoseconds(compactStart);
+  }
+  const std::chrono::steady_clock::time_point indexRebuildStart =
+    indexRebuildNanoseconds != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   rebuildSimCandidateStateStoreIndex(store);
+  if(indexRebuildNanoseconds != NULL)
+  {
+    *indexRebuildNanoseconds = simElapsedNanoseconds(indexRebuildStart);
+  }
 }
 
 inline uint64_t simCandidateStateStoreFingerprint(const SimCandidateStateStore &store)
@@ -11058,6 +11200,101 @@ runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary
   stats.digestNanoseconds = simElapsedNanoseconds(digestStart);
   stats.compareNanoseconds = simElapsedNanoseconds(compareStart);
   return stats;
+}
+
+inline SimInitialSafeStorePruneIndexShadowStats
+runSimInitialSafeStorePruneIndexShadow(const SimKernelContext &prePruneContext,
+                                       const SimCandidateStateStore &realPostPruneStore,
+                                       const SimInitialSafeStoreRebuildStats &realPruneStats)
+{
+  const std::chrono::steady_clock::time_point shadowStart =
+    std::chrono::steady_clock::now();
+
+  SimCandidateStateStore shadowStore = prePruneContext.safeCandidateStateStore;
+  const uint64_t scannedStates =
+    static_cast<uint64_t>(shadowStore.valid ? shadowStore.states.size() : 0);
+  uint64_t scanNanoseconds = 0;
+  uint64_t compactNanoseconds = 0;
+  uint64_t indexRebuildNanoseconds = 0;
+  pruneSimCandidateStateStoreShadow(shadowStore,
+                                    prePruneContext,
+                                    &scanNanoseconds,
+                                    &compactNanoseconds,
+                                    &indexRebuildNanoseconds);
+
+  SimInitialSafeStorePruneIndexShadowStats stats;
+  stats.calls = 1;
+  stats.scanNanoseconds = scanNanoseconds;
+  stats.compactNanoseconds = compactNanoseconds;
+  stats.indexRebuildNanoseconds = indexRebuildNanoseconds;
+  stats.nanoseconds = simElapsedNanoseconds(shadowStart);
+  stats.statesScanned = scannedStates;
+  stats.statesKept = static_cast<uint64_t>(shadowStore.states.size());
+  if(stats.statesScanned > stats.statesKept)
+  {
+    stats.statesRemoved = stats.statesScanned - stats.statesKept;
+  }
+  else
+  {
+    stats.statesRemoved = realPruneStats.pruneRemovedStates;
+  }
+
+  const bool sizeMatch = shadowStore.valid == realPostPruneStore.valid &&
+                         shadowStore.states.size() == realPostPruneStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(shadowStore.states,realPostPruneStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(shadowStore.states,realPostPruneStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(shadowStore) !=
+     simCandidateStateStoreFingerprint(realPostPruneStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  return stats;
+}
+
+inline void recordSimInitialSafeStorePruneIndexShadowIfEnabled(
+  const SimKernelContext *prePruneContext,
+  const SimCandidateStateStore &realPostPruneStore,
+  const SimInitialSafeStoreRebuildStats &realPruneStats)
+{
+  if(prePruneContext == NULL)
+  {
+    return;
+  }
+  const SimInitialSafeStorePruneIndexShadowStats shadowStats =
+    runSimInitialSafeStorePruneIndexShadow(*prePruneContext,
+                                           realPostPruneStore,
+                                           realPruneStats);
+  recordSimInitialSafeStorePruneIndexShadow(shadowStats);
+  if((shadowStats.digestMismatches != 0 ||
+      shadowStats.sizeMismatches != 0 ||
+      shadowStats.candidateMismatches != 0 ||
+      shadowStats.orderMismatches != 0) &&
+     simCudaValidateEnabledRuntime())
+  {
+    fprintf(stderr,
+            "SIM CUDA initial safe-store prune/index shadow mismatch: "
+            "digest=%llu size=%llu candidate=%llu order=%llu\n",
+            static_cast<unsigned long long>(shadowStats.digestMismatches),
+            static_cast<unsigned long long>(shadowStats.sizeMismatches),
+            static_cast<unsigned long long>(shadowStats.candidateMismatches),
+            static_cast<unsigned long long>(shadowStats.orderMismatches));
+  }
 }
 
 inline SimSafeStoreMergeStructureShadowStats
@@ -15320,6 +15557,14 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		      }
 		      if(!hostSafeStoreAlreadyPruned)
 		      {
+		        const bool runPruneIndexShadow =
+		          benchmarkEnabled &&
+		          simCudaInitialSafeStorePruneIndexShadowEnabledRuntime();
+		        unique_ptr<SimKernelContext> prePruneShadowContext;
+		        if(runPruneIndexShadow)
+		        {
+		          prePruneShadowContext.reset(new SimKernelContext(context));
+		        }
 		        const std::chrono::steady_clock::time_point safeStorePruneStart =
 		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 		        pruneSimSafeCandidateStateStore(context,&safeStoreRebuildStats);
@@ -15327,6 +15572,10 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		        {
 		          recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
 		        }
+		        recordSimInitialSafeStorePruneIndexShadowIfEnabled(
+		          prePruneShadowContext.get(),
+		          context.safeCandidateStateStore,
+		          safeStoreRebuildStats);
 		      }
 		      if(benchmarkEnabled)
 		      {
@@ -16733,6 +16982,14 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
 	      {
 	        recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
 	      }
+	      const bool runPruneIndexShadow =
+	        benchmarkEnabled &&
+	        simCudaInitialSafeStorePruneIndexShadowEnabledRuntime();
+	      unique_ptr<SimKernelContext> prePruneShadowContext;
+	      if(runPruneIndexShadow)
+	      {
+	        prePruneShadowContext.reset(new SimKernelContext(context));
+	      }
 	      const std::chrono::steady_clock::time_point safeStorePruneStart =
 	        benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 	      pruneSimSafeCandidateStateStore(context,&safeStoreRebuildStats);
@@ -16741,6 +16998,10 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
 	        recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
 	        recordSimInitialSafeStoreRebuildStats(safeStoreRebuildStats);
 	      }
+	      recordSimInitialSafeStorePruneIndexShadowIfEnabled(
+	        prePruneShadowContext.get(),
+	        context.safeCandidateStateStore,
+	        safeStoreRebuildStats);
 	    }
 	  }
 
