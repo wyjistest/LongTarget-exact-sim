@@ -4367,6 +4367,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  SimInitialSafeStorePrecombineShadowStats():
 			    calls(0),
 			    nanoseconds(0),
+			    buildNanoseconds(0),
+			    allocNanoseconds(0),
+			    groupBuildNanoseconds(0),
+			    compareNanoseconds(0),
+			    orderCompareNanoseconds(0),
+			    digestNanoseconds(0),
 			    sizeMismatches(0),
 			    candidateMismatches(0),
 			    orderMismatches(0),
@@ -4380,6 +4386,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 
 		  uint64_t calls;
 		  uint64_t nanoseconds;
+		  uint64_t buildNanoseconds;
+		  uint64_t allocNanoseconds;
+		  uint64_t groupBuildNanoseconds;
+		  uint64_t compareNanoseconds;
+		  uint64_t orderCompareNanoseconds;
+		  uint64_t digestNanoseconds;
 		  uint64_t sizeMismatches;
 		  uint64_t candidateMismatches;
 		  uint64_t orderMismatches;
@@ -4396,6 +4408,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  {
 			    calls.store(0,std::memory_order_relaxed);
 			    nanoseconds.store(0,std::memory_order_relaxed);
+			    buildNanoseconds.store(0,std::memory_order_relaxed);
+			    allocNanoseconds.store(0,std::memory_order_relaxed);
+			    groupBuildNanoseconds.store(0,std::memory_order_relaxed);
+			    compareNanoseconds.store(0,std::memory_order_relaxed);
+			    orderCompareNanoseconds.store(0,std::memory_order_relaxed);
+			    digestNanoseconds.store(0,std::memory_order_relaxed);
 			    sizeMismatches.store(0,std::memory_order_relaxed);
 			    candidateMismatches.store(0,std::memory_order_relaxed);
 			    orderMismatches.store(0,std::memory_order_relaxed);
@@ -4408,6 +4426,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 
 		  std::atomic<uint64_t> calls;
 		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> buildNanoseconds;
+		  std::atomic<uint64_t> allocNanoseconds;
+		  std::atomic<uint64_t> groupBuildNanoseconds;
+		  std::atomic<uint64_t> compareNanoseconds;
+		  std::atomic<uint64_t> orderCompareNanoseconds;
+		  std::atomic<uint64_t> digestNanoseconds;
 		  std::atomic<uint64_t> sizeMismatches;
 		  std::atomic<uint64_t> candidateMismatches;
 		  std::atomic<uint64_t> orderMismatches;
@@ -4998,6 +5022,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    simInitialSafeStorePrecombineShadowAtomicStats();
 		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
 		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.buildNanoseconds.fetch_add(delta.buildNanoseconds,std::memory_order_relaxed);
+		  stats.allocNanoseconds.fetch_add(delta.allocNanoseconds,std::memory_order_relaxed);
+		  stats.groupBuildNanoseconds.fetch_add(delta.groupBuildNanoseconds,std::memory_order_relaxed);
+		  stats.compareNanoseconds.fetch_add(delta.compareNanoseconds,std::memory_order_relaxed);
+		  stats.orderCompareNanoseconds.fetch_add(delta.orderCompareNanoseconds,std::memory_order_relaxed);
+		  stats.digestNanoseconds.fetch_add(delta.digestNanoseconds,std::memory_order_relaxed);
 		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
 		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
 		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
@@ -5490,6 +5520,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    simInitialSafeStorePrecombineShadowAtomicStats();
 		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
 		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.buildNanoseconds = stats.buildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.allocNanoseconds = stats.allocNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.groupBuildNanoseconds =
+		    stats.groupBuildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.compareNanoseconds = stats.compareNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.orderCompareNanoseconds =
+		    stats.orderCompareNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.digestNanoseconds = stats.digestNanoseconds.load(std::memory_order_relaxed);
 		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
 		  snapshot.candidateMismatches =
 		    stats.candidateMismatches.load(std::memory_order_relaxed);
@@ -10955,15 +10993,27 @@ runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary
     std::chrono::steady_clock::now();
 
   SimCandidateStateStore shadowStore;
+  const std::chrono::steady_clock::time_point buildStart =
+    std::chrono::steady_clock::now();
+  const std::chrono::steady_clock::time_point allocStart =
+    std::chrono::steady_clock::now();
   resetSimCandidateStateStore(shadowStore,realStore.valid);
   shadowStore.states.reserve(summaries.size());
+  const uint64_t allocNanoseconds = simElapsedNanoseconds(allocStart);
+  const std::chrono::steady_clock::time_point groupBuildStart =
+    std::chrono::steady_clock::now();
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
   {
     upsertSimCandidateStateStoreSummary(summaries[summaryIndex],shadowStore);
   }
+  const uint64_t groupBuildNanoseconds = simElapsedNanoseconds(groupBuildStart);
+  const uint64_t buildNanoseconds = simElapsedNanoseconds(buildStart);
 
   SimInitialSafeStorePrecombineShadowStats stats;
   stats.calls = 1;
+  stats.buildNanoseconds = buildNanoseconds;
+  stats.allocNanoseconds = allocNanoseconds;
+  stats.groupBuildNanoseconds = groupBuildNanoseconds;
   stats.nanoseconds = simElapsedNanoseconds(shadowStart);
   stats.inputSummaries = static_cast<uint64_t>(summaries.size());
   stats.uniqueStates = static_cast<uint64_t>(shadowStore.states.size());
@@ -10973,15 +11023,20 @@ runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary
     stats.estSavedUpserts = stats.duplicateSummaries;
   }
 
+  const std::chrono::steady_clock::time_point compareStart =
+    std::chrono::steady_clock::now();
   const bool sizeMatch = shadowStore.valid == realStore.valid &&
                          shadowStore.states.size() == realStore.states.size();
   if(!sizeMatch)
   {
     stats.sizeMismatches = 1;
   }
+  const std::chrono::steady_clock::time_point orderCompareStart =
+    std::chrono::steady_clock::now();
   const bool orderMatch =
     sizeMatch &&
     simCudaCandidateStateVectorsEqualOrdered(shadowStore.states,realStore.states);
+  stats.orderCompareNanoseconds = simElapsedNanoseconds(orderCompareStart);
   if(!orderMatch)
   {
     stats.orderMismatches = 1;
@@ -10993,11 +11048,15 @@ runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary
   {
     stats.candidateMismatches = 1;
   }
+  const std::chrono::steady_clock::time_point digestStart =
+    std::chrono::steady_clock::now();
   if(simCandidateStateStoreFingerprint(shadowStore) !=
      simCandidateStateStoreFingerprint(realStore))
   {
     stats.digestMismatches = 1;
   }
+  stats.digestNanoseconds = simElapsedNanoseconds(digestStart);
+  stats.compareNanoseconds = simElapsedNanoseconds(compareStart);
   return stats;
 }
 

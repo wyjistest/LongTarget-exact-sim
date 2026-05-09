@@ -2973,6 +2973,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStorePrecombineShadowStats.calls<<endl;
   cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_seconds="
       <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_build_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.buildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_alloc_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.allocNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_group_build_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.groupBuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_compare_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.compareNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_order_compare_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.orderCompareNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_digest_seconds="
+      <<(static_cast<double>(simInitialSafeStorePrecombineShadowStats.digestNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_size_mismatches="
       <<simInitialSafeStorePrecombineShadowStats.sizeMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_candidate_mismatches="
