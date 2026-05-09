@@ -2977,6 +2977,47 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_context_apply_noop_events="
       <<simInitialContextApplyBreakdownStats.get(
           SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT)<<endl;
+  const uint64_t simInitialCandidateReplayProcessed =
+    simInitialContextApplyBreakdownStats.get(
+      SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT);
+  const uint64_t simInitialCandidateReplayFinalCandidates =
+    simInitialContextApplyBreakdownStats.get(
+      SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT);
+  const double simInitialCandidateReplaySurvivalRatio =
+    simInitialCandidateReplayProcessed > 0 ?
+      static_cast<double>(simInitialCandidateReplayFinalCandidates) /
+        static_cast<double>(simInitialCandidateReplayProcessed) :
+      0.0;
+  cerr<<"benchmark.sim_initial_candidate_replay_summaries="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_processed="
+      <<simInitialCandidateReplayProcessed<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_accepted="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_rejected_below_floor="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_REJECTED_BELOW_FLOOR_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_insertions="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_INSERTION_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_replacements="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_REPLACEMENT_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_erasures="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_tie_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_TIE_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_first_max_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_REPLAY_FIRST_MAX_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_final_candidates="
+      <<simInitialCandidateReplayFinalCandidates<<endl;
+  cerr<<"benchmark.sim_initial_candidate_replay_survival_ratio="
+      <<simInitialCandidateReplaySurvivalRatio<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;

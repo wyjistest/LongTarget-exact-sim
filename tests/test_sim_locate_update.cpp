@@ -1940,14 +1940,91 @@ int main()
                                   SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT),
                           1,
                           "initial context-apply safe-store handoff count increments") && ok;
-    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
-                              SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT) -
-                              contextApplyBreakdownBefore.get(
-                                  SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT),
-                          7,
-                          "initial context-apply no-op event count increments") && ok;
+	    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+	                              SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT) -
+	                              contextApplyBreakdownBefore.get(
+	                                  SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT),
+	                          7,
+	                          "initial context-apply no-op event count increments") && ok;
 
-    SimKernelContext safeStoreContext(16, 16);
+	    const SimInitialCandidateReplayStructureStats candidateReplayBefore =
+	        getSimInitialCandidateReplayStructureStats();
+	    SimInitialCandidateReplayStructureStats candidateReplayDelta;
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT,13);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT,11);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT,7);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_REJECTED_BELOW_FLOOR_COUNT,2);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_INSERTION_COUNT,3);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_REPLACEMENT_COUNT,4);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT,5);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_TIE_UPDATE_COUNT,6);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_FIRST_MAX_UPDATE_COUNT,8);
+	    candidateReplayDelta.add(SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT,9);
+	    recordSimInitialCandidateReplayStructure(candidateReplayDelta);
+	    const SimInitialCandidateReplayStructureStats candidateReplayAfter =
+	        getSimInitialCandidateReplayStructureStats();
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT),
+	                          13,
+	                          "initial candidate replay summary count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT),
+	                          11,
+	                          "initial candidate replay processed count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT),
+	                          7,
+	                          "initial candidate replay accepted count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_REJECTED_BELOW_FLOOR_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_REJECTED_BELOW_FLOOR_COUNT),
+	                          2,
+	                          "initial candidate replay rejected-below-floor count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_INSERTION_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_INSERTION_COUNT),
+	                          3,
+	                          "initial candidate replay insertion count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_REPLACEMENT_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_REPLACEMENT_COUNT),
+	                          4,
+	                          "initial candidate replay replacement count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT),
+	                          5,
+	                          "initial candidate replay erasure count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_TIE_UPDATE_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_TIE_UPDATE_COUNT),
+	                          6,
+	                          "initial candidate replay tie update count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_FIRST_MAX_UPDATE_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_FIRST_MAX_UPDATE_COUNT),
+	                          8,
+	                          "initial candidate replay first-max update count increments") && ok;
+	    ok = expect_equal_u64(candidateReplayAfter.get(
+	                              SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT) -
+	                              candidateReplayBefore.get(
+	                                  SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT),
+	                          9,
+	                          "initial candidate replay final candidate count increments") && ok;
+
+	    SimKernelContext safeStoreContext(16, 16);
     initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, safeStoreContext);
     addnodeIndexed(20, 1, 1, 4, 4, safeStoreContext);
     addnodeIndexed(25, 2, 2, 6, 6, safeStoreContext);

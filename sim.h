@@ -3042,6 +3042,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  SIM_INITIAL_CONTEXT_APPLY_FRONTIER_UPDATE_COUNT,
 				  SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT,
 				  SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_REJECTED_BELOW_FLOOR_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_INSERTION_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_REPLACEMENT_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_TIE_UPDATE_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_FIRST_MAX_UPDATE_COUNT,
+				  SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT,
 				  SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT
 				};
 
@@ -3066,6 +3076,22 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  }
 
 				  uint64_t values[SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT];
+				};
+
+				typedef SimInitialContextApplyBreakdownStats SimInitialCandidateReplayStructureStats;
+
+				struct SimInitialCandidateReplayApplyMetadata
+				{
+				  SimInitialCandidateReplayApplyMetadata():
+				    inserted(false),
+				    replaced(false),
+				    erased(false)
+				  {
+				  }
+
+				  bool inserted;
+				  bool replaced;
+				  bool erased;
 				};
 
 				struct SimInitialCpuFrontierFastApplyStats
@@ -8735,6 +8761,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
+			inline void recordSimInitialCandidateReplayStructure(
+			  const SimInitialCandidateReplayStructureStats &stats)
+			{
+			  recordSimInitialContextApplyBreakdown(stats);
+			}
+
 			inline void recordSimInitialChunkedHandoffStats(const SimInitialChunkedHandoffStats &stats)
 			{
 			  simInitialChunkedHandoffEnabledCount().fetch_add(1, std::memory_order_relaxed);
@@ -9562,6 +9594,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					          std::memory_order_relaxed);
 					  }
 					  return stats;
+					}
+
+					inline SimInitialCandidateReplayStructureStats getSimInitialCandidateReplayStructureStats()
+					{
+					  return getSimInitialContextApplyBreakdownStats();
 					}
 
 					inline bool simInitialContextApplyBreakdownTelemetryEnabledRuntime()
@@ -11912,8 +11949,13 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	                                         long startJ,
 	                                         long score,
 	                                         long endI,
-	                                         long endJ)
+	                                         long endJ,
+	                                         SimInitialCandidateReplayApplyMetadata *replayMetadata = NULL)
 	{
+	  if(replayMetadata != NULL)
+	  {
+	    *replayMetadata = SimInitialCandidateReplayApplyMetadata();
+	  }
 	  SimCandidateStartIndex &index = context.candidateStartIndex;
 	  SimCandidateStats *stats = context.statsEnabled ? &context.stats : NULL;
 	  long foundIndex = stats ? findSimCandidateIndexStats(index,startI,startJ,*stats) : findSimCandidateIndex(index,startI,startJ);
@@ -11928,6 +11970,11 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  if(context.candidateCount == K)
 	  {
 	    if(stats) ++stats->fullEvictions;
+	    if(replayMetadata != NULL)
+	    {
+	      replayMetadata->replaced = true;
+	      replayMetadata->erased = true;
+	    }
 	    if(!context.candidateMinHeap.valid)
 	    {
 	      buildSimCandidateMinHeap(context);
@@ -11943,6 +11990,7 @@ inline void updateSimCandidateMinHeapIndex(SimKernelContext &context,int candida
 	  else
 	  {
 	    slotIndex = static_cast<int>(context.candidateCount++);
+	    if(replayMetadata != NULL) replayMetadata->inserted = true;
 	  }
 
 	  SimCandidate &candidate = context.candidates[slotIndex];
@@ -12450,18 +12498,41 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
                                            long maxScore,
                                            long maxScoreEndJ,
                                            SimKernelContext &context,
-                                           SimCandidateStats *stats)
+                                           SimCandidateStats *stats,
+                                           SimInitialCandidateReplayStructureStats *replayStats = NULL)
 {
+  if(replayStats != NULL)
+  {
+    replayStats->add(SIM_INITIAL_CANDIDATE_REPLAY_PROCESSED_COUNT,1);
+  }
   const long startI = static_cast<long>(unpackSimCoordI(startCoord));
   const long startJ = static_cast<long>(unpackSimCoordJ(startCoord));
   if(stats) ++stats->addnodeCalls;
+  SimInitialCandidateReplayApplyMetadata replayMetadata;
   const int candidateIndex = ensureSimCandidateIndexForRun(context,
                                                            startI,
                                                            startJ,
                                                            maxScore,
                                                            endI,
-                                                           maxScoreEndJ);
+                                                           maxScoreEndJ,
+                                                           replayStats != NULL ? &replayMetadata : NULL);
+  if(replayStats != NULL)
+  {
+    if(replayMetadata.inserted)
+    {
+      replayStats->add(SIM_INITIAL_CANDIDATE_REPLAY_INSERTION_COUNT,1);
+    }
+    if(replayMetadata.replaced)
+    {
+      replayStats->add(SIM_INITIAL_CANDIDATE_REPLAY_REPLACEMENT_COUNT,1);
+    }
+    if(replayMetadata.erased)
+    {
+      replayStats->add(SIM_INITIAL_CANDIDATE_REPLAY_ERASURE_COUNT,1);
+    }
+  }
   SimCandidate &candidate = context.candidates[candidateIndex];
+  const SimCandidate candidateBefore = candidate;
   if(candidate.SCORE < maxScore)
   {
     candidate.SCORE = maxScore;
@@ -12477,11 +12548,35 @@ inline void applySimCudaInitialRowEventRun(uint64_t startCoord,
   if(candidate.BOT < endI) candidate.BOT = endI;
   if(candidate.LEFT > minEndJ) candidate.LEFT = minEndJ;
   if(candidate.RIGHT < maxEndJ) candidate.RIGHT = maxEndJ;
+  if(replayStats != NULL &&
+     (replayMetadata.inserted ||
+      replayMetadata.replaced ||
+      candidate.SCORE != candidateBefore.SCORE ||
+      candidate.STARI != candidateBefore.STARI ||
+      candidate.STARJ != candidateBefore.STARJ ||
+      candidate.ENDI != candidateBefore.ENDI ||
+      candidate.ENDJ != candidateBefore.ENDJ ||
+      candidate.TOP != candidateBefore.TOP ||
+      candidate.BOT != candidateBefore.BOT ||
+      candidate.LEFT != candidateBefore.LEFT ||
+      candidate.RIGHT != candidateBefore.RIGHT))
+  {
+    replayStats->add(SIM_INITIAL_CANDIDATE_REPLAY_ACCEPTED_UPDATE_COUNT,1);
+    if(replayMetadata.inserted ||
+       replayMetadata.replaced ||
+       candidate.SCORE != candidateBefore.SCORE ||
+       candidate.ENDI != candidateBefore.ENDI ||
+       candidate.ENDJ != candidateBefore.ENDJ)
+    {
+      replayStats->add(SIM_INITIAL_CANDIDATE_REPLAY_FIRST_MAX_UPDATE_COUNT,1);
+    }
+  }
 }
 
 inline void applySimCudaInitialRunSummary(const SimScanCudaInitialRunSummary &summary,
                                           SimKernelContext &context,
-                                          SimCandidateStats *stats)
+                                          SimCandidateStats *stats,
+                                          SimInitialCandidateReplayStructureStats *replayStats = NULL)
 {
   applySimCudaInitialRowEventRun(summary.startCoord,
                                  static_cast<long>(summary.endI),
@@ -12490,7 +12585,8 @@ inline void applySimCudaInitialRunSummary(const SimScanCudaInitialRunSummary &su
                                  static_cast<long>(summary.score),
                                  static_cast<long>(summary.scoreEndJ),
                                  context,
-                                 stats);
+                                 stats,
+                                 replayStats);
 }
 
 inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSummary &summary,
@@ -13082,13 +13178,22 @@ inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSu
   SimCandidateStats *stats = context.statsEnabled ? &context.stats : NULL;
   if(stats) stats->eventsSeen += logicalEventCount;
   SimInitialContextApplyBreakdownStats breakdownStats;
+  SimInitialCandidateReplayStructureStats replayStats;
   const bool recordBreakdown =
     recordContextApplyBreakdown && simInitialContextApplyBreakdownTelemetryEnabledRuntime();
   const std::chrono::steady_clock::time_point candidateStart =
     recordBreakdown ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  if(recordBreakdown)
+  {
+    replayStats.add(SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT,
+                    static_cast<uint64_t>(summaries.size()));
+  }
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
   {
-    applySimCudaInitialRunSummary(summaries[summaryIndex],context,stats);
+    applySimCudaInitialRunSummary(summaries[summaryIndex],
+                                  context,
+                                  stats,
+                                  recordBreakdown ? &replayStats : NULL);
   }
   if(recordBreakdown)
   {
@@ -13105,6 +13210,12 @@ inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSu
     breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS,
                        simElapsedNanoseconds(floorStart));
     breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT,1);
+    replayStats.add(SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT,
+                    static_cast<uint64_t>(context.candidateCount));
+    for(size_t i = 0; i < SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT; ++i)
+    {
+      breakdownStats.values[i] += replayStats.values[i];
+    }
     recordSimInitialContextApplyBreakdown(breakdownStats);
   }
 }
@@ -13119,11 +13230,17 @@ inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
 {
   SimInitialContextApplyChunkSkipStats stats;
   SimInitialContextApplyBreakdownStats breakdownStats;
+  SimInitialCandidateReplayStructureStats replayStats;
   const bool recordBreakdown =
     recordContextApplyBreakdown && simInitialContextApplyBreakdownTelemetryEnabledRuntime();
   SimCandidateStats *candidateStats = context.statsEnabled ? &context.stats : NULL;
   if(candidateStats) candidateStats->eventsSeen += logicalEventCount;
   const size_t safeChunkSize = static_cast<size_t>(chunkSize > 0 ? chunkSize : 1);
+  if(recordBreakdown)
+  {
+    replayStats.add(SIM_INITIAL_CANDIDATE_REPLAY_SUMMARY_COUNT,
+                    static_cast<uint64_t>(summaries.size()));
+  }
 
   for(size_t chunkBase = 0; chunkBase < summaries.size(); chunkBase += safeChunkSize)
   {
@@ -13153,7 +13270,10 @@ inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
       recordBreakdown ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     for(size_t summaryIndex = chunkBase; summaryIndex < chunkEnd; ++summaryIndex)
     {
-      applySimCudaInitialRunSummary(summaries[summaryIndex],context,candidateStats);
+      applySimCudaInitialRunSummary(summaries[summaryIndex],
+                                    context,
+                                    candidateStats,
+                                    recordBreakdown ? &replayStats : NULL);
     }
     if(recordBreakdown)
     {
@@ -13174,6 +13294,12 @@ inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
     breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT,1);
     breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT,
                        stats.summarySkippedCount);
+    replayStats.add(SIM_INITIAL_CANDIDATE_REPLAY_FINAL_CANDIDATE_COUNT,
+                    static_cast<uint64_t>(context.candidateCount));
+    for(size_t i = 0; i < SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT; ++i)
+    {
+      breakdownStats.values[i] += replayStats.values[i];
+    }
     recordSimInitialContextApplyBreakdown(breakdownStats);
   }
   if(statsOut != NULL)
