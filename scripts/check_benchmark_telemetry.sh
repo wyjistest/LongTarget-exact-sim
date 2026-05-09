@@ -312,6 +312,8 @@ grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_candidate_value_mi
 grep -Eq '^benchmark\.sim_initial_scan_diag_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_scan_online_reduce_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_scan_wait_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_scan_count_copy_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_scan_base_upload_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_store_upload_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_proposal_select_d2h_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_scan_sync_wait_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
