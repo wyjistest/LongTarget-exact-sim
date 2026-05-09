@@ -3018,6 +3018,59 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialCandidateReplayFinalCandidates<<endl;
   cerr<<"benchmark.sim_initial_candidate_replay_survival_ratio="
       <<simInitialCandidateReplaySurvivalRatio<<endl;
+  const uint64_t simInitialCandidateChurnOverwritten =
+    simInitialContextApplyBreakdownStats.get(
+      SIM_INITIAL_CANDIDATE_CHURN_OVERWRITTEN_UPDATES);
+  const uint64_t simInitialCandidateChurnFinalSurvivor =
+    simInitialContextApplyBreakdownStats.get(
+      SIM_INITIAL_CANDIDATE_CHURN_FINAL_SURVIVOR_UPDATES);
+  const uint64_t simInitialCandidateChurnAccepted =
+    simInitialCandidateChurnOverwritten +
+    simInitialCandidateChurnFinalSurvivor;
+  const double simInitialCandidateChurnOverwrittenRatio =
+    simInitialCandidateChurnAccepted > 0 ?
+      static_cast<double>(simInitialCandidateChurnOverwritten) /
+        static_cast<double>(simInitialCandidateChurnAccepted) :
+      0.0;
+  cerr<<"benchmark.sim_initial_candidate_churn_container_high_water="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_CONTAINER_HIGH_WATER)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_container_final_size="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_CONTAINER_FINAL_SIZE)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_cumulative_container_size="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_CUMULATIVE_CONTAINER_SIZE)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_replacement_chains="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_REPLACEMENT_CHAINS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_max_replacement_chain="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_MAX_REPLACEMENT_CHAIN)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_overwritten_updates="
+      <<simInitialCandidateChurnOverwritten<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_final_survivor_updates="
+      <<simInitialCandidateChurnFinalSurvivor<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_overwritten_ratio="
+      <<simInitialCandidateChurnOverwrittenRatio<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_first_max_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_FIRST_MAX_UPDATES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_tie_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_TIE_UPDATES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_order_sensitive_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_ORDER_SENSITIVE_UPDATES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_heap_builds="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_HEAP_BUILDS)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_heap_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_HEAP_UPDATES)<<endl;
+  cerr<<"benchmark.sim_initial_candidate_churn_index_rebuilds="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CANDIDATE_CHURN_INDEX_REBUILDS)<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;

@@ -2024,6 +2024,54 @@ int main()
 	                          9,
 	                          "initial candidate replay final candidate count increments") && ok;
 
+	    const SimInitialCandidateChurnStats candidateChurnBefore =
+	        getSimInitialCandidateChurnStats();
+	    SimInitialCandidateChurnStats candidateChurnDelta;
+	    struct ChurnCounterExpectation
+	    {
+	      SimInitialContextApplyBreakdownField field;
+	      uint64_t value;
+	      const char *label;
+	    };
+	    const ChurnCounterExpectation churnExpectations[] = {
+	      {SIM_INITIAL_CANDIDATE_CHURN_CONTAINER_HIGH_WATER,50,"high-water"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_CONTAINER_FINAL_SIZE,7,"final size"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_CUMULATIVE_CONTAINER_SIZE,101,"cumulative size"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_REPLACEMENT_CHAINS,13,"replacement chain"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_MAX_REPLACEMENT_CHAIN,17,"max replacement chain"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_OVERWRITTEN_UPDATES,19,"overwritten update"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_FINAL_SURVIVOR_UPDATES,23,"final survivor"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_ORDER_SENSITIVE_UPDATES,29,"order-sensitive"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_FIRST_MAX_UPDATES,31,"first-max"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_TIE_UPDATES,37,"tie"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_HEAP_BUILDS,41,"heap build"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_HEAP_UPDATES,43,"heap update"},
+	      {SIM_INITIAL_CANDIDATE_CHURN_INDEX_REBUILDS,47,"index rebuild"}
+	    };
+	    for(size_t expectationIndex = 0;
+	        expectationIndex < sizeof(churnExpectations) / sizeof(churnExpectations[0]);
+	        ++expectationIndex)
+	    {
+	      candidateChurnDelta.add(churnExpectations[expectationIndex].field,
+	                              churnExpectations[expectationIndex].value);
+	    }
+	    recordSimInitialCandidateChurn(candidateChurnDelta);
+	    const SimInitialCandidateChurnStats candidateChurnAfter =
+	        getSimInitialCandidateChurnStats();
+	    for(size_t expectationIndex = 0;
+	        expectationIndex < sizeof(churnExpectations) / sizeof(churnExpectations[0]);
+	        ++expectationIndex)
+	    {
+	      const string label =
+	        string("initial candidate churn ") +
+	        churnExpectations[expectationIndex].label +
+	        " count increments";
+	      ok = expect_equal_u64(candidateChurnAfter.get(churnExpectations[expectationIndex].field) -
+	                                candidateChurnBefore.get(churnExpectations[expectationIndex].field),
+	                            churnExpectations[expectationIndex].value,
+	                            label.c_str()) && ok;
+	    }
+
 	    SimKernelContext safeStoreContext(16, 16);
     initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, safeStoreContext);
     addnodeIndexed(20, 1, 1, 4, 4, safeStoreContext);
