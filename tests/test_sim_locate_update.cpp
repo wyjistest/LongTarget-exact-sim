@@ -1891,7 +1891,39 @@ int main()
     safeStoreSummaries[4].maxEndJ = 5;
     safeStoreSummaries[4].score = 19;
     safeStoreSummaries[4].scoreEndJ = 4;
-    mergeSimCudaInitialRunSummariesIntoSafeStore(safeStoreSummaries, safeStoreContext);
+    const SimInitialSafeStoreRebuildStats initialSafeStoreStatsBefore =
+        getSimInitialSafeStoreRebuildStats();
+    SimInitialSafeStoreRebuildStats safeStoreMergeStats;
+    mergeSimCudaInitialRunSummariesIntoSafeStore(safeStoreSummaries,
+                                                safeStoreContext,
+                                                &safeStoreMergeStats);
+    recordSimInitialSafeStoreRebuildStats(safeStoreMergeStats);
+    const SimInitialSafeStoreRebuildStats initialSafeStoreStatsAfterMerge =
+        getSimInitialSafeStoreRebuildStats();
+    ok = expect_equal_u64(initialSafeStoreStatsAfterMerge.updateCalls -
+                              initialSafeStoreStatsBefore.updateCalls,
+                          1,
+                          "initial safe-store update call count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterMerge.updateSummaries -
+                              initialSafeStoreStatsBefore.updateSummaries,
+                          5,
+                          "initial safe-store update summary count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterMerge.updateInsertedStates -
+                              initialSafeStoreStatsBefore.updateInsertedStates,
+                          4,
+                          "initial safe-store update inserted-state count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterMerge.updateMergedSummaries -
+                              initialSafeStoreStatsBefore.updateMergedSummaries,
+                          1,
+                          "initial safe-store update merged-summary count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterMerge.updateStoreSizeBefore -
+                              initialSafeStoreStatsBefore.updateStoreSizeBefore,
+                          0,
+                          "initial safe-store update size-before count records empty store") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterMerge.updateStoreSizeAfter -
+                              initialSafeStoreStatsBefore.updateStoreSizeAfter,
+                          4,
+                          "initial safe-store update size-after count records unique starts") && ok;
     ok = expect_equal_bool(safeStoreContext.safeCandidateStateStore.valid,
                            true,
                            "safe store marked valid after merge") && ok;
@@ -1911,7 +1943,35 @@ int main()
         ok = expect_equal_int(mergedStoreState->left, 3, "safe store merges left bound") && ok;
         ok = expect_equal_int(mergedStoreState->right, 9, "safe store merges right bound") && ok;
     }
-    pruneSimSafeCandidateStateStore(safeStoreContext);
+    SimInitialSafeStoreRebuildStats safeStorePruneStats;
+    pruneSimSafeCandidateStateStore(safeStoreContext, &safeStorePruneStats);
+    recordSimInitialSafeStoreRebuildStats(safeStorePruneStats);
+    const SimInitialSafeStoreRebuildStats initialSafeStoreStatsAfterPrune =
+        getSimInitialSafeStoreRebuildStats();
+    ok = expect_equal_u64(initialSafeStoreStatsAfterPrune.pruneCalls -
+                              initialSafeStoreStatsAfterMerge.pruneCalls,
+                          1,
+                          "initial safe-store prune call count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterPrune.pruneScannedStates -
+                              initialSafeStoreStatsAfterMerge.pruneScannedStates,
+                          4,
+                          "initial safe-store prune scanned-state count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterPrune.pruneKeptStates -
+                              initialSafeStoreStatsAfterMerge.pruneKeptStates,
+                          3,
+                          "initial safe-store prune kept-state count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterPrune.pruneRemovedStates -
+                              initialSafeStoreStatsAfterMerge.pruneRemovedStates,
+                          1,
+                          "initial safe-store prune removed-state count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterPrune.pruneKeptAboveFloor -
+                              initialSafeStoreStatsAfterMerge.pruneKeptAboveFloor,
+                          2,
+                          "initial safe-store prune above-floor kept count increments") && ok;
+    ok = expect_equal_u64(initialSafeStoreStatsAfterPrune.pruneKeptFrontier -
+                              initialSafeStoreStatsAfterMerge.pruneKeptFrontier,
+                          1,
+                          "initial safe-store prune frontier kept count increments") && ok;
     ok = expect_equal_size(safeStoreContext.safeCandidateStateStore.states.size(),
                            3,
                            "safe store prunes below-floor extras") && ok;

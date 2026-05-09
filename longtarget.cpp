@@ -2417,6 +2417,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialSummaryHostCopyElidedBytes = 0;
   SimInitialPinnedAsyncHandoffStats simInitialPinnedAsyncHandoffStats;
   SimInitialChunkedHandoffStats simInitialChunkedHandoffStats;
+  SimInitialSafeStoreRebuildStats simInitialSafeStoreRebuildStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
   uint64_t simInitialExactFrontierReplayFrontierStates = 0;
   uint64_t simInitialExactFrontierReplayDeviceSafeStores = 0;
@@ -2442,6 +2443,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                            simInitialSummaryResultMaterializeSeconds,
                                            simInitialSummaryHostCopyElidedBytes);
   getSimInitialPinnedAsyncHandoffStats(simInitialPinnedAsyncHandoffStats);
+  simInitialSafeStoreRebuildStats = getSimInitialSafeStoreRebuildStats();
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
 	                                          simInitialContextApplyChunkReplayedTotal,
@@ -2936,6 +2938,32 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_ordered_replay_seconds="<<simInitialOrderedReplaySeconds<<endl;
   cerr<<"benchmark.sim_initial_store_rebuild_seconds="<<simInitialStoreRebuildSeconds<<endl;
   cerr<<"benchmark.sim_initial_frontier_sync_seconds="<<simInitialFrontierSyncSeconds<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_update_calls="
+      <<simInitialSafeStoreRebuildStats.updateCalls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_update_summaries="
+      <<simInitialSafeStoreRebuildStats.updateSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_update_inserted_states="
+      <<simInitialSafeStoreRebuildStats.updateInsertedStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_update_merged_summaries="
+      <<simInitialSafeStoreRebuildStats.updateMergedSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_update_store_size_before="
+      <<simInitialSafeStoreRebuildStats.updateStoreSizeBefore<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_update_store_size_after="
+      <<simInitialSafeStoreRebuildStats.updateStoreSizeAfter<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_calls="
+      <<simInitialSafeStoreRebuildStats.pruneCalls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_scanned_states="
+      <<simInitialSafeStoreRebuildStats.pruneScannedStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_kept_states="
+      <<simInitialSafeStoreRebuildStats.pruneKeptStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_removed_states="
+      <<simInitialSafeStoreRebuildStats.pruneRemovedStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_kept_above_floor="
+      <<simInitialSafeStoreRebuildStats.pruneKeptAboveFloor<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_kept_frontier="
+      <<simInitialSafeStoreRebuildStats.pruneKeptFrontier<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_prune_index_rebuild_seconds="
+      <<(static_cast<double>(simInitialSafeStoreRebuildStats.pruneIndexRebuildNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;

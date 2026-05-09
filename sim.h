@@ -2941,6 +2941,54 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
   return simCudaInitialSafeStoreHandoffEnabledRuntime();
 }
 
+				struct SimInitialSafeStoreRebuildStats
+				{
+				  SimInitialSafeStoreRebuildStats():
+				    updateCalls(0),
+				    updateSummaries(0),
+				    updateInsertedStates(0),
+				    updateMergedSummaries(0),
+				    updateStoreSizeBefore(0),
+				    updateStoreSizeAfter(0),
+				    pruneCalls(0),
+				    pruneScannedStates(0),
+				    pruneKeptStates(0),
+				    pruneRemovedStates(0),
+				    pruneKeptAboveFloor(0),
+				    pruneKeptFrontier(0),
+				    pruneIndexRebuildNanoseconds(0)
+				  {
+				  }
+
+				  uint64_t updateCalls;
+				  uint64_t updateSummaries;
+				  uint64_t updateInsertedStates;
+				  uint64_t updateMergedSummaries;
+				  uint64_t updateStoreSizeBefore;
+				  uint64_t updateStoreSizeAfter;
+				  uint64_t pruneCalls;
+				  uint64_t pruneScannedStates;
+				  uint64_t pruneKeptStates;
+				  uint64_t pruneRemovedStates;
+				  uint64_t pruneKeptAboveFloor;
+				  uint64_t pruneKeptFrontier;
+				  uint64_t pruneIndexRebuildNanoseconds;
+				};
+
+				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateCallCount();
+				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateSummaryCount();
+				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateInsertedStateCount();
+				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateMergedSummaryCount();
+				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateStoreSizeBeforeCount();
+				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateStoreSizeAfterCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneCallCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneScannedStateCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneKeptStateCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneRemovedStateCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneKeptAboveFloorCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneKeptFrontierCount();
+				inline std::atomic<uint64_t> &simInitialSafeStorePruneIndexRebuildNanoseconds();
+
 				struct SimInitialContextApplyChunkSkipStats
 				{
 				  SimInitialContextApplyChunkSkipStats():
@@ -4854,6 +4902,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.pruneRemovedStates.fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
 		}
 
+		inline void recordSimInitialSafeStoreRebuildStats(const SimInitialSafeStoreRebuildStats &delta)
+		{
+		  simInitialSafeStoreUpdateCallCount().fetch_add(delta.updateCalls,std::memory_order_relaxed);
+		  simInitialSafeStoreUpdateSummaryCount().fetch_add(delta.updateSummaries,std::memory_order_relaxed);
+		  simInitialSafeStoreUpdateInsertedStateCount().fetch_add(delta.updateInsertedStates,std::memory_order_relaxed);
+		  simInitialSafeStoreUpdateMergedSummaryCount().fetch_add(delta.updateMergedSummaries,std::memory_order_relaxed);
+		  simInitialSafeStoreUpdateStoreSizeBeforeCount().fetch_add(delta.updateStoreSizeBefore,std::memory_order_relaxed);
+		  simInitialSafeStoreUpdateStoreSizeAfterCount().fetch_add(delta.updateStoreSizeAfter,std::memory_order_relaxed);
+		  simInitialSafeStorePruneCallCount().fetch_add(delta.pruneCalls,std::memory_order_relaxed);
+		  simInitialSafeStorePruneScannedStateCount().fetch_add(delta.pruneScannedStates,std::memory_order_relaxed);
+		  simInitialSafeStorePruneKeptStateCount().fetch_add(delta.pruneKeptStates,std::memory_order_relaxed);
+		  simInitialSafeStorePruneRemovedStateCount().fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
+		  simInitialSafeStorePruneKeptAboveFloorCount().fetch_add(delta.pruneKeptAboveFloor,std::memory_order_relaxed);
+		  simInitialSafeStorePruneKeptFrontierCount().fetch_add(delta.pruneKeptFrontier,std::memory_order_relaxed);
+		  simInitialSafeStorePruneIndexRebuildNanoseconds().fetch_add(delta.pruneIndexRebuildNanoseconds,
+		                                                              std::memory_order_relaxed);
+		}
+
 		inline void recordSimRegionDeferredCountValidate(const SimRegionDeferredCountValidateStats &delta)
 		{
 		  SimRegionDeferredCountValidateAtomicStats &stats =
@@ -5294,6 +5360,38 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.estSavedScans = stats.estSavedScans.load(std::memory_order_relaxed);
 		  snapshot.pruneScannedStates = stats.pruneScannedStates.load(std::memory_order_relaxed);
 		  snapshot.pruneRemovedStates = stats.pruneRemovedStates.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStoreRebuildStats getSimInitialSafeStoreRebuildStats()
+		{
+		  SimInitialSafeStoreRebuildStats snapshot;
+		  snapshot.updateCalls =
+		    simInitialSafeStoreUpdateCallCount().load(std::memory_order_relaxed);
+		  snapshot.updateSummaries =
+		    simInitialSafeStoreUpdateSummaryCount().load(std::memory_order_relaxed);
+		  snapshot.updateInsertedStates =
+		    simInitialSafeStoreUpdateInsertedStateCount().load(std::memory_order_relaxed);
+		  snapshot.updateMergedSummaries =
+		    simInitialSafeStoreUpdateMergedSummaryCount().load(std::memory_order_relaxed);
+		  snapshot.updateStoreSizeBefore =
+		    simInitialSafeStoreUpdateStoreSizeBeforeCount().load(std::memory_order_relaxed);
+		  snapshot.updateStoreSizeAfter =
+		    simInitialSafeStoreUpdateStoreSizeAfterCount().load(std::memory_order_relaxed);
+		  snapshot.pruneCalls =
+		    simInitialSafeStorePruneCallCount().load(std::memory_order_relaxed);
+		  snapshot.pruneScannedStates =
+		    simInitialSafeStorePruneScannedStateCount().load(std::memory_order_relaxed);
+		  snapshot.pruneKeptStates =
+		    simInitialSafeStorePruneKeptStateCount().load(std::memory_order_relaxed);
+		  snapshot.pruneRemovedStates =
+		    simInitialSafeStorePruneRemovedStateCount().load(std::memory_order_relaxed);
+		  snapshot.pruneKeptAboveFloor =
+		    simInitialSafeStorePruneKeptAboveFloorCount().load(std::memory_order_relaxed);
+		  snapshot.pruneKeptFrontier =
+		    simInitialSafeStorePruneKeptFrontierCount().load(std::memory_order_relaxed);
+		  snapshot.pruneIndexRebuildNanoseconds =
+		    simInitialSafeStorePruneIndexRebuildNanoseconds().load(std::memory_order_relaxed);
 		  return snapshot;
 		}
 
@@ -7299,7 +7397,85 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
-		inline std::atomic<uint64_t> &simInitialScanDiagNanoseconds()
+			inline std::atomic<uint64_t> &simInitialSafeStoreUpdateCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStoreUpdateSummaryCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStoreUpdateInsertedStateCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStoreUpdateMergedSummaryCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStoreUpdateStoreSizeBeforeCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStoreUpdateStoreSizeAfterCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneScannedStateCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneKeptStateCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneRemovedStateCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneKeptAboveFloorCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneKeptFrontierCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialSafeStorePruneIndexRebuildNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialScanDiagNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
 		  return count;
@@ -10198,8 +10374,10 @@ inline void runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(
   const vector<SimScanCudaCandidateState> &allCandidateStates);
 inline void invalidateSimSafeCandidateStateStore(SimKernelContext &context);
 inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
-                                                         SimKernelContext &context);
-inline void pruneSimSafeCandidateStateStore(SimKernelContext &context);
+                                                         SimKernelContext &context,
+                                                         SimInitialSafeStoreRebuildStats *stats = NULL);
+inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
+                                            SimInitialSafeStoreRebuildStats *stats = NULL);
 inline void eraseSimSafeCandidateStateStoreStartCoords(const vector<uint64_t> &startCoords,
                                                        SimKernelContext &context);
 inline void eraseSimCandidatesByStartCoords(const vector<uint64_t> &startCoords,
@@ -10544,7 +10722,8 @@ inline void rebuildSimCandidateStartIndex(SimKernelContext &context)
   }
 }
 
-inline void pruneSimSafeCandidateStateStore(SimKernelContext &context)
+inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
+                                            SimInitialSafeStoreRebuildStats *stats)
 {
   SimCandidateStateStore &store = context.safeCandidateStateStore;
   if(!store.valid)
@@ -10553,6 +10732,11 @@ inline void pruneSimSafeCandidateStateStore(SimKernelContext &context)
   }
 
   const long floor = context.runningMin;
+  if(stats != NULL)
+  {
+    stats->pruneCalls += 1;
+    stats->pruneScannedStates += static_cast<uint64_t>(store.states.size());
+  }
   vector<SimScanCudaCandidateState> keptStates;
   keptStates.reserve(store.states.size());
   for(size_t stateIndex = 0; stateIndex < store.states.size(); ++stateIndex)
@@ -10560,17 +10744,42 @@ inline void pruneSimSafeCandidateStateStore(SimKernelContext &context)
     const SimScanCudaCandidateState &state = store.states[stateIndex];
     const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
     bool keepState = state.score > floor;
+    bool keptAboveFloor = keepState;
+    bool keptFrontier = false;
     if(!keepState)
     {
       keepState = simContextContainsCandidateStartCoord(context,startCoord);
+      keptFrontier = keepState;
     }
     if(keepState)
     {
       keptStates.push_back(state);
+      if(stats != NULL)
+      {
+        stats->pruneKeptStates += 1;
+        if(keptAboveFloor)
+        {
+          stats->pruneKeptAboveFloor += 1;
+        }
+        else if(keptFrontier)
+        {
+          stats->pruneKeptFrontier += 1;
+        }
+      }
+    }
+    else if(stats != NULL)
+    {
+      stats->pruneRemovedStates += 1;
     }
   }
   store.states.swap(keptStates);
+  const std::chrono::steady_clock::time_point indexRebuildStart =
+    stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   rebuildSimCandidateStateStoreIndex(store);
+  if(stats != NULL)
+  {
+    stats->pruneIndexRebuildNanoseconds += simElapsedNanoseconds(indexRebuildStart);
+  }
 }
 
 inline void pruneSimCandidateStateStoreShadow(SimCandidateStateStore &store,
@@ -11768,16 +11977,41 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 }
 
 	inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCudaInitialRunSummary> &summaries,
-	                                                         SimKernelContext &context)
+	                                                         SimKernelContext &context,
+	                                                         SimInitialSafeStoreRebuildStats *stats)
 	{
 	  SimCandidateStateStore &store = context.safeCandidateStateStore;
-  if(!store.valid)
-  {
-    resetSimCandidateStateStore(store,true);
-  }
-  for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
-  {
+	  if(!store.valid)
+	  {
+	    resetSimCandidateStateStore(store,true);
+	  }
+	  if(stats != NULL)
+	  {
+	    stats->updateCalls += 1;
+	    stats->updateSummaries += static_cast<uint64_t>(summaries.size());
+	    stats->updateStoreSizeBefore += static_cast<uint64_t>(store.states.size());
+	  }
+	  for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
+	  {
+	    const bool inserted =
+	      store.startCoordToIndex.find(summaries[summaryIndex].startCoord) ==
+	      store.startCoordToIndex.end();
 	    upsertSimCandidateStateStoreSummary(summaries[summaryIndex],store);
+	    if(stats != NULL)
+	    {
+	      if(inserted)
+	      {
+	        stats->updateInsertedStates += 1;
+	      }
+	      else
+	      {
+	        stats->updateMergedSummaries += 1;
+	      }
+	    }
+	  }
+	  if(stats != NULL)
+	  {
+	    stats->updateStoreSizeAfter += static_cast<uint64_t>(store.states.size());
 	  }
 	}
 
@@ -14827,11 +15061,14 @@ inline void runSimCandidateLoop(const SimRequest &request,
 
 		    if(!maintainedSafeStoreOnDevice)
 		    {
+		      SimInitialSafeStoreRebuildStats safeStoreRebuildStats;
 		      if(!hostSafeStoreAlreadyUpdated)
 		      {
 		        const std::chrono::steady_clock::time_point safeStoreUpdateStart =
 		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-		        mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,context);
+		        mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,
+		                                                     context,
+		                                                     &safeStoreRebuildStats);
 		        if(benchmarkEnabled)
 		        {
 		          recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
@@ -14841,11 +15078,15 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		      {
 		        const std::chrono::steady_clock::time_point safeStorePruneStart =
 		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-		        pruneSimSafeCandidateStateStore(context);
+		        pruneSimSafeCandidateStateStore(context,&safeStoreRebuildStats);
 		        if(benchmarkEnabled)
 		        {
 		          recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
 		        }
+		      }
+		      if(benchmarkEnabled)
+		      {
+		        recordSimInitialSafeStoreRebuildStats(safeStoreRebuildStats);
 		      }
 		      const bool wantSafeWorksetGpuMirror =
 		        simLocateCudaEnabledRuntime() &&
@@ -16230,27 +16471,34 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
       moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,persistentSafeStoreHandle);
       markSimGpuFrontierCacheSynchronized(context);
     }
-    else
-    {
-      SimCandidateStateStore &store = context.safeCandidateStateStore;
-      const std::chrono::steady_clock::time_point safeStoreUpdateStart =
-        benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-      resetSimCandidateStateStore(store,true);
-      store.states = allCandidateStates;
-      rebuildSimCandidateStateStoreIndex(store);
-      if(benchmarkEnabled)
-      {
-        recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
-      }
-      const std::chrono::steady_clock::time_point safeStorePruneStart =
-        benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-      pruneSimSafeCandidateStateStore(context);
-      if(benchmarkEnabled)
-      {
-        recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
-      }
-    }
-  }
+	    else
+	    {
+	      SimCandidateStateStore &store = context.safeCandidateStateStore;
+	      SimInitialSafeStoreRebuildStats safeStoreRebuildStats;
+	      const std::chrono::steady_clock::time_point safeStoreUpdateStart =
+	        benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	      resetSimCandidateStateStore(store,true);
+	      safeStoreRebuildStats.updateCalls += 1;
+	      safeStoreRebuildStats.updateSummaries += static_cast<uint64_t>(allCandidateStates.size());
+	      safeStoreRebuildStats.updateStoreSizeBefore += static_cast<uint64_t>(store.states.size());
+	      store.states = allCandidateStates;
+	      safeStoreRebuildStats.updateInsertedStates += static_cast<uint64_t>(store.states.size());
+	      safeStoreRebuildStats.updateStoreSizeAfter += static_cast<uint64_t>(store.states.size());
+	      rebuildSimCandidateStateStoreIndex(store);
+	      if(benchmarkEnabled)
+	      {
+	        recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
+	      }
+	      const std::chrono::steady_clock::time_point safeStorePruneStart =
+	        benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+	      pruneSimSafeCandidateStateStore(context,&safeStoreRebuildStats);
+	      if(benchmarkEnabled)
+	      {
+	        recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
+	        recordSimInitialSafeStoreRebuildStats(safeStoreRebuildStats);
+	      }
+	    }
+	  }
 
   if(benchmarkEnabled)
   {
