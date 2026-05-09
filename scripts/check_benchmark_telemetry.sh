@@ -115,6 +115,7 @@ grep -Eq '^benchmark\.sim_safe_store_merge_shadow_seconds=[0-9]+(\.[0-9]+)?([eE]
 grep -Eq '^benchmark\.sim_safe_store_merge_shadow_digest_mismatches=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_store_merge_shadow_size_mismatches=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_store_merge_shadow_candidate_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_safe_store_merge_shadow_order_mismatches=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_store_merge_shadow_est_current_scanned_states=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_store_merge_shadow_est_compact_scanned_states=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_store_merge_shadow_est_saved_scans=0$' "$STDERR_LOG"

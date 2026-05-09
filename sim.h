@@ -4246,6 +4246,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    digestMismatches(0),
 		    sizeMismatches(0),
 		    candidateMismatches(0),
+		    orderMismatches(0),
 		    estCurrentScannedStates(0),
 		    estCompactScannedStates(0),
 		    estSavedScans(0),
@@ -4259,6 +4260,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  uint64_t digestMismatches;
 		  uint64_t sizeMismatches;
 		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
 		  uint64_t estCurrentScannedStates;
 		  uint64_t estCompactScannedStates;
 		  uint64_t estSavedScans;
@@ -4275,6 +4277,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    digestMismatches.store(0,std::memory_order_relaxed);
 		    sizeMismatches.store(0,std::memory_order_relaxed);
 		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    orderMismatches.store(0,std::memory_order_relaxed);
 		    estCurrentScannedStates.store(0,std::memory_order_relaxed);
 		    estCompactScannedStates.store(0,std::memory_order_relaxed);
 		    estSavedScans.store(0,std::memory_order_relaxed);
@@ -4287,6 +4290,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  std::atomic<uint64_t> digestMismatches;
 		  std::atomic<uint64_t> sizeMismatches;
 		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
 		  std::atomic<uint64_t> estCurrentScannedStates;
 		  std::atomic<uint64_t> estCompactScannedStates;
 		  std::atomic<uint64_t> estSavedScans;
@@ -4784,6 +4788,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
 		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
 		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
 		  stats.estCurrentScannedStates.fetch_add(delta.estCurrentScannedStates,std::memory_order_relaxed);
 		  stats.estCompactScannedStates.fetch_add(delta.estCompactScannedStates,std::memory_order_relaxed);
 		  stats.estSavedScans.fetch_add(delta.estSavedScans,std::memory_order_relaxed);
@@ -5210,6 +5215,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
 		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
 		  snapshot.candidateMismatches = stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
 		  snapshot.estCurrentScannedStates = stats.estCurrentScannedStates.load(std::memory_order_relaxed);
 		  snapshot.estCompactScannedStates = stats.estCompactScannedStates.load(std::memory_order_relaxed);
 		  snapshot.estSavedScans = stats.estSavedScans.load(std::memory_order_relaxed);
@@ -10110,6 +10116,9 @@ inline bool applySimLocatedUpdateRegionWithSafeStoreRefresh(const char *A,
                                                             const char *B,
                                                             const SimLocateResult &locateResult,
                                                             SimKernelContext &context);
+inline bool simCudaCandidateStateVectorsEqualOrdered(
+  const vector<SimScanCudaCandidateState> &lhs,
+  const vector<SimScanCudaCandidateState> &rhs);
 inline bool simCudaCandidateStateVectorsEqualAsSet(
   const vector<SimScanCudaCandidateState> &lhs,
   const vector<SimScanCudaCandidateState> &rhs);
@@ -10563,6 +10572,13 @@ runSimSafeStoreMergeStructureShadow(const SimCandidateStateStore &preMergeStore,
   if(!sizeMatch)
   {
     stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(shadowStore.states,realStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
   }
   const bool candidateMatch =
     sizeMatch &&
