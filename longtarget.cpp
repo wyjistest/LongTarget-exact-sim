@@ -3034,6 +3034,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getenv("LONGTARGET_SIM_CUDA_REGION_SINGLE_REQUEST_DIRECT_REDUCE_SHADOW");
   const char *simRegionDirectReduceDeferredCountsEnv =
     getenv("LONGTARGET_ENABLE_SIM_CUDA_REGION_DIRECT_REDUCE_DEFERRED_COUNTS");
+  const char *simRegionDeferredCountValidateEnv =
+    getenv("LONGTARGET_SIM_CUDA_REGION_DEFERRED_COUNTS_VALIDATE");
   const char *simRegionDirectReducePipelineTelemetryEnv =
     getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
   const char *simRegionDirectReduceFusedDpEnv =
@@ -3052,6 +3054,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<((simRegionDirectReduceDeferredCountsEnv != NULL &&
           simRegionDirectReduceDeferredCountsEnv[0] != '\0' &&
           strcmp(simRegionDirectReduceDeferredCountsEnv,"0") != 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_validate_enabled="
+      <<((simRegionDeferredCountValidateEnv != NULL &&
+          simRegionDeferredCountValidateEnv[0] != '\0' &&
+          strcmp(simRegionDeferredCountValidateEnv,"0") != 0) ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_shadow_enabled="
       <<((simRegionSingleRequestDirectReduceShadowEnv != NULL &&
           simRegionSingleRequestDirectReduceShadowEnv[0] != '\0' &&
@@ -3119,6 +3125,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   getSimRegionSingleRequestDirectReduceFusedDpStats(simRegionDirectReduceFusedDpStats);
   SimRegionSingleRequestDirectReduceCoopDpStats simRegionDirectReduceCoopDpStats;
   getSimRegionSingleRequestDirectReduceCoopDpStats(simRegionDirectReduceCoopDpStats);
+  const SimRegionDeferredCountValidateStats simRegionDeferredCountValidateStats =
+    getSimRegionDeferredCountValidateStats();
   cerr<<"benchmark.sim_region_single_request_direct_reduce_attempts="
       <<simRegionSingleRequestDirectReduceAttempts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_successes="
@@ -3151,6 +3159,24 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simRegionSingleRequestDirectReduceCandidateCountD2HSeconds<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_deferred_count_snapshot_d2h_seconds="
       <<simRegionSingleRequestDirectReduceDeferredCountSnapshotD2HSeconds<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_validate_calls="
+      <<simRegionDeferredCountValidateStats.calls<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_validate_seconds="
+      <<(static_cast<double>(simRegionDeferredCountValidateStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_event_mismatches="
+      <<simRegionDeferredCountValidateStats.eventMismatches<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_run_mismatches="
+      <<simRegionDeferredCountValidateStats.runMismatches<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_candidate_mismatches="
+      <<simRegionDeferredCountValidateStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_total_mismatches="
+      <<simRegionDeferredCountValidateStats.totalMismatches<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_validate_fallbacks="
+      <<simRegionDeferredCountValidateStats.fallbacks<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_validate_scalar_copies="
+      <<simRegionDeferredCountValidateStats.scalarCopies<<endl;
+  cerr<<"benchmark.sim_region_deferred_count_validate_snapshot_copies="
+      <<simRegionDeferredCountValidateStats.snapshotCopies<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_affected_starts="
       <<simRegionSingleRequestDirectReduceAffectedStarts<<endl;
   cerr<<"benchmark.sim_region_single_request_direct_reduce_reduce_work_items="

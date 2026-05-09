@@ -12939,6 +12939,11 @@ static bool sim_scan_cuda_region_direct_reduce_deferred_counts_runtime()
   return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
 }
 
+static bool sim_scan_cuda_region_deferred_counts_validate_runtime()
+{
+  return sim_scan_cuda_env_flag_enabled("LONGTARGET_SIM_CUDA_REGION_DEFERRED_COUNTS_VALIDATE");
+}
+
 static bool sim_scan_cuda_region_direct_reduce_pipeline_telemetry_runtime()
 {
   const char *env = getenv("LONGTARGET_SIM_CUDA_REGION_DIRECT_REDUCE_PIPELINE_TELEMETRY");
@@ -21776,6 +21781,34 @@ static bool sim_scan_cuda_region_single_request_direct_reduce_eligible(const vec
   return true;
 }
 
+static void sim_scan_cuda_merge_region_deferred_count_validation_stats(
+  const SimScanCudaBatchResult &directBatchResult,
+  SimScanCudaBatchResult *batchResult)
+{
+  if(batchResult == NULL)
+  {
+    return;
+  }
+  batchResult->regionDeferredCountValidateSeconds +=
+    directBatchResult.regionDeferredCountValidateSeconds;
+  batchResult->regionDeferredCountValidateCalls +=
+    directBatchResult.regionDeferredCountValidateCalls;
+  batchResult->regionDeferredCountEventMismatches +=
+    directBatchResult.regionDeferredCountEventMismatches;
+  batchResult->regionDeferredCountRunMismatches +=
+    directBatchResult.regionDeferredCountRunMismatches;
+  batchResult->regionDeferredCountCandidateMismatches +=
+    directBatchResult.regionDeferredCountCandidateMismatches;
+  batchResult->regionDeferredCountTotalMismatches +=
+    directBatchResult.regionDeferredCountTotalMismatches;
+  batchResult->regionDeferredCountValidateFallbacks +=
+    directBatchResult.regionDeferredCountValidateFallbacks;
+  batchResult->regionDeferredCountValidateScalarCopies +=
+    directBatchResult.regionDeferredCountValidateScalarCopies;
+  batchResult->regionDeferredCountValidateSnapshotCopies +=
+    directBatchResult.regionDeferredCountValidateSnapshotCopies;
+}
+
 static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
   const SimScanCudaBatchResult &directBatchResult,
   SimScanCudaBatchResult *batchResult)
@@ -21836,6 +21869,7 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_stats(
     directBatchResult.regionSingleRequestDirectReduceAffectedStartCount;
   batchResult->regionSingleRequestDirectReduceReduceWorkItems +=
     directBatchResult.regionSingleRequestDirectReduceReduceWorkItems;
+  sim_scan_cuda_merge_region_deferred_count_validation_stats(directBatchResult,batchResult);
   batchResult->regionSingleRequestDirectReduceFusedDpAttempts +=
     directBatchResult.regionSingleRequestDirectReduceFusedDpAttempts;
   batchResult->regionSingleRequestDirectReduceFusedDpEligible +=
@@ -21920,6 +21954,7 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_fused_dp_sta
     directBatchResult.regionSingleRequestDirectReduceFusedDpRequests;
   batchResult->regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced +=
     directBatchResult.regionSingleRequestDirectReduceFusedDpDiagLaunchesReplaced;
+  sim_scan_cuda_merge_region_deferred_count_validation_stats(directBatchResult,batchResult);
 }
 
 static void sim_scan_cuda_merge_region_single_request_direct_reduce_coop_dp_stats(
@@ -21963,6 +21998,40 @@ static void sim_scan_cuda_merge_region_single_request_direct_reduce_coop_dp_stat
     directBatchResult.regionSingleRequestDirectReduceCoopDpRequests;
   batchResult->regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced +=
     directBatchResult.regionSingleRequestDirectReduceCoopDpDiagLaunchesReplaced;
+  sim_scan_cuda_merge_region_deferred_count_validation_stats(directBatchResult,batchResult);
+}
+
+static bool sim_scan_cuda_record_region_deferred_count_validation(
+  SimScanCudaBatchResult *batchResult,
+  double seconds,
+  int scalarEventCount,
+  int scalarRunSummaryCount,
+  int scalarCandidateCount,
+  const int snapshotCounts[3],
+  uint64_t scalarCopies,
+  uint64_t snapshotCopies,
+  bool fallbackToScalar)
+{
+  const uint64_t eventMismatch = scalarEventCount != snapshotCounts[0] ? 1ULL : 0ULL;
+  const uint64_t runMismatch = scalarRunSummaryCount != snapshotCounts[1] ? 1ULL : 0ULL;
+  const uint64_t candidateMismatch = scalarCandidateCount != snapshotCounts[2] ? 1ULL : 0ULL;
+  const uint64_t totalMismatch =
+    eventMismatch != 0 || runMismatch != 0 || candidateMismatch != 0 ? 1ULL : 0ULL;
+  if(batchResult == NULL)
+  {
+    return totalMismatch != 0;
+  }
+  batchResult->regionDeferredCountValidateCalls += 1;
+  batchResult->regionDeferredCountValidateSeconds += seconds;
+  batchResult->regionDeferredCountEventMismatches += eventMismatch;
+  batchResult->regionDeferredCountRunMismatches += runMismatch;
+  batchResult->regionDeferredCountCandidateMismatches += candidateMismatch;
+  batchResult->regionDeferredCountTotalMismatches += totalMismatch;
+  batchResult->regionDeferredCountValidateFallbacks +=
+    fallbackToScalar && totalMismatch != 0 ? 1ULL : 0ULL;
+  batchResult->regionDeferredCountValidateScalarCopies += scalarCopies;
+  batchResult->regionDeferredCountValidateSnapshotCopies += snapshotCopies;
+  return totalMismatch != 0;
 }
 
 static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
@@ -22058,6 +22127,8 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
   const int maxEventsAllowed = static_cast<int>(maxEventsAllowedSize);
   const bool useDeferredCounts =
     sim_scan_cuda_region_direct_reduce_deferred_counts_runtime();
+  const bool validateDeferredCounts =
+    sim_scan_cuda_region_deferred_counts_validate_runtime();
   const bool usePipelineTelemetry =
     sim_scan_cuda_region_direct_reduce_pipeline_telemetry_runtime();
 
@@ -22103,7 +22174,7 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
                                   &context->batchRunTotalsCapacity,
                                   static_cast<size_t>(1),
                                   errorOut) ||
-     (useDeferredCounts &&
+     ((useDeferredCounts || validateDeferredCounts) &&
       !ensure_sim_scan_cuda_buffer(&context->batchCandidateCountsDevice,
                                    &context->batchCandidateCountsCapacity,
                                    static_cast<size_t>(3),
@@ -22547,6 +22618,45 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     }
   }
 
+  if(validateDeferredCounts && !useDeferredCounts)
+  {
+    int countSnapshot[3] = {0,0,0};
+    const chrono::steady_clock::time_point validateStart = chrono::steady_clock::now();
+    sim_scan_region_direct_reduce_count_snapshot_kernel<<<1, 1>>>(
+      context->batchEventTotalsDevice,
+      context->batchRunTotalsDevice,
+      context->candidateCountDevice,
+      context->batchCandidateCountsDevice);
+    status = cudaGetLastError();
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(countSnapshot,
+                          context->batchCandidateCountsDevice,
+                          static_cast<size_t>(3) * sizeof(int),
+                          cudaMemcpyDeviceToHost);
+    }
+    const double validateSeconds =
+      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                            chrono::steady_clock::now() - validateStart).count()) / 1.0e9;
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    (void)sim_scan_cuda_record_region_deferred_count_validation(batchResult,
+                                                                validateSeconds,
+                                                                eventCount,
+                                                                runSummaryCount,
+                                                                candidateCount,
+                                                                countSnapshot,
+                                                                3,
+                                                                1,
+                                                                false);
+  }
+
   if(!sim_scan_cuda_record_event(context->regionDirectCompactStartEvent,errorOut))
   {
     return false;
@@ -22635,6 +22745,58 @@ static bool sim_scan_cuda_try_region_single_request_direct_reduce_locked(
     eventCount = countSnapshot[0];
     runSummaryCount = countSnapshot[1];
     candidateCount = countSnapshot[2];
+    if(validateDeferredCounts)
+    {
+      int scalarEventCount = 0;
+      int scalarRunSummaryCount = 0;
+      int scalarCandidateCount = 0;
+      const chrono::steady_clock::time_point validateStart = chrono::steady_clock::now();
+      status = cudaMemcpy(&scalarEventCount,
+                          context->batchEventTotalsDevice,
+                          sizeof(int),
+                          cudaMemcpyDeviceToHost);
+      if(status == cudaSuccess)
+      {
+        status = cudaMemcpy(&scalarRunSummaryCount,
+                            context->batchRunTotalsDevice,
+                            sizeof(int),
+                            cudaMemcpyDeviceToHost);
+      }
+      if(status == cudaSuccess)
+      {
+        status = cudaMemcpy(&scalarCandidateCount,
+                            context->candidateCountDevice,
+                            sizeof(int),
+                            cudaMemcpyDeviceToHost);
+      }
+      const double validateSeconds =
+        static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                              chrono::steady_clock::now() - validateStart).count()) / 1.0e9;
+      if(status != cudaSuccess)
+      {
+        if(errorOut != NULL)
+        {
+          *errorOut = cuda_error_string(status);
+        }
+        return false;
+      }
+      const bool mismatch =
+        sim_scan_cuda_record_region_deferred_count_validation(batchResult,
+                                                              validateSeconds,
+                                                              scalarEventCount,
+                                                              scalarRunSummaryCount,
+                                                              scalarCandidateCount,
+                                                              countSnapshot,
+                                                              3,
+                                                              1,
+                                                              true);
+      if(mismatch)
+      {
+        eventCount = scalarEventCount;
+        runSummaryCount = scalarRunSummaryCount;
+        candidateCount = scalarCandidateCount;
+      }
+    }
     if(eventCount < 0 ||
        eventCount > maxEventsAllowed ||
        runSummaryCount < 0 ||
