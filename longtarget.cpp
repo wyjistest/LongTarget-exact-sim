@@ -2420,6 +2420,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   SimInitialSafeStoreRebuildStats simInitialSafeStoreRebuildStats;
   SimInitialSafeStorePruneIndexShadowStats simInitialSafeStorePruneIndexShadowStats;
   SimInitialSafeStorePrecombineShadowStats simInitialSafeStorePrecombineShadowStats;
+  SimInitialContextApplyBreakdownStats simInitialContextApplyBreakdownStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
   uint64_t simInitialExactFrontierReplayFrontierStates = 0;
   uint64_t simInitialExactFrontierReplayDeviceSafeStores = 0;
@@ -2450,6 +2451,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getSimInitialSafeStorePruneIndexShadowStats();
   simInitialSafeStorePrecombineShadowStats =
     getSimInitialSafeStorePrecombineShadowStats();
+  simInitialContextApplyBreakdownStats =
+    getSimInitialContextApplyBreakdownStats();
   getSimInitialContextApplyChunkSkipStats(simInitialContextApplyChunkTotal,
 	                                          simInitialContextApplyChunkSkippedTotal,
 	                                          simInitialContextApplyChunkReplayedTotal,
@@ -2938,6 +2941,42 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_scan_d2h_seconds="<<simInitialScanD2HSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_seconds="<<simInitialScanCpuMergeSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_context_apply_seconds="<<simInitialScanCpuContextApplySeconds<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_candidate_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_floor_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_frontier_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_FRONTIER_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_safe_store_handoff_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_candidate_erase_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_ERASE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_candidate_insert_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_INSERT_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_candidate_sort_seconds="
+      <<(static_cast<double>(simInitialContextApplyBreakdownStats.get(
+           SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_SORT_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_running_min_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_candidate_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_frontier_updates="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CONTEXT_APPLY_FRONTIER_UPDATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_safe_store_handoffs="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT)<<endl;
+  cerr<<"benchmark.sim_initial_context_apply_noop_events="
+      <<simInitialContextApplyBreakdownStats.get(
+          SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT)<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_update_seconds="<<simInitialScanCpuSafeStoreUpdateSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_prune_seconds="<<simInitialScanCpuSafeStorePruneSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_safe_store_upload_seconds="<<simInitialScanCpuSafeStoreUploadSeconds<<endl;

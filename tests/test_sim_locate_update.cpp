@@ -1856,6 +1856,97 @@ int main()
                           regionPackedRequestCountBefore + 11,
                           "region packed request count increments") && ok;
 
+    const SimInitialContextApplyBreakdownStats contextApplyBreakdownBefore =
+        getSimInitialContextApplyBreakdownStats();
+    SimInitialContextApplyBreakdownStats contextApplyBreakdownDelta;
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS,17);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS,19);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_FRONTIER_NANOSECONDS,23);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_NANOSECONDS,29);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_ERASE_NANOSECONDS,31);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_INSERT_NANOSECONDS,37);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_SORT_NANOSECONDS,41);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT,2);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT,5);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_FRONTIER_UPDATE_COUNT,3);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT,1);
+    contextApplyBreakdownDelta.add(SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT,7);
+    recordSimInitialContextApplyBreakdown(contextApplyBreakdownDelta);
+    const SimInitialContextApplyBreakdownStats contextApplyBreakdownAfter =
+        getSimInitialContextApplyBreakdownStats();
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS),
+                          17,
+                          "initial context-apply candidate timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS),
+                          19,
+                          "initial context-apply floor timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_FRONTIER_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_FRONTIER_NANOSECONDS),
+                          23,
+                          "initial context-apply frontier timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_NANOSECONDS),
+                          29,
+                          "initial context-apply safe-store handoff timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_ERASE_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_ERASE_NANOSECONDS),
+                          31,
+                          "initial context-apply candidate erase timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_INSERT_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_INSERT_NANOSECONDS),
+                          37,
+                          "initial context-apply candidate insert timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_SORT_NANOSECONDS) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_SORT_NANOSECONDS),
+                          41,
+                          "initial context-apply candidate sort timing increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT),
+                          2,
+                          "initial context-apply runningMin update count increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT),
+                          5,
+                          "initial context-apply candidate update count increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_FRONTIER_UPDATE_COUNT) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_FRONTIER_UPDATE_COUNT),
+                          3,
+                          "initial context-apply frontier update count increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT),
+                          1,
+                          "initial context-apply safe-store handoff count increments") && ok;
+    ok = expect_equal_u64(contextApplyBreakdownAfter.get(
+                              SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT) -
+                              contextApplyBreakdownBefore.get(
+                                  SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT),
+                          7,
+                          "initial context-apply no-op event count increments") && ok;
+
     SimKernelContext safeStoreContext(16, 16);
     initializeSimKernel(1.0f, -1.0f, 1.0f, 1.0f, safeStoreContext);
     addnodeIndexed(20, 1, 1, 4, 4, safeStoreContext);

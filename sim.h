@@ -3028,6 +3028,46 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  uint64_t summarySkippedCount;
 				};
 
+				enum SimInitialContextApplyBreakdownField
+				{
+				  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS = 0,
+				  SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS,
+				  SIM_INITIAL_CONTEXT_APPLY_FRONTIER_NANOSECONDS,
+				  SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_NANOSECONDS,
+				  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_ERASE_NANOSECONDS,
+				  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_INSERT_NANOSECONDS,
+				  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_SORT_NANOSECONDS,
+				  SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT,
+				  SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT,
+				  SIM_INITIAL_CONTEXT_APPLY_FRONTIER_UPDATE_COUNT,
+				  SIM_INITIAL_CONTEXT_APPLY_SAFE_STORE_HANDOFF_COUNT,
+				  SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT,
+				  SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT
+				};
+
+				struct SimInitialContextApplyBreakdownStats
+				{
+				  SimInitialContextApplyBreakdownStats()
+				  {
+				    for(size_t i = 0; i < SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT; ++i)
+				    {
+				      values[i] = 0;
+				    }
+				  }
+
+				  uint64_t get(SimInitialContextApplyBreakdownField field) const
+				  {
+				    return values[static_cast<size_t>(field)];
+				  }
+
+				  void add(SimInitialContextApplyBreakdownField field,uint64_t value)
+				  {
+				    values[static_cast<size_t>(field)] += value;
+				  }
+
+				  uint64_t values[SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT];
+				};
+
 				struct SimInitialCpuFrontierFastApplyStats
 				{
 				  SimInitialCpuFrontierFastApplyStats():
@@ -7363,6 +7403,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialContextApplyBreakdownCounter(
+			  SimInitialContextApplyBreakdownField field)
+			{
+			  static std::atomic<uint64_t> counters[SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT];
+			  return counters[static_cast<size_t>(field)];
+			}
+
 			inline std::atomic<uint64_t> &simInitialChunkedHandoffEnabledCount()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -8677,6 +8724,17 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			                                                                 std::memory_order_relaxed);
 			}
 
+			inline void recordSimInitialContextApplyBreakdown(const SimInitialContextApplyBreakdownStats &stats)
+			{
+			  for(size_t i = 0; i < SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT; ++i)
+			  {
+			    simInitialContextApplyBreakdownCounter(
+			      static_cast<SimInitialContextApplyBreakdownField>(i)).fetch_add(
+			        stats.values[i],
+			        std::memory_order_relaxed);
+			  }
+			}
+
 			inline void recordSimInitialChunkedHandoffStats(const SimInitialChunkedHandoffStats &stats)
 			{
 			  simInitialChunkedHandoffEnabledCount().fetch_add(1, std::memory_order_relaxed);
@@ -9491,6 +9549,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				    simInitialContextApplyChunkSkipSummarySkippedCount().load(std::memory_order_relaxed);
 					  summaryReplayedCount =
 					    simInitialContextApplyChunkSkipSummaryReplayedCount().load(std::memory_order_relaxed);
+					}
+
+					inline SimInitialContextApplyBreakdownStats getSimInitialContextApplyBreakdownStats()
+					{
+					  SimInitialContextApplyBreakdownStats stats;
+					  for(size_t i = 0; i < SIM_INITIAL_CONTEXT_APPLY_BREAKDOWN_FIELD_COUNT; ++i)
+					  {
+					    stats.values[i] =
+					      simInitialContextApplyBreakdownCounter(
+					        static_cast<SimInitialContextApplyBreakdownField>(i)).load(
+					          std::memory_order_relaxed);
+					  }
+					  return stats;
+					}
+
+					inline bool simInitialContextApplyBreakdownTelemetryEnabledRuntime()
+					{
+					  return simBenchmarkEnabledRuntime();
 					}
 
 					inline const char *simInitialChunkedHandoffFallbackReasonLabel(
@@ -13000,15 +13076,37 @@ inline void summarizeSimCudaInitialRowEventRuns(const vector<SimScanCudaRowEvent
 
 inline void mergeSimCudaInitialRunSummaries(const vector<SimScanCudaInitialRunSummary> &summaries,
                                             uint64_t logicalEventCount,
-                                            SimKernelContext &context)
+                                            SimKernelContext &context,
+                                            bool recordContextApplyBreakdown = false)
 {
   SimCandidateStats *stats = context.statsEnabled ? &context.stats : NULL;
   if(stats) stats->eventsSeen += logicalEventCount;
+  SimInitialContextApplyBreakdownStats breakdownStats;
+  const bool recordBreakdown =
+    recordContextApplyBreakdown && simInitialContextApplyBreakdownTelemetryEnabledRuntime();
+  const std::chrono::steady_clock::time_point candidateStart =
+    recordBreakdown ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
   {
     applySimCudaInitialRunSummary(summaries[summaryIndex],context,stats);
   }
+  if(recordBreakdown)
+  {
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS,
+                       simElapsedNanoseconds(candidateStart));
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT,
+                       static_cast<uint64_t>(summaries.size()));
+  }
+  const std::chrono::steady_clock::time_point floorStart =
+    recordBreakdown ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   refreshSimRunningMin(context);
+  if(recordBreakdown)
+  {
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS,
+                       simElapsedNanoseconds(floorStart));
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT,1);
+    recordSimInitialContextApplyBreakdown(breakdownStats);
+  }
 }
 
 inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
@@ -13016,9 +13114,13 @@ inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
   uint64_t logicalEventCount,
   SimKernelContext &context,
   int chunkSize,
-  SimInitialContextApplyChunkSkipStats *statsOut = NULL)
+  SimInitialContextApplyChunkSkipStats *statsOut = NULL,
+  bool recordContextApplyBreakdown = false)
 {
   SimInitialContextApplyChunkSkipStats stats;
+  SimInitialContextApplyBreakdownStats breakdownStats;
+  const bool recordBreakdown =
+    recordContextApplyBreakdown && simInitialContextApplyBreakdownTelemetryEnabledRuntime();
   SimCandidateStats *candidateStats = context.statsEnabled ? &context.stats : NULL;
   if(candidateStats) candidateStats->eventsSeen += logicalEventCount;
   const size_t safeChunkSize = static_cast<size_t>(chunkSize > 0 ? chunkSize : 1);
@@ -13047,13 +13149,33 @@ inline void mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
 
     ++stats.chunkReplayedCount;
     stats.summaryReplayedCount += chunkSummaryCount;
+    const std::chrono::steady_clock::time_point candidateStart =
+      recordBreakdown ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     for(size_t summaryIndex = chunkBase; summaryIndex < chunkEnd; ++summaryIndex)
     {
       applySimCudaInitialRunSummary(summaries[summaryIndex],context,candidateStats);
     }
+    if(recordBreakdown)
+    {
+      breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_NANOSECONDS,
+                         simElapsedNanoseconds(candidateStart));
+      breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_CANDIDATE_UPDATE_COUNT,
+                         chunkSummaryCount);
+    }
   }
 
+  const std::chrono::steady_clock::time_point floorStart =
+    recordBreakdown ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   refreshSimRunningMin(context);
+  if(recordBreakdown)
+  {
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_FLOOR_NANOSECONDS,
+                       simElapsedNanoseconds(floorStart));
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_RUNNING_MIN_UPDATE_COUNT,1);
+    breakdownStats.add(SIM_INITIAL_CONTEXT_APPLY_NOOP_EVENT_COUNT,
+                       stats.summarySkippedCount);
+    recordSimInitialContextApplyBreakdown(breakdownStats);
+  }
   if(statsOut != NULL)
   {
     *statsOut = stats;
@@ -15320,27 +15442,32 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  }
 	}
 
-		inline void applySimCudaInitialRunSummariesLegacyContextApply(
-		  const vector<SimScanCudaInitialRunSummary> &summaries,
-		  uint64_t eventCount,
-		  SimKernelContext &context)
-		{
-		  if(simCudaInitialContextApplyChunkSkipEnabledRuntime())
-		  {
-		    SimInitialContextApplyChunkSkipStats chunkSkipStats;
+			inline void applySimCudaInitialRunSummariesLegacyContextApply(
+			  const vector<SimScanCudaInitialRunSummary> &summaries,
+			  uint64_t eventCount,
+			  SimKernelContext &context,
+			  bool recordContextApplyBreakdown = false)
+			{
+			  if(simCudaInitialContextApplyChunkSkipEnabledRuntime())
+			  {
+			    SimInitialContextApplyChunkSkipStats chunkSkipStats;
 		    mergeSimCudaInitialRunSummariesWithContextApplyChunkSkip(
 		      summaries,
-		      eventCount,
-		      context,
-		      simCudaInitialContextApplyChunkSkipChunkSize(),
-		      &chunkSkipStats);
-		    recordSimInitialContextApplyChunkSkipStats(chunkSkipStats);
-		  }
-		  else
-		  {
-		    mergeSimCudaInitialRunSummaries(summaries,eventCount,context);
-		  }
-		}
+			      eventCount,
+			      context,
+			      simCudaInitialContextApplyChunkSkipChunkSize(),
+			      &chunkSkipStats,
+			      recordContextApplyBreakdown);
+			    recordSimInitialContextApplyChunkSkipStats(chunkSkipStats);
+			  }
+			  else
+			  {
+			    mergeSimCudaInitialRunSummaries(summaries,
+			                                    eventCount,
+			                                    context,
+			                                    recordContextApplyBreakdown);
+			  }
+			}
 
 		inline bool simInitialCpuFrontierFastApplyContextsEqual(const SimKernelContext &actual,
 		                                                        const SimKernelContext &expected)
@@ -15685,7 +15812,11 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    }
 	    else
 	    {
-	      applySimCudaInitialRunSummariesLegacyContextApply(summaries,eventCount,context);
+	      applySimCudaInitialRunSummariesLegacyContextApply(
+	        summaries,
+	        eventCount,
+	        context,
+	        benchmarkEnabled);
 	    }
 	  }
 	  if(benchmarkEnabled)
