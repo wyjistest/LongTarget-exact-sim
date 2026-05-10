@@ -1407,6 +1407,11 @@ bool sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
   double *outShadowSeconds,
   std::string *errorOut);
 
+bool sim_scan_cuda_one_chunk_exact_frontier_tiny_shadow_for_test(
+  std::vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  std::string *errorOut);
+
 bool sim_scan_cuda_select_top_disjoint_candidate_states(const std::vector<SimScanCudaCandidateState> &candidateStates,
                                                         int maxProposalCount,
                                                         std::vector<SimScanCudaCandidateState> *outSelectedStates,

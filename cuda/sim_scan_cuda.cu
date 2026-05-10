@@ -18256,6 +18256,150 @@ bool sim_scan_cuda_apply_frontier_chunk_transducer_shadow_for_test(
   return true;
 }
 
+__global__ void sim_scan_cuda_one_chunk_tiny_shadow_kernel(
+  SimScanCudaCandidateState *outCandidates,
+  int *outCandidateCount,
+  int *outRunningMin)
+{
+  if(threadIdx.x != 0 || blockIdx.x != 0)
+  {
+    return;
+  }
+  int candidateCount = 0;
+  int runningMin = 0;
+  SimScanCudaInitialRunSummary summaries[4];
+  summaries[0] = {4, (1ULL << 32) | 1ULL, 2, 4, 4, 4};
+  summaries[1] = {9, (1ULL << 32) | 1ULL, 3, 3, 5, 5};
+  summaries[2] = {7, (2ULL << 32) | 1ULL, 4, 6, 6, 6};
+  summaries[3] = {9, (1ULL << 32) | 1ULL, 5, 2, 7, 5};
+  for(int summaryIndex = 0; summaryIndex < 4; ++summaryIndex)
+  {
+    const SimScanCudaInitialRunSummary summary = summaries[summaryIndex];
+    SimScanCudaCandidateState state;
+    initSimScanCudaCandidateStateFromInitialRunSummary(summary,state);
+    int found = -1;
+    for(int candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+    {
+      if(simScanCudaCandidateStateMatchesStartCoord(outCandidates[candidateIndex],summary.startCoord))
+      {
+        found = candidateIndex;
+        break;
+      }
+    }
+    if(found >= 0)
+    {
+      updateSimScanCudaCandidateStateFromInitialRunSummary(summary,outCandidates[found]);
+    }
+    else if(candidateCount < sim_scan_cuda_max_candidates)
+    {
+      outCandidates[candidateCount++] = state;
+    }
+  }
+  if(candidateCount > 0)
+  {
+    runningMin = outCandidates[0].score;
+    for(int candidateIndex = 1; candidateIndex < candidateCount; ++candidateIndex)
+    {
+      if(outCandidates[candidateIndex].score < runningMin)
+      {
+        runningMin = outCandidates[candidateIndex].score;
+      }
+    }
+  }
+  *outCandidateCount = candidateCount;
+  *outRunningMin = runningMin;
+}
+
+bool sim_scan_cuda_one_chunk_exact_frontier_tiny_shadow_for_test(
+  vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  string *errorOut)
+{
+  if(outCandidateStates == NULL || outRunningMin == NULL)
+  {
+    if(errorOut != NULL) *errorOut = "missing tiny shadow outputs";
+    return false;
+  }
+  outCandidateStates->clear();
+  *outRunningMin = 0;
+
+  int device = 0;
+  cudaError_t status = cudaGetDevice(&device);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+  SimScanCudaCandidateState *candidatesDevice = NULL;
+  int *candidateCountDevice = NULL;
+  int *runningMinDevice = NULL;
+  const size_t candidateBytes =
+    static_cast<size_t>(sim_scan_cuda_max_candidates) * sizeof(SimScanCudaCandidateState);
+  status = cudaMalloc(&candidatesDevice,candidateBytes);
+  if(status == cudaSuccess) status = cudaMalloc(&candidateCountDevice,sizeof(int));
+  if(status == cudaSuccess) status = cudaMalloc(&runningMinDevice,sizeof(int));
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(candidatesDevice,0,candidateBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    sim_scan_cuda_one_chunk_tiny_shadow_kernel<<<1,1>>>(
+      candidatesDevice,
+      candidateCountDevice,
+      runningMinDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaDeviceSynchronize();
+
+  int candidateCount = 0;
+  int runningMin = 0;
+  vector<SimScanCudaCandidateState> candidates;
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&candidateCount,candidateCountDevice,sizeof(int),cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&runningMin,runningMinDevice,sizeof(int),cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    if(candidateCount < 0 || candidateCount > sim_scan_cuda_max_candidates)
+    {
+      if(errorOut != NULL) *errorOut = "tiny shadow invalid candidate count";
+      cudaFree(runningMinDevice);
+      cudaFree(candidateCountDevice);
+      cudaFree(candidatesDevice);
+      return false;
+    }
+    else
+    {
+      candidates.resize(static_cast<size_t>(candidateCount));
+      if(candidateCount > 0)
+      {
+        status = cudaMemcpy(candidates.data(),
+                            candidatesDevice,
+                            static_cast<size_t>(candidateCount) *
+                              sizeof(SimScanCudaCandidateState),
+                            cudaMemcpyDeviceToHost);
+      }
+    }
+  }
+  cudaFree(runningMinDevice);
+  cudaFree(candidateCountDevice);
+  cudaFree(candidatesDevice);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+  *outCandidateStates = candidates;
+  *outRunningMin = runningMin;
+  clear_sim_scan_cuda_error(errorOut);
+  return true;
+}
+
 bool sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
   const vector<SimScanCudaInitialRunSummary> &summaries,
   const vector<int> &runBases,
