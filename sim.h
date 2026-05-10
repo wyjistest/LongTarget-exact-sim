@@ -635,12 +635,14 @@ struct SimCandidateStateStore
 {
   SimCandidateStateStore():
     valid(false),
+    hostEpoch(0),
     states(),
     startCoordToIndex()
   {
   }
 
   bool valid;
+  uint64_t hostEpoch;
   vector<SimScanCudaCandidateState> states;
   unordered_map<uint64_t,size_t> startCoordToIndex;
 };
@@ -7894,6 +7896,18 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierCpuSafeStoreEpochValue()
+			{
+			  static std::atomic<uint64_t> value(0);
+			  return value;
+			}
+
+			inline std::atomic<uint64_t> &simSafeStoreHostEpochBumpCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialExactFrontierCpuFirstMaxAvailableCount()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9149,7 +9163,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				    std::memory_order_relaxed);
 				}
 
-				inline void recordSimInitialExactFrontierReplay(uint64_t frontierStateCount,
+			inline void recordSimInitialExactFrontierReplay(uint64_t frontierStateCount,
 			                                                bool deviceSafeStore)
 			{
 			  simInitialExactFrontierReplayRequestCount().fetch_add(1, std::memory_order_relaxed);
@@ -9162,11 +9176,17 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
+			inline void recordSimSafeStoreHostEpochBump()
+			{
+			  simSafeStoreHostEpochBumpCount().fetch_add(1, std::memory_order_relaxed);
+			}
+
 			inline void recordSimInitialExactFrontierCpuContractBaseline(bool orderedDigest,
 			                                                             bool unorderedDigest,
 			                                                             bool minCandidate,
 			                                                             bool safeStoreDigest,
 			                                                             bool safeStoreEpoch,
+			                                                             uint64_t safeStoreEpochValue,
 			                                                             bool firstMax,
 			                                                             bool tie,
 			                                                             bool firstMaxTie)
@@ -9199,6 +9219,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  {
 			    simInitialExactFrontierCpuSafeStoreEpochAvailableCount().fetch_add(
 			      1,
+			      std::memory_order_relaxed);
+			    simInitialExactFrontierCpuSafeStoreEpochValue().store(
+			      safeStoreEpochValue,
 			      std::memory_order_relaxed);
 			  }
 			  if(firstMax)
@@ -10099,6 +10122,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  uint64_t &minCandidateAvailable,
 					  uint64_t &safeStoreDigestAvailable,
 					  uint64_t &safeStoreEpochAvailable,
+					  uint64_t &safeStoreEpochValue,
 					  uint64_t &firstMaxAvailable,
 					  uint64_t &tieAvailable,
 					  uint64_t &firstMaxTieAvailable)
@@ -10113,12 +10137,19 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    simInitialExactFrontierCpuSafeStoreDigestAvailableCount().load(std::memory_order_relaxed);
 					  safeStoreEpochAvailable =
 					    simInitialExactFrontierCpuSafeStoreEpochAvailableCount().load(std::memory_order_relaxed);
+					  safeStoreEpochValue =
+					    simInitialExactFrontierCpuSafeStoreEpochValue().load(std::memory_order_relaxed);
 					  firstMaxAvailable =
 					    simInitialExactFrontierCpuFirstMaxAvailableCount().load(std::memory_order_relaxed);
 					  tieAvailable =
 					    simInitialExactFrontierCpuTieAvailableCount().load(std::memory_order_relaxed);
 					  firstMaxTieAvailable =
 					    simInitialExactFrontierCpuFirstMaxTieAvailableCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimSafeStoreHostEpochStats(uint64_t &bumps)
+					{
+					  bumps = simSafeStoreHostEpochBumpCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialCpuFrontierFastApplyStats(
@@ -11222,8 +11253,25 @@ inline void mergeSimScanCudaCandidateState(const SimScanCudaCandidateState &sour
 inline void resetSimCandidateStateStore(SimCandidateStateStore &store,bool valid)
 {
   store.valid = valid;
+  ++store.hostEpoch;
   store.states.clear();
   store.startCoordToIndex.clear();
+}
+
+inline void bumpSimCandidateStateStoreHostEpoch(SimCandidateStateStore &store)
+{
+  ++store.hostEpoch;
+}
+
+inline void resetSimContextSafeCandidateStateStore(SimKernelContext &context,bool valid)
+{
+  resetSimCandidateStateStore(context.safeCandidateStateStore,valid);
+}
+
+inline void resetSimContextSafeCandidateStateStoreAndRecordEpoch(SimKernelContext &context,bool valid)
+{
+  resetSimContextSafeCandidateStateStore(context,valid);
+  recordSimSafeStoreHostEpochBump();
 }
 
 inline void upsertSimCandidateStateStoreState(const SimScanCudaCandidateState &state,
@@ -11266,7 +11314,7 @@ inline void rebuildSimCandidateStateStoreIndex(SimCandidateStateStore &store)
 
 inline void clearSimSafeCandidateStores(SimKernelContext &context)
 {
-  resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+  resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,false);
   releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
   context.gpuFrontierCacheInSync = false;
   context.initialSafeStoreHandoffActive = false;
@@ -11501,6 +11549,7 @@ inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
   const std::chrono::steady_clock::time_point indexRebuildStart =
     stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   rebuildSimCandidateStateStoreIndex(store);
+  bumpSimCandidateStateStoreHostEpoch(store);
   if(stats != NULL)
   {
     stats->pruneIndexRebuildNanoseconds += simElapsedNanoseconds(indexRebuildStart);
@@ -12130,6 +12179,7 @@ inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<
   }
   store.states.swap(keptStates);
   rebuildSimCandidateStateStoreIndex(store);
+  bumpSimCandidateStateStoreHostEpoch(store);
 }
 
 inline void eraseSimSafeCandidateStateStoreStartCoords(const vector<uint64_t> &startCoords,
@@ -13015,7 +13065,7 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	  SimCandidateStateStore &store = context.safeCandidateStateStore;
 	  if(!store.valid)
 	  {
-	    resetSimCandidateStateStore(store,true);
+	    resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,true);
 	  }
 	  if(stats != NULL)
 	  {
@@ -13045,6 +13095,8 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	  {
 	    stats->updateStoreSizeAfter += static_cast<uint64_t>(store.states.size());
 	  }
+	  bumpSimCandidateStateStoreHostEpoch(store);
+	  recordSimSafeStoreHostEpochBump();
 	}
 
 	struct SimInitialPinnedAsyncCpuPipelineApplyState
@@ -13090,7 +13142,7 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	  }
 	  if(maintainSafeStore && !context.safeCandidateStateStore.valid)
 	  {
-	    resetSimCandidateStateStore(context.safeCandidateStateStore,true);
+	    resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,true);
 	  }
 	}
 
@@ -13120,7 +13172,7 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	    state.maintainSafeStore ? &context.safeCandidateStateStore : NULL;
 	  if(safeStore != NULL && !safeStore->valid)
 	  {
-	    resetSimCandidateStateStore(*safeStore,true);
+	    resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,true);
 	  }
 	  for(size_t summaryIndex = 0; summaryIndex < summaryCount; ++summaryIndex)
 	  {
@@ -13148,9 +13200,15 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	    state.eventsSeenRecorded = true;
 	  }
 	  refreshSimRunningMin(context);
+	  if(state.maintainSafeStore)
+	  {
+	    bumpSimCandidateStateStoreHostEpoch(context.safeCandidateStateStore);
+	    recordSimSafeStoreHostEpochBump();
+	  }
 	  if(state.maintainSafeStore && pruneSafeStore)
 	  {
 	    pruneSimSafeCandidateStateStore(context);
+	    recordSimSafeStoreHostEpochBump();
 	  }
 	  ++state.finalizeCount;
 	  state.chunksFinalized = state.chunksApplied;
@@ -13191,7 +13249,7 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	    safeStore = &context.safeCandidateStateStore;
 	    if(!safeStore->valid)
 	    {
-	      resetSimCandidateStateStore(*safeStore,true);
+	      resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,true);
 	    }
 	  }
 
@@ -13225,7 +13283,10 @@ inline bool simCudaInitialRunSummaryIsContextNoOp(const SimScanCudaInitialRunSum
 	  refreshSimRunningMin(context);
 	  if(maintainSafeStore)
 	  {
+	    bumpSimCandidateStateStoreHostEpoch(context.safeCandidateStateStore);
+	    recordSimSafeStoreHostEpochBump();
 	    pruneSimSafeCandidateStateStore(context);
+	    recordSimSafeStoreHostEpochBump();
 	  }
 	  if(statsOut != NULL)
 	  {
@@ -15704,12 +15765,15 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  const bool minCandidateAvailable =
 	    context.candidateCount == 0 || simMinCandidateIndexByScan(context) >= 0;
 	  bool safeStoreDigestAvailable = false;
+	  bool safeStoreEpochAvailable = false;
+	  uint64_t safeStoreEpochValue = 0;
 	  if(context.safeCandidateStateStore.valid)
 	  {
 	    (void)simCandidateStateStoreFingerprint(context.safeCandidateStateStore);
 	    safeStoreDigestAvailable = true;
+	    safeStoreEpochValue = context.safeCandidateStateStore.hostEpoch;
+	    safeStoreEpochAvailable = safeStoreEpochValue > 0;
 	  }
-	  const bool safeStoreEpochAvailable = false;
 	  const bool candidateFieldsAvailable =
 	    cpuStates.size() == static_cast<size_t>(context.candidateCount);
 	  const bool firstMaxAvailable = candidateFieldsAvailable;
@@ -15721,6 +15785,7 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    minCandidateAvailable,
 	    safeStoreDigestAvailable,
 	    safeStoreEpochAvailable,
+	    safeStoreEpochValue,
 	    firstMaxAvailable,
 	    tieAvailable,
 	    firstMaxTieAvailable);
@@ -16303,7 +16368,7 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		            static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)));
 		          recordSimInitialSafeStoreFrontierUploadNanoseconds(simSecondsToNanoseconds(frontierUploadSeconds));
 		        }
-		        resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+		        resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,false);
 		        releaseSimCudaPersistentSafeCandidateStateStore(context.gpuSafeCandidateStateStore);
 		        moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,builtGpuSafeStore);
 		        markSimGpuFrontierCacheSynchronized(context);
@@ -16375,6 +16440,7 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		        const std::chrono::steady_clock::time_point safeStorePruneStart =
 		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 		        pruneSimSafeCandidateStateStore(context,&safeStoreRebuildStats);
+		        recordSimSafeStoreHostEpochBump();
 		        if(benchmarkEnabled)
 		        {
 		          recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
@@ -17757,7 +17823,7 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
 	    context.initialSafeStoreHandoffActive = false;
 	    if(persistentSafeStoreHandle.valid)
     {
-      resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+      resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,false);
       moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,persistentSafeStoreHandle);
       markSimGpuFrontierCacheSynchronized(context);
     }
@@ -17774,7 +17840,7 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
 	    context.initialSafeStoreHandoffActive = false;
 	    if(persistentSafeStoreHandle.valid)
     {
-      resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+      resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,false);
       moveSimCudaPersistentSafeStoreHandle(context.gpuSafeCandidateStateStore,persistentSafeStoreHandle);
       markSimGpuFrontierCacheSynchronized(context);
     }
@@ -17792,6 +17858,8 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
 	      safeStoreRebuildStats.updateInsertedStates += static_cast<uint64_t>(store.states.size());
 	      safeStoreRebuildStats.updateStoreSizeAfter += static_cast<uint64_t>(store.states.size());
 	      rebuildSimCandidateStateStoreIndex(store);
+	      bumpSimCandidateStateStoreHostEpoch(store);
+	      recordSimSafeStoreHostEpochBump();
 	      if(benchmarkEnabled)
 	      {
 	        recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
@@ -17807,6 +17875,7 @@ inline void applySimCudaInitialReduceResults(const vector<SimScanCudaCandidateSt
 	      const std::chrono::steady_clock::time_point safeStorePruneStart =
 	        benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
 	      pruneSimSafeCandidateStateStore(context,&safeStoreRebuildStats);
+	      recordSimSafeStoreHostEpochBump();
 	      if(benchmarkEnabled)
 	      {
 	        recordSimInitialScanCpuSafeStorePruneNanoseconds(simElapsedNanoseconds(safeStorePruneStart));
@@ -19389,7 +19458,14 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
                                   context);
     markSimGpuFrontierCacheSynchronized(context);
     recordSimFrontierCacheRebuildFromResidency();
-    resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+    if(recordTelemetry)
+    {
+      resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,false);
+    }
+    else
+    {
+      resetSimContextSafeCandidateStateStore(context,false);
+    }
     const uint64_t candidateApplyNanoseconds =
       benchmarkEnabled ? simElapsedNanoseconds(candidateApplyStart) : 0;
 
@@ -19552,6 +19628,10 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       upsertSimCandidateStateStoreState(updatedAffectedStates[stateIndex],
                                         context.safeCandidateStateStore);
     }
+    if(recordTelemetry)
+    {
+      recordSimSafeStoreHostEpochBump();
+    }
     if(benchmarkEnabled)
     {
       safeStoreUpsertLoopNanoseconds = simElapsedNanoseconds(mergeStageStart);
@@ -19584,6 +19664,10 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     const uint64_t safeStoreSizeBeforePrune =
       static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
     pruneSimSafeCandidateStateStore(context);
+    if(recordTelemetry)
+    {
+      recordSimSafeStoreHostEpochBump();
+    }
     const uint64_t safeStoreSizeAfterPrune =
       static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
     safeStorePruneScannedStates = safeStoreSizeBeforePrune;
@@ -19711,6 +19795,10 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
     if(hasHostSafeStore)
     {
       pruneSimSafeCandidateStateStore(context);
+      if(recordTelemetry)
+      {
+        recordSimSafeStoreHostEpochBump();
+      }
     }
     if(hasGpuSafeStore)
     {
@@ -19886,7 +19974,14 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
     }
     if(hasHostSafeStore)
     {
-      resetSimCandidateStateStore(context.safeCandidateStateStore,false);
+      if(recordTelemetry)
+      {
+        resetSimContextSafeCandidateStateStoreAndRecordEpoch(context,false);
+      }
+      else
+      {
+        resetSimContextSafeCandidateStateStore(context,false);
+      }
     }
     markSimGpuFrontierCacheSynchronized(context);
     recordSimFrontierCacheRebuildFromResidency();
@@ -19949,7 +20044,15 @@ inline bool refreshSimSafeCandidateStateStoreForBands(const char *A,
       upsertSimCandidateStateStoreState(updatedTrackedStates[stateIndex],
                                         context.safeCandidateStateStore);
     }
+    if(recordTelemetry)
+    {
+      recordSimSafeStoreHostEpochBump();
+    }
     pruneSimSafeCandidateStateStore(context);
+    if(recordTelemetry)
+    {
+      recordSimSafeStoreHostEpochBump();
+    }
   }
   if(hasGpuSafeStore)
   {

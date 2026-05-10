@@ -2436,6 +2436,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierCpuMinCandidateAvailable = 0;
   uint64_t simInitialExactFrontierCpuSafeStoreDigestAvailable = 0;
   uint64_t simInitialExactFrontierCpuSafeStoreEpochAvailable = 0;
+  uint64_t simInitialExactFrontierCpuSafeStoreEpoch = 0;
   uint64_t simInitialExactFrontierCpuFirstMaxAvailable = 0;
   uint64_t simInitialExactFrontierCpuTieAvailable = 0;
   uint64_t simInitialExactFrontierCpuFirstMaxTieAvailable = 0;
@@ -2485,9 +2486,12 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	    simInitialExactFrontierCpuMinCandidateAvailable,
 	    simInitialExactFrontierCpuSafeStoreDigestAvailable,
 	    simInitialExactFrontierCpuSafeStoreEpochAvailable,
+	    simInitialExactFrontierCpuSafeStoreEpoch,
 	    simInitialExactFrontierCpuFirstMaxAvailable,
 	    simInitialExactFrontierCpuTieAvailable,
 	    simInitialExactFrontierCpuFirstMaxTieAvailable);
+	  uint64_t simSafeStoreHostEpochBumps = 0;
+	  getSimSafeStoreHostEpochStats(simSafeStoreHostEpochBumps);
 	  SimInitialCpuFrontierFastApplyTelemetry simInitialCpuFrontierFastApplyTelemetry;
 	  getSimInitialCpuFrontierFastApplyStats(simInitialCpuFrontierFastApplyTelemetry);
 	  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
@@ -2793,12 +2797,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(simInitialExactFrontierCpuSafeStoreDigestAvailable > 0 ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_safe_store_epoch_available="
       <<(simInitialExactFrontierCpuSafeStoreEpochAvailable > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_safe_store_epoch="
+      <<simInitialExactFrontierCpuSafeStoreEpoch<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_safe_store_epoch_bumps="
+      <<simSafeStoreHostEpochBumps<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_first_max_available="
       <<(simInitialExactFrontierCpuFirstMaxAvailable > 0 ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_tie_available="
       <<(simInitialExactFrontierCpuTieAvailable > 0 ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_first_max_tie_available="
       <<(simInitialExactFrontierCpuFirstMaxTieAvailable > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_safe_store_host_epoch="<<simInitialExactFrontierCpuSafeStoreEpoch<<endl;
+  cerr<<"benchmark.sim_safe_store_host_epoch_bumps="<<simSafeStoreHostEpochBumps<<endl;
   cerr<<"benchmark.sim_proposal_materialize_backend="<<simProposalMaterializeBackend<<endl;
   cerr<<"benchmark.sim_proposal_all_candidate_states_total="<<simProposalAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_proposal_bytes_d2h="<<simProposalBytesD2H<<endl;
