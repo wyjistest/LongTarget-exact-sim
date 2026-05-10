@@ -7882,6 +7882,18 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierCpuSafeStoreDigestAvailableCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierCpuSafeStoreEpochAvailableCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialScanNanoseconds()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9134,7 +9146,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 
 			inline void recordSimInitialExactFrontierCpuContractBaseline(bool orderedDigest,
 			                                                             bool unorderedDigest,
-			                                                             bool minCandidate)
+			                                                             bool minCandidate,
+			                                                             bool safeStoreDigest,
+			                                                             bool safeStoreEpoch)
 			{
 			  if(orderedDigest)
 			  {
@@ -9151,6 +9165,18 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  if(minCandidate)
 			  {
 			    simInitialExactFrontierCpuMinCandidateAvailableCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(safeStoreDigest)
+			  {
+			    simInitialExactFrontierCpuSafeStoreDigestAvailableCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(safeStoreEpoch)
+			  {
+			    simInitialExactFrontierCpuSafeStoreEpochAvailableCount().fetch_add(
 			      1,
 			      std::memory_order_relaxed);
 			  }
@@ -10031,7 +10057,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					inline void getSimInitialExactFrontierCpuContractBaselineStats(
 					  uint64_t &orderedDigestAvailable,
 					  uint64_t &unorderedDigestAvailable,
-					  uint64_t &minCandidateAvailable)
+					  uint64_t &minCandidateAvailable,
+					  uint64_t &safeStoreDigestAvailable,
+					  uint64_t &safeStoreEpochAvailable)
 					{
 					  orderedDigestAvailable =
 					    simInitialExactFrontierCpuOrderedDigestAvailableCount().load(std::memory_order_relaxed);
@@ -10039,6 +10067,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    simInitialExactFrontierCpuUnorderedDigestAvailableCount().load(std::memory_order_relaxed);
 					  minCandidateAvailable =
 					    simInitialExactFrontierCpuMinCandidateAvailableCount().load(std::memory_order_relaxed);
+					  safeStoreDigestAvailable =
+					    simInitialExactFrontierCpuSafeStoreDigestAvailableCount().load(std::memory_order_relaxed);
+					  safeStoreEpochAvailable =
+					    simInitialExactFrontierCpuSafeStoreEpochAvailableCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialCpuFrontierFastApplyStats(
@@ -15623,10 +15655,19 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    unorderedDigest.candidateCount == static_cast<int>(sortedCpuStates.size());
 	  const bool minCandidateAvailable =
 	    context.candidateCount == 0 || simMinCandidateIndexByScan(context) >= 0;
+	  bool safeStoreDigestAvailable = false;
+	  if(context.safeCandidateStateStore.valid)
+	  {
+	    (void)simCandidateStateStoreFingerprint(context.safeCandidateStateStore);
+	    safeStoreDigestAvailable = true;
+	  }
+	  const bool safeStoreEpochAvailable = false;
 	  recordSimInitialExactFrontierCpuContractBaseline(
 	    orderedDigestAvailable,
 	    unorderedDigestAvailable,
-	    minCandidateAvailable);
+	    minCandidateAvailable,
+	    safeStoreDigestAvailable,
+	    safeStoreEpochAvailable);
 	}
 
 	inline void runSimCudaInitialFrontierTransducerShadowIfEnabled(
