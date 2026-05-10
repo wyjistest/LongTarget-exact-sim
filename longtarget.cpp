@@ -379,6 +379,18 @@ static inline const char *longtargetSimInitialExactFrontierShadowGateDisabledRea
          "missing_contract_counters" : "env_off";
 }
 
+static inline const char *longtargetSimInitialExactFrontierShadowBackendLabel()
+{
+  return simCudaInitialExactFrontierShadowGateRequestedRuntime() ?
+         "one_chunk_stub" : "none";
+}
+
+static inline const char *longtargetSimInitialExactFrontierShadowBackendDisabledReason()
+{
+  return simCudaInitialExactFrontierShadowGateRequestedRuntime() ?
+         "one_chunk_backend_not_implemented" : "env_off";
+}
+
 static inline size_t longtarget_window_pipeline_batch_size()
 {
   static const size_t batchSize = []()
@@ -2779,6 +2791,16 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_calls=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_supported=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_missing_contract_counters=1"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_backend="
+      <<longtargetSimInitialExactFrontierShadowBackendLabel()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_backend_supported=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_backend_disabled_reason="
+      <<longtargetSimInitialExactFrontierShadowBackendDisabledReason()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_supported=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_calls=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_final_compare_supported=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_missing_backend="
+      <<(simCudaInitialExactFrontierShadowGateRequestedRuntime() ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_ordered_digest_check=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_unordered_digest_check=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_min_candidate_check=0"<<endl;
