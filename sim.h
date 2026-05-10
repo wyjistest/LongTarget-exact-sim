@@ -7864,6 +7864,24 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierCpuOrderedDigestAvailableCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierCpuUnorderedDigestAvailableCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierCpuMinCandidateAvailableCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialScanNanoseconds()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9114,6 +9132,30 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
+			inline void recordSimInitialExactFrontierCpuContractBaseline(bool orderedDigest,
+			                                                             bool unorderedDigest,
+			                                                             bool minCandidate)
+			{
+			  if(orderedDigest)
+			  {
+			    simInitialExactFrontierCpuOrderedDigestAvailableCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(unorderedDigest)
+			  {
+			    simInitialExactFrontierCpuUnorderedDigestAvailableCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(minCandidate)
+			  {
+			    simInitialExactFrontierCpuMinCandidateAvailableCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			}
+
 			inline void recordSimInitialScanNanoseconds(uint64_t nanoseconds)
 			{
 			  simInitialScanNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -9984,6 +10026,19 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    simInitialExactFrontierReplayFrontierStateCount().load(std::memory_order_relaxed);
 					  deviceSafeStoreCount =
 					    simInitialExactFrontierReplayDeviceSafeStoreCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialExactFrontierCpuContractBaselineStats(
+					  uint64_t &orderedDigestAvailable,
+					  uint64_t &unorderedDigestAvailable,
+					  uint64_t &minCandidateAvailable)
+					{
+					  orderedDigestAvailable =
+					    simInitialExactFrontierCpuOrderedDigestAvailableCount().load(std::memory_order_relaxed);
+					  unorderedDigestAvailable =
+					    simInitialExactFrontierCpuUnorderedDigestAvailableCount().load(std::memory_order_relaxed);
+					  minCandidateAvailable =
+					    simInitialExactFrontierCpuMinCandidateAvailableCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialCpuFrontierFastApplyStats(
@@ -10972,9 +11027,14 @@ inline bool simCudaCandidateStateVectorsEqualOrdered(
 inline bool simCudaCandidateStateVectorsEqualAsSet(
   const vector<SimScanCudaCandidateState> &lhs,
   const vector<SimScanCudaCandidateState> &rhs);
+inline vector<SimScanCudaCandidateState> simCudaSortedCandidateStatesForShadow(
+  vector<SimScanCudaCandidateState> states);
 inline SimScanCudaFrontierDigest digestSimCudaFrontierStatesForTransducerShadow(
   const vector<SimScanCudaCandidateState> &states,
   int runningMin);
+inline void recordSimInitialExactFrontierCpuContractBaselineIfBenchmarking(
+  const SimKernelContext &context,
+  bool benchmarkEnabled);
 inline void recordSimInitialCandidateContainerShadowIfEnabled(
   const SimKernelContext &context,
   const SimInitialContextApplyBreakdownStats &replayStats);
@@ -15537,6 +15597,38 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  return digest;
 	}
 
+	inline void recordSimInitialExactFrontierCpuContractBaselineIfBenchmarking(
+	  const SimKernelContext &context,
+	  bool benchmarkEnabled)
+	{
+	  if(!benchmarkEnabled)
+	  {
+	    return;
+	  }
+	  vector<SimScanCudaCandidateState> cpuStates;
+	  collectSimContextCandidateStates(context,cpuStates);
+	  const SimScanCudaFrontierDigest orderedDigest =
+	    digestSimCudaFrontierStatesForTransducerShadow(
+	      cpuStates,
+	      static_cast<int>(context.runningMin));
+	  vector<SimScanCudaCandidateState> sortedCpuStates =
+	    simCudaSortedCandidateStatesForShadow(cpuStates);
+	  const SimScanCudaFrontierDigest unorderedDigest =
+	    digestSimCudaFrontierStatesForTransducerShadow(
+	      sortedCpuStates,
+	      static_cast<int>(context.runningMin));
+	  const bool orderedDigestAvailable =
+	    orderedDigest.candidateCount == static_cast<int>(cpuStates.size());
+	  const bool unorderedDigestAvailable =
+	    unorderedDigest.candidateCount == static_cast<int>(sortedCpuStates.size());
+	  const bool minCandidateAvailable =
+	    context.candidateCount == 0 || simMinCandidateIndexByScan(context) >= 0;
+	  recordSimInitialExactFrontierCpuContractBaseline(
+	    orderedDigestAvailable,
+	    unorderedDigestAvailable,
+	    minCandidateAvailable);
+	}
+
 	inline void runSimCudaInitialFrontierTransducerShadowIfEnabled(
 	  const vector<SimScanCudaInitialRunSummary> &summaries,
 	  const SimKernelContext &context)
@@ -16243,6 +16335,9 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		      }
 		    }
 		  }
+		  recordSimInitialExactFrontierCpuContractBaselineIfBenchmarking(
+		    context,
+		    benchmarkEnabled);
 		  runSimCudaInitialFrontierTransducerShadowIfEnabled(summaries,context);
 		}
 

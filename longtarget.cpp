@@ -2431,6 +2431,9 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierReplayRequests = 0;
   uint64_t simInitialExactFrontierReplayFrontierStates = 0;
   uint64_t simInitialExactFrontierReplayDeviceSafeStores = 0;
+  uint64_t simInitialExactFrontierCpuOrderedDigestAvailable = 0;
+  uint64_t simInitialExactFrontierCpuUnorderedDigestAvailable = 0;
+  uint64_t simInitialExactFrontierCpuMinCandidateAvailable = 0;
   getSimInitialReductionStats(simInitialEventsTotal,
                               simInitialRunSummariesTotal,
                               simInitialSummaryBytesD2H,
@@ -2471,6 +2474,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	  getSimInitialExactFrontierReplayStats(simInitialExactFrontierReplayRequests,
 	                                        simInitialExactFrontierReplayFrontierStates,
 	                                        simInitialExactFrontierReplayDeviceSafeStores);
+	  getSimInitialExactFrontierCpuContractBaselineStats(
+	    simInitialExactFrontierCpuOrderedDigestAvailable,
+	    simInitialExactFrontierCpuUnorderedDigestAvailable,
+	    simInitialExactFrontierCpuMinCandidateAvailable);
 	  SimInitialCpuFrontierFastApplyTelemetry simInitialCpuFrontierFastApplyTelemetry;
 	  getSimInitialCpuFrontierFastApplyStats(simInitialCpuFrontierFastApplyTelemetry);
 	  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
@@ -2758,6 +2765,15 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_calls=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_supported=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_missing_contract_counters=1"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_ordered_digest_check=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_unordered_digest_check=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_min_candidate_check=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_ordered_digest_available="
+      <<(simInitialExactFrontierCpuOrderedDigestAvailable > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_unordered_digest_available="
+      <<(simInitialExactFrontierCpuUnorderedDigestAvailable > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_contract_cpu_min_candidate_available="
+      <<(simInitialExactFrontierCpuMinCandidateAvailable > 0 ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_proposal_materialize_backend="<<simProposalMaterializeBackend<<endl;
   cerr<<"benchmark.sim_proposal_all_candidate_states_total="<<simProposalAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_proposal_bytes_d2h="<<simProposalBytesD2H<<endl;
