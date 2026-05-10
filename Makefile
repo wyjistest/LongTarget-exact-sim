@@ -619,6 +619,9 @@ SIM_INITIAL_CHUNKED_HANDOFF_TEST_SOURCES := tests/test_sim_initial_chunked_hando
 SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET ?= tests/test_sim_initial_exact_frontier_replay
 SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_SOURCES := tests/test_sim_initial_exact_frontier_replay.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
+SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_TARGET ?= tests/test_sim_initial_exact_frontier_one_chunk_compare
+SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_SOURCES := tests/test_sim_initial_exact_frontier_one_chunk_compare.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
+
 SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET ?= tests/test_sim_initial_cpu_frontier_fast_apply
 SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_SOURCES := tests/test_sim_initial_cpu_frontier_fast_apply.cpp cuda/sim_scan_cuda_stub.cpp cuda/sim_traceback_cuda_stub.cpp cuda/sim_locate_cuda_stub.cpp
 
@@ -696,6 +699,8 @@ build-sim-initial-chunked-handoff-test: $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGE
 
 build-sim-initial-exact-frontier-replay-test: $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET)
 
+build-sim-initial-exact-frontier-one-chunk-compare-test: $(SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_TARGET)
+
 build-sim-initial-cpu-frontier-fast-apply-test: $(SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET)
 
 build-sim-frontier-epoch-oracle-test: $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET)
@@ -768,6 +773,9 @@ $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET): $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_S
 
 $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET): $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_TARGET): $(SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_SOURCES) sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SIM_FRONTIER_EPOCH_ORACLE_TEST_TARGET): $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) tests/sim_frontier_epoch_oracle_helpers.h sim.h cuda/sim_scan_cuda.h cuda/sim_traceback_cuda.h stats.h rules.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_FRONTIER_EPOCH_ORACLE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -874,6 +882,9 @@ check-sim-initial-chunked-handoff: $(SIM_INITIAL_CHUNKED_HANDOFF_TEST_TARGET)
 
 check-sim-initial-exact-frontier-replay: $(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET)
 	./$(SIM_INITIAL_EXACT_FRONTIER_REPLAY_TEST_TARGET)
+
+check-sim-initial-exact-frontier-one-chunk-compare: $(SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_TARGET)
+	./$(SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_COMPARE_TEST_TARGET)
 
 check-sim-initial-cpu-frontier-fast-apply: $(SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET)
 	./$(SIM_INITIAL_CPU_FRONTIER_FAST_APPLY_TEST_TARGET)

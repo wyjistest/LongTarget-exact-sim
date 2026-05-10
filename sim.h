@@ -15957,6 +15957,89 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    simCudaSortedCandidateStatesForShadow(rhs));
 	}
 
+	struct SimInitialExactFrontierOneChunkSnapshot
+	{
+	  vector<SimScanCudaCandidateState> orderedCandidates;
+	  SimScanCudaFrontierDigest orderedDigest;
+	  SimScanCudaFrontierDigest unorderedDigest;
+	  int runningMin;
+	  int minCandidateScore;
+	  bool firstMaxTieAvailable;
+	  bool safeStoreDigestAvailable;
+	  uint64_t safeStoreDigest;
+	  bool safeStoreEpochAvailable;
+	  uint64_t safeStoreEpoch;
+	};
+
+	struct SimInitialExactFrontierOneChunkCompareResult
+	{
+	  enum
+	  {
+	    CANDIDATE_DIGEST = 1u << 0,
+	    CANDIDATE_VALUE = 1u << 1,
+	    MIN_CANDIDATE = 1u << 2,
+	    FIRST_MAX_TIE = 1u << 3,
+	    SAFE_STORE_DIGEST = 1u << 4,
+	    SAFE_STORE_EPOCH = 1u << 5
+	  };
+
+	  SimInitialExactFrontierOneChunkCompareResult() : mismatchMask(0) {}
+
+	  uint32_t mismatchMask;
+
+	  bool matches() const
+	  {
+	    return mismatchMask == 0;
+	  }
+	};
+
+	inline bool simInitialExactFrontierDigestEqual(
+	  const SimScanCudaFrontierDigest &lhs,
+	  const SimScanCudaFrontierDigest &rhs)
+	{
+	  return memcmp(&lhs,&rhs,sizeof(SimScanCudaFrontierDigest)) == 0;
+	}
+
+	inline void refreshSimInitialExactFrontierOneChunkSnapshotDigests(
+	  SimInitialExactFrontierOneChunkSnapshot &snapshot)
+	{
+	  snapshot.orderedDigest =
+	    digestSimCudaFrontierStatesForTransducerShadow(
+	      snapshot.orderedCandidates,
+	      snapshot.runningMin);
+	  snapshot.unorderedDigest =
+	    digestSimCudaFrontierStatesForTransducerShadow(
+	      simCudaSortedCandidateStatesForShadow(snapshot.orderedCandidates),
+	      snapshot.runningMin);
+	}
+
+	inline SimInitialExactFrontierOneChunkCompareResult
+	compareSimInitialExactFrontierOneChunkSnapshots(
+	  const SimInitialExactFrontierOneChunkSnapshot &cpu,
+	  const SimInitialExactFrontierOneChunkSnapshot &shadow)
+	{
+	  SimInitialExactFrontierOneChunkCompareResult result;
+	  if(!simInitialExactFrontierDigestEqual(cpu.orderedDigest,shadow.orderedDigest) ||
+	     !simInitialExactFrontierDigestEqual(cpu.unorderedDigest,shadow.unorderedDigest))
+	    result.mismatchMask |= SimInitialExactFrontierOneChunkCompareResult::CANDIDATE_DIGEST;
+	  if(!simCudaCandidateStateVectorsEqualOrdered(cpu.orderedCandidates,shadow.orderedCandidates) ||
+	     !simCudaCandidateStateVectorsEqualAsSet(cpu.orderedCandidates,shadow.orderedCandidates))
+	    result.mismatchMask |= SimInitialExactFrontierOneChunkCompareResult::CANDIDATE_VALUE;
+	  if(cpu.minCandidateScore != shadow.minCandidateScore)
+	    result.mismatchMask |= SimInitialExactFrontierOneChunkCompareResult::MIN_CANDIDATE;
+	  if(cpu.firstMaxTieAvailable != shadow.firstMaxTieAvailable)
+	    result.mismatchMask |= SimInitialExactFrontierOneChunkCompareResult::FIRST_MAX_TIE;
+	  if(cpu.safeStoreDigestAvailable != shadow.safeStoreDigestAvailable ||
+	     (cpu.safeStoreDigestAvailable &&
+	      cpu.safeStoreDigest != shadow.safeStoreDigest))
+	    result.mismatchMask |= SimInitialExactFrontierOneChunkCompareResult::SAFE_STORE_DIGEST;
+	  if(cpu.safeStoreEpochAvailable != shadow.safeStoreEpochAvailable ||
+	     (cpu.safeStoreEpochAvailable &&
+	      cpu.safeStoreEpoch != shadow.safeStoreEpoch))
+	    result.mismatchMask |= SimInitialExactFrontierOneChunkCompareResult::SAFE_STORE_EPOCH;
+	  return result;
+	}
+
 	inline SimInitialCandidateContainerShadowStats
 	runSimInitialCandidateContainerShadowEstimator(
 	  const SimKernelContext &context,

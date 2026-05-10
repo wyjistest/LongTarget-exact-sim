@@ -2798,7 +2798,11 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<longtargetSimInitialExactFrontierShadowBackendDisabledReason()<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_supported=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_calls=0"<<endl;
-  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_final_compare_supported=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_final_compare_supported=1"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_replay_backend_supported=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_compare_calls=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_compare_disabled_reason="
+      <<longtargetSimInitialExactFrontierShadowBackendDisabledReason()<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_missing_backend="
       <<(simCudaInitialExactFrontierShadowGateRequestedRuntime() ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_ordered_digest_check=0"<<endl;
