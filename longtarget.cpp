@@ -373,6 +373,12 @@ static inline string longtargetSimInitialReplayAuthorityLabel()
   return "cpu";
 }
 
+static inline const char *longtargetSimInitialExactFrontierShadowGateDisabledReason()
+{
+  return simCudaInitialExactFrontierShadowGateRequestedRuntime() ?
+         "missing_contract_counters" : "env_off";
+}
+
 static inline size_t longtarget_window_pipeline_batch_size()
 {
   static const size_t batchSize = []()
@@ -2743,6 +2749,15 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialOrderedSegmentedV3ShadowCandidateCountMismatches<<endl;
   cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_candidate_value_mismatches="
       <<simInitialOrderedSegmentedV3ShadowCandidateValueMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_requested="
+      <<(simCudaInitialExactFrontierShadowGateRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_active=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_authority=cpu"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_disabled_reason="
+      <<longtargetSimInitialExactFrontierShadowGateDisabledReason()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_calls=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_supported=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_gate_missing_contract_counters=1"<<endl;
   cerr<<"benchmark.sim_proposal_materialize_backend="<<simProposalMaterializeBackend<<endl;
   cerr<<"benchmark.sim_proposal_all_candidate_states_total="<<simProposalAllCandidateStatesTotal<<endl;
   cerr<<"benchmark.sim_proposal_bytes_d2h="<<simProposalBytesD2H<<endl;

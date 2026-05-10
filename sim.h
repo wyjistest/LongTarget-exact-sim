@@ -3428,6 +3428,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				         !simCudaProposalLoopEnabledRuntime();
 				}
 
+				inline bool simCudaInitialExactFrontierShadowGateRequestedRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_SHADOW_GATE");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
 				inline int simCudaInitialChunkedHandoffChunkRowsRuntime()
 				{
 				  const int defaultChunkRows = 256;

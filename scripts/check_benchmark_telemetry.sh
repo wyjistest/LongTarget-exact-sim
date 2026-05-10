@@ -19,6 +19,7 @@ unset LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND
 unset LONGTARGET_SIM_CUDA_INITIAL_HASH_REDUCE
 unset LONGTARGET_SIM_CUDA_INITIAL_ORDERED_SEGMENTED_V3_SHADOW
 unset LONGTARGET_SIM_CUDA_INITIAL_FRONTIER_TRANSDUCER_SHADOW
+unset LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_SHADOW_GATE
 unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF
 unset LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK
 unset LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_RING_SLOTS
@@ -409,6 +410,13 @@ grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_running_min_mismat
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_safe_store_mismatches=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_candidate_count_mismatches=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_candidate_value_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_requested=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_active=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_authority=cpu$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_disabled_reason=env_off$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_calls=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_supported=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_gate_missing_contract_counters=1$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_scan_diag_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_scan_online_reduce_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_scan_wait_seconds=[0-9]+(\.[0-9]+)?$' "$STDERR_LOG"
