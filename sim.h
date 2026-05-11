@@ -3470,6 +3470,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return env != NULL && env[0] != '\0' && env[0] != '0';
 				}
 
+				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowAllowFullRequestRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_ALLOW_FULL_REQUEST");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowRequestIndexRuntime();
+
 				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowLargePrefixEligibleRuntime()
 				{
 				  const char *mode = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MODE");
@@ -3477,8 +3485,26 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				         mode != NULL && strcmp(mode,"request") == 0;
 				}
 
+				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowFullRequestEligibleRuntime()
+				{
+				  const char *mode = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MODE");
+				  return simCudaInitialExactFrontierOneChunkBoundedShadowAllowFullRequestRuntime() &&
+				         mode != NULL && strcmp(mode,"request") == 0 &&
+				         simCudaInitialExactFrontierOneChunkBoundedShadowRequestIndexRuntime() !=
+				           numeric_limits<uint64_t>::max();
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowAbsoluteHardCapSummariesRuntime()
+				{
+				  return static_cast<uint64_t>(2097152);
+				}
+
 				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowHardCapSummariesRuntime()
 				{
+				  if(simCudaInitialExactFrontierOneChunkBoundedShadowFullRequestEligibleRuntime())
+				  {
+				    return simCudaInitialExactFrontierOneChunkBoundedShadowAbsoluteHardCapSummariesRuntime();
+				  }
 				  return simCudaInitialExactFrontierOneChunkBoundedShadowLargePrefixEligibleRuntime() ?
 				    static_cast<uint64_t>(1048576) : static_cast<uint64_t>(65536);
 				}
