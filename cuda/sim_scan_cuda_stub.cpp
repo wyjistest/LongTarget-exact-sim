@@ -439,6 +439,37 @@ bool sim_scan_cuda_precombine_initial_safe_store_resident(
   return false;
 }
 
+bool sim_scan_cuda_prune_initial_safe_store_gpu_precombine_shadow(
+  const vector<SimScanCudaCandidateState> &states,
+  const vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  (void)states;
+  (void)finalCandidates;
+  (void)runningMin;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
 bool sim_scan_cuda_download_persistent_safe_candidate_state_store_for_shadow(
   const SimCudaPersistentSafeStoreHandle &handle,
   vector<SimScanCudaCandidateState> *outStates,
