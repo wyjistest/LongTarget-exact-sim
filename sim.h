@@ -3442,6 +3442,29 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return env != NULL && env[0] != '\0' && env[0] != '0';
 				}
 
+				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowRequestedRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_SHADOW");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_MAX_SUMMARIES");
+				  if(env == NULL || env[0] == '\0')
+				  {
+				    return 0;
+				  }
+				  char *end = NULL;
+				  unsigned long long parsed = strtoull(env,&end,10);
+				  if(end == env || parsed == 0)
+				  {
+				    return 0;
+				  }
+				  const uint64_t hardMax = 65536;
+				  return parsed > hardMax ? hardMax : static_cast<uint64_t>(parsed);
+				}
+
 				inline int simCudaInitialChunkedHandoffChunkRowsRuntime()
 				{
 				  const int defaultChunkRows = 256;
@@ -7962,6 +7985,78 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowInputSummaryCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowProcessedSummaryCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowTruncatedCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowH2DBytes()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowD2HBytes()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowCandidateDigestMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowMinCandidateMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowFirstMaxTieMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowTotalMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialScanNanoseconds()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9303,6 +9398,39 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    std::memory_order_relaxed);
 			}
 
+			inline void recordSimInitialExactFrontierOneChunkBoundedShadow(
+			  uint64_t inputSummaries,
+			  uint64_t processedSummaries,
+			  bool truncated,
+			  uint64_t nanoseconds,
+			  uint64_t h2dBytes,
+			  uint64_t d2hBytes,
+			  uint32_t mismatchMask)
+			{
+			  simInitialExactFrontierOneChunkBoundedShadowCallCount().fetch_add(1, std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkBoundedShadowInputSummaryCount().fetch_add(inputSummaries, std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkBoundedShadowProcessedSummaryCount().fetch_add(processedSummaries, std::memory_order_relaxed);
+			  if(truncated)
+			  {
+			    simInitialExactFrontierOneChunkBoundedShadowTruncatedCount().fetch_add(1, std::memory_order_relaxed);
+			  }
+			  simInitialExactFrontierOneChunkBoundedShadowNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkBoundedShadowH2DBytes().fetch_add(h2dBytes, std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkBoundedShadowD2HBytes().fetch_add(d2hBytes, std::memory_order_relaxed);
+			  if((mismatchMask & (1u << 0)) != 0)
+			    simInitialExactFrontierOneChunkBoundedShadowCandidateDigestMismatches().fetch_add(1, std::memory_order_relaxed);
+			  if((mismatchMask & (1u << 2)) != 0)
+			    simInitialExactFrontierOneChunkBoundedShadowMinCandidateMismatches().fetch_add(1, std::memory_order_relaxed);
+			  if((mismatchMask & (1u << 3)) != 0)
+			    simInitialExactFrontierOneChunkBoundedShadowFirstMaxTieMismatches().fetch_add(1, std::memory_order_relaxed);
+			  if((mismatchMask & (1u << 4)) != 0)
+			    simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches().fetch_add(1, std::memory_order_relaxed);
+			  if(mismatchMask != 0)
+			  {
+			    simInitialExactFrontierOneChunkBoundedShadowTotalMismatches().fetch_add(1, std::memory_order_relaxed);
+			  }
+			}
+
 			inline void recordSimInitialScanNanoseconds(uint64_t nanoseconds)
 			{
 			  simInitialScanNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -10228,6 +10356,34 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					    simInitialExactFrontierOneChunkInputAdapterDigestValue().load(std::memory_order_relaxed);
 					  unsupportedRecords =
 					    simInitialExactFrontierOneChunkInputAdapterUnsupportedRecordCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialExactFrontierOneChunkBoundedShadowStats(
+					  uint64_t &callCount,
+					  uint64_t &inputSummaries,
+					  uint64_t &processedSummaries,
+					  uint64_t &truncatedCount,
+					  uint64_t &nanoseconds,
+					  uint64_t &h2dBytes,
+					  uint64_t &d2hBytes,
+					  uint64_t &candidateDigestMismatches,
+					  uint64_t &minCandidateMismatches,
+					  uint64_t &firstMaxTieMismatches,
+					  uint64_t &safeStoreDigestMismatches,
+					  uint64_t &totalMismatches)
+					{
+					  callCount = simInitialExactFrontierOneChunkBoundedShadowCallCount().load(std::memory_order_relaxed);
+					  inputSummaries = simInitialExactFrontierOneChunkBoundedShadowInputSummaryCount().load(std::memory_order_relaxed);
+					  processedSummaries = simInitialExactFrontierOneChunkBoundedShadowProcessedSummaryCount().load(std::memory_order_relaxed);
+					  truncatedCount = simInitialExactFrontierOneChunkBoundedShadowTruncatedCount().load(std::memory_order_relaxed);
+					  nanoseconds = simInitialExactFrontierOneChunkBoundedShadowNanoseconds().load(std::memory_order_relaxed);
+					  h2dBytes = simInitialExactFrontierOneChunkBoundedShadowH2DBytes().load(std::memory_order_relaxed);
+					  d2hBytes = simInitialExactFrontierOneChunkBoundedShadowD2HBytes().load(std::memory_order_relaxed);
+					  candidateDigestMismatches = simInitialExactFrontierOneChunkBoundedShadowCandidateDigestMismatches().load(std::memory_order_relaxed);
+					  minCandidateMismatches = simInitialExactFrontierOneChunkBoundedShadowMinCandidateMismatches().load(std::memory_order_relaxed);
+					  firstMaxTieMismatches = simInitialExactFrontierOneChunkBoundedShadowFirstMaxTieMismatches().load(std::memory_order_relaxed);
+					  safeStoreDigestMismatches = simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches().load(std::memory_order_relaxed);
+					  totalMismatches = simInitialExactFrontierOneChunkBoundedShadowTotalMismatches().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialCpuFrontierFastApplyStats(
@@ -16154,6 +16310,91 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  return result;
 	}
 
+	inline SimInitialExactFrontierOneChunkSnapshot
+	makeSimInitialExactFrontierOneChunkSnapshotForBoundedShadow(
+	  const vector<SimScanCudaCandidateState> &states,
+	  int runningMin)
+	{
+	  SimInitialExactFrontierOneChunkSnapshot snapshot;
+	  snapshot.orderedCandidates = states;
+	  snapshot.runningMin = runningMin;
+	  snapshot.minCandidateScore = runningMin;
+	  snapshot.firstMaxTieAvailable = true;
+	  snapshot.safeStoreDigestAvailable = false;
+	  snapshot.safeStoreDigest = 0;
+	  snapshot.safeStoreEpochAvailable = false;
+	  snapshot.safeStoreEpoch = 0;
+	  refreshSimInitialExactFrontierOneChunkSnapshotDigests(snapshot);
+	  return snapshot;
+	}
+
+	inline void runSimInitialExactFrontierOneChunkBoundedShadowIfRequested(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  bool benchmarkEnabled)
+	{
+	  if(!benchmarkEnabled ||
+	     !simCudaInitialExactFrontierOneChunkBoundedShadowRequestedRuntime())
+	  {
+	    return;
+	  }
+	  const uint64_t maxSummaries =
+	    simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime();
+	  if(maxSummaries == 0)
+	  {
+	    return;
+	  }
+	  const size_t prefixCount =
+	    min(static_cast<size_t>(maxSummaries), summaries.size());
+	  vector<SimScanCudaInitialRunSummary> prefix(summaries.begin(),
+	                                             summaries.begin() + prefixCount);
+	  vector<SimScanCudaCandidateState> gpuStates;
+	  int gpuRunningMin = 0;
+	  SimScanCudaInitialReduceReplayStats replayStats;
+	  string shadowError;
+	  const std::chrono::steady_clock::time_point shadowStart =
+	    std::chrono::steady_clock::now();
+	  if(!sim_scan_cuda_reduce_initial_run_summaries_for_test(
+	       prefix,
+	       &gpuStates,
+	       &gpuRunningMin,
+	       &replayStats,
+	       &shadowError))
+	  {
+	    if(simCudaValidateEnabledRuntime() && !shadowError.empty())
+	    {
+	      fprintf(stderr,
+	              "SIM CUDA bounded one-chunk exact frontier shadow failed: %s\n",
+	              shadowError.c_str());
+	    }
+	    return;
+	  }
+	  const uint64_t shadowNanoseconds = simElapsedNanoseconds(shadowStart);
+	  vector<SimScanCudaCandidateState> cpuStates;
+	  int cpuRunningMin = 0;
+	  reduceSimCudaInitialRunSummariesToCandidateStates(prefix,
+	                                                    cpuStates,
+	                                                    cpuRunningMin);
+	  const SimInitialExactFrontierOneChunkCompareResult result =
+	    compareSimInitialExactFrontierOneChunkSnapshots(
+	      makeSimInitialExactFrontierOneChunkSnapshotForBoundedShadow(
+	        cpuStates,
+	        cpuRunningMin),
+	      makeSimInitialExactFrontierOneChunkSnapshotForBoundedShadow(
+	        gpuStates,
+	        gpuRunningMin));
+	  recordSimInitialExactFrontierOneChunkBoundedShadow(
+	    static_cast<uint64_t>(summaries.size()),
+	    static_cast<uint64_t>(prefix.size()),
+	    prefix.size() < summaries.size(),
+	    shadowNanoseconds,
+	    static_cast<uint64_t>(prefix.size()) *
+	      static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)),
+	    static_cast<uint64_t>(sizeof(int) * 2 + sizeof(unsigned long long) * 3) +
+	      static_cast<uint64_t>(gpuStates.size()) *
+	        static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)),
+	    result.mismatchMask);
+	}
+
 	inline SimInitialCandidateContainerShadowStats
 	runSimInitialCandidateContainerShadowEstimator(
 	  const SimKernelContext &context,
@@ -16517,6 +16758,9 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		  bool hostSafeStoreAlreadyPruned)
 		{
 		  recordSimInitialExactFrontierOneChunkInputAdapterIfRequested(
+		    summaries,
+		    benchmarkEnabled);
+		  runSimInitialExactFrontierOneChunkBoundedShadowIfRequested(
 		    summaries,
 		    benchmarkEnabled);
 		  const bool maintainSafeStore =
