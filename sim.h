@@ -3465,6 +3465,66 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return parsed > hardMax ? hardMax : static_cast<uint64_t>(parsed);
 				}
 
+				enum SimInitialExactFrontierOneChunkBoundedRangeMode
+				{
+				  SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_PREFIX = 0,
+				  SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_TAIL = 1,
+				  SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MIDDLE = 2,
+				  SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST = 3,
+				  SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_OFFSET = 4,
+				  SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_INVALID = 5
+				};
+
+				inline SimInitialExactFrontierOneChunkBoundedRangeMode simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MODE");
+				  if(env == NULL || env[0] == '\0' || strcmp(env,"prefix") == 0)
+				    return SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_PREFIX;
+				  if(strcmp(env,"tail") == 0)
+				    return SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_TAIL;
+				  if(strcmp(env,"middle") == 0)
+				    return SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MIDDLE;
+				  if(strcmp(env,"request") == 0)
+				    return SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST;
+				  if(strcmp(env,"offset") == 0)
+				    return SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_OFFSET;
+				  return SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_INVALID;
+				}
+
+				inline const char *simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeName(
+				  SimInitialExactFrontierOneChunkBoundedRangeMode mode)
+				{
+				  switch(mode)
+				  {
+				    case SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_PREFIX: return "prefix";
+				    case SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_TAIL: return "tail";
+				    case SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MIDDLE: return "middle";
+				    case SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST: return "request";
+				    case SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_OFFSET: return "offset";
+				    default: return "invalid";
+				  }
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowRequestIndexRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_REQUEST_INDEX");
+				  if(env == NULL || env[0] == '\0')
+				    return numeric_limits<uint64_t>::max();
+				  char *end = NULL;
+				  unsigned long long parsed = strtoull(env,&end,10);
+				  return end == env ? numeric_limits<uint64_t>::max() : static_cast<uint64_t>(parsed);
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowStartOffsetRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_START_OFFSET");
+				  if(env == NULL || env[0] == '\0')
+				    return 0;
+				  char *end = NULL;
+				  unsigned long long parsed = strtoull(env,&end,10);
+				  return end == env ? 0 : static_cast<uint64_t>(parsed);
+				}
+
 				inline int simCudaInitialChunkedHandoffChunkRowsRuntime()
 				{
 				  const int defaultChunkRows = 256;
@@ -8009,6 +8069,36 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowRangeStartMin()
+			{
+			  static std::atomic<uint64_t> value(numeric_limits<uint64_t>::max());
+			  return value;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowRangeStartMax()
+			{
+			  static std::atomic<uint64_t> value(0);
+			  return value;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowRangeLengthMax()
+			{
+			  static std::atomic<uint64_t> value(0);
+			  return value;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowStandaloneSubrangeCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowRequestOrdinal()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkBoundedShadowNanoseconds()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9398,9 +9488,34 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    std::memory_order_relaxed);
 			}
 
+			inline void recordSimAtomicMin(std::atomic<uint64_t> &target,
+			                               uint64_t value)
+			{
+			  uint64_t current = target.load(std::memory_order_relaxed);
+			  while(value < current &&
+			        !target.compare_exchange_weak(current,
+			                                      value,
+			                                      std::memory_order_relaxed,
+			                                      std::memory_order_relaxed)) {}
+			}
+
+			inline void recordSimAtomicMax(std::atomic<uint64_t> &target,
+			                               uint64_t value)
+			{
+			  uint64_t current = target.load(std::memory_order_relaxed);
+			  while(value > current &&
+			        !target.compare_exchange_weak(current,
+			                                      value,
+			                                      std::memory_order_relaxed,
+			                                      std::memory_order_relaxed)) {}
+			}
+
 			inline void recordSimInitialExactFrontierOneChunkBoundedShadow(
 			  uint64_t inputSummaries,
 			  uint64_t processedSummaries,
+			  uint64_t rangeStart,
+			  uint64_t rangeLength,
+			  bool standaloneSubrange,
 			  bool truncated,
 			  uint64_t nanoseconds,
 			  uint64_t h2dBytes,
@@ -9410,6 +9525,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  simInitialExactFrontierOneChunkBoundedShadowCallCount().fetch_add(1, std::memory_order_relaxed);
 			  simInitialExactFrontierOneChunkBoundedShadowInputSummaryCount().fetch_add(inputSummaries, std::memory_order_relaxed);
 			  simInitialExactFrontierOneChunkBoundedShadowProcessedSummaryCount().fetch_add(processedSummaries, std::memory_order_relaxed);
+			  recordSimAtomicMin(simInitialExactFrontierOneChunkBoundedShadowRangeStartMin(),rangeStart);
+			  recordSimAtomicMax(simInitialExactFrontierOneChunkBoundedShadowRangeStartMax(),rangeStart);
+			  recordSimAtomicMax(simInitialExactFrontierOneChunkBoundedShadowRangeLengthMax(),rangeLength);
+			  if(standaloneSubrange)
+			  {
+			    simInitialExactFrontierOneChunkBoundedShadowStandaloneSubrangeCount().fetch_add(1, std::memory_order_relaxed);
+			  }
 			  if(truncated)
 			  {
 			    simInitialExactFrontierOneChunkBoundedShadowTruncatedCount().fetch_add(1, std::memory_order_relaxed);
@@ -10363,6 +10485,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  uint64_t &inputSummaries,
 					  uint64_t &processedSummaries,
 					  uint64_t &truncatedCount,
+					  uint64_t &rangeStartMin,
+					  uint64_t &rangeStartMax,
+					  uint64_t &rangeLengthMax,
+					  uint64_t &standaloneSubrangeCount,
 					  uint64_t &nanoseconds,
 					  uint64_t &h2dBytes,
 					  uint64_t &d2hBytes,
@@ -10376,6 +10502,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  inputSummaries = simInitialExactFrontierOneChunkBoundedShadowInputSummaryCount().load(std::memory_order_relaxed);
 					  processedSummaries = simInitialExactFrontierOneChunkBoundedShadowProcessedSummaryCount().load(std::memory_order_relaxed);
 					  truncatedCount = simInitialExactFrontierOneChunkBoundedShadowTruncatedCount().load(std::memory_order_relaxed);
+					  const uint64_t recordedRangeStartMin =
+					    simInitialExactFrontierOneChunkBoundedShadowRangeStartMin().load(std::memory_order_relaxed);
+					  rangeStartMin = recordedRangeStartMin == numeric_limits<uint64_t>::max() ? 0 : recordedRangeStartMin;
+					  rangeStartMax = simInitialExactFrontierOneChunkBoundedShadowRangeStartMax().load(std::memory_order_relaxed);
+					  rangeLengthMax = simInitialExactFrontierOneChunkBoundedShadowRangeLengthMax().load(std::memory_order_relaxed);
+					  standaloneSubrangeCount = simInitialExactFrontierOneChunkBoundedShadowStandaloneSubrangeCount().load(std::memory_order_relaxed);
 					  nanoseconds = simInitialExactFrontierOneChunkBoundedShadowNanoseconds().load(std::memory_order_relaxed);
 					  h2dBytes = simInitialExactFrontierOneChunkBoundedShadowH2DBytes().load(std::memory_order_relaxed);
 					  d2hBytes = simInitialExactFrontierOneChunkBoundedShadowD2HBytes().load(std::memory_order_relaxed);
@@ -16343,10 +16475,62 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  {
 	    return;
 	  }
-	  const size_t prefixCount =
+	  const SimInitialExactFrontierOneChunkBoundedRangeMode rangeMode =
+	    simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeRuntime();
+	  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_INVALID)
+	  {
+	    return;
+	  }
+	  const uint64_t requestIndex =
+	    simCudaInitialExactFrontierOneChunkBoundedShadowRequestIndexRuntime();
+	  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST &&
+	     requestIndex == numeric_limits<uint64_t>::max())
+	  {
+	    return;
+	  }
+	  const uint64_t requestOrdinal =
+	    simInitialExactFrontierOneChunkBoundedShadowRequestOrdinal().fetch_add(
+	      1,
+	      std::memory_order_relaxed);
+	  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST &&
+	     requestOrdinal != requestIndex)
+	  {
+	    return;
+	  }
+	  const size_t maxRangeCount =
 	    min(static_cast<size_t>(maxSummaries), summaries.size());
-	  vector<SimScanCudaInitialRunSummary> prefix(summaries.begin(),
-	                                             summaries.begin() + prefixCount);
+	  size_t rangeStart = 0;
+	  size_t rangeCount = maxRangeCount;
+	  bool standaloneSubrange = false;
+	  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_TAIL)
+	  {
+	    rangeStart = summaries.size() > maxRangeCount ?
+	      summaries.size() - maxRangeCount : 0;
+	    standaloneSubrange = rangeStart > 0;
+	  }
+	  else if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MIDDLE)
+	  {
+	    rangeStart = summaries.size() > maxRangeCount ?
+	      (summaries.size() - maxRangeCount) / 2 : 0;
+	    standaloneSubrange = rangeStart > 0;
+	  }
+	  else if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_OFFSET)
+	  {
+	    const uint64_t startOffset =
+	      simCudaInitialExactFrontierOneChunkBoundedShadowStartOffsetRuntime();
+	    rangeStart = startOffset < static_cast<uint64_t>(summaries.size()) ?
+	      static_cast<size_t>(startOffset) : summaries.size();
+	    rangeCount = min(static_cast<size_t>(maxSummaries),
+	                     summaries.size() - rangeStart);
+	    standaloneSubrange = rangeStart > 0;
+	  }
+	  if(rangeCount == 0)
+	  {
+	    return;
+	  }
+	  vector<SimScanCudaInitialRunSummary> range(
+	    summaries.begin() + rangeStart,
+	    summaries.begin() + rangeStart + rangeCount);
 	  vector<SimScanCudaCandidateState> gpuStates;
 	  int gpuRunningMin = 0;
 	  SimScanCudaInitialReduceReplayStats replayStats;
@@ -16354,7 +16538,7 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  const std::chrono::steady_clock::time_point shadowStart =
 	    std::chrono::steady_clock::now();
 	  if(!sim_scan_cuda_reduce_initial_run_summaries_for_test(
-	       prefix,
+	       range,
 	       &gpuStates,
 	       &gpuRunningMin,
 	       &replayStats,
@@ -16371,7 +16555,7 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  const uint64_t shadowNanoseconds = simElapsedNanoseconds(shadowStart);
 	  vector<SimScanCudaCandidateState> cpuStates;
 	  int cpuRunningMin = 0;
-	  reduceSimCudaInitialRunSummariesToCandidateStates(prefix,
+	  reduceSimCudaInitialRunSummariesToCandidateStates(range,
 	                                                    cpuStates,
 	                                                    cpuRunningMin);
 	  const SimInitialExactFrontierOneChunkCompareResult result =
@@ -16384,10 +16568,13 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	        gpuRunningMin));
 	  recordSimInitialExactFrontierOneChunkBoundedShadow(
 	    static_cast<uint64_t>(summaries.size()),
-	    static_cast<uint64_t>(prefix.size()),
-	    prefix.size() < summaries.size(),
+	    static_cast<uint64_t>(range.size()),
+	    static_cast<uint64_t>(rangeStart),
+	    static_cast<uint64_t>(range.size()),
+	    standaloneSubrange,
+	    rangeStart > 0 || range.size() < summaries.size(),
 	    shadowNanoseconds,
-	    static_cast<uint64_t>(prefix.size()) *
+	    static_cast<uint64_t>(range.size()) *
 	      static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)),
 	    static_cast<uint64_t>(sizeof(int) * 2 + sizeof(unsigned long long) * 3) +
 	      static_cast<uint64_t>(gpuStates.size()) *

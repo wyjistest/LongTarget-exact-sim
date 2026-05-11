@@ -402,7 +402,37 @@ static inline const char *longtargetSimInitialExactFrontierOneChunkBoundedShadow
   {
     return "max_summaries_not_set";
   }
+  const SimInitialExactFrontierOneChunkBoundedRangeMode rangeMode =
+    simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeRuntime();
+  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_INVALID)
+  {
+    return "unsupported_range_mode";
+  }
+  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST &&
+     simCudaInitialExactFrontierOneChunkBoundedShadowRequestIndexRuntime() ==
+       numeric_limits<uint64_t>::max())
+  {
+    return "request_index_not_set";
+  }
+  if(rangeMode == SIM_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_REQUEST &&
+     boundedShadowCalls == 0)
+  {
+    return "request_index_not_found";
+  }
   return boundedShadowCalls > 0 ? "none" : "missing_ordered_summary_stream";
+}
+
+static inline string longtargetSimInitialExactFrontierOneChunkBoundedShadowRequestIndex()
+{
+  const uint64_t requestIndex =
+    simCudaInitialExactFrontierOneChunkBoundedShadowRequestIndexRuntime();
+  if(requestIndex == numeric_limits<uint64_t>::max())
+  {
+    return "all";
+  }
+  ostringstream out;
+  out<<requestIndex;
+  return out.str();
 }
 
 static inline size_t longtarget_window_pipeline_batch_size()
@@ -2475,6 +2505,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierOneChunkBoundedShadowInputSummaries = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowProcessedSummaries = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowTruncatedCount = 0;
+  uint64_t simInitialExactFrontierOneChunkBoundedShadowRangeStartMin = 0;
+  uint64_t simInitialExactFrontierOneChunkBoundedShadowRangeStartMax = 0;
+  uint64_t simInitialExactFrontierOneChunkBoundedShadowRangeLengthMax = 0;
+  uint64_t simInitialExactFrontierOneChunkBoundedShadowStandaloneSubrangeCount = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowNanoseconds = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowH2DBytes = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowD2HBytes = 0;
@@ -2546,6 +2580,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	    simInitialExactFrontierOneChunkBoundedShadowInputSummaries,
 	    simInitialExactFrontierOneChunkBoundedShadowProcessedSummaries,
 	    simInitialExactFrontierOneChunkBoundedShadowTruncatedCount,
+	    simInitialExactFrontierOneChunkBoundedShadowRangeStartMin,
+	    simInitialExactFrontierOneChunkBoundedShadowRangeStartMax,
+	    simInitialExactFrontierOneChunkBoundedShadowRangeLengthMax,
+	    simInitialExactFrontierOneChunkBoundedShadowStandaloneSubrangeCount,
 	    simInitialExactFrontierOneChunkBoundedShadowNanoseconds,
 	    simInitialExactFrontierOneChunkBoundedShadowH2DBytes,
 	    simInitialExactFrontierOneChunkBoundedShadowD2HBytes,
@@ -2900,10 +2938,29 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialExactFrontierOneChunkBoundedShadowCalls<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_max_summaries="
       <<simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_range_mode="
+      <<simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeName(
+          simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeRuntime())<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_range_start_min="
+      <<simInitialExactFrontierOneChunkBoundedShadowRangeStartMin<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_range_start_max="
+      <<simInitialExactFrontierOneChunkBoundedShadowRangeStartMax<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_range_length_max="
+      <<simInitialExactFrontierOneChunkBoundedShadowRangeLengthMax<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_request_index="
+      <<longtargetSimInitialExactFrontierOneChunkBoundedShadowRequestIndex()<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_input_summaries="
       <<simInitialExactFrontierOneChunkBoundedShadowInputSummaries<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_processed_summaries="
       <<simInitialExactFrontierOneChunkBoundedShadowProcessedSummaries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_coverage_ratio_num="
+      <<simInitialExactFrontierOneChunkBoundedShadowProcessedSummaries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_coverage_ratio_den="
+      <<simInitialExactFrontierOneChunkBoundedShadowInputSummaries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_ranges_tested="
+      <<simInitialExactFrontierOneChunkBoundedShadowCalls<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_standalone_subrange="
+      <<(simInitialExactFrontierOneChunkBoundedShadowStandaloneSubrangeCount > 0 ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_truncated="
       <<(simInitialExactFrontierOneChunkBoundedShadowTruncatedCount > 0 ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_seconds="
