@@ -183,6 +183,11 @@ check-sim-initial-exact-frontier-per-request-shadow-full:
 	LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_PER_REQUEST_SHADOW=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_per_request_shadow_full TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
 	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_per_request_shadow_full EXPECTED_SELECTION_MODE=all EXPECTED_REQUEST_INDEX=none EXPECTED_MAX_REQUESTS=0 EXPECTED_REQUESTS_SELECTED=48 EXPECTED_REQUESTS_SKIPPED=0 EXPECTED_REQUESTS_COMPARED=48 sh ./scripts/check_per_request_shadow_telemetry.sh
 
+check-sim-initial-safe-store-gpu-precombine-shadow:
+	$(MAKE) build-cuda
+	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_SHADOW=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_shadow TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_shadow sh ./scripts/check_initial_safe_store_gpu_precombine_shadow.sh
+
 check-sim-initial-chunked-handoff-matrix:
 	$(MAKE) build-cuda
 	for rows in 1 2 3 4 7 8 16 31 64 127 256 1024; do \
@@ -1125,6 +1130,7 @@ check-longtarget-lite-output:
 		check-sim-initial-chunked-handoff-matrix \
 		build-sim-initial-exact-frontier-replay-test check-sim-initial-exact-frontier-replay \
 		build-sim-initial-cpu-frontier-fast-apply-test check-sim-initial-cpu-frontier-fast-apply \
+		check-sim-initial-safe-store-gpu-precombine-shadow \
 		build-sim-frontier-epoch-oracle-test check-sim-frontier-epoch-oracle \
 		build-sim-frontier-epoch-shadow-test check-sim-frontier-epoch-shadow \
 		build-sim-initial-reduce-semantics-test check-sim-initial-reduce-semantics \
