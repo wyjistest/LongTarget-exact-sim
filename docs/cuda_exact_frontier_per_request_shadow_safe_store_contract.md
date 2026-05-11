@@ -46,3 +46,5 @@ The comparison is shadow-only:
 Epoch comparison needs a host-to-device generation contract that links a CPU
 `hostEpoch` value to the device handle generation being compared. Until that
 exists, treating GPU `telemetryEpoch` as a host epoch would be misleading.
+The detailed epoch-gap inventory is recorded in
+`docs/cuda_exact_frontier_per_request_shadow_epoch_contract_gap.md`.
