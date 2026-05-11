@@ -3448,6 +3448,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return env != NULL && env[0] != '\0' && env[0] != '0';
 				}
 
+				inline bool simCudaInitialExactFrontierPerRequestShadowRequestedRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_PER_REQUEST_SHADOW");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
 				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowRequestedMaxSummariesRuntime()
 				{
 				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_MAX_SUMMARIES");
@@ -8206,6 +8212,78 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowRequestCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowComparedCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowMismatchedRequestCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowProcessedSummaryCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowH2DBytes()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowD2HBytes()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowNanoseconds()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowCandidateDigestMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowCandidateValueMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowMinCandidateMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierPerRequestShadowTotalMismatches()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialScanNanoseconds()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9612,6 +9690,70 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
+			inline void recordSimInitialExactFrontierPerRequestShadowRequest()
+			{
+			  simInitialExactFrontierPerRequestShadowRequestCount().fetch_add(
+			    1,
+			    std::memory_order_relaxed);
+			}
+
+			inline void recordSimInitialExactFrontierPerRequestShadowCompare(
+			  uint64_t processedSummaries,
+			  uint64_t nanoseconds,
+			  uint64_t h2dBytes,
+			  uint64_t d2hBytes,
+			  uint32_t mismatchMask)
+			{
+			  simInitialExactFrontierPerRequestShadowComparedCount().fetch_add(
+			    1,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierPerRequestShadowProcessedSummaryCount().fetch_add(
+			    processedSummaries,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierPerRequestShadowNanoseconds().fetch_add(
+			    nanoseconds,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierPerRequestShadowH2DBytes().fetch_add(
+			    h2dBytes,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierPerRequestShadowD2HBytes().fetch_add(
+			    d2hBytes,
+			    std::memory_order_relaxed);
+			  if((mismatchMask & (1u << 0)) != 0)
+			  {
+			    simInitialExactFrontierPerRequestShadowCandidateDigestMismatches().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if((mismatchMask & (1u << 1)) != 0)
+			  {
+			    simInitialExactFrontierPerRequestShadowCandidateValueMismatches().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if((mismatchMask & (1u << 2)) != 0)
+			  {
+			    simInitialExactFrontierPerRequestShadowMinCandidateMismatches().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if((mismatchMask & (1u << 3)) != 0)
+			  {
+			    simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(mismatchMask != 0)
+			  {
+			    simInitialExactFrontierPerRequestShadowMismatchedRequestCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			    simInitialExactFrontierPerRequestShadowTotalMismatches().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			}
+
 			inline void recordSimInitialScanNanoseconds(uint64_t nanoseconds)
 			{
 			  simInitialScanNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -10575,6 +10717,46 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					  firstMaxTieMismatches = simInitialExactFrontierOneChunkBoundedShadowFirstMaxTieMismatches().load(std::memory_order_relaxed);
 					  safeStoreDigestMismatches = simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches().load(std::memory_order_relaxed);
 					  totalMismatches = simInitialExactFrontierOneChunkBoundedShadowTotalMismatches().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialExactFrontierPerRequestShadowStats(
+					  uint64_t &requestsTotal,
+					  uint64_t &requestsCompared,
+					  uint64_t &requestsMismatched,
+					  uint64_t &processedSummaries,
+					  uint64_t &nanoseconds,
+					  uint64_t &h2dBytes,
+					  uint64_t &d2hBytes,
+					  uint64_t &candidateDigestMismatches,
+					  uint64_t &candidateValueMismatches,
+					  uint64_t &minCandidateMismatches,
+					  uint64_t &firstMaxTieMismatches,
+					  uint64_t &totalMismatches)
+					{
+					  requestsTotal =
+					    simInitialExactFrontierPerRequestShadowRequestCount().load(std::memory_order_relaxed);
+					  requestsCompared =
+					    simInitialExactFrontierPerRequestShadowComparedCount().load(std::memory_order_relaxed);
+					  requestsMismatched =
+					    simInitialExactFrontierPerRequestShadowMismatchedRequestCount().load(std::memory_order_relaxed);
+					  processedSummaries =
+					    simInitialExactFrontierPerRequestShadowProcessedSummaryCount().load(std::memory_order_relaxed);
+					  nanoseconds =
+					    simInitialExactFrontierPerRequestShadowNanoseconds().load(std::memory_order_relaxed);
+					  h2dBytes =
+					    simInitialExactFrontierPerRequestShadowH2DBytes().load(std::memory_order_relaxed);
+					  d2hBytes =
+					    simInitialExactFrontierPerRequestShadowD2HBytes().load(std::memory_order_relaxed);
+					  candidateDigestMismatches =
+					    simInitialExactFrontierPerRequestShadowCandidateDigestMismatches().load(std::memory_order_relaxed);
+					  candidateValueMismatches =
+					    simInitialExactFrontierPerRequestShadowCandidateValueMismatches().load(std::memory_order_relaxed);
+					  minCandidateMismatches =
+					    simInitialExactFrontierPerRequestShadowMinCandidateMismatches().load(std::memory_order_relaxed);
+					  firstMaxTieMismatches =
+					    simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches().load(std::memory_order_relaxed);
+					  totalMismatches =
+					    simInitialExactFrontierPerRequestShadowTotalMismatches().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialCpuFrontierFastApplyStats(
@@ -16641,6 +16823,66 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	    result.mismatchMask);
 	}
 
+	inline void runSimInitialExactFrontierPerRequestShadowIfRequested(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  bool benchmarkEnabled)
+	{
+	  if(!benchmarkEnabled ||
+	     !simCudaInitialExactFrontierPerRequestShadowRequestedRuntime())
+	  {
+	    return;
+	  }
+	  recordSimInitialExactFrontierPerRequestShadowRequest();
+	  if(summaries.empty())
+	  {
+	    return;
+	  }
+	  vector<SimScanCudaCandidateState> gpuStates;
+	  int gpuRunningMin = 0;
+	  SimScanCudaInitialReduceReplayStats replayStats;
+	  string shadowError;
+	  const std::chrono::steady_clock::time_point shadowStart =
+	    std::chrono::steady_clock::now();
+	  if(!sim_scan_cuda_reduce_initial_run_summaries_for_test(
+	       summaries,
+	       &gpuStates,
+	       &gpuRunningMin,
+	       &replayStats,
+	       &shadowError))
+	  {
+	    if(simCudaValidateEnabledRuntime() && !shadowError.empty())
+	    {
+	      fprintf(stderr,
+	              "SIM CUDA per-request exact frontier shadow failed: %s\n",
+	              shadowError.c_str());
+	    }
+	    return;
+	  }
+	  const uint64_t shadowNanoseconds = simElapsedNanoseconds(shadowStart);
+	  vector<SimScanCudaCandidateState> cpuStates;
+	  int cpuRunningMin = 0;
+	  reduceSimCudaInitialRunSummariesToCandidateStates(summaries,
+	                                                    cpuStates,
+	                                                    cpuRunningMin);
+	  const SimInitialExactFrontierOneChunkCompareResult result =
+	    compareSimInitialExactFrontierOneChunkSnapshots(
+	      makeSimInitialExactFrontierOneChunkSnapshotForBoundedShadow(
+	        cpuStates,
+	        cpuRunningMin),
+	      makeSimInitialExactFrontierOneChunkSnapshotForBoundedShadow(
+	        gpuStates,
+	        gpuRunningMin));
+	  recordSimInitialExactFrontierPerRequestShadowCompare(
+	    static_cast<uint64_t>(summaries.size()),
+	    shadowNanoseconds,
+	    static_cast<uint64_t>(summaries.size()) *
+	      static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)),
+	    static_cast<uint64_t>(sizeof(int) * 2 + sizeof(unsigned long long) * 3) +
+	      static_cast<uint64_t>(gpuStates.size()) *
+	        static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)),
+	    result.mismatchMask);
+	}
+
 	inline SimInitialCandidateContainerShadowStats
 	runSimInitialCandidateContainerShadowEstimator(
 	  const SimKernelContext &context,
@@ -17007,6 +17249,9 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		    summaries,
 		    benchmarkEnabled);
 		  runSimInitialExactFrontierOneChunkBoundedShadowIfRequested(
+		    summaries,
+		    benchmarkEnabled);
+		  runSimInitialExactFrontierPerRequestShadowIfRequested(
 		    summaries,
 		    benchmarkEnabled);
 		  const bool maintainSafeStore =

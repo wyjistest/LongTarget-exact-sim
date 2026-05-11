@@ -493,6 +493,25 @@ static inline const char *longtargetSimInitialExactFrontierOneChunkBoundedShadow
   return "none";
 }
 
+static inline const char *longtargetSimInitialExactFrontierPerRequestShadowDisabledReason(
+  uint64_t requestsTotal,
+  uint64_t requestsCompared)
+{
+  if(!simCudaInitialExactFrontierPerRequestShadowRequestedRuntime())
+  {
+    return "env_off";
+  }
+  if(requestsCompared == 0)
+  {
+    return "no_requests_compared";
+  }
+  if(requestsCompared < requestsTotal)
+  {
+    return "shadow_replay_incomplete";
+  }
+  return "none";
+}
+
 static inline string longtargetSimInitialExactFrontierOneChunkBoundedShadowRequestIndex()
 {
   const uint64_t requestIndex =
@@ -2588,6 +2607,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierOneChunkBoundedShadowFirstMaxTieMismatches = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches = 0;
   uint64_t simInitialExactFrontierOneChunkBoundedShadowTotalMismatches = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowRequestsTotal = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowRequestsCompared = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowRequestsMismatched = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowProcessedSummaries = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowNanoseconds = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowH2DBytes = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowD2HBytes = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowCandidateDigestMismatches = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowCandidateValueMismatches = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowMinCandidateMismatches = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowTotalMismatches = 0;
   getSimInitialReductionStats(simInitialEventsTotal,
                               simInitialRunSummariesTotal,
                               simInitialSummaryBytesD2H,
@@ -2663,6 +2694,19 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	    simInitialExactFrontierOneChunkBoundedShadowFirstMaxTieMismatches,
 	    simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches,
 	    simInitialExactFrontierOneChunkBoundedShadowTotalMismatches);
+	  getSimInitialExactFrontierPerRequestShadowStats(
+	    simInitialExactFrontierPerRequestShadowRequestsTotal,
+	    simInitialExactFrontierPerRequestShadowRequestsCompared,
+	    simInitialExactFrontierPerRequestShadowRequestsMismatched,
+	    simInitialExactFrontierPerRequestShadowProcessedSummaries,
+	    simInitialExactFrontierPerRequestShadowNanoseconds,
+	    simInitialExactFrontierPerRequestShadowH2DBytes,
+	    simInitialExactFrontierPerRequestShadowD2HBytes,
+	    simInitialExactFrontierPerRequestShadowCandidateDigestMismatches,
+	    simInitialExactFrontierPerRequestShadowCandidateValueMismatches,
+	    simInitialExactFrontierPerRequestShadowMinCandidateMismatches,
+	    simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches,
+	    simInitialExactFrontierPerRequestShadowTotalMismatches);
 	  SimInitialCpuFrontierFastApplyTelemetry simInitialCpuFrontierFastApplyTelemetry;
 	  getSimInitialCpuFrontierFastApplyStats(simInitialCpuFrontierFastApplyTelemetry);
 	  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
@@ -3089,6 +3133,44 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialExactFrontierOneChunkBoundedShadowSafeStoreDigestMismatches<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_total_mismatches="
       <<simInitialExactFrontierOneChunkBoundedShadowTotalMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requested="
+      <<(simCudaInitialExactFrontierPerRequestShadowRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_active="
+      <<((simCudaInitialExactFrontierPerRequestShadowRequestedRuntime() &&
+          simInitialExactFrontierPerRequestShadowRequestsCompared > 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_supported=1"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_authority=cpu"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_disabled_reason="
+      <<longtargetSimInitialExactFrontierPerRequestShadowDisabledReason(
+          simInitialExactFrontierPerRequestShadowRequestsTotal,
+          simInitialExactFrontierPerRequestShadowRequestsCompared)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_total="
+      <<simInitialExactFrontierPerRequestShadowRequestsTotal<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_compared="
+      <<simInitialExactFrontierPerRequestShadowRequestsCompared<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_mismatched="
+      <<simInitialExactFrontierPerRequestShadowRequestsMismatched<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_processed_summaries="
+      <<simInitialExactFrontierPerRequestShadowProcessedSummaries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_h2d_bytes="
+      <<simInitialExactFrontierPerRequestShadowH2DBytes<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_d2h_bytes="
+      <<simInitialExactFrontierPerRequestShadowD2HBytes<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_seconds="
+      <<(static_cast<double>(simInitialExactFrontierPerRequestShadowNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_candidate_digest_mismatches="
+      <<simInitialExactFrontierPerRequestShadowCandidateDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_candidate_value_mismatches="
+      <<simInitialExactFrontierPerRequestShadowCandidateValueMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_min_candidate_mismatches="
+      <<simInitialExactFrontierPerRequestShadowMinCandidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_first_max_tie_mismatches="
+      <<simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_total_mismatches="
+      <<simInitialExactFrontierPerRequestShadowTotalMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_has_candidate_contract=1"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_has_safe_store_contract=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_has_epoch_contract=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_ordered_digest_check=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_unordered_digest_check=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_min_candidate_check=0"<<endl;

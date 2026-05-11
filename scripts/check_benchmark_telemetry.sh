@@ -28,6 +28,7 @@ unset LONGTARGET_SIM_CUDA_INITIAL_RING_SLOTS
 unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_CHUNK_ROWS
 unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF_RING_SLOTS
 unset LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_REPLAY
+unset LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_PER_REQUEST_SHADOW
 unset LONGTARGET_SIM_CUDA_INITIAL_PACKED_SUMMARY_D2H
 
 LONGTARGET_BENCHMARK=1 \
@@ -482,6 +483,26 @@ grep -Eq '^benchmark\.sim_initial_exact_frontier_one_chunk_bounded_shadow_min_ca
 grep -Eq '^benchmark\.sim_initial_exact_frontier_one_chunk_bounded_shadow_first_max_tie_mismatches=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_exact_frontier_one_chunk_bounded_shadow_safe_store_digest_mismatches=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_exact_frontier_one_chunk_bounded_shadow_total_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_requested=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_active=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_supported=1$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_authority=cpu$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_disabled_reason=env_off$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_requests_total=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_requests_compared=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_requests_mismatched=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_processed_summaries=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_h2d_bytes=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_d2h_bytes=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_seconds=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_candidate_digest_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_candidate_value_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_min_candidate_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_first_max_tie_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_total_mismatches=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_has_candidate_contract=1$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_has_safe_store_contract=0$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_per_request_shadow_has_epoch_contract=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_has_ordered_digest_check=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_has_unordered_digest_check=0$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_exact_frontier_shadow_has_min_candidate_check=0$' "$STDERR_LOG"
