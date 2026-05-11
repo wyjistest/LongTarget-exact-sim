@@ -24,6 +24,19 @@ REQUEST_LIST > REQUEST_INDEX > MAX_REQUESTS > all
 Invalid selection does not run shadow comparison. It reports explicit selection
 telemetry instead of silently falling back to full mode.
 
+## Make smoke targets
+
+| Target | Selection | Purpose |
+| --- | --- | --- |
+| `make check-sim-initial-exact-frontier-per-request-shadow-smoke` | `REQUEST_INDEX=47` | Cheap single-request contract smoke. |
+| `make check-sim-initial-exact-frontier-per-request-shadow-sampled` | `REQUEST_LIST=0,24,47` | Broader deterministic sampled check. |
+| `make check-sim-initial-exact-frontier-per-request-shadow-invalid` | `REQUEST_INDEX=999` | Invalid-selection guard. |
+| `make check-sim-initial-exact-frontier-per-request-shadow-full` | all requests | Manual expensive all-request audit. |
+
+The first three targets are intended as low-cost review/regression gates. The
+full target preserves the heavy audit entry point but should not be added to
+default checks.
+
 ## Telemetry
 
 | Field | Meaning |

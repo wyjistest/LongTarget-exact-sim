@@ -303,6 +303,10 @@ Validation helpers:
 - `make check-sim-initial-cuda-merge`: verify the coalesced CUDA initial-scan host merge matches per-event replay while reducing logical host updates
 - `make check-sim-initial-chunked-handoff`: verify ordered row-chunk host apply matches the whole-batch initial summary replay
 - `make check-sim-initial-exact-frontier-replay`: verify the default-off exact frontier replay scaffold selects the intended reducer/replay authority without changing default behavior
+- `make check-sim-initial-exact-frontier-per-request-shadow-smoke`: run the default-off per-request exact frontier shadow on request 47 only and assert candidate/safe-store digest contract telemetry
+- `make check-sim-initial-exact-frontier-per-request-shadow-sampled`: run the per-request shadow on request list `0,24,47` and assert sampled contract telemetry
+- `make check-sim-initial-exact-frontier-per-request-shadow-invalid`: verify invalid per-request shadow selection reports `selection_invalid=1` without running shadow comparison
+- `make check-sim-initial-exact-frontier-per-request-shadow-full`: manual expensive all-48 request per-request shadow audit
 - `make check-sim-initial-chunked-handoff-matrix`: run the sample CUDA SIM region-locate path over small, non-power-of-two, tail, and large chunk sizes
 - `make check-project-whole-genome-runtime`: verify the projection script preserves backward compatibility and emits the optional whole-genome ratios when the source telemetry is present
 
