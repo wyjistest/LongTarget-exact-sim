@@ -21,6 +21,8 @@ backend therefore keeps:
 
 ```text
 benchmark.sim_initial_exact_frontier_per_request_shadow_has_epoch_contract=0
+benchmark.sim_initial_exact_frontier_per_request_shadow_full_contract_supported=0
+benchmark.sim_initial_exact_frontier_per_request_shadow_full_contract_disabled_reason=missing_epoch_contract
 ```
 
 and does not emit a safe-store epoch mismatch counter.
