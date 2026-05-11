@@ -493,19 +493,86 @@ static inline const char *longtargetSimInitialExactFrontierOneChunkBoundedShadow
   return "none";
 }
 
-static inline const char *longtargetSimInitialExactFrontierPerRequestShadowDisabledReason(
+static inline bool longtargetSimInitialExactFrontierPerRequestShadowSelectionInvalid(
   uint64_t requestsTotal,
-  uint64_t requestsCompared)
+  uint64_t requestsSelected)
+{
+  const SimInitialExactFrontierPerRequestShadowSelectionConfig &config =
+    simInitialExactFrontierPerRequestShadowSelectionConfigRuntime();
+  if(config.invalid)
+  {
+    return true;
+  }
+  if(requestsTotal > 0 && requestsSelected == 0 &&
+     (config.mode == "request_index" || config.mode == "request_list"))
+  {
+    return true;
+  }
+  return false;
+}
+
+static inline const char *longtargetSimInitialExactFrontierPerRequestShadowSelectionDisabledReason(
+  uint64_t requestsTotal,
+  uint64_t requestsSelected)
 {
   if(!simCudaInitialExactFrontierPerRequestShadowRequestedRuntime())
   {
     return "env_off";
   }
+  const SimInitialExactFrontierPerRequestShadowSelectionConfig &config =
+    simInitialExactFrontierPerRequestShadowSelectionConfigRuntime();
+  if(config.invalid)
+  {
+    return "invalid_selection";
+  }
+  if(requestsTotal > 0 && requestsSelected == 0 && config.mode == "request_index")
+  {
+    return "request_index_out_of_range";
+  }
+  if(requestsTotal > 0 && requestsSelected == 0 && config.mode == "request_list")
+  {
+    return "request_list_out_of_range";
+  }
+  return "none";
+}
+
+static inline string longtargetSimInitialExactFrontierPerRequestShadowRequestIndex()
+{
+  const SimInitialExactFrontierPerRequestShadowSelectionConfig &config =
+    simInitialExactFrontierPerRequestShadowSelectionConfigRuntime();
+  if(config.mode != "request_index")
+  {
+    return "none";
+  }
+  if(config.invalid)
+  {
+    return "invalid";
+  }
+  return to_string(config.requestIndex);
+}
+
+static inline const char *longtargetSimInitialExactFrontierPerRequestShadowDisabledReason(
+  uint64_t requestsCompared,
+  uint64_t requestsSelected,
+  bool selectionInvalid)
+{
+  if(!simCudaInitialExactFrontierPerRequestShadowRequestedRuntime())
+  {
+    return "env_off";
+  }
+  if(selectionInvalid)
+  {
+    return "invalid_selection";
+  }
+  if(requestsSelected == 0)
+  {
+    return "no_requests_selected";
+  }
   if(requestsCompared == 0)
   {
     return "no_requests_compared";
   }
-  if(requestsCompared < requestsTotal)
+  if(requestsCompared < requestsSelected)
   {
     return "shadow_replay_incomplete";
   }
@@ -2609,6 +2676,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierOneChunkBoundedShadowTotalMismatches = 0;
   uint64_t simInitialExactFrontierPerRequestShadowRequestsTotal = 0;
   uint64_t simInitialExactFrontierPerRequestShadowRequestsCompared = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowRequestsSelected = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowRequestsSkipped = 0;
   uint64_t simInitialExactFrontierPerRequestShadowRequestsMismatched = 0;
   uint64_t simInitialExactFrontierPerRequestShadowProcessedSummaries = 0;
   uint64_t simInitialExactFrontierPerRequestShadowNanoseconds = 0;
@@ -2698,6 +2767,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	  getSimInitialExactFrontierPerRequestShadowStats(
 	    simInitialExactFrontierPerRequestShadowRequestsTotal,
 	    simInitialExactFrontierPerRequestShadowRequestsCompared,
+	    simInitialExactFrontierPerRequestShadowRequestsSelected,
+	    simInitialExactFrontierPerRequestShadowRequestsSkipped,
 	    simInitialExactFrontierPerRequestShadowRequestsMismatched,
 	    simInitialExactFrontierPerRequestShadowProcessedSummaries,
 	    simInitialExactFrontierPerRequestShadowNanoseconds,
@@ -3142,10 +3213,33 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
           simInitialExactFrontierPerRequestShadowRequestsCompared > 0) ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_supported=1"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_authority=cpu"<<endl;
+  const SimInitialExactFrontierPerRequestShadowSelectionConfig &simInitialExactFrontierPerRequestShadowSelection =
+    simInitialExactFrontierPerRequestShadowSelectionConfigRuntime();
+  const bool simInitialExactFrontierPerRequestShadowSelectionInvalid =
+    longtargetSimInitialExactFrontierPerRequestShadowSelectionInvalid(
+      simInitialExactFrontierPerRequestShadowRequestsTotal,
+      simInitialExactFrontierPerRequestShadowRequestsSelected);
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_disabled_reason="
       <<longtargetSimInitialExactFrontierPerRequestShadowDisabledReason(
+          simInitialExactFrontierPerRequestShadowRequestsCompared,
+          simInitialExactFrontierPerRequestShadowRequestsSelected,
+          simInitialExactFrontierPerRequestShadowSelectionInvalid)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_selection_mode="
+      <<simInitialExactFrontierPerRequestShadowSelection.mode<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requested_request_index="
+      <<longtargetSimInitialExactFrontierPerRequestShadowRequestIndex()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requested_max_requests="
+      <<simInitialExactFrontierPerRequestShadowSelection.maxRequests<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_selected="
+      <<simInitialExactFrontierPerRequestShadowRequestsSelected<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_skipped="
+      <<simInitialExactFrontierPerRequestShadowRequestsSkipped<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_selection_invalid="
+      <<(simInitialExactFrontierPerRequestShadowSelectionInvalid ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_selection_disabled_reason="
+      <<longtargetSimInitialExactFrontierPerRequestShadowSelectionDisabledReason(
           simInitialExactFrontierPerRequestShadowRequestsTotal,
-          simInitialExactFrontierPerRequestShadowRequestsCompared)<<endl;
+          simInitialExactFrontierPerRequestShadowRequestsSelected)<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_total="
       <<simInitialExactFrontierPerRequestShadowRequestsTotal<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_requests_compared="
