@@ -380,6 +380,23 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   return false;
 }
 
+bool sim_scan_cuda_download_persistent_safe_candidate_state_store_for_shadow(
+  const SimCudaPersistentSafeStoreHandle &handle,
+  vector<SimScanCudaCandidateState> *outStates,
+  string *errorOut)
+{
+  (void)handle;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
 bool sim_scan_cuda_apply_region_candidate_states_residency(const vector<SimScanCudaRequest> &requests,
                                                            const vector<SimScanCudaCandidateState> &seedCandidates,
                                                            int seedRunningMin,

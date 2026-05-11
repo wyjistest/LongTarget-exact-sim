@@ -1325,6 +1325,11 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   double *outFrontierUploadSeconds,
   std::string *errorOut);
 
+bool sim_scan_cuda_download_persistent_safe_candidate_state_store_for_shadow(
+  const SimCudaPersistentSafeStoreHandle &handle,
+  std::vector<SimScanCudaCandidateState> *outStates,
+  std::string *errorOut);
+
 bool sim_scan_cuda_update_persistent_safe_candidate_state_store(const std::vector<SimScanCudaCandidateState> &updatedStates,
                                                                 const std::vector<SimScanCudaCandidateState> &finalCandidates,
                                                                 int runningMin,

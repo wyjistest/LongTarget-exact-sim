@@ -12440,6 +12440,52 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   return true;
 }
 
+bool sim_scan_cuda_download_persistent_safe_candidate_state_store_for_shadow(
+  const SimCudaPersistentSafeStoreHandle &handle,
+  vector<SimScanCudaCandidateState> *outStates,
+  string *errorOut)
+{
+  if(outStates == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing persistent safe-store shadow download output";
+    }
+    return false;
+  }
+  outStates->clear();
+  if(!handle.valid || handle.stateCount == 0)
+  {
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+  if(handle.statesDevice == 0)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "persistent safe-store shadow handle missing device states";
+    }
+    return false;
+  }
+  outStates->resize(handle.stateCount);
+  const cudaError_t status =
+    cudaMemcpy(outStates->data(),
+               reinterpret_cast<const void *>(handle.statesDevice),
+               handle.stateCount * sizeof(SimScanCudaCandidateState),
+               cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+  {
+    outStates->clear();
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  clear_sim_scan_cuda_error(errorOut);
+  return true;
+}
+
 static bool sim_scan_cuda_rebuild_persistent_safe_candidate_state_store_from_device_locked(
   SimScanCudaContext *context,
   const uint64_t *trackedStartCoordsDevice,
