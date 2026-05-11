@@ -482,6 +482,8 @@ struct SimScanCudaContext
     eventsCapacity(0),
     initialRunSummariesDevice(NULL),
     initialRunSummariesCapacity(0),
+    initialRunSummariesResidentValid(false),
+    initialRunSummariesResidentCount(0),
     initialPackedRunSummariesDevice(NULL),
     initialPackedRunSummariesCapacity(0),
     initialPackedSummaryFallbackDevice(NULL),
@@ -644,6 +646,8 @@ struct SimScanCudaContext
   size_t eventsCapacity;
   SimScanCudaInitialRunSummary *initialRunSummariesDevice;
   size_t initialRunSummariesCapacity;
+  bool initialRunSummariesResidentValid;
+  size_t initialRunSummariesResidentCount;
   SimScanCudaPackedInitialRunSummary16 *initialPackedRunSummariesDevice;
   size_t initialPackedRunSummariesCapacity;
   int *initialPackedSummaryFallbackDevice;
@@ -12465,6 +12469,158 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   return true;
 }
 
+static bool sim_scan_cuda_precombine_initial_safe_store_device_locked(
+  SimScanCudaContext *context,
+  const SimScanCudaInitialRunSummary *summariesDevice,
+  int summaryCount,
+  vector<SimScanCudaCandidateState> *outStates,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  if(context == NULL || summariesDevice == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing resident initial summary buffer";
+    }
+    return false;
+  }
+
+  const size_t stateCount = static_cast<size_t>(summaryCount);
+  if(!ensure_sim_scan_cuda_buffer(&context->summaryKeysDevice,
+                                  &context->summaryKeysCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
+                                  &context->reducedKeysCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
+                                  &context->reduceStatesCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->reducedStatesDevice,
+                                  &context->reducedStatesCapacity,
+                                  stateCount,
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                  &context->outputCandidateStatesCapacity,
+                                  stateCount,
+                                  errorOut))
+  {
+    return false;
+  }
+  const int reduceThreads = 256;
+  const int reduceBlocks = (summaryCount + reduceThreads - 1) / reduceThreads;
+  sim_scan_init_candidate_reduce_states_from_summaries_kernel<<<reduceBlocks, reduceThreads>>>(
+    summariesDevice,
+    summaryCount,
+    context->summaryKeysDevice,
+    context->reduceStatesDevice);
+  cudaError_t status = cudaGetLastError();
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  int uniqueStateCount = 0;
+  try
+  {
+    thrust::device_ptr<uint64_t> summaryKeysBegin =
+      thrust::device_pointer_cast(context->summaryKeysDevice);
+    thrust::device_ptr<SimScanCudaCandidateReduceState> reduceStatesBegin =
+      thrust::device_pointer_cast(context->reduceStatesDevice);
+    thrust::stable_sort_by_key(thrust::device,
+                               summaryKeysBegin,
+                               summaryKeysBegin + summaryCount,
+                               reduceStatesBegin);
+    thrust::pair< thrust::device_ptr<uint64_t>,
+                  thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
+      thrust::reduce_by_key(thrust::device,
+                            summaryKeysBegin,
+                            summaryKeysBegin + summaryCount,
+                            reduceStatesBegin,
+                            thrust::device_pointer_cast(context->reducedKeysDevice),
+                            thrust::device_pointer_cast(context->reducedStatesDevice),
+                            thrust::equal_to<uint64_t>(),
+                            SimScanCudaCandidateReduceMergeOp());
+    uniqueStateCount =
+      static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
+    thrust::stable_sort(thrust::device,
+                        thrust::device_pointer_cast(context->reducedStatesDevice),
+                        thrust::device_pointer_cast(context->reducedStatesDevice) + uniqueStateCount,
+                        SimScanCudaCandidateReduceStateFirstOrderLess());
+  }
+  catch(const thrust::system_error &e)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = e.what();
+    }
+    return false;
+  }
+  catch(const std::exception &e)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = e.what();
+    }
+    return false;
+  }
+  if(uniqueStateCount < 0 || uniqueStateCount > summaryCount)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "GPU precombine unique-state count overflow";
+    }
+    return false;
+  }
+
+  if(uniqueStateCount > 0)
+  {
+    const int extractBlocks = (uniqueStateCount + reduceThreads - 1) / reduceThreads;
+    sim_scan_extract_candidate_reduce_states_kernel<<<extractBlocks, reduceThreads>>>(
+      context->reducedStatesDevice,
+      uniqueStateCount,
+      context->outputCandidateStatesDevice);
+    status = cudaGetLastError();
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    outStates->resize(static_cast<size_t>(uniqueStateCount));
+    status = cudaMemcpy(outStates->data(),
+                        context->outputCandidateStatesDevice,
+                        static_cast<size_t>(uniqueStateCount) *
+                          sizeof(SimScanCudaCandidateState),
+                        cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      outStates->clear();
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(outD2HBytes != NULL)
+    {
+      *outD2HBytes =
+        static_cast<uint64_t>(uniqueStateCount) *
+        static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+    }
+  }
+  return true;
+}
+
 bool sim_scan_cuda_precombine_initial_safe_store_shadow(
   const vector<SimScanCudaInitialRunSummary> &summaries,
   vector<SimScanCudaCandidateState> *outStates,
@@ -12546,6 +12702,8 @@ bool sim_scan_cuda_precombine_initial_safe_store_shadow(
   {
     return false;
   }
+  context->initialRunSummariesResidentValid = false;
+  context->initialRunSummariesResidentCount = 0;
   cudaError_t status =
     cudaMemcpy(context->initialRunSummariesDevice,
                summaries.data(),
@@ -12566,143 +12724,125 @@ bool sim_scan_cuda_precombine_initial_safe_store_shadow(
       static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
   }
 
-  const size_t stateCount = static_cast<size_t>(summaryCount);
-  if(!ensure_sim_scan_cuda_buffer(&context->summaryKeysDevice,
-                                  &context->summaryKeysCapacity,
-                                  stateCount,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->reducedKeysDevice,
-                                  &context->reducedKeysCapacity,
-                                  stateCount,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->reduceStatesDevice,
-                                  &context->reduceStatesCapacity,
-                                  stateCount,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->reducedStatesDevice,
-                                  &context->reducedStatesCapacity,
-                                  stateCount,
-                                  errorOut) ||
-     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
-                                  &context->outputCandidateStatesCapacity,
-                                  stateCount,
-                                  errorOut))
+  if(!sim_scan_cuda_precombine_initial_safe_store_device_locked(
+       context,
+       context->initialRunSummariesDevice,
+       summaryCount,
+       outStates,
+       outD2HBytes,
+       errorOut))
   {
     return false;
-  }
-  const int reduceThreads = 256;
-  const int reduceBlocks = (summaryCount + reduceThreads - 1) / reduceThreads;
-  sim_scan_init_candidate_reduce_states_from_summaries_kernel<<<reduceBlocks, reduceThreads>>>(
-    context->initialRunSummariesDevice,
-    summaryCount,
-    context->summaryKeysDevice,
-    context->reduceStatesDevice);
-  status = cudaGetLastError();
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
-
-  int uniqueStateCount = 0;
-  try
-  {
-    thrust::device_ptr<uint64_t> summaryKeysBegin =
-      thrust::device_pointer_cast(context->summaryKeysDevice);
-    thrust::device_ptr<SimScanCudaCandidateReduceState> reduceStatesBegin =
-      thrust::device_pointer_cast(context->reduceStatesDevice);
-    thrust::stable_sort_by_key(thrust::device,
-                               summaryKeysBegin,
-                               summaryKeysBegin + summaryCount,
-                               reduceStatesBegin);
-    thrust::pair< thrust::device_ptr<uint64_t>,
-                  thrust::device_ptr<SimScanCudaCandidateReduceState> > reducedEnds =
-      thrust::reduce_by_key(thrust::device,
-                            summaryKeysBegin,
-                            summaryKeysBegin + summaryCount,
-                            reduceStatesBegin,
-                            thrust::device_pointer_cast(context->reducedKeysDevice),
-                            thrust::device_pointer_cast(context->reducedStatesDevice),
-                            thrust::equal_to<uint64_t>(),
-                            SimScanCudaCandidateReduceMergeOp());
-    uniqueStateCount =
-      static_cast<int>(reducedEnds.first - thrust::device_pointer_cast(context->reducedKeysDevice));
-    thrust::stable_sort(thrust::device,
-                        thrust::device_pointer_cast(context->reducedStatesDevice),
-                        thrust::device_pointer_cast(context->reducedStatesDevice) + uniqueStateCount,
-                        SimScanCudaCandidateReduceStateFirstOrderLess());
-  }
-  catch(const thrust::system_error &e)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = e.what();
-    }
-    return false;
-  }
-  catch(const std::exception &e)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = e.what();
-    }
-    return false;
-  }
-  if(uniqueStateCount < 0 || uniqueStateCount > summaryCount)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = "GPU precombine shadow unique-state count overflow";
-    }
-    return false;
-  }
-
-  if(uniqueStateCount > 0)
-  {
-    const int extractBlocks = (uniqueStateCount + reduceThreads - 1) / reduceThreads;
-    sim_scan_extract_candidate_reduce_states_kernel<<<extractBlocks, reduceThreads>>>(
-      context->reducedStatesDevice,
-      uniqueStateCount,
-      context->outputCandidateStatesDevice);
-    status = cudaGetLastError();
-    if(status != cudaSuccess)
-    {
-      if(errorOut != NULL)
-      {
-        *errorOut = cuda_error_string(status);
-      }
-      return false;
-    }
-    outStates->resize(static_cast<size_t>(uniqueStateCount));
-    status = cudaMemcpy(outStates->data(),
-                        context->outputCandidateStatesDevice,
-                        static_cast<size_t>(uniqueStateCount) *
-                          sizeof(SimScanCudaCandidateState),
-                        cudaMemcpyDeviceToHost);
-    if(status != cudaSuccess)
-    {
-      outStates->clear();
-      if(errorOut != NULL)
-      {
-        *errorOut = cuda_error_string(status);
-      }
-      return false;
-    }
-    if(outD2HBytes != NULL)
-    {
-      *outD2HBytes =
-        static_cast<uint64_t>(uniqueStateCount) *
-        static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
-    }
   }
   if(outSeconds != NULL)
   {
     *outSeconds =
       static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
                             chrono::steady_clock::now() - shadowStart).count()) / 1.0e9;
+  }
+  clear_sim_scan_cuda_error(errorOut);
+  return true;
+}
+
+bool sim_scan_cuda_precombine_initial_safe_store_resident(
+  size_t summaryCount,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  if(outStates == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing GPU precombine resident output states";
+    }
+    return false;
+  }
+  outStates->clear();
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(summaryCount == 0)
+  {
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+  if(summaryCount > static_cast<size_t>(numeric_limits<int>::max()))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "GPU precombine resident summary count exceeds CUDA helper range";
+    }
+    return false;
+  }
+
+  int device = 0;
+  const cudaError_t deviceStatus = cudaGetDevice(&device);
+  if(deviceStatus != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(deviceStatus);
+    }
+    return false;
+  }
+  if(device < 0)
+  {
+    device = 0;
+  }
+
+  const int slot = simCudaWorkerSlotRuntime();
+  SimScanCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_sim_scan_cuda_context_for_device_slot(device,slot,&context,&contextMutex,errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_sim_scan_cuda_initialized_locked(*context,device,errorOut))
+  {
+    return false;
+  }
+  if(!context->initialRunSummariesResidentValid ||
+     context->initialRunSummariesResidentCount != summaryCount ||
+     context->initialRunSummariesDevice == NULL ||
+     context->initialRunSummariesCapacity < summaryCount)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "resident initial summaries unavailable";
+    }
+    return false;
+  }
+
+  const int summaryCountInt = static_cast<int>(summaryCount);
+  const chrono::steady_clock::time_point residentStart = chrono::steady_clock::now();
+  if(!sim_scan_cuda_precombine_initial_safe_store_device_locked(
+       context,
+       context->initialRunSummariesDevice,
+       summaryCountInt,
+       outStates,
+       outD2HBytes,
+       errorOut))
+  {
+    context->initialRunSummariesResidentValid = false;
+    context->initialRunSummariesResidentCount = 0;
+    return false;
+  }
+  context->initialRunSummariesResidentValid = false;
+  context->initialRunSummariesResidentCount = 0;
+  if(outSeconds != NULL)
+  {
+    *outSeconds =
+      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                            chrono::steady_clock::now() - residentStart).count()) / 1.0e9;
   }
   clear_sim_scan_cuda_error(errorOut);
   return true;
@@ -15078,6 +15218,10 @@ static bool sim_scan_cuda_build_initial_run_summaries_proposal_streaming_locked(
     std::swap(prevFc, curFc);
   }
 
+  context->initialRunSummariesResidentValid = totalRunSummaries > 0;
+  context->initialRunSummariesResidentCount =
+    totalRunSummaries > 0 ? static_cast<size_t>(totalRunSummaries) : 0u;
+
   *outTotalEvents = totalEvents;
   *outTotalRunSummaries = totalRunSummaries;
   return true;
@@ -16697,6 +16841,9 @@ bool sim_scan_cuda_enumerate_initial_events_row_major_true_batch(const vector<Si
       return false;
     }
   }
+  context->initialRunSummariesResidentValid = totalRunSummaries > 0;
+  context->initialRunSummariesResidentCount =
+    totalRunSummaries > 0 ? static_cast<size_t>(totalRunSummaries) : 0u;
 
   int totalAllCandidateStates = 0;
   vector<int> allCandidateCountsPerTask;
