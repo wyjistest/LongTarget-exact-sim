@@ -3845,6 +3845,31 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreGpuPrecombineStats.digestMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_fallbacks="
       <<simInitialSafeStoreGpuPrecombineStats.fallbacks<<endl;
+  const bool simInitialSafeStoreGpuPrecombineResidentSourceRequested =
+    simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime();
+  const bool simInitialSafeStoreGpuPrecombineResidentSourceActive =
+    simInitialSafeStoreGpuPrecombineStats.residentSourceActive != 0;
+  const char *simInitialSafeStoreGpuPrecombineResidentSourceDisabledReason =
+    !simInitialSafeStoreGpuPrecombineResidentSourceRequested ? "not_requested" :
+    (simInitialSafeStoreGpuPrecombineResidentSourceActive ? "active" :
+     (simInitialSafeStoreGpuPrecombineStats.calls != 0 ? "resident_source_unavailable" : "not_run"));
+  const char *simInitialSafeStoreGpuPrecombineInputSource =
+    simInitialSafeStoreGpuPrecombineStats.calls == 0 ? "none" :
+    (simInitialSafeStoreGpuPrecombineResidentSourceActive ? "device_resident" : "host_h2d");
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_requested="
+      <<(simInitialSafeStoreGpuPrecombineResidentSourceRequested ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_active="
+      <<(simInitialSafeStoreGpuPrecombineResidentSourceActive ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_supported="
+      <<(simInitialSafeStoreGpuPrecombineResidentSourceActive ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_disabled_reason="
+      <<simInitialSafeStoreGpuPrecombineResidentSourceDisabledReason<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_summary_h2d_elided="
+      <<(simInitialSafeStoreGpuPrecombineStats.summaryH2DElided != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_summary_h2d_bytes_saved="
+      <<simInitialSafeStoreGpuPrecombineStats.summaryH2DBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_input_source="
+      <<simInitialSafeStoreGpuPrecombineInputSource<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
