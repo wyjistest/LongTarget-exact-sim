@@ -1333,6 +1333,13 @@ bool sim_scan_cuda_precombine_initial_safe_store_shadow(
   uint64_t *outD2HBytes,
   std::string *errorOut);
 
+bool sim_scan_cuda_precombine_initial_safe_store_resident(
+  size_t summaryCount,
+  std::vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outD2HBytes,
+  std::string *errorOut);
+
 bool sim_scan_cuda_download_persistent_safe_candidate_state_store_for_shadow(
   const SimCudaPersistentSafeStoreHandle &handle,
   std::vector<SimScanCudaCandidateState> *outStates,

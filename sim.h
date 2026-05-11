@@ -2883,6 +2883,16 @@ inline bool simCudaInitialSafeStoreGpuPrecombineValidateEnabledRuntime()
   return enabled;
 }
 
+inline bool simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 inline bool simCudaInitialSafeStorePruneIndexShadowEnabledRuntime()
 {
   static const bool enabled = []()
@@ -5183,7 +5193,10 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    candidateMismatches(0),
 		    orderMismatches(0),
 		    digestMismatches(0),
-		    fallbacks(0)
+		    fallbacks(0),
+		    residentSourceActive(0),
+		    summaryH2DElided(0),
+		    summaryH2DBytesSaved(0)
 		  {
 		  }
 
@@ -5201,6 +5214,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  uint64_t orderMismatches;
 		  uint64_t digestMismatches;
 		  uint64_t fallbacks;
+		  uint64_t residentSourceActive;
+		  uint64_t summaryH2DElided;
+		  uint64_t summaryH2DBytesSaved;
 		};
 
 		struct SimInitialSafeStoreGpuPrecombineAtomicStats
@@ -5221,6 +5237,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    orderMismatches.store(0,std::memory_order_relaxed);
 		    digestMismatches.store(0,std::memory_order_relaxed);
 		    fallbacks.store(0,std::memory_order_relaxed);
+		    residentSourceActive.store(0,std::memory_order_relaxed);
+		    summaryH2DElided.store(0,std::memory_order_relaxed);
+		    summaryH2DBytesSaved.store(0,std::memory_order_relaxed);
 		  }
 
 		  std::atomic<uint64_t> active;
@@ -5237,6 +5256,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  std::atomic<uint64_t> orderMismatches;
 		  std::atomic<uint64_t> digestMismatches;
 		  std::atomic<uint64_t> fallbacks;
+		  std::atomic<uint64_t> residentSourceActive;
+		  std::atomic<uint64_t> summaryH2DElided;
+		  std::atomic<uint64_t> summaryH2DBytesSaved;
 		};
 
 		inline SimInitialSafeStoreGpuPrecombineAtomicStats &simInitialSafeStoreGpuPrecombineAtomicStats()
@@ -5888,6 +5910,9 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
 		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
 		  stats.fallbacks.fetch_add(delta.fallbacks,std::memory_order_relaxed);
+		  stats.residentSourceActive.fetch_add(delta.residentSourceActive,std::memory_order_relaxed);
+		  stats.summaryH2DElided.fetch_add(delta.summaryH2DElided,std::memory_order_relaxed);
+		  stats.summaryH2DBytesSaved.fetch_add(delta.summaryH2DBytesSaved,std::memory_order_relaxed);
 		}
 
 		inline void recordSimInitialCandidateContainerShadow(
@@ -6461,6 +6486,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
 		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
 		  snapshot.fallbacks = stats.fallbacks.load(std::memory_order_relaxed);
+		  snapshot.residentSourceActive =
+		    stats.residentSourceActive.load(std::memory_order_relaxed);
+		  snapshot.summaryH2DElided =
+		    stats.summaryH2DElided.load(std::memory_order_relaxed);
+		  snapshot.summaryH2DBytesSaved =
+		    stats.summaryH2DBytesSaved.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
 
@@ -13035,13 +13066,41 @@ runSimInitialSafeStoreGpuPrecombine(
   uint64_t h2dBytes = 0;
   uint64_t d2hBytes = 0;
   string gpuError;
-  const bool gpuOk =
-    sim_scan_cuda_precombine_initial_safe_store_shadow(summaries,
-                                                       &gpuStates,
-                                                       &gpuSeconds,
-                                                       &h2dBytes,
-                                                       &d2hBytes,
-                                                       &gpuError);
+  bool gpuOk = false;
+  if(simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime())
+  {
+    gpuOk =
+      sim_scan_cuda_precombine_initial_safe_store_resident(summaries.size(),
+                                                           &gpuStates,
+                                                           &gpuSeconds,
+                                                           &d2hBytes,
+                                                           &gpuError);
+    if(gpuOk)
+    {
+      stats.residentSourceActive = 1;
+      stats.summaryH2DElided = 1;
+      stats.summaryH2DBytesSaved =
+        static_cast<uint64_t>(summaries.size()) *
+        static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
+    }
+    else if(simCudaValidateEnabledRuntime() && !gpuError.empty())
+    {
+      fprintf(stderr,
+              "SIM CUDA initial safe-store GPU precombine resident source unavailable, falling back to host H2D: %s\n",
+              gpuError.c_str());
+    }
+  }
+  if(!gpuOk)
+  {
+    gpuError.clear();
+    gpuOk =
+      sim_scan_cuda_precombine_initial_safe_store_shadow(summaries,
+                                                         &gpuStates,
+                                                         &gpuSeconds,
+                                                         &h2dBytes,
+                                                         &d2hBytes,
+                                                         &gpuError);
+  }
   stats.nanoseconds = simSecondsToNanoseconds(gpuSeconds);
   stats.h2dBytes = h2dBytes;
   stats.d2hBytes = d2hBytes;

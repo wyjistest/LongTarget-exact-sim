@@ -198,6 +198,11 @@ check-sim-initial-safe-store-gpu-precombine-validate:
 	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_VALIDATE=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_validate TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
 	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_validate EXPECTED_VALIDATE=1 sh ./scripts/check_initial_safe_store_gpu_precombine.sh
 
+check-sim-initial-safe-store-gpu-precombine-resident:
+	$(MAKE) build-cuda
+	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_resident TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_resident EXPECTED_INPUT_SOURCE=device_resident EXPECTED_H2D_BYTES=0 EXPECTED_RESIDENT_REQUESTED=1 EXPECTED_RESIDENT_ACTIVE=1 EXPECTED_RESIDENT_SUPPORTED=1 EXPECTED_RESIDENT_DISABLED_REASON=active EXPECTED_SUMMARY_H2D_ELIDED=1 EXPECTED_SUMMARY_H2D_BYTES_SAVED=1432865216 sh ./scripts/check_initial_safe_store_gpu_precombine.sh
+
 check-sim-initial-chunked-handoff-matrix:
 	$(MAKE) build-cuda
 	for rows in 1 2 3 4 7 8 16 31 64 127 256 1024; do \
@@ -1140,7 +1145,7 @@ check-longtarget-lite-output:
 		check-sim-initial-chunked-handoff-matrix \
 		build-sim-initial-exact-frontier-replay-test check-sim-initial-exact-frontier-replay \
 		build-sim-initial-cpu-frontier-fast-apply-test check-sim-initial-cpu-frontier-fast-apply \
-		check-sim-initial-safe-store-gpu-precombine-shadow check-sim-initial-safe-store-gpu-precombine check-sim-initial-safe-store-gpu-precombine-validate \
+		check-sim-initial-safe-store-gpu-precombine-shadow check-sim-initial-safe-store-gpu-precombine check-sim-initial-safe-store-gpu-precombine-validate check-sim-initial-safe-store-gpu-precombine-resident \
 		build-sim-frontier-epoch-oracle-test check-sim-frontier-epoch-oracle \
 		build-sim-frontier-epoch-shadow-test check-sim-frontier-epoch-shadow \
 		build-sim-initial-reduce-semantics-test check-sim-initial-reduce-semantics \
