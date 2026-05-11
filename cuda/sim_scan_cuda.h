@@ -1340,6 +1340,27 @@ bool sim_scan_cuda_precombine_initial_safe_store_resident(
   uint64_t *outD2HBytes,
   std::string *errorOut);
 
+bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
+  const std::vector<SimScanCudaInitialRunSummary> &summaries,
+  const std::vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  std::vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outUniqueStates,
+  uint64_t *outH2DBytes,
+  uint64_t *outD2HBytes,
+  std::string *errorOut);
+
+bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
+  size_t summaryCount,
+  const std::vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  std::vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outUniqueStates,
+  uint64_t *outD2HBytes,
+  std::string *errorOut);
+
 bool sim_scan_cuda_prune_initial_safe_store_gpu_precombine_shadow(
   const std::vector<SimScanCudaCandidateState> &states,
   const std::vector<SimScanCudaCandidateState> &finalCandidates,

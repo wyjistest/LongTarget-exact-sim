@@ -75,6 +75,44 @@ helper, so the 1.43 GB H2D cost is reported honestly. The resident source
 reuses the CUDA initial scan's summary buffer when available; otherwise it falls
 back to the host-H2D source rather than changing production authority.
 
+## GPU-Pruned Real Opt-In
+
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1` keeps the same
+default-off boundary but moves the safe-store prune predicate into the CUDA
+precombine helper. With resident summaries available, the path is:
+
+```text
+GPU resident summaries
+-> GPU unique-start precombine
+-> GPU safe-store prune predicate
+-> D2H kept states only
+-> host safe-store materialization / index rebuild
+-> existing upload, locate, and region path
+```
+
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_VALIDATE=1` builds
+the legacy CPU post-prune safe store on a side context and compares size,
+candidate content, first-seen order, and digest before accepting the
+GPU-pruned host store. A mismatch records the prune mismatch/fallback counters
+and falls back to the legacy CPU update/prune path.
+
+Fresh sample telemetry for the non-validating resident prune opt-in:
+
+| item | value |
+| --- | ---: |
+| unique input states | 8,831,091 |
+| kept states | 3,311,201 |
+| removed states | 5,519,890 |
+| removed ratio | 0.625052 |
+| D2H bytes | 119,203,236 |
+| D2H bytes saved vs all unique states | 198,716,040 |
+| prune mismatches | 0 |
+| prune fallbacks | 0 |
+
+The path is a real opt-in for initial safe-store materialization only. It does
+not make GPU precombine or GPU prune the default, does not change candidate
+replay, and does not activate the exact-frontier clean gate.
+
 ## Prune Shadow Follow-Up
 
 `LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_SHADOW=1` adds a
@@ -114,6 +152,23 @@ benchmark.sim_initial_safe_store_gpu_precombine_resident_source_disabled_reason
 benchmark.sim_initial_safe_store_gpu_precombine_summary_h2d_elided
 benchmark.sim_initial_safe_store_gpu_precombine_summary_h2d_bytes_saved
 benchmark.sim_initial_safe_store_gpu_precombine_input_source
+benchmark.sim_initial_safe_store_gpu_precombine_prune_requested
+benchmark.sim_initial_safe_store_gpu_precombine_prune_active
+benchmark.sim_initial_safe_store_gpu_precombine_prune_validate_enabled
+benchmark.sim_initial_safe_store_gpu_precombine_prune_calls
+benchmark.sim_initial_safe_store_gpu_precombine_prune_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_input_states
+benchmark.sim_initial_safe_store_gpu_precombine_prune_kept_states
+benchmark.sim_initial_safe_store_gpu_precombine_prune_removed_states
+benchmark.sim_initial_safe_store_gpu_precombine_prune_removed_ratio
+benchmark.sim_initial_safe_store_gpu_precombine_prune_d2h_bytes
+benchmark.sim_initial_safe_store_gpu_precombine_prune_d2h_bytes_saved
+benchmark.sim_initial_safe_store_gpu_precombine_prune_validate_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_size_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_candidate_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_order_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_digest_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_fallbacks
 ```
 
 `benchmark.sim_initial_safe_store_gpu_precombine_input_source` is `none` when
@@ -130,6 +185,8 @@ Run:
 make check-sim-initial-safe-store-gpu-precombine
 make check-sim-initial-safe-store-gpu-precombine-validate
 make check-sim-initial-safe-store-gpu-precombine-resident
+make check-sim-initial-safe-store-gpu-precombine-prune
+make check-sim-initial-safe-store-gpu-precombine-prune-validate
 ```
 
 Normal benchmark telemetry keeps the opt-in disabled and checks zeroed default
@@ -142,7 +199,7 @@ make check-benchmark-telemetry
 ## Non-Goals
 
 - No default behavior change.
-- No CPU prune, upload, locate, or region authority change.
+- No upload, locate, or region authority change.
 - No candidate replay changes.
 - No exact frontier clean gate activation.
 - No `gpu_real`, `ordered_segmented_v3`, or `EXACT_FRONTIER_REPLAY` route.
