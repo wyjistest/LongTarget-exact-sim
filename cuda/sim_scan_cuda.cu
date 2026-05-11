@@ -12,6 +12,7 @@
 
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
+#include <thrust/copy.h>
 #include <thrust/functional.h>
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
@@ -7693,6 +7694,31 @@ __device__ __forceinline__ bool sim_scan_keep_safe_store_candidate_state(const S
   return false;
 }
 
+struct SimScanCudaKeepSafeStoreCandidateStatePredicate
+{
+  const SimScanCudaCandidateState *finalCandidates;
+  int finalCandidateCount;
+  int runningMin;
+
+  __host__ __device__
+  bool operator()(const SimScanCudaCandidateState &state) const
+  {
+    if(state.score > runningMin)
+    {
+      return true;
+    }
+    const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+    for(int candidateIndex = 0; candidateIndex < finalCandidateCount; ++candidateIndex)
+    {
+      if(simScanCudaCandidateStateStartCoord(finalCandidates[candidateIndex]) == startCoord)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
 __global__ void sim_scan_filter_initial_safe_store_candidate_states_kernel(const SimScanCudaCandidateReduceState *reduceStates,
                                                                            int candidateCount,
                                                                            const SimScanCudaCandidateState *finalCandidates,
@@ -12843,6 +12869,207 @@ bool sim_scan_cuda_precombine_initial_safe_store_resident(
     *outSeconds =
       static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
                             chrono::steady_clock::now() - residentStart).count()) / 1.0e9;
+  }
+  clear_sim_scan_cuda_error(errorOut);
+  return true;
+}
+
+bool sim_scan_cuda_prune_initial_safe_store_gpu_precombine_shadow(
+  const vector<SimScanCudaCandidateState> &states,
+  const vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  if(outStates == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing GPU precombine prune shadow output states";
+    }
+    return false;
+  }
+  outStates->clear();
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(states.empty())
+  {
+    clear_sim_scan_cuda_error(errorOut);
+    return true;
+  }
+  if(states.size() > static_cast<size_t>(numeric_limits<int>::max()))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "GPU precombine prune shadow state count exceeds CUDA helper range";
+    }
+    return false;
+  }
+  if(finalCandidates.size() > static_cast<size_t>(sim_scan_cuda_max_candidates))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "GPU precombine prune shadow frontier candidate count exceeds CUDA helper range";
+    }
+    return false;
+  }
+
+  int device = 0;
+  const cudaError_t deviceStatus = cudaGetDevice(&device);
+  if(deviceStatus != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(deviceStatus);
+    }
+    return false;
+  }
+  if(device < 0)
+  {
+    device = 0;
+  }
+
+  const int slot = simCudaWorkerSlotRuntime();
+  SimScanCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_sim_scan_cuda_context_for_device_slot(device,slot,&context,&contextMutex,errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_sim_scan_cuda_initialized_locked(*context,device,errorOut))
+  {
+    return false;
+  }
+
+  const int stateCount = static_cast<int>(states.size());
+  const int finalCandidateCount = static_cast<int>(finalCandidates.size());
+  const chrono::steady_clock::time_point pruneStart = chrono::steady_clock::now();
+  if(!ensure_sim_scan_cuda_buffer(&context->batchCandidateStatesDevice,
+                                  &context->batchCandidateStatesCapacity,
+                                  static_cast<size_t>(stateCount),
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->outputCandidateStatesDevice,
+                                  &context->outputCandidateStatesCapacity,
+                                  static_cast<size_t>(stateCount),
+                                  errorOut))
+  {
+    return false;
+  }
+
+  cudaError_t status =
+    cudaMemcpy(context->batchCandidateStatesDevice,
+               states.data(),
+               static_cast<size_t>(stateCount) * sizeof(SimScanCudaCandidateState),
+               cudaMemcpyHostToDevice);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(finalCandidateCount > 0)
+  {
+    status =
+      cudaMemcpy(context->candidateStatesDevice,
+                 finalCandidates.data(),
+                 static_cast<size_t>(finalCandidateCount) *
+                   sizeof(SimScanCudaCandidateState),
+                 cudaMemcpyHostToDevice);
+    if(status != cudaSuccess)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+  }
+
+  SimScanCudaKeepSafeStoreCandidateStatePredicate predicate;
+  predicate.finalCandidates = finalCandidateCount > 0 ? context->candidateStatesDevice : NULL;
+  predicate.finalCandidateCount = finalCandidateCount;
+  predicate.runningMin = runningMin;
+  thrust::device_ptr<SimScanCudaCandidateState> statesBegin =
+    thrust::device_pointer_cast(context->batchCandidateStatesDevice);
+  thrust::device_ptr<SimScanCudaCandidateState> outputBegin =
+    thrust::device_pointer_cast(context->outputCandidateStatesDevice);
+  thrust::device_ptr<SimScanCudaCandidateState> outputEnd;
+  try
+  {
+    outputEnd =
+      thrust::copy_if(thrust::device,
+                      statesBegin,
+                      statesBegin + stateCount,
+                      outputBegin,
+                      predicate);
+  }
+  catch(const thrust::system_error &e)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = e.what();
+    }
+    return false;
+  }
+  catch(const std::exception &e)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = e.what();
+    }
+    return false;
+  }
+
+  const int keptCount = static_cast<int>(outputEnd - outputBegin);
+  if(keptCount < 0 || keptCount > stateCount)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "GPU precombine prune shadow kept count overflow";
+    }
+    return false;
+  }
+  if(keptCount > 0)
+  {
+    outStates->resize(static_cast<size_t>(keptCount));
+    status =
+      cudaMemcpy(outStates->data(),
+                 context->outputCandidateStatesDevice,
+                 static_cast<size_t>(keptCount) * sizeof(SimScanCudaCandidateState),
+                 cudaMemcpyDeviceToHost);
+    if(status != cudaSuccess)
+    {
+      outStates->clear();
+      if(errorOut != NULL)
+      {
+        *errorOut = cuda_error_string(status);
+      }
+      return false;
+    }
+    if(outD2HBytes != NULL)
+    {
+      *outD2HBytes =
+        static_cast<uint64_t>(keptCount) *
+        static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+    }
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds =
+      static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                            chrono::steady_clock::now() - pruneStart).count()) / 1.0e9;
   }
   clear_sim_scan_cuda_error(errorOut);
   return true;
