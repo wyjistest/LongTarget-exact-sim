@@ -75,6 +75,17 @@ helper, so the 1.43 GB H2D cost is reported honestly. The resident source
 reuses the CUDA initial scan's summary buffer when available; otherwise it falls
 back to the host-H2D source rather than changing production authority.
 
+## Prune Shadow Follow-Up
+
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_SHADOW=1` adds a
+separate diagnostic-only proof for the next slimming step. It applies the
+existing safe-store prune predicate on GPU to the pre-prune unique states,
+downloads the kept states, and compares them with the CPU authoritative
+post-prune store. The sample shadow keeps 3,311,201 of 8,831,091 states and
+estimates D2H shrinking from 317,919,276 bytes to 119,203,236 bytes, with zero
+size, candidate, order, or digest mismatches. See
+`docs/cuda_initial_safe_store_gpu_precombine_prune_shadow.md`.
+
 ## Telemetry
 
 The benchmark log emits:

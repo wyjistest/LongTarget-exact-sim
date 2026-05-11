@@ -2640,6 +2640,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   SimInitialSafeStorePruneIndexShadowStats simInitialSafeStorePruneIndexShadowStats;
   SimInitialSafeStorePrecombineShadowStats simInitialSafeStorePrecombineShadowStats;
   SimInitialSafeStoreGpuPrecombineShadowStats simInitialSafeStoreGpuPrecombineShadowStats;
+  SimInitialSafeStoreGpuPrecombinePruneShadowStats simInitialSafeStoreGpuPrecombinePruneShadowStats;
   SimInitialSafeStoreGpuPrecombineStats simInitialSafeStoreGpuPrecombineStats;
   SimInitialCandidateContainerShadowStats simInitialCandidateContainerShadowStats;
   SimInitialContextApplyBreakdownStats simInitialContextApplyBreakdownStats;
@@ -2720,6 +2721,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getSimInitialSafeStorePrecombineShadowStats();
   simInitialSafeStoreGpuPrecombineShadowStats =
     getSimInitialSafeStoreGpuPrecombineShadowStats();
+  simInitialSafeStoreGpuPrecombinePruneShadowStats =
+    getSimInitialSafeStoreGpuPrecombinePruneShadowStats();
   simInitialSafeStoreGpuPrecombineStats =
     getSimInitialSafeStoreGpuPrecombineStats();
   simInitialCandidateContainerShadowStats =
@@ -3813,6 +3816,37 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreGpuPrecombineShadowStats.orderMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_digest_mismatches="
       <<simInitialSafeStoreGpuPrecombineShadowStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_calls="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneShadowStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_input_states="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.inputStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_kept_states="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.keptStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_removed_states="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.removedStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_removed_ratio="
+      <<(simInitialSafeStoreGpuPrecombinePruneShadowStats.inputStates == 0
+           ? 0.0
+           : static_cast<double>(simInitialSafeStoreGpuPrecombinePruneShadowStats.removedStates) /
+               static_cast<double>(simInitialSafeStoreGpuPrecombinePruneShadowStats.inputStates))<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_est_d2h_bytes_before="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.estD2HBytesBefore<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_est_d2h_bytes_after="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.estD2HBytesAfter<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_est_d2h_bytes_saved="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.estD2HBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.digestMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_requested="
       <<(simCudaInitialSafeStoreGpuPrecombineRequestedRuntime() ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_active="
