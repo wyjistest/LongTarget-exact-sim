@@ -2452,6 +2452,11 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierCpuFirstMaxAvailable = 0;
   uint64_t simInitialExactFrontierCpuTieAvailable = 0;
   uint64_t simInitialExactFrontierCpuFirstMaxTieAvailable = 0;
+  uint64_t simInitialExactFrontierOneChunkInputAdapterCalls = 0;
+  uint64_t simInitialExactFrontierOneChunkInputSummaries = 0;
+  uint64_t simInitialExactFrontierOneChunkInputBytes = 0;
+  uint64_t simInitialExactFrontierOneChunkInputDigest = 0;
+  uint64_t simInitialExactFrontierOneChunkInputUnsupportedRecords = 0;
   getSimInitialReductionStats(simInitialEventsTotal,
                               simInitialRunSummariesTotal,
                               simInitialSummaryBytesD2H,
@@ -2504,6 +2509,12 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	    simInitialExactFrontierCpuFirstMaxTieAvailable);
 	  uint64_t simSafeStoreHostEpochBumps = 0;
 	  getSimSafeStoreHostEpochStats(simSafeStoreHostEpochBumps);
+	  getSimInitialExactFrontierOneChunkInputAdapterStats(
+	    simInitialExactFrontierOneChunkInputAdapterCalls,
+	    simInitialExactFrontierOneChunkInputSummaries,
+	    simInitialExactFrontierOneChunkInputBytes,
+	    simInitialExactFrontierOneChunkInputDigest,
+	    simInitialExactFrontierOneChunkInputUnsupportedRecords);
 	  SimInitialCpuFrontierFastApplyTelemetry simInitialCpuFrontierFastApplyTelemetry;
 	  getSimInitialCpuFrontierFastApplyStats(simInitialCpuFrontierFastApplyTelemetry);
 	  double simInitialSafeStoreDeviceBuildSeconds = 0.0;
@@ -2805,6 +2816,39 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<longtargetSimInitialExactFrontierShadowBackendDisabledReason()<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_missing_backend="
       <<(simCudaInitialExactFrontierShadowGateRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_adapter_requested="
+      <<(simCudaInitialExactFrontierOneChunkInputAdapterRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_adapter_active="
+      <<((simCudaInitialExactFrontierOneChunkInputAdapterRequestedRuntime() &&
+          simInitialExactFrontierOneChunkInputAdapterCalls > 0) ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_adapter_supported=1"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_adapter_disabled_reason="
+      <<(simCudaInitialExactFrontierOneChunkInputAdapterRequestedRuntime() ? "none" : "env_off")<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_adapter_calls="
+      <<simInitialExactFrontierOneChunkInputAdapterCalls<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_summaries="
+      <<simInitialExactFrontierOneChunkInputSummaries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_bytes="
+      <<simInitialExactFrontierOneChunkInputBytes<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_digest_available="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_digest="
+      <<simInitialExactFrontierOneChunkInputDigest<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_ordered="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_has_start_key="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_has_score="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_has_end_position="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_has_bounds="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_has_first_max_tie_fields="
+      <<(simInitialExactFrontierOneChunkInputAdapterCalls > 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_has_safe_store_fields=0"<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_shadow_one_chunk_input_unsupported_records="
+      <<simInitialExactFrontierOneChunkInputUnsupportedRecords<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_ordered_digest_check=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_unordered_digest_check=0"<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_shadow_has_min_candidate_check=0"<<endl;

@@ -3436,6 +3436,12 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return env != NULL && env[0] != '\0' && env[0] != '0';
 				}
 
+				inline bool simCudaInitialExactFrontierOneChunkInputAdapterRequestedRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_INPUT_ADAPTER");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
 				inline int simCudaInitialChunkedHandoffChunkRowsRuntime()
 				{
 				  const int defaultChunkRows = 256;
@@ -7926,6 +7932,36 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkInputAdapterCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkInputAdapterSummaryCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkInputAdapterByteCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkInputAdapterDigestValue()
+			{
+			  static std::atomic<uint64_t> value(0);
+			  return value;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierOneChunkInputAdapterUnsupportedRecordCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simInitialScanNanoseconds()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -9244,6 +9280,29 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
+			inline void recordSimInitialExactFrontierOneChunkInputAdapter(
+			  uint64_t summaryCount,
+			  uint64_t byteCount,
+			  uint64_t digest,
+			  uint64_t unsupportedRecords)
+			{
+			  simInitialExactFrontierOneChunkInputAdapterCallCount().fetch_add(
+			    1,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkInputAdapterSummaryCount().fetch_add(
+			    summaryCount,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkInputAdapterByteCount().fetch_add(
+			    byteCount,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkInputAdapterDigestValue().store(
+			    digest,
+			    std::memory_order_relaxed);
+			  simInitialExactFrontierOneChunkInputAdapterUnsupportedRecordCount().fetch_add(
+			    unsupportedRecords,
+			    std::memory_order_relaxed);
+			}
+
 			inline void recordSimInitialScanNanoseconds(uint64_t nanoseconds)
 			{
 			  simInitialScanNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -10150,6 +10209,25 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 					inline void getSimSafeStoreHostEpochStats(uint64_t &bumps)
 					{
 					  bumps = simSafeStoreHostEpochBumpCount().load(std::memory_order_relaxed);
+					}
+
+					inline void getSimInitialExactFrontierOneChunkInputAdapterStats(
+					  uint64_t &callCount,
+					  uint64_t &summaryCount,
+					  uint64_t &byteCount,
+					  uint64_t &digest,
+					  uint64_t &unsupportedRecords)
+					{
+					  callCount =
+					    simInitialExactFrontierOneChunkInputAdapterCallCount().load(std::memory_order_relaxed);
+					  summaryCount =
+					    simInitialExactFrontierOneChunkInputAdapterSummaryCount().load(std::memory_order_relaxed);
+					  byteCount =
+					    simInitialExactFrontierOneChunkInputAdapterByteCount().load(std::memory_order_relaxed);
+					  digest =
+					    simInitialExactFrontierOneChunkInputAdapterDigestValue().load(std::memory_order_relaxed);
+					  unsupportedRecords =
+					    simInitialExactFrontierOneChunkInputAdapterUnsupportedRecordCount().load(std::memory_order_relaxed);
 					}
 
 					inline void getSimInitialCpuFrontierFastApplyStats(
@@ -15738,6 +15816,42 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  return digest;
 	}
 
+	inline uint64_t digestSimInitialExactFrontierOneChunkInputSummaries(
+	  const vector<SimScanCudaInitialRunSummary> &summaries)
+	{
+	  uint64_t hash = 1469598103934665603ull;
+	  hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(summaries.size()));
+	  for(size_t i = 0; i < summaries.size(); ++i)
+	  {
+	    const SimScanCudaInitialRunSummary &summary = summaries[i];
+	    hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(i));
+	    hash = simScanCudaFrontierDigestMix(hash,simScanCudaFrontierDigestInt(summary.score));
+	    hash = simScanCudaFrontierDigestMix(hash,summary.startCoord);
+	    hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(summary.endI));
+	    hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(summary.minEndJ));
+	    hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(summary.maxEndJ));
+	    hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(summary.scoreEndJ));
+	  }
+	  return hash;
+	}
+
+	inline void recordSimInitialExactFrontierOneChunkInputAdapterIfRequested(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  bool benchmarkEnabled)
+	{
+	  if(!benchmarkEnabled ||
+	     !simCudaInitialExactFrontierOneChunkInputAdapterRequestedRuntime())
+	  {
+	    return;
+	  }
+	  recordSimInitialExactFrontierOneChunkInputAdapter(
+	    static_cast<uint64_t>(summaries.size()),
+	    static_cast<uint64_t>(summaries.size()) *
+	      static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary)),
+	    digestSimInitialExactFrontierOneChunkInputSummaries(summaries),
+	    0);
+	}
+
 	inline void recordSimInitialExactFrontierCpuContractBaselineIfBenchmarking(
 	  const SimKernelContext &context,
 	  bool benchmarkEnabled)
@@ -16402,6 +16516,9 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		  bool hostSafeStoreAlreadyUpdated,
 		  bool hostSafeStoreAlreadyPruned)
 		{
+		  recordSimInitialExactFrontierOneChunkInputAdapterIfRequested(
+		    summaries,
+		    benchmarkEnabled);
 		  const bool maintainSafeStore =
 		    simLocateCudaModeRuntime() == SIM_LOCATE_CUDA_MODE_SAFE_WORKSET ||
 		    simCudaProposalLoopEnabledRuntime();
