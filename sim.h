@@ -3448,7 +3448,7 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  return env != NULL && env[0] != '\0' && env[0] != '0';
 				}
 
-				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime()
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowRequestedMaxSummariesRuntime()
 				{
 				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_MAX_SUMMARIES");
 				  if(env == NULL || env[0] == '\0')
@@ -3461,8 +3461,41 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  {
 				    return 0;
 				  }
-				  const uint64_t hardMax = 65536;
-				  return parsed > hardMax ? hardMax : static_cast<uint64_t>(parsed);
+				  return static_cast<uint64_t>(parsed);
+				}
+
+				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowAllowLargePrefixRuntime()
+				{
+				  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_ALLOW_LARGE_PREFIX");
+				  return env != NULL && env[0] != '\0' && env[0] != '0';
+				}
+
+				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowLargePrefixEligibleRuntime()
+				{
+				  const char *mode = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_ONE_CHUNK_BOUNDED_RANGE_MODE");
+				  return simCudaInitialExactFrontierOneChunkBoundedShadowAllowLargePrefixRuntime() &&
+				         mode != NULL && strcmp(mode,"request") == 0;
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowHardCapSummariesRuntime()
+				{
+				  return simCudaInitialExactFrontierOneChunkBoundedShadowLargePrefixEligibleRuntime() ?
+				    static_cast<uint64_t>(1048576) : static_cast<uint64_t>(65536);
+				}
+
+				inline uint64_t simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime()
+				{
+				  const uint64_t requested =
+				    simCudaInitialExactFrontierOneChunkBoundedShadowRequestedMaxSummariesRuntime();
+				  const uint64_t hardMax =
+				    simCudaInitialExactFrontierOneChunkBoundedShadowHardCapSummariesRuntime();
+				  return requested > hardMax ? hardMax : requested;
+				}
+
+				inline bool simCudaInitialExactFrontierOneChunkBoundedShadowCapClampedRuntime()
+				{
+				  return simCudaInitialExactFrontierOneChunkBoundedShadowRequestedMaxSummariesRuntime() >
+				         simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime();
 				}
 
 				enum SimInitialExactFrontierOneChunkBoundedRangeMode

@@ -422,6 +422,31 @@ static inline const char *longtargetSimInitialExactFrontierOneChunkBoundedShadow
   return boundedShadowCalls > 0 ? "none" : "missing_ordered_summary_stream";
 }
 
+static inline const char *longtargetSimInitialExactFrontierOneChunkBoundedShadowCapDisabledReason()
+{
+  if(!simCudaInitialExactFrontierOneChunkBoundedShadowRequestedRuntime())
+  {
+    return "env_off";
+  }
+  if(simCudaInitialExactFrontierOneChunkBoundedShadowRequestedMaxSummariesRuntime() == 0)
+  {
+    return "max_summaries_not_set";
+  }
+  if(!simCudaInitialExactFrontierOneChunkBoundedShadowCapClampedRuntime())
+  {
+    return "none";
+  }
+  if(simCudaInitialExactFrontierOneChunkBoundedShadowLargePrefixEligibleRuntime())
+  {
+    return "absolute_hard_cap";
+  }
+  if(simCudaInitialExactFrontierOneChunkBoundedShadowAllowLargePrefixRuntime())
+  {
+    return "large_prefix_requires_request_mode";
+  }
+  return "conservative_hard_cap";
+}
+
 static inline string longtargetSimInitialExactFrontierOneChunkBoundedShadowRequestIndex()
 {
   const uint64_t requestIndex =
@@ -2938,6 +2963,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialExactFrontierOneChunkBoundedShadowCalls<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_max_summaries="
       <<simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_requested_max_summaries="
+      <<simCudaInitialExactFrontierOneChunkBoundedShadowRequestedMaxSummariesRuntime()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_effective_max_summaries="
+      <<simCudaInitialExactFrontierOneChunkBoundedShadowMaxSummariesRuntime()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_hard_cap_summaries="
+      <<simCudaInitialExactFrontierOneChunkBoundedShadowHardCapSummariesRuntime()<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_cap_clamped="
+      <<(simCudaInitialExactFrontierOneChunkBoundedShadowCapClampedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_allow_large_prefix="
+      <<(simCudaInitialExactFrontierOneChunkBoundedShadowAllowLargePrefixRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_cap_disabled_reason="
+      <<longtargetSimInitialExactFrontierOneChunkBoundedShadowCapDisabledReason()<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_one_chunk_bounded_shadow_range_mode="
       <<simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeName(
           simCudaInitialExactFrontierOneChunkBoundedShadowRangeModeRuntime())<<endl;
