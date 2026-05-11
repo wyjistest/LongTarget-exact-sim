@@ -2640,6 +2640,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   SimInitialSafeStorePruneIndexShadowStats simInitialSafeStorePruneIndexShadowStats;
   SimInitialSafeStorePrecombineShadowStats simInitialSafeStorePrecombineShadowStats;
   SimInitialSafeStoreGpuPrecombineShadowStats simInitialSafeStoreGpuPrecombineShadowStats;
+  SimInitialSafeStoreGpuPrecombineStats simInitialSafeStoreGpuPrecombineStats;
   SimInitialCandidateContainerShadowStats simInitialCandidateContainerShadowStats;
   SimInitialContextApplyBreakdownStats simInitialContextApplyBreakdownStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
@@ -2719,6 +2720,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getSimInitialSafeStorePrecombineShadowStats();
   simInitialSafeStoreGpuPrecombineShadowStats =
     getSimInitialSafeStoreGpuPrecombineShadowStats();
+  simInitialSafeStoreGpuPrecombineStats =
+    getSimInitialSafeStoreGpuPrecombineStats();
   simInitialCandidateContainerShadowStats =
     getSimInitialCandidateContainerShadowStats();
   simInitialContextApplyBreakdownStats =
@@ -3810,6 +3813,38 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreGpuPrecombineShadowStats.orderMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_digest_mismatches="
       <<simInitialSafeStoreGpuPrecombineShadowStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombineRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_active="
+      <<(simInitialSafeStoreGpuPrecombineStats.active != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombineValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_calls="
+      <<simInitialSafeStoreGpuPrecombineStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombineStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_input_summaries="
+      <<simInitialSafeStoreGpuPrecombineStats.inputSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_unique_states="
+      <<simInitialSafeStoreGpuPrecombineStats.uniqueStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_est_saved_upserts="
+      <<simInitialSafeStoreGpuPrecombineStats.estSavedUpserts<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_h2d_bytes="
+      <<simInitialSafeStoreGpuPrecombineStats.h2dBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_d2h_bytes="
+      <<simInitialSafeStoreGpuPrecombineStats.d2hBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombineStats.validateNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_fallbacks="
+      <<simInitialSafeStoreGpuPrecombineStats.fallbacks<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;
