@@ -194,6 +194,8 @@ int main()
     uint64_t sparseV2SelectedBefore = 0;
     uint64_t sparseV2RejectedBefore = 0;
     uint64_t sparseV2SavedCellsBefore = 0;
+    const SimSafeWindowGeometryDistributionStats distributionBefore =
+        getSimSafeWindowGeometryDistributionStats();
     getSimSafeWindowGeometryTelemetryStats(rawWindowCellsBefore,
                                            rawMaxWindowCellsBefore,
                                            execMaxBandCellsBefore,
@@ -212,6 +214,8 @@ int main()
     uint64_t sparseV2SelectedAfter = 0;
     uint64_t sparseV2RejectedAfter = 0;
     uint64_t sparseV2SavedCellsAfter = 0;
+    const SimSafeWindowGeometryDistributionStats distributionAfter =
+        getSimSafeWindowGeometryDistributionStats();
     getSimSafeWindowGeometryTelemetryStats(rawWindowCellsAfter,
                                            rawMaxWindowCellsAfter,
                                            execMaxBandCellsAfter,
@@ -240,6 +244,19 @@ int main()
     ok = expect_equal_u64(sparseV2SavedCellsAfter,
                           sparseV2SavedCellsBefore + sparseV2Plan.sparseV2SavedCells,
                           "geometry telemetry records sparse_v2 saved cells") && ok;
+    ok = expect_equal_u64(distributionAfter.geometryCallCount,
+                          distributionBefore.geometryCallCount + 1,
+                          "geometry distribution records call count") && ok;
+    ok = expect_true(distributionAfter.maxInflatedCellCount >= sparseV2Plan.coarseningInflatedCellCount,
+                     "geometry distribution records max inflated cells") && ok;
+    ok = expect_true(distributionAfter.topInflated[0].inflatedCellCount >=
+                       sparseV2Plan.coarseningInflatedCellCount,
+                     "geometry distribution records top inflated call") && ok;
+    ok = expect_true(distributionAfter.smallWindowCallCount +
+                       distributionAfter.largeWindowCallCount >=
+                       distributionBefore.smallWindowCallCount +
+                       distributionBefore.largeWindowCallCount + 1,
+                     "geometry distribution classifies window size") && ok;
 
     if (!ok)
     {
