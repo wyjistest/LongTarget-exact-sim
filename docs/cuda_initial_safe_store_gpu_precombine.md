@@ -146,6 +146,38 @@ Fresh sample telemetry:
 | packed fallbacks | 0 |
 | packed size/candidate/order/digest mismatches | 0 |
 
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H_REAL=1`
+uses the packed kept-state payload as the opt-in host safe-store materialization
+source. With the resident GPU precombine prune path enabled, the real path is:
+
+```text
+GPU resident summaries
+-> GPU unique-start precombine
+-> GPU safe-store prune predicate
+-> GPU pack kept states
+-> D2H packed kept states only
+-> host unpack / materialize safe-store / rebuild index
+-> existing upload, locate, and region path
+```
+
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H_VALIDATE=1`
+adds a validation side path that also downloads the unpacked kept states and
+compares them with the packed-materialized host states. Validation mismatches
+record packed mismatch/fallback telemetry and fall back to the unpacked
+kept-state path. Validation adds extra D2H and is not the performance path.
+
+Fresh sample telemetry for packed real:
+
+| item | value |
+| --- | ---: |
+| kept states | 3,311,201 |
+| packed real active | 1 |
+| packed D2H bytes | 66,224,020 |
+| unpacked D2H bytes elided | 119,203,236 |
+| packed bytes saved vs unpacked kept states | 52,979,216 |
+| packed fallbacks | 0 |
+| packed size/candidate/order/digest mismatches | 0 |
+
 ## Prune Shadow Follow-Up
 
 `LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_SHADOW=1` adds a
@@ -216,6 +248,12 @@ benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_size_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_candidate_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_order_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_digest_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_requested
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_active
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_validate_enabled
+benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes_elided
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_materialize_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_validate_seconds
 ```
 
 `benchmark.sim_initial_safe_store_gpu_precombine_input_source` is `none` when
@@ -235,6 +273,8 @@ make check-sim-initial-safe-store-gpu-precombine-resident
 make check-sim-initial-safe-store-gpu-precombine-prune
 make check-sim-initial-safe-store-gpu-precombine-prune-validate
 make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h
+make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real
+make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real-validate
 ```
 
 Normal benchmark telemetry keeps the opt-in disabled and checks zeroed default
