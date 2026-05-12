@@ -1423,6 +1423,16 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   double *outFrontierUploadSeconds,
   std::string *errorOut);
 
+bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_resident_initial_run_summaries_for_shadow(
+  size_t summaryCount,
+  const std::vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  SimCudaPersistentSafeStoreHandle *handleOut,
+  double *outBuildSeconds,
+  double *outPruneSeconds,
+  double *outFrontierUploadSeconds,
+  std::string *errorOut);
+
 bool sim_scan_cuda_precombine_initial_safe_store_shadow(
   const std::vector<SimScanCudaInitialRunSummary> &summaries,
   std::vector<SimScanCudaCandidateState> *outStates,
@@ -1527,6 +1537,12 @@ bool sim_scan_cuda_reduce_initial_run_summaries_for_test(const std::vector<SimSc
                                                          int *outRunningMin,
                                                          SimScanCudaInitialReduceReplayStats *outReplayStats,
                                                          std::string *errorOut);
+
+bool sim_scan_cuda_reduce_initial_run_summaries_resident_for_test(size_t summaryCount,
+                                                                  std::vector<SimScanCudaCandidateState> *outCandidateStates,
+                                                                  int *outRunningMin,
+                                                                  SimScanCudaInitialReduceReplayStats *outReplayStats,
+                                                                  std::string *errorOut);
 
 bool sim_scan_cuda_reduce_initial_ordered_segmented_v3_for_test(
   const std::vector<SimScanCudaInitialRunSummary> &summaries,

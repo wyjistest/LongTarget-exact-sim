@@ -380,6 +380,42 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   return false;
 }
 
+bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_resident_initial_run_summaries_for_shadow(
+  size_t summaryCount,
+  const vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  SimCudaPersistentSafeStoreHandle *handleOut,
+  double *outBuildSeconds,
+  double *outPruneSeconds,
+  double *outFrontierUploadSeconds,
+  string *errorOut)
+{
+  (void)summaryCount;
+  (void)finalCandidates;
+  (void)runningMin;
+  if(handleOut != NULL)
+  {
+    *handleOut = SimCudaPersistentSafeStoreHandle();
+  }
+  if(outBuildSeconds != NULL)
+  {
+    *outBuildSeconds = 0.0;
+  }
+  if(outPruneSeconds != NULL)
+  {
+    *outPruneSeconds = 0.0;
+  }
+  if(outFrontierUploadSeconds != NULL)
+  {
+    *outFrontierUploadSeconds = 0.0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
 bool sim_scan_cuda_precombine_initial_safe_store_shadow(
   const vector<SimScanCudaInitialRunSummary> &summaries,
   vector<SimScanCudaCandidateState> *outStates,
@@ -431,6 +467,33 @@ bool sim_scan_cuda_precombine_initial_safe_store_resident(
   if(outD2HBytes != NULL)
   {
     *outD2HBytes = 0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_reduce_initial_run_summaries_resident_for_test(
+  size_t summaryCount,
+  vector<SimScanCudaCandidateState> *outCandidateStates,
+  int *outRunningMin,
+  SimScanCudaInitialReduceReplayStats *outReplayStats,
+  string *errorOut)
+{
+  (void)summaryCount;
+  if(outCandidateStates != NULL)
+  {
+    outCandidateStates->clear();
+  }
+  if(outRunningMin != NULL)
+  {
+    *outRunningMin = 0;
+  }
+  if(outReplayStats != NULL)
+  {
+    *outReplayStats = SimScanCudaInitialReduceReplayStats();
   }
   if(errorOut != NULL)
   {

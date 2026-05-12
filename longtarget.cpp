@@ -2685,8 +2685,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simInitialExactFrontierPerRequestShadowRequestsMismatched = 0;
   uint64_t simInitialExactFrontierPerRequestShadowProcessedSummaries = 0;
   uint64_t simInitialExactFrontierPerRequestShadowNanoseconds = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowKernelNanoseconds = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowCompareNanoseconds = 0;
   uint64_t simInitialExactFrontierPerRequestShadowH2DBytes = 0;
   uint64_t simInitialExactFrontierPerRequestShadowD2HBytes = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowResidentSourceActive = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowSummaryH2DElided = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowSummaryH2DBytesSaved = 0;
+  uint64_t simInitialExactFrontierPerRequestShadowFallbacks = 0;
   uint64_t simInitialExactFrontierPerRequestShadowCandidateDigestMismatches = 0;
   uint64_t simInitialExactFrontierPerRequestShadowCandidateValueMismatches = 0;
   uint64_t simInitialExactFrontierPerRequestShadowMinCandidateMismatches = 0;
@@ -2781,12 +2787,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	    simInitialExactFrontierPerRequestShadowRequestsCompared,
 	    simInitialExactFrontierPerRequestShadowRequestsSelected,
 	    simInitialExactFrontierPerRequestShadowRequestsSkipped,
-	    simInitialExactFrontierPerRequestShadowRequestsMismatched,
-	    simInitialExactFrontierPerRequestShadowProcessedSummaries,
-	    simInitialExactFrontierPerRequestShadowNanoseconds,
-	    simInitialExactFrontierPerRequestShadowH2DBytes,
-	    simInitialExactFrontierPerRequestShadowD2HBytes,
-	    simInitialExactFrontierPerRequestShadowCandidateDigestMismatches,
+		    simInitialExactFrontierPerRequestShadowRequestsMismatched,
+		    simInitialExactFrontierPerRequestShadowProcessedSummaries,
+		    simInitialExactFrontierPerRequestShadowNanoseconds,
+		    simInitialExactFrontierPerRequestShadowKernelNanoseconds,
+		    simInitialExactFrontierPerRequestShadowCompareNanoseconds,
+		    simInitialExactFrontierPerRequestShadowH2DBytes,
+		    simInitialExactFrontierPerRequestShadowD2HBytes,
+		    simInitialExactFrontierPerRequestShadowResidentSourceActive,
+		    simInitialExactFrontierPerRequestShadowSummaryH2DElided,
+		    simInitialExactFrontierPerRequestShadowSummaryH2DBytesSaved,
+		    simInitialExactFrontierPerRequestShadowFallbacks,
+		    simInitialExactFrontierPerRequestShadowCandidateDigestMismatches,
 	    simInitialExactFrontierPerRequestShadowCandidateValueMismatches,
 	    simInitialExactFrontierPerRequestShadowMinCandidateMismatches,
 	    simInitialExactFrontierPerRequestShadowFirstMaxTieMismatches,
@@ -3266,6 +3278,38 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialExactFrontierPerRequestShadowD2HBytes<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_seconds="
       <<(static_cast<double>(simInitialExactFrontierPerRequestShadowNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_kernel_seconds="
+      <<(static_cast<double>(simInitialExactFrontierPerRequestShadowKernelNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_compare_seconds="
+      <<(static_cast<double>(simInitialExactFrontierPerRequestShadowCompareNanoseconds) / 1.0e9)<<endl;
+  const bool simInitialExactFrontierPerRequestShadowResidentSourceRequested =
+    simCudaInitialExactFrontierPerRequestShadowResidentSourceRequestedRuntime();
+  const bool simInitialExactFrontierPerRequestShadowResidentSourceIsActive =
+    simInitialExactFrontierPerRequestShadowResidentSourceActive != 0;
+  const char *simInitialExactFrontierPerRequestShadowResidentSourceDisabledReason =
+    !simInitialExactFrontierPerRequestShadowResidentSourceRequested ? "not_requested" :
+    (simInitialExactFrontierPerRequestShadowResidentSourceIsActive ? "active" :
+     (simInitialExactFrontierPerRequestShadowFallbacks != 0 ? "resident_source_unavailable" :
+      (simInitialExactFrontierPerRequestShadowRequestsCompared != 0 ? "unavailable" : "not_run")));
+  const char *simInitialExactFrontierPerRequestShadowInputSource =
+    simInitialExactFrontierPerRequestShadowRequestsCompared == 0 ? "none" :
+    (simInitialExactFrontierPerRequestShadowResidentSourceIsActive ? "device_resident" : "host_h2d");
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_resident_source_requested="
+      <<(simInitialExactFrontierPerRequestShadowResidentSourceRequested ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_resident_source_active="
+      <<(simInitialExactFrontierPerRequestShadowResidentSourceIsActive ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_resident_source_supported="
+      <<(simInitialExactFrontierPerRequestShadowResidentSourceIsActive ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_resident_source_disabled_reason="
+      <<simInitialExactFrontierPerRequestShadowResidentSourceDisabledReason<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_summary_h2d_elided="
+      <<(simInitialExactFrontierPerRequestShadowSummaryH2DElided != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_summary_h2d_bytes_saved="
+      <<simInitialExactFrontierPerRequestShadowSummaryH2DBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_input_source="
+      <<simInitialExactFrontierPerRequestShadowInputSource<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_fallbacks="
+      <<simInitialExactFrontierPerRequestShadowFallbacks<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_candidate_digest_mismatches="
       <<simInitialExactFrontierPerRequestShadowCandidateDigestMismatches<<endl;
   cerr<<"benchmark.sim_initial_exact_frontier_per_request_shadow_candidate_value_mismatches="
