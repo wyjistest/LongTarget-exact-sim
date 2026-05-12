@@ -290,6 +290,19 @@ materialized store. CPU upload/locate/region remain authoritative.
 See `docs/cuda_initial_safe_store_fast_materialize.md` for the current 3-run
 sample A/B and interpretation.
 
+The current best recommended opt-in is resident GPU precombine + GPU prune with
+packed D2H and fast materialize disabled:
+
+```bash
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE=1
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1
+```
+
+This combination remains default-off, but it is the current 3-run sample median
+winner among the safe-store GPU variants. See
+`docs/cuda_initial_safe_store_best_path_ab.md`.
+
 For the packed real opt-in, `packed_unpack_seconds` is the host unpack time
 reported by the packed kept-state D2H helper, `packed_materialize_seconds` is
 the subsequent host safe-store materialization time, `packed_index_rebuild_seconds`
@@ -309,6 +322,7 @@ make check-sim-initial-safe-store-gpu-precombine
 make check-sim-initial-safe-store-gpu-precombine-validate
 make check-sim-initial-safe-store-gpu-precombine-resident
 make check-sim-initial-safe-store-gpu-precombine-prune
+make check-sim-initial-safe-store-gpu-best-path
 make check-sim-initial-safe-store-gpu-precombine-prune-validate
 make check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize
 make check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize-validate
