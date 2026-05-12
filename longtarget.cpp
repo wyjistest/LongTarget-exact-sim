@@ -3944,6 +3944,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_unpack_seconds="
       <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.unpackNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_unpack_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedUnpackNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_fallbacks="
       <<simInitialSafeStoreGpuPrecombinePruneStats.packedFallbacks<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_size_mismatches="
@@ -3964,6 +3966,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreGpuPrecombinePruneStats.unpackedD2HBytesElided<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_materialize_seconds="
       <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedMaterializeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_index_rebuild_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedIndexRebuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_host_apply_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedHostApplyNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_validate_seconds="
       <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedValidateNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_requested="
