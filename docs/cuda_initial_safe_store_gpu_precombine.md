@@ -302,6 +302,8 @@ LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1
 This combination remains default-off, but it is the current 3-run sample median
 winner among the safe-store GPU variants. See
 `docs/cuda_initial_safe_store_best_path_ab.md`.
+See `docs/cuda_initial_safe_store_gpu_stack_review_summary.md` for the
+PR #21-#30 integration summary and reviewer focus.
 
 For the packed real opt-in, `packed_unpack_seconds` is the host unpack time
 reported by the packed kept-state D2H helper, `packed_materialize_seconds` is
