@@ -213,6 +213,11 @@ check-sim-initial-safe-store-gpu-precombine-prune:
 	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_prune TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
 	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_prune sh ./scripts/check_initial_safe_store_gpu_precombine_prune.sh
 
+check-sim-initial-safe-store-gpu-best-path:
+	$(MAKE) build-cuda
+	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_best_path TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
+	OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_best_path sh ./scripts/check_initial_safe_store_gpu_best_path.sh
+
 check-sim-initial-safe-store-gpu-precombine-prune-validate:
 	$(MAKE) build-cuda
 	LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1 LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_VALIDATE=1 LONGTARGET_ENABLE_SIM_CUDA=1 LONGTARGET_ENABLE_SIM_CUDA_REGION=1 LONGTARGET_ENABLE_SIM_CUDA_LOCATE=1 EXPECTED_SIM_INITIAL_BACKEND=cuda EXPECTED_SIM_REGION_BACKEND=cuda EXPECTED_SIM_LOCATE_MODE=safe_workset OUTPUT_SUBDIR=sample_exactness_cuda_sim_region_locate_gpu_precombine_prune_validate TARGET=$(CURDIR)/$(CUDA_TARGET) ./scripts/run_sample_exactness_cuda.sh
@@ -1185,7 +1190,7 @@ check-longtarget-lite-output:
 		check-sim-initial-chunked-handoff-matrix \
 		build-sim-initial-exact-frontier-replay-test check-sim-initial-exact-frontier-replay \
 		build-sim-initial-cpu-frontier-fast-apply-test check-sim-initial-cpu-frontier-fast-apply \
-		check-sim-initial-safe-store-gpu-precombine-shadow check-sim-initial-safe-store-gpu-precombine check-sim-initial-safe-store-gpu-precombine-validate check-sim-initial-safe-store-gpu-precombine-resident check-sim-initial-safe-store-gpu-precombine-prune-shadow check-sim-initial-safe-store-gpu-precombine-prune check-sim-initial-safe-store-gpu-precombine-prune-validate check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize-validate check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real-validate \
+		check-sim-initial-safe-store-gpu-precombine-shadow check-sim-initial-safe-store-gpu-precombine check-sim-initial-safe-store-gpu-precombine-validate check-sim-initial-safe-store-gpu-precombine-resident check-sim-initial-safe-store-gpu-precombine-prune-shadow check-sim-initial-safe-store-gpu-precombine-prune check-sim-initial-safe-store-gpu-best-path check-sim-initial-safe-store-gpu-precombine-prune-validate check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize-validate check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real-validate \
 		build-sim-frontier-epoch-oracle-test check-sim-frontier-epoch-oracle \
 		build-sim-frontier-epoch-shadow-test check-sim-frontier-epoch-shadow \
 		build-sim-initial-reduce-semantics-test check-sim-initial-reduce-semantics \
