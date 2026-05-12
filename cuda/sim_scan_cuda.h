@@ -264,6 +264,54 @@ struct SimScanCudaCandidateState
   int right;
 };
 
+struct SimScanCudaPackedCandidateState20
+{
+  int32_t score;
+  uint16_t startI;
+  uint16_t startJ;
+  uint16_t endI;
+  uint16_t endJ;
+  uint16_t top;
+  uint16_t bot;
+  uint16_t left;
+  uint16_t right;
+};
+
+static_assert(sizeof(SimScanCudaPackedCandidateState20) == 20,
+              "packed candidate state must stay 20 bytes");
+
+struct SimScanCudaPackedCandidateD2HStats
+{
+  SimScanCudaPackedCandidateD2HStats():
+    active(false),
+    supported(false),
+    packedBytes(0),
+    unpackedBytes(0),
+    bytesSaved(0),
+    packSeconds(0.0),
+    unpackSeconds(0.0),
+    fallbacks(0),
+    sizeMismatches(0),
+    candidateMismatches(0),
+    orderMismatches(0),
+    digestMismatches(0)
+  {
+  }
+
+  bool active;
+  bool supported;
+  uint64_t packedBytes;
+  uint64_t unpackedBytes;
+  uint64_t bytesSaved;
+  double packSeconds;
+  double unpackSeconds;
+  uint64_t fallbacks;
+  uint64_t sizeMismatches;
+  uint64_t candidateMismatches;
+  uint64_t orderMismatches;
+  uint64_t digestMismatches;
+};
+
 struct SimScanCudaInitialSummaryChunk
 {
   SimScanCudaInitialSummaryChunk():
@@ -289,6 +337,54 @@ LONGTARGET_SIM_SCAN_HOST_DEVICE uint64_t simScanCudaCandidateStateStartCoord(con
 {
   return (static_cast<uint64_t>(static_cast<uint32_t>(candidate.startI)) << 32) |
          static_cast<uint64_t>(static_cast<uint32_t>(candidate.startJ));
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE bool simScanCudaCandidateStateFitsPacked20(
+  const SimScanCudaCandidateState &candidate)
+{
+  return candidate.startI >= 0 && candidate.startI <= 65535 &&
+         candidate.startJ >= 0 && candidate.startJ <= 65535 &&
+         candidate.endI >= 0 && candidate.endI <= 65535 &&
+         candidate.endJ >= 0 && candidate.endJ <= 65535 &&
+         candidate.top >= 0 && candidate.top <= 65535 &&
+         candidate.bot >= 0 && candidate.bot <= 65535 &&
+         candidate.left >= 0 && candidate.left <= 65535 &&
+         candidate.right >= 0 && candidate.right <= 65535;
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE bool packSimScanCudaCandidateState20(
+  const SimScanCudaCandidateState &candidate,
+  SimScanCudaPackedCandidateState20 &packed)
+{
+  if(!simScanCudaCandidateStateFitsPacked20(candidate))
+  {
+    return false;
+  }
+  packed.score = static_cast<int32_t>(candidate.score);
+  packed.startI = static_cast<uint16_t>(candidate.startI);
+  packed.startJ = static_cast<uint16_t>(candidate.startJ);
+  packed.endI = static_cast<uint16_t>(candidate.endI);
+  packed.endJ = static_cast<uint16_t>(candidate.endJ);
+  packed.top = static_cast<uint16_t>(candidate.top);
+  packed.bot = static_cast<uint16_t>(candidate.bot);
+  packed.left = static_cast<uint16_t>(candidate.left);
+  packed.right = static_cast<uint16_t>(candidate.right);
+  return true;
+}
+
+LONGTARGET_SIM_SCAN_HOST_DEVICE void unpackSimScanCudaCandidateState20(
+  const SimScanCudaPackedCandidateState20 &packed,
+  SimScanCudaCandidateState &candidate)
+{
+  candidate.score = static_cast<int>(packed.score);
+  candidate.startI = static_cast<int>(packed.startI);
+  candidate.startJ = static_cast<int>(packed.startJ);
+  candidate.endI = static_cast<int>(packed.endI);
+  candidate.endJ = static_cast<int>(packed.endJ);
+  candidate.top = static_cast<int>(packed.top);
+  candidate.bot = static_cast<int>(packed.bot);
+  candidate.left = static_cast<int>(packed.left);
+  candidate.right = static_cast<int>(packed.right);
 }
 
 LONGTARGET_SIM_SCAN_HOST_DEVICE bool simScanCudaCandidateStateMatchesStartCoord(const SimScanCudaCandidateState &candidate,
@@ -1349,6 +1445,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   uint64_t *outUniqueStates,
   uint64_t *outH2DBytes,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   std::string *errorOut);
 
 bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
@@ -1359,6 +1457,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   double *outSeconds,
   uint64_t *outUniqueStates,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   std::string *errorOut);
 
 bool sim_scan_cuda_prune_initial_safe_store_gpu_precombine_shadow(

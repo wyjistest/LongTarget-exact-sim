@@ -479,11 +479,14 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   uint64_t *outUniqueStates,
   uint64_t *outH2DBytes,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
   (void)summaries;
   (void)finalCandidates;
   (void)runningMin;
+  (void)tryPackedD2H;
   if(outStates != NULL)
   {
     outStates->clear();
@@ -504,6 +507,10 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   {
     *outD2HBytes = 0;
   }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
+  }
   if(errorOut != NULL)
   {
     *errorOut = "CUDA support not built";
@@ -519,11 +526,14 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   double *outSeconds,
   uint64_t *outUniqueStates,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
   (void)summaryCount;
   (void)finalCandidates;
   (void)runningMin;
+  (void)tryPackedD2H;
   if(outStates != NULL)
   {
     outStates->clear();
@@ -539,6 +549,10 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   if(outD2HBytes != NULL)
   {
     *outD2HBytes = 0;
+  }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
   }
   if(errorOut != NULL)
   {
