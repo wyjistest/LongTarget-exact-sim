@@ -243,6 +243,7 @@ benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_bytes_saved
 benchmark.sim_initial_safe_store_gpu_precombine_prune_pack_seconds
 benchmark.sim_initial_safe_store_gpu_precombine_prune_unpack_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_unpack_seconds
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_fallbacks
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_size_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_candidate_mismatches
@@ -253,6 +254,8 @@ benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_active
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_validate_enabled
 benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes_elided
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_materialize_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_index_rebuild_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_host_apply_seconds
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_validate_seconds
 ```
 
@@ -261,6 +264,16 @@ the opt-in does not run, `host_h2d` for the materialized-summary upload path,
 and `device_resident` when the resident source is active. The resident-source
 disabled reason is `not_requested`, `active`, `resident_source_unavailable`, or
 `not_run`.
+
+For the packed real opt-in, `packed_unpack_seconds` is the host unpack time
+reported by the packed kept-state D2H helper, `packed_materialize_seconds` is
+the subsequent host safe-store materialization time, `packed_index_rebuild_seconds`
+is the index rebuild slice inside materialization, and
+`packed_host_apply_seconds` is `packed_unpack_seconds + packed_materialize_seconds`.
+These fields characterize the remaining host-side cost only; they do not change
+the default path or make packed D2H a recommended/default mode.
+See `docs/cuda_initial_safe_store_packed_real_characterization.md` for the
+current 3-run sample A/B and interpretation.
 
 ## Validation
 
