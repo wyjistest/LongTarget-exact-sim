@@ -290,6 +290,7 @@ struct SimScanCudaPackedCandidateD2HStats
     bytesSaved(0),
     packSeconds(0.0),
     unpackSeconds(0.0),
+    validateSeconds(0.0),
     fallbacks(0),
     sizeMismatches(0),
     candidateMismatches(0),
@@ -305,6 +306,7 @@ struct SimScanCudaPackedCandidateD2HStats
   uint64_t bytesSaved;
   double packSeconds;
   double unpackSeconds;
+  double validateSeconds;
   uint64_t fallbacks;
   uint64_t sizeMismatches;
   uint64_t candidateMismatches;
@@ -1446,6 +1448,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   uint64_t *outH2DBytes,
   uint64_t *outD2HBytes,
   bool tryPackedD2H,
+  bool usePackedD2HAsRealSource,
+  bool validatePackedD2H,
   SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   std::string *errorOut);
 
@@ -1458,6 +1462,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   uint64_t *outUniqueStates,
   uint64_t *outD2HBytes,
   bool tryPackedD2H,
+  bool usePackedD2HAsRealSource,
+  bool validatePackedD2H,
   SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   std::string *errorOut);
 
