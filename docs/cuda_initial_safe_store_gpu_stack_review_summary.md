@@ -145,4 +145,5 @@ Reviewers should focus on:
 No further feature work should be added to this safe-store GPU stack before
 review feedback. The next useful follow-up after review is a separate
 telemetry-only characterization of remaining CUDA SIM bottlenecks under the
-recommended best path.
+recommended best path; see
+`docs/cuda_safe_store_best_path_remaining_bottlenecks.md`.
