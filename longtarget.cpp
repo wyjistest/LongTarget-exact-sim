@@ -3888,7 +3888,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_fallbacks="
       <<simInitialSafeStoreGpuPrecombinePruneStats.fallbacks<<endl;
   const bool simInitialSafeStoreGpuPrecombinePrunePackedD2HRequested =
-    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRequestedRuntime();
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRequestedRuntime() ||
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime();
   const char *simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason =
     "not_requested";
   if(simInitialSafeStoreGpuPrecombinePrunePackedD2HRequested)
@@ -3953,6 +3954,18 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreGpuPrecombinePruneStats.packedOrderMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_digest_mismatches="
       <<simInitialSafeStoreGpuPrecombinePruneStats.packedDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_active="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.packedD2HRealActive != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes_elided="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.unpackedD2HBytesElided<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_materialize_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedMaterializeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedValidateNanoseconds) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_requested="
       <<(simCudaInitialSafeStoreGpuPrecombineRequestedRuntime() ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_active="
