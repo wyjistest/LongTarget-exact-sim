@@ -5327,8 +5327,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    packedD2HBytesSaved(0),
 		    packNanoseconds(0),
 		    unpackNanoseconds(0),
+		    packedUnpackNanoseconds(0),
 		    packedValidateNanoseconds(0),
 		    packedMaterializeNanoseconds(0),
+		    packedIndexRebuildNanoseconds(0),
+		    packedHostApplyNanoseconds(0),
 		    packedFallbacks(0),
 		    packedSizeMismatches(0),
 		    packedCandidateMismatches(0),
@@ -5360,8 +5363,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  uint64_t packedD2HBytesSaved;
 		  uint64_t packNanoseconds;
 		  uint64_t unpackNanoseconds;
+		  uint64_t packedUnpackNanoseconds;
 		  uint64_t packedValidateNanoseconds;
 		  uint64_t packedMaterializeNanoseconds;
+		  uint64_t packedIndexRebuildNanoseconds;
+		  uint64_t packedHostApplyNanoseconds;
 		  uint64_t packedFallbacks;
 		  uint64_t packedSizeMismatches;
 		  uint64_t packedCandidateMismatches;
@@ -5396,8 +5402,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    packedD2HBytesSaved.store(0,std::memory_order_relaxed);
 		    packNanoseconds.store(0,std::memory_order_relaxed);
 		    unpackNanoseconds.store(0,std::memory_order_relaxed);
+		    packedUnpackNanoseconds.store(0,std::memory_order_relaxed);
 		    packedValidateNanoseconds.store(0,std::memory_order_relaxed);
 		    packedMaterializeNanoseconds.store(0,std::memory_order_relaxed);
+		    packedIndexRebuildNanoseconds.store(0,std::memory_order_relaxed);
+		    packedHostApplyNanoseconds.store(0,std::memory_order_relaxed);
 		    packedFallbacks.store(0,std::memory_order_relaxed);
 		    packedSizeMismatches.store(0,std::memory_order_relaxed);
 		    packedCandidateMismatches.store(0,std::memory_order_relaxed);
@@ -5428,8 +5437,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  std::atomic<uint64_t> packedD2HBytesSaved;
 		  std::atomic<uint64_t> packNanoseconds;
 		  std::atomic<uint64_t> unpackNanoseconds;
+		  std::atomic<uint64_t> packedUnpackNanoseconds;
 		  std::atomic<uint64_t> packedValidateNanoseconds;
 		  std::atomic<uint64_t> packedMaterializeNanoseconds;
+		  std::atomic<uint64_t> packedIndexRebuildNanoseconds;
+		  std::atomic<uint64_t> packedHostApplyNanoseconds;
 		  std::atomic<uint64_t> packedFallbacks;
 		  std::atomic<uint64_t> packedSizeMismatches;
 		  std::atomic<uint64_t> packedCandidateMismatches;
@@ -6203,8 +6215,11 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.packedD2HBytesSaved.fetch_add(delta.packedD2HBytesSaved,std::memory_order_relaxed);
 		  stats.packNanoseconds.fetch_add(delta.packNanoseconds,std::memory_order_relaxed);
 		  stats.unpackNanoseconds.fetch_add(delta.unpackNanoseconds,std::memory_order_relaxed);
+		  stats.packedUnpackNanoseconds.fetch_add(delta.packedUnpackNanoseconds,std::memory_order_relaxed);
 		  stats.packedValidateNanoseconds.fetch_add(delta.packedValidateNanoseconds,std::memory_order_relaxed);
 		  stats.packedMaterializeNanoseconds.fetch_add(delta.packedMaterializeNanoseconds,std::memory_order_relaxed);
+		  stats.packedIndexRebuildNanoseconds.fetch_add(delta.packedIndexRebuildNanoseconds,std::memory_order_relaxed);
+		  stats.packedHostApplyNanoseconds.fetch_add(delta.packedHostApplyNanoseconds,std::memory_order_relaxed);
 		  stats.packedFallbacks.fetch_add(delta.packedFallbacks,std::memory_order_relaxed);
 		  stats.packedSizeMismatches.fetch_add(delta.packedSizeMismatches,std::memory_order_relaxed);
 		  stats.packedCandidateMismatches.fetch_add(delta.packedCandidateMismatches,std::memory_order_relaxed);
@@ -6846,10 +6861,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    stats.packNanoseconds.load(std::memory_order_relaxed);
 		  snapshot.unpackNanoseconds =
 		    stats.unpackNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedUnpackNanoseconds =
+		    stats.packedUnpackNanoseconds.load(std::memory_order_relaxed);
 		  snapshot.packedValidateNanoseconds =
 		    stats.packedValidateNanoseconds.load(std::memory_order_relaxed);
 		  snapshot.packedMaterializeNanoseconds =
 		    stats.packedMaterializeNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedIndexRebuildNanoseconds =
+		    stats.packedIndexRebuildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedHostApplyNanoseconds =
+		    stats.packedHostApplyNanoseconds.load(std::memory_order_relaxed);
 		  snapshot.packedFallbacks =
 		    stats.packedFallbacks.load(std::memory_order_relaxed);
 		  snapshot.packedSizeMismatches =
@@ -13587,8 +13608,13 @@ inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
   const SimKernelContext &context,
   SimCandidateStateStore &store,
   SimInitialSafeStoreRebuildStats *stats,
-  uint64_t *hostEpochBumps)
+  uint64_t *hostEpochBumps,
+  uint64_t *indexRebuildNanosecondsOut)
 {
+  if(indexRebuildNanosecondsOut != NULL)
+  {
+    *indexRebuildNanosecondsOut = 0;
+  }
   if(!store.valid)
   {
     resetSimCandidateStateStore(store,true);
@@ -13600,8 +13626,16 @@ inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
   const uint64_t storeSizeBefore = static_cast<uint64_t>(store.states.size());
   store.states = states;
   const std::chrono::steady_clock::time_point indexRebuildStart =
-    stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    (stats != NULL || indexRebuildNanosecondsOut != NULL) ?
+    std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   rebuildSimCandidateStateStoreIndex(store);
+  const uint64_t indexRebuildNanoseconds =
+    (stats != NULL || indexRebuildNanosecondsOut != NULL) ?
+    simElapsedNanoseconds(indexRebuildStart) : 0;
+  if(indexRebuildNanosecondsOut != NULL)
+  {
+    *indexRebuildNanosecondsOut = indexRebuildNanoseconds;
+  }
   if(stats != NULL)
   {
     stats->updateCalls += 1;
@@ -13632,7 +13666,7 @@ inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
         }
       }
     }
-    stats->pruneIndexRebuildNanoseconds += simElapsedNanoseconds(indexRebuildStart);
+    stats->pruneIndexRebuildNanoseconds += indexRebuildNanoseconds;
   }
   bumpSimCandidateStateStoreHostEpoch(store);
   if(hostEpochBumps != NULL)
@@ -13833,6 +13867,11 @@ runSimInitialSafeStoreGpuPrecombine(
       simSecondsToNanoseconds(packedD2HStats.packSeconds);
     outPruneStats->unpackNanoseconds =
       simSecondsToNanoseconds(packedD2HStats.unpackSeconds);
+    if(packedD2HStats.active)
+    {
+      outPruneStats->packedUnpackNanoseconds =
+        outPruneStats->unpackNanoseconds;
+    }
     outPruneStats->packedValidateNanoseconds =
       simSecondsToNanoseconds(packedD2HStats.validateSeconds);
     outPruneStats->packedFallbacks = packedD2HStats.fallbacks;
@@ -13859,6 +13898,7 @@ runSimInitialSafeStoreGpuPrecombine(
 
   if(pruneRequested)
   {
+    uint64_t packedIndexRebuildNanoseconds = 0;
     const std::chrono::steady_clock::time_point packedMaterializeStart =
       packedD2HRealRequested && packedD2HStats.active ?
       std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
@@ -13869,11 +13909,18 @@ runSimInitialSafeStoreGpuPrecombine(
       preUpdateContext,
       outStore,
       &outRebuildStats,
-      &outHostEpochBumps);
+      &outHostEpochBumps,
+      &packedIndexRebuildNanoseconds);
     if(outPruneStats != NULL && packedD2HRealRequested && packedD2HStats.active)
     {
-      outPruneStats->packedMaterializeNanoseconds =
+      const uint64_t packedMaterializeNanoseconds =
         simElapsedNanoseconds(packedMaterializeStart);
+      outPruneStats->packedMaterializeNanoseconds =
+        packedMaterializeNanoseconds;
+      outPruneStats->packedIndexRebuildNanoseconds =
+        packedIndexRebuildNanoseconds;
+      outPruneStats->packedHostApplyNanoseconds =
+        outPruneStats->packedUnpackNanoseconds + packedMaterializeNanoseconds;
     }
   }
   else
