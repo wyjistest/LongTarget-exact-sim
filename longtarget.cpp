@@ -2639,6 +2639,10 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   SimInitialSafeStoreRebuildStats simInitialSafeStoreRebuildStats;
   SimInitialSafeStorePruneIndexShadowStats simInitialSafeStorePruneIndexShadowStats;
   SimInitialSafeStorePrecombineShadowStats simInitialSafeStorePrecombineShadowStats;
+  SimInitialSafeStoreGpuPrecombineShadowStats simInitialSafeStoreGpuPrecombineShadowStats;
+  SimInitialSafeStoreGpuPrecombinePruneShadowStats simInitialSafeStoreGpuPrecombinePruneShadowStats;
+  SimInitialSafeStoreGpuPrecombinePruneStats simInitialSafeStoreGpuPrecombinePruneStats;
+  SimInitialSafeStoreGpuPrecombineStats simInitialSafeStoreGpuPrecombineStats;
   SimInitialCandidateContainerShadowStats simInitialCandidateContainerShadowStats;
   SimInitialContextApplyBreakdownStats simInitialContextApplyBreakdownStats;
   uint64_t simInitialExactFrontierReplayRequests = 0;
@@ -2716,6 +2720,14 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getSimInitialSafeStorePruneIndexShadowStats();
   simInitialSafeStorePrecombineShadowStats =
     getSimInitialSafeStorePrecombineShadowStats();
+  simInitialSafeStoreGpuPrecombineShadowStats =
+    getSimInitialSafeStoreGpuPrecombineShadowStats();
+  simInitialSafeStoreGpuPrecombinePruneShadowStats =
+    getSimInitialSafeStoreGpuPrecombinePruneShadowStats();
+  simInitialSafeStoreGpuPrecombinePruneStats =
+    getSimInitialSafeStoreGpuPrecombinePruneStats();
+  simInitialSafeStoreGpuPrecombineStats =
+    getSimInitialSafeStoreGpuPrecombineStats();
   simInitialCandidateContainerShadowStats =
     getSimInitialCandidateContainerShadowStats();
   simInitialContextApplyBreakdownStats =
@@ -3783,6 +3795,264 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStorePrecombineShadowStats.duplicateSummaries<<endl;
   cerr<<"benchmark.sim_initial_safe_store_precombine_shadow_est_saved_upserts="
       <<simInitialSafeStorePrecombineShadowStats.estSavedUpserts<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombineShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_calls="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombineShadowStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_input_summaries="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.inputSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_unique_states="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.uniqueStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_est_saved_upserts="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.estSavedUpserts<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_h2d_bytes="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.h2dBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_d2h_bytes="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.d2hBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_shadow_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombineShadowStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_calls="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneShadowStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_input_states="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.inputStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_kept_states="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.keptStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_removed_states="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.removedStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_removed_ratio="
+      <<(simInitialSafeStoreGpuPrecombinePruneShadowStats.inputStates == 0
+           ? 0.0
+           : static_cast<double>(simInitialSafeStoreGpuPrecombinePruneShadowStats.removedStates) /
+               static_cast<double>(simInitialSafeStoreGpuPrecombinePruneShadowStats.inputStates))<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_est_d2h_bytes_before="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.estD2HBytesBefore<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_est_d2h_bytes_after="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.estD2HBytesAfter<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_est_d2h_bytes_saved="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.estD2HBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_shadow_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneShadowStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_active="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.active != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_calls="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_input_states="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.inputStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_kept_states="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.keptStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_removed_states="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.removedStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_removed_ratio="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.inputStates == 0
+           ? 0.0
+           : static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.removedStates) /
+               static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.inputStates))<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_d2h_bytes="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.d2hBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_d2h_bytes_saved="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.d2hBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.validateNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_fallbacks="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fallbacks<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_active="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeActive != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_index_build_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeIndexBuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeValidateNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_capacity_reuse_hits="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeCapacityReuseHits<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeSizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeCandidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeOrderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_fallbacks="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeFallbacks<<endl;
+  const bool simInitialSafeStoreGpuPrecombinePrunePackedD2HRequested =
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRequestedRuntime() ||
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime();
+  const char *simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason =
+    "not_requested";
+  if(simInitialSafeStoreGpuPrecombinePrunePackedD2HRequested)
+  {
+    if(!simCudaInitialSafeStoreGpuPrecombineRequestedRuntime())
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason =
+        "missing_gpu_precombine";
+    }
+    else if(!simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime())
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason =
+        "missing_resident_source";
+    }
+    else if(!simCudaInitialSafeStoreGpuPrecombinePruneRequestedRuntime())
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason =
+        "missing_prune";
+    }
+    else if(simInitialSafeStoreGpuPrecombinePruneStats.packedD2HActive != 0)
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason = "active";
+    }
+    else if(simInitialSafeStoreGpuPrecombinePruneStats.packedFallbacks != 0)
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason = "fallback";
+    }
+    else if(simInitialSafeStoreGpuPrecombinePruneStats.calls == 0)
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason = "not_run";
+    }
+    else
+    {
+      simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason = "unavailable";
+    }
+  }
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_requested="
+      <<(simInitialSafeStoreGpuPrecombinePrunePackedD2HRequested ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_active="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.packedD2HActive != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_supported="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.packedD2HSupported != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_disabled_reason="
+      <<simInitialSafeStoreGpuPrecombinePrunePackedD2HDisabledReason<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_bytes="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedD2HBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.unpackedD2HBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_bytes_saved="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedD2HBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_pack_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_unpack_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.unpackNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_unpack_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedUnpackNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_fallbacks="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedFallbacks<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedSizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedCandidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedOrderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.packedDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_real_active="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.packedD2HRealActive != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes_elided="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.unpackedD2HBytesElided<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_materialize_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedMaterializeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_index_rebuild_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedIndexRebuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_host_apply_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedHostApplyNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.packedValidateNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombineRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_active="
+      <<(simInitialSafeStoreGpuPrecombineStats.active != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombineValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_calls="
+      <<simInitialSafeStoreGpuPrecombineStats.calls<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombineStats.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_input_summaries="
+      <<simInitialSafeStoreGpuPrecombineStats.inputSummaries<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_unique_states="
+      <<simInitialSafeStoreGpuPrecombineStats.uniqueStates<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_est_saved_upserts="
+      <<simInitialSafeStoreGpuPrecombineStats.estSavedUpserts<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_h2d_bytes="
+      <<simInitialSafeStoreGpuPrecombineStats.h2dBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_d2h_bytes="
+      <<simInitialSafeStoreGpuPrecombineStats.d2hBytes<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombineStats.validateNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.orderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombineStats.digestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_fallbacks="
+      <<simInitialSafeStoreGpuPrecombineStats.fallbacks<<endl;
+  const bool simInitialSafeStoreGpuPrecombineResidentSourceRequested =
+    simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime();
+  const bool simInitialSafeStoreGpuPrecombineResidentSourceActive =
+    simInitialSafeStoreGpuPrecombineStats.residentSourceActive != 0;
+  const char *simInitialSafeStoreGpuPrecombineResidentSourceDisabledReason =
+    !simInitialSafeStoreGpuPrecombineResidentSourceRequested ? "not_requested" :
+    (simInitialSafeStoreGpuPrecombineResidentSourceActive ? "active" :
+     (simInitialSafeStoreGpuPrecombineStats.calls != 0 ? "resident_source_unavailable" : "not_run"));
+  const char *simInitialSafeStoreGpuPrecombineInputSource =
+    simInitialSafeStoreGpuPrecombineStats.calls == 0 ? "none" :
+    (simInitialSafeStoreGpuPrecombineResidentSourceActive ? "device_resident" : "host_h2d");
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_requested="
+      <<(simInitialSafeStoreGpuPrecombineResidentSourceRequested ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_active="
+      <<(simInitialSafeStoreGpuPrecombineResidentSourceActive ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_supported="
+      <<(simInitialSafeStoreGpuPrecombineResidentSourceActive ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_resident_source_disabled_reason="
+      <<simInitialSafeStoreGpuPrecombineResidentSourceDisabledReason<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_summary_h2d_elided="
+      <<(simInitialSafeStoreGpuPrecombineStats.summaryH2DElided != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_summary_h2d_bytes_saved="
+      <<simInitialSafeStoreGpuPrecombineStats.summaryH2DBytesSaved<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_input_source="
+      <<simInitialSafeStoreGpuPrecombineInputSource<<endl;
   cerr<<"benchmark.sim_initial_scan_cpu_merge_subtotal_seconds="<<simInitialScanCpuMergeSubtotalSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_diag_seconds="<<simInitialScanDiagSeconds<<endl;
   cerr<<"benchmark.sim_initial_scan_online_reduce_seconds="<<simInitialScanOnlineReduceSeconds<<endl;

@@ -2853,6 +2853,126 @@ inline bool simCudaInitialSafeStorePrecombineShadowEnabledRuntime()
   return enabled;
 }
 
+inline bool simCudaInitialSafeStoreGpuPrecombineShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombineRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombineValidateEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_VALIDATE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneValidateEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_VALIDATE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H_REAL");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HValidateEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H_VALIDATE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_FAST_MATERIALIZE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeValidateEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_FAST_MATERIALIZE_VALIDATE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 inline bool simCudaInitialSafeStorePruneIndexShadowEnabledRuntime()
 {
   static const bool enabled = []()
@@ -5071,6 +5191,426 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return stats;
 		}
 
+		struct SimInitialSafeStoreGpuPrecombineShadowStats
+		{
+		  SimInitialSafeStoreGpuPrecombineShadowStats():
+		    calls(0),
+		    nanoseconds(0),
+		    inputSummaries(0),
+		    uniqueStates(0),
+		    estSavedUpserts(0),
+		    h2dBytes(0),
+		    d2hBytes(0),
+		    sizeMismatches(0),
+		    candidateMismatches(0),
+		    orderMismatches(0),
+		    digestMismatches(0)
+		  {
+		  }
+
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t inputSummaries;
+		  uint64_t uniqueStates;
+		  uint64_t estSavedUpserts;
+		  uint64_t h2dBytes;
+		  uint64_t d2hBytes;
+		  uint64_t sizeMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
+		  uint64_t digestMismatches;
+		};
+
+		struct SimInitialSafeStoreGpuPrecombineShadowAtomicStats
+		{
+		  SimInitialSafeStoreGpuPrecombineShadowAtomicStats()
+		  {
+		    calls.store(0,std::memory_order_relaxed);
+		    nanoseconds.store(0,std::memory_order_relaxed);
+		    inputSummaries.store(0,std::memory_order_relaxed);
+		    uniqueStates.store(0,std::memory_order_relaxed);
+		    estSavedUpserts.store(0,std::memory_order_relaxed);
+		    h2dBytes.store(0,std::memory_order_relaxed);
+		    d2hBytes.store(0,std::memory_order_relaxed);
+		    sizeMismatches.store(0,std::memory_order_relaxed);
+		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    orderMismatches.store(0,std::memory_order_relaxed);
+		    digestMismatches.store(0,std::memory_order_relaxed);
+		  }
+
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> inputSummaries;
+		  std::atomic<uint64_t> uniqueStates;
+		  std::atomic<uint64_t> estSavedUpserts;
+		  std::atomic<uint64_t> h2dBytes;
+		  std::atomic<uint64_t> d2hBytes;
+		  std::atomic<uint64_t> sizeMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
+		  std::atomic<uint64_t> digestMismatches;
+		};
+
+		inline SimInitialSafeStoreGpuPrecombineShadowAtomicStats &simInitialSafeStoreGpuPrecombineShadowAtomicStats()
+		{
+		  static SimInitialSafeStoreGpuPrecombineShadowAtomicStats stats;
+		  return stats;
+		}
+
+		struct SimInitialSafeStoreGpuPrecombinePruneShadowStats
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneShadowStats():
+		    calls(0),
+		    nanoseconds(0),
+		    inputStates(0),
+		    keptStates(0),
+		    removedStates(0),
+		    estD2HBytesBefore(0),
+		    estD2HBytesAfter(0),
+		    estD2HBytesSaved(0),
+		    sizeMismatches(0),
+		    candidateMismatches(0),
+		    orderMismatches(0),
+		    digestMismatches(0)
+		  {
+		  }
+
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t inputStates;
+		  uint64_t keptStates;
+		  uint64_t removedStates;
+		  uint64_t estD2HBytesBefore;
+		  uint64_t estD2HBytesAfter;
+		  uint64_t estD2HBytesSaved;
+		  uint64_t sizeMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
+		  uint64_t digestMismatches;
+		};
+
+		struct SimInitialSafeStoreGpuPrecombinePruneShadowAtomicStats
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneShadowAtomicStats()
+		  {
+		    calls.store(0,std::memory_order_relaxed);
+		    nanoseconds.store(0,std::memory_order_relaxed);
+		    inputStates.store(0,std::memory_order_relaxed);
+		    keptStates.store(0,std::memory_order_relaxed);
+		    removedStates.store(0,std::memory_order_relaxed);
+		    estD2HBytesBefore.store(0,std::memory_order_relaxed);
+		    estD2HBytesAfter.store(0,std::memory_order_relaxed);
+		    estD2HBytesSaved.store(0,std::memory_order_relaxed);
+		    sizeMismatches.store(0,std::memory_order_relaxed);
+		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    orderMismatches.store(0,std::memory_order_relaxed);
+		    digestMismatches.store(0,std::memory_order_relaxed);
+		  }
+
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> inputStates;
+		  std::atomic<uint64_t> keptStates;
+		  std::atomic<uint64_t> removedStates;
+		  std::atomic<uint64_t> estD2HBytesBefore;
+		  std::atomic<uint64_t> estD2HBytesAfter;
+		  std::atomic<uint64_t> estD2HBytesSaved;
+		  std::atomic<uint64_t> sizeMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
+		  std::atomic<uint64_t> digestMismatches;
+		};
+
+		inline SimInitialSafeStoreGpuPrecombinePruneShadowAtomicStats &simInitialSafeStoreGpuPrecombinePruneShadowAtomicStats()
+		{
+		  static SimInitialSafeStoreGpuPrecombinePruneShadowAtomicStats stats;
+		  return stats;
+		}
+
+		struct SimInitialSafeStoreGpuPrecombinePruneStats
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneStats():
+		    active(0),
+		    calls(0),
+		    nanoseconds(0),
+		    inputStates(0),
+		    keptStates(0),
+		    removedStates(0),
+		    d2hBytes(0),
+		    d2hBytesSaved(0),
+		    packedD2HActive(0),
+		    packedD2HSupported(0),
+		    packedD2HRealActive(0),
+		    packedD2HBytes(0),
+		    unpackedD2HBytes(0),
+		    unpackedD2HBytesElided(0),
+		    packedD2HBytesSaved(0),
+		    packNanoseconds(0),
+		    unpackNanoseconds(0),
+		    packedUnpackNanoseconds(0),
+		    packedValidateNanoseconds(0),
+		    packedMaterializeNanoseconds(0),
+		    packedIndexRebuildNanoseconds(0),
+		    packedHostApplyNanoseconds(0),
+		    packedFallbacks(0),
+		    packedSizeMismatches(0),
+		    packedCandidateMismatches(0),
+		    packedOrderMismatches(0),
+		    packedDigestMismatches(0),
+		    fastMaterializeActive(0),
+		    fastMaterializeNanoseconds(0),
+		    fastMaterializeIndexBuildNanoseconds(0),
+		    fastMaterializeValidateNanoseconds(0),
+		    fastMaterializeCapacityReuseHits(0),
+		    fastMaterializeSizeMismatches(0),
+		    fastMaterializeCandidateMismatches(0),
+		    fastMaterializeOrderMismatches(0),
+		    fastMaterializeDigestMismatches(0),
+		    fastMaterializeFallbacks(0),
+		    validateNanoseconds(0),
+		    sizeMismatches(0),
+		    candidateMismatches(0),
+		    orderMismatches(0),
+		    digestMismatches(0),
+		    fallbacks(0)
+		  {
+		  }
+
+		  uint64_t active;
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t inputStates;
+		  uint64_t keptStates;
+		  uint64_t removedStates;
+		  uint64_t d2hBytes;
+		  uint64_t d2hBytesSaved;
+		  uint64_t packedD2HActive;
+		  uint64_t packedD2HSupported;
+		  uint64_t packedD2HRealActive;
+		  uint64_t packedD2HBytes;
+		  uint64_t unpackedD2HBytes;
+		  uint64_t unpackedD2HBytesElided;
+		  uint64_t packedD2HBytesSaved;
+		  uint64_t packNanoseconds;
+		  uint64_t unpackNanoseconds;
+		  uint64_t packedUnpackNanoseconds;
+		  uint64_t packedValidateNanoseconds;
+		  uint64_t packedMaterializeNanoseconds;
+		  uint64_t packedIndexRebuildNanoseconds;
+		  uint64_t packedHostApplyNanoseconds;
+		  uint64_t packedFallbacks;
+		  uint64_t packedSizeMismatches;
+		  uint64_t packedCandidateMismatches;
+		  uint64_t packedOrderMismatches;
+		  uint64_t packedDigestMismatches;
+		  uint64_t fastMaterializeActive;
+		  uint64_t fastMaterializeNanoseconds;
+		  uint64_t fastMaterializeIndexBuildNanoseconds;
+		  uint64_t fastMaterializeValidateNanoseconds;
+		  uint64_t fastMaterializeCapacityReuseHits;
+		  uint64_t fastMaterializeSizeMismatches;
+		  uint64_t fastMaterializeCandidateMismatches;
+		  uint64_t fastMaterializeOrderMismatches;
+		  uint64_t fastMaterializeDigestMismatches;
+		  uint64_t fastMaterializeFallbacks;
+		  uint64_t validateNanoseconds;
+		  uint64_t sizeMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
+		  uint64_t digestMismatches;
+		  uint64_t fallbacks;
+		};
+
+		struct SimInitialSafeStoreGpuPrecombinePruneAtomicStats
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneAtomicStats()
+		  {
+		    active.store(0,std::memory_order_relaxed);
+		    calls.store(0,std::memory_order_relaxed);
+		    nanoseconds.store(0,std::memory_order_relaxed);
+		    inputStates.store(0,std::memory_order_relaxed);
+		    keptStates.store(0,std::memory_order_relaxed);
+		    removedStates.store(0,std::memory_order_relaxed);
+		    d2hBytes.store(0,std::memory_order_relaxed);
+		    d2hBytesSaved.store(0,std::memory_order_relaxed);
+		    packedD2HActive.store(0,std::memory_order_relaxed);
+		    packedD2HSupported.store(0,std::memory_order_relaxed);
+		    packedD2HRealActive.store(0,std::memory_order_relaxed);
+		    packedD2HBytes.store(0,std::memory_order_relaxed);
+		    unpackedD2HBytes.store(0,std::memory_order_relaxed);
+		    unpackedD2HBytesElided.store(0,std::memory_order_relaxed);
+		    packedD2HBytesSaved.store(0,std::memory_order_relaxed);
+		    packNanoseconds.store(0,std::memory_order_relaxed);
+		    unpackNanoseconds.store(0,std::memory_order_relaxed);
+		    packedUnpackNanoseconds.store(0,std::memory_order_relaxed);
+		    packedValidateNanoseconds.store(0,std::memory_order_relaxed);
+		    packedMaterializeNanoseconds.store(0,std::memory_order_relaxed);
+		    packedIndexRebuildNanoseconds.store(0,std::memory_order_relaxed);
+		    packedHostApplyNanoseconds.store(0,std::memory_order_relaxed);
+		    packedFallbacks.store(0,std::memory_order_relaxed);
+		    packedSizeMismatches.store(0,std::memory_order_relaxed);
+		    packedCandidateMismatches.store(0,std::memory_order_relaxed);
+		    packedOrderMismatches.store(0,std::memory_order_relaxed);
+		    packedDigestMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeActive.store(0,std::memory_order_relaxed);
+		    fastMaterializeNanoseconds.store(0,std::memory_order_relaxed);
+		    fastMaterializeIndexBuildNanoseconds.store(0,std::memory_order_relaxed);
+		    fastMaterializeValidateNanoseconds.store(0,std::memory_order_relaxed);
+		    fastMaterializeCapacityReuseHits.store(0,std::memory_order_relaxed);
+		    fastMaterializeSizeMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeCandidateMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeOrderMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeDigestMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeFallbacks.store(0,std::memory_order_relaxed);
+		    validateNanoseconds.store(0,std::memory_order_relaxed);
+		    sizeMismatches.store(0,std::memory_order_relaxed);
+		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    orderMismatches.store(0,std::memory_order_relaxed);
+		    digestMismatches.store(0,std::memory_order_relaxed);
+		    fallbacks.store(0,std::memory_order_relaxed);
+		  }
+
+		  std::atomic<uint64_t> active;
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> inputStates;
+		  std::atomic<uint64_t> keptStates;
+		  std::atomic<uint64_t> removedStates;
+		  std::atomic<uint64_t> d2hBytes;
+		  std::atomic<uint64_t> d2hBytesSaved;
+		  std::atomic<uint64_t> packedD2HActive;
+		  std::atomic<uint64_t> packedD2HSupported;
+		  std::atomic<uint64_t> packedD2HRealActive;
+		  std::atomic<uint64_t> packedD2HBytes;
+		  std::atomic<uint64_t> unpackedD2HBytes;
+		  std::atomic<uint64_t> unpackedD2HBytesElided;
+		  std::atomic<uint64_t> packedD2HBytesSaved;
+		  std::atomic<uint64_t> packNanoseconds;
+		  std::atomic<uint64_t> unpackNanoseconds;
+		  std::atomic<uint64_t> packedUnpackNanoseconds;
+		  std::atomic<uint64_t> packedValidateNanoseconds;
+		  std::atomic<uint64_t> packedMaterializeNanoseconds;
+		  std::atomic<uint64_t> packedIndexRebuildNanoseconds;
+		  std::atomic<uint64_t> packedHostApplyNanoseconds;
+		  std::atomic<uint64_t> packedFallbacks;
+		  std::atomic<uint64_t> packedSizeMismatches;
+		  std::atomic<uint64_t> packedCandidateMismatches;
+		  std::atomic<uint64_t> packedOrderMismatches;
+		  std::atomic<uint64_t> packedDigestMismatches;
+		  std::atomic<uint64_t> fastMaterializeActive;
+		  std::atomic<uint64_t> fastMaterializeNanoseconds;
+		  std::atomic<uint64_t> fastMaterializeIndexBuildNanoseconds;
+		  std::atomic<uint64_t> fastMaterializeValidateNanoseconds;
+		  std::atomic<uint64_t> fastMaterializeCapacityReuseHits;
+		  std::atomic<uint64_t> fastMaterializeSizeMismatches;
+		  std::atomic<uint64_t> fastMaterializeCandidateMismatches;
+		  std::atomic<uint64_t> fastMaterializeOrderMismatches;
+		  std::atomic<uint64_t> fastMaterializeDigestMismatches;
+		  std::atomic<uint64_t> fastMaterializeFallbacks;
+		  std::atomic<uint64_t> validateNanoseconds;
+		  std::atomic<uint64_t> sizeMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
+		  std::atomic<uint64_t> digestMismatches;
+		  std::atomic<uint64_t> fallbacks;
+		};
+
+		inline SimInitialSafeStoreGpuPrecombinePruneAtomicStats &simInitialSafeStoreGpuPrecombinePruneAtomicStats()
+		{
+		  static SimInitialSafeStoreGpuPrecombinePruneAtomicStats stats;
+		  return stats;
+		}
+
+		struct SimInitialSafeStoreGpuPrecombineStats
+		{
+		  SimInitialSafeStoreGpuPrecombineStats():
+		    active(0),
+		    calls(0),
+		    nanoseconds(0),
+		    inputSummaries(0),
+		    uniqueStates(0),
+		    estSavedUpserts(0),
+		    h2dBytes(0),
+		    d2hBytes(0),
+		    validateNanoseconds(0),
+		    sizeMismatches(0),
+		    candidateMismatches(0),
+		    orderMismatches(0),
+		    digestMismatches(0),
+		    fallbacks(0),
+		    residentSourceActive(0),
+		    summaryH2DElided(0),
+		    summaryH2DBytesSaved(0)
+		  {
+		  }
+
+		  uint64_t active;
+		  uint64_t calls;
+		  uint64_t nanoseconds;
+		  uint64_t inputSummaries;
+		  uint64_t uniqueStates;
+		  uint64_t estSavedUpserts;
+		  uint64_t h2dBytes;
+		  uint64_t d2hBytes;
+		  uint64_t validateNanoseconds;
+		  uint64_t sizeMismatches;
+		  uint64_t candidateMismatches;
+		  uint64_t orderMismatches;
+		  uint64_t digestMismatches;
+		  uint64_t fallbacks;
+		  uint64_t residentSourceActive;
+		  uint64_t summaryH2DElided;
+		  uint64_t summaryH2DBytesSaved;
+		};
+
+		struct SimInitialSafeStoreGpuPrecombineAtomicStats
+		{
+		  SimInitialSafeStoreGpuPrecombineAtomicStats()
+		  {
+		    active.store(0,std::memory_order_relaxed);
+		    calls.store(0,std::memory_order_relaxed);
+		    nanoseconds.store(0,std::memory_order_relaxed);
+		    inputSummaries.store(0,std::memory_order_relaxed);
+		    uniqueStates.store(0,std::memory_order_relaxed);
+		    estSavedUpserts.store(0,std::memory_order_relaxed);
+		    h2dBytes.store(0,std::memory_order_relaxed);
+		    d2hBytes.store(0,std::memory_order_relaxed);
+		    validateNanoseconds.store(0,std::memory_order_relaxed);
+		    sizeMismatches.store(0,std::memory_order_relaxed);
+		    candidateMismatches.store(0,std::memory_order_relaxed);
+		    orderMismatches.store(0,std::memory_order_relaxed);
+		    digestMismatches.store(0,std::memory_order_relaxed);
+		    fallbacks.store(0,std::memory_order_relaxed);
+		    residentSourceActive.store(0,std::memory_order_relaxed);
+		    summaryH2DElided.store(0,std::memory_order_relaxed);
+		    summaryH2DBytesSaved.store(0,std::memory_order_relaxed);
+		  }
+
+		  std::atomic<uint64_t> active;
+		  std::atomic<uint64_t> calls;
+		  std::atomic<uint64_t> nanoseconds;
+		  std::atomic<uint64_t> inputSummaries;
+		  std::atomic<uint64_t> uniqueStates;
+		  std::atomic<uint64_t> estSavedUpserts;
+		  std::atomic<uint64_t> h2dBytes;
+		  std::atomic<uint64_t> d2hBytes;
+		  std::atomic<uint64_t> validateNanoseconds;
+		  std::atomic<uint64_t> sizeMismatches;
+		  std::atomic<uint64_t> candidateMismatches;
+		  std::atomic<uint64_t> orderMismatches;
+		  std::atomic<uint64_t> digestMismatches;
+		  std::atomic<uint64_t> fallbacks;
+		  std::atomic<uint64_t> residentSourceActive;
+		  std::atomic<uint64_t> summaryH2DElided;
+		  std::atomic<uint64_t> summaryH2DBytesSaved;
+		};
+
+		inline SimInitialSafeStoreGpuPrecombineAtomicStats &simInitialSafeStoreGpuPrecombineAtomicStats()
+		{
+		  static SimInitialSafeStoreGpuPrecombineAtomicStats stats;
+		  return stats;
+		}
+
 		struct SimRegionDeferredCountValidateStats
 		{
 		  SimRegionDeferredCountValidateStats():
@@ -5679,6 +6219,113 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.estSavedUpserts.fetch_add(delta.estSavedUpserts,std::memory_order_relaxed);
 		}
 
+		inline void recordSimInitialSafeStoreGpuPrecombineShadow(const SimInitialSafeStoreGpuPrecombineShadowStats &delta)
+		{
+		  SimInitialSafeStoreGpuPrecombineShadowAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombineShadowAtomicStats();
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.inputSummaries.fetch_add(delta.inputSummaries,std::memory_order_relaxed);
+		  stats.uniqueStates.fetch_add(delta.uniqueStates,std::memory_order_relaxed);
+		  stats.estSavedUpserts.fetch_add(delta.estSavedUpserts,std::memory_order_relaxed);
+		  stats.h2dBytes.fetch_add(delta.h2dBytes,std::memory_order_relaxed);
+		  stats.d2hBytes.fetch_add(delta.d2hBytes,std::memory_order_relaxed);
+		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialSafeStoreGpuPrecombinePruneShadow(const SimInitialSafeStoreGpuPrecombinePruneShadowStats &delta)
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneShadowAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombinePruneShadowAtomicStats();
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.inputStates.fetch_add(delta.inputStates,std::memory_order_relaxed);
+		  stats.keptStates.fetch_add(delta.keptStates,std::memory_order_relaxed);
+		  stats.removedStates.fetch_add(delta.removedStates,std::memory_order_relaxed);
+		  stats.estD2HBytesBefore.fetch_add(delta.estD2HBytesBefore,std::memory_order_relaxed);
+		  stats.estD2HBytesAfter.fetch_add(delta.estD2HBytesAfter,std::memory_order_relaxed);
+		  stats.estD2HBytesSaved.fetch_add(delta.estD2HBytesSaved,std::memory_order_relaxed);
+		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialSafeStoreGpuPrecombinePrune(const SimInitialSafeStoreGpuPrecombinePruneStats &delta)
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombinePruneAtomicStats();
+		  stats.active.fetch_add(delta.active,std::memory_order_relaxed);
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.inputStates.fetch_add(delta.inputStates,std::memory_order_relaxed);
+		  stats.keptStates.fetch_add(delta.keptStates,std::memory_order_relaxed);
+		  stats.removedStates.fetch_add(delta.removedStates,std::memory_order_relaxed);
+		  stats.d2hBytes.fetch_add(delta.d2hBytes,std::memory_order_relaxed);
+		  stats.d2hBytesSaved.fetch_add(delta.d2hBytesSaved,std::memory_order_relaxed);
+		  stats.packedD2HActive.fetch_add(delta.packedD2HActive,std::memory_order_relaxed);
+		  stats.packedD2HSupported.fetch_add(delta.packedD2HSupported,std::memory_order_relaxed);
+		  stats.packedD2HRealActive.fetch_add(delta.packedD2HRealActive,std::memory_order_relaxed);
+		  stats.packedD2HBytes.fetch_add(delta.packedD2HBytes,std::memory_order_relaxed);
+		  stats.unpackedD2HBytes.fetch_add(delta.unpackedD2HBytes,std::memory_order_relaxed);
+		  stats.unpackedD2HBytesElided.fetch_add(delta.unpackedD2HBytesElided,std::memory_order_relaxed);
+		  stats.packedD2HBytesSaved.fetch_add(delta.packedD2HBytesSaved,std::memory_order_relaxed);
+		  stats.packNanoseconds.fetch_add(delta.packNanoseconds,std::memory_order_relaxed);
+		  stats.unpackNanoseconds.fetch_add(delta.unpackNanoseconds,std::memory_order_relaxed);
+		  stats.packedUnpackNanoseconds.fetch_add(delta.packedUnpackNanoseconds,std::memory_order_relaxed);
+		  stats.packedValidateNanoseconds.fetch_add(delta.packedValidateNanoseconds,std::memory_order_relaxed);
+		  stats.packedMaterializeNanoseconds.fetch_add(delta.packedMaterializeNanoseconds,std::memory_order_relaxed);
+		  stats.packedIndexRebuildNanoseconds.fetch_add(delta.packedIndexRebuildNanoseconds,std::memory_order_relaxed);
+		  stats.packedHostApplyNanoseconds.fetch_add(delta.packedHostApplyNanoseconds,std::memory_order_relaxed);
+		  stats.packedFallbacks.fetch_add(delta.packedFallbacks,std::memory_order_relaxed);
+		  stats.packedSizeMismatches.fetch_add(delta.packedSizeMismatches,std::memory_order_relaxed);
+		  stats.packedCandidateMismatches.fetch_add(delta.packedCandidateMismatches,std::memory_order_relaxed);
+		  stats.packedOrderMismatches.fetch_add(delta.packedOrderMismatches,std::memory_order_relaxed);
+		  stats.packedDigestMismatches.fetch_add(delta.packedDigestMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeActive.fetch_add(delta.fastMaterializeActive,std::memory_order_relaxed);
+		  stats.fastMaterializeNanoseconds.fetch_add(delta.fastMaterializeNanoseconds,std::memory_order_relaxed);
+		  stats.fastMaterializeIndexBuildNanoseconds.fetch_add(delta.fastMaterializeIndexBuildNanoseconds,std::memory_order_relaxed);
+		  stats.fastMaterializeValidateNanoseconds.fetch_add(delta.fastMaterializeValidateNanoseconds,std::memory_order_relaxed);
+		  stats.fastMaterializeCapacityReuseHits.fetch_add(delta.fastMaterializeCapacityReuseHits,std::memory_order_relaxed);
+		  stats.fastMaterializeSizeMismatches.fetch_add(delta.fastMaterializeSizeMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeCandidateMismatches.fetch_add(delta.fastMaterializeCandidateMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeOrderMismatches.fetch_add(delta.fastMaterializeOrderMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeDigestMismatches.fetch_add(delta.fastMaterializeDigestMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeFallbacks.fetch_add(delta.fastMaterializeFallbacks,std::memory_order_relaxed);
+		  stats.validateNanoseconds.fetch_add(delta.validateNanoseconds,std::memory_order_relaxed);
+		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+		  stats.fallbacks.fetch_add(delta.fallbacks,std::memory_order_relaxed);
+		}
+
+		inline void recordSimInitialSafeStoreGpuPrecombine(const SimInitialSafeStoreGpuPrecombineStats &delta)
+		{
+		  SimInitialSafeStoreGpuPrecombineAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombineAtomicStats();
+		  stats.active.fetch_add(delta.active,std::memory_order_relaxed);
+		  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+		  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+		  stats.inputSummaries.fetch_add(delta.inputSummaries,std::memory_order_relaxed);
+		  stats.uniqueStates.fetch_add(delta.uniqueStates,std::memory_order_relaxed);
+		  stats.estSavedUpserts.fetch_add(delta.estSavedUpserts,std::memory_order_relaxed);
+		  stats.h2dBytes.fetch_add(delta.h2dBytes,std::memory_order_relaxed);
+		  stats.d2hBytes.fetch_add(delta.d2hBytes,std::memory_order_relaxed);
+		  stats.validateNanoseconds.fetch_add(delta.validateNanoseconds,std::memory_order_relaxed);
+		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+		  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+		  stats.fallbacks.fetch_add(delta.fallbacks,std::memory_order_relaxed);
+		  stats.residentSourceActive.fetch_add(delta.residentSourceActive,std::memory_order_relaxed);
+		  stats.summaryH2DElided.fetch_add(delta.summaryH2DElided,std::memory_order_relaxed);
+		  stats.summaryH2DBytesSaved.fetch_add(delta.summaryH2DBytesSaved,std::memory_order_relaxed);
+		}
+
 		inline void recordSimInitialCandidateContainerShadow(
 		  const SimInitialCandidateContainerShadowStats &delta)
 		{
@@ -6206,6 +6853,162 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.uniqueStates = stats.uniqueStates.load(std::memory_order_relaxed);
 		  snapshot.duplicateSummaries = stats.duplicateSummaries.load(std::memory_order_relaxed);
 		  snapshot.estSavedUpserts = stats.estSavedUpserts.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStoreGpuPrecombineShadowStats getSimInitialSafeStoreGpuPrecombineShadowStats()
+		{
+		  SimInitialSafeStoreGpuPrecombineShadowStats snapshot;
+		  SimInitialSafeStoreGpuPrecombineShadowAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombineShadowAtomicStats();
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.inputSummaries = stats.inputSummaries.load(std::memory_order_relaxed);
+		  snapshot.uniqueStates = stats.uniqueStates.load(std::memory_order_relaxed);
+		  snapshot.estSavedUpserts = stats.estSavedUpserts.load(std::memory_order_relaxed);
+		  snapshot.h2dBytes = stats.h2dBytes.load(std::memory_order_relaxed);
+		  snapshot.d2hBytes = stats.d2hBytes.load(std::memory_order_relaxed);
+		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStoreGpuPrecombinePruneShadowStats getSimInitialSafeStoreGpuPrecombinePruneShadowStats()
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneShadowStats snapshot;
+		  SimInitialSafeStoreGpuPrecombinePruneShadowAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombinePruneShadowAtomicStats();
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.inputStates = stats.inputStates.load(std::memory_order_relaxed);
+		  snapshot.keptStates = stats.keptStates.load(std::memory_order_relaxed);
+		  snapshot.removedStates = stats.removedStates.load(std::memory_order_relaxed);
+		  snapshot.estD2HBytesBefore =
+		    stats.estD2HBytesBefore.load(std::memory_order_relaxed);
+		  snapshot.estD2HBytesAfter =
+		    stats.estD2HBytesAfter.load(std::memory_order_relaxed);
+		  snapshot.estD2HBytesSaved =
+		    stats.estD2HBytesSaved.load(std::memory_order_relaxed);
+		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStoreGpuPrecombinePruneStats getSimInitialSafeStoreGpuPrecombinePruneStats()
+		{
+		  SimInitialSafeStoreGpuPrecombinePruneStats snapshot;
+		  SimInitialSafeStoreGpuPrecombinePruneAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombinePruneAtomicStats();
+		  snapshot.active = stats.active.load(std::memory_order_relaxed);
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.inputStates = stats.inputStates.load(std::memory_order_relaxed);
+		  snapshot.keptStates = stats.keptStates.load(std::memory_order_relaxed);
+		  snapshot.removedStates = stats.removedStates.load(std::memory_order_relaxed);
+		  snapshot.d2hBytes = stats.d2hBytes.load(std::memory_order_relaxed);
+		  snapshot.d2hBytesSaved = stats.d2hBytesSaved.load(std::memory_order_relaxed);
+		  snapshot.packedD2HActive =
+		    stats.packedD2HActive.load(std::memory_order_relaxed);
+		  snapshot.packedD2HSupported =
+		    stats.packedD2HSupported.load(std::memory_order_relaxed);
+		  snapshot.packedD2HRealActive =
+		    stats.packedD2HRealActive.load(std::memory_order_relaxed);
+		  snapshot.packedD2HBytes =
+		    stats.packedD2HBytes.load(std::memory_order_relaxed);
+		  snapshot.unpackedD2HBytes =
+		    stats.unpackedD2HBytes.load(std::memory_order_relaxed);
+		  snapshot.unpackedD2HBytesElided =
+		    stats.unpackedD2HBytesElided.load(std::memory_order_relaxed);
+		  snapshot.packedD2HBytesSaved =
+		    stats.packedD2HBytesSaved.load(std::memory_order_relaxed);
+		  snapshot.packNanoseconds =
+		    stats.packNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.unpackNanoseconds =
+		    stats.unpackNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedUnpackNanoseconds =
+		    stats.packedUnpackNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedValidateNanoseconds =
+		    stats.packedValidateNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedMaterializeNanoseconds =
+		    stats.packedMaterializeNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedIndexRebuildNanoseconds =
+		    stats.packedIndexRebuildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedHostApplyNanoseconds =
+		    stats.packedHostApplyNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.packedFallbacks =
+		    stats.packedFallbacks.load(std::memory_order_relaxed);
+		  snapshot.packedSizeMismatches =
+		    stats.packedSizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.packedCandidateMismatches =
+		    stats.packedCandidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.packedOrderMismatches =
+		    stats.packedOrderMismatches.load(std::memory_order_relaxed);
+		  snapshot.packedDigestMismatches =
+		    stats.packedDigestMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeActive =
+		    stats.fastMaterializeActive.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeNanoseconds =
+		    stats.fastMaterializeNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeIndexBuildNanoseconds =
+		    stats.fastMaterializeIndexBuildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeValidateNanoseconds =
+		    stats.fastMaterializeValidateNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeCapacityReuseHits =
+		    stats.fastMaterializeCapacityReuseHits.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeSizeMismatches =
+		    stats.fastMaterializeSizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeCandidateMismatches =
+		    stats.fastMaterializeCandidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeOrderMismatches =
+		    stats.fastMaterializeOrderMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeDigestMismatches =
+		    stats.fastMaterializeDigestMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeFallbacks =
+		    stats.fastMaterializeFallbacks.load(std::memory_order_relaxed);
+		  snapshot.validateNanoseconds =
+		    stats.validateNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
+		  snapshot.fallbacks = stats.fallbacks.load(std::memory_order_relaxed);
+		  return snapshot;
+		}
+
+		inline SimInitialSafeStoreGpuPrecombineStats getSimInitialSafeStoreGpuPrecombineStats()
+		{
+		  SimInitialSafeStoreGpuPrecombineStats snapshot;
+		  SimInitialSafeStoreGpuPrecombineAtomicStats &stats =
+		    simInitialSafeStoreGpuPrecombineAtomicStats();
+		  snapshot.active = stats.active.load(std::memory_order_relaxed);
+		  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+		  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+		  snapshot.inputSummaries = stats.inputSummaries.load(std::memory_order_relaxed);
+		  snapshot.uniqueStates = stats.uniqueStates.load(std::memory_order_relaxed);
+		  snapshot.estSavedUpserts = stats.estSavedUpserts.load(std::memory_order_relaxed);
+		  snapshot.h2dBytes = stats.h2dBytes.load(std::memory_order_relaxed);
+		  snapshot.d2hBytes = stats.d2hBytes.load(std::memory_order_relaxed);
+		  snapshot.validateNanoseconds =
+		    stats.validateNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.candidateMismatches =
+		    stats.candidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+		  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
+		  snapshot.fallbacks = stats.fallbacks.load(std::memory_order_relaxed);
+		  snapshot.residentSourceActive =
+		    stats.residentSourceActive.load(std::memory_order_relaxed);
+		  snapshot.summaryH2DElided =
+		    stats.summaryH2DElided.load(std::memory_order_relaxed);
+		  snapshot.summaryH2DBytesSaved =
+		    stats.summaryH2DBytesSaved.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
 
@@ -11924,6 +12727,13 @@ inline void mergeSimCudaInitialRunSummariesIntoSafeStore(const vector<SimScanCud
 inline SimInitialSafeStorePrecombineShadowStats
 runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary> &summaries,
                                        const SimCandidateStateStore &realStore);
+inline SimInitialSafeStoreGpuPrecombineShadowStats
+runSimInitialSafeStoreGpuPrecombineShadow(const vector<SimScanCudaInitialRunSummary> &summaries,
+                                          const SimCandidateStateStore &realStore);
+inline SimInitialSafeStoreGpuPrecombinePruneShadowStats
+runSimInitialSafeStoreGpuPrecombinePruneShadow(
+  const SimKernelContext &prePruneContext,
+  const SimCandidateStateStore &realPostPruneStore);
 inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
                                             SimInitialSafeStoreRebuildStats *stats = NULL);
 inline void eraseSimSafeCandidateStateStoreStartCoords(const vector<uint64_t> &startCoords,
@@ -12536,6 +13346,1005 @@ runSimInitialSafeStorePrecombineShadow(const vector<SimScanCudaInitialRunSummary
   return stats;
 }
 
+inline SimInitialSafeStoreGpuPrecombineShadowStats
+runSimInitialSafeStoreGpuPrecombineShadow(const vector<SimScanCudaInitialRunSummary> &summaries,
+                                          const SimCandidateStateStore &realStore)
+{
+  SimInitialSafeStoreGpuPrecombineShadowStats stats;
+  stats.calls = 1;
+  stats.inputSummaries = static_cast<uint64_t>(summaries.size());
+
+  vector<SimScanCudaCandidateState> gpuStates;
+  double gpuSeconds = 0.0;
+  uint64_t h2dBytes = 0;
+  uint64_t d2hBytes = 0;
+  string gpuError;
+  const bool gpuOk =
+    sim_scan_cuda_precombine_initial_safe_store_shadow(summaries,
+                                                       &gpuStates,
+                                                       &gpuSeconds,
+                                                       &h2dBytes,
+                                                       &d2hBytes,
+                                                       &gpuError);
+  stats.nanoseconds = simSecondsToNanoseconds(gpuSeconds);
+  stats.h2dBytes = h2dBytes;
+  stats.d2hBytes = d2hBytes;
+  stats.uniqueStates = static_cast<uint64_t>(gpuStates.size());
+  if(stats.inputSummaries > stats.uniqueStates)
+  {
+    stats.estSavedUpserts = stats.inputSummaries - stats.uniqueStates;
+  }
+  if(!gpuOk)
+  {
+    stats.sizeMismatches = 1;
+    stats.candidateMismatches = 1;
+    stats.orderMismatches = 1;
+    stats.digestMismatches = 1;
+    if(simCudaValidateEnabledRuntime() && !gpuError.empty())
+    {
+      fprintf(stderr,
+              "SIM CUDA initial safe-store GPU precombine shadow failed: %s\n",
+              gpuError.c_str());
+    }
+    return stats;
+  }
+
+  const bool sizeMatch =
+    realStore.valid && gpuStates.size() == realStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(gpuStates,realStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(gpuStates,realStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateVectorSafeStoreFingerprint(gpuStates) !=
+     simCandidateStateStoreFingerprint(realStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  return stats;
+}
+
+inline SimInitialSafeStoreGpuPrecombinePruneShadowStats
+runSimInitialSafeStoreGpuPrecombinePruneShadow(
+  const SimKernelContext &prePruneContext,
+  const SimCandidateStateStore &realPostPruneStore)
+{
+  SimInitialSafeStoreGpuPrecombinePruneShadowStats stats;
+  stats.calls = 1;
+  const SimCandidateStateStore &prePruneStore =
+    prePruneContext.safeCandidateStateStore;
+  stats.inputStates =
+    static_cast<uint64_t>(prePruneStore.valid ? prePruneStore.states.size() : 0);
+  stats.estD2HBytesBefore =
+    stats.inputStates *
+    static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+
+  vector<SimScanCudaCandidateState> finalCandidateStates;
+  collectSimContextCandidateStates(prePruneContext,finalCandidateStates);
+  vector<SimScanCudaCandidateState> gpuPrunedStates;
+  double gpuSeconds = 0.0;
+  uint64_t d2hBytes = 0;
+  string gpuError;
+  const bool gpuOk =
+    prePruneStore.valid &&
+    sim_scan_cuda_prune_initial_safe_store_gpu_precombine_shadow(
+      prePruneStore.states,
+      finalCandidateStates,
+      static_cast<int>(prePruneContext.runningMin),
+      &gpuPrunedStates,
+      &gpuSeconds,
+      &d2hBytes,
+      &gpuError);
+  stats.nanoseconds = simSecondsToNanoseconds(gpuSeconds);
+  stats.keptStates = static_cast<uint64_t>(gpuPrunedStates.size());
+  if(stats.inputStates > stats.keptStates)
+  {
+    stats.removedStates = stats.inputStates - stats.keptStates;
+  }
+  stats.estD2HBytesAfter = d2hBytes;
+  if(stats.estD2HBytesBefore > stats.estD2HBytesAfter)
+  {
+    stats.estD2HBytesSaved =
+      stats.estD2HBytesBefore - stats.estD2HBytesAfter;
+  }
+  if(!gpuOk)
+  {
+    stats.sizeMismatches = 1;
+    stats.candidateMismatches = 1;
+    stats.orderMismatches = 1;
+    stats.digestMismatches = 1;
+    if(simCudaValidateEnabledRuntime() && !gpuError.empty())
+    {
+      fprintf(stderr,
+              "SIM CUDA initial safe-store GPU precombine prune shadow failed: %s\n",
+              gpuError.c_str());
+    }
+    return stats;
+  }
+
+  const bool sizeMatch =
+    realPostPruneStore.valid && gpuPrunedStates.size() == realPostPruneStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(gpuPrunedStates,
+                                             realPostPruneStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(gpuPrunedStates,
+                                           realPostPruneStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateVectorSafeStoreFingerprint(gpuPrunedStates) !=
+     simCandidateStateStoreFingerprint(realPostPruneStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  return stats;
+}
+
+inline void mergeSimCudaInitialRunSummariesIntoSafeStoreLocal(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  SimCandidateStateStore &store,
+  SimInitialSafeStoreRebuildStats *stats,
+  uint64_t *hostEpochBumps)
+{
+  if(!store.valid)
+  {
+    resetSimCandidateStateStore(store,true);
+    if(hostEpochBumps != NULL)
+    {
+      *hostEpochBumps += 1;
+    }
+  }
+  if(stats != NULL)
+  {
+    stats->updateCalls += 1;
+    stats->updateSummaries += static_cast<uint64_t>(summaries.size());
+    stats->updateStoreSizeBefore += static_cast<uint64_t>(store.states.size());
+  }
+  for(size_t summaryIndex = 0; summaryIndex < summaries.size(); ++summaryIndex)
+  {
+    const bool inserted =
+      store.startCoordToIndex.find(summaries[summaryIndex].startCoord) ==
+      store.startCoordToIndex.end();
+    upsertSimCandidateStateStoreSummary(summaries[summaryIndex],store);
+    if(stats != NULL)
+    {
+      if(inserted)
+      {
+        stats->updateInsertedStates += 1;
+      }
+      else
+      {
+        stats->updateMergedSummaries += 1;
+      }
+    }
+  }
+  if(stats != NULL)
+  {
+    stats->updateStoreSizeAfter += static_cast<uint64_t>(store.states.size());
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+}
+
+inline void mergeSimCudaInitialGpuPrecombinedStatesIntoSafeStoreLocal(
+  const vector<SimScanCudaCandidateState> &states,
+  uint64_t inputSummaries,
+  SimCandidateStateStore &store,
+  SimInitialSafeStoreRebuildStats *stats,
+  uint64_t *hostEpochBumps)
+{
+  if(!store.valid)
+  {
+    resetSimCandidateStateStore(store,true);
+    if(hostEpochBumps != NULL)
+    {
+      *hostEpochBumps += 1;
+    }
+  }
+  if(stats != NULL)
+  {
+    stats->updateCalls += 1;
+    stats->updateSummaries += inputSummaries;
+    stats->updateStoreSizeBefore += static_cast<uint64_t>(store.states.size());
+  }
+
+  uint64_t insertedStates = 0;
+  if(store.states.empty())
+  {
+    store.states = states;
+    rebuildSimCandidateStateStoreIndex(store);
+    insertedStates = static_cast<uint64_t>(states.size());
+  }
+  else
+  {
+    for(size_t stateIndex = 0; stateIndex < states.size(); ++stateIndex)
+    {
+      const uint64_t startCoord =
+        simScanCudaCandidateStateStartCoord(states[stateIndex]);
+      const bool inserted =
+        store.startCoordToIndex.find(startCoord) == store.startCoordToIndex.end();
+      upsertSimCandidateStateStoreState(states[stateIndex],store);
+      if(inserted)
+      {
+        insertedStates += 1;
+      }
+    }
+  }
+
+  if(stats != NULL)
+  {
+    stats->updateInsertedStates += insertedStates;
+    stats->updateMergedSummaries +=
+      inputSummaries > insertedStates ? inputSummaries - insertedStates : 0;
+    stats->updateStoreSizeAfter += static_cast<uint64_t>(store.states.size());
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+}
+
+inline bool simInitialSafeStoreGpuPrecombineStoresMatch(
+  const SimCandidateStateStore &gpuStore,
+  const SimCandidateStateStore &legacyStore,
+  SimInitialSafeStoreGpuPrecombineStats &stats)
+{
+  const bool sizeMatch =
+    gpuStore.valid == legacyStore.valid &&
+    gpuStore.states.size() == legacyStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(gpuStore.states,
+                                             legacyStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(gpuStore.states,
+                                           legacyStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(gpuStore) !=
+     simCandidateStateStoreFingerprint(legacyStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  return stats.sizeMismatches == 0 &&
+         stats.orderMismatches == 0 &&
+         stats.candidateMismatches == 0 &&
+         stats.digestMismatches == 0;
+}
+
+inline bool simInitialSafeStoreGpuPrecombinePruneStoresMatch(
+  const SimCandidateStateStore &gpuStore,
+  const SimCandidateStateStore &legacyStore,
+  SimInitialSafeStoreGpuPrecombinePruneStats &stats)
+{
+  const bool sizeMatch =
+    gpuStore.valid == legacyStore.valid &&
+    gpuStore.states.size() == legacyStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(gpuStore.states,
+                                             legacyStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(gpuStore.states,
+                                           legacyStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(gpuStore) !=
+     simCandidateStateStoreFingerprint(legacyStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  return stats.sizeMismatches == 0 &&
+         stats.orderMismatches == 0 &&
+         stats.candidateMismatches == 0 &&
+         stats.digestMismatches == 0;
+}
+
+inline bool simInitialSafeStoreFastMaterializeStoresMatch(
+  const SimCandidateStateStore &fastStore,
+  const SimCandidateStateStore &referenceStore,
+  SimInitialSafeStoreGpuPrecombinePruneStats &stats)
+{
+  const bool sizeMatch =
+    fastStore.valid == referenceStore.valid &&
+    fastStore.states.size() == referenceStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.fastMaterializeSizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(fastStore.states,
+                                             referenceStore.states);
+  if(!orderMatch)
+  {
+    stats.fastMaterializeOrderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(fastStore.states,
+                                           referenceStore.states);
+  if(!candidateMatch)
+  {
+    stats.fastMaterializeCandidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(fastStore) !=
+     simCandidateStateStoreFingerprint(referenceStore))
+  {
+    stats.fastMaterializeDigestMismatches = 1;
+  }
+  return stats.fastMaterializeSizeMismatches == 0 &&
+         stats.fastMaterializeOrderMismatches == 0 &&
+         stats.fastMaterializeCandidateMismatches == 0 &&
+         stats.fastMaterializeDigestMismatches == 0;
+}
+
+inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
+  const vector<SimScanCudaCandidateState> &states,
+  uint64_t inputSummaries,
+  uint64_t uniqueStates,
+  const SimKernelContext &context,
+  SimCandidateStateStore &store,
+  SimInitialSafeStoreRebuildStats *stats,
+  uint64_t *hostEpochBumps,
+  uint64_t *indexRebuildNanosecondsOut)
+{
+  if(indexRebuildNanosecondsOut != NULL)
+  {
+    *indexRebuildNanosecondsOut = 0;
+  }
+  if(!store.valid)
+  {
+    resetSimCandidateStateStore(store,true);
+    if(hostEpochBumps != NULL)
+    {
+      *hostEpochBumps += 1;
+    }
+  }
+  const uint64_t storeSizeBefore = static_cast<uint64_t>(store.states.size());
+  store.states = states;
+  const std::chrono::steady_clock::time_point indexRebuildStart =
+    (stats != NULL || indexRebuildNanosecondsOut != NULL) ?
+    std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  rebuildSimCandidateStateStoreIndex(store);
+  const uint64_t indexRebuildNanoseconds =
+    (stats != NULL || indexRebuildNanosecondsOut != NULL) ?
+    simElapsedNanoseconds(indexRebuildStart) : 0;
+  if(indexRebuildNanosecondsOut != NULL)
+  {
+    *indexRebuildNanosecondsOut = indexRebuildNanoseconds;
+  }
+  if(stats != NULL)
+  {
+    stats->updateCalls += 1;
+    stats->updateSummaries += inputSummaries;
+    stats->updateInsertedStates += uniqueStates;
+    stats->updateMergedSummaries +=
+      inputSummaries > uniqueStates ? inputSummaries - uniqueStates : 0;
+    stats->updateStoreSizeBefore += storeSizeBefore;
+    stats->updateStoreSizeAfter += uniqueStates;
+    stats->pruneCalls += 1;
+    stats->pruneScannedStates += uniqueStates;
+    stats->pruneKeptStates += static_cast<uint64_t>(states.size());
+    stats->pruneRemovedStates +=
+      uniqueStates > states.size() ? uniqueStates - static_cast<uint64_t>(states.size()) : 0;
+    for(size_t stateIndex = 0; stateIndex < states.size(); ++stateIndex)
+    {
+      if(states[stateIndex].score > context.runningMin)
+      {
+        stats->pruneKeptAboveFloor += 1;
+      }
+      else
+      {
+        const uint64_t startCoord =
+          simScanCudaCandidateStateStartCoord(states[stateIndex]);
+        if(simContextContainsCandidateStartCoord(context,startCoord))
+        {
+          stats->pruneKeptFrontier += 1;
+        }
+      }
+    }
+    stats->pruneIndexRebuildNanoseconds += indexRebuildNanoseconds;
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+}
+
+inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreFastLocal(
+  const vector<SimScanCudaCandidateState> &states,
+  uint64_t inputSummaries,
+  uint64_t uniqueStates,
+  const SimKernelContext &context,
+  SimCandidateStateStore &store,
+  SimInitialSafeStoreRebuildStats *stats,
+  uint64_t *hostEpochBumps,
+  uint64_t *indexBuildNanosecondsOut,
+  uint64_t *capacityReuseHitsOut)
+{
+  if(indexBuildNanosecondsOut != NULL)
+  {
+    *indexBuildNanosecondsOut = 0;
+  }
+  if(capacityReuseHitsOut != NULL)
+  {
+    *capacityReuseHitsOut = 0;
+  }
+  if(!store.valid)
+  {
+    resetSimCandidateStateStore(store,true);
+    if(hostEpochBumps != NULL)
+    {
+      *hostEpochBumps += 1;
+    }
+  }
+
+  const uint64_t storeSizeBefore = static_cast<uint64_t>(store.states.size());
+  if(capacityReuseHitsOut != NULL && store.states.capacity() >= states.size())
+  {
+    *capacityReuseHitsOut += 1;
+  }
+
+  store.states.clear();
+  if(store.states.capacity() < states.size())
+  {
+    store.states.reserve(states.size());
+  }
+  store.startCoordToIndex.clear();
+  store.startCoordToIndex.reserve(states.size());
+
+  const std::chrono::steady_clock::time_point indexBuildStart =
+    std::chrono::steady_clock::now();
+  uint64_t keptAboveFloor = 0;
+  uint64_t keptFrontier = 0;
+  for(size_t stateIndex = 0; stateIndex < states.size(); ++stateIndex)
+  {
+    const SimScanCudaCandidateState &state = states[stateIndex];
+    const size_t insertedIndex = store.states.size();
+    store.states.push_back(state);
+    const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+    store.startCoordToIndex[startCoord] = insertedIndex;
+    if(stats != NULL)
+    {
+      if(state.score > context.runningMin)
+      {
+        keptAboveFloor += 1;
+      }
+      else if(simContextContainsCandidateStartCoord(context,startCoord))
+      {
+        keptFrontier += 1;
+      }
+    }
+  }
+  const uint64_t indexBuildNanoseconds =
+    simElapsedNanoseconds(indexBuildStart);
+  if(indexBuildNanosecondsOut != NULL)
+  {
+    *indexBuildNanosecondsOut = indexBuildNanoseconds;
+  }
+
+  if(stats != NULL)
+  {
+    stats->updateCalls += 1;
+    stats->updateSummaries += inputSummaries;
+    stats->updateInsertedStates += uniqueStates;
+    stats->updateMergedSummaries +=
+      inputSummaries > uniqueStates ? inputSummaries - uniqueStates : 0;
+    stats->updateStoreSizeBefore += storeSizeBefore;
+    stats->updateStoreSizeAfter += uniqueStates;
+    stats->pruneCalls += 1;
+    stats->pruneScannedStates += uniqueStates;
+    stats->pruneKeptStates += static_cast<uint64_t>(states.size());
+    stats->pruneRemovedStates +=
+      uniqueStates > states.size() ? uniqueStates - static_cast<uint64_t>(states.size()) : 0;
+    stats->pruneKeptAboveFloor += keptAboveFloor;
+    stats->pruneKeptFrontier += keptFrontier;
+    stats->pruneIndexRebuildNanoseconds += indexBuildNanoseconds;
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+}
+
+inline SimInitialSafeStoreGpuPrecombineStats
+runSimInitialSafeStoreGpuPrecombine(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  const SimKernelContext &preUpdateContext,
+  bool validate,
+  SimCandidateStateStore &outStore,
+  SimInitialSafeStoreRebuildStats &outRebuildStats,
+  uint64_t &outHostEpochBumps,
+  bool &outApplied,
+  bool &outPruned,
+  SimInitialSafeStoreGpuPrecombinePruneStats *outPruneStats)
+{
+  SimInitialSafeStoreGpuPrecombineStats stats;
+  stats.calls = 1;
+  stats.inputSummaries = static_cast<uint64_t>(summaries.size());
+  const SimCandidateStateStore &preUpdateStore =
+    preUpdateContext.safeCandidateStateStore;
+  outStore = preUpdateStore;
+  outRebuildStats = SimInitialSafeStoreRebuildStats();
+  outHostEpochBumps = 0;
+  outApplied = false;
+  outPruned = false;
+  if(outPruneStats != NULL)
+  {
+    *outPruneStats = SimInitialSafeStoreGpuPrecombinePruneStats();
+  }
+
+  const bool pruneRequested =
+    simCudaInitialSafeStoreGpuPrecombinePruneRequestedRuntime();
+  const bool fastMaterializeRequested =
+    pruneRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeRequestedRuntime();
+  const bool fastMaterializeValidate =
+    fastMaterializeRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeValidateEnabledRuntime();
+  if(pruneRequested && preUpdateStore.valid && !preUpdateStore.states.empty())
+  {
+    stats.fallbacks = 1;
+    if(outPruneStats != NULL)
+    {
+      outPruneStats->calls = 1;
+      outPruneStats->fallbacks = 1;
+    }
+    if(simCudaValidateEnabledRuntime())
+    {
+      fprintf(stderr,
+              "SIM CUDA initial safe-store GPU precombine prune requires an empty pre-update store, falling back to legacy\n");
+    }
+    return stats;
+  }
+
+  vector<SimScanCudaCandidateState> gpuStates;
+  vector<SimScanCudaCandidateState> finalCandidateStates;
+  double gpuSeconds = 0.0;
+  uint64_t h2dBytes = 0;
+  uint64_t d2hBytes = 0;
+  uint64_t uniqueStates = 0;
+  SimScanCudaPackedCandidateD2HStats packedD2HStats;
+  string gpuError;
+  bool gpuOk = false;
+  const bool packedD2HMeasurementRequested =
+    pruneRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRequestedRuntime();
+  const bool packedD2HRealEnvRequested =
+    pruneRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime();
+  const bool packedD2HRealRequested =
+    packedD2HRealEnvRequested &&
+    simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime();
+  const bool packedD2HRequested =
+    packedD2HMeasurementRequested || packedD2HRealRequested;
+  const bool packedD2HValidate =
+    packedD2HRealRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HValidateEnabledRuntime();
+  if(pruneRequested)
+  {
+    if(outPruneStats != NULL)
+    {
+      outPruneStats->calls = 1;
+    }
+    collectSimContextCandidateStates(preUpdateContext,finalCandidateStates);
+  }
+  if(simCudaInitialSafeStoreGpuPrecombineResidentSourceRequestedRuntime())
+  {
+    if(pruneRequested)
+    {
+      gpuOk =
+        sim_scan_cuda_precombine_prune_initial_safe_store_resident(
+          summaries.size(),
+          finalCandidateStates,
+          static_cast<int>(preUpdateContext.runningMin),
+          &gpuStates,
+          &gpuSeconds,
+          &uniqueStates,
+          &d2hBytes,
+          packedD2HRequested,
+          packedD2HRealRequested,
+          packedD2HValidate,
+          &packedD2HStats,
+          &gpuError);
+    }
+    else
+    {
+      gpuOk =
+        sim_scan_cuda_precombine_initial_safe_store_resident(summaries.size(),
+                                                             &gpuStates,
+                                                             &gpuSeconds,
+                                                             &d2hBytes,
+                                                             &gpuError);
+    }
+    if(gpuOk)
+    {
+      stats.residentSourceActive = 1;
+      stats.summaryH2DElided = 1;
+      stats.summaryH2DBytesSaved =
+        static_cast<uint64_t>(summaries.size()) *
+        static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
+    }
+    else if(simCudaValidateEnabledRuntime() && !gpuError.empty())
+    {
+      fprintf(stderr,
+              "SIM CUDA initial safe-store GPU precombine resident source unavailable, falling back to host H2D: %s\n",
+              gpuError.c_str());
+    }
+  }
+  if(!gpuOk)
+  {
+    gpuError.clear();
+    if(pruneRequested)
+    {
+      gpuOk =
+        sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
+          summaries,
+          finalCandidateStates,
+          static_cast<int>(preUpdateContext.runningMin),
+          &gpuStates,
+          &gpuSeconds,
+          &uniqueStates,
+          &h2dBytes,
+          &d2hBytes,
+          packedD2HMeasurementRequested,
+          false,
+          false,
+          &packedD2HStats,
+          &gpuError);
+    }
+    else
+    {
+      gpuOk =
+        sim_scan_cuda_precombine_initial_safe_store_shadow(summaries,
+                                                           &gpuStates,
+                                                           &gpuSeconds,
+                                                           &h2dBytes,
+                                                           &d2hBytes,
+                                                           &gpuError);
+    }
+  }
+  stats.nanoseconds = simSecondsToNanoseconds(gpuSeconds);
+  stats.h2dBytes = h2dBytes;
+  stats.d2hBytes = d2hBytes;
+  stats.uniqueStates =
+    pruneRequested ? uniqueStates : static_cast<uint64_t>(gpuStates.size());
+  if(stats.inputSummaries > stats.uniqueStates)
+  {
+    stats.estSavedUpserts = stats.inputSummaries - stats.uniqueStates;
+  }
+  if(pruneRequested && outPruneStats != NULL)
+  {
+    outPruneStats->nanoseconds = stats.nanoseconds;
+    outPruneStats->inputStates = stats.uniqueStates;
+    outPruneStats->keptStates = static_cast<uint64_t>(gpuStates.size());
+    outPruneStats->removedStates =
+      outPruneStats->inputStates > outPruneStats->keptStates ?
+      outPruneStats->inputStates - outPruneStats->keptStates : 0;
+    outPruneStats->d2hBytes = d2hBytes;
+    const uint64_t prePruneD2HBytes =
+      outPruneStats->inputStates *
+      static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+    outPruneStats->d2hBytesSaved =
+      prePruneD2HBytes > d2hBytes ? prePruneD2HBytes - d2hBytes : 0;
+    outPruneStats->packedD2HActive = packedD2HStats.active ? 1 : 0;
+    outPruneStats->packedD2HSupported = packedD2HStats.supported ? 1 : 0;
+    outPruneStats->packedD2HRealActive =
+      packedD2HRealRequested && packedD2HStats.active ? 1 : 0;
+    outPruneStats->packedD2HBytes = packedD2HStats.packedBytes;
+    outPruneStats->unpackedD2HBytes = packedD2HStats.unpackedBytes;
+    outPruneStats->unpackedD2HBytesElided =
+      packedD2HRealRequested && packedD2HStats.active ? packedD2HStats.unpackedBytes : 0;
+    outPruneStats->packedD2HBytesSaved = packedD2HStats.bytesSaved;
+    outPruneStats->packNanoseconds =
+      simSecondsToNanoseconds(packedD2HStats.packSeconds);
+    outPruneStats->unpackNanoseconds =
+      simSecondsToNanoseconds(packedD2HStats.unpackSeconds);
+    if(packedD2HStats.active)
+    {
+      outPruneStats->packedUnpackNanoseconds =
+        outPruneStats->unpackNanoseconds;
+    }
+    outPruneStats->packedValidateNanoseconds =
+      simSecondsToNanoseconds(packedD2HStats.validateSeconds);
+    outPruneStats->packedFallbacks = packedD2HStats.fallbacks;
+    outPruneStats->packedSizeMismatches = packedD2HStats.sizeMismatches;
+    outPruneStats->packedCandidateMismatches = packedD2HStats.candidateMismatches;
+    outPruneStats->packedOrderMismatches = packedD2HStats.orderMismatches;
+    outPruneStats->packedDigestMismatches = packedD2HStats.digestMismatches;
+  }
+  if(!gpuOk)
+  {
+    stats.fallbacks = 1;
+    if(pruneRequested && outPruneStats != NULL)
+    {
+      outPruneStats->fallbacks = 1;
+    }
+    if(simCudaValidateEnabledRuntime() && !gpuError.empty())
+    {
+      fprintf(stderr,
+              "SIM CUDA initial safe-store GPU precombine failed, falling back to legacy: %s\n",
+              gpuError.c_str());
+    }
+    return stats;
+  }
+
+  if(pruneRequested)
+  {
+    uint64_t packedIndexRebuildNanoseconds = 0;
+    uint64_t fastIndexBuildNanoseconds = 0;
+    uint64_t fastCapacityReuseHits = 0;
+    const std::chrono::steady_clock::time_point packedMaterializeStart =
+      packedD2HRealRequested && packedD2HStats.active ?
+      std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    const std::chrono::steady_clock::time_point fastMaterializeStart =
+      fastMaterializeRequested ?
+      std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    if(fastMaterializeRequested)
+    {
+      materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreFastLocal(
+        gpuStates,
+        stats.inputSummaries,
+        stats.uniqueStates,
+        preUpdateContext,
+        outStore,
+        &outRebuildStats,
+        &outHostEpochBumps,
+        &fastIndexBuildNanoseconds,
+        &fastCapacityReuseHits);
+    }
+    else
+    {
+      materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
+        gpuStates,
+        stats.inputSummaries,
+        stats.uniqueStates,
+        preUpdateContext,
+        outStore,
+        &outRebuildStats,
+        &outHostEpochBumps,
+        &packedIndexRebuildNanoseconds);
+    }
+    if(outPruneStats != NULL && packedD2HRealRequested && packedD2HStats.active)
+    {
+      const uint64_t packedMaterializeNanoseconds =
+        simElapsedNanoseconds(packedMaterializeStart);
+      outPruneStats->packedMaterializeNanoseconds =
+        packedMaterializeNanoseconds;
+      outPruneStats->packedIndexRebuildNanoseconds =
+        packedIndexRebuildNanoseconds;
+      outPruneStats->packedHostApplyNanoseconds =
+        outPruneStats->packedUnpackNanoseconds + packedMaterializeNanoseconds;
+    }
+    if(outPruneStats != NULL && fastMaterializeRequested)
+    {
+      outPruneStats->fastMaterializeActive = 1;
+      outPruneStats->fastMaterializeNanoseconds =
+        simElapsedNanoseconds(fastMaterializeStart);
+      outPruneStats->fastMaterializeIndexBuildNanoseconds =
+        fastIndexBuildNanoseconds;
+      outPruneStats->fastMaterializeCapacityReuseHits =
+        fastCapacityReuseHits;
+    }
+    if(fastMaterializeValidate)
+    {
+      const std::chrono::steady_clock::time_point fastValidateStart =
+        std::chrono::steady_clock::now();
+      SimCandidateStateStore referenceStore = preUpdateContext.safeCandidateStateStore;
+      SimInitialSafeStoreRebuildStats referenceStats;
+      uint64_t referenceHostEpochBumps = 0;
+      uint64_t referenceIndexBuildNanoseconds = 0;
+      materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
+        gpuStates,
+        stats.inputSummaries,
+        stats.uniqueStates,
+        preUpdateContext,
+        referenceStore,
+        &referenceStats,
+        &referenceHostEpochBumps,
+        &referenceIndexBuildNanoseconds);
+      const bool fastValidateOk =
+        outPruneStats != NULL &&
+        simInitialSafeStoreFastMaterializeStoresMatch(
+          outStore,
+          referenceStore,
+          *outPruneStats);
+      if(outPruneStats != NULL)
+      {
+        outPruneStats->fastMaterializeValidateNanoseconds =
+          simElapsedNanoseconds(fastValidateStart);
+      }
+      if(!fastValidateOk)
+      {
+        outStore = referenceStore;
+        outRebuildStats = referenceStats;
+        outHostEpochBumps = referenceHostEpochBumps;
+        if(outPruneStats != NULL)
+        {
+          outPruneStats->fastMaterializeFallbacks = 1;
+        }
+        if(simCudaValidateEnabledRuntime())
+        {
+          fprintf(stderr,
+                  "SIM CUDA initial safe-store fast materialize validation mismatch: "
+                  "digest=%llu size=%llu candidate=%llu order=%llu\n",
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeDigestMismatches : 1),
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeSizeMismatches : 1),
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeCandidateMismatches : 1),
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeOrderMismatches : 1));
+        }
+      }
+    }
+  }
+  else
+  {
+    mergeSimCudaInitialGpuPrecombinedStatesIntoSafeStoreLocal(
+      gpuStates,
+      stats.inputSummaries,
+      outStore,
+      &outRebuildStats,
+      &outHostEpochBumps);
+  }
+
+  if(pruneRequested && simCudaInitialSafeStoreGpuPrecombinePruneValidateEnabledRuntime())
+  {
+    const std::chrono::steady_clock::time_point validateStart =
+      std::chrono::steady_clock::now();
+    SimKernelContext legacyContext = preUpdateContext;
+    SimInitialSafeStoreRebuildStats legacyStats;
+    uint64_t legacyHostEpochBumps = 0;
+    mergeSimCudaInitialRunSummariesIntoSafeStoreLocal(
+      summaries,
+      legacyContext.safeCandidateStateStore,
+      &legacyStats,
+      &legacyHostEpochBumps);
+    pruneSimSafeCandidateStateStore(legacyContext,&legacyStats);
+    const bool validateOk =
+      outPruneStats != NULL &&
+      simInitialSafeStoreGpuPrecombinePruneStoresMatch(
+        outStore,
+        legacyContext.safeCandidateStateStore,
+        *outPruneStats);
+    if(outPruneStats != NULL)
+    {
+      outPruneStats->validateNanoseconds = simElapsedNanoseconds(validateStart);
+    }
+    if(!validateOk)
+    {
+      stats.sizeMismatches = outPruneStats != NULL ? outPruneStats->sizeMismatches : 1;
+      stats.candidateMismatches =
+        outPruneStats != NULL ? outPruneStats->candidateMismatches : 1;
+      stats.orderMismatches = outPruneStats != NULL ? outPruneStats->orderMismatches : 1;
+      stats.digestMismatches = outPruneStats != NULL ? outPruneStats->digestMismatches : 1;
+      stats.fallbacks = 1;
+      if(outPruneStats != NULL)
+      {
+        outPruneStats->fallbacks = 1;
+      }
+      if(simCudaValidateEnabledRuntime())
+      {
+        fprintf(stderr,
+                "SIM CUDA initial safe-store GPU precombine prune validation mismatch: "
+                "digest=%llu size=%llu candidate=%llu order=%llu\n",
+                static_cast<unsigned long long>(stats.digestMismatches),
+                static_cast<unsigned long long>(stats.sizeMismatches),
+                static_cast<unsigned long long>(stats.candidateMismatches),
+                static_cast<unsigned long long>(stats.orderMismatches));
+      }
+      return stats;
+    }
+  }
+  else if(validate)
+  {
+    const std::chrono::steady_clock::time_point validateStart =
+      std::chrono::steady_clock::now();
+    SimCandidateStateStore legacyStore = preUpdateStore;
+    SimInitialSafeStoreRebuildStats legacyStats;
+    uint64_t legacyHostEpochBumps = 0;
+    mergeSimCudaInitialRunSummariesIntoSafeStoreLocal(summaries,
+                                                      legacyStore,
+                                                      &legacyStats,
+                                                      &legacyHostEpochBumps);
+    (void)legacyStats;
+    (void)legacyHostEpochBumps;
+    const bool validateOk =
+      simInitialSafeStoreGpuPrecombineStoresMatch(outStore,legacyStore,stats);
+    stats.validateNanoseconds = simElapsedNanoseconds(validateStart);
+    if(!validateOk)
+    {
+      stats.fallbacks = 1;
+      if(simCudaValidateEnabledRuntime())
+      {
+        fprintf(stderr,
+                "SIM CUDA initial safe-store GPU precombine validation mismatch: "
+                "digest=%llu size=%llu candidate=%llu order=%llu\n",
+                static_cast<unsigned long long>(stats.digestMismatches),
+                static_cast<unsigned long long>(stats.sizeMismatches),
+                static_cast<unsigned long long>(stats.candidateMismatches),
+                static_cast<unsigned long long>(stats.orderMismatches));
+      }
+      return stats;
+    }
+  }
+
+  stats.active = 1;
+  if(pruneRequested && outPruneStats != NULL)
+  {
+    outPruneStats->active = 1;
+  }
+  outApplied = true;
+  outPruned = pruneRequested;
+  return stats;
+}
+
 inline SimInitialSafeStorePruneIndexShadowStats
 runSimInitialSafeStorePruneIndexShadow(const SimKernelContext &prePruneContext,
                                        const SimCandidateStateStore &realPostPruneStore,
@@ -12606,7 +14415,8 @@ inline void recordSimInitialSafeStorePruneIndexShadowIfEnabled(
   const SimCandidateStateStore &realPostPruneStore,
   const SimInitialSafeStoreRebuildStats &realPruneStats)
 {
-  if(prePruneContext == NULL)
+  if(prePruneContext == NULL ||
+     !simCudaInitialSafeStorePruneIndexShadowEnabledRuntime())
   {
     return;
   }
@@ -12623,6 +14433,35 @@ inline void recordSimInitialSafeStorePruneIndexShadowIfEnabled(
   {
     fprintf(stderr,
             "SIM CUDA initial safe-store prune/index shadow mismatch: "
+            "digest=%llu size=%llu candidate=%llu order=%llu\n",
+            static_cast<unsigned long long>(shadowStats.digestMismatches),
+            static_cast<unsigned long long>(shadowStats.sizeMismatches),
+            static_cast<unsigned long long>(shadowStats.candidateMismatches),
+            static_cast<unsigned long long>(shadowStats.orderMismatches));
+  }
+}
+
+inline void recordSimInitialSafeStoreGpuPrecombinePruneShadowIfEnabled(
+  const SimKernelContext *prePruneContext,
+  const SimCandidateStateStore &realPostPruneStore)
+{
+  if(prePruneContext == NULL ||
+     !simCudaInitialSafeStoreGpuPrecombinePruneShadowEnabledRuntime())
+  {
+    return;
+  }
+  const SimInitialSafeStoreGpuPrecombinePruneShadowStats shadowStats =
+    runSimInitialSafeStoreGpuPrecombinePruneShadow(*prePruneContext,
+                                                   realPostPruneStore);
+  recordSimInitialSafeStoreGpuPrecombinePruneShadow(shadowStats);
+  if((shadowStats.digestMismatches != 0 ||
+      shadowStats.sizeMismatches != 0 ||
+      shadowStats.candidateMismatches != 0 ||
+      shadowStats.orderMismatches != 0) &&
+     simCudaValidateEnabledRuntime())
+  {
+    fprintf(stderr,
+            "SIM CUDA initial safe-store GPU precombine prune shadow mismatch: "
             "digest=%llu size=%llu candidate=%llu order=%llu\n",
             static_cast<unsigned long long>(shadowStats.digestMismatches),
             static_cast<unsigned long long>(shadowStats.sizeMismatches),
@@ -17623,9 +19462,49 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		      {
 		        const std::chrono::steady_clock::time_point safeStoreUpdateStart =
 		          benchmarkEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-		        mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,
-		                                                     context,
-		                                                     &safeStoreRebuildStats);
+		        bool gpuPrecombineApplied = false;
+		        bool gpuPrecombinePrunedApplied = false;
+		        if(simCudaInitialSafeStoreGpuPrecombineRequestedRuntime())
+		        {
+		          SimCandidateStateStore gpuPrecombinedStore;
+		          SimInitialSafeStoreRebuildStats gpuPrecombineRebuildStats;
+		          uint64_t gpuPrecombineHostEpochBumps = 0;
+		          bool gpuPrecombineOk = false;
+		          bool gpuPrecombinePruned = false;
+		          SimInitialSafeStoreGpuPrecombinePruneStats gpuPrecombinePruneStats;
+		          const SimInitialSafeStoreGpuPrecombineStats gpuPrecombineStats =
+		            runSimInitialSafeStoreGpuPrecombine(
+		              summaries,
+		              context,
+		              simCudaInitialSafeStoreGpuPrecombineValidateEnabledRuntime(),
+		              gpuPrecombinedStore,
+		              gpuPrecombineRebuildStats,
+		              gpuPrecombineHostEpochBumps,
+		              gpuPrecombineOk,
+		              gpuPrecombinePruned,
+		              &gpuPrecombinePruneStats);
+		          recordSimInitialSafeStoreGpuPrecombine(gpuPrecombineStats);
+		          recordSimInitialSafeStoreGpuPrecombinePrune(gpuPrecombinePruneStats);
+		          if(gpuPrecombineOk)
+		          {
+		            context.safeCandidateStateStore = std::move(gpuPrecombinedStore);
+		            safeStoreRebuildStats = gpuPrecombineRebuildStats;
+		            for(uint64_t epochBump = 0;
+		                epochBump < gpuPrecombineHostEpochBumps;
+		                ++epochBump)
+		            {
+		              recordSimSafeStoreHostEpochBump();
+		            }
+		            gpuPrecombineApplied = true;
+		            gpuPrecombinePrunedApplied = gpuPrecombinePruned;
+		          }
+		        }
+		        if(!gpuPrecombineApplied)
+		        {
+		          mergeSimCudaInitialRunSummariesIntoSafeStore(summaries,
+		                                                       context,
+		                                                       &safeStoreRebuildStats);
+		        }
 		        if(benchmarkEnabled)
 		        {
 		          recordSimInitialScanCpuSafeStoreUpdateNanoseconds(simElapsedNanoseconds(safeStoreUpdateStart));
@@ -17651,14 +19530,44 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		                    static_cast<unsigned long long>(shadowStats.orderMismatches));
 		          }
 		        }
+		        if(benchmarkEnabled &&
+		           simCudaInitialSafeStoreGpuPrecombineShadowEnabledRuntime())
+		        {
+		          const SimInitialSafeStoreGpuPrecombineShadowStats gpuShadowStats =
+		            runSimInitialSafeStoreGpuPrecombineShadow(
+		              summaries,
+		              context.safeCandidateStateStore);
+		          recordSimInitialSafeStoreGpuPrecombineShadow(gpuShadowStats);
+		          if((gpuShadowStats.digestMismatches != 0 ||
+		              gpuShadowStats.sizeMismatches != 0 ||
+		              gpuShadowStats.candidateMismatches != 0 ||
+		              gpuShadowStats.orderMismatches != 0) &&
+		             simCudaValidateEnabledRuntime())
+		          {
+		            fprintf(stderr,
+		                    "SIM CUDA initial safe-store GPU precombine shadow mismatch: "
+		                    "digest=%llu size=%llu candidate=%llu order=%llu\n",
+		                    static_cast<unsigned long long>(gpuShadowStats.digestMismatches),
+		                    static_cast<unsigned long long>(gpuShadowStats.sizeMismatches),
+		                    static_cast<unsigned long long>(gpuShadowStats.candidateMismatches),
+		                    static_cast<unsigned long long>(gpuShadowStats.orderMismatches));
+		          }
+		        }
+		        if(gpuPrecombinePrunedApplied)
+		        {
+		          hostSafeStoreAlreadyPruned = true;
+		        }
 		      }
 		      if(!hostSafeStoreAlreadyPruned)
 		      {
 		        const bool runPruneIndexShadow =
 		          benchmarkEnabled &&
 		          simCudaInitialSafeStorePruneIndexShadowEnabledRuntime();
+		        const bool runGpuPrecombinePruneShadow =
+		          benchmarkEnabled &&
+		          simCudaInitialSafeStoreGpuPrecombinePruneShadowEnabledRuntime();
 		        unique_ptr<SimKernelContext> prePruneShadowContext;
-		        if(runPruneIndexShadow)
+		        if(runPruneIndexShadow || runGpuPrecombinePruneShadow)
 		        {
 		          prePruneShadowContext.reset(new SimKernelContext(context));
 		        }
@@ -17674,6 +19583,9 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		          prePruneShadowContext.get(),
 		          context.safeCandidateStateStore,
 		          safeStoreRebuildStats);
+		        recordSimInitialSafeStoreGpuPrecombinePruneShadowIfEnabled(
+		          prePruneShadowContext.get(),
+		          context.safeCandidateStateStore);
 		      }
 		      if(benchmarkEnabled)
 		      {

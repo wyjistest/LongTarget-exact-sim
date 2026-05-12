@@ -380,6 +380,195 @@ bool sim_scan_cuda_build_persistent_safe_candidate_state_store_from_initial_run_
   return false;
 }
 
+bool sim_scan_cuda_precombine_initial_safe_store_shadow(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outH2DBytes,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  (void)summaries;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outH2DBytes != NULL)
+  {
+    *outH2DBytes = 0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_precombine_initial_safe_store_resident(
+  size_t summaryCount,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  (void)summaryCount;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_prune_initial_safe_store_gpu_precombine_shadow(
+  const vector<SimScanCudaCandidateState> &states,
+  const vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outD2HBytes,
+  string *errorOut)
+{
+  (void)states;
+  (void)finalCandidates;
+  (void)runningMin;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
+  const vector<SimScanCudaInitialRunSummary> &summaries,
+  const vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outUniqueStates,
+  uint64_t *outH2DBytes,
+  uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  bool usePackedD2HAsRealSource,
+  bool validatePackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
+  string *errorOut)
+{
+  (void)summaries;
+  (void)finalCandidates;
+  (void)runningMin;
+  (void)tryPackedD2H;
+  (void)usePackedD2HAsRealSource;
+  (void)validatePackedD2H;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outUniqueStates != NULL)
+  {
+    *outUniqueStates = 0;
+  }
+  if(outH2DBytes != NULL)
+  {
+    *outH2DBytes = 0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
+bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
+  size_t summaryCount,
+  const vector<SimScanCudaCandidateState> &finalCandidates,
+  int runningMin,
+  vector<SimScanCudaCandidateState> *outStates,
+  double *outSeconds,
+  uint64_t *outUniqueStates,
+  uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  bool usePackedD2HAsRealSource,
+  bool validatePackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
+  string *errorOut)
+{
+  (void)summaryCount;
+  (void)finalCandidates;
+  (void)runningMin;
+  (void)tryPackedD2H;
+  (void)usePackedD2HAsRealSource;
+  (void)validatePackedD2H;
+  if(outStates != NULL)
+  {
+    outStates->clear();
+  }
+  if(outSeconds != NULL)
+  {
+    *outSeconds = 0.0;
+  }
+  if(outUniqueStates != NULL)
+  {
+    *outUniqueStates = 0;
+  }
+  if(outD2HBytes != NULL)
+  {
+    *outD2HBytes = 0;
+  }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
+
 bool sim_scan_cuda_download_persistent_safe_candidate_state_store_for_shadow(
   const SimCudaPersistentSafeStoreHandle &handle,
   vector<SimScanCudaCandidateState> *outStates,
