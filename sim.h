@@ -2953,6 +2953,26 @@ inline bool simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HValidateEnabledRun
   return enabled;
 }
 
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeRequestedRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_FAST_MATERIALIZE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeValidateEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_FAST_MATERIALIZE_VALIDATE");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 inline bool simCudaInitialSafeStorePruneIndexShadowEnabledRuntime()
 {
   static const bool enabled = []()
@@ -5337,6 +5357,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    packedCandidateMismatches(0),
 		    packedOrderMismatches(0),
 		    packedDigestMismatches(0),
+		    fastMaterializeActive(0),
+		    fastMaterializeNanoseconds(0),
+		    fastMaterializeIndexBuildNanoseconds(0),
+		    fastMaterializeValidateNanoseconds(0),
+		    fastMaterializeCapacityReuseHits(0),
+		    fastMaterializeSizeMismatches(0),
+		    fastMaterializeCandidateMismatches(0),
+		    fastMaterializeOrderMismatches(0),
+		    fastMaterializeDigestMismatches(0),
+		    fastMaterializeFallbacks(0),
 		    validateNanoseconds(0),
 		    sizeMismatches(0),
 		    candidateMismatches(0),
@@ -5373,6 +5403,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  uint64_t packedCandidateMismatches;
 		  uint64_t packedOrderMismatches;
 		  uint64_t packedDigestMismatches;
+		  uint64_t fastMaterializeActive;
+		  uint64_t fastMaterializeNanoseconds;
+		  uint64_t fastMaterializeIndexBuildNanoseconds;
+		  uint64_t fastMaterializeValidateNanoseconds;
+		  uint64_t fastMaterializeCapacityReuseHits;
+		  uint64_t fastMaterializeSizeMismatches;
+		  uint64_t fastMaterializeCandidateMismatches;
+		  uint64_t fastMaterializeOrderMismatches;
+		  uint64_t fastMaterializeDigestMismatches;
+		  uint64_t fastMaterializeFallbacks;
 		  uint64_t validateNanoseconds;
 		  uint64_t sizeMismatches;
 		  uint64_t candidateMismatches;
@@ -5412,6 +5452,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    packedCandidateMismatches.store(0,std::memory_order_relaxed);
 		    packedOrderMismatches.store(0,std::memory_order_relaxed);
 		    packedDigestMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeActive.store(0,std::memory_order_relaxed);
+		    fastMaterializeNanoseconds.store(0,std::memory_order_relaxed);
+		    fastMaterializeIndexBuildNanoseconds.store(0,std::memory_order_relaxed);
+		    fastMaterializeValidateNanoseconds.store(0,std::memory_order_relaxed);
+		    fastMaterializeCapacityReuseHits.store(0,std::memory_order_relaxed);
+		    fastMaterializeSizeMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeCandidateMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeOrderMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeDigestMismatches.store(0,std::memory_order_relaxed);
+		    fastMaterializeFallbacks.store(0,std::memory_order_relaxed);
 		    validateNanoseconds.store(0,std::memory_order_relaxed);
 		    sizeMismatches.store(0,std::memory_order_relaxed);
 		    candidateMismatches.store(0,std::memory_order_relaxed);
@@ -5447,6 +5497,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  std::atomic<uint64_t> packedCandidateMismatches;
 		  std::atomic<uint64_t> packedOrderMismatches;
 		  std::atomic<uint64_t> packedDigestMismatches;
+		  std::atomic<uint64_t> fastMaterializeActive;
+		  std::atomic<uint64_t> fastMaterializeNanoseconds;
+		  std::atomic<uint64_t> fastMaterializeIndexBuildNanoseconds;
+		  std::atomic<uint64_t> fastMaterializeValidateNanoseconds;
+		  std::atomic<uint64_t> fastMaterializeCapacityReuseHits;
+		  std::atomic<uint64_t> fastMaterializeSizeMismatches;
+		  std::atomic<uint64_t> fastMaterializeCandidateMismatches;
+		  std::atomic<uint64_t> fastMaterializeOrderMismatches;
+		  std::atomic<uint64_t> fastMaterializeDigestMismatches;
+		  std::atomic<uint64_t> fastMaterializeFallbacks;
 		  std::atomic<uint64_t> validateNanoseconds;
 		  std::atomic<uint64_t> sizeMismatches;
 		  std::atomic<uint64_t> candidateMismatches;
@@ -6225,6 +6285,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.packedCandidateMismatches.fetch_add(delta.packedCandidateMismatches,std::memory_order_relaxed);
 		  stats.packedOrderMismatches.fetch_add(delta.packedOrderMismatches,std::memory_order_relaxed);
 		  stats.packedDigestMismatches.fetch_add(delta.packedDigestMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeActive.fetch_add(delta.fastMaterializeActive,std::memory_order_relaxed);
+		  stats.fastMaterializeNanoseconds.fetch_add(delta.fastMaterializeNanoseconds,std::memory_order_relaxed);
+		  stats.fastMaterializeIndexBuildNanoseconds.fetch_add(delta.fastMaterializeIndexBuildNanoseconds,std::memory_order_relaxed);
+		  stats.fastMaterializeValidateNanoseconds.fetch_add(delta.fastMaterializeValidateNanoseconds,std::memory_order_relaxed);
+		  stats.fastMaterializeCapacityReuseHits.fetch_add(delta.fastMaterializeCapacityReuseHits,std::memory_order_relaxed);
+		  stats.fastMaterializeSizeMismatches.fetch_add(delta.fastMaterializeSizeMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeCandidateMismatches.fetch_add(delta.fastMaterializeCandidateMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeOrderMismatches.fetch_add(delta.fastMaterializeOrderMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeDigestMismatches.fetch_add(delta.fastMaterializeDigestMismatches,std::memory_order_relaxed);
+		  stats.fastMaterializeFallbacks.fetch_add(delta.fastMaterializeFallbacks,std::memory_order_relaxed);
 		  stats.validateNanoseconds.fetch_add(delta.validateNanoseconds,std::memory_order_relaxed);
 		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
 		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
@@ -6881,6 +6951,26 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    stats.packedOrderMismatches.load(std::memory_order_relaxed);
 		  snapshot.packedDigestMismatches =
 		    stats.packedDigestMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeActive =
+		    stats.fastMaterializeActive.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeNanoseconds =
+		    stats.fastMaterializeNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeIndexBuildNanoseconds =
+		    stats.fastMaterializeIndexBuildNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeValidateNanoseconds =
+		    stats.fastMaterializeValidateNanoseconds.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeCapacityReuseHits =
+		    stats.fastMaterializeCapacityReuseHits.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeSizeMismatches =
+		    stats.fastMaterializeSizeMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeCandidateMismatches =
+		    stats.fastMaterializeCandidateMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeOrderMismatches =
+		    stats.fastMaterializeOrderMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeDigestMismatches =
+		    stats.fastMaterializeDigestMismatches.load(std::memory_order_relaxed);
+		  snapshot.fastMaterializeFallbacks =
+		    stats.fastMaterializeFallbacks.load(std::memory_order_relaxed);
 		  snapshot.validateNanoseconds =
 		    stats.validateNanoseconds.load(std::memory_order_relaxed);
 		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
@@ -13601,6 +13691,45 @@ inline bool simInitialSafeStoreGpuPrecombinePruneStoresMatch(
          stats.digestMismatches == 0;
 }
 
+inline bool simInitialSafeStoreFastMaterializeStoresMatch(
+  const SimCandidateStateStore &fastStore,
+  const SimCandidateStateStore &referenceStore,
+  SimInitialSafeStoreGpuPrecombinePruneStats &stats)
+{
+  const bool sizeMatch =
+    fastStore.valid == referenceStore.valid &&
+    fastStore.states.size() == referenceStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.fastMaterializeSizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(fastStore.states,
+                                             referenceStore.states);
+  if(!orderMatch)
+  {
+    stats.fastMaterializeOrderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(fastStore.states,
+                                           referenceStore.states);
+  if(!candidateMatch)
+  {
+    stats.fastMaterializeCandidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(fastStore) !=
+     simCandidateStateStoreFingerprint(referenceStore))
+  {
+    stats.fastMaterializeDigestMismatches = 1;
+  }
+  return stats.fastMaterializeSizeMismatches == 0 &&
+         stats.fastMaterializeOrderMismatches == 0 &&
+         stats.fastMaterializeCandidateMismatches == 0 &&
+         stats.fastMaterializeDigestMismatches == 0;
+}
+
 inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
   const vector<SimScanCudaCandidateState> &states,
   uint64_t inputSummaries,
@@ -13680,6 +13809,108 @@ inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
   }
 }
 
+inline void materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreFastLocal(
+  const vector<SimScanCudaCandidateState> &states,
+  uint64_t inputSummaries,
+  uint64_t uniqueStates,
+  const SimKernelContext &context,
+  SimCandidateStateStore &store,
+  SimInitialSafeStoreRebuildStats *stats,
+  uint64_t *hostEpochBumps,
+  uint64_t *indexBuildNanosecondsOut,
+  uint64_t *capacityReuseHitsOut)
+{
+  if(indexBuildNanosecondsOut != NULL)
+  {
+    *indexBuildNanosecondsOut = 0;
+  }
+  if(capacityReuseHitsOut != NULL)
+  {
+    *capacityReuseHitsOut = 0;
+  }
+  if(!store.valid)
+  {
+    resetSimCandidateStateStore(store,true);
+    if(hostEpochBumps != NULL)
+    {
+      *hostEpochBumps += 1;
+    }
+  }
+
+  const uint64_t storeSizeBefore = static_cast<uint64_t>(store.states.size());
+  if(capacityReuseHitsOut != NULL && store.states.capacity() >= states.size())
+  {
+    *capacityReuseHitsOut += 1;
+  }
+
+  store.states.clear();
+  if(store.states.capacity() < states.size())
+  {
+    store.states.reserve(states.size());
+  }
+  store.startCoordToIndex.clear();
+  store.startCoordToIndex.reserve(states.size());
+
+  const std::chrono::steady_clock::time_point indexBuildStart =
+    std::chrono::steady_clock::now();
+  uint64_t keptAboveFloor = 0;
+  uint64_t keptFrontier = 0;
+  for(size_t stateIndex = 0; stateIndex < states.size(); ++stateIndex)
+  {
+    const SimScanCudaCandidateState &state = states[stateIndex];
+    const size_t insertedIndex = store.states.size();
+    store.states.push_back(state);
+    const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+    store.startCoordToIndex[startCoord] = insertedIndex;
+    if(stats != NULL)
+    {
+      if(state.score > context.runningMin)
+      {
+        keptAboveFloor += 1;
+      }
+      else if(simContextContainsCandidateStartCoord(context,startCoord))
+      {
+        keptFrontier += 1;
+      }
+    }
+  }
+  const uint64_t indexBuildNanoseconds =
+    simElapsedNanoseconds(indexBuildStart);
+  if(indexBuildNanosecondsOut != NULL)
+  {
+    *indexBuildNanosecondsOut = indexBuildNanoseconds;
+  }
+
+  if(stats != NULL)
+  {
+    stats->updateCalls += 1;
+    stats->updateSummaries += inputSummaries;
+    stats->updateInsertedStates += uniqueStates;
+    stats->updateMergedSummaries +=
+      inputSummaries > uniqueStates ? inputSummaries - uniqueStates : 0;
+    stats->updateStoreSizeBefore += storeSizeBefore;
+    stats->updateStoreSizeAfter += uniqueStates;
+    stats->pruneCalls += 1;
+    stats->pruneScannedStates += uniqueStates;
+    stats->pruneKeptStates += static_cast<uint64_t>(states.size());
+    stats->pruneRemovedStates +=
+      uniqueStates > states.size() ? uniqueStates - static_cast<uint64_t>(states.size()) : 0;
+    stats->pruneKeptAboveFloor += keptAboveFloor;
+    stats->pruneKeptFrontier += keptFrontier;
+    stats->pruneIndexRebuildNanoseconds += indexBuildNanoseconds;
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+  bumpSimCandidateStateStoreHostEpoch(store);
+  if(hostEpochBumps != NULL)
+  {
+    *hostEpochBumps += 1;
+  }
+}
+
 inline SimInitialSafeStoreGpuPrecombineStats
 runSimInitialSafeStoreGpuPrecombine(
   const vector<SimScanCudaInitialRunSummary> &summaries,
@@ -13709,6 +13940,12 @@ runSimInitialSafeStoreGpuPrecombine(
 
   const bool pruneRequested =
     simCudaInitialSafeStoreGpuPrecombinePruneRequestedRuntime();
+  const bool fastMaterializeRequested =
+    pruneRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeRequestedRuntime();
+  const bool fastMaterializeValidate =
+    fastMaterializeRequested &&
+    simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeValidateEnabledRuntime();
   if(pruneRequested && preUpdateStore.valid && !preUpdateStore.states.empty())
   {
     stats.fallbacks = 1;
@@ -13899,18 +14136,39 @@ runSimInitialSafeStoreGpuPrecombine(
   if(pruneRequested)
   {
     uint64_t packedIndexRebuildNanoseconds = 0;
+    uint64_t fastIndexBuildNanoseconds = 0;
+    uint64_t fastCapacityReuseHits = 0;
     const std::chrono::steady_clock::time_point packedMaterializeStart =
       packedD2HRealRequested && packedD2HStats.active ?
       std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-    materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
-      gpuStates,
-      stats.inputSummaries,
-      stats.uniqueStates,
-      preUpdateContext,
-      outStore,
-      &outRebuildStats,
-      &outHostEpochBumps,
-      &packedIndexRebuildNanoseconds);
+    const std::chrono::steady_clock::time_point fastMaterializeStart =
+      fastMaterializeRequested ?
+      std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    if(fastMaterializeRequested)
+    {
+      materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreFastLocal(
+        gpuStates,
+        stats.inputSummaries,
+        stats.uniqueStates,
+        preUpdateContext,
+        outStore,
+        &outRebuildStats,
+        &outHostEpochBumps,
+        &fastIndexBuildNanoseconds,
+        &fastCapacityReuseHits);
+    }
+    else
+    {
+      materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
+        gpuStates,
+        stats.inputSummaries,
+        stats.uniqueStates,
+        preUpdateContext,
+        outStore,
+        &outRebuildStats,
+        &outHostEpochBumps,
+        &packedIndexRebuildNanoseconds);
+    }
     if(outPruneStats != NULL && packedD2HRealRequested && packedD2HStats.active)
     {
       const uint64_t packedMaterializeNanoseconds =
@@ -13921,6 +14179,69 @@ runSimInitialSafeStoreGpuPrecombine(
         packedIndexRebuildNanoseconds;
       outPruneStats->packedHostApplyNanoseconds =
         outPruneStats->packedUnpackNanoseconds + packedMaterializeNanoseconds;
+    }
+    if(outPruneStats != NULL && fastMaterializeRequested)
+    {
+      outPruneStats->fastMaterializeActive = 1;
+      outPruneStats->fastMaterializeNanoseconds =
+        simElapsedNanoseconds(fastMaterializeStart);
+      outPruneStats->fastMaterializeIndexBuildNanoseconds =
+        fastIndexBuildNanoseconds;
+      outPruneStats->fastMaterializeCapacityReuseHits =
+        fastCapacityReuseHits;
+    }
+    if(fastMaterializeValidate)
+    {
+      const std::chrono::steady_clock::time_point fastValidateStart =
+        std::chrono::steady_clock::now();
+      SimCandidateStateStore referenceStore = preUpdateContext.safeCandidateStateStore;
+      SimInitialSafeStoreRebuildStats referenceStats;
+      uint64_t referenceHostEpochBumps = 0;
+      uint64_t referenceIndexBuildNanoseconds = 0;
+      materializeSimCudaInitialGpuPrunedStatesIntoSafeStoreLocal(
+        gpuStates,
+        stats.inputSummaries,
+        stats.uniqueStates,
+        preUpdateContext,
+        referenceStore,
+        &referenceStats,
+        &referenceHostEpochBumps,
+        &referenceIndexBuildNanoseconds);
+      const bool fastValidateOk =
+        outPruneStats != NULL &&
+        simInitialSafeStoreFastMaterializeStoresMatch(
+          outStore,
+          referenceStore,
+          *outPruneStats);
+      if(outPruneStats != NULL)
+      {
+        outPruneStats->fastMaterializeValidateNanoseconds =
+          simElapsedNanoseconds(fastValidateStart);
+      }
+      if(!fastValidateOk)
+      {
+        outStore = referenceStore;
+        outRebuildStats = referenceStats;
+        outHostEpochBumps = referenceHostEpochBumps;
+        if(outPruneStats != NULL)
+        {
+          outPruneStats->fastMaterializeFallbacks = 1;
+        }
+        if(simCudaValidateEnabledRuntime())
+        {
+          fprintf(stderr,
+                  "SIM CUDA initial safe-store fast materialize validation mismatch: "
+                  "digest=%llu size=%llu candidate=%llu order=%llu\n",
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeDigestMismatches : 1),
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeSizeMismatches : 1),
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeCandidateMismatches : 1),
+                  static_cast<unsigned long long>(
+                    outPruneStats != NULL ? outPruneStats->fastMaterializeOrderMismatches : 1));
+        }
+      }
     }
   }
   else
