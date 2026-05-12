@@ -3887,6 +3887,30 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialSafeStoreGpuPrecombinePruneStats.digestMismatches<<endl;
   cerr<<"benchmark.sim_initial_safe_store_gpu_precombine_prune_fallbacks="
       <<simInitialSafeStoreGpuPrecombinePruneStats.fallbacks<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_requested="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeRequestedRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_active="
+      <<(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeActive != 0 ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_validate_enabled="
+      <<(simCudaInitialSafeStoreGpuPrecombinePruneFastMaterializeValidateEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_index_build_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeIndexBuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_validate_seconds="
+      <<(static_cast<double>(simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeValidateNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_capacity_reuse_hits="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeCapacityReuseHits<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_size_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeSizeMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_candidate_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeCandidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_order_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeOrderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_digest_mismatches="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_safe_store_fast_materialize_fallbacks="
+      <<simInitialSafeStoreGpuPrecombinePruneStats.fastMaterializeFallbacks<<endl;
   const bool simInitialSafeStoreGpuPrecombinePrunePackedD2HRequested =
     simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRequestedRuntime() ||
     simCudaInitialSafeStoreGpuPrecombinePrunePackedD2HRealRequestedRuntime();
