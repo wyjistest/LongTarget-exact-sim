@@ -480,6 +480,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   uint64_t *outH2DBytes,
   uint64_t *outD2HBytes,
   bool tryPackedD2H,
+  bool usePackedD2HAsRealSource,
+  bool validatePackedD2H,
   SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
@@ -487,6 +489,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   (void)finalCandidates;
   (void)runningMin;
   (void)tryPackedD2H;
+  (void)usePackedD2HAsRealSource;
+  (void)validatePackedD2H;
   if(outStates != NULL)
   {
     outStates->clear();
@@ -527,6 +531,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   uint64_t *outUniqueStates,
   uint64_t *outD2HBytes,
   bool tryPackedD2H,
+  bool usePackedD2HAsRealSource,
+  bool validatePackedD2H,
   SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
@@ -534,6 +540,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   (void)finalCandidates;
   (void)runningMin;
   (void)tryPackedD2H;
+  (void)usePackedD2HAsRealSource;
+  (void)validatePackedD2H;
   if(outStates != NULL)
   {
     outStates->clear();
