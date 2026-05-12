@@ -234,6 +234,18 @@ benchmark.sim_initial_safe_store_gpu_precombine_prune_candidate_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_order_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_digest_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_fallbacks
+benchmark.sim_initial_safe_store_fast_materialize_requested
+benchmark.sim_initial_safe_store_fast_materialize_active
+benchmark.sim_initial_safe_store_fast_materialize_validate_enabled
+benchmark.sim_initial_safe_store_fast_materialize_seconds
+benchmark.sim_initial_safe_store_fast_materialize_index_build_seconds
+benchmark.sim_initial_safe_store_fast_materialize_validate_seconds
+benchmark.sim_initial_safe_store_fast_materialize_capacity_reuse_hits
+benchmark.sim_initial_safe_store_fast_materialize_size_mismatches
+benchmark.sim_initial_safe_store_fast_materialize_candidate_mismatches
+benchmark.sim_initial_safe_store_fast_materialize_order_mismatches
+benchmark.sim_initial_safe_store_fast_materialize_digest_mismatches
+benchmark.sim_initial_safe_store_fast_materialize_fallbacks
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_requested
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_active
 benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_supported
@@ -265,6 +277,19 @@ and `device_resident` when the resident source is active. The resident-source
 disabled reason is `not_requested`, `active`, `resident_source_unavailable`, or
 `not_run`.
 
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_FAST_MATERIALIZE=1`
+is a default-off host-only opt-in for the GPU-pruned kept-state materialization
+step. It does not add a CUDA path: the existing GPU precombine/prune output is
+still downloaded as kept states, then the host safe-store vector and start-index
+map are materialized together with reserved capacity. Validation
+(`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_FAST_MATERIALIZE_VALIDATE=1`)
+builds a side store with the previous materializer and compares size, candidate
+content, order, and digest before accepting the fast materialized store.
+Mismatches record fast-materialize counters and fall back to the previous
+materialized store. CPU upload/locate/region remain authoritative.
+See `docs/cuda_initial_safe_store_fast_materialize.md` for the current 3-run
+sample A/B and interpretation.
+
 For the packed real opt-in, `packed_unpack_seconds` is the host unpack time
 reported by the packed kept-state D2H helper, `packed_materialize_seconds` is
 the subsequent host safe-store materialization time, `packed_index_rebuild_seconds`
@@ -285,6 +310,8 @@ make check-sim-initial-safe-store-gpu-precombine-validate
 make check-sim-initial-safe-store-gpu-precombine-resident
 make check-sim-initial-safe-store-gpu-precombine-prune
 make check-sim-initial-safe-store-gpu-precombine-prune-validate
+make check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize
+make check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize-validate
 make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h
 make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real
 make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h-real-validate
