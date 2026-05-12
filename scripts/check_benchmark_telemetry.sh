@@ -96,6 +96,7 @@ grep -Eq '^benchmark\.sim_safe_workset_merge_safe_store_erase_seconds=[0-9]+(\.[
 grep -Eq '^benchmark\.sim_safe_workset_merge_safe_store_upsert_loop_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_workset_merge_candidate_apply_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_workset_merge_safe_store_prune_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_safe_workset_merge_safe_store_prune_index_rebuild_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_workset_merge_safe_store_upload_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_workset_merge_unique_start_keys=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_safe_workset_merge_duplicate_states=[0-9]+$' "$STDERR_LOG"

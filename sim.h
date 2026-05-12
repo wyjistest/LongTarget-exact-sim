@@ -4927,7 +4927,8 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  SIM_SAFE_WORKSET_MERGE_PRUNE_SCANNED_STATE_COUNT = 18,
 		  SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT = 19,
 		  SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT = 20,
-		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 21
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_REBUILD_NANOSECONDS = 21,
+		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 22
 		};
 
 		struct SimSafeWorksetMergeBreakdownStats
@@ -22895,6 +22896,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   uint64_t safeStoreSizeBefore = 0;
   uint64_t safeStorePruneScannedStates = 0;
   uint64_t safeStorePruneRemovedStates = 0;
+  SimInitialSafeStoreRebuildStats safeWorksetPruneStats;
   SimCandidateStateStore safeStoreMergeShadowPreMergeStore;
   const bool safeStoreMergeStructureShadowEnabled =
     recordTelemetry && simSafeStoreMergeStructureShadowEnabledRuntime();
@@ -22982,7 +22984,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   {
     const uint64_t safeStoreSizeBeforePrune =
       static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
-    pruneSimSafeCandidateStateStore(context);
+    pruneSimSafeCandidateStateStore(context,
+                                    benchmarkEnabled ? &safeWorksetPruneStats : NULL);
     if(recordTelemetry)
     {
       recordSimSafeStoreHostEpochBump();
@@ -22999,6 +23002,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
                        safeStorePruneRemovedStates);
     mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT,
                        safeStoreSizeAfterPrune);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_REBUILD_NANOSECONDS,
+                       safeWorksetPruneStats.pruneIndexRebuildNanoseconds);
   }
   if(safeStoreMergeStructureShadowEnabled && safeStoreMergeShadowPreMergeStore.valid)
   {
