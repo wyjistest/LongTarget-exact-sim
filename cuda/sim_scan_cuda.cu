@@ -487,6 +487,8 @@ struct SimScanCudaContext
     initialRunSummariesResidentCount(0),
     initialPackedRunSummariesDevice(NULL),
     initialPackedRunSummariesCapacity(0),
+    initialPackedCandidateStatesDevice(NULL),
+    initialPackedCandidateStatesCapacity(0),
     initialPackedSummaryFallbackDevice(NULL),
     initialPackedSummaryFallbackCapacity(0),
     summaryKeysDevice(NULL),
@@ -651,6 +653,8 @@ struct SimScanCudaContext
   size_t initialRunSummariesResidentCount;
   SimScanCudaPackedInitialRunSummary16 *initialPackedRunSummariesDevice;
   size_t initialPackedRunSummariesCapacity;
+  SimScanCudaPackedCandidateState20 *initialPackedCandidateStatesDevice;
+  size_t initialPackedCandidateStatesCapacity;
   int *initialPackedSummaryFallbackDevice;
   size_t initialPackedSummaryFallbackCapacity;
   uint64_t *summaryKeysDevice;
@@ -6771,6 +6775,26 @@ __global__ void sim_scan_pack_initial_run_summaries16_kernel(
   packedSummaries[idx] = packed;
 }
 
+__global__ void sim_scan_pack_candidate_states20_kernel(
+  const SimScanCudaCandidateState *states,
+  int stateCount,
+  SimScanCudaPackedCandidateState20 *packedStates,
+  int *fallbackFlag)
+{
+  const int idx = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
+  if(idx >= stateCount)
+  {
+    return;
+  }
+  SimScanCudaPackedCandidateState20 packed;
+  if(!packSimScanCudaCandidateState20(states[idx],packed))
+  {
+    atomicExch(fallbackFlag,1);
+    return;
+  }
+  packedStates[idx] = packed;
+}
+
 __global__ void sim_scan_reduce_region_candidate_summaries_kernel(const SimScanCudaInitialRunSummary *summaries,
                                                                   int summaryCount,
                                                                   SimScanCudaCandidateState *candidates,
@@ -12681,6 +12705,227 @@ static bool sim_scan_cuda_download_candidate_states_locked(
   return true;
 }
 
+static bool sim_scan_cuda_candidate_states_equal(const SimScanCudaCandidateState &lhs,
+                                                 const SimScanCudaCandidateState &rhs)
+{
+  return lhs.score == rhs.score &&
+         lhs.startI == rhs.startI &&
+         lhs.startJ == rhs.startJ &&
+         lhs.endI == rhs.endI &&
+         lhs.endJ == rhs.endJ &&
+         lhs.top == rhs.top &&
+         lhs.bot == rhs.bot &&
+         lhs.left == rhs.left &&
+         lhs.right == rhs.right;
+}
+
+static uint64_t sim_scan_cuda_candidate_state_digest(
+  const vector<SimScanCudaCandidateState> &states)
+{
+  uint64_t hash = 0xcbf29ce484222325ULL;
+  hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(states.size()));
+  for(size_t i = 0; i < states.size(); ++i)
+  {
+    const SimScanCudaCandidateState &state = states[i];
+    hash = simScanCudaFrontierDigestMix(hash,static_cast<uint64_t>(i));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.score));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaCandidateStateStartCoord(state));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.endI));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.endJ));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.top));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.bot));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.left));
+    hash = simScanCudaFrontierDigestMix(hash,
+                                        simScanCudaFrontierDigestInt(state.right));
+  }
+  return hash;
+}
+
+static void sim_scan_cuda_compare_packed_candidate_states(
+  const vector<SimScanCudaCandidateState> &packedStates,
+  const vector<SimScanCudaCandidateState> &unpackedStates,
+  SimScanCudaPackedCandidateD2HStats *stats)
+{
+  if(stats == NULL)
+  {
+    return;
+  }
+  if(packedStates.size() != unpackedStates.size())
+  {
+    stats->sizeMismatches += 1;
+  }
+  const size_t compareCount = std::min(packedStates.size(),unpackedStates.size());
+  for(size_t i = 0; i < compareCount; ++i)
+  {
+    if(!sim_scan_cuda_candidate_states_equal(packedStates[i],unpackedStates[i]))
+    {
+      stats->candidateMismatches += 1;
+      stats->orderMismatches += 1;
+      break;
+    }
+  }
+  if(sim_scan_cuda_candidate_state_digest(packedStates) !=
+     sim_scan_cuda_candidate_state_digest(unpackedStates))
+  {
+    stats->digestMismatches += 1;
+  }
+}
+
+static bool sim_scan_cuda_measure_packed_candidate_states_d2h_locked(
+  SimScanCudaContext *context,
+  const SimScanCudaCandidateState *statesDevice,
+  int stateCount,
+  const vector<SimScanCudaCandidateState> &unpackedStates,
+  SimScanCudaPackedCandidateD2HStats *stats,
+  string *errorOut)
+{
+  if(stats == NULL)
+  {
+    return true;
+  }
+  *stats = SimScanCudaPackedCandidateD2HStats();
+  if(stateCount <= 0)
+  {
+    stats->supported = true;
+    stats->active = true;
+    return true;
+  }
+  if(context == NULL || statesDevice == NULL)
+  {
+    stats->fallbacks += 1;
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing packed candidate-state D2H input";
+    }
+    return false;
+  }
+  stats->supported = true;
+  stats->unpackedBytes =
+    static_cast<uint64_t>(stateCount) *
+    static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+  if(!ensure_sim_scan_cuda_buffer(&context->initialPackedCandidateStatesDevice,
+                                  &context->initialPackedCandidateStatesCapacity,
+                                  static_cast<size_t>(stateCount),
+                                  errorOut) ||
+     !ensure_sim_scan_cuda_buffer(&context->initialPackedSummaryFallbackDevice,
+                                  &context->initialPackedSummaryFallbackCapacity,
+                                  static_cast<size_t>(1),
+                                  errorOut))
+  {
+    stats->fallbacks += 1;
+    return false;
+  }
+  cudaError_t status =
+    cudaMemset(context->initialPackedSummaryFallbackDevice,0,sizeof(int));
+  if(status != cudaSuccess)
+  {
+    stats->fallbacks += 1;
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  const int packThreads = 256;
+  const int packBlocks = (stateCount + packThreads - 1) / packThreads;
+  if(!sim_scan_cuda_begin_aux_timing(context,errorOut))
+  {
+    stats->fallbacks += 1;
+    return false;
+  }
+  sim_scan_pack_candidate_states20_kernel<<<packBlocks,packThreads>>>(
+    statesDevice,
+    stateCount,
+    context->initialPackedCandidateStatesDevice,
+    context->initialPackedSummaryFallbackDevice);
+  status = cudaGetLastError();
+  if(status != cudaSuccess)
+  {
+    stats->fallbacks += 1;
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(!sim_scan_cuda_end_aux_timing(context,&stats->packSeconds,errorOut))
+  {
+    stats->fallbacks += 1;
+    return false;
+  }
+  int fallbackHost = 0;
+  status = cudaMemcpy(&fallbackHost,
+                      context->initialPackedSummaryFallbackDevice,
+                      sizeof(int),
+                      cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+  {
+    stats->fallbacks += 1;
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(fallbackHost != 0)
+  {
+    stats->fallbacks += 1;
+    return true;
+  }
+  vector<SimScanCudaPackedCandidateState20> packedStates(
+    static_cast<size_t>(stateCount));
+  status = cudaMemcpy(packedStates.data(),
+                      context->initialPackedCandidateStatesDevice,
+                      static_cast<size_t>(stateCount) *
+                        sizeof(SimScanCudaPackedCandidateState20),
+                      cudaMemcpyDeviceToHost);
+  if(status != cudaSuccess)
+  {
+    stats->fallbacks += 1;
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  const chrono::steady_clock::time_point unpackStart = chrono::steady_clock::now();
+  vector<SimScanCudaCandidateState> unpackedPackedStates(static_cast<size_t>(stateCount));
+  for(size_t stateIndex = 0; stateIndex < packedStates.size(); ++stateIndex)
+  {
+    unpackSimScanCudaCandidateState20(packedStates[stateIndex],
+                                      unpackedPackedStates[stateIndex]);
+  }
+  stats->unpackSeconds =
+    static_cast<double>(chrono::duration_cast<chrono::nanoseconds>(
+                          chrono::steady_clock::now() - unpackStart).count()) / 1.0e9;
+  stats->packedBytes =
+    static_cast<uint64_t>(stateCount) *
+    static_cast<uint64_t>(sizeof(SimScanCudaPackedCandidateState20));
+  stats->bytesSaved =
+    stats->unpackedBytes > stats->packedBytes ?
+    stats->unpackedBytes - stats->packedBytes : 0;
+  sim_scan_cuda_compare_packed_candidate_states(unpackedPackedStates,
+                                                unpackedStates,
+                                                stats);
+  if(stats->sizeMismatches != 0 ||
+     stats->candidateMismatches != 0 ||
+     stats->orderMismatches != 0 ||
+     stats->digestMismatches != 0)
+  {
+    stats->fallbacks += 1;
+    return true;
+  }
+  stats->active = true;
+  return true;
+}
+
 static bool sim_scan_cuda_precombine_initial_safe_store_device_locked(
   SimScanCudaContext *context,
   const SimScanCudaInitialRunSummary *summariesDevice,
@@ -12731,6 +12976,8 @@ static bool sim_scan_cuda_prune_candidate_states_device_locked(
   int runningMin,
   vector<SimScanCudaCandidateState> *outStates,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
   if(context == NULL || statesDevice == NULL)
@@ -12754,8 +13001,17 @@ static bool sim_scan_cuda_prune_candidate_states_device_locked(
   {
     *outD2HBytes = 0;
   }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
+  }
   if(stateCount <= 0)
   {
+    if(tryPackedD2H && packedD2HStats != NULL)
+    {
+      packedD2HStats->supported = true;
+      packedD2HStats->active = true;
+    }
     return true;
   }
   if(finalCandidates.size() > static_cast<size_t>(sim_scan_cuda_max_candidates))
@@ -12838,12 +13094,33 @@ static bool sim_scan_cuda_prune_candidate_states_device_locked(
     }
     return false;
   }
-  return sim_scan_cuda_download_candidate_states_locked(
-    context->outputCandidateStatesDevice,
-    keptCount,
-    outStates,
-    outD2HBytes,
-    errorOut);
+  if(!sim_scan_cuda_download_candidate_states_locked(
+       context->outputCandidateStatesDevice,
+       keptCount,
+       outStates,
+       outD2HBytes,
+       errorOut))
+  {
+    return false;
+  }
+  if(tryPackedD2H)
+  {
+    string packedError;
+    if(!sim_scan_cuda_measure_packed_candidate_states_d2h_locked(
+         context,
+         context->outputCandidateStatesDevice,
+         keptCount,
+         *outStates,
+         packedD2HStats,
+         &packedError))
+    {
+      if(packedD2HStats != NULL && packedD2HStats->fallbacks == 0)
+      {
+        packedD2HStats->fallbacks += 1;
+      }
+    }
+  }
+  return true;
 }
 
 bool sim_scan_cuda_precombine_initial_safe_store_shadow(
@@ -13082,6 +13359,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   uint64_t *outUniqueStates,
   uint64_t *outH2DBytes,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
   if(outStates == NULL)
@@ -13109,8 +13388,17 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
   {
     *outD2HBytes = 0;
   }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
+  }
   if(summaries.empty())
   {
+    if(tryPackedD2H && packedD2HStats != NULL)
+    {
+      packedD2HStats->supported = true;
+      packedD2HStats->active = true;
+    }
     clear_sim_scan_cuda_error(errorOut);
     return true;
   }
@@ -13210,6 +13498,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_shadow(
        runningMin,
        outStates,
        outD2HBytes,
+       tryPackedD2H,
+       packedD2HStats,
        errorOut))
   {
     return false;
@@ -13232,6 +13522,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   double *outSeconds,
   uint64_t *outUniqueStates,
   uint64_t *outD2HBytes,
+  bool tryPackedD2H,
+  SimScanCudaPackedCandidateD2HStats *packedD2HStats,
   string *errorOut)
 {
   if(outStates == NULL)
@@ -13255,8 +13547,17 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
   {
     *outD2HBytes = 0;
   }
+  if(packedD2HStats != NULL)
+  {
+    *packedD2HStats = SimScanCudaPackedCandidateD2HStats();
+  }
   if(summaryCount == 0)
   {
+    if(tryPackedD2H && packedD2HStats != NULL)
+    {
+      packedD2HStats->supported = true;
+      packedD2HStats->active = true;
+    }
     clear_sim_scan_cuda_error(errorOut);
     return true;
   }
@@ -13343,6 +13644,8 @@ bool sim_scan_cuda_precombine_prune_initial_safe_store_resident(
        runningMin,
        outStates,
        outD2HBytes,
+       tryPackedD2H,
+       packedD2HStats,
        errorOut))
   {
     context->initialRunSummariesResidentValid = false;
