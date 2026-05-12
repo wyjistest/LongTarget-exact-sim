@@ -317,6 +317,7 @@ Validation helpers:
 - `make check-sim-initial-safe-store-gpu-precombine-shadow`: run the default-off GPU initial safe-store precombine shadow and assert unique-start counts, bytes, and mismatch telemetry
 - `make check-sim-initial-safe-store-gpu-precombine`: run the default-off real GPU initial safe-store precombine opt-in and assert active, count, byte, mismatch, and fallback telemetry
 - `make check-sim-initial-safe-store-gpu-precombine-validate`: run the real GPU precombine opt-in with legacy CPU side-store validation enabled
+- `make check-sim-initial-safe-store-gpu-best-path`: run the current recommended default-off safe-store GPU opt-in (`GPU_PRECOMBINE + RESIDENT_SOURCE + PRUNE`) and assert packed D2H / fast materialize remain off
 - `make check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize`: run the default-off GPU-pruned kept-state fast materialize opt-in and assert host apply telemetry
 - `make check-sim-initial-safe-store-gpu-precombine-prune-fast-materialize-validate`: run the fast materialize opt-in with previous-materializer side-store validation enabled
 - `make check-sim-initial-chunked-handoff-matrix`: run the sample CUDA SIM region-locate path over small, non-power-of-two, tail, and large chunk sizes
