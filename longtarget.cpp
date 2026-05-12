@@ -2111,6 +2111,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     getSimSafeWorksetMergeBreakdownStats();
   const SimSafeStoreMergeStructureShadowStats simSafeStoreMergeStructureShadow =
     getSimSafeStoreMergeStructureShadowStats();
+  const SimSafeWorksetDeferredIndexShadowStats simSafeWorksetDeferredIndexShadow =
+    getSimSafeWorksetDeferredIndexShadowStats();
   cerr<<"benchmark.sim_safe_workset_affected_starts="<<simSafeWorksetAffectedStartCount<<endl;
   cerr<<"benchmark.sim_safe_workset_unique_affected_starts="<<simSafeWorksetUniqueAffectedStartCount<<endl;
   cerr<<"benchmark.sim_safe_workset_input_bands="<<simSafeWorksetInputBandCount<<endl;
@@ -2229,6 +2231,48 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
         static_cast<double>(simSafeStoreMergeStructureShadow.pruneScannedStates);
   cerr<<"benchmark.sim_safe_store_merge_shadow_prune_removed_ratio="
       <<simSafeStoreMergeStructureShadowPruneRemovedRatio<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_enabled="
+      <<(simSafeWorksetDeferredIndexShadowEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_calls="
+      <<simSafeWorksetDeferredIndexShadow.calls<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_seconds="
+      <<(static_cast<double>(simSafeWorksetDeferredIndexShadow.nanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_input_states="
+      <<simSafeWorksetDeferredIndexShadow.inputStates<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_returned_states="
+      <<simSafeWorksetDeferredIndexShadow.returnedStates<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_affected_start_keys="
+      <<simSafeWorksetDeferredIndexShadow.affectedStartKeys<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_legacy_index_rebuilds="
+      <<simSafeWorksetDeferredIndexShadow.legacyIndexRebuilds<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_shadow_index_rebuilds="
+      <<simSafeWorksetDeferredIndexShadow.shadowIndexRebuilds<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_est_index_rebuilds_saved="
+      <<simSafeWorksetDeferredIndexShadow.estIndexRebuildsSaved<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_index_rebuild_seconds="
+      <<(static_cast<double>(simSafeWorksetDeferredIndexShadow.shadowIndexRebuildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_est_seconds_saved="
+      <<(static_cast<double>(simSafeWorksetDeferredIndexShadow.estSecondsSavedNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_kept_states="
+      <<simSafeWorksetDeferredIndexShadow.keptStates<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_removed_states="
+      <<simSafeWorksetDeferredIndexShadow.removedStates<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_index_entries="
+      <<simSafeWorksetDeferredIndexShadow.indexEntries<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_size_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.sizeMismatches<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_candidate_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_order_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.orderMismatches<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_digest_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.digestMismatches<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_index_entry_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.indexEntryMismatches<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_kept_count_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.keptCountMismatches<<endl;
+  cerr<<"benchmark.sim_safe_workset_deferred_index_shadow_removed_count_mismatches="
+      <<simSafeWorksetDeferredIndexShadow.removedCountMismatches<<endl;
   cerr<<"benchmark.sim_safe_workset_builder_calls_after_safe_window="
       <<getSimSafeWorksetBuilderCallsAfterSafeWindow()<<endl;
   uint64_t simSafeStoreRefreshAttemptCount = 0;
