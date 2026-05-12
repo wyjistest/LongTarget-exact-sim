@@ -1637,6 +1637,49 @@ struct SimSafeWindowExecutePlan
   uint64_t sparseV2SavedCells;
 };
 
+struct SimSafeWindowInflationTopEntry
+{
+  SimSafeWindowInflationTopEntry():
+    rawCellCount(0),
+    execCellCount(0),
+    inflatedCellCount(0)
+  {
+  }
+
+  uint64_t rawCellCount;
+  uint64_t execCellCount;
+  uint64_t inflatedCellCount;
+};
+
+struct SimSafeWindowGeometryDistributionStats
+{
+  SimSafeWindowGeometryDistributionStats():
+    geometryCallCount(0),
+    maxInflatedCellCount(0),
+    inflationGt10PctCallCount(0),
+    inflationGt25PctCallCount(0),
+    inflationGt50PctCallCount(0),
+    smallWindowRawCellThreshold(1000000),
+    smallWindowCallCount(0),
+    smallWindowInflationCellCount(0),
+    largeWindowCallCount(0),
+    largeWindowInflationCellCount(0)
+  {
+  }
+
+  uint64_t geometryCallCount;
+  uint64_t maxInflatedCellCount;
+  uint64_t inflationGt10PctCallCount;
+  uint64_t inflationGt25PctCallCount;
+  uint64_t inflationGt50PctCallCount;
+  uint64_t smallWindowRawCellThreshold;
+  uint64_t smallWindowCallCount;
+  uint64_t smallWindowInflationCellCount;
+  uint64_t largeWindowCallCount;
+  uint64_t largeWindowInflationCellCount;
+  SimSafeWindowInflationTopEntry topInflated[3];
+};
+
 inline const SimPathWorkset &selectSimSafeWindowExecutePlanWorkset(
   const SimSafeWindowExecutePlan &plan,
   SimSafeWindowExecGeometry geometry)
@@ -6157,6 +6200,77 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline uint64_t simSafeWindowSmallWindowRawCellThreshold()
+		{
+		  return 1000000ULL;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowGeometryCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowMaxInflatedCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowInflationGt10PctCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowInflationGt25PctCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowInflationGt50PctCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowSmallWindowCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowSmallWindowInflationCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowLargeWindowCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simSafeWindowLargeWindowInflationCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::mutex &simSafeWindowGeometryDistributionMutex()
+		{
+		  static std::mutex mutex;
+		  return mutex;
+		}
+
+		inline SimSafeWindowInflationTopEntry *simSafeWindowTopInflatedCalls()
+		{
+		  static SimSafeWindowInflationTopEntry entries[3];
+		  return entries;
+		}
+
 		inline std::atomic<uint64_t> &simSafeWindowSparseV2ConsideredCount()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -6850,8 +6964,47 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  }
 		}
 
+		inline bool simSafeWindowInflationExceedsPercent(uint64_t inflatedCells,
+		                                                uint64_t rawCells,
+		                                                uint64_t percent)
+		{
+		  if(rawCells == 0)
+		  {
+		    return false;
+		  }
+		  return (static_cast<long double>(inflatedCells) * 100.0L) >
+		         (static_cast<long double>(rawCells) * static_cast<long double>(percent));
+		}
+
+		inline void recordSimSafeWindowTopInflatedCall(const SimSafeWindowExecutePlan &plan)
+		{
+		  if(plan.coarseningInflatedCellCount == 0)
+		  {
+		    return;
+		  }
+		  std::lock_guard<std::mutex> lock(simSafeWindowGeometryDistributionMutex());
+		  SimSafeWindowInflationTopEntry *entries = simSafeWindowTopInflatedCalls();
+		  SimSafeWindowInflationTopEntry candidate;
+		  candidate.rawCellCount = plan.rawWindowCellCount;
+		  candidate.execCellCount = plan.execCellCount;
+		  candidate.inflatedCellCount = plan.coarseningInflatedCellCount;
+		  for(size_t index = 0; index < 3; ++index)
+		  {
+		    if(candidate.inflatedCellCount > entries[index].inflatedCellCount)
+		    {
+		      for(size_t moveIndex = 2; moveIndex > index; --moveIndex)
+		      {
+		        entries[moveIndex] = entries[moveIndex - 1];
+		      }
+		      entries[index] = candidate;
+		      break;
+		    }
+		  }
+		}
+
 		inline void recordSimSafeWindowGeometryTelemetry(const SimSafeWindowExecutePlan &plan)
 		{
+		  simSafeWindowGeometryCallCount().fetch_add(1,std::memory_order_relaxed);
 		  simSafeWindowRawCellCount().fetch_add(plan.rawWindowCellCount,std::memory_order_relaxed);
 		  updateSimSafeWindowTelemetryMax(simSafeWindowRawMaxWindowCellCount(),
 		                                  plan.rawMaxWindowCellCount);
@@ -6860,6 +7013,41 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simSafeWindowCoarseningInflatedCellCount().fetch_add(
 		    plan.coarseningInflatedCellCount,
 		    std::memory_order_relaxed);
+		  updateSimSafeWindowTelemetryMax(simSafeWindowMaxInflatedCellCount(),
+		                                  plan.coarseningInflatedCellCount);
+		  if(simSafeWindowInflationExceedsPercent(plan.coarseningInflatedCellCount,
+		                                          plan.rawWindowCellCount,
+		                                          10))
+		  {
+		    simSafeWindowInflationGt10PctCallCount().fetch_add(1,std::memory_order_relaxed);
+		  }
+		  if(simSafeWindowInflationExceedsPercent(plan.coarseningInflatedCellCount,
+		                                          plan.rawWindowCellCount,
+		                                          25))
+		  {
+		    simSafeWindowInflationGt25PctCallCount().fetch_add(1,std::memory_order_relaxed);
+		  }
+		  if(simSafeWindowInflationExceedsPercent(plan.coarseningInflatedCellCount,
+		                                          plan.rawWindowCellCount,
+		                                          50))
+		  {
+		    simSafeWindowInflationGt50PctCallCount().fetch_add(1,std::memory_order_relaxed);
+		  }
+		  if(plan.rawWindowCellCount <= simSafeWindowSmallWindowRawCellThreshold())
+		  {
+		    simSafeWindowSmallWindowCallCount().fetch_add(1,std::memory_order_relaxed);
+		    simSafeWindowSmallWindowInflationCellCount().fetch_add(
+		      plan.coarseningInflatedCellCount,
+		      std::memory_order_relaxed);
+		  }
+		  else
+		  {
+		    simSafeWindowLargeWindowCallCount().fetch_add(1,std::memory_order_relaxed);
+		    simSafeWindowLargeWindowInflationCellCount().fetch_add(
+		      plan.coarseningInflatedCellCount,
+		      std::memory_order_relaxed);
+		  }
+		  recordSimSafeWindowTopInflatedCall(plan);
 		  if(plan.sparseV2Considered)
 		  {
 		    simSafeWindowSparseV2ConsideredCount().fetch_add(1,std::memory_order_relaxed);
@@ -7557,6 +7745,37 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    simSafeWindowSparseV2RejectedCount().load(std::memory_order_relaxed);
 		  sparseV2SavedCellCount =
 		    simSafeWindowSparseV2SavedCellCount().load(std::memory_order_relaxed);
+		}
+
+		inline SimSafeWindowGeometryDistributionStats getSimSafeWindowGeometryDistributionStats()
+		{
+		  SimSafeWindowGeometryDistributionStats stats;
+		  stats.geometryCallCount =
+		    simSafeWindowGeometryCallCount().load(std::memory_order_relaxed);
+		  stats.maxInflatedCellCount =
+		    simSafeWindowMaxInflatedCellCount().load(std::memory_order_relaxed);
+		  stats.inflationGt10PctCallCount =
+		    simSafeWindowInflationGt10PctCallCount().load(std::memory_order_relaxed);
+		  stats.inflationGt25PctCallCount =
+		    simSafeWindowInflationGt25PctCallCount().load(std::memory_order_relaxed);
+		  stats.inflationGt50PctCallCount =
+		    simSafeWindowInflationGt50PctCallCount().load(std::memory_order_relaxed);
+		  stats.smallWindowRawCellThreshold = simSafeWindowSmallWindowRawCellThreshold();
+		  stats.smallWindowCallCount =
+		    simSafeWindowSmallWindowCallCount().load(std::memory_order_relaxed);
+		  stats.smallWindowInflationCellCount =
+		    simSafeWindowSmallWindowInflationCellCount().load(std::memory_order_relaxed);
+		  stats.largeWindowCallCount =
+		    simSafeWindowLargeWindowCallCount().load(std::memory_order_relaxed);
+		  stats.largeWindowInflationCellCount =
+		    simSafeWindowLargeWindowInflationCellCount().load(std::memory_order_relaxed);
+		  std::lock_guard<std::mutex> lock(simSafeWindowGeometryDistributionMutex());
+		  const SimSafeWindowInflationTopEntry *entries = simSafeWindowTopInflatedCalls();
+		  for(size_t index = 0; index < 3; ++index)
+		  {
+		    stats.topInflated[index] = entries[index];
+		  }
+		  return stats;
 		}
 
 		inline void getSimSafeWindowPlanStats(uint64_t &bandCount,

@@ -2420,6 +2420,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   uint64_t simSafeWindowSparseV2SelectedCount = 0;
   uint64_t simSafeWindowSparseV2RejectedCount = 0;
   uint64_t simSafeWindowSparseV2SavedCellCount = 0;
+  SimSafeWindowGeometryDistributionStats simSafeWindowGeometryDistribution;
   uint64_t simSafeWindowPlanBandCount = 0;
   uint64_t simSafeWindowPlanCellCount = 0;
   uint64_t simSafeWindowPlanGpuNanoseconds = 0;
@@ -2467,6 +2468,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
                                          simSafeWindowSparseV2SelectedCount,
                                          simSafeWindowSparseV2RejectedCount,
                                          simSafeWindowSparseV2SavedCellCount);
+  simSafeWindowGeometryDistribution = getSimSafeWindowGeometryDistributionStats();
   getSimSafeWindowPlanStats(simSafeWindowPlanBandCount,
                             simSafeWindowPlanCellCount,
                             simSafeWindowPlanGpuNanoseconds,
@@ -2546,6 +2548,45 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_safe_window_exec_max_band_cells="<<simSafeWindowExecMaxBandCellCount<<endl;
   cerr<<"benchmark.sim_safe_window_coarsening_inflated_cells="
       <<simSafeWindowCoarseningInflatedCellCount<<endl;
+  const double simSafeWindowInflationRatio =
+    simSafeWindowRawCellCount == 0 ?
+      0.0 :
+      static_cast<double>(simSafeWindowCoarseningInflatedCellCount) /
+        static_cast<double>(simSafeWindowRawCellCount);
+  cerr<<"benchmark.sim_safe_window_geometry_calls="
+      <<simSafeWindowGeometryDistribution.geometryCallCount<<endl;
+  cerr<<"benchmark.sim_safe_window_inflation_ratio="
+      <<simSafeWindowInflationRatio<<endl;
+  cerr<<"benchmark.sim_safe_window_max_inflated_cells="
+      <<simSafeWindowGeometryDistribution.maxInflatedCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_calls_inflation_gt_10pct="
+      <<simSafeWindowGeometryDistribution.inflationGt10PctCallCount<<endl;
+  cerr<<"benchmark.sim_safe_window_calls_inflation_gt_25pct="
+      <<simSafeWindowGeometryDistribution.inflationGt25PctCallCount<<endl;
+  cerr<<"benchmark.sim_safe_window_calls_inflation_gt_50pct="
+      <<simSafeWindowGeometryDistribution.inflationGt50PctCallCount<<endl;
+  cerr<<"benchmark.sim_safe_window_small_window_raw_cell_threshold="
+      <<simSafeWindowGeometryDistribution.smallWindowRawCellThreshold<<endl;
+  cerr<<"benchmark.sim_safe_window_small_window_calls="
+      <<simSafeWindowGeometryDistribution.smallWindowCallCount<<endl;
+  cerr<<"benchmark.sim_safe_window_small_window_inflation_cells="
+      <<simSafeWindowGeometryDistribution.smallWindowInflationCellCount<<endl;
+  cerr<<"benchmark.sim_safe_window_large_window_calls="
+      <<simSafeWindowGeometryDistribution.largeWindowCallCount<<endl;
+  cerr<<"benchmark.sim_safe_window_large_window_inflation_cells="
+      <<simSafeWindowGeometryDistribution.largeWindowInflationCellCount<<endl;
+  for(size_t topIndex = 0; topIndex < 3; ++topIndex)
+  {
+    cerr<<"benchmark.sim_safe_window_top_inflated_call_"<<(topIndex + 1)
+        <<"_raw_cells="
+        <<simSafeWindowGeometryDistribution.topInflated[topIndex].rawCellCount<<endl;
+    cerr<<"benchmark.sim_safe_window_top_inflated_call_"<<(topIndex + 1)
+        <<"_exec_cells="
+        <<simSafeWindowGeometryDistribution.topInflated[topIndex].execCellCount<<endl;
+    cerr<<"benchmark.sim_safe_window_top_inflated_call_"<<(topIndex + 1)
+        <<"_inflated_cells="
+        <<simSafeWindowGeometryDistribution.topInflated[topIndex].inflatedCellCount<<endl;
+  }
   cerr<<"benchmark.sim_safe_window_sparse_v2_considered="
       <<simSafeWindowSparseV2ConsideredCount<<endl;
   cerr<<"benchmark.sim_safe_window_sparse_v2_selected="
