@@ -113,6 +113,39 @@ The path is a real opt-in for initial safe-store materialization only. It does
 not make GPU precombine or GPU prune the default, does not change candidate
 replay, and does not activate the exact-frontier clean gate.
 
+## Packed Kept-State D2H Measurement
+
+`LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H=1`
+adds a default-off measurement for packing only the kept states after GPU prune.
+It is only meaningful with the resident GPU precombine prune path enabled:
+
+```text
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE=1
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_RESIDENT_SOURCE=1
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE=1
+LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_PACKED_D2H=1
+```
+
+The measurement packs each kept `SimScanCudaCandidateState` from 36 bytes to a
+20-byte record when all coordinates fit in 16 bits, downloads that packed
+payload, unpacks it on host, and compares size, candidate values, order, and
+digest against the existing unpacked kept-state D2H result. The authoritative
+host safe-store materialization still uses the unpacked kept-state vector in
+this PR; packed mismatches or non-fitting states record packed fallback
+telemetry and do not change output, upload, locate, region, or clean-gate
+behavior.
+
+Fresh sample telemetry:
+
+| item | value |
+| --- | ---: |
+| kept states | 3,311,201 |
+| unpacked kept-state D2H | 119,203,236 bytes |
+| packed kept-state D2H | 66,224,020 bytes |
+| estimated packed bytes saved | 52,979,216 bytes |
+| packed fallbacks | 0 |
+| packed size/candidate/order/digest mismatches | 0 |
+
 ## Prune Shadow Follow-Up
 
 `LONGTARGET_SIM_CUDA_INITIAL_SAFE_STORE_GPU_PRECOMBINE_PRUNE_SHADOW=1` adds a
@@ -169,6 +202,20 @@ benchmark.sim_initial_safe_store_gpu_precombine_prune_candidate_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_order_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_digest_mismatches
 benchmark.sim_initial_safe_store_gpu_precombine_prune_fallbacks
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_requested
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_active
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_supported
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_disabled_reason
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_bytes
+benchmark.sim_initial_safe_store_gpu_precombine_prune_unpacked_d2h_bytes
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_d2h_bytes_saved
+benchmark.sim_initial_safe_store_gpu_precombine_prune_pack_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_unpack_seconds
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_fallbacks
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_size_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_candidate_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_order_mismatches
+benchmark.sim_initial_safe_store_gpu_precombine_prune_packed_digest_mismatches
 ```
 
 `benchmark.sim_initial_safe_store_gpu_precombine_input_source` is `none` when
@@ -187,6 +234,7 @@ make check-sim-initial-safe-store-gpu-precombine-validate
 make check-sim-initial-safe-store-gpu-precombine-resident
 make check-sim-initial-safe-store-gpu-precombine-prune
 make check-sim-initial-safe-store-gpu-precombine-prune-validate
+make check-sim-initial-safe-store-gpu-precombine-prune-packed-d2h
 ```
 
 Normal benchmark telemetry keeps the opt-in disabled and checks zeroed default
