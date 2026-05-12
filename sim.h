@@ -3123,10 +3123,50 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 				  uint64_t pruneScannedStates;
 				  uint64_t pruneKeptStates;
 				  uint64_t pruneRemovedStates;
-				  uint64_t pruneKeptAboveFloor;
-				  uint64_t pruneKeptFrontier;
-				  uint64_t pruneIndexRebuildNanoseconds;
-				};
+					  uint64_t pruneKeptAboveFloor;
+					  uint64_t pruneKeptFrontier;
+					  uint64_t pruneIndexRebuildNanoseconds;
+					};
+
+					struct SimSafeStoreEraseStructureStats
+					{
+					  SimSafeStoreEraseStructureStats():
+					    scanLookupNanoseconds(0),
+					    compactNanoseconds(0),
+					    indexRebuildNanoseconds(0),
+					    scannedStates(0),
+					    erasedStates(0),
+					    indexEntriesBefore(0),
+					    indexEntriesAfter(0)
+					  {
+					  }
+
+					  uint64_t scanLookupNanoseconds;
+					  uint64_t compactNanoseconds;
+					  uint64_t indexRebuildNanoseconds;
+					  uint64_t scannedStates;
+					  uint64_t erasedStates;
+					  uint64_t indexEntriesBefore;
+					  uint64_t indexEntriesAfter;
+					};
+
+					struct SimSafeStorePruneStructureStats
+					{
+					  SimSafeStorePruneStructureStats():
+					    scanNanoseconds(0),
+					    compactNanoseconds(0),
+					    indexRebuildNanoseconds(0),
+					    indexEntriesBefore(0),
+					    indexEntriesAfter(0)
+					  {
+					  }
+
+					  uint64_t scanNanoseconds;
+					  uint64_t compactNanoseconds;
+					  uint64_t indexRebuildNanoseconds;
+					  uint64_t indexEntriesBefore;
+					  uint64_t indexEntriesAfter;
+					};
 
 				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateCallCount();
 				inline std::atomic<uint64_t> &simInitialSafeStoreUpdateSummaryCount();
@@ -4928,7 +4968,21 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT = 19,
 		  SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT = 20,
 		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_REBUILD_NANOSECONDS = 21,
-		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 22
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_SCAN_LOOKUP_NANOSECONDS = 22,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_COMPACT_NANOSECONDS = 23,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_REBUILD_NANOSECONDS = 24,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_SCANNED_STATE_COUNT = 25,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASED_STATE_COUNT = 26,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_ENTRIES_BEFORE_COUNT = 27,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_ENTRIES_AFTER_COUNT = 28,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_SCAN_NANOSECONDS = 29,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_COMPACT_NANOSECONDS = 30,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_ENTRIES_BEFORE_COUNT = 31,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_ENTRIES_AFTER_COUNT = 32,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_MARK_OP_COUNT = 33,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_ERASE_SCAN_STATES_SAVED_COUNT = 34,
+		  SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_ERASE_INDEX_ENTRIES_SAVED_COUNT = 35,
+		  SIM_SAFE_WORKSET_MERGE_BREAKDOWN_FIELD_COUNT = 36
 		};
 
 		struct SimSafeWorksetMergeBreakdownStats
@@ -4987,10 +5041,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    candidateMismatches(0),
 		    orderMismatches(0),
 		    estCurrentScannedStates(0),
-		    estCompactScannedStates(0),
-		    estSavedScans(0),
-		    pruneScannedStates(0),
-		    pruneRemovedStates(0)
+			    estCompactScannedStates(0),
+			    estSavedScans(0),
+			    estTombstoneMarkOps(0),
+			    estTombstoneEraseScanStatesSaved(0),
+			    estTombstoneEraseIndexEntriesSaved(0),
+			    pruneScannedStates(0),
+			    pruneRemovedStates(0)
 		  {
 		  }
 
@@ -5000,11 +5057,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  uint64_t sizeMismatches;
 		  uint64_t candidateMismatches;
 		  uint64_t orderMismatches;
-		  uint64_t estCurrentScannedStates;
-		  uint64_t estCompactScannedStates;
-		  uint64_t estSavedScans;
-		  uint64_t pruneScannedStates;
-		  uint64_t pruneRemovedStates;
+			  uint64_t estCurrentScannedStates;
+			  uint64_t estCompactScannedStates;
+			  uint64_t estSavedScans;
+			  uint64_t estTombstoneMarkOps;
+			  uint64_t estTombstoneEraseScanStatesSaved;
+			  uint64_t estTombstoneEraseIndexEntriesSaved;
+			  uint64_t pruneScannedStates;
+			  uint64_t pruneRemovedStates;
 		};
 
 		struct SimSafeStoreMergeStructureShadowAtomicStats
@@ -5018,10 +5078,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		    candidateMismatches.store(0,std::memory_order_relaxed);
 		    orderMismatches.store(0,std::memory_order_relaxed);
 		    estCurrentScannedStates.store(0,std::memory_order_relaxed);
-		    estCompactScannedStates.store(0,std::memory_order_relaxed);
-		    estSavedScans.store(0,std::memory_order_relaxed);
-		    pruneScannedStates.store(0,std::memory_order_relaxed);
-		    pruneRemovedStates.store(0,std::memory_order_relaxed);
+			    estCompactScannedStates.store(0,std::memory_order_relaxed);
+			    estSavedScans.store(0,std::memory_order_relaxed);
+			    estTombstoneMarkOps.store(0,std::memory_order_relaxed);
+			    estTombstoneEraseScanStatesSaved.store(0,std::memory_order_relaxed);
+			    estTombstoneEraseIndexEntriesSaved.store(0,std::memory_order_relaxed);
+			    pruneScannedStates.store(0,std::memory_order_relaxed);
+			    pruneRemovedStates.store(0,std::memory_order_relaxed);
 		  }
 
 		  std::atomic<uint64_t> calls;
@@ -5030,11 +5093,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  std::atomic<uint64_t> sizeMismatches;
 		  std::atomic<uint64_t> candidateMismatches;
 		  std::atomic<uint64_t> orderMismatches;
-		  std::atomic<uint64_t> estCurrentScannedStates;
-		  std::atomic<uint64_t> estCompactScannedStates;
-		  std::atomic<uint64_t> estSavedScans;
-		  std::atomic<uint64_t> pruneScannedStates;
-		  std::atomic<uint64_t> pruneRemovedStates;
+			  std::atomic<uint64_t> estCurrentScannedStates;
+			  std::atomic<uint64_t> estCompactScannedStates;
+			  std::atomic<uint64_t> estSavedScans;
+			  std::atomic<uint64_t> estTombstoneMarkOps;
+			  std::atomic<uint64_t> estTombstoneEraseScanStatesSaved;
+			  std::atomic<uint64_t> estTombstoneEraseIndexEntriesSaved;
+			  std::atomic<uint64_t> pruneScannedStates;
+			  std::atomic<uint64_t> pruneRemovedStates;
 		};
 
 		inline SimSafeStoreMergeStructureShadowAtomicStats &simSafeStoreMergeStructureShadowAtomicStats()
@@ -6162,11 +6228,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
 		  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
 		  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
-		  stats.estCurrentScannedStates.fetch_add(delta.estCurrentScannedStates,std::memory_order_relaxed);
-		  stats.estCompactScannedStates.fetch_add(delta.estCompactScannedStates,std::memory_order_relaxed);
-		  stats.estSavedScans.fetch_add(delta.estSavedScans,std::memory_order_relaxed);
-		  stats.pruneScannedStates.fetch_add(delta.pruneScannedStates,std::memory_order_relaxed);
-		  stats.pruneRemovedStates.fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
+			  stats.estCurrentScannedStates.fetch_add(delta.estCurrentScannedStates,std::memory_order_relaxed);
+			  stats.estCompactScannedStates.fetch_add(delta.estCompactScannedStates,std::memory_order_relaxed);
+			  stats.estSavedScans.fetch_add(delta.estSavedScans,std::memory_order_relaxed);
+			  stats.estTombstoneMarkOps.fetch_add(delta.estTombstoneMarkOps,std::memory_order_relaxed);
+			  stats.estTombstoneEraseScanStatesSaved.fetch_add(delta.estTombstoneEraseScanStatesSaved,
+			                                                   std::memory_order_relaxed);
+			  stats.estTombstoneEraseIndexEntriesSaved.fetch_add(delta.estTombstoneEraseIndexEntriesSaved,
+			                                                     std::memory_order_relaxed);
+			  stats.pruneScannedStates.fetch_add(delta.pruneScannedStates,std::memory_order_relaxed);
+			  stats.pruneRemovedStates.fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
 		}
 
 		inline void recordSimInitialSafeStorePruneIndexShadow(const SimInitialSafeStorePruneIndexShadowStats &delta)
@@ -6775,10 +6846,16 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
 		  snapshot.candidateMismatches = stats.candidateMismatches.load(std::memory_order_relaxed);
 		  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
-		  snapshot.estCurrentScannedStates = stats.estCurrentScannedStates.load(std::memory_order_relaxed);
-		  snapshot.estCompactScannedStates = stats.estCompactScannedStates.load(std::memory_order_relaxed);
-		  snapshot.estSavedScans = stats.estSavedScans.load(std::memory_order_relaxed);
-		  snapshot.pruneScannedStates = stats.pruneScannedStates.load(std::memory_order_relaxed);
+			  snapshot.estCurrentScannedStates = stats.estCurrentScannedStates.load(std::memory_order_relaxed);
+			  snapshot.estCompactScannedStates = stats.estCompactScannedStates.load(std::memory_order_relaxed);
+			  snapshot.estSavedScans = stats.estSavedScans.load(std::memory_order_relaxed);
+			  snapshot.estTombstoneMarkOps =
+			    stats.estTombstoneMarkOps.load(std::memory_order_relaxed);
+			  snapshot.estTombstoneEraseScanStatesSaved =
+			    stats.estTombstoneEraseScanStatesSaved.load(std::memory_order_relaxed);
+			  snapshot.estTombstoneEraseIndexEntriesSaved =
+			    stats.estTombstoneEraseIndexEntriesSaved.load(std::memory_order_relaxed);
+			  snapshot.pruneScannedStates = stats.pruneScannedStates.load(std::memory_order_relaxed);
 		  snapshot.pruneRemovedStates = stats.pruneRemovedStates.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
@@ -12794,7 +12871,8 @@ inline void getSimRegionSchedulerShapeTelemetryStats(SimRegionSchedulerShapeTele
 inline void rebuildSimCandidateStartIndex(SimKernelContext &context);
 inline long findSimCandidateIndex(const SimCandidateStartIndex &index,long startI,long startJ);
 inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<uint64_t> &uniqueCoords,
-                                                                   SimKernelContext &context);
+                                                                   SimKernelContext &context,
+                                                                   SimSafeStoreEraseStructureStats *stats = NULL);
 inline void applySimCudaReducedCandidates(const vector<SimScanCudaCandidateState> &candidateStates,
                                           int runningMin,
                                           SimKernelContext &context);
@@ -12830,7 +12908,8 @@ runSimInitialSafeStoreGpuPrecombinePruneShadow(
   const SimKernelContext &prePruneContext,
   const SimCandidateStateStore &realPostPruneStore);
 inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
-                                            SimInitialSafeStoreRebuildStats *stats = NULL);
+                                            SimInitialSafeStoreRebuildStats *stats = NULL,
+                                            SimSafeStorePruneStructureStats *structureStats = NULL);
 inline void eraseSimSafeCandidateStateStoreStartCoords(const vector<uint64_t> &startCoords,
                                                        SimKernelContext &context);
 inline void eraseSimCandidatesByStartCoords(const vector<uint64_t> &startCoords,
@@ -13221,7 +13300,8 @@ inline void rebuildSimCandidateStartIndex(SimKernelContext &context)
 }
 
 inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
-                                            SimInitialSafeStoreRebuildStats *stats)
+                                            SimInitialSafeStoreRebuildStats *stats,
+                                            SimSafeStorePruneStructureStats *structureStats)
 {
   SimCandidateStateStore &store = context.safeCandidateStateStore;
   if(!store.valid)
@@ -13235,8 +13315,15 @@ inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
     stats->pruneCalls += 1;
     stats->pruneScannedStates += static_cast<uint64_t>(store.states.size());
   }
+  if(structureStats != NULL)
+  {
+    structureStats->indexEntriesBefore +=
+      static_cast<uint64_t>(store.startCoordToIndex.size());
+  }
   vector<SimScanCudaCandidateState> keptStates;
   keptStates.reserve(store.states.size());
+  const std::chrono::steady_clock::time_point scanStart =
+    structureStats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(size_t stateIndex = 0; stateIndex < store.states.size(); ++stateIndex)
   {
     const SimScanCudaCandidateState &state = store.states[stateIndex];
@@ -13270,14 +13357,32 @@ inline void pruneSimSafeCandidateStateStore(SimKernelContext &context,
       stats->pruneRemovedStates += 1;
     }
   }
+  if(structureStats != NULL)
+  {
+    structureStats->scanNanoseconds += simElapsedNanoseconds(scanStart);
+  }
+  const std::chrono::steady_clock::time_point compactStart =
+    structureStats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   store.states.swap(keptStates);
+  if(structureStats != NULL)
+  {
+    structureStats->compactNanoseconds += simElapsedNanoseconds(compactStart);
+  }
   const std::chrono::steady_clock::time_point indexRebuildStart =
-    stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    (stats != NULL || structureStats != NULL) ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   rebuildSimCandidateStateStoreIndex(store);
   bumpSimCandidateStateStoreHostEpoch(store);
+  const uint64_t indexRebuildNanoseconds =
+    (stats != NULL || structureStats != NULL) ? simElapsedNanoseconds(indexRebuildStart) : 0;
   if(stats != NULL)
   {
-    stats->pruneIndexRebuildNanoseconds += simElapsedNanoseconds(indexRebuildStart);
+    stats->pruneIndexRebuildNanoseconds += indexRebuildNanoseconds;
+  }
+  if(structureStats != NULL)
+  {
+    structureStats->indexRebuildNanoseconds += indexRebuildNanoseconds;
+    structureStats->indexEntriesAfter +=
+      static_cast<uint64_t>(store.startCoordToIndex.size());
   }
 }
 
@@ -14580,6 +14685,7 @@ runSimSafeStoreMergeStructureShadow(const SimCandidateStateStore &preMergeStore,
   SimCandidateStateStore shadowStore;
   shadowStore.valid = preMergeStore.valid;
   shadowStore.states.reserve(preMergeStore.states.size() + updatedAffectedStates.size());
+  uint64_t shadowEraseKeptStates = 0;
   if(preMergeStore.valid)
   {
     for(size_t stateIndex = 0; stateIndex < preMergeStore.states.size(); ++stateIndex)
@@ -14591,6 +14697,7 @@ runSimSafeStoreMergeStructureShadow(const SimCandidateStateStore &preMergeStore,
         shadowStore.states.push_back(state);
       }
     }
+    shadowEraseKeptStates = static_cast<uint64_t>(shadowStore.states.size());
     rebuildSimCandidateStateStoreIndex(shadowStore);
     for(size_t stateIndex = 0; stateIndex < updatedAffectedStates.size(); ++stateIndex)
     {
@@ -14609,6 +14716,16 @@ runSimSafeStoreMergeStructureShadow(const SimCandidateStateStore &preMergeStore,
   if(stats.estCurrentScannedStates > stats.estCompactScannedStates)
   {
     stats.estSavedScans = stats.estCurrentScannedStates - stats.estCompactScannedStates;
+  }
+  stats.estTombstoneMarkOps = static_cast<uint64_t>(uniqueAffected.size());
+  if(currentEraseScannedStates > stats.estTombstoneMarkOps)
+  {
+    stats.estTombstoneEraseScanStatesSaved =
+      currentEraseScannedStates - stats.estTombstoneMarkOps;
+  }
+  if(preMergeStore.valid)
+  {
+    stats.estTombstoneEraseIndexEntriesSaved = shadowEraseKeptStates;
   }
   stats.pruneScannedStates = currentPruneScannedStates;
   stats.pruneRemovedStates = currentPruneRemovedStates;
@@ -14922,7 +15039,8 @@ inline bool applySimSafeWindowUpdate(const char *A,
                                      SimSafeWorksetFallbackReason *fallbackReason = NULL);
 
 inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<uint64_t> &uniqueCoords,
-                                                                   SimKernelContext &context)
+                                                                   SimKernelContext &context,
+                                                                   SimSafeStoreEraseStructureStats *stats)
 {
   SimCandidateStateStore &store = context.safeCandidateStateStore;
   if(!store.valid || uniqueCoords.empty())
@@ -14930,8 +15048,17 @@ inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<
     return;
   }
 
+  const uint64_t storeSizeBefore = static_cast<uint64_t>(store.states.size());
+  if(stats != NULL)
+  {
+    stats->scannedStates += storeSizeBefore;
+    stats->indexEntriesBefore +=
+      static_cast<uint64_t>(store.startCoordToIndex.size());
+  }
   vector<SimScanCudaCandidateState> keptStates;
   keptStates.reserve(store.states.size());
+  const std::chrono::steady_clock::time_point scanStart =
+    stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(size_t stateIndex = 0; stateIndex < store.states.size(); ++stateIndex)
   {
     const uint64_t startCoord = simScanCudaCandidateStateStartCoord(store.states[stateIndex]);
@@ -14940,8 +15067,31 @@ inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<
       keptStates.push_back(store.states[stateIndex]);
     }
   }
+  if(stats != NULL)
+  {
+    stats->scanLookupNanoseconds += simElapsedNanoseconds(scanStart);
+  }
+  const std::chrono::steady_clock::time_point compactStart =
+    stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   store.states.swap(keptStates);
+  if(stats != NULL)
+  {
+    stats->compactNanoseconds += simElapsedNanoseconds(compactStart);
+  }
+  const std::chrono::steady_clock::time_point indexRebuildStart =
+    stats != NULL ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   rebuildSimCandidateStateStoreIndex(store);
+  if(stats != NULL)
+  {
+    stats->indexRebuildNanoseconds += simElapsedNanoseconds(indexRebuildStart);
+    const uint64_t storeSizeAfter = static_cast<uint64_t>(store.states.size());
+    if(storeSizeBefore > storeSizeAfter)
+    {
+      stats->erasedStates += storeSizeBefore - storeSizeAfter;
+    }
+    stats->indexEntriesAfter +=
+      static_cast<uint64_t>(store.startCoordToIndex.size());
+  }
   bumpSimCandidateStateStoreHostEpoch(store);
 }
 
@@ -22894,10 +23044,12 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   uint64_t safeStoreEraseNanoseconds = 0;
   uint64_t safeStoreUpsertLoopNanoseconds = 0;
   uint64_t safeStoreSizeBefore = 0;
-  uint64_t safeStorePruneScannedStates = 0;
-  uint64_t safeStorePruneRemovedStates = 0;
-  SimInitialSafeStoreRebuildStats safeWorksetPruneStats;
-  SimCandidateStateStore safeStoreMergeShadowPreMergeStore;
+	  uint64_t safeStorePruneScannedStates = 0;
+	  uint64_t safeStorePruneRemovedStates = 0;
+  SimSafeStoreEraseStructureStats safeStoreEraseStats;
+	  SimInitialSafeStoreRebuildStats safeWorksetPruneStats;
+  SimSafeStorePruneStructureStats safeWorksetPruneStructureStats;
+	  SimCandidateStateStore safeStoreMergeShadowPreMergeStore;
   const bool safeStoreMergeStructureShadowEnabled =
     recordTelemetry && simSafeStoreMergeStructureShadowEnabledRuntime();
   vector<SimScanCudaCandidateState> updatedAffectedStates;
@@ -22932,12 +23084,41 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     {
       safeStoreMergeShadowPreMergeStore = context.safeCandidateStateStore;
     }
-    eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(uniqueAffected,context);
+    eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(
+        uniqueAffected,
+        context,
+        benchmarkEnabled ? &safeStoreEraseStats : NULL);
     if(benchmarkEnabled)
     {
       safeStoreEraseNanoseconds = simElapsedNanoseconds(mergeStageStart);
       mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_NANOSECONDS,
                          safeStoreEraseNanoseconds);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_SCAN_LOOKUP_NANOSECONDS,
+                         safeStoreEraseStats.scanLookupNanoseconds);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_COMPACT_NANOSECONDS,
+                         safeStoreEraseStats.compactNanoseconds);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_REBUILD_NANOSECONDS,
+                         safeStoreEraseStats.indexRebuildNanoseconds);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_SCANNED_STATE_COUNT,
+                         safeStoreEraseStats.scannedStates);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASED_STATE_COUNT,
+                         safeStoreEraseStats.erasedStates);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_ENTRIES_BEFORE_COUNT,
+                         safeStoreEraseStats.indexEntriesBefore);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_ENTRIES_AFTER_COUNT,
+                         safeStoreEraseStats.indexEntriesAfter);
+      const uint64_t tombstoneEstMarkOps =
+        static_cast<uint64_t>(uniqueAffected.size());
+      const uint64_t tombstoneEstScanStatesSaved =
+        safeStoreEraseStats.scannedStates > tombstoneEstMarkOps
+          ? safeStoreEraseStats.scannedStates - tombstoneEstMarkOps
+          : 0;
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_MARK_OP_COUNT,
+                         tombstoneEstMarkOps);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_ERASE_SCAN_STATES_SAVED_COUNT,
+                         tombstoneEstScanStatesSaved);
+      mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_ERASE_INDEX_ENTRIES_SAVED_COUNT,
+                         safeStoreEraseStats.indexEntriesAfter);
       mergeStageStart = std::chrono::steady_clock::now();
     }
     const uint64_t safeStoreSizeAfterErase =
@@ -22984,8 +23165,10 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   {
     const uint64_t safeStoreSizeBeforePrune =
       static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
-    pruneSimSafeCandidateStateStore(context,
-                                    benchmarkEnabled ? &safeWorksetPruneStats : NULL);
+    pruneSimSafeCandidateStateStore(
+        context,
+        benchmarkEnabled ? &safeWorksetPruneStats : NULL,
+        benchmarkEnabled ? &safeWorksetPruneStructureStats : NULL);
     if(recordTelemetry)
     {
       recordSimSafeStoreHostEpochBump();
@@ -23004,6 +23187,14 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
                        safeStoreSizeAfterPrune);
     mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_REBUILD_NANOSECONDS,
                        safeWorksetPruneStats.pruneIndexRebuildNanoseconds);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_SCAN_NANOSECONDS,
+                       safeWorksetPruneStructureStats.scanNanoseconds);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_COMPACT_NANOSECONDS,
+                       safeWorksetPruneStructureStats.compactNanoseconds);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_ENTRIES_BEFORE_COUNT,
+                       safeWorksetPruneStructureStats.indexEntriesBefore);
+    mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_ENTRIES_AFTER_COUNT,
+                       safeWorksetPruneStructureStats.indexEntriesAfter);
   }
   if(safeStoreMergeStructureShadowEnabled && safeStoreMergeShadowPreMergeStore.valid)
   {

@@ -2132,12 +2132,22 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_scan_lookup_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_SCAN_LOOKUP_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_compact_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_COMPACT_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_index_rebuild_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_REBUILD_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_upsert_loop_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPSERT_LOOP_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_candidate_apply_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_scan_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_SCAN_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_compact_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_COMPACT_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_index_rebuild_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_REBUILD_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_upload_seconds="
@@ -2162,12 +2172,30 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_UPSERT_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_size_after_prune="
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_AFTER_PRUNE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_scanned_states="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_SCANNED_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erased_states="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASED_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_index_entries_before="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_ENTRIES_BEFORE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_erase_index_entries_after="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_ERASE_INDEX_ENTRIES_AFTER_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_prune_scanned_states="
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_SCANNED_STATE_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_prune_removed_states="
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_REMOVED_STATE_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_prune_kept_states="
       <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_PRUNE_KEPT_STATE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_index_entries_before="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_ENTRIES_BEFORE_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_index_entries_after="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_ENTRIES_AFTER_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_tombstone_est_mark_ops="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_MARK_OP_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_tombstone_est_erase_scan_states_saved="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_ERASE_SCAN_STATES_SAVED_COUNT)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_tombstone_est_erase_index_entries_saved="
+      <<simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_TOMBSTONE_EST_ERASE_INDEX_ENTRIES_SAVED_COUNT)<<endl;
   cerr<<"benchmark.sim_safe_store_merge_shadow_enabled="
       <<(simSafeStoreMergeStructureShadowEnabledRuntime() ? 1 : 0)<<endl;
   cerr<<"benchmark.sim_safe_store_merge_shadow_calls="
@@ -2188,6 +2216,12 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simSafeStoreMergeStructureShadow.estCompactScannedStates<<endl;
   cerr<<"benchmark.sim_safe_store_merge_shadow_est_saved_scans="
       <<simSafeStoreMergeStructureShadow.estSavedScans<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_est_tombstone_mark_ops="
+      <<simSafeStoreMergeStructureShadow.estTombstoneMarkOps<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_est_tombstone_erase_scan_states_saved="
+      <<simSafeStoreMergeStructureShadow.estTombstoneEraseScanStatesSaved<<endl;
+  cerr<<"benchmark.sim_safe_store_merge_shadow_est_tombstone_erase_index_entries_saved="
+      <<simSafeStoreMergeStructureShadow.estTombstoneEraseIndexEntriesSaved<<endl;
   const double simSafeStoreMergeStructureShadowPruneRemovedRatio =
     simSafeStoreMergeStructureShadow.pruneScannedStates == 0
       ? 0.0
