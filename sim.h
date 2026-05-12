@@ -2843,6 +2843,16 @@ inline bool simSafeStoreMergeStructureShadowEnabledRuntime()
   return enabled;
 }
 
+inline bool simSafeWorksetDeferredIndexShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WORKSET_DEFERRED_INDEX_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
 inline bool simCudaInitialSafeStorePrecombineShadowEnabledRuntime()
 {
   static const bool enabled = []()
@@ -5109,6 +5119,109 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return stats;
 		}
 
+			struct SimSafeWorksetDeferredIndexShadowStats
+			{
+			  SimSafeWorksetDeferredIndexShadowStats():
+			    calls(0),
+			    nanoseconds(0),
+			    inputStates(0),
+			    returnedStates(0),
+			    affectedStartKeys(0),
+			    legacyIndexRebuilds(0),
+			    shadowIndexRebuilds(0),
+			    estIndexRebuildsSaved(0),
+			    shadowIndexRebuildNanoseconds(0),
+			    estSecondsSavedNanoseconds(0),
+			    keptStates(0),
+			    removedStates(0),
+			    indexEntries(0),
+			    sizeMismatches(0),
+			    candidateMismatches(0),
+			    orderMismatches(0),
+			    digestMismatches(0),
+			    indexEntryMismatches(0),
+			    keptCountMismatches(0),
+			    removedCountMismatches(0)
+			  {
+			  }
+
+			  uint64_t calls;
+			  uint64_t nanoseconds;
+			  uint64_t inputStates;
+			  uint64_t returnedStates;
+			  uint64_t affectedStartKeys;
+			  uint64_t legacyIndexRebuilds;
+			  uint64_t shadowIndexRebuilds;
+			  uint64_t estIndexRebuildsSaved;
+			  uint64_t shadowIndexRebuildNanoseconds;
+			  uint64_t estSecondsSavedNanoseconds;
+			  uint64_t keptStates;
+			  uint64_t removedStates;
+			  uint64_t indexEntries;
+			  uint64_t sizeMismatches;
+			  uint64_t candidateMismatches;
+			  uint64_t orderMismatches;
+			  uint64_t digestMismatches;
+			  uint64_t indexEntryMismatches;
+			  uint64_t keptCountMismatches;
+			  uint64_t removedCountMismatches;
+			};
+
+			struct SimSafeWorksetDeferredIndexShadowAtomicStats
+			{
+			  SimSafeWorksetDeferredIndexShadowAtomicStats()
+			  {
+			    calls.store(0,std::memory_order_relaxed);
+			    nanoseconds.store(0,std::memory_order_relaxed);
+			    inputStates.store(0,std::memory_order_relaxed);
+			    returnedStates.store(0,std::memory_order_relaxed);
+			    affectedStartKeys.store(0,std::memory_order_relaxed);
+			    legacyIndexRebuilds.store(0,std::memory_order_relaxed);
+			    shadowIndexRebuilds.store(0,std::memory_order_relaxed);
+			    estIndexRebuildsSaved.store(0,std::memory_order_relaxed);
+			    shadowIndexRebuildNanoseconds.store(0,std::memory_order_relaxed);
+			    estSecondsSavedNanoseconds.store(0,std::memory_order_relaxed);
+			    keptStates.store(0,std::memory_order_relaxed);
+			    removedStates.store(0,std::memory_order_relaxed);
+			    indexEntries.store(0,std::memory_order_relaxed);
+			    sizeMismatches.store(0,std::memory_order_relaxed);
+			    candidateMismatches.store(0,std::memory_order_relaxed);
+			    orderMismatches.store(0,std::memory_order_relaxed);
+			    digestMismatches.store(0,std::memory_order_relaxed);
+			    indexEntryMismatches.store(0,std::memory_order_relaxed);
+			    keptCountMismatches.store(0,std::memory_order_relaxed);
+			    removedCountMismatches.store(0,std::memory_order_relaxed);
+			  }
+
+			  std::atomic<uint64_t> calls;
+			  std::atomic<uint64_t> nanoseconds;
+			  std::atomic<uint64_t> inputStates;
+			  std::atomic<uint64_t> returnedStates;
+			  std::atomic<uint64_t> affectedStartKeys;
+			  std::atomic<uint64_t> legacyIndexRebuilds;
+			  std::atomic<uint64_t> shadowIndexRebuilds;
+			  std::atomic<uint64_t> estIndexRebuildsSaved;
+			  std::atomic<uint64_t> shadowIndexRebuildNanoseconds;
+			  std::atomic<uint64_t> estSecondsSavedNanoseconds;
+			  std::atomic<uint64_t> keptStates;
+			  std::atomic<uint64_t> removedStates;
+			  std::atomic<uint64_t> indexEntries;
+			  std::atomic<uint64_t> sizeMismatches;
+			  std::atomic<uint64_t> candidateMismatches;
+			  std::atomic<uint64_t> orderMismatches;
+			  std::atomic<uint64_t> digestMismatches;
+			  std::atomic<uint64_t> indexEntryMismatches;
+			  std::atomic<uint64_t> keptCountMismatches;
+			  std::atomic<uint64_t> removedCountMismatches;
+			};
+
+			inline SimSafeWorksetDeferredIndexShadowAtomicStats &
+			simSafeWorksetDeferredIndexShadowAtomicStats()
+			{
+			  static SimSafeWorksetDeferredIndexShadowAtomicStats stats;
+			  return stats;
+			}
+
 		struct SimInitialSafeStorePruneIndexShadowStats
 		{
 		  SimInitialSafeStorePruneIndexShadowStats():
@@ -6240,6 +6353,35 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  stats.pruneRemovedStates.fetch_add(delta.pruneRemovedStates,std::memory_order_relaxed);
 		}
 
+			inline void recordSimSafeWorksetDeferredIndexShadow(
+			  const SimSafeWorksetDeferredIndexShadowStats &delta)
+			{
+			  SimSafeWorksetDeferredIndexShadowAtomicStats &stats =
+			    simSafeWorksetDeferredIndexShadowAtomicStats();
+			  stats.calls.fetch_add(delta.calls,std::memory_order_relaxed);
+			  stats.nanoseconds.fetch_add(delta.nanoseconds,std::memory_order_relaxed);
+			  stats.inputStates.fetch_add(delta.inputStates,std::memory_order_relaxed);
+			  stats.returnedStates.fetch_add(delta.returnedStates,std::memory_order_relaxed);
+			  stats.affectedStartKeys.fetch_add(delta.affectedStartKeys,std::memory_order_relaxed);
+			  stats.legacyIndexRebuilds.fetch_add(delta.legacyIndexRebuilds,std::memory_order_relaxed);
+			  stats.shadowIndexRebuilds.fetch_add(delta.shadowIndexRebuilds,std::memory_order_relaxed);
+			  stats.estIndexRebuildsSaved.fetch_add(delta.estIndexRebuildsSaved,std::memory_order_relaxed);
+			  stats.shadowIndexRebuildNanoseconds.fetch_add(delta.shadowIndexRebuildNanoseconds,
+			                                                std::memory_order_relaxed);
+			  stats.estSecondsSavedNanoseconds.fetch_add(delta.estSecondsSavedNanoseconds,
+			                                             std::memory_order_relaxed);
+			  stats.keptStates.fetch_add(delta.keptStates,std::memory_order_relaxed);
+			  stats.removedStates.fetch_add(delta.removedStates,std::memory_order_relaxed);
+			  stats.indexEntries.fetch_add(delta.indexEntries,std::memory_order_relaxed);
+			  stats.sizeMismatches.fetch_add(delta.sizeMismatches,std::memory_order_relaxed);
+			  stats.candidateMismatches.fetch_add(delta.candidateMismatches,std::memory_order_relaxed);
+			  stats.orderMismatches.fetch_add(delta.orderMismatches,std::memory_order_relaxed);
+			  stats.digestMismatches.fetch_add(delta.digestMismatches,std::memory_order_relaxed);
+			  stats.indexEntryMismatches.fetch_add(delta.indexEntryMismatches,std::memory_order_relaxed);
+			  stats.keptCountMismatches.fetch_add(delta.keptCountMismatches,std::memory_order_relaxed);
+			  stats.removedCountMismatches.fetch_add(delta.removedCountMismatches,std::memory_order_relaxed);
+			}
+
 		inline void recordSimInitialSafeStorePruneIndexShadow(const SimInitialSafeStorePruneIndexShadowStats &delta)
 		{
 		  SimInitialSafeStorePruneIndexShadowAtomicStats &stats =
@@ -6859,6 +7001,38 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  snapshot.pruneRemovedStates = stats.pruneRemovedStates.load(std::memory_order_relaxed);
 		  return snapshot;
 		}
+
+			inline SimSafeWorksetDeferredIndexShadowStats
+			getSimSafeWorksetDeferredIndexShadowStats()
+			{
+			  SimSafeWorksetDeferredIndexShadowStats snapshot;
+			  SimSafeWorksetDeferredIndexShadowAtomicStats &stats =
+			    simSafeWorksetDeferredIndexShadowAtomicStats();
+			  snapshot.calls = stats.calls.load(std::memory_order_relaxed);
+			  snapshot.nanoseconds = stats.nanoseconds.load(std::memory_order_relaxed);
+			  snapshot.inputStates = stats.inputStates.load(std::memory_order_relaxed);
+			  snapshot.returnedStates = stats.returnedStates.load(std::memory_order_relaxed);
+			  snapshot.affectedStartKeys = stats.affectedStartKeys.load(std::memory_order_relaxed);
+			  snapshot.legacyIndexRebuilds = stats.legacyIndexRebuilds.load(std::memory_order_relaxed);
+			  snapshot.shadowIndexRebuilds = stats.shadowIndexRebuilds.load(std::memory_order_relaxed);
+			  snapshot.estIndexRebuildsSaved = stats.estIndexRebuildsSaved.load(std::memory_order_relaxed);
+			  snapshot.shadowIndexRebuildNanoseconds =
+			    stats.shadowIndexRebuildNanoseconds.load(std::memory_order_relaxed);
+			  snapshot.estSecondsSavedNanoseconds =
+			    stats.estSecondsSavedNanoseconds.load(std::memory_order_relaxed);
+			  snapshot.keptStates = stats.keptStates.load(std::memory_order_relaxed);
+			  snapshot.removedStates = stats.removedStates.load(std::memory_order_relaxed);
+			  snapshot.indexEntries = stats.indexEntries.load(std::memory_order_relaxed);
+			  snapshot.sizeMismatches = stats.sizeMismatches.load(std::memory_order_relaxed);
+			  snapshot.candidateMismatches = stats.candidateMismatches.load(std::memory_order_relaxed);
+			  snapshot.orderMismatches = stats.orderMismatches.load(std::memory_order_relaxed);
+			  snapshot.digestMismatches = stats.digestMismatches.load(std::memory_order_relaxed);
+			  snapshot.indexEntryMismatches = stats.indexEntryMismatches.load(std::memory_order_relaxed);
+			  snapshot.keptCountMismatches = stats.keptCountMismatches.load(std::memory_order_relaxed);
+			  snapshot.removedCountMismatches =
+			    stats.removedCountMismatches.load(std::memory_order_relaxed);
+			  return snapshot;
+			}
 
 		inline SimInitialSafeStorePruneIndexShadowStats getSimInitialSafeStorePruneIndexShadowStats()
 		{
@@ -14756,6 +14930,141 @@ runSimSafeStoreMergeStructureShadow(const SimCandidateStateStore &preMergeStore,
   {
     stats.digestMismatches = 1;
   }
+  return stats;
+}
+
+inline SimSafeWorksetDeferredIndexShadowStats
+runSimSafeWorksetDeferredIndexShadow(
+  const SimCandidateStateStore &preMergeStore,
+  const vector<uint64_t> &uniqueAffected,
+  const vector<SimScanCudaCandidateState> &updatedAffectedStates,
+  const SimKernelContext &postMergeContext,
+  uint64_t legacyIndexRebuilds,
+  uint64_t legacyIndexRebuildNanoseconds,
+  uint64_t legacyKeptStates,
+  uint64_t legacyRemovedStates)
+{
+  const std::chrono::steady_clock::time_point shadowStart =
+    std::chrono::steady_clock::now();
+
+  SimSafeWorksetDeferredIndexShadowStats stats;
+  stats.calls = 1;
+  stats.inputStates = static_cast<uint64_t>(preMergeStore.valid ? preMergeStore.states.size() : 0);
+  stats.returnedStates = static_cast<uint64_t>(updatedAffectedStates.size());
+  stats.affectedStartKeys = static_cast<uint64_t>(uniqueAffected.size());
+  stats.legacyIndexRebuilds = legacyIndexRebuilds;
+
+  SimCandidateStateStore shadowStore;
+  shadowStore.valid = preMergeStore.valid;
+  if(preMergeStore.valid)
+  {
+    shadowStore.states.reserve(preMergeStore.states.size() + updatedAffectedStates.size());
+    unordered_map<uint64_t,size_t> shadowStartToIndex;
+    shadowStartToIndex.reserve(preMergeStore.states.size() + updatedAffectedStates.size());
+    for(size_t stateIndex = 0; stateIndex < preMergeStore.states.size(); ++stateIndex)
+    {
+      const SimScanCudaCandidateState &state = preMergeStore.states[stateIndex];
+      const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+      if(binary_search(uniqueAffected.begin(),uniqueAffected.end(),startCoord))
+      {
+        continue;
+      }
+      shadowStartToIndex[startCoord] = shadowStore.states.size();
+      shadowStore.states.push_back(state);
+    }
+    for(size_t stateIndex = 0; stateIndex < updatedAffectedStates.size(); ++stateIndex)
+    {
+      const SimScanCudaCandidateState &state = updatedAffectedStates[stateIndex];
+      const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+      unordered_map<uint64_t,size_t>::iterator found = shadowStartToIndex.find(startCoord);
+      if(found == shadowStartToIndex.end())
+      {
+        shadowStartToIndex[startCoord] = shadowStore.states.size();
+        shadowStore.states.push_back(state);
+      }
+      else
+      {
+        mergeSimScanCudaCandidateState(state,shadowStore.states[found->second]);
+      }
+    }
+
+    const uint64_t shadowPrePruneStates = static_cast<uint64_t>(shadowStore.states.size());
+    vector<SimScanCudaCandidateState> keptStates;
+    keptStates.reserve(shadowStore.states.size());
+    const long floor = postMergeContext.runningMin;
+    for(size_t stateIndex = 0; stateIndex < shadowStore.states.size(); ++stateIndex)
+    {
+      const SimScanCudaCandidateState &state = shadowStore.states[stateIndex];
+      const uint64_t startCoord = simScanCudaCandidateStateStartCoord(state);
+      if(state.score > floor || simContextContainsCandidateStartCoord(postMergeContext,startCoord))
+      {
+        keptStates.push_back(state);
+      }
+    }
+    shadowStore.states.swap(keptStates);
+    stats.keptStates = static_cast<uint64_t>(shadowStore.states.size());
+    if(shadowPrePruneStates > stats.keptStates)
+    {
+      stats.removedStates = shadowPrePruneStates - stats.keptStates;
+    }
+
+    const std::chrono::steady_clock::time_point indexRebuildStart =
+      std::chrono::steady_clock::now();
+    rebuildSimCandidateStateStoreIndex(shadowStore);
+    stats.shadowIndexRebuildNanoseconds = simElapsedNanoseconds(indexRebuildStart);
+    stats.shadowIndexRebuilds = 1;
+    stats.indexEntries = static_cast<uint64_t>(shadowStore.startCoordToIndex.size());
+  }
+
+  if(stats.legacyIndexRebuilds > stats.shadowIndexRebuilds)
+  {
+    stats.estIndexRebuildsSaved = stats.legacyIndexRebuilds - stats.shadowIndexRebuilds;
+  }
+  if(legacyIndexRebuildNanoseconds > stats.shadowIndexRebuildNanoseconds)
+  {
+    stats.estSecondsSavedNanoseconds =
+      legacyIndexRebuildNanoseconds - stats.shadowIndexRebuildNanoseconds;
+  }
+
+  const SimCandidateStateStore &realStore = postMergeContext.safeCandidateStateStore;
+  const bool sizeMatch = shadowStore.valid == realStore.valid &&
+                         shadowStore.states.size() == realStore.states.size();
+  if(!sizeMatch)
+  {
+    stats.sizeMismatches = 1;
+  }
+  const bool orderMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualOrdered(shadowStore.states,realStore.states);
+  if(!orderMatch)
+  {
+    stats.orderMismatches = 1;
+  }
+  const bool candidateMatch =
+    sizeMatch &&
+    simCudaCandidateStateVectorsEqualAsSet(shadowStore.states,realStore.states);
+  if(!candidateMatch)
+  {
+    stats.candidateMismatches = 1;
+  }
+  if(simCandidateStateStoreFingerprint(shadowStore) !=
+     simCandidateStateStoreFingerprint(realStore))
+  {
+    stats.digestMismatches = 1;
+  }
+  if(shadowStore.startCoordToIndex.size() != realStore.startCoordToIndex.size())
+  {
+    stats.indexEntryMismatches = 1;
+  }
+  if(stats.keptStates != legacyKeptStates)
+  {
+    stats.keptCountMismatches = 1;
+  }
+  if(stats.removedStates != legacyRemovedStates)
+  {
+    stats.removedCountMismatches = 1;
+  }
+  stats.nanoseconds = simElapsedNanoseconds(shadowStart);
   return stats;
 }
 
@@ -23046,12 +23355,15 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
   uint64_t safeStoreSizeBefore = 0;
 	  uint64_t safeStorePruneScannedStates = 0;
 	  uint64_t safeStorePruneRemovedStates = 0;
+  uint64_t safeStoreSizeAfterPrune = 0;
   SimSafeStoreEraseStructureStats safeStoreEraseStats;
 	  SimInitialSafeStoreRebuildStats safeWorksetPruneStats;
   SimSafeStorePruneStructureStats safeWorksetPruneStructureStats;
 	  SimCandidateStateStore safeStoreMergeShadowPreMergeStore;
   const bool safeStoreMergeStructureShadowEnabled =
     recordTelemetry && simSafeStoreMergeStructureShadowEnabledRuntime();
+  const bool safeWorksetDeferredIndexShadowEnabled =
+    recordTelemetry && simSafeWorksetDeferredIndexShadowEnabledRuntime();
   vector<SimScanCudaCandidateState> updatedAffectedStates;
   updatedAffectedStates.swap(aggregatedResult.candidateStates);
   if(benchmarkEnabled)
@@ -23080,7 +23392,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
       static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
     mergeBreakdown.add(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_SIZE_BEFORE_COUNT,
                        safeStoreSizeBefore);
-    if(safeStoreMergeStructureShadowEnabled)
+    if(safeStoreMergeStructureShadowEnabled || safeWorksetDeferredIndexShadowEnabled)
     {
       safeStoreMergeShadowPreMergeStore = context.safeCandidateStateStore;
     }
@@ -23173,7 +23485,7 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
     {
       recordSimSafeStoreHostEpochBump();
     }
-    const uint64_t safeStoreSizeAfterPrune =
+    safeStoreSizeAfterPrune =
       static_cast<uint64_t>(context.safeCandidateStateStore.states.size());
     safeStorePruneScannedStates = safeStoreSizeBeforePrune;
     safeStorePruneRemovedStates = safeStoreSizeBeforePrune - safeStoreSizeAfterPrune;
@@ -23219,6 +23531,44 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
               static_cast<unsigned long long>(shadowStats.digestMismatches),
               static_cast<unsigned long long>(shadowStats.sizeMismatches),
               static_cast<unsigned long long>(shadowStats.candidateMismatches));
+    }
+  }
+  if(safeWorksetDeferredIndexShadowEnabled && safeStoreMergeShadowPreMergeStore.valid)
+  {
+    const uint64_t legacyIndexRebuilds = 2;
+    const uint64_t legacyIndexRebuildNanoseconds =
+      safeStoreEraseStats.indexRebuildNanoseconds +
+      safeWorksetPruneStructureStats.indexRebuildNanoseconds;
+    const SimSafeWorksetDeferredIndexShadowStats shadowStats =
+      runSimSafeWorksetDeferredIndexShadow(safeStoreMergeShadowPreMergeStore,
+                                           uniqueAffected,
+                                           updatedAffectedStates,
+                                           context,
+                                           legacyIndexRebuilds,
+                                           legacyIndexRebuildNanoseconds,
+                                           safeStoreSizeAfterPrune,
+                                           safeStorePruneRemovedStates);
+    recordSimSafeWorksetDeferredIndexShadow(shadowStats);
+    if((shadowStats.digestMismatches != 0 ||
+        shadowStats.sizeMismatches != 0 ||
+        shadowStats.candidateMismatches != 0 ||
+        shadowStats.orderMismatches != 0 ||
+        shadowStats.indexEntryMismatches != 0 ||
+        shadowStats.keptCountMismatches != 0 ||
+        shadowStats.removedCountMismatches != 0) &&
+       recordTelemetry &&
+       simCudaValidateEnabledRuntime())
+    {
+      fprintf(stderr,
+              "SIM CUDA safe-workset deferred-index shadow mismatch: "
+              "digest=%llu size=%llu candidate=%llu order=%llu index=%llu kept=%llu removed=%llu\n",
+              static_cast<unsigned long long>(shadowStats.digestMismatches),
+              static_cast<unsigned long long>(shadowStats.sizeMismatches),
+              static_cast<unsigned long long>(shadowStats.candidateMismatches),
+              static_cast<unsigned long long>(shadowStats.orderMismatches),
+              static_cast<unsigned long long>(shadowStats.indexEntryMismatches),
+              static_cast<unsigned long long>(shadowStats.keptCountMismatches),
+              static_cast<unsigned long long>(shadowStats.removedCountMismatches));
     }
   }
   if(benchmarkEnabled)
