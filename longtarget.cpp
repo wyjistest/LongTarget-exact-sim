@@ -2138,6 +2138,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_CANDIDATE_APPLY_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_NANOSECONDS)) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_safe_workset_merge_safe_store_prune_index_rebuild_seconds="
+      <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_PRUNE_INDEX_REBUILD_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_safe_store_upload_seconds="
       <<(static_cast<double>(simSafeWorksetMergeBreakdown.get(SIM_SAFE_WORKSET_MERGE_SAFE_STORE_UPLOAD_NANOSECONDS)) / 1.0e9)<<endl;
   cerr<<"benchmark.sim_safe_workset_merge_unique_start_keys="
