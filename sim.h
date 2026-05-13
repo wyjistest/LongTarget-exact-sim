@@ -1680,6 +1680,34 @@ struct SimSafeWindowGeometryDistributionStats
   SimSafeWindowInflationTopEntry topInflated[3];
 };
 
+struct SimSafeWindowLargeGeometryShadowStats
+{
+  SimSafeWindowLargeGeometryShadowStats():
+    callCount(0),
+    largeCallCount(0),
+    thresholdRawCellCount(1000000),
+    thresholdInflationPct(25),
+    currentExecCellCount(0),
+    shadowExecCellCount(0),
+    estSavedCellCount(0),
+    mismatchCount(0),
+    fallbackCount(0),
+    estimatorOnly(0)
+  {
+  }
+
+  uint64_t callCount;
+  uint64_t largeCallCount;
+  uint64_t thresholdRawCellCount;
+  uint64_t thresholdInflationPct;
+  uint64_t currentExecCellCount;
+  uint64_t shadowExecCellCount;
+  uint64_t estSavedCellCount;
+  uint64_t mismatchCount;
+  uint64_t fallbackCount;
+  uint64_t estimatorOnly;
+};
+
 inline const SimPathWorkset &selectSimSafeWindowExecutePlanWorkset(
   const SimSafeWindowExecutePlan &plan,
   SimSafeWindowExecGeometry geometry)
@@ -2871,6 +2899,16 @@ inline bool simSafeWindowFineShadowEnabledRuntime()
   static const bool enabled = []()
   {
     const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_FINE_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simSafeWindowLargeGeometryShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_LARGE_GEOMETRY_SHADOW");
     return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
   }();
   return enabled;
@@ -6349,7 +6387,59 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
-			inline std::atomic<uint64_t> &simSafeWindowFineShadowMismatchCount()
+		inline std::atomic<uint64_t> &simSafeWindowFineShadowMismatchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+			inline uint64_t simSafeWindowLargeGeometryShadowRawCellThreshold()
+			{
+			  return 1000000ULL;
+			}
+
+			inline uint64_t simSafeWindowLargeGeometryShadowInflationPctThreshold()
+			{
+			  return 25ULL;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowLargeCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowCurrentExecCellCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowShadowExecCellCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowEstSavedCellCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryShadowFallbackCount()
 			{
 			  static std::atomic<uint64_t> count(0);
 			  return count;
@@ -7107,6 +7197,39 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  }
 			}
 
+			inline bool simSafeWindowLargeGeometryShadowShouldSelect(const SimSafeWindowExecutePlan &plan)
+			{
+			  const bool largeWindow =
+			    plan.rawWindowCellCount > simSafeWindowLargeGeometryShadowRawCellThreshold();
+			  const bool highInflation =
+			    simSafeWindowInflationExceedsPercent(plan.coarseningInflatedCellCount,
+			                                        plan.rawWindowCellCount,
+			                                        simSafeWindowLargeGeometryShadowInflationPctThreshold());
+			  return largeWindow || highInflation;
+			}
+
+			inline void recordSimSafeWindowLargeGeometryShadowEstimate(const SimSafeWindowExecutePlan &plan)
+			{
+			  if(!simSafeWindowLargeGeometryShadowShouldSelect(plan))
+			  {
+			    return;
+			  }
+			  simSafeWindowLargeGeometryShadowCallCount().fetch_add(1,std::memory_order_relaxed);
+			  if(plan.rawWindowCellCount > simSafeWindowLargeGeometryShadowRawCellThreshold())
+			  {
+			    simSafeWindowLargeGeometryShadowLargeCallCount().fetch_add(1,std::memory_order_relaxed);
+			  }
+			  simSafeWindowLargeGeometryShadowCurrentExecCellCount().fetch_add(
+			    plan.execCellCount,
+			    std::memory_order_relaxed);
+			  simSafeWindowLargeGeometryShadowShadowExecCellCount().fetch_add(
+			    plan.rawWindowCellCount,
+			    std::memory_order_relaxed);
+			  simSafeWindowLargeGeometryShadowEstSavedCellCount().fetch_add(
+			    plan.coarseningInflatedCellCount,
+			    std::memory_order_relaxed);
+			}
+
 			inline void recordSimSafeWorksetBuilderCallAfterSafeWindow()
 			{
 			  simSafeWorksetBuilderCallsAfterSafeWindowCount().fetch_add(1,std::memory_order_relaxed);
@@ -7805,6 +7928,29 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			{
 			  callCount = simSafeWindowFineShadowCallCount().load(std::memory_order_relaxed);
 			  mismatchCount = simSafeWindowFineShadowMismatchCount().load(std::memory_order_relaxed);
+			}
+
+			inline SimSafeWindowLargeGeometryShadowStats getSimSafeWindowLargeGeometryShadowStats()
+			{
+			  SimSafeWindowLargeGeometryShadowStats stats;
+			  stats.callCount =
+			    simSafeWindowLargeGeometryShadowCallCount().load(std::memory_order_relaxed);
+			  stats.largeCallCount =
+			    simSafeWindowLargeGeometryShadowLargeCallCount().load(std::memory_order_relaxed);
+			  stats.thresholdRawCellCount = simSafeWindowLargeGeometryShadowRawCellThreshold();
+			  stats.thresholdInflationPct = simSafeWindowLargeGeometryShadowInflationPctThreshold();
+			  stats.currentExecCellCount =
+			    simSafeWindowLargeGeometryShadowCurrentExecCellCount().load(std::memory_order_relaxed);
+			  stats.shadowExecCellCount =
+			    simSafeWindowLargeGeometryShadowShadowExecCellCount().load(std::memory_order_relaxed);
+			  stats.estSavedCellCount =
+			    simSafeWindowLargeGeometryShadowEstSavedCellCount().load(std::memory_order_relaxed);
+			  stats.mismatchCount =
+			    simSafeWindowLargeGeometryShadowMismatchCount().load(std::memory_order_relaxed);
+			  stats.fallbackCount =
+			    simSafeWindowLargeGeometryShadowFallbackCount().load(std::memory_order_relaxed);
+			  stats.estimatorOnly = stats.callCount > 0 ? 1 : 0;
+			  return stats;
 			}
 
 			inline uint64_t getSimSafeWorksetBuilderCallsAfterSafeWindow()
@@ -25289,6 +25435,10 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
 	            recordSimSafeWindowPlan(safeWindowExecWorkset,
 	                                    safeWindowPlan.gpuNanoseconds,
 	                                    safeWindowPlan.d2hNanoseconds);
+	            if(simSafeWindowLargeGeometryShadowEnabledRuntime())
+	            {
+	              recordSimSafeWindowLargeGeometryShadowEstimate(safeWindowPlan);
+	            }
 	          }
         }
         safeWorksetBuildError.clear();

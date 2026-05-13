@@ -2431,6 +2431,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	  uint64_t simSafeWindowPlanEqualToBuilderCount = 0;
 	  uint64_t simSafeWindowFineShadowCallCount = 0;
 	  uint64_t simSafeWindowFineShadowMismatchCount = 0;
+	  SimSafeWindowLargeGeometryShadowStats simSafeWindowLargeGeometryShadow;
 	  uint64_t simSafeWindowAttemptCount = 0;
   uint64_t simSafeWindowSkippedUnconvertibleCount = 0;
   uint64_t simSafeWindowSelectedWorksetCount = 0;
@@ -2479,6 +2480,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	                                      simSafeWindowPlanEqualToBuilderCount);
 	  getSimSafeWindowFineShadowStats(simSafeWindowFineShadowCallCount,
 	                                  simSafeWindowFineShadowMismatchCount);
+	  simSafeWindowLargeGeometryShadow = getSimSafeWindowLargeGeometryShadowStats();
 	  getSimSafeWindowPathStats(simSafeWindowAttemptCount,
                             simSafeWindowSkippedUnconvertibleCount,
                             simSafeWindowSelectedWorksetCount,
@@ -2612,6 +2614,35 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	      <<simSafeWindowFineShadowCallCount<<endl;
 	  cerr<<"benchmark.sim_safe_window_fine_shadow_mismatches="
 	      <<simSafeWindowFineShadowMismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_enabled="
+	      <<(simSafeWindowLargeGeometryShadowEnabledRuntime() ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_calls="
+	      <<simSafeWindowLargeGeometryShadow.callCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_large_calls="
+	      <<simSafeWindowLargeGeometryShadow.largeCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_threshold_raw_cells="
+	      <<simSafeWindowLargeGeometryShadow.thresholdRawCellCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_threshold_inflation_pct="
+	      <<simSafeWindowLargeGeometryShadow.thresholdInflationPct<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_current_exec_cells="
+	      <<simSafeWindowLargeGeometryShadow.currentExecCellCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_shadow_exec_cells="
+	      <<simSafeWindowLargeGeometryShadow.shadowExecCellCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_est_saved_cells="
+	      <<simSafeWindowLargeGeometryShadow.estSavedCellCount<<endl;
+	  const double simSafeWindowLargeGeometryShadowEstSavedRatio =
+	    simSafeWindowLargeGeometryShadow.currentExecCellCount == 0 ?
+	      0.0 :
+	      static_cast<double>(simSafeWindowLargeGeometryShadow.estSavedCellCount) /
+	        static_cast<double>(simSafeWindowLargeGeometryShadow.currentExecCellCount);
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_est_saved_ratio="
+	      <<simSafeWindowLargeGeometryShadowEstSavedRatio<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_mismatches="
+	      <<simSafeWindowLargeGeometryShadow.mismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_fallbacks="
+	      <<simSafeWindowLargeGeometryShadow.fallbackCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_estimator_only="
+	      <<(simSafeWindowLargeGeometryShadowEnabledRuntime() ? 1 : 0)<<endl;
 	  uint64_t simFastWorksetBandCount = 0;
   uint64_t simFastWorksetCellCount = 0;
   uint64_t simFastSegmentCount = 0;

@@ -258,6 +258,34 @@ int main()
                        distributionBefore.largeWindowCallCount + 1,
                      "geometry distribution classifies window size") && ok;
 
+    const SimSafeWindowLargeGeometryShadowStats largeShadowBefore =
+        getSimSafeWindowLargeGeometryShadowStats();
+    SimSafeWindowExecutePlan largeShadowPlan;
+    largeShadowPlan.rawWindowCellCount = 2000001;
+    largeShadowPlan.execCellCount = 3000000;
+    largeShadowPlan.coarseningInflatedCellCount = 999999;
+    recordSimSafeWindowLargeGeometryShadowEstimate(largeShadowPlan);
+    const SimSafeWindowLargeGeometryShadowStats largeShadowAfter =
+        getSimSafeWindowLargeGeometryShadowStats();
+    ok = expect_equal_u64(largeShadowAfter.callCount,
+                          largeShadowBefore.callCount + 1,
+                          "large geometry shadow records selected call") && ok;
+    ok = expect_equal_u64(largeShadowAfter.largeCallCount,
+                          largeShadowBefore.largeCallCount + 1,
+                          "large geometry shadow records large call") && ok;
+    ok = expect_equal_u64(largeShadowAfter.currentExecCellCount,
+                          largeShadowBefore.currentExecCellCount + 3000000,
+                          "large geometry shadow records current exec cells") && ok;
+    ok = expect_equal_u64(largeShadowAfter.shadowExecCellCount,
+                          largeShadowBefore.shadowExecCellCount + 2000001,
+                          "large geometry shadow records estimated shadow cells") && ok;
+    ok = expect_equal_u64(largeShadowAfter.estSavedCellCount,
+                          largeShadowBefore.estSavedCellCount + 999999,
+                          "large geometry shadow records estimated saved cells") && ok;
+    ok = expect_equal_u64(largeShadowAfter.estimatorOnly,
+                          1,
+                          "large geometry shadow is estimator-only") && ok;
+
     if (!ok)
     {
         return 1;
