@@ -687,6 +687,72 @@ struct SimRegionCellWorkProfileStats
   uint64_t bucketGt1mGpuNanoseconds;
 };
 
+struct SimInitialExactFrontierTransducerFeasibilityStats
+{
+  SimInitialExactFrontierTransducerFeasibilityStats():
+    enabled(0),
+    requestIndex(0),
+    chunkSize(0),
+    chunks(0),
+    rawSummaries(0),
+    rawBytes(0),
+    transitionEntries(0),
+    transitionBytes(0),
+    buildNanoseconds(0),
+    composeNanoseconds(0),
+    compareNanoseconds(0),
+    buildRequiresPriorState(0),
+    stateDependencyBytes(0),
+    guardCount(0),
+    observedDeltaOnly(0),
+    independentChunkBuildSupported(0),
+    buildOrderRandomized(0),
+    buildOrderMismatches(0),
+    candidateMismatches(0),
+    orderedDigestMismatches(0),
+    unorderedDigestMismatches(0),
+    minCandidateMismatches(0),
+    firstMaxTieMismatches(0),
+    safeStoreDigestMismatches(0),
+    totalMismatches(0),
+    leftFoldComposeNanoseconds(0),
+    treeComposeNanoseconds(0),
+    compositionGroupingMismatches(0),
+    composeRequiresReplay(0)
+  {
+  }
+
+  uint64_t enabled;
+  uint64_t requestIndex;
+  uint64_t chunkSize;
+  uint64_t chunks;
+  uint64_t rawSummaries;
+  uint64_t rawBytes;
+  uint64_t transitionEntries;
+  uint64_t transitionBytes;
+  uint64_t buildNanoseconds;
+  uint64_t composeNanoseconds;
+  uint64_t compareNanoseconds;
+  uint64_t buildRequiresPriorState;
+  uint64_t stateDependencyBytes;
+  uint64_t guardCount;
+  uint64_t observedDeltaOnly;
+  uint64_t independentChunkBuildSupported;
+  uint64_t buildOrderRandomized;
+  uint64_t buildOrderMismatches;
+  uint64_t candidateMismatches;
+  uint64_t orderedDigestMismatches;
+  uint64_t unorderedDigestMismatches;
+  uint64_t minCandidateMismatches;
+  uint64_t firstMaxTieMismatches;
+  uint64_t safeStoreDigestMismatches;
+  uint64_t totalMismatches;
+  uint64_t leftFoldComposeNanoseconds;
+  uint64_t treeComposeNanoseconds;
+  uint64_t compositionGroupingMismatches;
+  uint64_t composeRequiresReplay;
+};
+
 struct SimCandidateStateStore
 {
   SimCandidateStateStore():
@@ -4281,6 +4347,54 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    return false;
 			  }
 			  return env[0] != '0' && !simCudaProposalLoopEnabledRuntime();
+			}
+
+			inline bool simCudaInitialExactFrontierTransducerFeasibilityEnabledRuntime()
+			{
+			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_TRANSDUCER_FEASIBILITY");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return false;
+			  }
+			  return env[0] != '0' && !simCudaProposalLoopEnabledRuntime();
+			}
+
+			inline int simCudaInitialExactFrontierTransducerFeasibilityRequestIndexRuntime()
+			{
+			  const int defaultRequestIndex = 47;
+			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_TRANSDUCER_FEASIBILITY_REQUEST_INDEX");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return defaultRequestIndex;
+			  }
+			  char *end = NULL;
+			  const long parsed = strtol(env,&end,10);
+			  if(end == env || parsed < 0)
+			  {
+			    return defaultRequestIndex;
+			  }
+			  return static_cast<int>(parsed);
+			}
+
+			inline int simCudaInitialExactFrontierTransducerFeasibilityChunkSizeRuntime()
+			{
+			  const int defaultChunkSize = 4096;
+			  const char *env = getenv("LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_TRANSDUCER_FEASIBILITY_CHUNK_SIZE");
+			  if(env == NULL || env[0] == '\0')
+			  {
+			    return defaultChunkSize;
+			  }
+			  char *end = NULL;
+			  const long parsed = strtol(env,&end,10);
+			  if(end == env || parsed <= 0)
+			  {
+			    return defaultChunkSize;
+			  }
+			  if(parsed > 65536)
+			  {
+			    return 65536;
+			  }
+			  return static_cast<int>(parsed);
 			}
 
 			inline bool simCudaInitialOrderedSegmentedV3ShadowEnabledRuntime()
@@ -9514,6 +9628,56 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simInitialExactFrontierTransducerFeasibilityRequestOrdinal()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simInitialExactFrontierTransducerFeasibilityEnabled()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+#define LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(name) \
+			inline std::atomic<uint64_t> &name() \
+			{ \
+			  static std::atomic<uint64_t> count(0); \
+			  return count; \
+			}
+
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityRequestIndex)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityChunkSize)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityChunks)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityRawSummaries)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityRawBytes)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityTransitionEntries)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityTransitionBytes)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityBuildNanoseconds)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityComposeNanoseconds)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityCompareNanoseconds)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityBuildRequiresPriorState)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityStateDependencyBytes)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityGuardCount)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityObservedDeltaOnly)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityIndependentChunkBuildSupported)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityBuildOrderRandomized)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityBuildOrderMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityCandidateMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityOrderedDigestMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityUnorderedDigestMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityMinCandidateMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityFirstMaxTieMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilitySafeStoreDigestMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityTotalMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityLeftFoldComposeNanoseconds)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityTreeComposeNanoseconds)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityCompositionGroupingMismatches)
+			LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC(simInitialExactFrontierTransducerFeasibilityComposeRequiresReplay)
+
+#undef LONGTARGET_SIM_TRANSDUCER_FEAS_ATOMIC
+
 			inline std::atomic<uint64_t> &simInitialOrderedSegmentedV3ShadowCallCount()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -11412,6 +11576,40 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simInitialFrontierTransducerShadowMismatchCount().fetch_add(mismatchCount, std::memory_order_relaxed);
 		}
 
+			inline void recordSimInitialExactFrontierTransducerFeasibility(
+			  const SimInitialExactFrontierTransducerFeasibilityStats &stats)
+			{
+			  simInitialExactFrontierTransducerFeasibilityEnabled().store(stats.enabled, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityRequestIndex().store(stats.requestIndex, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityChunkSize().store(stats.chunkSize, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityChunks().store(stats.chunks, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityRawSummaries().store(stats.rawSummaries, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityRawBytes().store(stats.rawBytes, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityTransitionEntries().store(stats.transitionEntries, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityTransitionBytes().store(stats.transitionBytes, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityBuildNanoseconds().store(stats.buildNanoseconds, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityComposeNanoseconds().store(stats.composeNanoseconds, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityCompareNanoseconds().store(stats.compareNanoseconds, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityBuildRequiresPriorState().store(stats.buildRequiresPriorState, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityStateDependencyBytes().store(stats.stateDependencyBytes, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityGuardCount().store(stats.guardCount, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityObservedDeltaOnly().store(stats.observedDeltaOnly, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityIndependentChunkBuildSupported().store(stats.independentChunkBuildSupported, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityBuildOrderRandomized().store(stats.buildOrderRandomized, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityBuildOrderMismatches().store(stats.buildOrderMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityCandidateMismatches().store(stats.candidateMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityOrderedDigestMismatches().store(stats.orderedDigestMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityUnorderedDigestMismatches().store(stats.unorderedDigestMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityMinCandidateMismatches().store(stats.minCandidateMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityFirstMaxTieMismatches().store(stats.firstMaxTieMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilitySafeStoreDigestMismatches().store(stats.safeStoreDigestMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityTotalMismatches().store(stats.totalMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityLeftFoldComposeNanoseconds().store(stats.leftFoldComposeNanoseconds, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityTreeComposeNanoseconds().store(stats.treeComposeNanoseconds, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityCompositionGroupingMismatches().store(stats.compositionGroupingMismatches, std::memory_order_relaxed);
+			  simInitialExactFrontierTransducerFeasibilityComposeRequiresReplay().store(stats.composeRequiresReplay, std::memory_order_relaxed);
+			}
+
 		inline void recordSimInitialOrderedSegmentedV3Shadow(uint64_t frontierMismatch,
 		                                                     uint64_t runningMinMismatch,
 		                                                     uint64_t safeStoreMismatch,
@@ -13306,6 +13504,42 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  summaryReplayCount =
 			    simInitialFrontierTransducerShadowSummaryReplayCount().load(std::memory_order_relaxed);
 			  mismatchCount = simInitialFrontierTransducerShadowMismatchCount().load(std::memory_order_relaxed);
+			}
+
+			inline SimInitialExactFrontierTransducerFeasibilityStats
+			getSimInitialExactFrontierTransducerFeasibilityStats()
+			{
+			  SimInitialExactFrontierTransducerFeasibilityStats stats;
+			  stats.enabled = simInitialExactFrontierTransducerFeasibilityEnabled().load(std::memory_order_relaxed);
+			  stats.requestIndex = simInitialExactFrontierTransducerFeasibilityRequestIndex().load(std::memory_order_relaxed);
+			  stats.chunkSize = simInitialExactFrontierTransducerFeasibilityChunkSize().load(std::memory_order_relaxed);
+			  stats.chunks = simInitialExactFrontierTransducerFeasibilityChunks().load(std::memory_order_relaxed);
+			  stats.rawSummaries = simInitialExactFrontierTransducerFeasibilityRawSummaries().load(std::memory_order_relaxed);
+			  stats.rawBytes = simInitialExactFrontierTransducerFeasibilityRawBytes().load(std::memory_order_relaxed);
+			  stats.transitionEntries = simInitialExactFrontierTransducerFeasibilityTransitionEntries().load(std::memory_order_relaxed);
+			  stats.transitionBytes = simInitialExactFrontierTransducerFeasibilityTransitionBytes().load(std::memory_order_relaxed);
+			  stats.buildNanoseconds = simInitialExactFrontierTransducerFeasibilityBuildNanoseconds().load(std::memory_order_relaxed);
+			  stats.composeNanoseconds = simInitialExactFrontierTransducerFeasibilityComposeNanoseconds().load(std::memory_order_relaxed);
+			  stats.compareNanoseconds = simInitialExactFrontierTransducerFeasibilityCompareNanoseconds().load(std::memory_order_relaxed);
+			  stats.buildRequiresPriorState = simInitialExactFrontierTransducerFeasibilityBuildRequiresPriorState().load(std::memory_order_relaxed);
+			  stats.stateDependencyBytes = simInitialExactFrontierTransducerFeasibilityStateDependencyBytes().load(std::memory_order_relaxed);
+			  stats.guardCount = simInitialExactFrontierTransducerFeasibilityGuardCount().load(std::memory_order_relaxed);
+			  stats.observedDeltaOnly = simInitialExactFrontierTransducerFeasibilityObservedDeltaOnly().load(std::memory_order_relaxed);
+			  stats.independentChunkBuildSupported = simInitialExactFrontierTransducerFeasibilityIndependentChunkBuildSupported().load(std::memory_order_relaxed);
+			  stats.buildOrderRandomized = simInitialExactFrontierTransducerFeasibilityBuildOrderRandomized().load(std::memory_order_relaxed);
+			  stats.buildOrderMismatches = simInitialExactFrontierTransducerFeasibilityBuildOrderMismatches().load(std::memory_order_relaxed);
+			  stats.candidateMismatches = simInitialExactFrontierTransducerFeasibilityCandidateMismatches().load(std::memory_order_relaxed);
+			  stats.orderedDigestMismatches = simInitialExactFrontierTransducerFeasibilityOrderedDigestMismatches().load(std::memory_order_relaxed);
+			  stats.unorderedDigestMismatches = simInitialExactFrontierTransducerFeasibilityUnorderedDigestMismatches().load(std::memory_order_relaxed);
+			  stats.minCandidateMismatches = simInitialExactFrontierTransducerFeasibilityMinCandidateMismatches().load(std::memory_order_relaxed);
+			  stats.firstMaxTieMismatches = simInitialExactFrontierTransducerFeasibilityFirstMaxTieMismatches().load(std::memory_order_relaxed);
+			  stats.safeStoreDigestMismatches = simInitialExactFrontierTransducerFeasibilitySafeStoreDigestMismatches().load(std::memory_order_relaxed);
+			  stats.totalMismatches = simInitialExactFrontierTransducerFeasibilityTotalMismatches().load(std::memory_order_relaxed);
+			  stats.leftFoldComposeNanoseconds = simInitialExactFrontierTransducerFeasibilityLeftFoldComposeNanoseconds().load(std::memory_order_relaxed);
+			  stats.treeComposeNanoseconds = simInitialExactFrontierTransducerFeasibilityTreeComposeNanoseconds().load(std::memory_order_relaxed);
+			  stats.compositionGroupingMismatches = simInitialExactFrontierTransducerFeasibilityCompositionGroupingMismatches().load(std::memory_order_relaxed);
+			  stats.composeRequiresReplay = simInitialExactFrontierTransducerFeasibilityComposeRequiresReplay().load(std::memory_order_relaxed);
+			  return stats;
 			}
 
 			inline void getSimInitialOrderedSegmentedV3ShadowStats(uint64_t &callCount,
@@ -21176,6 +21410,155 @@ inline void runSimCandidateLoop(const SimRequest &request,
 	  return kept;
 	}
 
+	inline void runSimInitialExactFrontierTransducerFeasibilityIfEnabled(
+	  const vector<SimScanCudaInitialRunSummary> &summaries,
+	  const SimKernelContext &context)
+		{
+		  if(!simCudaInitialExactFrontierTransducerFeasibilityEnabledRuntime())
+		  {
+		    return;
+		  }
+
+		  const uint64_t requestOrdinal =
+		    simInitialExactFrontierTransducerFeasibilityRequestOrdinal().fetch_add(
+		      1,
+		      std::memory_order_relaxed);
+		  const int selectedRequest =
+		    simCudaInitialExactFrontierTransducerFeasibilityRequestIndexRuntime();
+		  if(requestOrdinal != static_cast<uint64_t>(selectedRequest))
+		  {
+		    return;
+		  }
+
+		  SimInitialExactFrontierTransducerFeasibilityStats stats;
+		  stats.enabled = 1;
+		  stats.requestIndex = static_cast<uint64_t>(selectedRequest);
+		  stats.chunkSize =
+		    static_cast<uint64_t>(simCudaInitialExactFrontierTransducerFeasibilityChunkSizeRuntime());
+		  stats.rawSummaries = static_cast<uint64_t>(summaries.size());
+		  stats.rawBytes =
+		    stats.rawSummaries *
+		    static_cast<uint64_t>(sizeof(SimScanCudaInitialRunSummary));
+		  stats.chunks =
+		    stats.chunkSize == 0 ? 0 :
+		    (stats.rawSummaries + stats.chunkSize - 1) / stats.chunkSize;
+
+		  // This is an observed boundary-state log, not an independent transform.
+		  stats.transitionEntries = stats.chunks * static_cast<uint64_t>(K);
+		  stats.transitionBytes =
+		    stats.chunks *
+		    (static_cast<uint64_t>(K) *
+		       static_cast<uint64_t>(sizeof(SimScanCudaCandidateState)) +
+		     static_cast<uint64_t>(sizeof(SimScanCudaFrontierDigest)) +
+		     static_cast<uint64_t>(sizeof(SimScanCudaFrontierTransducerShadowStats)) +
+		     static_cast<uint64_t>(sizeof(int)));
+		  stats.buildRequiresPriorState = 1;
+		  stats.stateDependencyBytes =
+		    static_cast<uint64_t>(sizeof(int)) +
+		    static_cast<uint64_t>(K) *
+		      static_cast<uint64_t>(sizeof(SimScanCudaCandidateState));
+		  stats.guardCount = 2;
+		  stats.observedDeltaOnly = 1;
+		  stats.independentChunkBuildSupported = 0;
+		  stats.buildOrderRandomized = 0;
+		  stats.buildOrderMismatches = 0;
+		  stats.composeRequiresReplay = 1;
+		  stats.compositionGroupingMismatches = 0;
+
+		  vector<int> runBases(1,0);
+		  vector<int> runTotals(1,static_cast<int>(summaries.size()));
+		  vector<SimScanCudaFrontierTransducerSegmentedShadowResult> shadowResults;
+		  double shadowSeconds = 0.0;
+		  string shadowError;
+		  const bool callOk =
+		    sim_scan_cuda_reduce_frontier_chunk_transducer_segmented_shadow_for_test(
+		      summaries,
+		      runBases,
+		      runTotals,
+		      static_cast<int>(stats.chunkSize),
+		      &shadowResults,
+		      &shadowSeconds,
+		      &shadowError);
+		  (void)shadowError;
+		  stats.buildNanoseconds = simSecondsToNanoseconds(shadowSeconds);
+		  stats.composeNanoseconds = stats.buildNanoseconds;
+		  stats.leftFoldComposeNanoseconds = stats.composeNanoseconds;
+		  stats.treeComposeNanoseconds = 0;
+
+		  const std::chrono::steady_clock::time_point compareStart =
+		    std::chrono::steady_clock::now();
+		  if(!callOk || shadowResults.size() != 1u)
+		  {
+		    stats.candidateMismatches = 1;
+		    stats.orderedDigestMismatches = 1;
+		    stats.unorderedDigestMismatches = 1;
+		    stats.minCandidateMismatches = 1;
+		    stats.firstMaxTieMismatches = 1;
+		    stats.safeStoreDigestMismatches = 1;
+		  }
+		  else
+		  {
+		    vector<SimScanCudaCandidateState> cpuStates;
+		    collectSimContextCandidateStates(context,cpuStates);
+		    const SimScanCudaFrontierTransducerSegmentedShadowResult &shadow =
+		      shadowResults[0];
+		    const bool countMismatch =
+		      cpuStates.size() != shadow.candidateStates.size();
+		    const bool orderedValueMismatch =
+		      !countMismatch &&
+		      !simCudaCandidateStateVectorsEqualOrdered(cpuStates,shadow.candidateStates);
+		    stats.candidateMismatches =
+		      (countMismatch || orderedValueMismatch) ? 1 : 0;
+
+		    const SimScanCudaFrontierDigest cpuOrderedDigest =
+		      digestSimCudaFrontierStatesForTransducerShadow(
+		        cpuStates,
+		        static_cast<int>(context.runningMin));
+		    stats.orderedDigestMismatches =
+		      simInitialExactFrontierDigestEqual(cpuOrderedDigest,shadow.digest) ? 0 : 1;
+
+		    const SimScanCudaFrontierDigest cpuUnorderedDigest =
+		      digestSimCudaFrontierStatesForTransducerShadow(
+		        simCudaSortedCandidateStatesForShadow(cpuStates),
+		        static_cast<int>(context.runningMin));
+		    const SimScanCudaFrontierDigest shadowUnorderedDigest =
+		      digestSimCudaFrontierStatesForTransducerShadow(
+		        simCudaSortedCandidateStatesForShadow(shadow.candidateStates),
+		        shadow.runningMin);
+		    stats.unorderedDigestMismatches =
+		      simInitialExactFrontierDigestEqual(cpuUnorderedDigest,shadowUnorderedDigest) ? 0 : 1;
+		    stats.minCandidateMismatches =
+		      shadow.runningMin == static_cast<int>(context.runningMin) ? 0 : 1;
+		    stats.firstMaxTieMismatches = 0;
+
+		    const uint64_t cpuSafeStoreDigest =
+		      context.safeCandidateStateStore.valid ?
+		      simCandidateStateStoreFingerprint(context.safeCandidateStateStore) :
+		      0;
+		    const vector<SimScanCudaCandidateState> shadowSafeStoreStates =
+		      buildSimCudaInitialShadowExpectedSafeStore(
+		        summaries,
+		        shadow.candidateStates,
+		        shadow.runningMin);
+		    const uint64_t shadowSafeStoreDigest =
+		      simCandidateStateVectorSafeStoreFingerprint(shadowSafeStoreStates);
+		    stats.safeStoreDigestMismatches =
+		      (context.safeCandidateStateStore.valid &&
+		       cpuSafeStoreDigest == shadowSafeStoreDigest) ? 0 : 1;
+		  }
+		  stats.compareNanoseconds = simElapsedNanoseconds(compareStart);
+		  stats.totalMismatches =
+		    (stats.candidateMismatches != 0 ||
+		     stats.orderedDigestMismatches != 0 ||
+		     stats.unorderedDigestMismatches != 0 ||
+		     stats.minCandidateMismatches != 0 ||
+		     stats.firstMaxTieMismatches != 0 ||
+		     stats.safeStoreDigestMismatches != 0 ||
+		     stats.independentChunkBuildSupported == 0 ||
+		     stats.composeRequiresReplay != 0) ? 1 : 0;
+		  recordSimInitialExactFrontierTransducerFeasibility(stats);
+		}
+
 	inline void runSimCudaInitialOrderedSegmentedV3ShadowIfEnabled(
 	  const vector<SimScanCudaInitialRunSummary> &summaries,
 	  const vector<SimScanCudaCandidateState> &candidateStates,
@@ -21675,6 +22058,7 @@ inline void runSimCandidateLoop(const SimRequest &request,
 		    context,
 		    benchmarkEnabled);
 		  runSimCudaInitialFrontierTransducerShadowIfEnabled(summaries,context);
+		  runSimInitialExactFrontierTransducerFeasibilityIfEnabled(summaries,context);
 		}
 
 		inline void applySimCudaInitialRunSummariesToContext(const vector<SimScanCudaInitialRunSummary> &summaries,
