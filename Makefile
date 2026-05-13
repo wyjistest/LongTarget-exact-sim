@@ -369,6 +369,14 @@ benchmark-fasim-representative-profile:
 	$(MAKE) build-fasim
 	python3 ./scripts/benchmark_fasim_representative_profile.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-profile
 
+benchmark-fasim-real-corpus-profile:
+	$(MAKE) build-fasim
+	@if [ -z "$${FASIM_REAL_CORPUS_DNA:-}" ] || [ -z "$${FASIM_REAL_CORPUS_RNA:-}" ]; then \
+		echo "set FASIM_REAL_CORPUS_DNA and FASIM_REAL_CORPUS_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_real_corpus_profile.py --bin $(CURDIR)/$(FASIM_TARGET) --dna "$${FASIM_REAL_CORPUS_DNA}" --rna "$${FASIM_REAL_CORPUS_RNA}" --label "$${FASIM_REAL_CORPUS_LABEL:-real_corpus}" --repeat "$${FASIM_REAL_CORPUS_REPEAT:-1}" --require-profile
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
@@ -605,6 +613,9 @@ check-fasim-profile-telemetry: build-fasim
 check-fasim-representative-profile: build-fasim
 	bash ./scripts/check_fasim_representative_profile.sh
 
+check-fasim-real-corpus-profile: build-fasim
+	bash ./scripts/check_fasim_real_corpus_profile.sh
+
 check-prealign-shared: $(PREALIGN_SHARED_TEST_TARGET)
 	./$(PREALIGN_SHARED_TEST_TARGET)
 
@@ -834,7 +845,7 @@ check-longtarget-lite-output:
 		check-matrix-openmp-par benchmark-sample benchmark-smoke benchmark-sample-cuda benchmark-smoke-cuda \
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
-		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile \
+		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
@@ -844,7 +855,7 @@ check-longtarget-lite-output:
 		check-sample-cuda-sim-traceback-strict check-smoke-cuda-sim-traceback-strict \
 		check-smoke-cuda-sim-full \
 		check-smoke-cuda-avx2 check-matrix-cuda check-matrix-cuda-avx2 \
-		build-fasim-cigar-test check-fasim-cigar check-fasim-exactness check-fasim-profile-telemetry check-fasim-representative-profile \
+		build-fasim-cigar-test check-fasim-cigar check-fasim-exactness check-fasim-profile-telemetry check-fasim-representative-profile check-fasim-real-corpus-profile \
 		build-prealign-shared-test check-prealign-shared \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
