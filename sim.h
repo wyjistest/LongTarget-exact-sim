@@ -1708,6 +1708,32 @@ struct SimSafeWindowLargeGeometryShadowStats
   uint64_t estimatorOnly;
 };
 
+struct SimSafeWindowLargeGeometryExactShadowStats
+{
+  SimSafeWindowLargeGeometryExactShadowStats():
+    callCount(0),
+    selectedCallCount(0),
+    comparedCallCount(0),
+    estSavedCellCount(0),
+    resultMismatchCount(0),
+    countMismatchCount(0),
+    digestMismatchCount(0),
+    unsupportedCallCount(0),
+    fallbackCount(0)
+  {
+  }
+
+  uint64_t callCount;
+  uint64_t selectedCallCount;
+  uint64_t comparedCallCount;
+  uint64_t estSavedCellCount;
+  uint64_t resultMismatchCount;
+  uint64_t countMismatchCount;
+  uint64_t digestMismatchCount;
+  uint64_t unsupportedCallCount;
+  uint64_t fallbackCount;
+};
+
 inline const SimPathWorkset &selectSimSafeWindowExecutePlanWorkset(
   const SimSafeWindowExecutePlan &plan,
   SimSafeWindowExecGeometry geometry)
@@ -2909,6 +2935,16 @@ inline bool simSafeWindowLargeGeometryShadowEnabledRuntime()
   static const bool enabled = []()
   {
     const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_LARGE_GEOMETRY_SHADOW");
+    return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
+  }();
+  return enabled;
+}
+
+inline bool simSafeWindowLargeGeometryExactShadowEnabledRuntime()
+{
+  static const bool enabled = []()
+  {
+    const char *env = getenv("LONGTARGET_SIM_CUDA_SAFE_WINDOW_LARGE_GEOMETRY_EXACT_SHADOW");
     return env != NULL && env[0] != '\0' && strcmp(env,"0") != 0;
   }();
   return enabled;
@@ -6445,6 +6481,60 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowSelectedCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowComparedCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowEstSavedCellCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowResultMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowCountMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowDigestMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowUnsupportedCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryExactShadowFallbackCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simSafeWorksetBuilderCallsAfterSafeWindowCount()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -7230,6 +7320,66 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    std::memory_order_relaxed);
 			}
 
+			inline void recordSimSafeWindowLargeGeometryExactShadowResult(
+			  const SimSafeWindowExecutePlan &plan,
+			  bool compared,
+			  bool resultMismatch,
+			  bool countMismatch,
+			  bool digestMismatch,
+			  bool unsupported,
+			  bool fallback)
+			{
+			  simSafeWindowLargeGeometryExactShadowCallCount().fetch_add(
+			    1,
+			    std::memory_order_relaxed);
+			  if(!simSafeWindowLargeGeometryShadowShouldSelect(plan))
+			  {
+			    return;
+			  }
+			  simSafeWindowLargeGeometryExactShadowSelectedCallCount().fetch_add(
+			    1,
+			    std::memory_order_relaxed);
+			  simSafeWindowLargeGeometryExactShadowEstSavedCellCount().fetch_add(
+			    plan.coarseningInflatedCellCount,
+			    std::memory_order_relaxed);
+			  if(compared)
+			  {
+			    simSafeWindowLargeGeometryExactShadowComparedCallCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(resultMismatch)
+			  {
+			    simSafeWindowLargeGeometryExactShadowResultMismatchCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(countMismatch)
+			  {
+			    simSafeWindowLargeGeometryExactShadowCountMismatchCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(digestMismatch)
+			  {
+			    simSafeWindowLargeGeometryExactShadowDigestMismatchCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(unsupported)
+			  {
+			    simSafeWindowLargeGeometryExactShadowUnsupportedCallCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			  if(fallback)
+			  {
+			    simSafeWindowLargeGeometryExactShadowFallbackCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			  }
+			}
+
 			inline void recordSimSafeWorksetBuilderCallAfterSafeWindow()
 			{
 			  simSafeWorksetBuilderCallsAfterSafeWindowCount().fetch_add(1,std::memory_order_relaxed);
@@ -7950,6 +8100,30 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  stats.fallbackCount =
 			    simSafeWindowLargeGeometryShadowFallbackCount().load(std::memory_order_relaxed);
 			  stats.estimatorOnly = stats.callCount > 0 ? 1 : 0;
+			  return stats;
+			}
+
+			inline SimSafeWindowLargeGeometryExactShadowStats getSimSafeWindowLargeGeometryExactShadowStats()
+			{
+			  SimSafeWindowLargeGeometryExactShadowStats stats;
+			  stats.callCount =
+			    simSafeWindowLargeGeometryExactShadowCallCount().load(std::memory_order_relaxed);
+			  stats.selectedCallCount =
+			    simSafeWindowLargeGeometryExactShadowSelectedCallCount().load(std::memory_order_relaxed);
+			  stats.comparedCallCount =
+			    simSafeWindowLargeGeometryExactShadowComparedCallCount().load(std::memory_order_relaxed);
+			  stats.estSavedCellCount =
+			    simSafeWindowLargeGeometryExactShadowEstSavedCellCount().load(std::memory_order_relaxed);
+			  stats.resultMismatchCount =
+			    simSafeWindowLargeGeometryExactShadowResultMismatchCount().load(std::memory_order_relaxed);
+			  stats.countMismatchCount =
+			    simSafeWindowLargeGeometryExactShadowCountMismatchCount().load(std::memory_order_relaxed);
+			  stats.digestMismatchCount =
+			    simSafeWindowLargeGeometryExactShadowDigestMismatchCount().load(std::memory_order_relaxed);
+			  stats.unsupportedCallCount =
+			    simSafeWindowLargeGeometryExactShadowUnsupportedCallCount().load(std::memory_order_relaxed);
+			  stats.fallbackCount =
+			    simSafeWindowLargeGeometryExactShadowFallbackCount().load(std::memory_order_relaxed);
 			  return stats;
 			}
 
@@ -25125,6 +25299,58 @@ inline bool simSafeWindowShadowContextsEqual(const SimKernelContext &lhs,
   return true;
 }
 
+inline bool simSafeWindowShadowContextsEqualDetailed(const SimKernelContext &lhs,
+                                                     const SimKernelContext &rhs,
+                                                     bool &countMismatch,
+                                                     bool &digestMismatch,
+                                                     string *errorOut = NULL)
+{
+  countMismatch = false;
+  digestMismatch = false;
+  if(!simCandidateContextsEqual(lhs,rhs))
+  {
+    digestMismatch = true;
+    if(errorOut != NULL)
+    {
+      *errorOut = "candidate frontier mismatch";
+    }
+    return false;
+  }
+
+  vector<SimScanCudaCandidateState> lhsSafeStoreStates;
+  vector<SimScanCudaCandidateState> rhsSafeStoreStates;
+  string lhsError;
+  string rhsError;
+  if(!collectSimSafeStoreStatesForShadow(lhs,lhsSafeStoreStates,&lhsError) ||
+     !collectSimSafeStoreStatesForShadow(rhs,rhsSafeStoreStates,&rhsError))
+  {
+    digestMismatch = true;
+    if(errorOut != NULL)
+    {
+      *errorOut = !lhsError.empty() ? lhsError : rhsError;
+    }
+    return false;
+  }
+  if(lhsSafeStoreStates.size() != rhsSafeStoreStates.size())
+  {
+    countMismatch = true;
+  }
+  if(!simCudaCandidateStateVectorsEqualAsSet(lhsSafeStoreStates,rhsSafeStoreStates))
+  {
+    digestMismatch = true;
+    if(errorOut != NULL)
+    {
+      *errorOut = "safe-store mismatch";
+    }
+    return false;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return !countMismatch && !digestMismatch;
+}
+
 inline bool runSimSafeWindowFineShadow(const char *A,
                                        const char *B,
                                        const SimSafeWindowExecutePlan &safeWindowPlan,
@@ -25197,6 +25423,133 @@ inline bool runSimSafeWindowFineShadow(const char *A,
             shadowError.empty() ? "context mismatch" : shadowError.c_str());
   }
   return !mismatch;
+}
+
+inline bool runSimSafeWindowLargeGeometryExactShadow(
+  const char *A,
+  const char *B,
+  const SimSafeWindowExecutePlan &safeWindowPlan,
+  const vector<uint64_t> &affectedStartCoords,
+  const SimKernelContext &context)
+{
+  if(!simSafeWindowLargeGeometryExactShadowEnabledRuntime())
+  {
+    return true;
+  }
+  if(!simSafeWindowLargeGeometryShadowShouldSelect(safeWindowPlan))
+  {
+    recordSimSafeWindowLargeGeometryExactShadowResult(safeWindowPlan,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false);
+    return true;
+  }
+  if(!safeWindowPlan.rawWorkset.hasWorkset ||
+     !safeWindowPlan.execWorkset.hasWorkset ||
+     affectedStartCoords.empty())
+  {
+    recordSimSafeWindowLargeGeometryExactShadowResult(safeWindowPlan,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      true,
+                                                      true);
+    return false;
+  }
+
+  vector<SimScanCudaCandidateState> safeStoreStates;
+  string shadowError;
+  const bool haveSafeStore =
+    context.safeCandidateStateStore.valid || context.gpuSafeCandidateStateStore.valid;
+  if(!haveSafeStore ||
+     !collectSimSafeStoreStatesForShadow(context,safeStoreStates,&shadowError))
+  {
+    recordSimSafeWindowLargeGeometryExactShadowResult(safeWindowPlan,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      true,
+                                                      true);
+    if(simCudaValidateEnabledRuntime())
+    {
+      fprintf(stderr,
+              "SIM CUDA safe-window large geometry exact shadow unsupported: %s\n",
+              shadowError.empty() ? "safe-store export unavailable" : shadowError.c_str());
+    }
+    return false;
+  }
+
+  SimKernelContext coarsenedContext = context;
+  SimKernelContext rawContext = context;
+  installSimSafeStoreStatesForShadow(safeStoreStates,haveSafeStore,coarsenedContext);
+  installSimSafeStoreStatesForShadow(safeStoreStates,haveSafeStore,rawContext);
+
+  SimSafeWorksetFallbackReason coarsenedReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
+  SimSafeWorksetFallbackReason rawReason = SIM_SAFE_WORKSET_FALLBACK_NO_WORKSET;
+  const bool coarsenedApplied =
+    applySimSafeWindowUpdate(A,
+                             B,
+                             safeWindowPlan.execWorkset,
+                             affectedStartCoords,
+                             coarsenedContext,
+                             false,
+                             &coarsenedReason);
+  const bool rawApplied =
+    applySimSafeWindowUpdate(A,
+                             B,
+                             safeWindowPlan.rawWorkset,
+                             affectedStartCoords,
+                             rawContext,
+                             false,
+                             &rawReason);
+  bool resultMismatch = coarsenedApplied != rawApplied;
+  bool countMismatch = false;
+  bool digestMismatch = false;
+  bool unsupported = false;
+  bool fallback = false;
+  bool compared = resultMismatch;
+  if(!resultMismatch && coarsenedApplied && rawApplied)
+  {
+    compared = true;
+    simSafeWindowShadowContextsEqualDetailed(coarsenedContext,
+                                             rawContext,
+                                             countMismatch,
+                                             digestMismatch,
+                                             &shadowError);
+  }
+  else if(!coarsenedApplied && !rawApplied)
+  {
+    unsupported = true;
+    fallback = true;
+  }
+
+  recordSimSafeWindowLargeGeometryExactShadowResult(safeWindowPlan,
+                                                    compared,
+                                                    resultMismatch,
+                                                    countMismatch,
+                                                    digestMismatch,
+                                                    unsupported,
+                                                    fallback);
+  if((resultMismatch || countMismatch || digestMismatch || unsupported) &&
+     simCudaValidateEnabledRuntime())
+  {
+    fprintf(stderr,
+            "SIM CUDA safe-window large geometry exact shadow mismatch: "
+            "coarsened_applied=%d raw_applied=%d result=%d count=%d digest=%d unsupported=%d detail=%s\n",
+            coarsenedApplied ? 1 : 0,
+            rawApplied ? 1 : 0,
+            resultMismatch ? 1 : 0,
+            countMismatch ? 1 : 0,
+            digestMismatch ? 1 : 0,
+            unsupported ? 1 : 0,
+            shadowError.empty() ? "context mismatch" : shadowError.c_str());
+  }
+  return !(resultMismatch || countMismatch || digestMismatch || unsupported);
 }
 
 inline void applySimLocatedUpdateRegion(const char *A,
@@ -25553,6 +25906,11 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
 	    bool fineSafeWindowMatchesCoarsened = true;
 	    if(safeApplicable && useSafeWindowPath)
 	    {
+	      runSimSafeWindowLargeGeometryExactShadow(A,
+	                                              B,
+	                                              safeWindowPlan,
+	                                              selectedAffectedStartCoords,
+	                                              context);
 	      fineSafeWindowMatchesCoarsened =
 	        runSimSafeWindowFineShadow(A,
 	                                   B,

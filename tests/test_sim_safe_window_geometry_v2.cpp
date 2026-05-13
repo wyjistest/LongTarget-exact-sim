@@ -286,6 +286,46 @@ int main()
                           1,
                           "large geometry shadow is estimator-only") && ok;
 
+    const SimSafeWindowLargeGeometryExactShadowStats exactShadowBefore =
+        getSimSafeWindowLargeGeometryExactShadowStats();
+    recordSimSafeWindowLargeGeometryExactShadowResult(largeShadowPlan,
+                                                      true,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false,
+                                                      false);
+    const SimSafeWindowLargeGeometryExactShadowStats exactShadowAfter =
+        getSimSafeWindowLargeGeometryExactShadowStats();
+    ok = expect_equal_u64(exactShadowAfter.callCount,
+                          exactShadowBefore.callCount + 1,
+                          "large geometry exact shadow records calls") && ok;
+    ok = expect_equal_u64(exactShadowAfter.selectedCallCount,
+                          exactShadowBefore.selectedCallCount + 1,
+                          "large geometry exact shadow records selected calls") && ok;
+    ok = expect_equal_u64(exactShadowAfter.comparedCallCount,
+                          exactShadowBefore.comparedCallCount + 1,
+                          "large geometry exact shadow records compared calls") && ok;
+    ok = expect_equal_u64(exactShadowAfter.estSavedCellCount,
+                          exactShadowBefore.estSavedCellCount +
+                            largeShadowPlan.coarseningInflatedCellCount,
+                          "large geometry exact shadow records estimated saved cells") && ok;
+    ok = expect_equal_u64(exactShadowAfter.resultMismatchCount,
+                          exactShadowBefore.resultMismatchCount,
+                          "large geometry exact shadow leaves result mismatches unchanged") && ok;
+    ok = expect_equal_u64(exactShadowAfter.countMismatchCount,
+                          exactShadowBefore.countMismatchCount,
+                          "large geometry exact shadow leaves count mismatches unchanged") && ok;
+    ok = expect_equal_u64(exactShadowAfter.digestMismatchCount,
+                          exactShadowBefore.digestMismatchCount,
+                          "large geometry exact shadow leaves digest mismatches unchanged") && ok;
+    ok = expect_equal_u64(exactShadowAfter.unsupportedCallCount,
+                          exactShadowBefore.unsupportedCallCount,
+                          "large geometry exact shadow leaves unsupported calls unchanged") && ok;
+    ok = expect_equal_u64(exactShadowAfter.fallbackCount,
+                          exactShadowBefore.fallbackCount,
+                          "large geometry exact shadow leaves fallbacks unchanged") && ok;
+
     if (!ok)
     {
         return 1;
