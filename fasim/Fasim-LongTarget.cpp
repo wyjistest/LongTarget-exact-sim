@@ -158,6 +158,7 @@ struct FasimProfileStats
     uint64_t numCandidates;
     uint64_t numValidatedCandidates;
     uint64_t numFinalHits;
+    FasimTransferStringProfileStats transferStringProfile;
 };
 
 static inline void fasim_profile_add_elapsed(uint64_t &slot, uint64_t startNanoseconds)
@@ -185,6 +186,28 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_window_generation_source_transform_seconds=" << fasim_profile_seconds(stats.windowGenerationSourceTransformNanoseconds) << endl;
     cerr << "benchmark.fasim_window_generation_encode_seconds=" << fasim_profile_seconds(stats.windowGenerationEncodeNanoseconds) << endl;
     cerr << "benchmark.fasim_window_generation_flush_seconds=" << fasim_profile_seconds(stats.windowGenerationFlushNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_seconds=" << fasim_profile_seconds(stats.transferStringProfile.totalNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_calls=" << stats.transferStringProfile.calls << endl;
+    cerr << "benchmark.fasim_transfer_string_input_bases=" << stats.transferStringProfile.inputBases << endl;
+    cerr << "benchmark.fasim_transfer_string_output_bases=" << stats.transferStringProfile.outputBases << endl;
+    cerr << "benchmark.fasim_transfer_string_rule_select_seconds=" << fasim_profile_seconds(stats.transferStringProfile.ruleSelectNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_rule_materialize_seconds=" << fasim_profile_seconds(stats.transferStringProfile.ruleMaterializeNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_convert_seconds=" << fasim_profile_seconds(stats.transferStringProfile.convertNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_validate_seconds=" << fasim_profile_seconds(stats.transferStringProfile.validateNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_residual_seconds=" << fasim_profile_seconds(stats.transferStringProfile.residualNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_para_forward_calls=" << stats.transferStringProfile.modeCalls[0] << endl;
+    cerr << "benchmark.fasim_transfer_string_para_forward_seconds=" << fasim_profile_seconds(stats.transferStringProfile.modeNanoseconds[0]) << endl;
+    cerr << "benchmark.fasim_transfer_string_para_reverse_calls=" << stats.transferStringProfile.modeCalls[1] << endl;
+    cerr << "benchmark.fasim_transfer_string_para_reverse_seconds=" << fasim_profile_seconds(stats.transferStringProfile.modeNanoseconds[1]) << endl;
+    cerr << "benchmark.fasim_transfer_string_anti_forward_calls=" << stats.transferStringProfile.modeCalls[2] << endl;
+    cerr << "benchmark.fasim_transfer_string_anti_forward_seconds=" << fasim_profile_seconds(stats.transferStringProfile.modeNanoseconds[2]) << endl;
+    cerr << "benchmark.fasim_transfer_string_anti_reverse_calls=" << stats.transferStringProfile.modeCalls[3] << endl;
+    cerr << "benchmark.fasim_transfer_string_anti_reverse_seconds=" << fasim_profile_seconds(stats.transferStringProfile.modeNanoseconds[3]) << endl;
+    for (int rule = 1; rule <= 18; ++rule)
+    {
+        cerr << "benchmark.fasim_transfer_string_rule_" << rule << "_calls=" << stats.transferStringProfile.ruleCalls[rule] << endl;
+        cerr << "benchmark.fasim_transfer_string_rule_" << rule << "_seconds=" << fasim_profile_seconds(stats.transferStringProfile.ruleNanoseconds[rule]) << endl;
+    }
     cerr << "benchmark.fasim_dp_scoring_seconds=" << fasim_profile_seconds(stats.dpScoringNanoseconds) << endl;
     cerr << "benchmark.fasim_column_max_seconds=" << fasim_profile_seconds(stats.columnMaxNanoseconds) << endl;
     cerr << "benchmark.fasim_local_max_seconds=" << fasim_profile_seconds(stats.localMaxNanoseconds) << endl;
@@ -1540,11 +1563,36 @@ int main(int argc, char* const* argv)
 		                        const std::string &chrTag)
 		{
 			uint64_t enqueueStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
-			const uint64_t transferStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
-			std::string seq2 = transferString(seq1, reverseMode, paraMode, rule);
+			std::string seq2;
 			if (profileEnabled)
 			{
-				fasim_profile_add_elapsed(profileStats.windowGenerationTransferNanoseconds, transferStart);
+				const uint64_t transferStart = fasim_profile_now_nanoseconds();
+				const unsigned long long innerBefore = fasim_transfer_profile_inner_nanoseconds(profileStats.transferStringProfile);
+				seq2 = transferStringProfiled(seq1, reverseMode, paraMode, rule, &profileStats.transferStringProfile);
+				const uint64_t transferElapsed = fasim_profile_now_nanoseconds() - transferStart;
+				const unsigned long long innerAfter = fasim_transfer_profile_inner_nanoseconds(profileStats.transferStringProfile);
+				const unsigned long long innerElapsed = innerAfter >= innerBefore ? innerAfter - innerBefore : 0;
+				profileStats.windowGenerationTransferNanoseconds += transferElapsed;
+				profileStats.transferStringProfile.totalNanoseconds += transferElapsed;
+				if (transferElapsed > innerElapsed)
+				{
+					profileStats.transferStringProfile.residualNanoseconds += transferElapsed - innerElapsed;
+				}
+				const int modeIndex = fasim_transfer_mode_index(reverseMode, paraMode);
+				if (modeIndex >= 0 && modeIndex < 4)
+				{
+					++profileStats.transferStringProfile.modeCalls[modeIndex];
+					profileStats.transferStringProfile.modeNanoseconds[modeIndex] += transferElapsed;
+				}
+				if (rule >= 1 && rule <= 18)
+				{
+					++profileStats.transferStringProfile.ruleCalls[rule];
+					profileStats.transferStringProfile.ruleNanoseconds[rule] += transferElapsed;
+				}
+			}
+			else
+			{
+				seq2 = transferString(seq1, reverseMode, paraMode, rule);
 			}
 			if (reverseSeq2)
 			{
