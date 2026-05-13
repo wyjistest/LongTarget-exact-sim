@@ -110,6 +110,15 @@ static inline double fasim_profile_seconds(uint64_t nanoseconds)
     return static_cast<double>(nanoseconds) / 1.0e9;
 }
 
+static inline uint64_t fasim_profile_nanoseconds_from_seconds(double seconds)
+{
+    if (seconds <= 0.0)
+    {
+        return 0;
+    }
+    return static_cast<uint64_t>((seconds * 1.0e9) + 0.5);
+}
+
 struct FasimProfileStats
 {
     FasimProfileStats() :
@@ -133,7 +142,19 @@ struct FasimProfileStats
         numDpCells(0),
         numCandidates(0),
         numValidatedCandidates(0),
-        numFinalHits(0)
+        numFinalHits(0),
+        gpuDpColumnActive(0),
+        gpuDpColumnCalls(0),
+        gpuDpColumnWindows(0),
+        gpuDpColumnCells(0),
+        gpuDpColumnH2DBytes(0),
+        gpuDpColumnD2HBytes(0),
+        gpuDpColumnKernelNanoseconds(0),
+        gpuDpColumnTotalNanoseconds(0),
+        gpuDpColumnValidateNanoseconds(0),
+        gpuDpColumnScoreMismatches(0),
+        gpuDpColumnColumnMaxMismatches(0),
+        gpuDpColumnFallbacks(0)
     {
     }
 
@@ -158,6 +179,18 @@ struct FasimProfileStats
     uint64_t numCandidates;
     uint64_t numValidatedCandidates;
     uint64_t numFinalHits;
+    uint64_t gpuDpColumnActive;
+    uint64_t gpuDpColumnCalls;
+    uint64_t gpuDpColumnWindows;
+    uint64_t gpuDpColumnCells;
+    uint64_t gpuDpColumnH2DBytes;
+    uint64_t gpuDpColumnD2HBytes;
+    uint64_t gpuDpColumnKernelNanoseconds;
+    uint64_t gpuDpColumnTotalNanoseconds;
+    uint64_t gpuDpColumnValidateNanoseconds;
+    uint64_t gpuDpColumnScoreMismatches;
+    uint64_t gpuDpColumnColumnMaxMismatches;
+    uint64_t gpuDpColumnFallbacks;
     FasimTransferStringProfileStats transferStringProfile;
 };
 
@@ -237,6 +270,20 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_num_candidates=" << stats.numCandidates << endl;
     cerr << "benchmark.fasim_num_validated_candidates=" << stats.numValidatedCandidates << endl;
     cerr << "benchmark.fasim_num_final_hits=" << stats.numFinalHits << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_requested=" << (fasim_gpu_dp_column_requested_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_active=" << stats.gpuDpColumnActive << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_enabled=" << (fasim_gpu_dp_column_validate_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_calls=" << stats.gpuDpColumnCalls << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_windows=" << stats.gpuDpColumnWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_cells=" << stats.gpuDpColumnCells << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_h2d_bytes=" << stats.gpuDpColumnH2DBytes << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_d2h_bytes=" << stats.gpuDpColumnD2HBytes << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_kernel_seconds=" << fasim_profile_seconds(stats.gpuDpColumnKernelNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_total_seconds=" << fasim_profile_seconds(stats.gpuDpColumnTotalNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_seconds=" << fasim_profile_seconds(stats.gpuDpColumnValidateNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_score_mismatches=" << stats.gpuDpColumnScoreMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_column_max_mismatches=" << stats.gpuDpColumnColumnMaxMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_fallbacks=" << stats.gpuDpColumnFallbacks << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -723,12 +770,16 @@ int main(int argc, char* const* argv)
 			outOpened = true;
 		};
 
+		const bool gpuDpColumnRequested = fasim_gpu_dp_column_requested_runtime();
+		const bool gpuDpColumnValidate = fasim_gpu_dp_column_validate_enabled_runtime();
 		bool useCudaBatch = false;
 		std::vector<int> cudaDevices;
 		std::vector<PreAlignCudaQueryHandle> cudaQueries;
 		std::vector<int16_t> queryProfile;
 		int cachedSegLen = 0;
-		if (paraList.doFastSim && fasim_prealign_cuda_enabled_runtime() && prealign_cuda_is_built())
+		if (paraList.doFastSim &&
+		    (fasim_prealign_cuda_enabled_runtime() || gpuDpColumnRequested) &&
+		    prealign_cuda_is_built())
 		{
 			fasim_cuda_devices_runtime(cudaDevices);
 			fasim_build_query_profile(lncSeq, 5, 4, queryProfile, cachedSegLen);
@@ -754,6 +805,10 @@ int main(int argc, char* const* argv)
 			cudaDevices.swap(okDevices);
 			cudaQueries.swap(okQueries);
 			useCudaBatch = !cudaQueries.empty();
+			if (profileEnabled && gpuDpColumnRequested && useCudaBatch)
+			{
+				profileStats.gpuDpColumnActive = 1;
+			}
 		}
 
 		const int maxTasksPerGpu = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_MAX_TASKS", 4096);
@@ -763,15 +818,16 @@ int main(int argc, char* const* argv)
 			maxTasksTotal = 1;
 		}
 		const int extendThreadCount = fasim_extend_threads_runtime(paraList.corenum);
-				int topK = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_TOPK", 64);
-				if (topK > 256)
-				{
-					topK = 256;
-				}
-				if (topK <= 0)
-				{
-					topK = 64;
-				}
+		const int topKDefault = gpuDpColumnRequested ? 256 : 64;
+		int topK = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_TOPK", topKDefault);
+		if (topK > 256)
+		{
+			topK = 256;
+		}
+		if (topK <= 0)
+		{
+			topK = 64;
+		}
 
 		const bool debugCuda = getenv("FASIM_DEBUG_CUDA_PREALIGN") != NULL &&
 		                       getenv("FASIM_DEBUG_CUDA_PREALIGN")[0] != '\0' &&
@@ -789,6 +845,196 @@ int main(int argc, char* const* argv)
 		std::vector<StreamTask> tasks;
 		std::vector<uint8_t> encodedTargets;
 		int currentTargetLength = -1;
+
+		auto record_gpu_dp_column_batch = [&](size_t taskCount,
+		                                      int targetLength,
+		                                      size_t peakCount,
+		                                      const PreAlignCudaBatchResult &batchResult,
+		                                      uint64_t totalStart)
+		{
+			if (!profileEnabled || !gpuDpColumnRequested)
+			{
+				return;
+			}
+			++profileStats.gpuDpColumnCalls;
+			profileStats.gpuDpColumnWindows += static_cast<uint64_t>(taskCount);
+			const uint64_t cells =
+				static_cast<uint64_t>(taskCount) *
+				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0) *
+				static_cast<uint64_t>(lncSeq.size());
+			profileStats.gpuDpColumnCells += cells;
+			profileStats.numDpCells += cells;
+			profileStats.gpuDpColumnH2DBytes +=
+				static_cast<uint64_t>(taskCount) *
+				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0) *
+				static_cast<uint64_t>(sizeof(uint8_t));
+			profileStats.gpuDpColumnD2HBytes +=
+				static_cast<uint64_t>(peakCount) *
+				static_cast<uint64_t>(sizeof(PreAlignCudaPeak));
+			profileStats.gpuDpColumnKernelNanoseconds +=
+				fasim_profile_nanoseconds_from_seconds(batchResult.gpuSeconds);
+			profileStats.gpuDpColumnTotalNanoseconds +=
+				fasim_profile_now_nanoseconds() - totalStart;
+		};
+
+		auto build_scoreinfo_from_gpu_peaks = [&](const PreAlignCudaPeak *taskPeaks,
+		                                          int minScore,
+		                                          std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
+		{
+			outScoreInfo.clear();
+			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
+			candidates.reserve(static_cast<size_t>(topK));
+			for (int k = 0; k < topK; ++k)
+			{
+				const PreAlignCudaPeak &p = taskPeaks[static_cast<size_t>(k)];
+				if (p.position < 0 || p.score <= minScore)
+				{
+					continue;
+				}
+				candidates.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
+			}
+			std::sort(candidates.begin(),
+			          candidates.end(),
+			          [](const StripedSmithWaterman::scoreInfo &a,
+			             const StripedSmithWaterman::scoreInfo &b)
+			          {
+				          if (a.position != b.position)
+				          {
+					          return a.position < b.position;
+				          }
+				          return a.score > b.score;
+			          });
+			const int suppressBp = 5;
+			size_t groupBegin = 0;
+			while (groupBegin < candidates.size())
+			{
+				size_t groupEnd = groupBegin + 1;
+				while (groupEnd < candidates.size())
+				{
+					const int positionDelta =
+						candidates[groupEnd].position - candidates[groupEnd - 1].position;
+					if (positionDelta <= 0 || positionDelta >= suppressBp)
+					{
+						break;
+					}
+					++groupEnd;
+				}
+				size_t best = groupBegin;
+				for (size_t i = groupBegin + 1; i < groupEnd; ++i)
+				{
+					if (candidates[i].score > candidates[best].score)
+					{
+						best = i;
+					}
+				}
+				outScoreInfo.push_back(candidates[best]);
+				groupBegin = groupEnd;
+			}
+		};
+
+		auto scoreinfo_equal = [](const std::vector<struct StripedSmithWaterman::scoreInfo> &a,
+		                          const std::vector<struct StripedSmithWaterman::scoreInfo> &b)
+		{
+			if (a.size() != b.size())
+			{
+				return false;
+			}
+			for (size_t i = 0; i < a.size(); ++i)
+			{
+				if (a[i].score != b[i].score || a[i].position != b[i].position)
+				{
+					return false;
+				}
+			}
+			return true;
+		};
+
+		auto validate_gpu_dp_column_task = [&](const StreamTask &task,
+		                                       const PreAlignCudaPeak *taskPeaks)
+		{
+			if (!gpuDpColumnValidate)
+			{
+				return true;
+			}
+			const uint64_t validateStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+			bool ok = true;
+
+			string cpuQuery = lncSeq;
+			string cpuTarget = task.seq2;
+			const int cpuMaxScore = calc_score_once(cpuQuery, cpuTarget, task.dnaStartPos, paraList.rule);
+			const int gpuMaxScore = taskPeaks[0].score;
+			if (cpuMaxScore != gpuMaxScore)
+			{
+				ok = false;
+				if (profileEnabled && gpuDpColumnRequested)
+				{
+					++profileStats.gpuDpColumnScoreMismatches;
+				}
+			}
+
+			const int minScore = static_cast<int>(static_cast<double>(gpuMaxScore) * 0.8);
+			std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
+			std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+			build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
+			StripedSmithWaterman::Aligner cpuAligner;
+			StripedSmithWaterman::Filter cpuFilter;
+			StripedSmithWaterman::Alignment cpuAlignment;
+			cpuAligner.preAlign(lncSeq.c_str(),
+			                    task.seq2.c_str(),
+			                    static_cast<int>(task.seq2.size()),
+			                    cpuFilter,
+			                    &cpuAlignment,
+			                    15,
+			                    minScore,
+			                    cpuScoreInfo,
+			                    5,
+			                    -4);
+			if (!scoreinfo_equal(gpuScoreInfo, cpuScoreInfo))
+			{
+				ok = false;
+				if (debugCuda)
+				{
+					cerr << "[fasim.cuda.validate] column mismatch"
+					     << " gpu_count=" << gpuScoreInfo.size()
+					     << " cpu_count=" << cpuScoreInfo.size()
+					     << " minScore=" << minScore
+					     << " gpuMaxScore=" << gpuMaxScore
+					     << " cpuMaxScore=" << cpuMaxScore
+					     << endl;
+					const size_t sampleCount = std::min<size_t>(5, std::max(gpuScoreInfo.size(), cpuScoreInfo.size()));
+					for (size_t i = 0; i < sampleCount; ++i)
+					{
+						cerr << "[fasim.cuda.validate] idx=" << i;
+						if (i < gpuScoreInfo.size())
+						{
+							cerr << " gpu=(" << gpuScoreInfo[i].score << "," << gpuScoreInfo[i].position << ")";
+						}
+						else
+						{
+							cerr << " gpu=(none)";
+						}
+						if (i < cpuScoreInfo.size())
+						{
+							cerr << " cpu=(" << cpuScoreInfo[i].score << "," << cpuScoreInfo[i].position << ")";
+						}
+						else
+						{
+							cerr << " cpu=(none)";
+						}
+						cerr << endl;
+					}
+				}
+				if (profileEnabled && gpuDpColumnRequested)
+				{
+					++profileStats.gpuDpColumnColumnMaxMismatches;
+				}
+			}
+			if (profileEnabled && gpuDpColumnRequested)
+			{
+				fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds, validateStart);
+			}
+			return ok;
+		};
 
 		auto write_task_triplexes = [&](const StreamTask &task)
 		{
@@ -903,6 +1149,7 @@ int main(int argc, char* const* argv)
 					std::vector<PreAlignCudaPeak> peaks;
 					PreAlignCudaBatchResult batchResult;
 					string cudaError;
+					const uint64_t gpuTotalStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 					const bool ok = prealign_cuda_find_topk_column_maxima(cudaQueries[0],
 					                                                    encodedTargets.data(),
 					                                                    static_cast<int>(tasks.size()),
@@ -911,14 +1158,45 @@ int main(int argc, char* const* argv)
 					                                                    &peaks,
 					                                                    &batchResult,
 					                                                    &cudaError);
+					if (profileEnabled && gpuDpColumnRequested)
+					{
+						record_gpu_dp_column_batch(tasks.size(),
+						                           currentTargetLength,
+						                           peaks.size(),
+						                           batchResult,
+						                           gpuTotalStart);
+					}
 					if (!ok)
 					{
+						if (profileEnabled && gpuDpColumnRequested)
+						{
+							profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+						}
 						useCudaBatch = false;
 						maxTasksTotal = 1;
 					}
 					else
 					{
-						if (extendThreadCount <= 1 || tasks.size() <= 1)
+						bool gpuValidationOk = true;
+						if (gpuDpColumnValidate)
+						{
+							for (size_t t = 0; t < tasks.size(); ++t)
+							{
+								const size_t base = t * static_cast<size_t>(topK);
+								if (!validate_gpu_dp_column_task(tasks[t], peaks.data() + base))
+								{
+									gpuValidationOk = false;
+								}
+							}
+						}
+						if (!gpuValidationOk)
+						{
+							if (profileEnabled && gpuDpColumnRequested)
+							{
+								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+							}
+						}
+						else if (extendThreadCount <= 1 || tasks.size() <= 1)
 						{
 							for (size_t t = 0; t < tasks.size(); ++t)
 							{
@@ -927,29 +1205,7 @@ int main(int argc, char* const* argv)
 								const int maxScore = peaks[base].score;
 								const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 
-								finalScoreInfo.clear();
-								const int suppressBp = fasim_prealign_peak_suppress_bp_runtime();
-								for (int k = 0; k < topK; ++k)
-								{
-									const PreAlignCudaPeak &p = peaks[base + static_cast<size_t>(k)];
-									if (p.position < 0 || p.score <= minScore)
-									{
-										continue;
-									}
-									bool suppressed = false;
-									for (size_t s = 0; s < finalScoreInfo.size(); ++s)
-									{
-										if (abs(finalScoreInfo[s].position - p.position) < suppressBp)
-										{
-											suppressed = true;
-											break;
-										}
-									}
-									if (!suppressed)
-									{
-										finalScoreInfo.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
-									}
-								}
+								build_scoreinfo_from_gpu_peaks(peaks.data() + base, minScore, finalScoreInfo);
 
 								if (debugCuda && t == 0)
 								{
@@ -1188,10 +1444,13 @@ int main(int argc, char* const* argv)
 							}
 						}
 
-						tasks.clear();
-						encodedTargets.clear();
-						currentTargetLength = -1;
-						return;
+						if (gpuValidationOk)
+						{
+							tasks.clear();
+							encodedTargets.clear();
+							currentTargetLength = -1;
+							return;
+						}
 					}
 				}
 				else
@@ -1214,6 +1473,8 @@ int main(int argc, char* const* argv)
 					std::vector< std::vector<PreAlignCudaPeak> > peaksByDevice(cudaDeviceCount);
 					std::vector<bool> ok(cudaDeviceCount, true);
 					std::vector<string> cudaErrors(cudaDeviceCount);
+					std::vector<PreAlignCudaBatchResult> batchResults(cudaDeviceCount);
+					std::vector<uint64_t> batchTotalNanoseconds(cudaDeviceCount, 0);
 
 					std::vector<std::thread> prealignThreads;
 					prealignThreads.reserve(cudaDeviceCount);
@@ -1233,6 +1494,8 @@ int main(int argc, char* const* argv)
 							std::vector<PreAlignCudaPeak> peaks;
 							PreAlignCudaBatchResult batchResult;
 							string cudaError;
+							const uint64_t gpuTotalStart = (profileEnabled && gpuDpColumnRequested) ?
+								fasim_profile_now_nanoseconds() : 0;
 							const bool okLocal = prealign_cuda_find_topk_column_maxima(cudaQueries[d],
 							                                                          targetsPtr,
 							                                                          static_cast<int>(localCount),
@@ -1243,6 +1506,11 @@ int main(int argc, char* const* argv)
 							                                                          &cudaError);
 							ok[d] = okLocal;
 							cudaErrors[d] = cudaError;
+							batchResults[d] = batchResult;
+							if (profileEnabled && gpuDpColumnRequested)
+							{
+								batchTotalNanoseconds[d] = fasim_profile_now_nanoseconds() - gpuTotalStart;
+							}
 							if (okLocal)
 							{
 								peaksByDevice[d].swap(peaks);
@@ -1265,11 +1533,69 @@ int main(int argc, char* const* argv)
 					}
 					if (!allOk)
 					{
+						if (profileEnabled && gpuDpColumnRequested)
+						{
+							profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+						}
 						useCudaBatch = false;
 						maxTasksTotal = 1;
 					}
 					else
 					{
+						if (profileEnabled && gpuDpColumnRequested)
+						{
+							for (size_t d = 0; d < cudaDeviceCount; ++d)
+							{
+								if (chunkCount[d] == 0)
+								{
+									continue;
+								}
+								++profileStats.gpuDpColumnCalls;
+								profileStats.gpuDpColumnWindows += static_cast<uint64_t>(chunkCount[d]);
+								const uint64_t cells =
+									static_cast<uint64_t>(chunkCount[d]) *
+									static_cast<uint64_t>(currentTargetLength > 0 ? currentTargetLength : 0) *
+									static_cast<uint64_t>(lncSeq.size());
+								profileStats.gpuDpColumnCells += cells;
+								profileStats.numDpCells += cells;
+								profileStats.gpuDpColumnH2DBytes +=
+									static_cast<uint64_t>(chunkCount[d]) *
+									static_cast<uint64_t>(currentTargetLength > 0 ? currentTargetLength : 0) *
+									static_cast<uint64_t>(sizeof(uint8_t));
+								profileStats.gpuDpColumnD2HBytes +=
+									static_cast<uint64_t>(peaksByDevice[d].size()) *
+									static_cast<uint64_t>(sizeof(PreAlignCudaPeak));
+								profileStats.gpuDpColumnKernelNanoseconds +=
+									fasim_profile_nanoseconds_from_seconds(batchResults[d].gpuSeconds);
+								profileStats.gpuDpColumnTotalNanoseconds += batchTotalNanoseconds[d];
+							}
+						}
+						bool gpuValidationOk = true;
+						if (gpuDpColumnValidate)
+						{
+							for (size_t d = 0; d < cudaDeviceCount; ++d)
+							{
+								for (size_t local = 0; local < chunkCount[d]; ++local)
+								{
+									const size_t taskIndex = chunkBegin[d] + local;
+									const size_t base = local * static_cast<size_t>(topK);
+									if (!validate_gpu_dp_column_task(tasks[taskIndex],
+									                                  peaksByDevice[d].data() + base))
+									{
+										gpuValidationOk = false;
+									}
+								}
+							}
+						}
+						if (!gpuValidationOk)
+						{
+							if (profileEnabled && gpuDpColumnRequested)
+							{
+								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+							}
+						}
+						else
+						{
 						struct WorkItem
 						{
 							size_t device;
@@ -1494,6 +1820,7 @@ int main(int argc, char* const* argv)
 						encodedTargets.clear();
 						currentTargetLength = -1;
 						return;
+						}
 					}
 				}
 			}

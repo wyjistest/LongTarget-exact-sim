@@ -14,6 +14,34 @@ using std::cout;
 using std::endl;
 using std::ifstream;
 
+inline bool fasim_gpu_dp_column_requested_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_GPU_DP_COLUMN");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_gpu_dp_column_validate_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_GPU_DP_COLUMN_VALIDATE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_prealign_cuda_enabled_runtime()
 {
 	static const bool enabled = []()
