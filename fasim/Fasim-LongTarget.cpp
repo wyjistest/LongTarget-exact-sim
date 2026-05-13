@@ -98,6 +98,31 @@ static inline bool fasim_profile_enabled_runtime()
     return env[0] != '0';
 }
 
+static inline bool fasim_env_flag_enabled(const char *name)
+{
+    const char *env = getenv(name);
+    if (env == NULL || env[0] == '\0')
+    {
+        return false;
+    }
+    return env[0] != '0';
+}
+
+static inline bool fasim_gpu_dp_column_mismatch_debug_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_MISMATCH_DEBUG");
+}
+
+static inline int fasim_env_int_or_default_allow_zero(const char *name, int defaultValue)
+{
+    const char *env = getenv(name);
+    if (env == NULL || env[0] == '\0')
+    {
+        return defaultValue;
+    }
+    return atoi(env);
+}
+
 static inline uint64_t fasim_profile_now_nanoseconds()
 {
     return static_cast<uint64_t>(
@@ -154,7 +179,25 @@ struct FasimProfileStats
         gpuDpColumnValidateNanoseconds(0),
         gpuDpColumnScoreMismatches(0),
         gpuDpColumnColumnMaxMismatches(0),
-        gpuDpColumnFallbacks(0)
+        gpuDpColumnFallbacks(0),
+        gpuDpColumnDebugWindowsExamined(0),
+        gpuDpColumnFirstMismatchWindow(-1),
+        gpuDpColumnFirstMismatchColumn(-1),
+        gpuDpColumnFirstMismatchCpuScore(0),
+        gpuDpColumnFirstMismatchGpuScore(0),
+        gpuDpColumnFirstMismatchCpuPosition(-1),
+        gpuDpColumnFirstMismatchGpuPosition(-1),
+        gpuDpColumnFirstMismatchCpuCount(0),
+        gpuDpColumnFirstMismatchGpuCount(0),
+        gpuDpColumnFirstMismatchTie(0),
+        gpuDpColumnScoreDeltaMax(0),
+        gpuDpColumnScoreInfoMismatches(0),
+        gpuDpColumnTieMismatches(0),
+        gpuDpColumnPositionMismatches(0),
+        gpuDpColumnTopKTruncatedWindows(0),
+        gpuDpColumnTopKOverflowWindows(0),
+        gpuDpColumnPreTopKMismatches(0),
+        gpuDpColumnPostTopKMismatches(0)
     {
     }
 
@@ -191,6 +234,24 @@ struct FasimProfileStats
     uint64_t gpuDpColumnScoreMismatches;
     uint64_t gpuDpColumnColumnMaxMismatches;
     uint64_t gpuDpColumnFallbacks;
+    uint64_t gpuDpColumnDebugWindowsExamined;
+    long long gpuDpColumnFirstMismatchWindow;
+    long long gpuDpColumnFirstMismatchColumn;
+    int gpuDpColumnFirstMismatchCpuScore;
+    int gpuDpColumnFirstMismatchGpuScore;
+    int gpuDpColumnFirstMismatchCpuPosition;
+    int gpuDpColumnFirstMismatchGpuPosition;
+    uint64_t gpuDpColumnFirstMismatchCpuCount;
+    uint64_t gpuDpColumnFirstMismatchGpuCount;
+    uint64_t gpuDpColumnFirstMismatchTie;
+    uint64_t gpuDpColumnScoreDeltaMax;
+    uint64_t gpuDpColumnScoreInfoMismatches;
+    uint64_t gpuDpColumnTieMismatches;
+    uint64_t gpuDpColumnPositionMismatches;
+    uint64_t gpuDpColumnTopKTruncatedWindows;
+    uint64_t gpuDpColumnTopKOverflowWindows;
+    uint64_t gpuDpColumnPreTopKMismatches;
+    uint64_t gpuDpColumnPostTopKMismatches;
     FasimTransferStringProfileStats transferStringProfile;
 };
 
@@ -284,6 +345,25 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_score_mismatches=" << stats.gpuDpColumnScoreMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_column_max_mismatches=" << stats.gpuDpColumnColumnMaxMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_fallbacks=" << stats.gpuDpColumnFallbacks << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_debug_enabled=" << (fasim_gpu_dp_column_mismatch_debug_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_window=" << stats.gpuDpColumnFirstMismatchWindow << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_column=" << stats.gpuDpColumnFirstMismatchColumn << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_cpu_score=" << stats.gpuDpColumnFirstMismatchCpuScore << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_gpu_score=" << stats.gpuDpColumnFirstMismatchGpuScore << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_cpu_position=" << stats.gpuDpColumnFirstMismatchCpuPosition << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_gpu_position=" << stats.gpuDpColumnFirstMismatchGpuPosition << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_cpu_count=" << stats.gpuDpColumnFirstMismatchCpuCount << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_gpu_count=" << stats.gpuDpColumnFirstMismatchGpuCount << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_tie=" << stats.gpuDpColumnFirstMismatchTie << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_score_delta_max=" << stats.gpuDpColumnScoreDeltaMax << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_scoreinfo_mismatches=" << stats.gpuDpColumnScoreInfoMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_tie_mismatches=" << stats.gpuDpColumnTieMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_position_mismatches=" << stats.gpuDpColumnPositionMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_topk_truncated_windows=" << stats.gpuDpColumnTopKTruncatedWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_topk_overflow_windows=" << stats.gpuDpColumnTopKOverflowWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_pre_topk_mismatches=" << stats.gpuDpColumnPreTopKMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_mismatches=" << stats.gpuDpColumnPostTopKMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_debug_windows_examined=" << stats.gpuDpColumnDebugWindowsExamined << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -772,6 +852,11 @@ int main(int argc, char* const* argv)
 
 		const bool gpuDpColumnRequested = fasim_gpu_dp_column_requested_runtime();
 		const bool gpuDpColumnValidate = fasim_gpu_dp_column_validate_enabled_runtime();
+		const bool gpuDpColumnMismatchDebug = fasim_gpu_dp_column_mismatch_debug_enabled_runtime();
+		const int gpuDpColumnDebugMaxWindows =
+			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
+		const int gpuDpColumnDebugWindowIndex =
+			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_WINDOW_INDEX", -1);
 		bool useCudaBatch = false;
 		std::vector<int> cudaDevices;
 		std::vector<PreAlignCudaQueryHandle> cudaQueries;
@@ -949,6 +1034,9 @@ int main(int argc, char* const* argv)
 			return true;
 		};
 
+		size_t gpuDpColumnValidationWindowOrdinal = 0;
+		uint64_t gpuDpColumnDebugPrintedWindows = 0;
+
 		auto validate_gpu_dp_column_task = [&](const StreamTask &task,
 		                                       const PreAlignCudaPeak *taskPeaks)
 		{
@@ -956,8 +1044,66 @@ int main(int argc, char* const* argv)
 			{
 				return true;
 			}
+			const size_t validationWindowOrdinal = gpuDpColumnValidationWindowOrdinal++;
 			const uint64_t validateStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			bool ok = true;
+			bool scoreMismatch = false;
+			bool topKOverflow = false;
+			bool topKTruncated = false;
+			int firstColumnMismatch = -1;
+			int firstCpuScore = 0;
+			int firstGpuScore = 0;
+			int firstCpuPosition = -1;
+			int firstGpuPosition = -1;
+			bool firstTieMismatch = false;
+
+			auto update_score_delta = [&](int cpuScore, int gpuScore)
+			{
+				if (!profileEnabled || !gpuDpColumnRequested || !gpuDpColumnMismatchDebug)
+				{
+					return;
+				}
+				const uint64_t delta = static_cast<uint64_t>(abs(cpuScore - gpuScore));
+				if (delta > profileStats.gpuDpColumnScoreDeltaMax)
+				{
+					profileStats.gpuDpColumnScoreDeltaMax = delta;
+				}
+			};
+
+			auto record_first_mismatch = [&](int columnIndex,
+			                                 int cpuScore,
+			                                 int gpuScore,
+			                                 int cpuPosition,
+			                                 int gpuPosition,
+			                                 size_t cpuCount,
+			                                 size_t gpuCount,
+			                                 bool tieMismatch)
+			{
+				if (!profileEnabled || !gpuDpColumnRequested || !gpuDpColumnMismatchDebug)
+				{
+					return;
+				}
+				if (profileStats.gpuDpColumnFirstMismatchWindow >= 0)
+				{
+					return;
+				}
+				profileStats.gpuDpColumnFirstMismatchWindow =
+					static_cast<long long>(validationWindowOrdinal);
+				profileStats.gpuDpColumnFirstMismatchColumn =
+					static_cast<long long>(columnIndex);
+				profileStats.gpuDpColumnFirstMismatchCpuScore = cpuScore;
+				profileStats.gpuDpColumnFirstMismatchGpuScore = gpuScore;
+				profileStats.gpuDpColumnFirstMismatchCpuPosition = cpuPosition;
+				profileStats.gpuDpColumnFirstMismatchGpuPosition = gpuPosition;
+				profileStats.gpuDpColumnFirstMismatchCpuCount = static_cast<uint64_t>(cpuCount);
+				profileStats.gpuDpColumnFirstMismatchGpuCount = static_cast<uint64_t>(gpuCount);
+				profileStats.gpuDpColumnFirstMismatchTie = tieMismatch ? 1 : 0;
+			};
+
+			if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
+			{
+				++profileStats.gpuDpColumnDebugWindowsExamined;
+			}
 
 			string cpuQuery = lncSeq;
 			string cpuTarget = task.seq2;
@@ -966,9 +1112,23 @@ int main(int argc, char* const* argv)
 			if (cpuMaxScore != gpuMaxScore)
 			{
 				ok = false;
+				scoreMismatch = true;
+				update_score_delta(cpuMaxScore, gpuMaxScore);
 				if (profileEnabled && gpuDpColumnRequested)
 				{
 					++profileStats.gpuDpColumnScoreMismatches;
+				}
+				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
+				{
+					++profileStats.gpuDpColumnPreTopKMismatches;
+					record_first_mismatch(-1,
+					                      cpuMaxScore,
+					                      gpuMaxScore,
+					                      -1,
+					                      -1,
+					                      0,
+					                      0,
+					                      false);
 				}
 			}
 
@@ -976,6 +1136,15 @@ int main(int argc, char* const* argv)
 			std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
 			std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
 			build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
+			if (topK > 0)
+			{
+				const PreAlignCudaPeak &lastPeak = taskPeaks[static_cast<size_t>(topK - 1)];
+				topKOverflow = lastPeak.position >= 0 && lastPeak.score > minScore;
+				if (topKOverflow && profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
+				{
+					++profileStats.gpuDpColumnTopKOverflowWindows;
+				}
+			}
 			StripedSmithWaterman::Aligner cpuAligner;
 			StripedSmithWaterman::Filter cpuFilter;
 			StripedSmithWaterman::Alignment cpuAlignment;
@@ -992,17 +1161,94 @@ int main(int argc, char* const* argv)
 			if (!scoreinfo_equal(gpuScoreInfo, cpuScoreInfo))
 			{
 				ok = false;
-				if (debugCuda)
+				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
 				{
+					++profileStats.gpuDpColumnScoreInfoMismatches;
+					if (!scoreMismatch)
+					{
+						++profileStats.gpuDpColumnPostTopKMismatches;
+					}
+					topKTruncated = topKOverflow && cpuScoreInfo.size() > gpuScoreInfo.size();
+					if (topKTruncated)
+					{
+						++profileStats.gpuDpColumnTopKTruncatedWindows;
+					}
+
+					const size_t maxCount = std::max(gpuScoreInfo.size(), cpuScoreInfo.size());
+					for (size_t i = 0; i < maxCount; ++i)
+					{
+						const bool hasGpu = i < gpuScoreInfo.size();
+						const bool hasCpu = i < cpuScoreInfo.size();
+						const int gpuScore = hasGpu ? gpuScoreInfo[i].score : 0;
+						const int cpuScore = hasCpu ? cpuScoreInfo[i].score : 0;
+						const int gpuPosition = hasGpu ? gpuScoreInfo[i].position : -1;
+						const int cpuPosition = hasCpu ? cpuScoreInfo[i].position : -1;
+						if (!hasGpu || !hasCpu ||
+						    gpuScore != cpuScore ||
+						    gpuPosition != cpuPosition)
+						{
+							firstColumnMismatch = static_cast<int>(i);
+							firstCpuScore = cpuScore;
+							firstGpuScore = gpuScore;
+							firstCpuPosition = cpuPosition;
+							firstGpuPosition = gpuPosition;
+							firstTieMismatch = hasGpu && hasCpu &&
+							                   gpuScore == cpuScore &&
+							                   gpuPosition != cpuPosition;
+							update_score_delta(cpuScore, gpuScore);
+							if (!hasGpu || !hasCpu || gpuPosition != cpuPosition)
+							{
+								++profileStats.gpuDpColumnPositionMismatches;
+							}
+							if (firstTieMismatch)
+							{
+								++profileStats.gpuDpColumnTieMismatches;
+							}
+							record_first_mismatch(firstColumnMismatch,
+							                      firstCpuScore,
+							                      firstGpuScore,
+							                      firstCpuPosition,
+							                      firstGpuPosition,
+							                      cpuScoreInfo.size(),
+							                      gpuScoreInfo.size(),
+							                      firstTieMismatch);
+							break;
+						}
+					}
+				}
+
+				const bool debugWindowSelected =
+					gpuDpColumnMismatchDebug &&
+					(gpuDpColumnDebugWindowIndex < 0 ||
+					 static_cast<int>(validationWindowOrdinal) == gpuDpColumnDebugWindowIndex);
+				const bool debugPrintAllowed =
+					debugWindowSelected &&
+					(gpuDpColumnDebugMaxWindows <= 0 ||
+					 gpuDpColumnDebugPrintedWindows < static_cast<uint64_t>(gpuDpColumnDebugMaxWindows));
+				if (debugCuda || debugPrintAllowed)
+				{
+					if (debugPrintAllowed)
+					{
+						++gpuDpColumnDebugPrintedWindows;
+					}
 					cerr << "[fasim.cuda.validate] column mismatch"
+					     << " window=" << validationWindowOrdinal
 					     << " gpu_count=" << gpuScoreInfo.size()
 					     << " cpu_count=" << cpuScoreInfo.size()
+					     << " first_column=" << firstColumnMismatch
+					     << " topKOverflow=" << (topKOverflow ? 1 : 0)
+					     << " topKTruncated=" << (topKTruncated ? 1 : 0)
+					     << " preTopK=" << (scoreMismatch ? 1 : 0)
+					     << " postTopK=" << (!scoreMismatch ? 1 : 0)
 					     << " minScore=" << minScore
 					     << " gpuMaxScore=" << gpuMaxScore
 					     << " cpuMaxScore=" << cpuMaxScore
 					     << endl;
-					const size_t sampleCount = std::min<size_t>(5, std::max(gpuScoreInfo.size(), cpuScoreInfo.size()));
-					for (size_t i = 0; i < sampleCount; ++i)
+					const size_t maxCount = std::max(gpuScoreInfo.size(), cpuScoreInfo.size());
+					const size_t sampleBegin =
+						firstColumnMismatch > 2 ? static_cast<size_t>(firstColumnMismatch - 2) : 0;
+					const size_t sampleEnd = std::min(maxCount, sampleBegin + 5);
+					for (size_t i = sampleBegin; i < sampleEnd; ++i)
 					{
 						cerr << "[fasim.cuda.validate] idx=" << i;
 						if (i < gpuScoreInfo.size())
