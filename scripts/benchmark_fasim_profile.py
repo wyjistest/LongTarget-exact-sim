@@ -15,6 +15,12 @@ REQUIRED_PROFILE_FIELDS = [
     "fasim_total_seconds",
     "fasim_io_seconds",
     "fasim_window_generation_seconds",
+    "fasim_window_generation_cut_sequence_seconds",
+    "fasim_window_generation_transfer_seconds",
+    "fasim_window_generation_reverse_seconds",
+    "fasim_window_generation_source_transform_seconds",
+    "fasim_window_generation_encode_seconds",
+    "fasim_window_generation_flush_seconds",
     "fasim_dp_scoring_seconds",
     "fasim_column_max_seconds",
     "fasim_local_max_seconds",
@@ -27,6 +33,16 @@ REQUIRED_PROFILE_FIELDS = [
     "fasim_num_candidates",
     "fasim_num_validated_candidates",
     "fasim_num_final_hits",
+]
+
+
+WINDOW_GENERATION_DETAIL_KEYS = [
+    ("cutSequence", "fasim_window_generation_cut_sequence_seconds"),
+    ("transferString", "fasim_window_generation_transfer_seconds"),
+    ("reverse/complement", "fasim_window_generation_reverse_seconds"),
+    ("source transform", "fasim_window_generation_source_transform_seconds"),
+    ("encoded target build", "fasim_window_generation_encode_seconds"),
+    ("flush_batch call wall", "fasim_window_generation_flush_seconds"),
 ]
 
 
@@ -135,6 +151,23 @@ def metric_float(metrics: Dict[str, str], key: str) -> float:
         return 0.0
 
 
+def print_window_generation_detail_table(metrics: Dict[str, str]) -> None:
+    total = metric_float(metrics, "fasim_total_seconds")
+    print("Window generation detail:")
+    print("")
+    print("| Detail | Seconds | Percent of total |")
+    print("| --- | ---: | ---: |")
+    for label, key in WINDOW_GENERATION_DETAIL_KEYS:
+        seconds = metric_float(metrics, key)
+        percent = (seconds / total * 100.0) if total > 0 else 0.0
+        print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
+    print("")
+    print(
+        "Note: flush_batch call wall is diagnostic overlap with scoring/output; "
+        "it is not included in fasim_window_generation_seconds."
+    )
+
+
 def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> None:
     total = metric_float(metrics, "fasim_total_seconds")
     dp = metric_float(metrics, "fasim_dp_scoring_seconds")
@@ -162,6 +195,8 @@ def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> Non
         seconds = metric_float(metrics, key)
         percent = (seconds / total * 100.0) if total > 0 else 0.0
         print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
+    print("")
+    print_window_generation_detail_table(metrics)
     print("")
     print(f"DP/scoring percentage: {dp_pct:.2f}%")
     print(f"GPU-candidate percentage (DP + column + local): {gpu_candidate_pct:.2f}%")
