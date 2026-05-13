@@ -19,6 +19,7 @@ unset LONGTARGET_SIM_CUDA_INITIAL_REDUCE_BACKEND
 unset LONGTARGET_SIM_CUDA_INITIAL_HASH_REDUCE
 unset LONGTARGET_SIM_CUDA_INITIAL_ORDERED_SEGMENTED_V3_SHADOW
 unset LONGTARGET_SIM_CUDA_INITIAL_FRONTIER_TRANSDUCER_SHADOW
+unset LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_TRANSDUCER_FEASIBILITY
 unset LONGTARGET_SIM_CUDA_INITIAL_EXACT_FRONTIER_SHADOW_GATE
 unset LONGTARGET_SIM_CUDA_INITIAL_CHUNKED_HANDOFF
 unset LONGTARGET_SIM_CUDA_INITIAL_HANDOFF_ROWS_PER_CHUNK
@@ -649,6 +650,36 @@ grep -Eq '^benchmark\.sim_initial_frontier_transducer_shadow_seconds=[0-9]+(\.[0
 grep -Eq '^benchmark\.sim_initial_frontier_transducer_shadow_digest_d2h_bytes=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_frontier_transducer_shadow_summaries_replayed_total=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_frontier_transducer_shadow_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_enabled=[01]$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_request_index=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_chunk_size=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_chunks=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_raw_summaries=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_raw_bytes=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_transition_entries=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_transition_bytes=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_compression_ratio=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_build_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_compose_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_compare_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_build_requires_prior_state=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_state_dependency_bytes=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_guard_count=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_observed_delta_only=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_independent_chunk_build_supported=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_build_order_randomized=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_build_order_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_candidate_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_ordered_digest_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_unordered_digest_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_min_candidate_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_first_max_tie_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_safe_store_digest_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_total_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_left_fold_compose_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_tree_compose_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_composition_grouping_mismatches=[0-9]+$' "$STDERR_LOG"
+grep -Eq '^benchmark\.sim_initial_exact_frontier_transducer_feas_compose_requires_replay=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_calls=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_frontier_mismatches=[0-9]+$' "$STDERR_LOG"
 grep -Eq '^benchmark\.sim_initial_ordered_segmented_v3_shadow_running_min_mismatches=[0-9]+$' "$STDERR_LOG"

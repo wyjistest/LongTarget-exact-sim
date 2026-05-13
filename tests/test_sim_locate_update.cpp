@@ -979,6 +979,56 @@ int main()
     ok = expect_equal_u64(regionCellProfileAfter.bucketGt1mCalls,
                           regionCellProfileBefore.bucketGt1mCalls + 1,
                           "region cell-work profile records >1m bucket") && ok;
+
+    SimInitialExactFrontierTransducerFeasibilityStats transducerFeasibility;
+    transducerFeasibility.enabled = 1;
+    transducerFeasibility.requestIndex = 47;
+    transducerFeasibility.chunkSize = 4096;
+    transducerFeasibility.chunks = 3;
+    transducerFeasibility.rawSummaries = 12000;
+    transducerFeasibility.rawBytes = 384000;
+    transducerFeasibility.transitionEntries = 192;
+    transducerFeasibility.transitionBytes = 15360;
+    transducerFeasibility.buildNanoseconds = 7000000;
+    transducerFeasibility.composeNanoseconds = 7000000;
+    transducerFeasibility.compareNanoseconds = 1000000;
+    transducerFeasibility.buildRequiresPriorState = 1;
+    transducerFeasibility.stateDependencyBytes = 2052;
+    transducerFeasibility.guardCount = 2;
+    transducerFeasibility.observedDeltaOnly = 1;
+    transducerFeasibility.independentChunkBuildSupported = 0;
+    transducerFeasibility.buildOrderRandomized = 0;
+    transducerFeasibility.composeRequiresReplay = 1;
+    transducerFeasibility.safeStoreDigestMismatches = 1;
+    transducerFeasibility.totalMismatches = 1;
+    recordSimInitialExactFrontierTransducerFeasibility(transducerFeasibility);
+
+    const SimInitialExactFrontierTransducerFeasibilityStats transducerFeasibilityStats =
+        getSimInitialExactFrontierTransducerFeasibilityStats();
+    ok = expect_equal_u64(transducerFeasibilityStats.enabled,
+                          1,
+                          "transducer feasibility records enabled") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.requestIndex,
+                          47,
+                          "transducer feasibility records request index") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.chunkSize,
+                          4096,
+                          "transducer feasibility records chunk size") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.transitionBytes,
+                          15360,
+                          "transducer feasibility records transition bytes") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.buildRequiresPriorState,
+                          1,
+                          "transducer feasibility records prior-state dependency") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.independentChunkBuildSupported,
+                          0,
+                          "transducer feasibility records independent build support") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.composeRequiresReplay,
+                          1,
+                          "transducer feasibility records compose replay requirement") && ok;
+    ok = expect_equal_u64(transducerFeasibilityStats.totalMismatches,
+                          1,
+                          "transducer feasibility records total mismatches") && ok;
     getSimLocateModeCounts(locateExactCalls,
                            locateFastCalls,
                            locateSafeWorksetCalls,

@@ -3115,6 +3115,9 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
     simInitialFrontierTransducerShadowDigestD2HBytes,
     simInitialFrontierTransducerShadowSummariesReplayed,
     simInitialFrontierTransducerShadowMismatches);
+  const SimInitialExactFrontierTransducerFeasibilityStats
+    simInitialExactFrontierTransducerFeasibility =
+      getSimInitialExactFrontierTransducerFeasibilityStats();
   uint64_t simInitialOrderedSegmentedV3ShadowCalls = 0;
   uint64_t simInitialOrderedSegmentedV3ShadowFrontierMismatches = 0;
   uint64_t simInitialOrderedSegmentedV3ShadowRunningMinMismatches = 0;
@@ -3361,6 +3364,68 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
       <<simInitialFrontierTransducerShadowSummariesReplayed<<endl;
   cerr<<"benchmark.sim_initial_frontier_transducer_shadow_mismatches="
       <<simInitialFrontierTransducerShadowMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_enabled="
+      <<(simCudaInitialExactFrontierTransducerFeasibilityEnabledRuntime() ? 1 : 0)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_request_index="
+      <<simInitialExactFrontierTransducerFeasibility.requestIndex<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_chunk_size="
+      <<simInitialExactFrontierTransducerFeasibility.chunkSize<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_chunks="
+      <<simInitialExactFrontierTransducerFeasibility.chunks<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_raw_summaries="
+      <<simInitialExactFrontierTransducerFeasibility.rawSummaries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_raw_bytes="
+      <<simInitialExactFrontierTransducerFeasibility.rawBytes<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_transition_entries="
+      <<simInitialExactFrontierTransducerFeasibility.transitionEntries<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_transition_bytes="
+      <<simInitialExactFrontierTransducerFeasibility.transitionBytes<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_compression_ratio="
+      <<(simInitialExactFrontierTransducerFeasibility.rawBytes == 0 ? 0.0 :
+         static_cast<double>(simInitialExactFrontierTransducerFeasibility.transitionBytes) /
+           static_cast<double>(simInitialExactFrontierTransducerFeasibility.rawBytes))<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_build_seconds="
+      <<(static_cast<double>(simInitialExactFrontierTransducerFeasibility.buildNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_compose_seconds="
+      <<(static_cast<double>(simInitialExactFrontierTransducerFeasibility.composeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_compare_seconds="
+      <<(static_cast<double>(simInitialExactFrontierTransducerFeasibility.compareNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_build_requires_prior_state="
+      <<simInitialExactFrontierTransducerFeasibility.buildRequiresPriorState<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_state_dependency_bytes="
+      <<simInitialExactFrontierTransducerFeasibility.stateDependencyBytes<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_guard_count="
+      <<simInitialExactFrontierTransducerFeasibility.guardCount<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_observed_delta_only="
+      <<simInitialExactFrontierTransducerFeasibility.observedDeltaOnly<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_independent_chunk_build_supported="
+      <<simInitialExactFrontierTransducerFeasibility.independentChunkBuildSupported<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_build_order_randomized="
+      <<simInitialExactFrontierTransducerFeasibility.buildOrderRandomized<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_build_order_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.buildOrderMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_candidate_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.candidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_ordered_digest_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.orderedDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_unordered_digest_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.unorderedDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_min_candidate_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.minCandidateMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_first_max_tie_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.firstMaxTieMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_safe_store_digest_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.safeStoreDigestMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_total_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.totalMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_left_fold_compose_seconds="
+      <<(static_cast<double>(simInitialExactFrontierTransducerFeasibility.leftFoldComposeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_tree_compose_seconds="
+      <<(static_cast<double>(simInitialExactFrontierTransducerFeasibility.treeComposeNanoseconds) / 1.0e9)<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_composition_grouping_mismatches="
+      <<simInitialExactFrontierTransducerFeasibility.compositionGroupingMismatches<<endl;
+  cerr<<"benchmark.sim_initial_exact_frontier_transducer_feas_compose_requires_replay="
+      <<simInitialExactFrontierTransducerFeasibility.composeRequiresReplay<<endl;
   cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_calls="
       <<simInitialOrderedSegmentedV3ShadowCalls<<endl;
   cerr<<"benchmark.sim_initial_ordered_segmented_v3_shadow_frontier_mismatches="
