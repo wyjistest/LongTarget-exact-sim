@@ -937,6 +937,48 @@ int main()
     ok = expect_equal_u64(regionSerialFallbackRequests,
                           regionSerialFallbackRequestsBefore + 1,
                           "region telemetry serial fallback request count") && ok;
+
+    const SimRegionCellWorkProfileStats regionCellProfileBefore =
+        getSimRegionCellWorkProfileStats();
+    recordSimRegionCellWorkProfile(50000, 40000, 500000, 1);
+    recordSimRegionCellWorkProfile(750000, 600000, 4000000, 1);
+    recordSimRegionCellWorkProfile(2000000, 1500000, 12000000, 2);
+    const SimRegionCellWorkProfileStats regionCellProfileAfter =
+        getSimRegionCellWorkProfileStats();
+    ok = expect_equal_u64(regionCellProfileAfter.calls,
+                          regionCellProfileBefore.calls + 3,
+                          "region cell-work profile records calls") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.launches,
+                          regionCellProfileBefore.launches + 4,
+                          "region cell-work profile records launches") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.execCells,
+                          regionCellProfileBefore.execCells + 2800000,
+                          "region cell-work profile records exec cells") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.rawCells,
+                          regionCellProfileBefore.rawCells + 2140000,
+                          "region cell-work profile records raw cells") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.gpuNanoseconds,
+                          regionCellProfileBefore.gpuNanoseconds + 16500000,
+                          "region cell-work profile records gpu nanoseconds") && ok;
+    ok = expect_true(regionCellProfileAfter.maxExecCells >= 2000000,
+                     "region cell-work profile records max exec cells") && ok;
+    ok = expect_true(regionCellProfileAfter.maxGpuNanoseconds >= 12000000,
+                     "region cell-work profile records max gpu nanoseconds") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.largeCalls,
+                          regionCellProfileBefore.largeCalls + 1,
+                          "region cell-work profile records large calls") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.largeExecCells,
+                          regionCellProfileBefore.largeExecCells + 2000000,
+                          "region cell-work profile records large exec cells") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.bucketLe100kCalls,
+                          regionCellProfileBefore.bucketLe100kCalls + 1,
+                          "region cell-work profile records <=100k bucket") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.bucket500kTo1mCalls,
+                          regionCellProfileBefore.bucket500kTo1mCalls + 1,
+                          "region cell-work profile records 500k-1m bucket") && ok;
+    ok = expect_equal_u64(regionCellProfileAfter.bucketGt1mCalls,
+                          regionCellProfileBefore.bucketGt1mCalls + 1,
+                          "region cell-work profile records >1m bucket") && ok;
     getSimLocateModeCounts(locateExactCalls,
                            locateFastCalls,
                            locateSafeWorksetCalls,

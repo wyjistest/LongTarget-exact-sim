@@ -631,6 +631,62 @@ struct SimRegionSchedulerShapeTelemetryStats
   uint64_t rejectedFilter;
 };
 
+struct SimRegionCellWorkProfileStats
+{
+  SimRegionCellWorkProfileStats():
+    calls(0),
+    launches(0),
+    execCells(0),
+    rawCells(0),
+    gpuNanoseconds(0),
+    maxExecCells(0),
+    maxGpuNanoseconds(0),
+    largeThresholdCells(1000000),
+    largeCalls(0),
+    largeExecCells(0),
+    largeRawCells(0),
+    largeGpuNanoseconds(0),
+    bucketLe100kCalls(0),
+    bucketLe100kCells(0),
+    bucketLe100kGpuNanoseconds(0),
+    bucket100kTo500kCalls(0),
+    bucket100kTo500kCells(0),
+    bucket100kTo500kGpuNanoseconds(0),
+    bucket500kTo1mCalls(0),
+    bucket500kTo1mCells(0),
+    bucket500kTo1mGpuNanoseconds(0),
+    bucketGt1mCalls(0),
+    bucketGt1mCells(0),
+    bucketGt1mGpuNanoseconds(0)
+  {
+  }
+
+  uint64_t calls;
+  uint64_t launches;
+  uint64_t execCells;
+  uint64_t rawCells;
+  uint64_t gpuNanoseconds;
+  uint64_t maxExecCells;
+  uint64_t maxGpuNanoseconds;
+  uint64_t largeThresholdCells;
+  uint64_t largeCalls;
+  uint64_t largeExecCells;
+  uint64_t largeRawCells;
+  uint64_t largeGpuNanoseconds;
+  uint64_t bucketLe100kCalls;
+  uint64_t bucketLe100kCells;
+  uint64_t bucketLe100kGpuNanoseconds;
+  uint64_t bucket100kTo500kCalls;
+  uint64_t bucket100kTo500kCells;
+  uint64_t bucket100kTo500kGpuNanoseconds;
+  uint64_t bucket500kTo1mCalls;
+  uint64_t bucket500kTo1mCells;
+  uint64_t bucket500kTo1mGpuNanoseconds;
+  uint64_t bucketGt1mCalls;
+  uint64_t bucketGt1mCells;
+  uint64_t bucketGt1mGpuNanoseconds;
+};
+
 struct SimCandidateStateStore
 {
   SimCandidateStateStore():
@@ -10654,6 +10710,149 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  return count;
 		}
 
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileLaunchCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileExecCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileRawCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileMaxExecCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileMaxGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline uint64_t simRegionCellWorkProfileLargeThresholdCells()
+		{
+		  return 1000000ULL;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileLargeCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileLargeExecCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileLargeRawCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileLargeGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucketLe100kCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucketLe100kCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucketLe100kGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucket100kTo500kCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucket100kTo500kCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucket100kTo500kGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucket500kTo1mCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucket500kTo1mCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucket500kTo1mGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucketGt1mCallCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucketGt1mCellCount()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
+		inline std::atomic<uint64_t> &simRegionCellWorkProfileBucketGt1mGpuNanoseconds()
+		{
+		  static std::atomic<uint64_t> count(0);
+		  return count;
+		}
+
 		inline std::atomic<uint64_t> &simMaterializeNanoseconds()
 		{
 		  static std::atomic<uint64_t> count(0);
@@ -12087,6 +12286,70 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		  simRegionD2HNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
 		}
 
+		inline void recordSimRegionCellWorkProfileBucket(std::atomic<uint64_t> &calls,
+		                                                 std::atomic<uint64_t> &cells,
+		                                                 std::atomic<uint64_t> &gpuNanoseconds,
+		                                                 uint64_t cellCount,
+		                                                 uint64_t gpuNanosecondCount)
+		{
+		  calls.fetch_add(1, std::memory_order_relaxed);
+		  cells.fetch_add(cellCount, std::memory_order_relaxed);
+		  gpuNanoseconds.fetch_add(gpuNanosecondCount, std::memory_order_relaxed);
+		}
+
+		inline void recordSimRegionCellWorkProfile(uint64_t execCellCount,
+		                                           uint64_t rawCellCount,
+		                                           uint64_t gpuNanoseconds,
+		                                           uint64_t launchCount)
+		{
+		  simRegionCellWorkProfileCallCount().fetch_add(1, std::memory_order_relaxed);
+		  simRegionCellWorkProfileLaunchCount().fetch_add(launchCount, std::memory_order_relaxed);
+		  simRegionCellWorkProfileExecCellCount().fetch_add(execCellCount, std::memory_order_relaxed);
+		  simRegionCellWorkProfileRawCellCount().fetch_add(rawCellCount, std::memory_order_relaxed);
+		  simRegionCellWorkProfileGpuNanoseconds().fetch_add(gpuNanoseconds, std::memory_order_relaxed);
+		  updateSimTelemetryMax(simRegionCellWorkProfileMaxExecCellCount(),execCellCount);
+		  updateSimTelemetryMax(simRegionCellWorkProfileMaxGpuNanoseconds(),gpuNanoseconds);
+		  if(execCellCount > simRegionCellWorkProfileLargeThresholdCells())
+		  {
+		    simRegionCellWorkProfileLargeCallCount().fetch_add(1, std::memory_order_relaxed);
+		    simRegionCellWorkProfileLargeExecCellCount().fetch_add(execCellCount, std::memory_order_relaxed);
+		    simRegionCellWorkProfileLargeRawCellCount().fetch_add(rawCellCount, std::memory_order_relaxed);
+		    simRegionCellWorkProfileLargeGpuNanoseconds().fetch_add(gpuNanoseconds, std::memory_order_relaxed);
+		  }
+		  if(execCellCount <= 100000ULL)
+		  {
+		    recordSimRegionCellWorkProfileBucket(simRegionCellWorkProfileBucketLe100kCallCount(),
+		                                         simRegionCellWorkProfileBucketLe100kCellCount(),
+		                                         simRegionCellWorkProfileBucketLe100kGpuNanoseconds(),
+		                                         execCellCount,
+		                                         gpuNanoseconds);
+		  }
+		  else if(execCellCount <= 500000ULL)
+		  {
+		    recordSimRegionCellWorkProfileBucket(simRegionCellWorkProfileBucket100kTo500kCallCount(),
+		                                         simRegionCellWorkProfileBucket100kTo500kCellCount(),
+		                                         simRegionCellWorkProfileBucket100kTo500kGpuNanoseconds(),
+		                                         execCellCount,
+		                                         gpuNanoseconds);
+		  }
+		  else if(execCellCount <= 1000000ULL)
+		  {
+		    recordSimRegionCellWorkProfileBucket(simRegionCellWorkProfileBucket500kTo1mCallCount(),
+		                                         simRegionCellWorkProfileBucket500kTo1mCellCount(),
+		                                         simRegionCellWorkProfileBucket500kTo1mGpuNanoseconds(),
+		                                         execCellCount,
+		                                         gpuNanoseconds);
+		  }
+		  else
+		  {
+		    recordSimRegionCellWorkProfileBucket(simRegionCellWorkProfileBucketGt1mCallCount(),
+		                                         simRegionCellWorkProfileBucketGt1mCellCount(),
+		                                         simRegionCellWorkProfileBucketGt1mGpuNanoseconds(),
+		                                         execCellCount,
+		                                         gpuNanoseconds);
+		  }
+		}
+
 		inline void recordSimMaterializeNanoseconds(uint64_t nanoseconds)
 		{
 		  simMaterializeNanoseconds().fetch_add(nanoseconds, std::memory_order_relaxed);
@@ -12112,6 +12375,36 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 		{
 		  regionCells = simRegionTotalCellCount().load(std::memory_order_relaxed);
 		  tracebackCells = simTracebackTotalCellCount().load(std::memory_order_relaxed);
+		}
+
+		inline SimRegionCellWorkProfileStats getSimRegionCellWorkProfileStats()
+		{
+		  SimRegionCellWorkProfileStats stats;
+		  stats.calls = simRegionCellWorkProfileCallCount().load(std::memory_order_relaxed);
+		  stats.launches = simRegionCellWorkProfileLaunchCount().load(std::memory_order_relaxed);
+		  stats.execCells = simRegionCellWorkProfileExecCellCount().load(std::memory_order_relaxed);
+		  stats.rawCells = simRegionCellWorkProfileRawCellCount().load(std::memory_order_relaxed);
+		  stats.gpuNanoseconds = simRegionCellWorkProfileGpuNanoseconds().load(std::memory_order_relaxed);
+		  stats.maxExecCells = simRegionCellWorkProfileMaxExecCellCount().load(std::memory_order_relaxed);
+		  stats.maxGpuNanoseconds = simRegionCellWorkProfileMaxGpuNanoseconds().load(std::memory_order_relaxed);
+		  stats.largeThresholdCells = simRegionCellWorkProfileLargeThresholdCells();
+		  stats.largeCalls = simRegionCellWorkProfileLargeCallCount().load(std::memory_order_relaxed);
+		  stats.largeExecCells = simRegionCellWorkProfileLargeExecCellCount().load(std::memory_order_relaxed);
+		  stats.largeRawCells = simRegionCellWorkProfileLargeRawCellCount().load(std::memory_order_relaxed);
+		  stats.largeGpuNanoseconds = simRegionCellWorkProfileLargeGpuNanoseconds().load(std::memory_order_relaxed);
+		  stats.bucketLe100kCalls = simRegionCellWorkProfileBucketLe100kCallCount().load(std::memory_order_relaxed);
+		  stats.bucketLe100kCells = simRegionCellWorkProfileBucketLe100kCellCount().load(std::memory_order_relaxed);
+		  stats.bucketLe100kGpuNanoseconds = simRegionCellWorkProfileBucketLe100kGpuNanoseconds().load(std::memory_order_relaxed);
+		  stats.bucket100kTo500kCalls = simRegionCellWorkProfileBucket100kTo500kCallCount().load(std::memory_order_relaxed);
+		  stats.bucket100kTo500kCells = simRegionCellWorkProfileBucket100kTo500kCellCount().load(std::memory_order_relaxed);
+		  stats.bucket100kTo500kGpuNanoseconds = simRegionCellWorkProfileBucket100kTo500kGpuNanoseconds().load(std::memory_order_relaxed);
+		  stats.bucket500kTo1mCalls = simRegionCellWorkProfileBucket500kTo1mCallCount().load(std::memory_order_relaxed);
+		  stats.bucket500kTo1mCells = simRegionCellWorkProfileBucket500kTo1mCellCount().load(std::memory_order_relaxed);
+		  stats.bucket500kTo1mGpuNanoseconds = simRegionCellWorkProfileBucket500kTo1mGpuNanoseconds().load(std::memory_order_relaxed);
+		  stats.bucketGt1mCalls = simRegionCellWorkProfileBucketGt1mCallCount().load(std::memory_order_relaxed);
+		  stats.bucketGt1mCells = simRegionCellWorkProfileBucketGt1mCellCount().load(std::memory_order_relaxed);
+		  stats.bucketGt1mGpuNanoseconds = simRegionCellWorkProfileBucketGt1mGpuNanoseconds().load(std::memory_order_relaxed);
+		  return stats;
 		}
 
 		inline void getSimRegionReductionStats(uint64_t &eventCount,
@@ -16445,7 +16738,8 @@ inline bool applySimSafeWindowUpdate(const char *A,
                                      const vector<uint64_t> &affectedStartCoords,
                                      SimKernelContext &context,
                                      bool recordTelemetry = true,
-                                     SimSafeWorksetFallbackReason *fallbackReason = NULL);
+                                     SimSafeWorksetFallbackReason *fallbackReason = NULL,
+                                     uint64_t rawCellCountForProfile = 0);
 
 inline void eraseSimSafeCandidateStateStoreSortedUniqueStartCoords(const vector<uint64_t> &uniqueCoords,
                                                                    SimKernelContext &context,
@@ -24133,7 +24427,8 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
                                             bool recordTelemetry,
                                             bool recordSafeWorksetCudaTelemetry,
                                             bool recordSafeWindowExecTelemetry,
-                                            SimSafeWorksetFallbackReason *fallbackReason)
+                                            SimSafeWorksetFallbackReason *fallbackReason,
+                                            uint64_t rawCellCountForProfile = 0)
 {
   const bool staleInitialHandoffAtEntry =
     simInvalidateInitialSafeStoreHandoffIfStaleForLocate(context);
@@ -24318,8 +24613,14 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
 
     if(benchmarkEnabled)
     {
-      recordSimRegionScanGpuNanoseconds(simSecondsToNanoseconds(cudaBatchResult.gpuSeconds));
+      const uint64_t gpuNanoseconds =
+        simSecondsToNanoseconds(cudaBatchResult.gpuSeconds);
+      recordSimRegionScanGpuNanoseconds(gpuNanoseconds);
       recordSimRegionD2HNanoseconds(simSecondsToNanoseconds(cudaBatchResult.d2hSeconds));
+      recordSimRegionCellWorkProfile(workset.cellCount,
+                                     rawCellCountForProfile,
+                                     gpuNanoseconds,
+                                     cudaBatchResult.launchCount);
     }
     if(recordTelemetry)
     {
@@ -24436,8 +24737,14 @@ inline bool applySimSafeAggregatedGpuUpdate(const char *A,
 
   if(benchmarkEnabled)
   {
-    recordSimRegionScanGpuNanoseconds(simSecondsToNanoseconds(cudaBatchResult.gpuSeconds));
+    const uint64_t gpuNanoseconds =
+      simSecondsToNanoseconds(cudaBatchResult.gpuSeconds);
+    recordSimRegionScanGpuNanoseconds(gpuNanoseconds);
     recordSimRegionD2HNanoseconds(simSecondsToNanoseconds(cudaBatchResult.d2hSeconds));
+    recordSimRegionCellWorkProfile(workset.cellCount,
+                                   rawCellCountForProfile,
+                                   gpuNanoseconds,
+                                   cudaBatchResult.launchCount);
   }
   if(recordTelemetry)
   {
@@ -25352,7 +25659,8 @@ inline bool applySimSafeWindowUpdate(const char *A,
                                      const vector<uint64_t> &affectedStartCoords,
                                      SimKernelContext &context,
                                      bool recordTelemetry,
-                                     SimSafeWorksetFallbackReason *fallbackReason)
+                                     SimSafeWorksetFallbackReason *fallbackReason,
+                                     uint64_t rawCellCountForProfile)
 {
   if(recordTelemetry && simRegionSchedulerShapeTelemetryRuntime())
   {
@@ -25366,7 +25674,8 @@ inline bool applySimSafeWindowUpdate(const char *A,
                                          recordTelemetry,
                                          false,
 	                                         true,
-	                                         fallbackReason);
+	                                         fallbackReason,
+	                                         rawCellCountForProfile);
 }
 
 inline bool collectSimSafeStoreStatesForShadow(const SimKernelContext &context,
@@ -26233,7 +26542,7 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
         SimSafeWorksetFallbackReason applyReason = safeFallbackReason;
         usedSafeWorkset =
           useSafeWindowPath ?
-          applySimSafeWindowUpdate(A,B,selectedExecWorkset,selectedAffectedStartCoords,context,true,&applyReason) :
+          applySimSafeWindowUpdate(A,B,selectedExecWorkset,selectedAffectedStartCoords,context,true,&applyReason,safeWindowPlan.rawWindowCellCount) :
           applySimSafeWorksetUpdate(A,B,selectedExecWorkset,selectedAffectedStartCoords,context,true,&applyReason);
         if(!usedSafeWorkset)
         {
@@ -26290,7 +26599,7 @@ inline void updateSimCandidatesAfterTraceback(const char *A,
         SimSafeWorksetFallbackReason applyReason = safeFallbackReason;
         usedSafeWorkset =
           useSafeWindowPath ?
-          applySimSafeWindowUpdate(A,B,selectedExecWorkset,selectedAffectedStartCoords,context,true,&applyReason) :
+          applySimSafeWindowUpdate(A,B,selectedExecWorkset,selectedAffectedStartCoords,context,true,&applyReason,safeWindowPlan.rawWindowCellCount) :
           applySimSafeWorksetUpdate(A,B,selectedExecWorkset,selectedAffectedStartCoords,context,true,&applyReason);
         if(!usedSafeWorkset)
         {
