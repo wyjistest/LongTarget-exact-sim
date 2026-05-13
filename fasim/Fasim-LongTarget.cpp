@@ -202,6 +202,16 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_transfer_string_table_shadow_fallbacks=" << stats.transferStringProfile.tableShadowFallbacks << endl;
     cerr << "benchmark.fasim_transfer_string_table_shadow_seconds=" << fasim_profile_seconds(stats.transferStringProfile.tableShadowNanoseconds) << endl;
     cerr << "benchmark.fasim_transfer_string_table_shadow_input_bases=" << stats.transferStringProfile.tableShadowInputBases << endl;
+    cerr << "benchmark.fasim_transfer_string_table_requested=" << (fasim_transfer_string_table_requested_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_active=" << (fasim_transfer_string_table_requested_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_validate_enabled=" << (fasim_transfer_string_table_validate_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_calls=" << stats.transferStringProfile.tableCalls << endl;
+    cerr << "benchmark.fasim_transfer_string_table_seconds=" << fasim_profile_seconds(stats.transferStringProfile.tableNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_legacy_validate_seconds=" << fasim_profile_seconds(stats.transferStringProfile.tableLegacyValidateNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_compared=" << stats.transferStringProfile.tableComparedCalls << endl;
+    cerr << "benchmark.fasim_transfer_string_table_mismatches=" << stats.transferStringProfile.tableMismatches << endl;
+    cerr << "benchmark.fasim_transfer_string_table_fallbacks=" << stats.transferStringProfile.tableFallbacks << endl;
+    cerr << "benchmark.fasim_transfer_string_table_bases_converted=" << stats.transferStringProfile.tableBasesConverted << endl;
     cerr << "benchmark.fasim_transfer_string_para_forward_calls=" << stats.transferStringProfile.modeCalls[0] << endl;
     cerr << "benchmark.fasim_transfer_string_para_forward_seconds=" << fasim_profile_seconds(stats.transferStringProfile.modeNanoseconds[0]) << endl;
     cerr << "benchmark.fasim_transfer_string_para_reverse_calls=" << stats.transferStringProfile.modeCalls[1] << endl;
@@ -1571,49 +1581,89 @@ int main(int argc, char* const* argv)
 		{
 			uint64_t enqueueStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			std::string seq2;
+			const bool tableRequested = fasim_transfer_string_table_requested_runtime();
+			const bool tableValidate = fasim_transfer_string_table_validate_enabled_runtime();
 			if (profileEnabled)
 			{
-				const uint64_t transferStart = fasim_profile_now_nanoseconds();
-				const unsigned long long innerBefore = fasim_transfer_profile_inner_nanoseconds(profileStats.transferStringProfile);
-				seq2 = transferStringProfiled(seq1, reverseMode, paraMode, rule, &profileStats.transferStringProfile);
-				const uint64_t transferElapsed = fasim_profile_now_nanoseconds() - transferStart;
-				const unsigned long long innerAfter = fasim_transfer_profile_inner_nanoseconds(profileStats.transferStringProfile);
-				const unsigned long long innerElapsed = innerAfter >= innerBefore ? innerAfter - innerBefore : 0;
-				profileStats.windowGenerationTransferNanoseconds += transferElapsed;
-				profileStats.transferStringProfile.totalNanoseconds += transferElapsed;
-				if (transferElapsed > innerElapsed)
+				auto record_transfer_distribution = [&](uint64_t transferElapsed)
 				{
-					profileStats.transferStringProfile.residualNanoseconds += transferElapsed - innerElapsed;
-				}
-				const int modeIndex = fasim_transfer_mode_index(reverseMode, paraMode);
-				if (modeIndex >= 0 && modeIndex < 4)
-				{
-					++profileStats.transferStringProfile.modeCalls[modeIndex];
-					profileStats.transferStringProfile.modeNanoseconds[modeIndex] += transferElapsed;
-				}
-				if (rule >= 1 && rule <= 18)
-				{
-					++profileStats.transferStringProfile.ruleCalls[rule];
-					profileStats.transferStringProfile.ruleNanoseconds[rule] += transferElapsed;
-				}
-				if (fasim_transfer_string_table_shadow_enabled_runtime())
-				{
-					++profileStats.transferStringProfile.tableShadowCalls;
-					profileStats.transferStringProfile.tableShadowInputBases += static_cast<unsigned long long>(seq1.size());
-					const uint64_t tableShadowStart = fasim_profile_now_nanoseconds();
-					const std::string tableSeq2 = transferStringTableDriven(seq1, reverseMode, paraMode, rule);
-					const uint64_t tableShadowElapsed = fasim_profile_now_nanoseconds() - tableShadowStart;
-					profileStats.transferStringProfile.tableShadowNanoseconds += tableShadowElapsed;
-					++profileStats.transferStringProfile.tableShadowComparedCalls;
-					if (tableSeq2 != seq2)
+					const int modeIndex = fasim_transfer_mode_index(reverseMode, paraMode);
+					if (modeIndex >= 0 && modeIndex < 4)
 					{
-						++profileStats.transferStringProfile.tableShadowMismatches;
+						++profileStats.transferStringProfile.modeCalls[modeIndex];
+						profileStats.transferStringProfile.modeNanoseconds[modeIndex] += transferElapsed;
+					}
+					if (rule >= 1 && rule <= 18)
+					{
+						++profileStats.transferStringProfile.ruleCalls[rule];
+						profileStats.transferStringProfile.ruleNanoseconds[rule] += transferElapsed;
+					}
+				};
+				if (tableRequested)
+				{
+					const uint64_t tableStart = fasim_profile_now_nanoseconds();
+					seq2 = transferStringTableDriven(seq1, reverseMode, paraMode, rule);
+					const uint64_t tableElapsed = fasim_profile_now_nanoseconds() - tableStart;
+					profileStats.windowGenerationTransferNanoseconds += tableElapsed;
+					profileStats.transferStringProfile.totalNanoseconds += tableElapsed;
+					profileStats.transferStringProfile.convertNanoseconds += tableElapsed;
+					profileStats.transferStringProfile.tableNanoseconds += tableElapsed;
+					++profileStats.transferStringProfile.calls;
+					++profileStats.transferStringProfile.tableCalls;
+					profileStats.transferStringProfile.inputBases += static_cast<unsigned long long>(seq1.size());
+					profileStats.transferStringProfile.outputBases += static_cast<unsigned long long>(seq2.size());
+					profileStats.transferStringProfile.tableBasesConverted += static_cast<unsigned long long>(seq1.size());
+					record_transfer_distribution(tableElapsed);
+					if (tableValidate)
+					{
+						FasimTransferStringProfileStats legacyValidateStats;
+						const uint64_t legacyValidateStart = fasim_profile_now_nanoseconds();
+						const std::string legacySeq2 = transferStringProfiled(seq1, reverseMode, paraMode, rule, &legacyValidateStats);
+						const uint64_t legacyValidateElapsed = fasim_profile_now_nanoseconds() - legacyValidateStart;
+						profileStats.transferStringProfile.tableLegacyValidateNanoseconds += legacyValidateElapsed;
+						++profileStats.transferStringProfile.tableComparedCalls;
+						if (legacySeq2 != seq2)
+						{
+							++profileStats.transferStringProfile.tableMismatches;
+							++profileStats.transferStringProfile.tableFallbacks;
+							seq2 = legacySeq2;
+						}
+					}
+				}
+				else
+				{
+					const uint64_t transferStart = fasim_profile_now_nanoseconds();
+					const unsigned long long innerBefore = fasim_transfer_profile_inner_nanoseconds(profileStats.transferStringProfile);
+					seq2 = transferStringProfiled(seq1, reverseMode, paraMode, rule, &profileStats.transferStringProfile);
+					const uint64_t transferElapsed = fasim_profile_now_nanoseconds() - transferStart;
+					const unsigned long long innerAfter = fasim_transfer_profile_inner_nanoseconds(profileStats.transferStringProfile);
+					const unsigned long long innerElapsed = innerAfter >= innerBefore ? innerAfter - innerBefore : 0;
+					profileStats.windowGenerationTransferNanoseconds += transferElapsed;
+					profileStats.transferStringProfile.totalNanoseconds += transferElapsed;
+					if (transferElapsed > innerElapsed)
+					{
+						profileStats.transferStringProfile.residualNanoseconds += transferElapsed - innerElapsed;
+					}
+					record_transfer_distribution(transferElapsed);
+					if (fasim_transfer_string_table_shadow_enabled_runtime())
+					{
+						++profileStats.transferStringProfile.tableShadowCalls;
+						profileStats.transferStringProfile.tableShadowInputBases += static_cast<unsigned long long>(seq1.size());
+						const uint64_t tableShadowStart = fasim_profile_now_nanoseconds();
+						const std::string tableSeq2 = transferStringTableDriven(seq1, reverseMode, paraMode, rule);
+						const uint64_t tableShadowElapsed = fasim_profile_now_nanoseconds() - tableShadowStart;
+						profileStats.transferStringProfile.tableShadowNanoseconds += tableShadowElapsed;
+						++profileStats.transferStringProfile.tableShadowComparedCalls;
+						if (tableSeq2 != seq2)
+						{
+							++profileStats.transferStringProfile.tableShadowMismatches;
+						}
 					}
 				}
 			}
 			else
 			{
-				seq2 = transferString(seq1, reverseMode, paraMode, rule);
+				seq2 = transferStringTableOptIn(seq1, reverseMode, paraMode, rule);
 			}
 			if (reverseSeq2)
 			{
@@ -2232,7 +2282,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 
 			auto enqueue_task = [&](string &seq1, long dnaStartPos, int reverseMode, int paraMode, int rule, FasimSrcTransform srcTransform, bool reverseSeq2)
 			{
-				string seq2 = transferString(seq1, reverseMode, paraMode, rule);
+				string seq2 = transferStringTableOptIn(seq1, reverseMode, paraMode, rule);
 				if (reverseSeq2)
 				{
 					reverseSeq(seq2);
@@ -2375,7 +2425,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				{
 					for (int j = 0; j < 6; j++)
 					{
-						string seq2 = transferString(seq1, 0, 1, j + 1);
+						string seq2 = transferStringTableOptIn(seq1, 0, 1, j + 1);
 						if (paraList.doFastSim)
 						{
 							minscore = calc_score_once(rnaSequence, seq2, dnaStartPos, paraList.rule) * 0.8;
@@ -2392,7 +2442,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 								-12, -4, triplex_list, 0, 1, j + 1, paraList.ntMin,
 								paraList.ntMax, paraList.penaltyT, paraList.penaltyC);
 						}
-						seq2 = transferString(seq1, 1, 1, j + 1);
+						seq2 = transferStringTableOptIn(seq1, 1, 1, j + 1);
 						reverseSeq(seq2);
 						seqrev = seq1;
 						complement(seqrev);
@@ -2417,7 +2467,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				}
 				if (paraList.rule > 0 && paraList.rule < 7)
 				{
-					string seq2 = transferString(seq1, 0, 1, paraList.rule);
+					string seq2 = transferStringTableOptIn(seq1, 0, 1, paraList.rule);
 					if (paraList.doFastSim)
 					{
 						minscore = calc_score_once(rnaSequence, seq2, dnaStartPos, paraList.rule) * 0.8;
@@ -2435,7 +2485,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 							paraList.ntMax, paraList.penaltyT, paraList.penaltyC);
 					}
 
-					seq2 = transferString(seq1, 1, 1, paraList.rule);
+					seq2 = transferStringTableOptIn(seq1, 1, 1, paraList.rule);
 					reverseSeq(seq2);
 					seqrev = seq1;
 					complement(seqrev);
@@ -2464,7 +2514,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				{
 					for (int j = 0; j < 18; j++)
 					{
-						string seq2 = transferString(seq1, 1, -1, j + 1);
+						string seq2 = transferStringTableOptIn(seq1, 1, -1, j + 1);
 						seqrev = seq1;
 						complement(seqrev);
 						if (paraList.doFastSim)
@@ -2484,7 +2534,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 								paraList.ntMax, paraList.penaltyT, paraList.penaltyC);
 						}
 
-						seq2 = transferString(seq1, 0, -1, j + 1);
+						seq2 = transferStringTableOptIn(seq1, 0, -1, j + 1);
 						reverseSeq(seq2);
 						seqrev = seq1;
 						reverseSeq(seqrev);
@@ -2509,7 +2559,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				}
 				else
 				{
-					string seq2 = transferString(seq1, 1, -1, paraList.rule);
+					string seq2 = transferStringTableOptIn(seq1, 1, -1, paraList.rule);
 					seqrev = seq1;
 					complement(seqrev);
 					if (paraList.doFastSim)
@@ -2528,7 +2578,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 							-4, triplex_list, 1, -1, paraList.rule, paraList.ntMin,
 							paraList.ntMax, paraList.penaltyT, paraList.penaltyC);
 					}
-					seq2 = transferString(seq1, 0, -1, paraList.rule);
+					seq2 = transferStringTableOptIn(seq1, 0, -1, paraList.rule);
 					reverseSeq(seq2);
 					seqrev = seq1;
 					reverseSeq(seqrev);

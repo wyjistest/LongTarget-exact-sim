@@ -36,6 +36,16 @@ TRANSFER_STRING_REQUIRED_FIELDS = [
     "fasim_transfer_string_table_shadow_fallbacks",
     "fasim_transfer_string_table_shadow_seconds",
     "fasim_transfer_string_table_shadow_input_bases",
+    "fasim_transfer_string_table_requested",
+    "fasim_transfer_string_table_active",
+    "fasim_transfer_string_table_validate_enabled",
+    "fasim_transfer_string_table_calls",
+    "fasim_transfer_string_table_seconds",
+    "fasim_transfer_string_table_legacy_validate_seconds",
+    "fasim_transfer_string_table_compared",
+    "fasim_transfer_string_table_mismatches",
+    "fasim_transfer_string_table_fallbacks",
+    "fasim_transfer_string_table_bases_converted",
 ] + [
     f"fasim_transfer_string_rule_{rule}_calls"
     for rule in range(1, 19)
@@ -275,6 +285,25 @@ def print_transfer_string_detail_table(metrics: Dict[str, str]) -> None:
         "fasim_transfer_string_table_shadow_fallbacks",
         "fasim_transfer_string_table_shadow_seconds",
         "fasim_transfer_string_table_shadow_input_bases",
+    ]:
+        print(f"| {key} | {metrics.get(key, '0')} |")
+
+    print("")
+    print("transferString table opt-in:")
+    print("")
+    print("| Metric | Value |")
+    print("| --- | ---: |")
+    for key in [
+        "fasim_transfer_string_table_requested",
+        "fasim_transfer_string_table_active",
+        "fasim_transfer_string_table_validate_enabled",
+        "fasim_transfer_string_table_calls",
+        "fasim_transfer_string_table_seconds",
+        "fasim_transfer_string_table_legacy_validate_seconds",
+        "fasim_transfer_string_table_compared",
+        "fasim_transfer_string_table_mismatches",
+        "fasim_transfer_string_table_fallbacks",
+        "fasim_transfer_string_table_bases_converted",
     ]:
         print(f"| {key} | {metrics.get(key, '0')} |")
 
