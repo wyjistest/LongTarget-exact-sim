@@ -365,6 +365,10 @@ benchmark-fasim-profile:
 	$(MAKE) build-fasim
 	python3 ./scripts/benchmark_fasim_profile.py --mode profile --bin $(CURDIR)/$(FASIM_TARGET) --require-profile
 
+benchmark-fasim-representative-profile:
+	$(MAKE) build-fasim
+	python3 ./scripts/benchmark_fasim_representative_profile.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-profile
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
@@ -598,6 +602,9 @@ check-fasim-exactness: build-fasim
 check-fasim-profile-telemetry: build-fasim
 	bash ./scripts/check_fasim_profile_telemetry.sh
 
+check-fasim-representative-profile: build-fasim
+	bash ./scripts/check_fasim_representative_profile.sh
+
 check-prealign-shared: $(PREALIGN_SHARED_TEST_TARGET)
 	./$(PREALIGN_SHARED_TEST_TARGET)
 
@@ -827,7 +834,7 @@ check-longtarget-lite-output:
 		check-matrix-openmp-par benchmark-sample benchmark-smoke benchmark-sample-cuda benchmark-smoke-cuda \
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
-		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile \
+		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
@@ -837,7 +844,7 @@ check-longtarget-lite-output:
 		check-sample-cuda-sim-traceback-strict check-smoke-cuda-sim-traceback-strict \
 		check-smoke-cuda-sim-full \
 		check-smoke-cuda-avx2 check-matrix-cuda check-matrix-cuda-avx2 \
-		build-fasim-cigar-test check-fasim-cigar check-fasim-exactness check-fasim-profile-telemetry \
+		build-fasim-cigar-test check-fasim-cigar check-fasim-exactness check-fasim-profile-telemetry check-fasim-representative-profile \
 		build-prealign-shared-test check-prealign-shared \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
