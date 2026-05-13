@@ -55,6 +55,24 @@ TRANSFER_STRING_REQUIRED_FIELDS = [
 ]
 
 
+GPU_DP_COLUMN_REQUIRED_FIELDS = [
+    "fasim_gpu_dp_column_requested",
+    "fasim_gpu_dp_column_active",
+    "fasim_gpu_dp_column_validate_enabled",
+    "fasim_gpu_dp_column_calls",
+    "fasim_gpu_dp_column_windows",
+    "fasim_gpu_dp_column_cells",
+    "fasim_gpu_dp_column_h2d_bytes",
+    "fasim_gpu_dp_column_d2h_bytes",
+    "fasim_gpu_dp_column_kernel_seconds",
+    "fasim_gpu_dp_column_total_seconds",
+    "fasim_gpu_dp_column_validate_seconds",
+    "fasim_gpu_dp_column_score_mismatches",
+    "fasim_gpu_dp_column_column_max_mismatches",
+    "fasim_gpu_dp_column_fallbacks",
+]
+
+
 REQUIRED_PROFILE_FIELDS = [
     "fasim_total_seconds",
     "fasim_io_seconds",
@@ -77,7 +95,7 @@ REQUIRED_PROFILE_FIELDS = [
     "fasim_num_candidates",
     "fasim_num_validated_candidates",
     "fasim_num_final_hits",
-] + TRANSFER_STRING_REQUIRED_FIELDS
+] + TRANSFER_STRING_REQUIRED_FIELDS + GPU_DP_COLUMN_REQUIRED_FIELDS
 
 
 WINDOW_GENERATION_DETAIL_KEYS = [
@@ -305,6 +323,14 @@ def print_transfer_string_detail_table(metrics: Dict[str, str]) -> None:
         "fasim_transfer_string_table_fallbacks",
         "fasim_transfer_string_table_bases_converted",
     ]:
+        print(f"| {key} | {metrics.get(key, '0')} |")
+
+    print("")
+    print("GPU DP+column prototype:")
+    print("")
+    print("| Metric | Value |")
+    print("| --- | ---: |")
+    for key in GPU_DP_COLUMN_REQUIRED_FIELDS:
         print(f"| {key} | {metrics.get(key, '0')} |")
 
 
