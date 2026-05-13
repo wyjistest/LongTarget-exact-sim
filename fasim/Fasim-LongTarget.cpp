@@ -177,6 +177,7 @@ struct FasimProfileStats
         gpuDpColumnKernelNanoseconds(0),
         gpuDpColumnTotalNanoseconds(0),
         gpuDpColumnValidateNanoseconds(0),
+        gpuDpColumnTopKCap(0),
         gpuDpColumnScoreMismatches(0),
         gpuDpColumnColumnMaxMismatches(0),
         gpuDpColumnFallbacks(0),
@@ -190,6 +191,7 @@ struct FasimProfileStats
         gpuDpColumnFirstMismatchCpuCount(0),
         gpuDpColumnFirstMismatchGpuCount(0),
         gpuDpColumnFirstMismatchTie(0),
+        gpuDpColumnScoreInfoFieldMismatchMask(0),
         gpuDpColumnScoreDeltaMax(0),
         gpuDpColumnScoreInfoMismatches(0),
         gpuDpColumnTieMismatches(0),
@@ -231,6 +233,7 @@ struct FasimProfileStats
     uint64_t gpuDpColumnKernelNanoseconds;
     uint64_t gpuDpColumnTotalNanoseconds;
     uint64_t gpuDpColumnValidateNanoseconds;
+    uint64_t gpuDpColumnTopKCap;
     uint64_t gpuDpColumnScoreMismatches;
     uint64_t gpuDpColumnColumnMaxMismatches;
     uint64_t gpuDpColumnFallbacks;
@@ -244,6 +247,7 @@ struct FasimProfileStats
     uint64_t gpuDpColumnFirstMismatchCpuCount;
     uint64_t gpuDpColumnFirstMismatchGpuCount;
     uint64_t gpuDpColumnFirstMismatchTie;
+    uint64_t gpuDpColumnScoreInfoFieldMismatchMask;
     uint64_t gpuDpColumnScoreDeltaMax;
     uint64_t gpuDpColumnScoreInfoMismatches;
     uint64_t gpuDpColumnTieMismatches;
@@ -342,6 +346,7 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_kernel_seconds=" << fasim_profile_seconds(stats.gpuDpColumnKernelNanoseconds) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_total_seconds=" << fasim_profile_seconds(stats.gpuDpColumnTotalNanoseconds) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_validate_seconds=" << fasim_profile_seconds(stats.gpuDpColumnValidateNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_topk_cap=" << stats.gpuDpColumnTopKCap << endl;
     cerr << "benchmark.fasim_gpu_dp_column_score_mismatches=" << stats.gpuDpColumnScoreMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_column_max_mismatches=" << stats.gpuDpColumnColumnMaxMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_fallbacks=" << stats.gpuDpColumnFallbacks << endl;
@@ -355,6 +360,11 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_cpu_count=" << stats.gpuDpColumnFirstMismatchCpuCount << endl;
     cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_gpu_count=" << stats.gpuDpColumnFirstMismatchGpuCount << endl;
     cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_tie=" << stats.gpuDpColumnFirstMismatchTie << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_cpu_scoreinfo_score=" << stats.gpuDpColumnFirstMismatchCpuScore << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_gpu_scoreinfo_score=" << stats.gpuDpColumnFirstMismatchGpuScore << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_cpu_scoreinfo_position=" << stats.gpuDpColumnFirstMismatchCpuPosition << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_gpu_scoreinfo_position=" << stats.gpuDpColumnFirstMismatchGpuPosition << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_scoreinfo_field_mismatch_mask=" << stats.gpuDpColumnScoreInfoFieldMismatchMask << endl;
     cerr << "benchmark.fasim_gpu_dp_column_score_delta_max=" << stats.gpuDpColumnScoreDeltaMax << endl;
     cerr << "benchmark.fasim_gpu_dp_column_scoreinfo_mismatches=" << stats.gpuDpColumnScoreInfoMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_tie_mismatches=" << stats.gpuDpColumnTieMismatches << endl;
@@ -905,13 +915,22 @@ int main(int argc, char* const* argv)
 		const int extendThreadCount = fasim_extend_threads_runtime(paraList.corenum);
 		const int topKDefault = gpuDpColumnRequested ? 256 : 64;
 		int topK = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_TOPK", topKDefault);
+		if (gpuDpColumnRequested)
+		{
+			topK = fasim_env_int_or_default("FASIM_GPU_DP_COLUMN_TOPK_CAP", topK);
+		}
 		if (topK > 256)
 		{
 			topK = 256;
 		}
 		if (topK <= 0)
 		{
-			topK = 64;
+			topK = topKDefault;
+		}
+		if (profileEnabled)
+		{
+			profileStats.gpuDpColumnTopKCap =
+				gpuDpColumnRequested ? static_cast<uint64_t>(topK) : 0;
 		}
 
 		const bool debugCuda = getenv("FASIM_DEBUG_CUDA_PREALIGN") != NULL &&
@@ -1077,7 +1096,8 @@ int main(int argc, char* const* argv)
 			                                 int gpuPosition,
 			                                 size_t cpuCount,
 			                                 size_t gpuCount,
-			                                 bool tieMismatch)
+			                                 bool tieMismatch,
+			                                 uint64_t scoreInfoFieldMismatchMask)
 			{
 				if (!profileEnabled || !gpuDpColumnRequested || !gpuDpColumnMismatchDebug)
 				{
@@ -1098,6 +1118,7 @@ int main(int argc, char* const* argv)
 				profileStats.gpuDpColumnFirstMismatchCpuCount = static_cast<uint64_t>(cpuCount);
 				profileStats.gpuDpColumnFirstMismatchGpuCount = static_cast<uint64_t>(gpuCount);
 				profileStats.gpuDpColumnFirstMismatchTie = tieMismatch ? 1 : 0;
+				profileStats.gpuDpColumnScoreInfoFieldMismatchMask = scoreInfoFieldMismatchMask;
 			};
 
 			if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
@@ -1128,7 +1149,8 @@ int main(int argc, char* const* argv)
 					                      -1,
 					                      0,
 					                      0,
-					                      false);
+					                      false,
+					                      0);
 				}
 			}
 
@@ -1187,6 +1209,23 @@ int main(int argc, char* const* argv)
 						    gpuScore != cpuScore ||
 						    gpuPosition != cpuPosition)
 						{
+							uint64_t fieldMismatchMask = 0;
+							if (gpuScore != cpuScore)
+							{
+								fieldMismatchMask |= 1;
+							}
+							if (gpuPosition != cpuPosition)
+							{
+								fieldMismatchMask |= 2;
+							}
+							if (gpuScoreInfo.size() != cpuScoreInfo.size())
+							{
+								fieldMismatchMask |= 4;
+							}
+							if (!hasGpu || !hasCpu)
+							{
+								fieldMismatchMask |= 8;
+							}
 							firstColumnMismatch = static_cast<int>(i);
 							firstCpuScore = cpuScore;
 							firstGpuScore = gpuScore;
@@ -1211,7 +1250,8 @@ int main(int argc, char* const* argv)
 							                      firstGpuPosition,
 							                      cpuScoreInfo.size(),
 							                      gpuScoreInfo.size(),
-							                      firstTieMismatch);
+							                      firstTieMismatch,
+							                      fieldMismatchMask);
 							break;
 						}
 					}
