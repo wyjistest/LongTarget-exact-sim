@@ -2432,6 +2432,7 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	  uint64_t simSafeWindowFineShadowCallCount = 0;
 	  uint64_t simSafeWindowFineShadowMismatchCount = 0;
 	  SimSafeWindowLargeGeometryShadowStats simSafeWindowLargeGeometryShadow;
+	  SimSafeWindowLargeGeometryExactShadowStats simSafeWindowLargeGeometryExactShadow;
 	  uint64_t simSafeWindowAttemptCount = 0;
   uint64_t simSafeWindowSkippedUnconvertibleCount = 0;
   uint64_t simSafeWindowSelectedWorksetCount = 0;
@@ -2481,6 +2482,8 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	  getSimSafeWindowFineShadowStats(simSafeWindowFineShadowCallCount,
 	                                  simSafeWindowFineShadowMismatchCount);
 	  simSafeWindowLargeGeometryShadow = getSimSafeWindowLargeGeometryShadowStats();
+	  simSafeWindowLargeGeometryExactShadow =
+	    getSimSafeWindowLargeGeometryExactShadowStats();
 	  getSimSafeWindowPathStats(simSafeWindowAttemptCount,
                             simSafeWindowSkippedUnconvertibleCount,
                             simSafeWindowSelectedWorksetCount,
@@ -2643,6 +2646,26 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	      <<simSafeWindowLargeGeometryShadow.fallbackCount<<endl;
 	  cerr<<"benchmark.sim_safe_window_large_geometry_shadow_estimator_only="
 	      <<(simSafeWindowLargeGeometryShadowEnabledRuntime() ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_enabled="
+	      <<(simSafeWindowLargeGeometryExactShadowEnabledRuntime() ? 1 : 0)<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.callCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_selected_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.selectedCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_compared_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.comparedCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_est_saved_cells="
+	      <<simSafeWindowLargeGeometryExactShadow.estSavedCellCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_result_mismatches="
+	      <<simSafeWindowLargeGeometryExactShadow.resultMismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_count_mismatches="
+	      <<simSafeWindowLargeGeometryExactShadow.countMismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_digest_mismatches="
+	      <<simSafeWindowLargeGeometryExactShadow.digestMismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_unsupported_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.unsupportedCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_fallbacks="
+	      <<simSafeWindowLargeGeometryExactShadow.fallbackCount<<endl;
 	  uint64_t simFastWorksetBandCount = 0;
   uint64_t simFastWorksetCellCount = 0;
   uint64_t simFastSegmentCount = 0;
