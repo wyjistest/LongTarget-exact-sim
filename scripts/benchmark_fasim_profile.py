@@ -29,6 +29,13 @@ TRANSFER_STRING_REQUIRED_FIELDS = [
     "fasim_transfer_string_anti_forward_seconds",
     "fasim_transfer_string_anti_reverse_calls",
     "fasim_transfer_string_anti_reverse_seconds",
+    "fasim_transfer_string_table_shadow_enabled",
+    "fasim_transfer_string_table_shadow_calls",
+    "fasim_transfer_string_table_shadow_compared_calls",
+    "fasim_transfer_string_table_shadow_mismatches",
+    "fasim_transfer_string_table_shadow_fallbacks",
+    "fasim_transfer_string_table_shadow_seconds",
+    "fasim_transfer_string_table_shadow_input_bases",
 ] + [
     f"fasim_transfer_string_rule_{rule}_calls"
     for rule in range(1, 19)
@@ -254,6 +261,22 @@ def print_transfer_string_detail_table(metrics: Dict[str, str]) -> None:
         for rule, calls_value, seconds in rule_rows:
             percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
             print(f"| {rule} | {calls_value} | {seconds:.6f} | {percent:.2f}% |")
+
+    print("")
+    print("transferString table shadow:")
+    print("")
+    print("| Metric | Value |")
+    print("| --- | ---: |")
+    for key in [
+        "fasim_transfer_string_table_shadow_enabled",
+        "fasim_transfer_string_table_shadow_calls",
+        "fasim_transfer_string_table_shadow_compared_calls",
+        "fasim_transfer_string_table_shadow_mismatches",
+        "fasim_transfer_string_table_shadow_fallbacks",
+        "fasim_transfer_string_table_shadow_seconds",
+        "fasim_transfer_string_table_shadow_input_bases",
+    ]:
+        print(f"| {key} | {metrics.get(key, '0')} |")
 
 
 def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> None:

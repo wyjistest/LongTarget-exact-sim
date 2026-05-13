@@ -195,6 +195,13 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_transfer_string_convert_seconds=" << fasim_profile_seconds(stats.transferStringProfile.convertNanoseconds) << endl;
     cerr << "benchmark.fasim_transfer_string_validate_seconds=" << fasim_profile_seconds(stats.transferStringProfile.validateNanoseconds) << endl;
     cerr << "benchmark.fasim_transfer_string_residual_seconds=" << fasim_profile_seconds(stats.transferStringProfile.residualNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_enabled=" << (fasim_transfer_string_table_shadow_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_calls=" << stats.transferStringProfile.tableShadowCalls << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_compared_calls=" << stats.transferStringProfile.tableShadowComparedCalls << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_mismatches=" << stats.transferStringProfile.tableShadowMismatches << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_fallbacks=" << stats.transferStringProfile.tableShadowFallbacks << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_seconds=" << fasim_profile_seconds(stats.transferStringProfile.tableShadowNanoseconds) << endl;
+    cerr << "benchmark.fasim_transfer_string_table_shadow_input_bases=" << stats.transferStringProfile.tableShadowInputBases << endl;
     cerr << "benchmark.fasim_transfer_string_para_forward_calls=" << stats.transferStringProfile.modeCalls[0] << endl;
     cerr << "benchmark.fasim_transfer_string_para_forward_seconds=" << fasim_profile_seconds(stats.transferStringProfile.modeNanoseconds[0]) << endl;
     cerr << "benchmark.fasim_transfer_string_para_reverse_calls=" << stats.transferStringProfile.modeCalls[1] << endl;
@@ -1588,6 +1595,20 @@ int main(int argc, char* const* argv)
 				{
 					++profileStats.transferStringProfile.ruleCalls[rule];
 					profileStats.transferStringProfile.ruleNanoseconds[rule] += transferElapsed;
+				}
+				if (fasim_transfer_string_table_shadow_enabled_runtime())
+				{
+					++profileStats.transferStringProfile.tableShadowCalls;
+					profileStats.transferStringProfile.tableShadowInputBases += static_cast<unsigned long long>(seq1.size());
+					const uint64_t tableShadowStart = fasim_profile_now_nanoseconds();
+					const std::string tableSeq2 = transferStringTableDriven(seq1, reverseMode, paraMode, rule);
+					const uint64_t tableShadowElapsed = fasim_profile_now_nanoseconds() - tableShadowStart;
+					profileStats.transferStringProfile.tableShadowNanoseconds += tableShadowElapsed;
+					++profileStats.transferStringProfile.tableShadowComparedCalls;
+					if (tableSeq2 != seq2)
+					{
+						++profileStats.transferStringProfile.tableShadowMismatches;
+					}
 				}
 			}
 			else
