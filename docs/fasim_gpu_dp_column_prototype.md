@@ -145,17 +145,35 @@ expected reduction on the window-heavy synthetic fixture, but not on tiny inputs
 The tiny fixture is dominated by one-time CUDA/setup and host overhead. This PR
 therefore does not claim a recommended opt-in.
 
+## Local humanLncAtlas Smoke
+
+Single-run local humanLncAtlas smoke profiles were also run with:
+
+```bash
+FASIM_TRANSFERSTRING_TABLE=1
+FASIM_GPU_DP_COLUMN=1
+```
+
+The corpus files are local FASTA copies from the earlier Fasim profiling
+worktree and are not committed to this repo.
+
+| Workload | Total seconds | GPU calls | GPU windows | GPU cells | H2D bytes | D2H bytes | Kernel seconds | GPU total seconds | Mismatches | Fallbacks | Digest |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| human_lnc_atlas_17kb_target | 0.322689 | 2 | 16 | 110,077,812 | 72,372 | 32,768 | 0.015343 | 0.015438 | 0 | 0 | `sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| human_lnc_atlas_508kb_target | 0.473862 | 2 | 416 | 3,156,184,512 | 2,075,072 | 851,968 | 0.016759 | 0.017789 | 0 | 0 | `sha256:25469e60179a524dd712d7ef69ee0c8e379a17f8472be3c2843cd14eda04d221` |
+
 ## Decision
 
 ```text
 prototype wiring: pass
 tiny oracle exactness: pass
 representative digest stability: pass
+local humanLncAtlas smoke: pass
 recommended opt-in: no
 default enablement: no
-next target: batching/H2D/host overhead characterization on larger workloads
+next target: repeated median batching/H2D/host overhead characterization
 ```
 
-The next PR should characterize larger or real-corpus workloads with repeated
-medians and separate CUDA init, H2D/D2H, kernel, CPU extension, and output costs
-before promoting the GPU path beyond prototype status.
+The next PR should characterize repeated medians and separate CUDA init,
+H2D/D2H, kernel, CPU extension, and output costs before promoting the GPU path
+beyond prototype status.
