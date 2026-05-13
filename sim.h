@@ -1719,7 +1719,15 @@ struct SimSafeWindowLargeGeometryExactShadowStats
     countMismatchCount(0),
     digestMismatchCount(0),
     unsupportedCallCount(0),
-    fallbackCount(0)
+    fallbackCount(0),
+    digestMismatchCallCount(0),
+    orderOnlyMismatchCallCount(0),
+    valueMismatchCallCount(0),
+    setMismatchCallCount(0),
+    firstMismatchCall(0),
+    canonicalDigestMismatchCount(0),
+    orderedDigestMismatchCount(0),
+    unorderedDigestMismatchCount(0)
   {
   }
 
@@ -1732,6 +1740,34 @@ struct SimSafeWindowLargeGeometryExactShadowStats
   uint64_t digestMismatchCount;
   uint64_t unsupportedCallCount;
   uint64_t fallbackCount;
+  uint64_t digestMismatchCallCount;
+  uint64_t orderOnlyMismatchCallCount;
+  uint64_t valueMismatchCallCount;
+  uint64_t setMismatchCallCount;
+  uint64_t firstMismatchCall;
+  uint64_t canonicalDigestMismatchCount;
+  uint64_t orderedDigestMismatchCount;
+  uint64_t unorderedDigestMismatchCount;
+};
+
+struct SimSafeWindowLargeGeometryDigestMismatchTaxonomy
+{
+  SimSafeWindowLargeGeometryDigestMismatchTaxonomy():
+    orderOnlyMismatch(false),
+    valueMismatch(false),
+    setMismatch(false),
+    orderedDigestMismatch(false),
+    unorderedDigestMismatch(false),
+    canonicalDigestMismatch(false)
+  {
+  }
+
+  bool orderOnlyMismatch;
+  bool valueMismatch;
+  bool setMismatch;
+  bool orderedDigestMismatch;
+  bool unorderedDigestMismatch;
+  bool canonicalDigestMismatch;
 };
 
 inline const SimPathWorkset &selectSimSafeWindowExecutePlanWorkset(
@@ -6535,6 +6571,54 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  return count;
 			}
 
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryDigestMismatchCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryOrderOnlyMismatchCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryValueMismatchCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometrySetMismatchCallCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryFirstMismatchCall()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryCanonicalDigestMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryOrderedDigestMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
+			inline std::atomic<uint64_t> &simSafeWindowLargeGeometryUnorderedDigestMismatchCount()
+			{
+			  static std::atomic<uint64_t> count(0);
+			  return count;
+			}
+
 			inline std::atomic<uint64_t> &simSafeWorksetBuilderCallsAfterSafeWindowCount()
 			{
 			  static std::atomic<uint64_t> count(0);
@@ -7327,11 +7411,13 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			  bool countMismatch,
 			  bool digestMismatch,
 			  bool unsupported,
-			  bool fallback)
+			  bool fallback,
+			  const SimSafeWindowLargeGeometryDigestMismatchTaxonomy *taxonomy = NULL)
 			{
-			  simSafeWindowLargeGeometryExactShadowCallCount().fetch_add(
+			  const uint64_t callIndex =
+			    simSafeWindowLargeGeometryExactShadowCallCount().fetch_add(
 			    1,
-			    std::memory_order_relaxed);
+			    std::memory_order_relaxed) + 1;
 			  if(!simSafeWindowLargeGeometryShadowShouldSelect(plan))
 			  {
 			    return;
@@ -7365,6 +7451,14 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    simSafeWindowLargeGeometryExactShadowDigestMismatchCount().fetch_add(
 			      1,
 			      std::memory_order_relaxed);
+			    simSafeWindowLargeGeometryDigestMismatchCallCount().fetch_add(
+			      1,
+			      std::memory_order_relaxed);
+			    uint64_t expected = 0;
+			    simSafeWindowLargeGeometryFirstMismatchCall().compare_exchange_strong(
+			      expected,
+			      callIndex,
+			      std::memory_order_relaxed);
 			  }
 			  if(unsupported)
 			  {
@@ -7377,6 +7471,45 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    simSafeWindowLargeGeometryExactShadowFallbackCount().fetch_add(
 			      1,
 			      std::memory_order_relaxed);
+			  }
+			  if(taxonomy != NULL)
+			  {
+			    if(taxonomy->orderOnlyMismatch)
+			    {
+			      simSafeWindowLargeGeometryOrderOnlyMismatchCallCount().fetch_add(
+			        1,
+			        std::memory_order_relaxed);
+			    }
+			    if(taxonomy->valueMismatch)
+			    {
+			      simSafeWindowLargeGeometryValueMismatchCallCount().fetch_add(
+			        1,
+			        std::memory_order_relaxed);
+			    }
+			    if(taxonomy->setMismatch)
+			    {
+			      simSafeWindowLargeGeometrySetMismatchCallCount().fetch_add(
+			        1,
+			        std::memory_order_relaxed);
+			    }
+			    if(taxonomy->orderedDigestMismatch)
+			    {
+			      simSafeWindowLargeGeometryOrderedDigestMismatchCount().fetch_add(
+			        1,
+			        std::memory_order_relaxed);
+			    }
+			    if(taxonomy->unorderedDigestMismatch)
+			    {
+			      simSafeWindowLargeGeometryUnorderedDigestMismatchCount().fetch_add(
+			        1,
+			        std::memory_order_relaxed);
+			    }
+			    if(taxonomy->canonicalDigestMismatch)
+			    {
+			      simSafeWindowLargeGeometryCanonicalDigestMismatchCount().fetch_add(
+			        1,
+			        std::memory_order_relaxed);
+			    }
 			  }
 			}
 
@@ -8124,6 +8257,22 @@ inline bool simCudaInitialSafeStoreDeviceMaintenanceEnabledRuntime()
 			    simSafeWindowLargeGeometryExactShadowUnsupportedCallCount().load(std::memory_order_relaxed);
 			  stats.fallbackCount =
 			    simSafeWindowLargeGeometryExactShadowFallbackCount().load(std::memory_order_relaxed);
+			  stats.digestMismatchCallCount =
+			    simSafeWindowLargeGeometryDigestMismatchCallCount().load(std::memory_order_relaxed);
+			  stats.orderOnlyMismatchCallCount =
+			    simSafeWindowLargeGeometryOrderOnlyMismatchCallCount().load(std::memory_order_relaxed);
+			  stats.valueMismatchCallCount =
+			    simSafeWindowLargeGeometryValueMismatchCallCount().load(std::memory_order_relaxed);
+			  stats.setMismatchCallCount =
+			    simSafeWindowLargeGeometrySetMismatchCallCount().load(std::memory_order_relaxed);
+			  stats.firstMismatchCall =
+			    simSafeWindowLargeGeometryFirstMismatchCall().load(std::memory_order_relaxed);
+			  stats.canonicalDigestMismatchCount =
+			    simSafeWindowLargeGeometryCanonicalDigestMismatchCount().load(std::memory_order_relaxed);
+			  stats.orderedDigestMismatchCount =
+			    simSafeWindowLargeGeometryOrderedDigestMismatchCount().load(std::memory_order_relaxed);
+			  stats.unorderedDigestMismatchCount =
+			    simSafeWindowLargeGeometryUnorderedDigestMismatchCount().load(std::memory_order_relaxed);
 			  return stats;
 			}
 
@@ -23610,6 +23759,26 @@ inline bool simCandidateContextsEqual(const SimKernelContext &lhs,
   return true;
 }
 
+inline bool simCandidateContextsEqualOrderedRepresentation(const SimKernelContext &lhs,
+                                                           const SimKernelContext &rhs)
+{
+  if(lhs.runningMin != rhs.runningMin ||
+     lhs.candidateCount != rhs.candidateCount)
+  {
+    return false;
+  }
+  for(long index = 0; index < lhs.candidateCount; ++index)
+  {
+    if(memcmp(&lhs.candidates[static_cast<size_t>(index)],
+              &rhs.candidates[static_cast<size_t>(index)],
+              sizeof(SimCandidate)) != 0)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 inline void applySimUpdateBands(const char *A,
                                 const char *B,
                                 const vector<SimUpdateBand> &bands,
@@ -25303,19 +25472,15 @@ inline bool simSafeWindowShadowContextsEqualDetailed(const SimKernelContext &lhs
                                                      const SimKernelContext &rhs,
                                                      bool &countMismatch,
                                                      bool &digestMismatch,
+                                                     SimSafeWindowLargeGeometryDigestMismatchTaxonomy *taxonomyOut = NULL,
                                                      string *errorOut = NULL)
 {
   countMismatch = false;
   digestMismatch = false;
-  if(!simCandidateContextsEqual(lhs,rhs))
-  {
-    digestMismatch = true;
-    if(errorOut != NULL)
-    {
-      *errorOut = "candidate frontier mismatch";
-    }
-    return false;
-  }
+  SimSafeWindowLargeGeometryDigestMismatchTaxonomy taxonomy;
+  const bool candidateOrderedMismatch =
+    !simCandidateContextsEqualOrderedRepresentation(lhs,rhs);
+  const bool candidateCanonicalMismatch = !simCandidateContextsEqual(lhs,rhs);
 
   vector<SimScanCudaCandidateState> lhsSafeStoreStates;
   vector<SimScanCudaCandidateState> rhsSafeStoreStates;
@@ -25329,18 +25494,60 @@ inline bool simSafeWindowShadowContextsEqualDetailed(const SimKernelContext &lhs
     {
       *errorOut = !lhsError.empty() ? lhsError : rhsError;
     }
+    taxonomy.orderedDigestMismatch = true;
+    taxonomy.unorderedDigestMismatch = true;
+    taxonomy.canonicalDigestMismatch = true;
+    taxonomy.valueMismatch = true;
+    if(taxonomyOut != NULL)
+    {
+      *taxonomyOut = taxonomy;
+    }
     return false;
   }
-  if(lhsSafeStoreStates.size() != rhsSafeStoreStates.size())
+  const bool safeStoreCountMismatch =
+    lhsSafeStoreStates.size() != rhsSafeStoreStates.size();
+  const bool safeStoreOrderedMismatch =
+    !simCudaCandidateStateVectorsEqualOrdered(lhsSafeStoreStates,rhsSafeStoreStates);
+  const bool safeStoreCanonicalMismatch =
+    !simCudaCandidateStateVectorsEqualAsSet(lhsSafeStoreStates,rhsSafeStoreStates);
+
+  countMismatch = !candidateCanonicalMismatch && safeStoreCountMismatch;
+  taxonomy.orderedDigestMismatch =
+    candidateOrderedMismatch || safeStoreOrderedMismatch;
+  taxonomy.unorderedDigestMismatch =
+    candidateCanonicalMismatch || safeStoreCanonicalMismatch;
+  taxonomy.canonicalDigestMismatch = taxonomy.unorderedDigestMismatch;
+  taxonomy.orderOnlyMismatch =
+    taxonomy.orderedDigestMismatch && !taxonomy.canonicalDigestMismatch;
+  taxonomy.setMismatch = taxonomy.canonicalDigestMismatch;
+  taxonomy.valueMismatch = taxonomy.canonicalDigestMismatch && !countMismatch;
+  digestMismatch = taxonomy.canonicalDigestMismatch;
+
+  if(taxonomyOut != NULL)
   {
-    countMismatch = true;
+    *taxonomyOut = taxonomy;
   }
-  if(!simCudaCandidateStateVectorsEqualAsSet(lhsSafeStoreStates,rhsSafeStoreStates))
+  if(candidateCanonicalMismatch)
   {
-    digestMismatch = true;
+    if(errorOut != NULL)
+    {
+      *errorOut = "candidate frontier mismatch";
+    }
+    return false;
+  }
+  if(safeStoreCanonicalMismatch)
+  {
     if(errorOut != NULL)
     {
       *errorOut = "safe-store mismatch";
+    }
+    return false;
+  }
+  if(countMismatch)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "count mismatch";
     }
     return false;
   }
@@ -25348,7 +25555,7 @@ inline bool simSafeWindowShadowContextsEqualDetailed(const SimKernelContext &lhs
   {
     errorOut->clear();
   }
-  return !countMismatch && !digestMismatch;
+  return true;
 }
 
 inline bool runSimSafeWindowFineShadow(const char *A,
@@ -25512,6 +25719,7 @@ inline bool runSimSafeWindowLargeGeometryExactShadow(
   bool digestMismatch = false;
   bool unsupported = false;
   bool fallback = false;
+  SimSafeWindowLargeGeometryDigestMismatchTaxonomy taxonomy;
   bool compared = resultMismatch;
   if(!resultMismatch && coarsenedApplied && rawApplied)
   {
@@ -25520,6 +25728,7 @@ inline bool runSimSafeWindowLargeGeometryExactShadow(
                                              rawContext,
                                              countMismatch,
                                              digestMismatch,
+                                             &taxonomy,
                                              &shadowError);
   }
   else if(!coarsenedApplied && !rawApplied)
@@ -25534,7 +25743,8 @@ inline bool runSimSafeWindowLargeGeometryExactShadow(
                                                     countMismatch,
                                                     digestMismatch,
                                                     unsupported,
-                                                    fallback);
+                                                    fallback,
+                                                    &taxonomy);
   if((resultMismatch || countMismatch || digestMismatch || unsupported) &&
      simCudaValidateEnabledRuntime())
   {

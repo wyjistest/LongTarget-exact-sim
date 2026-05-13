@@ -326,6 +326,52 @@ int main()
                           exactShadowBefore.fallbackCount,
                           "large geometry exact shadow leaves fallbacks unchanged") && ok;
 
+    SimSafeWindowLargeGeometryDigestMismatchTaxonomy taxonomy;
+    taxonomy.orderOnlyMismatch = true;
+    taxonomy.valueMismatch = false;
+    taxonomy.setMismatch = false;
+    taxonomy.orderedDigestMismatch = true;
+    taxonomy.unorderedDigestMismatch = false;
+    taxonomy.canonicalDigestMismatch = false;
+    const SimSafeWindowLargeGeometryExactShadowStats taxonomyBefore =
+        getSimSafeWindowLargeGeometryExactShadowStats();
+    recordSimSafeWindowLargeGeometryExactShadowResult(largeShadowPlan,
+                                                      true,
+                                                      false,
+                                                      false,
+                                                      true,
+                                                      false,
+                                                      false,
+                                                      &taxonomy);
+    const SimSafeWindowLargeGeometryExactShadowStats taxonomyAfter =
+        getSimSafeWindowLargeGeometryExactShadowStats();
+    ok = expect_equal_u64(taxonomyAfter.digestMismatchCallCount,
+                          taxonomyBefore.digestMismatchCallCount + 1,
+                          "large geometry taxonomy records digest mismatch calls") && ok;
+    ok = expect_equal_u64(taxonomyAfter.orderOnlyMismatchCallCount,
+                          taxonomyBefore.orderOnlyMismatchCallCount + 1,
+                          "large geometry taxonomy records order-only mismatches") && ok;
+    ok = expect_equal_u64(taxonomyAfter.valueMismatchCallCount,
+                          taxonomyBefore.valueMismatchCallCount,
+                          "large geometry taxonomy leaves value mismatches unchanged") && ok;
+    ok = expect_equal_u64(taxonomyAfter.setMismatchCallCount,
+                          taxonomyBefore.setMismatchCallCount,
+                          "large geometry taxonomy leaves set mismatches unchanged") && ok;
+    ok = expect_equal_u64(taxonomyAfter.firstMismatchCall,
+                          taxonomyBefore.firstMismatchCall == 0 ?
+                            taxonomyAfter.callCount :
+                            taxonomyBefore.firstMismatchCall,
+                          "large geometry taxonomy records first mismatch call") && ok;
+    ok = expect_equal_u64(taxonomyAfter.orderedDigestMismatchCount,
+                          taxonomyBefore.orderedDigestMismatchCount + 1,
+                          "large geometry taxonomy records ordered digest mismatches") && ok;
+    ok = expect_equal_u64(taxonomyAfter.unorderedDigestMismatchCount,
+                          taxonomyBefore.unorderedDigestMismatchCount,
+                          "large geometry taxonomy leaves unordered digest mismatches unchanged") && ok;
+    ok = expect_equal_u64(taxonomyAfter.canonicalDigestMismatchCount,
+                          taxonomyBefore.canonicalDigestMismatchCount,
+                          "large geometry taxonomy leaves canonical digest mismatches unchanged") && ok;
+
     if (!ok)
     {
         return 1;
