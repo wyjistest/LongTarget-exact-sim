@@ -102,9 +102,15 @@ struct FasimTransferStringProfileStats
 		convertNanoseconds(0),
 		validateNanoseconds(0),
 		residualNanoseconds(0),
+		tableShadowNanoseconds(0),
 		calls(0),
 		inputBases(0),
-		outputBases(0)
+		outputBases(0),
+		tableShadowCalls(0),
+		tableShadowComparedCalls(0),
+		tableShadowMismatches(0),
+		tableShadowFallbacks(0),
+		tableShadowInputBases(0)
 	{
 		for (int i = 0; i < 4; ++i)
 		{
@@ -124,9 +130,15 @@ struct FasimTransferStringProfileStats
 	unsigned long long convertNanoseconds;
 	unsigned long long validateNanoseconds;
 	unsigned long long residualNanoseconds;
+	unsigned long long tableShadowNanoseconds;
 	unsigned long long calls;
 	unsigned long long inputBases;
 	unsigned long long outputBases;
+	unsigned long long tableShadowCalls;
+	unsigned long long tableShadowComparedCalls;
+	unsigned long long tableShadowMismatches;
+	unsigned long long tableShadowFallbacks;
+	unsigned long long tableShadowInputBases;
 	unsigned long long modeCalls[4];
 	unsigned long long modeNanoseconds[4];
 	unsigned long long ruleCalls[19];
@@ -238,6 +250,57 @@ static inline unsigned long long fasim_transfer_profile_inner_nanoseconds(const 
 		+ stats.ruleMaterializeNanoseconds
 		+ stats.convertNanoseconds
 		+ stats.validateNanoseconds;
+}
+
+static inline bool fasim_transfer_string_table_shadow_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_TRANSFERSTRING_TABLE_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline void fasim_transfer_build_lookup_table(const char *ruleSeq, char table[256])
+{
+	for (int i = 0; i < 256; ++i)
+	{
+		table[i] = 'N';
+	}
+	table[static_cast<unsigned char>(ruleSeq[0])] = ruleSeq[5];
+	table[static_cast<unsigned char>(ruleSeq[1])] = ruleSeq[6];
+	table[static_cast<unsigned char>(ruleSeq[2])] = ruleSeq[7];
+	table[static_cast<unsigned char>(ruleSeq[3])] = ruleSeq[8];
+	table[static_cast<unsigned char>(ruleSeq[4])] = ruleSeq[9];
+}
+
+string transferStringTableDriven(string seq1, int strand, int Para, int rule)
+{
+	const char *ruleSeq = fasim_transfer_select_rule(strand, Para, rule);
+	if (ruleSeq == NULL)
+	{
+		exit(1);
+	}
+
+	char table[256];
+	fasim_transfer_build_lookup_table(ruleSeq, table);
+
+	string out;
+	out.reserve(seq1.size());
+	for (int i = 0; i < seq1.size(); ++i)
+	{
+		out += table[static_cast<unsigned char>(seq1[i])];
+	}
+	if (out.size() != seq1.size())
+	{
+		exit(1);
+	}
+	return out;
 }
 
 string transferStringProfiled(string seq1,
