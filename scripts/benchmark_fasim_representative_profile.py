@@ -21,6 +21,7 @@ from benchmark_fasim_profile import (  # noqa: E402
     digest_records,
     metric_float,
     parse_benchmark_metrics,
+    print_window_generation_detail_table,
     read_expected_digest,
     validate_profile,
 )
@@ -296,6 +297,8 @@ def print_report(runs: List[FixtureRun]) -> None:
         print(run.spec.description)
         print("")
         print_stage_table(run)
+        print("")
+        print_window_generation_detail_table(run.metrics)
         print("")
         print("Amdahl estimates:")
         print("")

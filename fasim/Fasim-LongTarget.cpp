@@ -116,6 +116,12 @@ struct FasimProfileStats
         totalNanoseconds(0),
         ioNanoseconds(0),
         windowGenerationNanoseconds(0),
+        windowGenerationCutSequenceNanoseconds(0),
+        windowGenerationTransferNanoseconds(0),
+        windowGenerationReverseNanoseconds(0),
+        windowGenerationSourceTransformNanoseconds(0),
+        windowGenerationEncodeNanoseconds(0),
+        windowGenerationFlushNanoseconds(0),
         dpScoringNanoseconds(0),
         columnMaxNanoseconds(0),
         localMaxNanoseconds(0),
@@ -134,6 +140,12 @@ struct FasimProfileStats
     uint64_t totalNanoseconds;
     uint64_t ioNanoseconds;
     uint64_t windowGenerationNanoseconds;
+    uint64_t windowGenerationCutSequenceNanoseconds;
+    uint64_t windowGenerationTransferNanoseconds;
+    uint64_t windowGenerationReverseNanoseconds;
+    uint64_t windowGenerationSourceTransformNanoseconds;
+    uint64_t windowGenerationEncodeNanoseconds;
+    uint64_t windowGenerationFlushNanoseconds;
     uint64_t dpScoringNanoseconds;
     uint64_t columnMaxNanoseconds;
     uint64_t localMaxNanoseconds;
@@ -153,11 +165,26 @@ static inline void fasim_profile_add_elapsed(uint64_t &slot, uint64_t startNanos
     slot += fasim_profile_now_nanoseconds() - startNanoseconds;
 }
 
+static inline void fasim_profile_add_elapsed_to(uint64_t &slot,
+                                                uint64_t &secondSlot,
+                                                uint64_t startNanoseconds)
+{
+    const uint64_t elapsed = fasim_profile_now_nanoseconds() - startNanoseconds;
+    slot += elapsed;
+    secondSlot += elapsed;
+}
+
 static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
 {
     cerr << "benchmark.fasim_total_seconds=" << fasim_profile_seconds(stats.totalNanoseconds) << endl;
     cerr << "benchmark.fasim_io_seconds=" << fasim_profile_seconds(stats.ioNanoseconds) << endl;
     cerr << "benchmark.fasim_window_generation_seconds=" << fasim_profile_seconds(stats.windowGenerationNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_cut_sequence_seconds=" << fasim_profile_seconds(stats.windowGenerationCutSequenceNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_transfer_seconds=" << fasim_profile_seconds(stats.windowGenerationTransferNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_reverse_seconds=" << fasim_profile_seconds(stats.windowGenerationReverseNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_source_transform_seconds=" << fasim_profile_seconds(stats.windowGenerationSourceTransformNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_encode_seconds=" << fasim_profile_seconds(stats.windowGenerationEncodeNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_flush_seconds=" << fasim_profile_seconds(stats.windowGenerationFlushNanoseconds) << endl;
     cerr << "benchmark.fasim_dp_scoring_seconds=" << fasim_profile_seconds(stats.dpScoringNanoseconds) << endl;
     cerr << "benchmark.fasim_column_max_seconds=" << fasim_profile_seconds(stats.columnMaxNanoseconds) << endl;
     cerr << "benchmark.fasim_local_max_seconds=" << fasim_profile_seconds(stats.localMaxNanoseconds) << endl;
@@ -1513,10 +1540,20 @@ int main(int argc, char* const* argv)
 		                        const std::string &chrTag)
 		{
 			uint64_t enqueueStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+			const uint64_t transferStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			std::string seq2 = transferString(seq1, reverseMode, paraMode, rule);
+			if (profileEnabled)
+			{
+				fasim_profile_add_elapsed(profileStats.windowGenerationTransferNanoseconds, transferStart);
+			}
 			if (reverseSeq2)
 			{
+				const uint64_t reverseStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				reverseSeq(seq2);
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.windowGenerationReverseNanoseconds, reverseStart);
+				}
 			}
 
 			if (currentTargetLength < 0)
@@ -1530,14 +1567,24 @@ int main(int argc, char* const* argv)
 				{
 					fasim_profile_add_elapsed(profileStats.windowGenerationNanoseconds, enqueueStart);
 				}
+				const uint64_t flushStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				flush_batch();
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.windowGenerationFlushNanoseconds, flushStart);
+				}
 				enqueueStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				currentTargetLength = static_cast<int>(seq2.size());
 				encodedTargets.reserve(static_cast<size_t>(maxTasksTotal) * static_cast<size_t>(currentTargetLength));
 			}
 
 			StreamTask task;
+			const uint64_t sourceTransformStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			fasim_apply_src_transform(seq1, srcTransform, task.srcSeq);
+			if (profileEnabled)
+			{
+				fasim_profile_add_elapsed(profileStats.windowGenerationSourceTransformNanoseconds, sourceTransformStart);
+			}
 			task.seq2.swap(seq2);
 			task.chr = chrTag;
 			task.recordStartGenome = recordStartGenome;
@@ -1549,9 +1596,14 @@ int main(int argc, char* const* argv)
 			tasks.push_back(std::move(task));
 
 			const std::string &storedSeq2 = tasks.back().seq2;
+			const uint64_t encodeStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			for (int k = 0; k < currentTargetLength; ++k)
 			{
 				encodedTargets.push_back(fasim_encode_base(static_cast<unsigned char>(storedSeq2[static_cast<size_t>(k)])));
+			}
+			if (profileEnabled)
+			{
+				fasim_profile_add_elapsed(profileStats.windowGenerationEncodeNanoseconds, encodeStart);
 			}
 			if (profileEnabled)
 			{
@@ -1590,7 +1642,9 @@ int main(int argc, char* const* argv)
 			cutSequence(record.sequence, dnaSequencesVec, dnaSequencesStartPos, paraList.cutLength, paraList.overlapLength, cut_num);
 			if (profileEnabled)
 			{
-				fasim_profile_add_elapsed(profileStats.windowGenerationNanoseconds, cutStart);
+				fasim_profile_add_elapsed_to(profileStats.windowGenerationNanoseconds,
+				                             profileStats.windowGenerationCutSequenceNanoseconds,
+				                             cutStart);
 			}
 
 			for (int i = 0; i < dnaSequencesVec.size(); i++)
@@ -1646,7 +1700,12 @@ int main(int argc, char* const* argv)
 			}
 		}
 
+		const uint64_t finalFlushStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 		flush_batch();
+		if (profileEnabled)
+		{
+			fasim_profile_add_elapsed(profileStats.windowGenerationFlushNanoseconds, finalFlushStart);
+		}
 		if (outOpened)
 		{
 			if (writeFull)
