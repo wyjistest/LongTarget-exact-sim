@@ -20,6 +20,7 @@ from benchmark_fasim_profile import (  # noqa: E402
     digest_records,
     metric_float,
     parse_benchmark_metrics,
+    print_transfer_string_detail_table,
     print_window_generation_detail_table,
     read_expected_digest,
     validate_profile,
@@ -198,6 +199,8 @@ def print_report(
     print_stage_table(metrics)
     print("")
     print_window_generation_detail_table(metrics)
+    print("")
+    print_transfer_string_detail_table(metrics)
     print("")
     print(f"DP/scoring percentage: {percent(dp, total):.2f}%")
     print(f"DP+column percentage: {percent(dp + column, total):.2f}%")

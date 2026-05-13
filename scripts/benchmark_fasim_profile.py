@@ -11,6 +11,33 @@ import sys
 from typing import Dict, Iterable, List, Tuple
 
 
+TRANSFER_STRING_REQUIRED_FIELDS = [
+    "fasim_transfer_string_seconds",
+    "fasim_transfer_string_calls",
+    "fasim_transfer_string_input_bases",
+    "fasim_transfer_string_output_bases",
+    "fasim_transfer_string_rule_select_seconds",
+    "fasim_transfer_string_rule_materialize_seconds",
+    "fasim_transfer_string_convert_seconds",
+    "fasim_transfer_string_validate_seconds",
+    "fasim_transfer_string_residual_seconds",
+    "fasim_transfer_string_para_forward_calls",
+    "fasim_transfer_string_para_forward_seconds",
+    "fasim_transfer_string_para_reverse_calls",
+    "fasim_transfer_string_para_reverse_seconds",
+    "fasim_transfer_string_anti_forward_calls",
+    "fasim_transfer_string_anti_forward_seconds",
+    "fasim_transfer_string_anti_reverse_calls",
+    "fasim_transfer_string_anti_reverse_seconds",
+] + [
+    f"fasim_transfer_string_rule_{rule}_calls"
+    for rule in range(1, 19)
+] + [
+    f"fasim_transfer_string_rule_{rule}_seconds"
+    for rule in range(1, 19)
+]
+
+
 REQUIRED_PROFILE_FIELDS = [
     "fasim_total_seconds",
     "fasim_io_seconds",
@@ -33,7 +60,7 @@ REQUIRED_PROFILE_FIELDS = [
     "fasim_num_candidates",
     "fasim_num_validated_candidates",
     "fasim_num_final_hits",
-]
+] + TRANSFER_STRING_REQUIRED_FIELDS
 
 
 WINDOW_GENERATION_DETAIL_KEYS = [
@@ -43,6 +70,23 @@ WINDOW_GENERATION_DETAIL_KEYS = [
     ("source transform", "fasim_window_generation_source_transform_seconds"),
     ("encoded target build", "fasim_window_generation_encode_seconds"),
     ("flush_batch call wall", "fasim_window_generation_flush_seconds"),
+]
+
+
+TRANSFER_STRING_STEP_KEYS = [
+    ("rule select", "fasim_transfer_string_rule_select_seconds"),
+    ("rule materialize", "fasim_transfer_string_rule_materialize_seconds"),
+    ("per-base convert", "fasim_transfer_string_convert_seconds"),
+    ("validate", "fasim_transfer_string_validate_seconds"),
+    ("copy/return residual", "fasim_transfer_string_residual_seconds"),
+]
+
+
+TRANSFER_STRING_MODE_KEYS = [
+    ("para forward", "fasim_transfer_string_para_forward_calls", "fasim_transfer_string_para_forward_seconds"),
+    ("para reverse", "fasim_transfer_string_para_reverse_calls", "fasim_transfer_string_para_reverse_seconds"),
+    ("anti forward", "fasim_transfer_string_anti_forward_calls", "fasim_transfer_string_anti_forward_seconds"),
+    ("anti reverse", "fasim_transfer_string_anti_reverse_calls", "fasim_transfer_string_anti_reverse_seconds"),
 ]
 
 
@@ -168,6 +212,50 @@ def print_window_generation_detail_table(metrics: Dict[str, str]) -> None:
     )
 
 
+def print_transfer_string_detail_table(metrics: Dict[str, str]) -> None:
+    transfer_total = metric_float(metrics, "fasim_transfer_string_seconds")
+    calls = metrics.get("fasim_transfer_string_calls", "0")
+    bases = metrics.get("fasim_transfer_string_input_bases", "0")
+
+    print("transferString detail:")
+    print("")
+    print(f"calls: {calls}")
+    print(f"input bases: {bases}")
+    print("")
+    print("| Step | Seconds | Percent of transferString |")
+    print("| --- | ---: | ---: |")
+    for label, key in TRANSFER_STRING_STEP_KEYS:
+        seconds = metric_float(metrics, key)
+        percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
+        print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
+    print("")
+    print("| Mode | Calls | Seconds | Percent of transferString |")
+    print("| --- | ---: | ---: | ---: |")
+    for label, calls_key, seconds_key in TRANSFER_STRING_MODE_KEYS:
+        mode_calls = metrics.get(calls_key, "0")
+        seconds = metric_float(metrics, seconds_key)
+        percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
+        print(f"| {label} | {mode_calls} | {seconds:.6f} | {percent:.2f}% |")
+
+    rule_rows = []
+    for rule in range(1, 19):
+        calls_value = metrics.get(f"fasim_transfer_string_rule_{rule}_calls", "0")
+        seconds = metric_float(metrics, f"fasim_transfer_string_rule_{rule}_seconds")
+        try:
+            calls_int = int(calls_value)
+        except ValueError:
+            calls_int = 0
+        if calls_int > 0 or seconds > 0:
+            rule_rows.append((rule, calls_value, seconds))
+    if rule_rows:
+        print("")
+        print("| Rule | Calls | Seconds | Percent of transferString |")
+        print("| ---: | ---: | ---: | ---: |")
+        for rule, calls_value, seconds in rule_rows:
+            percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
+            print(f"| {rule} | {calls_value} | {seconds:.6f} | {percent:.2f}% |")
+
+
 def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> None:
     total = metric_float(metrics, "fasim_total_seconds")
     dp = metric_float(metrics, "fasim_dp_scoring_seconds")
@@ -197,6 +285,8 @@ def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> Non
         print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
     print("")
     print_window_generation_detail_table(metrics)
+    print("")
+    print_transfer_string_detail_table(metrics)
     print("")
     print(f"DP/scoring percentage: {dp_pct:.2f}%")
     print(f"GPU-candidate percentage (DP + column + local): {gpu_candidate_pct:.2f}%")
