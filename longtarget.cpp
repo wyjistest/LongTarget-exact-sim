@@ -2833,6 +2833,70 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
   cerr<<"benchmark.sim_region_event_bytes_d2h="<<simRegionEventBytesD2H<<endl;
   cerr<<"benchmark.sim_region_summary_bytes_d2h="<<simRegionSummaryBytesD2H<<endl;
   cerr<<"benchmark.sim_region_cpu_merge_seconds="<<simRegionCpuMergeSeconds<<endl;
+  const SimRegionCellWorkProfileStats simRegionCellWorkProfile =
+    getSimRegionCellWorkProfileStats();
+  const double simRegionCellWorkProfileGpuSeconds =
+    static_cast<double>(simRegionCellWorkProfile.gpuNanoseconds) / 1.0e9;
+  cerr<<"benchmark.sim_region_cell_work_profile_calls="
+      <<simRegionCellWorkProfile.calls<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_launches="
+      <<simRegionCellWorkProfile.launches<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_exec_cells="
+      <<simRegionCellWorkProfile.execCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_raw_cells="
+      <<simRegionCellWorkProfile.rawCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_gpu_seconds="
+      <<simRegionCellWorkProfileGpuSeconds<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_cells_per_launch="
+      <<(simRegionCellWorkProfile.launches == 0 ? 0.0 :
+         static_cast<double>(simRegionCellWorkProfile.execCells) /
+           static_cast<double>(simRegionCellWorkProfile.launches))<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_gpu_seconds_per_launch="
+      <<(simRegionCellWorkProfile.launches == 0 ? 0.0 :
+         simRegionCellWorkProfileGpuSeconds /
+           static_cast<double>(simRegionCellWorkProfile.launches))<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_gpu_seconds_per_million_cells="
+      <<(simRegionCellWorkProfile.execCells == 0 ? 0.0 :
+         simRegionCellWorkProfileGpuSeconds * 1000000.0 /
+           static_cast<double>(simRegionCellWorkProfile.execCells))<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_max_exec_cells="
+      <<simRegionCellWorkProfile.maxExecCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_max_gpu_seconds="
+      <<static_cast<double>(simRegionCellWorkProfile.maxGpuNanoseconds) / 1.0e9<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_large_threshold_cells="
+      <<simRegionCellWorkProfile.largeThresholdCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_large_calls="
+      <<simRegionCellWorkProfile.largeCalls<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_large_exec_cells="
+      <<simRegionCellWorkProfile.largeExecCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_large_raw_cells="
+      <<simRegionCellWorkProfile.largeRawCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_large_gpu_seconds="
+      <<static_cast<double>(simRegionCellWorkProfile.largeGpuNanoseconds) / 1.0e9<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_le_100k_calls="
+      <<simRegionCellWorkProfile.bucketLe100kCalls<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_le_100k_cells="
+      <<simRegionCellWorkProfile.bucketLe100kCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_le_100k_gpu_seconds="
+      <<static_cast<double>(simRegionCellWorkProfile.bucketLe100kGpuNanoseconds) / 1.0e9<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_100k_500k_calls="
+      <<simRegionCellWorkProfile.bucket100kTo500kCalls<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_100k_500k_cells="
+      <<simRegionCellWorkProfile.bucket100kTo500kCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_100k_500k_gpu_seconds="
+      <<static_cast<double>(simRegionCellWorkProfile.bucket100kTo500kGpuNanoseconds) / 1.0e9<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_500k_1m_calls="
+      <<simRegionCellWorkProfile.bucket500kTo1mCalls<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_500k_1m_cells="
+      <<simRegionCellWorkProfile.bucket500kTo1mCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_500k_1m_gpu_seconds="
+      <<static_cast<double>(simRegionCellWorkProfile.bucket500kTo1mGpuNanoseconds) / 1.0e9<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_gt_1m_calls="
+      <<simRegionCellWorkProfile.bucketGt1mCalls<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_gt_1m_cells="
+      <<simRegionCellWorkProfile.bucketGt1mCells<<endl;
+  cerr<<"benchmark.sim_region_cell_work_profile_bucket_gt_1m_gpu_seconds="
+      <<static_cast<double>(simRegionCellWorkProfile.bucketGt1mGpuNanoseconds) / 1.0e9<<endl;
   cerr<<"benchmark.sim_locate_total_cells="<<simLocateTotalCells<<endl;
   uint64_t simInitialEventsTotal = 0;
   uint64_t simInitialRunSummariesTotal = 0;
