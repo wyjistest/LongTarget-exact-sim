@@ -2666,6 +2666,22 @@ static inline void printLongTargetBenchmarkMetrics(const LongTargetExecutionMetr
 	      <<simSafeWindowLargeGeometryExactShadow.unsupportedCallCount<<endl;
 	  cerr<<"benchmark.sim_safe_window_large_geometry_exact_shadow_fallbacks="
 	      <<simSafeWindowLargeGeometryExactShadow.fallbackCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_digest_mismatch_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.digestMismatchCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_order_only_mismatch_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.orderOnlyMismatchCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_value_mismatch_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.valueMismatchCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_set_mismatch_calls="
+	      <<simSafeWindowLargeGeometryExactShadow.setMismatchCallCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_first_mismatch_call="
+	      <<simSafeWindowLargeGeometryExactShadow.firstMismatchCall<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_canonical_digest_mismatches="
+	      <<simSafeWindowLargeGeometryExactShadow.canonicalDigestMismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_ordered_digest_mismatches="
+	      <<simSafeWindowLargeGeometryExactShadow.orderedDigestMismatchCount<<endl;
+	  cerr<<"benchmark.sim_safe_window_large_geometry_unordered_digest_mismatches="
+	      <<simSafeWindowLargeGeometryExactShadow.unorderedDigestMismatchCount<<endl;
 	  uint64_t simFastWorksetBandCount = 0;
   uint64_t simFastWorksetCellCount = 0;
   uint64_t simFastSegmentCount = 0;
