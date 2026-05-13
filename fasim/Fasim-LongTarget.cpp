@@ -34,6 +34,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <chrono>
 
 #include "fastsim.h"
 using namespace std;
@@ -85,6 +86,90 @@ static inline bool fasim_verbose_enabled_runtime()
         return true;
     }
     return env[0] != '0';
+}
+
+static inline bool fasim_profile_enabled_runtime()
+{
+    const char *env = getenv("FASIM_PROFILE");
+    if (env == NULL || env[0] == '\0')
+    {
+        return false;
+    }
+    return env[0] != '0';
+}
+
+static inline uint64_t fasim_profile_now_nanoseconds()
+{
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+static inline double fasim_profile_seconds(uint64_t nanoseconds)
+{
+    return static_cast<double>(nanoseconds) / 1.0e9;
+}
+
+struct FasimProfileStats
+{
+    FasimProfileStats() :
+        totalNanoseconds(0),
+        ioNanoseconds(0),
+        windowGenerationNanoseconds(0),
+        dpScoringNanoseconds(0),
+        columnMaxNanoseconds(0),
+        localMaxNanoseconds(0),
+        nonoverlapNanoseconds(0),
+        validationNanoseconds(0),
+        outputNanoseconds(0),
+        numQueries(0),
+        numWindows(0),
+        numDpCells(0),
+        numCandidates(0),
+        numValidatedCandidates(0),
+        numFinalHits(0)
+    {
+    }
+
+    uint64_t totalNanoseconds;
+    uint64_t ioNanoseconds;
+    uint64_t windowGenerationNanoseconds;
+    uint64_t dpScoringNanoseconds;
+    uint64_t columnMaxNanoseconds;
+    uint64_t localMaxNanoseconds;
+    uint64_t nonoverlapNanoseconds;
+    uint64_t validationNanoseconds;
+    uint64_t outputNanoseconds;
+    uint64_t numQueries;
+    uint64_t numWindows;
+    uint64_t numDpCells;
+    uint64_t numCandidates;
+    uint64_t numValidatedCandidates;
+    uint64_t numFinalHits;
+};
+
+static inline void fasim_profile_add_elapsed(uint64_t &slot, uint64_t startNanoseconds)
+{
+    slot += fasim_profile_now_nanoseconds() - startNanoseconds;
+}
+
+static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
+{
+    cerr << "benchmark.fasim_total_seconds=" << fasim_profile_seconds(stats.totalNanoseconds) << endl;
+    cerr << "benchmark.fasim_io_seconds=" << fasim_profile_seconds(stats.ioNanoseconds) << endl;
+    cerr << "benchmark.fasim_window_generation_seconds=" << fasim_profile_seconds(stats.windowGenerationNanoseconds) << endl;
+    cerr << "benchmark.fasim_dp_scoring_seconds=" << fasim_profile_seconds(stats.dpScoringNanoseconds) << endl;
+    cerr << "benchmark.fasim_column_max_seconds=" << fasim_profile_seconds(stats.columnMaxNanoseconds) << endl;
+    cerr << "benchmark.fasim_local_max_seconds=" << fasim_profile_seconds(stats.localMaxNanoseconds) << endl;
+    cerr << "benchmark.fasim_nonoverlap_seconds=" << fasim_profile_seconds(stats.nonoverlapNanoseconds) << endl;
+    cerr << "benchmark.fasim_validation_seconds=" << fasim_profile_seconds(stats.validationNanoseconds) << endl;
+    cerr << "benchmark.fasim_output_seconds=" << fasim_profile_seconds(stats.outputNanoseconds) << endl;
+    cerr << "benchmark.fasim_num_queries=" << stats.numQueries << endl;
+    cerr << "benchmark.fasim_num_windows=" << stats.numWindows << endl;
+    cerr << "benchmark.fasim_num_dp_cells=" << stats.numDpCells << endl;
+    cerr << "benchmark.fasim_num_candidates=" << stats.numCandidates << endl;
+    cerr << "benchmark.fasim_num_validated_candidates=" << stats.numValidatedCandidates << endl;
+    cerr << "benchmark.fasim_num_final_hits=" << stats.numFinalHits << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -483,13 +568,22 @@ int main(int argc, char* const* argv)
 	clock_t start, end;
 	float cpu_time;
 	start = clock();
+	const bool profileEnabled = fasim_profile_enabled_runtime();
+	const uint64_t profileTotalStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+	FasimProfileStats profileStats;
     if(paraList.doFastSim==true)
     cout<<"Searching triplexes using Fasim"<<endl;
     else
     cout<<"Searching triplexes using Sim"<<endl;
     core_num = paraList.corenum;
 
+	uint64_t profileStageStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 	lncSeq = readRna(paraList.file2path, lncName);
+	if (profileEnabled)
+	{
+		fasim_profile_add_elapsed(profileStats.ioNanoseconds, profileStageStart);
+		profileStats.numQueries = lncSeq.empty() ? 0 : 1;
+	}
 	fileName = fasim_strip_fasta_extension(fasim_basename(paraList.file1path));
 	lncName.erase(remove(lncName.begin(), lncName.end(), '\r'), lncName.end());
 	lncName.erase(remove(lncName.begin(), lncName.end(), '\n'), lncName.end());
@@ -631,8 +725,13 @@ int main(int argc, char* const* argv)
 
 		auto write_task_triplexes = [&](const StreamTask &task)
 		{
+			if (profileEnabled)
+			{
+				profileStats.numCandidates += static_cast<uint64_t>(taskTriplexes.size());
+			}
 			for (size_t i = 0; i < taskTriplexes.size(); ++i)
 			{
+				const uint64_t validationStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				triplex atr = taskTriplexes[i];
 				if (atr.chr.empty())
 				{
@@ -652,12 +751,22 @@ int main(int argc, char* const* argv)
 				    atr.tri_score < paraList.minStability ||
 				    atr.nt < paraList.cLength)
 				{
+					if (profileEnabled)
+					{
+						fasim_profile_add_elapsed(profileStats.validationNanoseconds, validationStart);
+					}
 					continue;
+				}
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.validationNanoseconds, validationStart);
+					++profileStats.numValidatedCandidates;
 				}
 
 				const int motif = 0;
 				const int middle = static_cast<int>((atr.stari + atr.endi) / 2);
 				const int center = middle;
+				const uint64_t outputStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 
 				if (writeLite)
 				{
@@ -697,6 +806,11 @@ int main(int argc, char* const* argv)
 						        << motif << "\t" << middle << "\t" << center << "\t"
 						        << atr.stri_align << "\t" << atr.strj_align << "\n";
 					}
+				}
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.outputNanoseconds, outputStart);
+					++profileStats.numFinalHits;
 				}
 			}
 			taskTriplexes.clear();
@@ -1321,8 +1435,18 @@ int main(int argc, char* const* argv)
 			for (size_t t = 0; t < tasks.size(); ++t)
 			{
 				StreamTask &task = tasks[t];
+				const uint64_t taskCells =
+					static_cast<uint64_t>(lncSeq.size()) *
+					static_cast<uint64_t>(task.seq2.size());
+				uint64_t columnStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				const int minScore = static_cast<int>(static_cast<double>(calc_score_once(lncSeq, task.seq2, task.dnaStartPos, paraList.rule)) * 0.8);
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.columnMaxNanoseconds, columnStart);
+					profileStats.numDpCells += taskCells;
+				}
 				taskTriplexes.clear();
+				const uint64_t dpStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				if (paraList.doFastSim)
 				{
 					fastSIM(lncSeq,
@@ -1365,6 +1489,11 @@ int main(int argc, char* const* argv)
 					    paraList.penaltyT,
 					    paraList.penaltyC);
 				}
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.dpScoringNanoseconds, dpStart);
+					profileStats.numDpCells += taskCells;
+				}
 				write_task_triplexes(task);
 			}
 
@@ -1383,6 +1512,7 @@ int main(int argc, char* const* argv)
 		                        long recordStartGenome,
 		                        const std::string &chrTag)
 		{
+			uint64_t enqueueStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			std::string seq2 = transferString(seq1, reverseMode, paraMode, rule);
 			if (reverseSeq2)
 			{
@@ -1396,7 +1526,12 @@ int main(int argc, char* const* argv)
 			}
 			if (static_cast<int>(seq2.size()) != currentTargetLength || static_cast<int>(tasks.size()) >= maxTasksTotal)
 			{
+				if (profileEnabled)
+				{
+					fasim_profile_add_elapsed(profileStats.windowGenerationNanoseconds, enqueueStart);
+				}
 				flush_batch();
+				enqueueStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 				currentTargetLength = static_cast<int>(seq2.size());
 				encodedTargets.reserve(static_cast<size_t>(maxTasksTotal) * static_cast<size_t>(currentTargetLength));
 			}
@@ -1418,12 +1553,26 @@ int main(int argc, char* const* argv)
 			{
 				encodedTargets.push_back(fasim_encode_base(static_cast<unsigned char>(storedSeq2[static_cast<size_t>(k)])));
 			}
+			if (profileEnabled)
+			{
+				fasim_profile_add_elapsed(profileStats.windowGenerationNanoseconds, enqueueStart);
+			}
 		};
 
 		string pendingHeader;
 		FasimFastaRecord record;
-		while (fasim_read_next_fasta_record(dnaIn, pendingHeader, record))
+		while (true)
 		{
+			const uint64_t readRecordStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+			const bool haveRecord = fasim_read_next_fasta_record(dnaIn, pendingHeader, record);
+			if (profileEnabled)
+			{
+				fasim_profile_add_elapsed(profileStats.ioNanoseconds, readRecordStart);
+			}
+			if (!haveRecord)
+			{
+				break;
+			}
 			if (record.sequence.empty())
 			{
 				continue;
@@ -1437,7 +1586,12 @@ int main(int argc, char* const* argv)
 			vector<string> dnaSequencesVec;
 			vector<int> dnaSequencesStartPos;
 			int cut_num = 0;
+			const uint64_t cutStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 			cutSequence(record.sequence, dnaSequencesVec, dnaSequencesStartPos, paraList.cutLength, paraList.overlapLength, cut_num);
+			if (profileEnabled)
+			{
+				fasim_profile_add_elapsed(profileStats.windowGenerationNanoseconds, cutStart);
+			}
 
 			for (int i = 0; i < dnaSequencesVec.size(); i++)
 			{
@@ -1450,6 +1604,10 @@ int main(int argc, char* const* argv)
 				if (same_seq(seq1))
 				{
 					continue;
+				}
+				if (profileEnabled)
+				{
+					++profileStats.numWindows;
 				}
 
 				if (paraList.strand >= 0)
@@ -1509,6 +1667,11 @@ int main(int argc, char* const* argv)
 		cout << "finished normally" << endl;
 		cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
 		cout<<"Running time is "<<cpu_time<<endl;
+		if (profileEnabled)
+		{
+			profileStats.totalNanoseconds = fasim_profile_now_nanoseconds() - profileTotalStart;
+			fasim_print_profile_stats(profileStats);
+		}
 		return 0;
 	}
 
@@ -1557,6 +1720,11 @@ int main(int argc, char* const* argv)
 	cout << "finished normally" << endl;
 	cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
 	cout<<"Running time is "<<cpu_time<<endl;
+	if (profileEnabled)
+	{
+		profileStats.totalNanoseconds = fasim_profile_now_nanoseconds() - profileTotalStart;
+		fasim_print_profile_stats(profileStats);
+	}
 	return 0;
 }
 
