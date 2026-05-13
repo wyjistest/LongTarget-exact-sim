@@ -103,6 +103,8 @@ struct FasimTransferStringProfileStats
 		validateNanoseconds(0),
 		residualNanoseconds(0),
 		tableShadowNanoseconds(0),
+		tableNanoseconds(0),
+		tableLegacyValidateNanoseconds(0),
 		calls(0),
 		inputBases(0),
 		outputBases(0),
@@ -110,7 +112,12 @@ struct FasimTransferStringProfileStats
 		tableShadowComparedCalls(0),
 		tableShadowMismatches(0),
 		tableShadowFallbacks(0),
-		tableShadowInputBases(0)
+		tableShadowInputBases(0),
+		tableCalls(0),
+		tableComparedCalls(0),
+		tableMismatches(0),
+		tableFallbacks(0),
+		tableBasesConverted(0)
 	{
 		for (int i = 0; i < 4; ++i)
 		{
@@ -131,6 +138,8 @@ struct FasimTransferStringProfileStats
 	unsigned long long validateNanoseconds;
 	unsigned long long residualNanoseconds;
 	unsigned long long tableShadowNanoseconds;
+	unsigned long long tableNanoseconds;
+	unsigned long long tableLegacyValidateNanoseconds;
 	unsigned long long calls;
 	unsigned long long inputBases;
 	unsigned long long outputBases;
@@ -139,6 +148,11 @@ struct FasimTransferStringProfileStats
 	unsigned long long tableShadowMismatches;
 	unsigned long long tableShadowFallbacks;
 	unsigned long long tableShadowInputBases;
+	unsigned long long tableCalls;
+	unsigned long long tableComparedCalls;
+	unsigned long long tableMismatches;
+	unsigned long long tableFallbacks;
+	unsigned long long tableBasesConverted;
 	unsigned long long modeCalls[4];
 	unsigned long long modeNanoseconds[4];
 	unsigned long long ruleCalls[19];
@@ -266,6 +280,34 @@ static inline bool fasim_transfer_string_table_shadow_enabled_runtime()
 	return enabled;
 }
 
+static inline bool fasim_transfer_string_table_requested_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_TRANSFERSTRING_TABLE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline bool fasim_transfer_string_table_validate_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_TRANSFERSTRING_TABLE_VALIDATE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 static inline void fasim_transfer_build_lookup_table(const char *ruleSeq, char table[256])
 {
 	for (int i = 0; i < 256; ++i)
@@ -301,6 +343,25 @@ string transferStringTableDriven(string seq1, int strand, int Para, int rule)
 		exit(1);
 	}
 	return out;
+}
+
+string transferStringTableOptIn(string seq1, int strand, int Para, int rule)
+{
+	if (!fasim_transfer_string_table_requested_runtime())
+	{
+		return transferString(seq1, strand, Para, rule);
+	}
+
+	string tableSeq = transferStringTableDriven(seq1, strand, Para, rule);
+	if (fasim_transfer_string_table_validate_enabled_runtime())
+	{
+		string legacySeq = transferString(seq1, strand, Para, rule);
+		if (tableSeq != legacySeq)
+		{
+			return legacySeq;
+		}
+	}
+	return tableSeq;
 }
 
 string transferStringProfiled(string seq1,
