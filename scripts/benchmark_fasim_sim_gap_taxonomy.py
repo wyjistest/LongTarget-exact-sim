@@ -109,6 +109,14 @@ class RecoveryBox:
 
 
 @dataclasses.dataclass(frozen=True)
+class SequenceEntry:
+    chr_name: str
+    start: int
+    end: int
+    sequence: str
+
+
+@dataclasses.dataclass(frozen=True)
 class RecoveryShadow:
     workload_label: str
     boxes: List[RecoveryBox]
@@ -169,6 +177,35 @@ class RiskDetectorResult:
 
 
 @dataclasses.dataclass(frozen=True)
+class ExecutorShadow:
+    workload_label: str
+    boxes: List[RecoveryBox]
+    seconds: float
+    full_search_cells: int
+    sim_only_records: int
+    recovered_records: int
+    unrecovered_records: int
+    candidate_records: int
+    output_mutations: int
+    executor_failures: int
+    unsupported_boxes: int
+    recovered_by_category: Counter
+    sim_only_by_category: Counter
+
+    @property
+    def cells(self) -> int:
+        return sum(box_cells(box) for box in self.boxes)
+
+    @property
+    def cell_fraction(self) -> float:
+        return (float(self.cells) / float(self.full_search_cells) * 100.0) if self.full_search_cells else 0.0
+
+    @property
+    def recall(self) -> float:
+        return pct(self.recovered_records, self.sim_only_records)
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkloadGap:
     spec: FixtureSpec
     sim: ModeRun
@@ -182,6 +219,7 @@ class WorkloadGap:
     recovery: RecoveryEstimate
     recovery_shadow: Optional[RecoveryShadow] = None
     risk_detector: Optional[RiskDetectorResult] = None
+    executor_shadow: Optional[ExecutorShadow] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -247,6 +285,83 @@ def parse_lite_record(raw: str) -> TriplexRecord:
 
 def parse_lite_records(raw_records: Iterable[str]) -> List[TriplexRecord]:
     return [parse_lite_record(raw) for raw in raw_records]
+
+
+def read_fasta_entries(path: Path) -> List[Tuple[str, str]]:
+    entries: List[Tuple[str, str]] = []
+    header: Optional[str] = None
+    chunks: List[str] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith(">"):
+            if header is not None:
+                entries.append((header, "".join(chunks)))
+            header = line[1:]
+            chunks = []
+            continue
+        chunks.append(line)
+    if header is not None:
+        entries.append((header, "".join(chunks)))
+    if not entries:
+        raise RuntimeError(f"empty FASTA: {path}")
+    return entries
+
+
+def parse_genomic_header(header: str) -> Tuple[str, int, int]:
+    parts = header.split("|")
+    if len(parts) < 3:
+        raise RuntimeError(f"unsupported genomic FASTA header: {header}")
+    start_text, sep, end_text = parts[2].partition("-")
+    if not sep:
+        raise RuntimeError(f"unsupported genomic FASTA interval: {header}")
+    return (parts[1], int(start_text), int(end_text))
+
+
+def fixture_dna_entries(spec: FixtureSpec) -> List[SequenceEntry]:
+    if spec.label == "tiny" and spec.dna_entries == 1 and spec.dna_repeat == 1:
+        entries = read_fasta_entries(ROOT / "testDNA.fa")
+        sequence_entries: List[SequenceEntry] = []
+        for header, sequence in entries:
+            chr_name, start, end = parse_genomic_header(header)
+            sequence_entries.append(SequenceEntry(chr_name=chr_name, start=start, end=end, sequence=sequence))
+        return sequence_entries
+
+    base_sequence = read_fasta_sequence(ROOT / "testDNA.fa")
+    tiled = base_sequence * spec.dna_repeat
+    entries: List[SequenceEntry] = []
+    for index in range(spec.dna_entries):
+        start = index * len(tiled) + 1
+        end = start + len(tiled) - 1
+        entries.append(SequenceEntry(chr_name="chr11", start=start, end=end, sequence=tiled))
+    return entries
+
+
+def write_fasta(path: Path, header: str, sequence: str) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(f">{header}\n")
+        for index in range(0, len(sequence), 80):
+            handle.write(sequence[index : index + 80])
+            handle.write("\n")
+
+
+def canonical_lite_records_or_empty(output_dir: Path) -> List[str]:
+    records: List[str] = []
+    paths = sorted(output_dir.glob("*-TFOsorted.lite"))
+    if not paths:
+        return records
+    for path in paths:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line_no, line in enumerate(handle):
+                line = line.rstrip("\n").rstrip("\r")
+                if not line:
+                    continue
+                if line_no == 0 and line.startswith("Chr\tStartInGenome\t"):
+                    continue
+                records.append(line)
+    records.sort()
+    return records
 
 
 def prepare_inputs(spec: FixtureSpec, work_dir: Path) -> Tuple[str, str]:
@@ -504,6 +619,128 @@ def record_in_any_box(record: TriplexRecord, boxes_by_family: Dict[Tuple[str, st
     )
 
 
+def record_in_box(record: TriplexRecord, box: RecoveryBox) -> bool:
+    return (
+        record.family == box.family
+        and contains(box.genome_interval, record.genome_interval)
+        and contains(box.query_interval, record.query_interval)
+    )
+
+
+def containing_dna_entry(box: RecoveryBox, entries: Sequence[SequenceEntry]) -> Optional[Tuple[SequenceEntry, Tuple[int, int]]]:
+    overlapping = [
+        entry
+        for entry in entries
+        if entry.chr_name == box.family[0]
+        and overlaps((entry.start, entry.end), box.genome_interval)
+    ]
+    if len(overlapping) != 1:
+        return None
+    entry = overlapping[0]
+    clipped = (max(box.genome_interval[0], entry.start), min(box.genome_interval[1], entry.end))
+    if clipped[0] > clipped[1]:
+        return None
+    return (entry, clipped)
+
+
+def translate_local_record(
+    record: TriplexRecord,
+    *,
+    dna_entry_start: int,
+    dna_interval_start: int,
+    query_interval_start: int,
+) -> TriplexRecord:
+    fields = record.raw.split("\t")
+    dna_offset = dna_interval_start - dna_entry_start
+    query_offset = query_interval_start - 1
+    fields[5] = str(parse_int(fields[5], "QueryStart", record.raw) + query_offset)
+    fields[6] = str(parse_int(fields[6], "QueryEnd", record.raw) + query_offset)
+    fields[7] = str(parse_int(fields[7], "StartInSeq", record.raw) + dna_offset)
+    fields[8] = str(parse_int(fields[8], "EndInSeq", record.raw) + dna_offset)
+    return parse_lite_record("\t".join(fields))
+
+
+def run_executor_box(
+    *,
+    bin_path: Path,
+    box: RecoveryBox,
+    box_index: int,
+    work_dir: Path,
+    dna_entries: Sequence[SequenceEntry],
+    query_sequence: str,
+) -> Tuple[List[TriplexRecord], bool, bool]:
+    dna_match = containing_dna_entry(box, dna_entries)
+    if dna_match is None:
+        return ([], True, False)
+    dna_entry, dna_interval = dna_match
+    query_interval = (
+        max(1, box.query_interval[0]),
+        min(len(query_sequence), box.query_interval[1]),
+    )
+    if query_interval[0] > query_interval[1]:
+        return ([], True, False)
+
+    box_dir = work_dir / f"box_{box_index:04d}"
+    if box_dir.exists():
+        shutil.rmtree(box_dir)
+    inputs_dir = box_dir / "inputs"
+    output_dir = box_dir / "out"
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    dna_start = dna_interval[0] - dna_entry.start
+    dna_end = dna_interval[1] - dna_entry.start + 1
+    query_start = query_interval[0] - 1
+    query_end = query_interval[1]
+    write_fasta(
+        inputs_dir / "boxDNA.fa",
+        f"hg19|{dna_entry.chr_name}|{dna_interval[0]}-{dna_interval[1]}",
+        dna_entry.sequence[dna_start:dna_end],
+    )
+    write_fasta(inputs_dir / "boxRNA.fa", "H19", query_sequence[query_start:query_end])
+
+    env = os.environ.copy()
+    env["FASIM_VERBOSE"] = "0"
+    env["FASIM_OUTPUT_MODE"] = "lite"
+    env["FASIM_EXTEND_THREADS"] = "1"
+    proc = subprocess.run(
+        [
+            str(bin_path),
+            "-f1",
+            "boxDNA.fa",
+            "-f2",
+            "boxRNA.fa",
+            "-r",
+            "1",
+            "-O",
+            str(output_dir),
+            "-F",
+        ],
+        cwd=str(inputs_dir),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    (box_dir / "stdout.log").write_text(proc.stdout, encoding="utf-8")
+    (box_dir / "stderr.log").write_text(proc.stderr, encoding="utf-8")
+    if proc.returncode != 0:
+        return ([], False, True)
+
+    translated: List[TriplexRecord] = []
+    for record in parse_lite_records(canonical_lite_records_or_empty(output_dir)):
+        translated_record = translate_local_record(
+            record,
+            dna_entry_start=dna_entry.start,
+            dna_interval_start=dna_interval[0],
+            query_interval_start=query_interval[0],
+        )
+        if record_in_box(translated_record, box):
+            translated.append(translated_record)
+    return (translated, False, False)
+
+
 def build_local_recovery_shadow(
     *,
     spec: FixtureSpec,
@@ -629,8 +866,72 @@ def build_fasim_visible_risk_detector(
     )
 
 
+def build_bounded_local_sim_executor_shadow(
+    *,
+    spec: FixtureSpec,
+    bin_path: Path,
+    boxes: Sequence[RecoveryBox],
+    sim_only: Sequence[GapRecord],
+    work_dir: Path,
+) -> ExecutorShadow:
+    start = time.perf_counter()
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    dna_entries = fixture_dna_entries(spec)
+    query_sequence = read_fasta_sequence(ROOT / "H19.fa")
+    recovered_raw: Set[str] = set()
+    candidate_raw: Set[str] = set()
+    executor_failures = 0
+    unsupported_boxes = 0
+
+    for index, box in enumerate(boxes, start=1):
+        records, unsupported, failed = run_executor_box(
+            bin_path=bin_path,
+            box=box,
+            box_index=index,
+            work_dir=work_dir,
+            dna_entries=dna_entries,
+            query_sequence=query_sequence,
+        )
+        if unsupported:
+            unsupported_boxes += 1
+            continue
+        if failed:
+            executor_failures += 1
+            continue
+        for record in records:
+            candidate_raw.add(record.raw)
+
+    recovered_by_category: Counter = Counter()
+    sim_only_by_category: Counter = Counter(gap.primary for gap in sim_only)
+    for gap in sim_only:
+        if gap.record.raw in candidate_raw:
+            recovered_raw.add(gap.record.raw)
+            recovered_by_category.update([gap.primary])
+
+    seconds = time.perf_counter() - start
+    return ExecutorShadow(
+        workload_label=spec.label,
+        boxes=list(boxes),
+        seconds=seconds,
+        full_search_cells=fixture_full_search_cells(spec),
+        sim_only_records=len(sim_only),
+        recovered_records=len(recovered_raw),
+        unrecovered_records=len(sim_only) - len(recovered_raw),
+        candidate_records=len(candidate_raw),
+        output_mutations=0,
+        executor_failures=executor_failures,
+        unsupported_boxes=unsupported_boxes,
+        recovered_by_category=recovered_by_category,
+        sim_only_by_category=sim_only_by_category,
+    )
+
+
 def analyze_gap(
     *,
+    bin_path: Path,
     spec: FixtureSpec,
     sim: ModeRun,
     fasim: ModeRun,
@@ -642,6 +943,8 @@ def analyze_gap(
     recovery_shadow_margin_bp: int,
     risk_detector_enabled: bool,
     risk_detector_margin_bp: int,
+    executor_shadow_enabled: bool,
+    executor_shadow_work_dir: Path,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
     fasim_raw = {record.raw for record in fasim.records}
@@ -669,6 +972,19 @@ def analyze_gap(
     for gap in sim_only:
         flag_counts.update(gap.flags)
 
+    detector = (
+        build_fasim_visible_risk_detector(
+            spec=spec,
+            sim_records=sim.records,
+            fasim_records=fasim.records,
+            sim_only=sim_only,
+            merge_gap_bp=merge_gap_bp,
+            margin_bp=risk_detector_margin_bp,
+        )
+        if risk_detector_enabled or executor_shadow_enabled
+        else None
+    )
+
     return WorkloadGap(
         spec=spec,
         sim=sim,
@@ -692,16 +1008,16 @@ def analyze_gap(
             if recovery_shadow_enabled
             else None
         ),
-        risk_detector=(
-            build_fasim_visible_risk_detector(
+        risk_detector=(detector if risk_detector_enabled else None),
+        executor_shadow=(
+            build_bounded_local_sim_executor_shadow(
                 spec=spec,
-                sim_records=sim.records,
-                fasim_records=fasim.records,
+                bin_path=bin_path,
+                boxes=detector.boxes if detector is not None else [],
                 sim_only=sim_only,
-                merge_gap_bp=merge_gap_bp,
-                margin_bp=risk_detector_margin_bp,
+                work_dir=executor_shadow_work_dir,
             )
-            if risk_detector_enabled
+            if executor_shadow_enabled
             else None
         ),
     )
@@ -1527,6 +1843,256 @@ def render_risk_detector_report(
     return report
 
 
+def render_executor_shadow_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    profile_set: str,
+) -> str:
+    shadows = [gap.executor_shadow for gap in gaps if gap.executor_shadow is not None]
+    if len(shadows) != len(gaps):
+        raise RuntimeError("executor shadow report requested without executor shadow data")
+
+    lines: List[str] = []
+    lines.append("# Fasim Local SIM Recovery Executor Shadow")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-sim-recovery-risk-detector")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This report runs a bounded local SIM executor inside boxes selected by "
+        "the Fasim-visible risk detector. Box selection uses Fasim output "
+        "records only. The executor result is diagnostic-only and is compared "
+        "against SIM-only records after execution."
+    )
+    lines.append("")
+    lines.append(
+        "The shadow does not add recovered records to Fasim output and does not "
+        "change scoring, threshold, non-overlap, output, GPU, or filter behavior. "
+        "The representative fixtures remain deterministic synthetic fixtures, "
+        "not a production accuracy benchmark."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["box_source", "Fasim-visible risk detector boxes"],
+            ["executor", "per-box legacy -F SIM on cropped DNA/RNA"],
+            ["output_mutations_expected", "0"],
+        ],
+    )
+    lines.append("")
+
+    rows: List[List[str]] = []
+    total_boxes = 0
+    total_cells = 0
+    total_full_search_cells = 0
+    total_seconds = 0.0
+    total_sim_only = 0
+    total_recovered = 0
+    total_unrecovered = 0
+    total_candidates = 0
+    total_output_mutations = 0
+    total_executor_failures = 0
+    total_unsupported_boxes = 0
+    aggregate_sim_only_by_category: Counter = Counter()
+    aggregate_recovered_by_category: Counter = Counter()
+
+    for shadow in shadows:
+        total_boxes += len(shadow.boxes)
+        total_cells += shadow.cells
+        total_full_search_cells += shadow.full_search_cells
+        total_seconds += shadow.seconds
+        total_sim_only += shadow.sim_only_records
+        total_recovered += shadow.recovered_records
+        total_unrecovered += shadow.unrecovered_records
+        total_candidates += shadow.candidate_records
+        total_output_mutations += shadow.output_mutations
+        total_executor_failures += shadow.executor_failures
+        total_unsupported_boxes += shadow.unsupported_boxes
+        aggregate_sim_only_by_category.update(shadow.sim_only_by_category)
+        aggregate_recovered_by_category.update(shadow.recovered_by_category)
+        rows.append(
+            [
+                shadow.workload_label,
+                str(len(shadow.boxes)),
+                str(shadow.cells),
+                str(shadow.full_search_cells),
+                fmt_pct(shadow.cell_fraction),
+                f"{shadow.seconds:.6f}",
+                str(shadow.sim_only_records),
+                str(shadow.recovered_records),
+                str(shadow.unrecovered_records),
+                fmt_pct(shadow.recall),
+                str(shadow.candidate_records),
+                str(shadow.executor_failures),
+                str(shadow.unsupported_boxes),
+                str(shadow.output_mutations),
+            ]
+        )
+
+    lines.append("## Workload Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "Boxes",
+            "Cells",
+            "Full-search cells",
+            "Cell fraction",
+            "Executor seconds",
+            "SIM-only",
+            "Recovered",
+            "Unrecovered",
+            "Recall",
+            "Candidate records",
+            "Executor failures",
+            "Unsupported boxes",
+            "Output mutations",
+        ],
+        rows,
+    )
+    lines.append("")
+
+    lines.append("## Category Summary")
+    lines.append("")
+    append_table(
+        lines,
+        ["Category", "SIM-only", "Recovered", "Unrecovered", "Recall"],
+        [
+            [
+                category,
+                str(aggregate_sim_only_by_category.get(category, 0)),
+                str(aggregate_recovered_by_category.get(category, 0)),
+                str(
+                    aggregate_sim_only_by_category.get(category, 0)
+                    - aggregate_recovered_by_category.get(category, 0)
+                ),
+                fmt_pct(
+                    pct(
+                        aggregate_recovered_by_category.get(category, 0),
+                        aggregate_sim_only_by_category.get(category, 0),
+                    )
+                ),
+            ]
+            for category in GAP_CATEGORIES
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_executor_shadow_enabled", "1"],
+            ["fasim_sim_recovery_executor_shadow_boxes", str(total_boxes)],
+            ["fasim_sim_recovery_executor_shadow_cells", str(total_cells)],
+            ["fasim_sim_recovery_executor_shadow_full_search_cells", str(total_full_search_cells)],
+            ["fasim_sim_recovery_executor_shadow_cell_fraction", fmt_pct(pct(total_cells, total_full_search_cells))],
+            ["fasim_sim_recovery_executor_shadow_seconds", f"{total_seconds:.6f}"],
+            ["fasim_sim_recovery_executor_shadow_sim_only_records", str(total_sim_only)],
+            ["fasim_sim_recovery_executor_shadow_recovered_records", str(total_recovered)],
+            ["fasim_sim_recovery_executor_shadow_unrecovered_records", str(total_unrecovered)],
+            ["fasim_sim_recovery_executor_shadow_recall", fmt_pct(pct(total_recovered, total_sim_only))],
+            ["fasim_sim_recovery_executor_shadow_candidate_records", str(total_candidates)],
+            ["fasim_sim_recovery_executor_shadow_output_mutations", str(total_output_mutations)],
+            ["fasim_sim_recovery_executor_shadow_executor_failures", str(total_executor_failures)],
+            ["fasim_sim_recovery_executor_shadow_unsupported_boxes", str(total_unsupported_boxes)],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Decision")
+    lines.append("")
+    recall = pct(total_recovered, total_sim_only)
+    cell_fraction = pct(total_cells, total_full_search_cells)
+    if total_output_mutations != 0:
+        decision = "Stop: executor shadow observed output mutations, which violates diagnostic-only scope."
+    elif total_executor_failures or total_unsupported_boxes:
+        decision = "Executor shadow has failures or unsupported boxes; repair executor plumbing before real recovery."
+    elif recall >= 90.0 and cell_fraction <= 5.0:
+        decision = (
+            "The bounded executor recovers most SIM-only records within a small "
+            "cell fraction. A real local SIM recovery opt-in with validation is a "
+            "plausible next PR."
+        )
+    elif recall >= 60.0 and cell_fraction <= 5.0:
+        decision = "The executor has useful recall but needs stronger local recovery before a real opt-in."
+    elif cell_fraction > 5.0:
+        decision = "Executor boxes are too broad; tune risk detector boxes before real recovery."
+    else:
+        decision = "Executor recall is too low; improve bounded local SIM recovery before real recovery."
+    lines.append(decision)
+    lines.append("")
+    lines.append("Forbidden-scope check:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("Fasim output change: no")
+    lines.append("Recovered records added to output: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("SIM-only coordinates used for selection: no")
+    lines.append("```")
+    lines.append("")
+
+    for shadow in shadows:
+        prefix = f"benchmark.fasim_sim_recovery_executor_shadow.{shadow.workload_label}"
+        print(f"{prefix}.enabled=1")
+        print(f"{prefix}.boxes={len(shadow.boxes)}")
+        print(f"{prefix}.cells={shadow.cells}")
+        print(f"{prefix}.full_search_cells={shadow.full_search_cells}")
+        print(f"{prefix}.cell_fraction={shadow.cell_fraction:.6f}")
+        print(f"{prefix}.seconds={shadow.seconds:.6f}")
+        print(f"{prefix}.sim_only_records={shadow.sim_only_records}")
+        print(f"{prefix}.recovered_records={shadow.recovered_records}")
+        print(f"{prefix}.unrecovered_records={shadow.unrecovered_records}")
+        print(f"{prefix}.recall={shadow.recall:.6f}")
+        print(f"{prefix}.candidate_records={shadow.candidate_records}")
+        print(f"{prefix}.output_mutations={shadow.output_mutations}")
+        print(f"{prefix}.executor_failures={shadow.executor_failures}")
+        print(f"{prefix}.unsupported_boxes={shadow.unsupported_boxes}")
+        for category in GAP_CATEGORIES:
+            print(f"{prefix}.{category}_recovered={shadow.recovered_by_category.get(category, 0)}")
+
+    print("benchmark.fasim_sim_recovery_executor_shadow.total.enabled=1")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.boxes={total_boxes}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.cells={total_cells}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.full_search_cells={total_full_search_cells}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.cell_fraction={pct(total_cells, total_full_search_cells):.6f}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.seconds={total_seconds:.6f}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.sim_only_records={total_sim_only}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.recovered_records={total_recovered}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.unrecovered_records={total_unrecovered}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.recall={pct(total_recovered, total_sim_only):.6f}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.candidate_records={total_candidates}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.output_mutations={total_output_mutations}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.executor_failures={total_executor_failures}")
+    print(f"benchmark.fasim_sim_recovery_executor_shadow.total.unsupported_boxes={total_unsupported_boxes}")
+    for category in GAP_CATEGORIES:
+        print(
+            f"benchmark.fasim_sim_recovery_executor_shadow.total.{category}_recovered="
+            f"{aggregate_recovered_by_category.get(category, 0)}"
+        )
+    print(
+        "benchmark.fasim_sim_recovery_executor_shadow.total.internal_peak_recovered="
+        f"{aggregate_recovered_by_category.get('long_hit_internal_peak', 0)}"
+    )
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -1551,6 +2117,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-detector", action="store_true")
     parser.add_argument("--risk-detector-output", default=str(ROOT / "docs" / "fasim_sim_recovery_risk_detector.md"))
     parser.add_argument("--risk-detector-margin-bp", type=int, default=32)
+    parser.add_argument("--executor-shadow", action="store_true")
+    parser.add_argument("--executor-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_executor_shadow.md"))
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -1569,6 +2137,7 @@ def main() -> int:
 
         recovery_shadow_enabled = args.recovery_shadow or os.environ.get("FASIM_SIM_RECOVERY_SHADOW") == "1"
         risk_detector_enabled = args.risk_detector or os.environ.get("FASIM_SIM_RECOVERY_RISK_DETECTOR") == "1"
+        executor_shadow_enabled = args.executor_shadow or os.environ.get("FASIM_SIM_RECOVERY_EXECUTOR_SHADOW") == "1"
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
         for spec in fixtures_for(args.profile_set):
@@ -1588,6 +2157,7 @@ def main() -> int:
             )
             gaps.append(
                 analyze_gap(
+                    bin_path=bin_path,
                     spec=spec,
                     sim=sim,
                     fasim=fasim,
@@ -1599,6 +2169,8 @@ def main() -> int:
                     recovery_shadow_margin_bp=args.recovery_shadow_margin_bp,
                     risk_detector_enabled=risk_detector_enabled,
                     risk_detector_margin_bp=args.risk_detector_margin_bp,
+                    executor_shadow_enabled=executor_shadow_enabled,
+                    executor_shadow_work_dir=work_dir_base / spec.label / "executor_shadow",
                 )
             )
 
@@ -1640,6 +2212,14 @@ def main() -> int:
                     profile_set=args.profile_set,
                     margin_bp=args.risk_detector_margin_bp,
                     merge_gap_bp=args.merge_gap_bp,
+                )
+            )
+        if executor_shadow_enabled:
+            print(
+                render_executor_shadow_report(
+                    gaps=gaps,
+                    output_path=Path(args.executor_shadow_output),
+                    profile_set=args.profile_set,
                 )
             )
         return 0
