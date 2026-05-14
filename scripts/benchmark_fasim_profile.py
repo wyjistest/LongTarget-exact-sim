@@ -110,6 +110,19 @@ GPU_DP_COLUMN_REQUIRED_FIELDS = [
     "fasim_gpu_dp_column_full_debug_scoreinfo_field_mismatches",
     "fasim_gpu_dp_column_full_debug_column_mismatches",
     "fasim_gpu_dp_column_full_debug_column_score_delta_max",
+    "fasim_gpu_dp_column_post_topk_pack_shadow_enabled",
+    "fasim_gpu_dp_column_post_topk_cpu_records",
+    "fasim_gpu_dp_column_post_topk_gpu_pre_records",
+    "fasim_gpu_dp_column_post_topk_gpu_post_records",
+    "fasim_gpu_dp_column_post_topk_cpu_pack_mismatches",
+    "fasim_gpu_dp_column_post_topk_gpu_pack_mismatches",
+    "fasim_gpu_dp_column_post_topk_missing_records",
+    "fasim_gpu_dp_column_post_topk_extra_records",
+    "fasim_gpu_dp_column_post_topk_rank_mismatches",
+    "fasim_gpu_dp_column_post_topk_field_mismatch_mask",
+    "fasim_gpu_dp_column_post_topk_count_mismatches",
+    "fasim_gpu_dp_column_post_topk_position_mismatches",
+    "fasim_gpu_dp_column_post_topk_score_mismatches",
 ]
 
 
