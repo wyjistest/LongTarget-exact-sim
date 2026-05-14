@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 
@@ -33,6 +34,15 @@ from benchmark_fasim_representative_profile import (  # noqa: E402
 
 
 SMALL_MEDIUM_FIXTURES = REPRESENTATIVE_FIXTURES[:2]
+GAP_CATEGORIES = [
+    "long_hit_internal_peak",
+    "nested_alignment",
+    "nonoverlap_conflict",
+    "overlap_chain",
+    "tie_near_tie",
+    "threshold_near",
+    "unknown",
+]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -91,6 +101,45 @@ class RecoveryEstimate:
 
 
 @dataclasses.dataclass(frozen=True)
+class RecoveryBox:
+    family: Tuple[str, str, str]
+    genome_interval: Tuple[int, int]
+    query_interval: Tuple[int, int]
+    categories: frozenset[str]
+
+
+@dataclasses.dataclass(frozen=True)
+class RecoveryShadow:
+    workload_label: str
+    boxes: List[RecoveryBox]
+    seconds: float
+    full_search_cells: int
+    sim_only_records: int
+    recovered_records: int
+    unrecovered_records: int
+    candidate_records: int
+    output_mutations: int
+    recovered_by_category: Counter
+    sim_only_by_category: Counter
+
+    @property
+    def windows(self) -> int:
+        return len({box.family for box in self.boxes})
+
+    @property
+    def cells(self) -> int:
+        return sum(box_cells(box) for box in self.boxes)
+
+    @property
+    def cell_fraction(self) -> float:
+        return (float(self.cells) / float(self.full_search_cells) * 100.0) if self.full_search_cells else 0.0
+
+    @property
+    def recall(self) -> float:
+        return pct(self.recovered_records, self.sim_only_records)
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkloadGap:
     spec: FixtureSpec
     sim: ModeRun
@@ -102,6 +151,7 @@ class WorkloadGap:
     category_counts: Counter
     flag_counts: Counter
     recovery: RecoveryEstimate
+    recovery_shadow: Optional[RecoveryShadow] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -112,12 +162,20 @@ def interval_length(interval: Tuple[int, int]) -> int:
     return max(0, interval[1] - interval[0] + 1)
 
 
+def expand_interval(interval: Tuple[int, int], margin: int) -> Tuple[int, int]:
+    return (max(1, interval[0] - margin), interval[1] + margin)
+
+
 def overlaps(a: Tuple[int, int], b: Tuple[int, int]) -> bool:
     return max(a[0], b[0]) <= min(a[1], b[1])
 
 
 def contains(outer: Tuple[int, int], inner: Tuple[int, int]) -> bool:
     return outer[0] <= inner[0] and inner[1] <= outer[1]
+
+
+def box_cells(box: RecoveryBox) -> int:
+    return interval_length(box.genome_interval) * interval_length(box.query_interval)
 
 
 def parse_int(value: str, field: str, raw: str) -> int:
@@ -178,6 +236,12 @@ def prepare_inputs(spec: FixtureSpec, work_dir: Path) -> Tuple[str, str]:
         )
     shutil.copyfile(ROOT / "H19.fa", inputs_dir / "H19.fa")
     return dna_filename, "H19.fa"
+
+
+def fixture_full_search_cells(spec: FixtureSpec) -> int:
+    dna_sequence = read_fasta_sequence(ROOT / "testDNA.fa")
+    rna_sequence = read_fasta_sequence(ROOT / "H19.fa")
+    return len(dna_sequence) * spec.dna_repeat * spec.dna_entries * len(rna_sequence)
 
 
 def run_mode(
@@ -353,6 +417,127 @@ def estimate_recovery(sim_only: Sequence[GapRecord], *, merge_gap_bp: int) -> Re
     )
 
 
+def merge_recovery_boxes(boxes: Sequence[RecoveryBox], *, merge_gap_bp: int) -> List[RecoveryBox]:
+    grouped: Dict[Tuple[str, str, str], List[RecoveryBox]] = defaultdict(list)
+    for box in boxes:
+        grouped[box.family].append(box)
+
+    merged: List[RecoveryBox] = []
+    for family, family_boxes in grouped.items():
+        ordered = sorted(family_boxes, key=lambda item: (item.genome_interval[0], item.genome_interval[1]))
+        current_genome: Optional[List[int]] = None
+        current_query: Optional[List[int]] = None
+        current_categories: Set[str] = set()
+        for box in ordered:
+            genome = box.genome_interval
+            query = box.query_interval
+            if current_genome is None or current_query is None:
+                current_genome = [genome[0], genome[1]]
+                current_query = [query[0], query[1]]
+                current_categories = set(box.categories)
+                continue
+            if genome[0] <= current_genome[1] + merge_gap_bp:
+                current_genome[1] = max(current_genome[1], genome[1])
+                current_query[0] = min(current_query[0], query[0])
+                current_query[1] = max(current_query[1], query[1])
+                current_categories.update(box.categories)
+                continue
+            merged.append(
+                RecoveryBox(
+                    family=family,
+                    genome_interval=tuple(current_genome),
+                    query_interval=tuple(current_query),
+                    categories=frozenset(current_categories),
+                )
+            )
+            current_genome = [genome[0], genome[1]]
+            current_query = [query[0], query[1]]
+            current_categories = set(box.categories)
+        if current_genome is not None and current_query is not None:
+            merged.append(
+                RecoveryBox(
+                    family=family,
+                    genome_interval=tuple(current_genome),
+                    query_interval=tuple(current_query),
+                    categories=frozenset(current_categories),
+                )
+            )
+    return merged
+
+
+def record_in_any_box(record: TriplexRecord, boxes_by_family: Dict[Tuple[str, str, str], List[RecoveryBox]]) -> bool:
+    genome = record.genome_interval
+    query = record.query_interval
+    return any(
+        contains(box.genome_interval, genome) and contains(box.query_interval, query)
+        for box in boxes_by_family.get(record.family, [])
+    )
+
+
+def build_local_recovery_shadow(
+    *,
+    spec: FixtureSpec,
+    sim_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    sim_only: Sequence[GapRecord],
+    merge_gap_bp: int,
+    margin_bp: int,
+) -> RecoveryShadow:
+    start = time.perf_counter()
+    fasim_by_family = index_by_family(fasim_records)
+    raw_boxes: List[RecoveryBox] = []
+    seen: Set[Tuple[Tuple[str, str, str], Tuple[int, int], Tuple[int, int], str]] = set()
+
+    for gap in sim_only:
+        record = gap.record
+        for candidate in fasim_by_family.get(record.family, []):
+            if not overlaps(record.genome_interval, candidate.genome_interval):
+                continue
+            genome = expand_interval(candidate.genome_interval, margin_bp)
+            query = expand_interval(candidate.query_interval, margin_bp)
+            key = (record.family, genome, query, gap.primary)
+            if key in seen:
+                continue
+            seen.add(key)
+            raw_boxes.append(
+                RecoveryBox(
+                    family=record.family,
+                    genome_interval=genome,
+                    query_interval=query,
+                    categories=frozenset([gap.primary]),
+                )
+            )
+
+    boxes = merge_recovery_boxes(raw_boxes, merge_gap_bp=merge_gap_bp)
+    boxes_by_family: Dict[Tuple[str, str, str], List[RecoveryBox]] = defaultdict(list)
+    for box in boxes:
+        boxes_by_family[box.family].append(box)
+
+    recovered_by_category: Counter = Counter()
+    sim_only_by_category: Counter = Counter(gap.primary for gap in sim_only)
+    recovered_records = 0
+    for gap in sim_only:
+        if record_in_any_box(gap.record, boxes_by_family):
+            recovered_records += 1
+            recovered_by_category.update([gap.primary])
+
+    candidate_records = sum(1 for record in sim_records if record_in_any_box(record, boxes_by_family))
+    seconds = time.perf_counter() - start
+    return RecoveryShadow(
+        workload_label=spec.label,
+        boxes=boxes,
+        seconds=seconds,
+        full_search_cells=fixture_full_search_cells(spec),
+        sim_only_records=len(sim_only),
+        recovered_records=recovered_records,
+        unrecovered_records=len(sim_only) - recovered_records,
+        candidate_records=candidate_records,
+        output_mutations=0,
+        recovered_by_category=recovered_by_category,
+        sim_only_by_category=sim_only_by_category,
+    )
+
+
 def analyze_gap(
     *,
     spec: FixtureSpec,
@@ -362,6 +547,8 @@ def analyze_gap(
     threshold_score_band: float,
     long_hit_nt: int,
     merge_gap_bp: int,
+    recovery_shadow_enabled: bool,
+    recovery_shadow_margin_bp: int,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
     fasim_raw = {record.raw for record in fasim.records}
@@ -400,6 +587,18 @@ def analyze_gap(
         category_counts=category_counts,
         flag_counts=flag_counts,
         recovery=estimate_recovery(sim_only, merge_gap_bp=merge_gap_bp),
+        recovery_shadow=(
+            build_local_recovery_shadow(
+                spec=spec,
+                sim_records=sim.records,
+                fasim_records=fasim.records,
+                sim_only=sim_only,
+                merge_gap_bp=merge_gap_bp,
+                margin_bp=recovery_shadow_margin_bp,
+            )
+            if recovery_shadow_enabled
+            else None
+        ),
     )
 
 
@@ -542,15 +741,7 @@ def render_report(
 
     lines.append("## Aggregate SIM-Only Taxonomy")
     lines.append("")
-    categories = [
-        "long_hit_internal_peak",
-        "nested_alignment",
-        "nonoverlap_conflict",
-        "overlap_chain",
-        "tie_near_tie",
-        "threshold_near",
-        "unknown",
-    ]
+    categories = GAP_CATEGORIES
     append_table(
         lines,
         ["Category", "SIM-only records", "Percent of SIM-only"],
@@ -712,6 +903,270 @@ def render_report(
     return report
 
 
+def render_recovery_shadow_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    profile_set: str,
+    margin_bp: int,
+    merge_gap_bp: int,
+) -> str:
+    shadows = [gap.recovery_shadow for gap in gaps if gap.recovery_shadow is not None]
+    if len(shadows) != len(gaps):
+        raise RuntimeError("recovery shadow report requested without recovery shadow data")
+
+    lines: List[str] = []
+    lines.append("# Fasim Local SIM Recovery Shadow")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-sim-gap-taxonomy")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This report is diagnostic-only. It builds local recovery boxes from "
+        "Fasim-supported SIM gaps and checks which legacy SIM-only records would "
+        "fall inside those boxes. It does not add recovered records to Fasim "
+        "output and does not change scoring, threshold, non-overlap, filter, or "
+        "GPU behavior."
+    )
+    lines.append("")
+    lines.append(
+        "The shadow uses the full legacy `-F` SIM output as an oracle to estimate "
+        "local recovery coverage. It is not a production local-SIM implementation "
+        "and should not be treated as a production accuracy claim."
+    )
+    lines.append("")
+    lines.append(
+        "Because this is an oracle feasibility shadow, the boxes are selected from "
+        "known SIM-only taxonomy records and their overlapping Fasim records. A "
+        "deployable path still needs an independent risk detector and a bounded "
+        "local SIM executor."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["box_source", "overlapping Fasim records"],
+            ["margin_bp", str(margin_bp)],
+            ["merge_gap_bp", str(merge_gap_bp)],
+            ["output_mutations_expected", "0"],
+        ],
+    )
+    lines.append("")
+
+    rows: List[List[str]] = []
+    total_boxes = 0
+    total_windows = 0
+    total_cells = 0
+    total_full_search_cells = 0
+    total_seconds = 0.0
+    total_sim_only = 0
+    total_recovered = 0
+    total_unrecovered = 0
+    total_candidates = 0
+    total_output_mutations = 0
+    aggregate_sim_only_by_category: Counter = Counter()
+    aggregate_recovered_by_category: Counter = Counter()
+    aggregate_category_boxes: Counter = Counter()
+    aggregate_category_cells: Counter = Counter()
+
+    for gap in gaps:
+        shadow = gap.recovery_shadow
+        if shadow is None:
+            continue
+        total_boxes += len(shadow.boxes)
+        total_windows += shadow.windows
+        total_cells += shadow.cells
+        total_full_search_cells += shadow.full_search_cells
+        total_seconds += shadow.seconds
+        total_sim_only += shadow.sim_only_records
+        total_recovered += shadow.recovered_records
+        total_unrecovered += shadow.unrecovered_records
+        total_candidates += shadow.candidate_records
+        total_output_mutations += shadow.output_mutations
+        aggregate_sim_only_by_category.update(shadow.sim_only_by_category)
+        aggregate_recovered_by_category.update(shadow.recovered_by_category)
+        for box in shadow.boxes:
+            for category in box.categories:
+                aggregate_category_boxes.update([category])
+                aggregate_category_cells[category] += box_cells(box)
+        rows.append(
+            [
+                shadow.workload_label,
+                str(shadow.sim_only_records),
+                str(shadow.recovered_records),
+                str(shadow.unrecovered_records),
+                fmt_pct(shadow.recall),
+                str(len(shadow.boxes)),
+                str(shadow.windows),
+                str(shadow.cells),
+                str(shadow.full_search_cells),
+                fmt_pct(shadow.cell_fraction),
+                f"{shadow.seconds:.6f}",
+                str(shadow.candidate_records),
+                str(shadow.output_mutations),
+            ]
+        )
+
+    lines.append("## Workload Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "SIM-only",
+            "Recovered",
+            "Unrecovered",
+            "Recovery recall",
+            "Boxes",
+            "Windows",
+            "Cells",
+            "Full-search cells",
+            "Cell fraction",
+            "Shadow seconds",
+            "Candidate SIM records",
+            "Output mutations",
+        ],
+        rows,
+    )
+    lines.append("")
+
+    lines.append("## Category Summary")
+    lines.append("")
+    append_table(
+        lines,
+        ["Category", "SIM-only", "Recovered", "Recall", "Boxes", "Cells", "Seconds"],
+        [
+            [
+                category,
+                str(aggregate_sim_only_by_category.get(category, 0)),
+                str(aggregate_recovered_by_category.get(category, 0)),
+                fmt_pct(
+                    pct(
+                        aggregate_recovered_by_category.get(category, 0),
+                        aggregate_sim_only_by_category.get(category, 0),
+                    )
+                ),
+                str(aggregate_category_boxes.get(category, 0)),
+                str(aggregate_category_cells.get(category, 0)),
+                f"{total_seconds:.6f}",
+            ]
+            for category in GAP_CATEGORIES
+        ],
+    )
+    lines.append("")
+    lines.append(
+        "Box and cell counts in the category table are non-exclusive because a "
+        "merged box can cover multiple gap categories."
+    )
+    lines.append("")
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_shadow_enabled", "1"],
+            ["fasim_sim_recovery_shadow_boxes", str(total_boxes)],
+            ["fasim_sim_recovery_shadow_windows", str(total_windows)],
+            ["fasim_sim_recovery_shadow_cells", str(total_cells)],
+            ["fasim_sim_recovery_shadow_full_search_cells", str(total_full_search_cells)],
+            ["fasim_sim_recovery_shadow_cell_fraction", fmt_pct(pct(total_cells, total_full_search_cells))],
+            ["fasim_sim_recovery_shadow_seconds", f"{total_seconds:.6f}"],
+            ["fasim_sim_recovery_shadow_sim_only_records", str(total_sim_only)],
+            ["fasim_sim_recovery_shadow_recovered_records", str(total_recovered)],
+            ["fasim_sim_recovery_shadow_unrecovered_records", str(total_unrecovered)],
+            ["fasim_sim_recovery_shadow_recovery_recall", fmt_pct(pct(total_recovered, total_sim_only))],
+            ["fasim_sim_recovery_shadow_candidate_records", str(total_candidates)],
+            ["fasim_sim_recovery_shadow_output_mutations", str(total_output_mutations)],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Decision")
+    lines.append("")
+    recall = pct(total_recovered, total_sim_only)
+    if total_output_mutations != 0:
+        decision = "Stop: the shadow observed output mutations, which violates diagnostic-only scope."
+    elif recall >= 80.0:
+        decision = (
+            "Local recovery boxes cover most SIM-only records on these synthetic "
+            "fixtures. A real local SIM recovery shadow that executes bounded SIM "
+            "inside boxes is a plausible next PR."
+        )
+    elif recall >= 50.0:
+        decision = (
+            "Local recovery boxes cover part of the SIM-only set. Improve box "
+            "selection before designing a real opt-in recovery path."
+        )
+    else:
+        decision = (
+            "Local recovery boxes do not cover enough SIM-only records. SIM-close "
+            "mode is likely too expensive or needs a different risk detector."
+        )
+    lines.append(decision)
+    lines.append("")
+    lines.append("Forbidden-scope check:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("Fasim output change: no")
+    lines.append("Recovered records added to output: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("```")
+    lines.append("")
+
+    for shadow in shadows:
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.enabled=1")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.boxes={len(shadow.boxes)}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.windows={shadow.windows}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.cells={shadow.cells}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.full_search_cells={shadow.full_search_cells}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.cell_fraction={shadow.cell_fraction:.6f}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.seconds={shadow.seconds:.6f}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.sim_only_records={shadow.sim_only_records}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.recovered_records={shadow.recovered_records}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.unrecovered_records={shadow.unrecovered_records}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.recovery_recall={shadow.recall:.6f}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.candidate_records={shadow.candidate_records}")
+        print(f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.output_mutations={shadow.output_mutations}")
+        for category in GAP_CATEGORIES:
+            print(
+                f"benchmark.fasim_sim_recovery_shadow.{shadow.workload_label}.{category}_recovered="
+                f"{shadow.recovered_by_category.get(category, 0)}"
+            )
+
+    print("benchmark.fasim_sim_recovery_shadow.total.enabled=1")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.boxes={total_boxes}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.windows={total_windows}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.cells={total_cells}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.full_search_cells={total_full_search_cells}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.cell_fraction={pct(total_cells, total_full_search_cells):.6f}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.seconds={total_seconds:.6f}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.sim_only_records={total_sim_only}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.recovered_records={total_recovered}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.unrecovered_records={total_unrecovered}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.recovery_recall={pct(total_recovered, total_sim_only):.6f}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.candidate_records={total_candidates}")
+    print(f"benchmark.fasim_sim_recovery_shadow.total.output_mutations={total_output_mutations}")
+    for category in GAP_CATEGORIES:
+        print(
+            f"benchmark.fasim_sim_recovery_shadow.total.{category}_recovered="
+            f"{aggregate_recovered_by_category.get(category, 0)}"
+        )
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -730,6 +1185,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default=str(ROOT / "docs" / "fasim_sim_gap_taxonomy.md"))
     parser.add_argument("--require-profile", action="store_true")
     parser.add_argument("--require-sim-gap-taxonomy", action="store_true")
+    parser.add_argument("--recovery-shadow", action="store_true")
+    parser.add_argument("--recovery-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_shadow.md"))
+    parser.add_argument("--recovery-shadow-margin-bp", type=int, default=32)
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -746,6 +1204,7 @@ def main() -> int:
         if not bin_path.exists():
             raise RuntimeError(f"missing Fasim binary: {bin_path}")
 
+        recovery_shadow_enabled = args.recovery_shadow or os.environ.get("FASIM_SIM_RECOVERY_SHADOW") == "1"
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
         for spec in fixtures_for(args.profile_set):
@@ -772,6 +1231,8 @@ def main() -> int:
                     threshold_score_band=args.threshold_score_band,
                     long_hit_nt=args.long_hit_nt,
                     merge_gap_bp=args.merge_gap_bp,
+                    recovery_shadow_enabled=recovery_shadow_enabled,
+                    recovery_shadow_margin_bp=args.recovery_shadow_margin_bp,
                 )
             )
 
@@ -795,6 +1256,16 @@ def main() -> int:
                 merge_gap_bp=args.merge_gap_bp,
             )
         )
+        if recovery_shadow_enabled:
+            print(
+                render_recovery_shadow_report(
+                    gaps=gaps,
+                    output_path=Path(args.recovery_shadow_output),
+                    profile_set=args.profile_set,
+                    margin_bp=args.recovery_shadow_margin_bp,
+                    merge_gap_bp=args.merge_gap_bp,
+                )
+            )
         return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr)
