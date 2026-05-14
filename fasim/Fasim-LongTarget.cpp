@@ -118,6 +118,11 @@ static inline bool fasim_gpu_dp_column_full_scoreinfo_debug_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_FULL_SCOREINFO_DEBUG");
 }
 
+static inline bool fasim_gpu_dp_column_post_topk_pack_shadow_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_POST_TOPK_PACK_SHADOW");
+}
+
 static inline int fasim_env_int_or_default_allow_zero(const char *name, int defaultValue)
 {
     const char *env = getenv(name);
@@ -218,7 +223,19 @@ struct FasimProfileStats
         gpuDpColumnFullDebugScoreInfoSetMismatches(0),
         gpuDpColumnFullDebugScoreInfoFieldMismatches(0),
         gpuDpColumnFullDebugColumnMismatches(0),
-        gpuDpColumnFullDebugColumnScoreDeltaMax(0)
+        gpuDpColumnFullDebugColumnScoreDeltaMax(0),
+        gpuDpColumnPostTopKCpuRecords(0),
+        gpuDpColumnPostTopKGpuPreRecords(0),
+        gpuDpColumnPostTopKGpuPostRecords(0),
+        gpuDpColumnPostTopKCpuPackMismatches(0),
+        gpuDpColumnPostTopKGpuPackMismatches(0),
+        gpuDpColumnPostTopKMissingRecords(0),
+        gpuDpColumnPostTopKExtraRecords(0),
+        gpuDpColumnPostTopKRankMismatches(0),
+        gpuDpColumnPostTopKFieldMismatchMask(0),
+        gpuDpColumnPostTopKCountMismatches(0),
+        gpuDpColumnPostTopKPositionMismatches(0),
+        gpuDpColumnPostTopKScoreMismatches(0)
     {
     }
 
@@ -289,6 +306,18 @@ struct FasimProfileStats
     uint64_t gpuDpColumnFullDebugScoreInfoFieldMismatches;
     uint64_t gpuDpColumnFullDebugColumnMismatches;
     uint64_t gpuDpColumnFullDebugColumnScoreDeltaMax;
+    uint64_t gpuDpColumnPostTopKCpuRecords;
+    uint64_t gpuDpColumnPostTopKGpuPreRecords;
+    uint64_t gpuDpColumnPostTopKGpuPostRecords;
+    uint64_t gpuDpColumnPostTopKCpuPackMismatches;
+    uint64_t gpuDpColumnPostTopKGpuPackMismatches;
+    uint64_t gpuDpColumnPostTopKMissingRecords;
+    uint64_t gpuDpColumnPostTopKExtraRecords;
+    uint64_t gpuDpColumnPostTopKRankMismatches;
+    uint64_t gpuDpColumnPostTopKFieldMismatchMask;
+    uint64_t gpuDpColumnPostTopKCountMismatches;
+    uint64_t gpuDpColumnPostTopKPositionMismatches;
+    uint64_t gpuDpColumnPostTopKScoreMismatches;
     FasimTransferStringProfileStats transferStringProfile;
 };
 
@@ -422,6 +451,19 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_full_debug_scoreinfo_field_mismatches=" << stats.gpuDpColumnFullDebugScoreInfoFieldMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_full_debug_column_mismatches=" << stats.gpuDpColumnFullDebugColumnMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_full_debug_column_score_delta_max=" << stats.gpuDpColumnFullDebugColumnScoreDeltaMax << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_pack_shadow_enabled=" << (fasim_gpu_dp_column_post_topk_pack_shadow_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_cpu_records=" << stats.gpuDpColumnPostTopKCpuRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_gpu_pre_records=" << stats.gpuDpColumnPostTopKGpuPreRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_gpu_post_records=" << stats.gpuDpColumnPostTopKGpuPostRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_cpu_pack_mismatches=" << stats.gpuDpColumnPostTopKCpuPackMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_gpu_pack_mismatches=" << stats.gpuDpColumnPostTopKGpuPackMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_missing_records=" << stats.gpuDpColumnPostTopKMissingRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_extra_records=" << stats.gpuDpColumnPostTopKExtraRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_rank_mismatches=" << stats.gpuDpColumnPostTopKRankMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_field_mismatch_mask=" << stats.gpuDpColumnPostTopKFieldMismatchMask << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_count_mismatches=" << stats.gpuDpColumnPostTopKCountMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_position_mismatches=" << stats.gpuDpColumnPostTopKPositionMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_post_topk_score_mismatches=" << stats.gpuDpColumnPostTopKScoreMismatches << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -913,6 +955,8 @@ int main(int argc, char* const* argv)
 		const bool gpuDpColumnMismatchDebug = fasim_gpu_dp_column_mismatch_debug_enabled_runtime();
 		const bool gpuDpColumnFullScoreInfoDebug =
 			fasim_gpu_dp_column_full_scoreinfo_debug_enabled_runtime();
+		const bool gpuDpColumnPostTopKPackShadow =
+			fasim_gpu_dp_column_post_topk_pack_shadow_enabled_runtime();
 		const int gpuDpColumnDebugMaxWindows =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
 		const int gpuDpColumnDebugWindowIndex =
@@ -1446,7 +1490,7 @@ int main(int argc, char* const* argv)
 					}
 				}
 				const bool fullDebugWindowSelected =
-					gpuDpColumnFullScoreInfoDebug &&
+					(gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow) &&
 					gpuDpColumnMismatchDebug &&
 					!gpuDpColumnFullDebugRecorded &&
 					(gpuDpColumnDebugWindowIndex < 0 ||
@@ -1559,6 +1603,72 @@ int main(int argc, char* const* argv)
 							++fieldMismatches;
 						}
 
+						auto scoreinfo_rank_mismatches = [](
+							const std::vector<struct StripedSmithWaterman::scoreInfo> &expected,
+							const std::vector<struct StripedSmithWaterman::scoreInfo> &observed)
+						{
+							uint64_t mismatches = 0;
+							const size_t maxCount = std::max(expected.size(), observed.size());
+							for (size_t i = 0; i < maxCount; ++i)
+							{
+								const bool hasExpected = i < expected.size();
+								const bool hasObserved = i < observed.size();
+								if (!hasExpected || !hasObserved)
+								{
+									++mismatches;
+									continue;
+								}
+								if (expected[i].score != observed[i].score ||
+								    expected[i].position != observed[i].position)
+								{
+									++mismatches;
+								}
+							}
+							return mismatches;
+						};
+
+						const uint64_t cpuPackMismatches =
+							scoreinfo_rank_mismatches(cpuScoreInfo, gpuPreTopKScoreInfo);
+						const uint64_t gpuPackMismatches =
+							scoreinfo_rank_mismatches(cpuScoreInfo, gpuScoreInfo);
+						const uint64_t missingPostRecords =
+							scoreinfo_missing_from(cpuScoreInfo, gpuScoreInfo);
+						const uint64_t extraPostRecords =
+							scoreinfo_missing_from(gpuScoreInfo, cpuScoreInfo);
+						uint64_t postTopKFieldMask = 0;
+						uint64_t postTopKCountMismatches = 0;
+						uint64_t postTopKPositionMismatches = 0;
+						uint64_t postTopKScoreMismatches = 0;
+						if (cpuScoreInfo.size() != gpuScoreInfo.size())
+						{
+							postTopKFieldMask |= 4;
+							postTopKCountMismatches = 1;
+						}
+						if (missingPostRecords != 0 || extraPostRecords != 0)
+						{
+							postTopKFieldMask |= 8;
+						}
+						const size_t rankCompareCount = std::max(cpuScoreInfo.size(), gpuScoreInfo.size());
+						for (size_t i = 0; i < rankCompareCount; ++i)
+						{
+							const bool hasCpu = i < cpuScoreInfo.size();
+							const bool hasGpu = i < gpuScoreInfo.size();
+							const int cpuScore = hasCpu ? cpuScoreInfo[i].score : 0;
+							const int gpuScore = hasGpu ? gpuScoreInfo[i].score : 0;
+							const int cpuPosition = hasCpu ? cpuScoreInfo[i].position : -1;
+							const int gpuPosition = hasGpu ? gpuScoreInfo[i].position : -1;
+							if (cpuScore != gpuScore)
+							{
+								postTopKFieldMask |= 1;
+								++postTopKScoreMismatches;
+							}
+							if (cpuPosition != gpuPosition)
+							{
+								postTopKFieldMask |= 2;
+								++postTopKPositionMismatches;
+							}
+						}
+
 						if (profileEnabled && gpuDpColumnRequested)
 						{
 							profileStats.gpuDpColumnFullDebugGpuPreTopKRecords =
@@ -1577,6 +1687,33 @@ int main(int argc, char* const* argv)
 								columnMismatches;
 							profileStats.gpuDpColumnFullDebugColumnScoreDeltaMax =
 								columnScoreDeltaMax;
+							if (gpuDpColumnPostTopKPackShadow)
+							{
+								profileStats.gpuDpColumnPostTopKCpuRecords =
+									static_cast<uint64_t>(cpuScoreInfo.size());
+								profileStats.gpuDpColumnPostTopKGpuPreRecords =
+									static_cast<uint64_t>(gpuPreTopKScoreInfo.size());
+								profileStats.gpuDpColumnPostTopKGpuPostRecords =
+									static_cast<uint64_t>(gpuScoreInfo.size());
+								profileStats.gpuDpColumnPostTopKCpuPackMismatches =
+									cpuPackMismatches;
+								profileStats.gpuDpColumnPostTopKGpuPackMismatches =
+									gpuPackMismatches;
+								profileStats.gpuDpColumnPostTopKMissingRecords =
+									missingPostRecords;
+								profileStats.gpuDpColumnPostTopKExtraRecords =
+									extraPostRecords;
+								profileStats.gpuDpColumnPostTopKRankMismatches =
+									gpuPackMismatches;
+								profileStats.gpuDpColumnPostTopKFieldMismatchMask =
+									postTopKFieldMask;
+								profileStats.gpuDpColumnPostTopKCountMismatches =
+									postTopKCountMismatches;
+								profileStats.gpuDpColumnPostTopKPositionMismatches =
+									postTopKPositionMismatches;
+								profileStats.gpuDpColumnPostTopKScoreMismatches =
+									postTopKScoreMismatches;
+							}
 						}
 
 						cerr << "[fasim.cuda.full_scoreinfo]"
@@ -1593,6 +1730,24 @@ int main(int argc, char* const* argv)
 						     << " first_mismatch_position_delta=" << positionDelta
 						     << " first_mismatch_count_delta=" << countDelta
 						     << endl;
+						if (gpuDpColumnPostTopKPackShadow)
+						{
+							cerr << "[fasim.cuda.post_topk_pack_shadow]"
+							     << " window=" << validationWindowOrdinal
+							     << " cpu_records=" << cpuScoreInfo.size()
+							     << " gpu_pre_records=" << gpuPreTopKScoreInfo.size()
+							     << " gpu_post_records=" << gpuScoreInfo.size()
+							     << " cpu_pack_mismatches=" << cpuPackMismatches
+							     << " gpu_pack_mismatches=" << gpuPackMismatches
+							     << " missing_records=" << missingPostRecords
+							     << " extra_records=" << extraPostRecords
+							     << " rank_mismatches=" << gpuPackMismatches
+							     << " field_mismatch_mask=" << postTopKFieldMask
+							     << " count_mismatches=" << postTopKCountMismatches
+							     << " position_mismatches=" << postTopKPositionMismatches
+							     << " score_mismatches=" << postTopKScoreMismatches
+							     << endl;
+						}
 
 						if (gpuDpColumnDebugMaxRecords > 0)
 						{
