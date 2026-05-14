@@ -1024,6 +1024,88 @@ def best_recall_repair_result(results: Sequence[RecallRepairResult]) -> Optional
     )
 
 
+def validation_matrix(
+    summaries: Sequence[CaseSummary],
+) -> Tuple[List[List[str]], Dict[str, str]]:
+    rows: List[List[str]] = []
+    supported_cases = 0
+    unsupported_cases = 0
+    high_recall_high_precision_cases = 0
+    precision_clean_recall_low_cases = 0
+    sim_records = 0
+    shared_records = 0
+    missed_records = 0
+    extra_records = 0
+
+    for summary in summaries:
+        run = summary.runs[0]
+        selected = selected_mode(run)
+        coverage = run.validation_coverage
+        taxonomy = run.miss_taxonomy
+        supported = coverage.supported
+        if supported:
+            supported_cases += 1
+        else:
+            unsupported_cases += 1
+
+        recall = mode_value(selected, "recall_vs_sim") if supported else 0.0
+        precision = mode_value(selected, "precision_vs_sim") if supported else 0.0
+        if supported and recall >= 90.0 and precision >= 90.0:
+            high_recall_high_precision_cases += 1
+        if supported and precision >= 95.0 and recall < 80.0:
+            precision_clean_recall_low_cases += 1
+
+        case_missed = taxonomy.missed_records if taxonomy is not None else max(
+            coverage.sim_records - coverage.shared_records, 0
+        )
+        sim_records += coverage.sim_records
+        shared_records += coverage.shared_records
+        missed_records += case_missed
+        extra_records += coverage.sim_close_extra_records if supported else 0
+
+        rows.append(
+            [
+                summary.spec.label,
+                "yes" if summary.spec.validate else "no",
+                "yes" if supported else "no",
+                coverage.unsupported_reason,
+                run.fast.digest,
+                mode_text(run.sim_close, "output_digest"),
+                str(coverage.sim_records),
+                str(coverage.sim_close_records),
+                str(coverage.shared_records),
+                str(case_missed),
+                fmt_metric(recall) if supported else "NA",
+                fmt_metric(precision) if supported else "NA",
+                str(coverage.sim_close_extra_records) if supported else "NA",
+                str(taxonomy.not_box_covered) if taxonomy is not None else "NA",
+                str(taxonomy.guard_rejected) if taxonomy is not None else "NA",
+                str(taxonomy.box_covered_but_executor_missing) if taxonomy is not None else "NA",
+                str(taxonomy.replacement_suppressed) if taxonomy is not None else "NA",
+                str(int(mode_value(selected, "boxes"))),
+                str(int(mode_value(selected, "cells"))),
+                fmt_metric(mode_cell_fraction(selected)),
+                f"{metric_float(run.fast.metrics, 'fasim_total_seconds'):.6f}",
+                f"{run.sim_close_wall_seconds:.6f}",
+                f"{run.validate_wall_seconds:.6f}" if run.validate_mode is not None else "NA",
+            ]
+        )
+
+    telemetry = {
+        "enabled": "1",
+        "cases": str(len(summaries)),
+        "validate_supported_cases": str(supported_cases),
+        "unsupported_cases": str(unsupported_cases),
+        "high_recall_high_precision_cases": str(high_recall_high_precision_cases),
+        "precision_clean_recall_low_cases": str(precision_clean_recall_low_cases),
+        "sim_records": str(sim_records),
+        "shared_records": str(shared_records),
+        "missed_records": str(missed_records),
+        "extra_records": str(extra_records),
+    }
+    return rows, telemetry
+
+
 def total_coverage_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -> List[float]:
     totals: List[float] = []
     for run_index in range(repeat):
@@ -1069,6 +1151,7 @@ def render_report(
     coverage_report: bool,
     miss_taxonomy_report: bool,
     recall_repair_shadow: bool,
+    validation_matrix_report: bool,
 ) -> Tuple[str, Dict[str, str]]:
     fast_digest_stable = all(case_fast_stable(summary) for summary in summaries)
     sim_close_digest_stable = all(case_sim_close_stable(summary) for summary in summaries)
@@ -1122,6 +1205,7 @@ def render_report(
             ["coverage_report", "yes" if coverage_report else "no"],
             ["miss_taxonomy_report", "yes" if miss_taxonomy_report else "no"],
             ["recall_repair_shadow", "yes" if recall_repair_shadow else "no"],
+            ["validation_matrix_report", "yes" if validation_matrix_report else "no"],
         ],
     )
     lines.append("")
@@ -1336,6 +1420,56 @@ def render_report(
             "SIM labels are used only after SIM-close selection to assign "
             "diagnostic miss buckets. They do not influence risk boxes, local "
             "SIM execution, guard selection, replacement, or output ordering."
+        )
+        lines.append("")
+
+    matrix_telemetry = {"enabled": "0"}
+    if validation_matrix_report:
+        matrix_rows, matrix_telemetry = validation_matrix(summaries)
+        lines.append("## Validation Matrix")
+        lines.append("")
+        append_table(
+            lines,
+            [
+                "Case",
+                "Validated",
+                "Validate supported",
+                "validate_unsupported_reason",
+                "Fast digest",
+                "SIM-close digest",
+                "SIM records",
+                "SIM-close records",
+                "Shared records",
+                "Missed records",
+                "Recall vs SIM",
+                "Precision vs SIM",
+                "Extra vs SIM",
+                "Not box covered",
+                "Guard rejected",
+                "Executor missing",
+                "Replacement suppressed",
+                "Boxes",
+                "Cells",
+                "Cell fraction",
+                "Fast seconds",
+                "SIM-close wall seconds",
+                "Validate wall seconds",
+            ],
+            matrix_rows,
+        )
+        lines.append("")
+        lines.append(
+            "This matrix is diagnostic-only. It expands the case-level "
+            "validation view for the current `FASIM_SIM_RECOVERY=1` "
+            "experimental side output, but it adds no recovery logic and does "
+            "not change production selection."
+        )
+        lines.append("")
+        lines.append(
+            "`precision-clean / recall-low` means precision is at least 95% "
+            "while recall is below 80% on a validate-supported case. That "
+            "pattern is evidence for more detector work, not a recommendation "
+            "to default SIM-close mode."
         )
         lines.append("")
 
@@ -1562,6 +1696,16 @@ def render_report(
         )
         lines.append("")
 
+    if validation_matrix_report:
+        lines.append("## Validation Matrix Aggregate")
+        lines.append("")
+        append_table(
+            lines,
+            ["Metric", "Value"],
+            [[f"fasim_sim_recovery_validation_matrix_{key}", value] for key, value in matrix_telemetry.items()],
+        )
+        lines.append("")
+
     if recall_repair_shadow:
         lines.append("## Recall Repair Best Non-Oracle Aggregate")
         lines.append("")
@@ -1596,6 +1740,31 @@ def render_report(
                 "guard/replacement refinement before any high-accuracy claim."
             )
             lines.append("")
+    if validation_matrix_report:
+        precision_clean_low = int(matrix_telemetry.get("precision_clean_recall_low_cases", "0"))
+        supported_cases = int(matrix_telemetry.get("validate_supported_cases", "0"))
+        if precision_clean_low:
+            lines.append(
+                f"The validation matrix found {precision_clean_low} of "
+                f"{supported_cases} validate-supported cases in the "
+                "precision-clean / recall-low bucket. Treat that as evidence "
+                "that broader real-corpus validation or a new detector input "
+                "is needed before any real-mode expansion."
+            )
+            lines.append("")
+            lines.append(
+                "If this pattern holds across a broader matrix, the next "
+                "algorithmic PR should investigate a score-landscape or "
+                "local-max risk detector rather than continuing small "
+                "box/guard threshold tweaks."
+            )
+        else:
+            lines.append(
+                "The validation matrix did not find a precision-clean / "
+                "recall-low case in this supplied set. Broader real-corpus "
+                "coverage is still required before recommending SIM-close."
+            )
+        lines.append("")
     if miss_taxonomy_report and missed_records:
         lines.append(
             "The miss taxonomy attributes the current SIM-close recall gap to "
@@ -1748,6 +1917,9 @@ def render_report(
     if miss_taxonomy_report:
         for key, value in miss_telemetry.items():
             print(f"benchmark.{key}={value}")
+    if validation_matrix_report:
+        for key, value in matrix_telemetry.items():
+            print(f"benchmark.fasim_sim_recovery_validation_matrix.{key}={value}")
     if recall_repair_shadow:
         for key, value in repair_telemetry.items():
             print(f"benchmark.fasim_sim_recovery_recall_repair.total.{key}={value}")
@@ -1806,6 +1978,7 @@ def main() -> int:
     parser.add_argument("--validation-coverage-report", action="store_true")
     parser.add_argument("--miss-taxonomy-report", action="store_true")
     parser.add_argument("--recall-repair-shadow", action="store_true")
+    parser.add_argument("--validation-matrix-report", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -1818,6 +1991,10 @@ def main() -> int:
         recall_repair_shadow = (
             args.recall_repair_shadow
             or os.environ.get("FASIM_SIM_RECOVERY_RECALL_REPAIR_SHADOW", "0") == "1"
+        )
+        validation_matrix_report = (
+            args.validation_matrix_report
+            or os.environ.get("FASIM_SIM_RECOVERY_VALIDATION_MATRIX", "0") == "1"
         )
         validate_labels = parse_validate_labels([*args.validate_case, *args.validate_cases])
         if recall_repair_shadow and not validate_labels and args.case:
@@ -1841,7 +2018,9 @@ def main() -> int:
                 near_tie_delta=args.near_tie_delta,
                 threshold_score_band=args.threshold_score_band,
                 long_hit_nt=args.long_hit_nt,
-                miss_taxonomy_report=args.miss_taxonomy_report or recall_repair_shadow,
+                miss_taxonomy_report=(
+                    args.miss_taxonomy_report or recall_repair_shadow or validation_matrix_report
+                ),
                 recall_repair_shadow=recall_repair_shadow,
             )
             for case in cases
@@ -1852,9 +2031,14 @@ def main() -> int:
             output_path=Path(args.output),
             title=args.report_title,
             base_branch=args.base_branch,
-            coverage_report=args.validation_coverage_report or recall_repair_shadow,
-            miss_taxonomy_report=args.miss_taxonomy_report or recall_repair_shadow,
+            coverage_report=(
+                args.validation_coverage_report or recall_repair_shadow or validation_matrix_report
+            ),
+            miss_taxonomy_report=(
+                args.miss_taxonomy_report or recall_repair_shadow or validation_matrix_report
+            ),
             recall_repair_shadow=recall_repair_shadow,
+            validation_matrix_report=validation_matrix_report,
         )
         print(report)
         return 0
