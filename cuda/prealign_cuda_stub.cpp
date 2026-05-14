@@ -76,3 +76,27 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   return false;
 }
 
+bool prealign_cuda_find_column_maxima_debug(const PreAlignCudaQueryHandle &handle,
+                                            const uint8_t *encodedTargetHost,
+                                            int targetLength,
+                                            vector<int> *outColumnMaxima,
+                                            PreAlignCudaBatchResult *batchResult,
+                                            string *errorOut)
+{
+  (void)handle;
+  (void)encodedTargetHost;
+  (void)targetLength;
+  if(outColumnMaxima != NULL)
+  {
+    outColumnMaxima->clear();
+  }
+  if(batchResult != NULL)
+  {
+    *batchResult = PreAlignCudaBatchResult();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
