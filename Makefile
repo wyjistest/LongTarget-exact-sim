@@ -441,6 +441,14 @@ benchmark-fasim-local-sim-recovery-replacement-extra-taxonomy:
 	$(MAKE) build-fasim
 	FASIM_SIM_RECOVERY_RISK_DETECTOR=1 FASIM_SIM_RECOVERY_EXECUTOR_SHADOW=1 FASIM_SIM_RECOVERY_INTEGRATION_SHADOW=1 FASIM_SIM_RECOVERY_FILTER_SHADOW=1 FASIM_SIM_RECOVERY_REPLACEMENT_SHADOW=1 FASIM_SIM_RECOVERY_REPLACEMENT_EXTRA_TAXONOMY=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --risk-detector --executor-shadow --integration-shadow --filter-shadow --replacement-shadow --replacement-extra-taxonomy --output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy/taxonomy.md --risk-detector-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy/risk_detector.md --executor-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy/executor_shadow.md --integration-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy/integration_shadow.md --filter-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy/filter_shadow.md --replacement-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy/replacement_shadow.md --replacement-extra-taxonomy-output docs/fasim_local_sim_recovery_replacement_extra_taxonomy.md --work-dir $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_extra_taxonomy
 
+check-fasim-sim-recovery-real-mode:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_real_mode.sh
+
+benchmark-fasim-sim-recovery-real-mode:
+	$(MAKE) build-fasim
+	FASIM_SIM_RECOVERY=1 FASIM_SIM_RECOVERY_VALIDATE=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --sim-recovery --sim-recovery-validate --sim-recovery-output $(CURDIR)/.tmp/fasim_sim_recovery_real_mode/sim_close.lite --sim-recovery-report docs/fasim_sim_recovery_real_mode.md --output $(CURDIR)/.tmp/fasim_sim_recovery_real_mode/taxonomy.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_mode
+
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \

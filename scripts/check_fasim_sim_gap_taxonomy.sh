@@ -12,5 +12,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/benchmark_fasim_sim_gap_taxonom
   --bin "$BIN" \
   --profile-set smoke \
   --require-sim-gap-taxonomy \
+  --sim-recovery-output "$ROOT/.tmp/fasim_sim_gap_taxonomy/sim_close.lite" \
+  --sim-recovery-report "$ROOT/.tmp/fasim_sim_gap_taxonomy/sim_recovery_report.md" \
   --output "$ROOT/.tmp/fasim_sim_gap_taxonomy/smoke_report.md" \
   --work-dir "$ROOT/.tmp/fasim_sim_gap_taxonomy"
