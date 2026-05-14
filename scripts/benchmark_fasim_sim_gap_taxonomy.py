@@ -140,6 +140,35 @@ class RecoveryShadow:
 
 
 @dataclasses.dataclass(frozen=True)
+class RiskDetectorResult:
+    workload_label: str
+    mode: str
+    boxes: List[RecoveryBox]
+    seconds: float
+    full_search_cells: int
+    sim_only_records: int
+    supported_sim_only_records: int
+    unsupported_sim_only_records: int
+    candidate_records: int
+    false_positive_boxes: int
+    output_mutations: int
+    supported_by_category: Counter
+    sim_only_by_category: Counter
+
+    @property
+    def cells(self) -> int:
+        return sum(box_cells(box) for box in self.boxes)
+
+    @property
+    def cell_fraction(self) -> float:
+        return (float(self.cells) / float(self.full_search_cells) * 100.0) if self.full_search_cells else 0.0
+
+    @property
+    def recall(self) -> float:
+        return pct(self.supported_sim_only_records, self.sim_only_records)
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkloadGap:
     spec: FixtureSpec
     sim: ModeRun
@@ -152,6 +181,7 @@ class WorkloadGap:
     flag_counts: Counter
     recovery: RecoveryEstimate
     recovery_shadow: Optional[RecoveryShadow] = None
+    risk_detector: Optional[RiskDetectorResult] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -538,6 +568,67 @@ def build_local_recovery_shadow(
     )
 
 
+def build_fasim_visible_risk_detector(
+    *,
+    spec: FixtureSpec,
+    sim_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    sim_only: Sequence[GapRecord],
+    merge_gap_bp: int,
+    margin_bp: int,
+) -> RiskDetectorResult:
+    start = time.perf_counter()
+    raw_boxes = [
+        RecoveryBox(
+            family=record.family,
+            genome_interval=expand_interval(record.genome_interval, margin_bp),
+            query_interval=expand_interval(record.query_interval, margin_bp),
+            categories=frozenset(["fasim_output_record"]),
+        )
+        for record in fasim_records
+    ]
+    boxes = merge_recovery_boxes(raw_boxes, merge_gap_bp=merge_gap_bp)
+    boxes_by_family: Dict[Tuple[str, str, str], List[RecoveryBox]] = defaultdict(list)
+    for box in boxes:
+        boxes_by_family[box.family].append(box)
+
+    supported_by_category: Counter = Counter()
+    sim_only_by_category: Counter = Counter(gap.primary for gap in sim_only)
+    supported_records = 0
+    for gap in sim_only:
+        if record_in_any_box(gap.record, boxes_by_family):
+            supported_records += 1
+            supported_by_category.update([gap.primary])
+
+    candidate_records = sum(1 for record in sim_records if record_in_any_box(record, boxes_by_family))
+    false_positive_boxes = 0
+    for box in boxes:
+        if not any(
+            contains(box.genome_interval, gap.record.genome_interval)
+            and contains(box.query_interval, gap.record.query_interval)
+            for gap in sim_only
+            if gap.record.family == box.family
+        ):
+            false_positive_boxes += 1
+
+    seconds = time.perf_counter() - start
+    return RiskDetectorResult(
+        workload_label=spec.label,
+        mode="all_fasim_records_baseline",
+        boxes=boxes,
+        seconds=seconds,
+        full_search_cells=fixture_full_search_cells(spec),
+        sim_only_records=len(sim_only),
+        supported_sim_only_records=supported_records,
+        unsupported_sim_only_records=len(sim_only) - supported_records,
+        candidate_records=candidate_records,
+        false_positive_boxes=false_positive_boxes,
+        output_mutations=0,
+        supported_by_category=supported_by_category,
+        sim_only_by_category=sim_only_by_category,
+    )
+
+
 def analyze_gap(
     *,
     spec: FixtureSpec,
@@ -549,6 +640,8 @@ def analyze_gap(
     merge_gap_bp: int,
     recovery_shadow_enabled: bool,
     recovery_shadow_margin_bp: int,
+    risk_detector_enabled: bool,
+    risk_detector_margin_bp: int,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
     fasim_raw = {record.raw for record in fasim.records}
@@ -597,6 +690,18 @@ def analyze_gap(
                 margin_bp=recovery_shadow_margin_bp,
             )
             if recovery_shadow_enabled
+            else None
+        ),
+        risk_detector=(
+            build_fasim_visible_risk_detector(
+                spec=spec,
+                sim_records=sim.records,
+                fasim_records=fasim.records,
+                sim_only=sim_only,
+                merge_gap_bp=merge_gap_bp,
+                margin_bp=risk_detector_margin_bp,
+            )
+            if risk_detector_enabled
             else None
         ),
     )
@@ -1167,6 +1272,261 @@ def render_recovery_shadow_report(
     return report
 
 
+def render_risk_detector_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    profile_set: str,
+    margin_bp: int,
+    merge_gap_bp: int,
+) -> str:
+    detectors = [gap.risk_detector for gap in gaps if gap.risk_detector is not None]
+    if len(detectors) != len(gaps):
+        raise RuntimeError("risk detector report requested without risk detector data")
+
+    lines: List[str] = []
+    lines.append("# Fasim SIM-Recovery Risk Detector")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-local-sim-recovery-shadow")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This report evaluates an independent Fasim-visible risk detector. Box "
+        "selection uses only Fasim output record family/orientation and "
+        "coordinates. This conservative baseline selects every Fasim output "
+        "record as a local risk region; it does not use SIM-only record "
+        "coordinates, taxonomy labels, legacy SIM output, or oracle boxes for "
+        "selection."
+    )
+    lines.append("")
+    lines.append(
+        "Legacy `-F` SIM output is used only after detector selection to measure "
+        "coverage of SIM-only records. The detector is diagnostic-only: it does "
+        "not change Fasim output and does not run bounded local SIM recovery."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["detector_mode", "all_fasim_records_baseline"],
+            ["box_source", "Fasim output records only"],
+            ["margin_bp", str(margin_bp)],
+            ["merge_gap_bp", str(merge_gap_bp)],
+            ["output_mutations_expected", "0"],
+        ],
+    )
+    lines.append("")
+
+    rows: List[List[str]] = []
+    total_boxes = 0
+    total_cells = 0
+    total_full_search_cells = 0
+    total_seconds = 0.0
+    total_sim_only = 0
+    total_supported = 0
+    total_unsupported = 0
+    total_candidates = 0
+    total_false_positive_boxes = 0
+    total_output_mutations = 0
+    aggregate_sim_only_by_category: Counter = Counter()
+    aggregate_supported_by_category: Counter = Counter()
+
+    for detector in detectors:
+        total_boxes += len(detector.boxes)
+        total_cells += detector.cells
+        total_full_search_cells += detector.full_search_cells
+        total_seconds += detector.seconds
+        total_sim_only += detector.sim_only_records
+        total_supported += detector.supported_sim_only_records
+        total_unsupported += detector.unsupported_sim_only_records
+        total_candidates += detector.candidate_records
+        total_false_positive_boxes += detector.false_positive_boxes
+        total_output_mutations += detector.output_mutations
+        aggregate_sim_only_by_category.update(detector.sim_only_by_category)
+        aggregate_supported_by_category.update(detector.supported_by_category)
+        rows.append(
+            [
+                detector.workload_label,
+                detector.mode,
+                str(len(detector.boxes)),
+                str(detector.cells),
+                str(detector.full_search_cells),
+                fmt_pct(detector.cell_fraction),
+                str(detector.sim_only_records),
+                str(detector.supported_sim_only_records),
+                str(detector.unsupported_sim_only_records),
+                fmt_pct(detector.recall),
+                str(detector.false_positive_boxes),
+                str(detector.output_mutations),
+            ]
+        )
+
+    lines.append("## Workload Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "Mode",
+            "Boxes",
+            "Cells",
+            "Full-search cells",
+            "Cell fraction",
+            "SIM-only",
+            "Covered",
+            "Uncovered",
+            "Recall",
+            "False-positive boxes",
+            "Output mutations",
+        ],
+        rows,
+    )
+    lines.append("")
+
+    lines.append("## Category Summary")
+    lines.append("")
+    append_table(
+        lines,
+        ["Category", "SIM-only", "Covered", "Recall"],
+        [
+            [
+                category,
+                str(aggregate_sim_only_by_category.get(category, 0)),
+                str(aggregate_supported_by_category.get(category, 0)),
+                fmt_pct(
+                    pct(
+                        aggregate_supported_by_category.get(category, 0),
+                        aggregate_sim_only_by_category.get(category, 0),
+                    )
+                ),
+            ]
+            for category in GAP_CATEGORIES
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_risk_detector_enabled", "1"],
+            ["fasim_sim_recovery_risk_detector_boxes", str(total_boxes)],
+            ["fasim_sim_recovery_risk_detector_cells", str(total_cells)],
+            ["fasim_sim_recovery_risk_detector_full_search_cells", str(total_full_search_cells)],
+            ["fasim_sim_recovery_risk_detector_cell_fraction", fmt_pct(pct(total_cells, total_full_search_cells))],
+            ["fasim_sim_recovery_risk_detector_seconds", f"{total_seconds:.6f}"],
+            ["fasim_sim_recovery_risk_detector_sim_only_records", str(total_sim_only)],
+            ["fasim_sim_recovery_risk_detector_supported_sim_only_records", str(total_supported)],
+            ["fasim_sim_recovery_risk_detector_unsupported_sim_only_records", str(total_unsupported)],
+            ["fasim_sim_recovery_risk_detector_recall", fmt_pct(pct(total_supported, total_sim_only))],
+            ["fasim_sim_recovery_risk_detector_candidate_records", str(total_candidates)],
+            ["fasim_sim_recovery_risk_detector_false_positive_boxes", str(total_false_positive_boxes)],
+            ["fasim_sim_recovery_risk_detector_output_mutations", str(total_output_mutations)],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Decision")
+    lines.append("")
+    recall = pct(total_supported, total_sim_only)
+    cell_fraction = pct(total_cells, total_full_search_cells)
+    if total_output_mutations != 0:
+        decision = "Stop: detector evaluation observed output mutations, which violates diagnostic-only scope."
+    elif recall >= 90.0 and cell_fraction <= 5.0:
+        decision = (
+            "The Fasim-visible detector covers most SIM-only records while keeping "
+            "cell fraction small. A bounded local SIM executor shadow is a plausible "
+            "next PR."
+        )
+    elif recall >= 60.0 and cell_fraction <= 5.0:
+        decision = (
+            "The detector has useful coverage but needs stronger risk features or "
+            "box expansion before bounded local SIM execution."
+        )
+    elif cell_fraction > 5.0:
+        decision = "Detector boxes are too broad; tune risk features before executor work."
+    else:
+        decision = "Detector recall is too low; improve risk features before executor work."
+    lines.append(decision)
+    lines.append("")
+    lines.append("Forbidden-scope check:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("SIM-only coordinates used for selection: no")
+    lines.append("Legacy SIM output used for selection: no")
+    lines.append("Oracle boxes used for selection: no")
+    lines.append("Fasim output change: no")
+    lines.append("Recovered records added to output: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("```")
+    lines.append("")
+
+    for detector in detectors:
+        prefix = f"benchmark.fasim_sim_recovery_risk_detector.{detector.workload_label}"
+        print(f"{prefix}.enabled=1")
+        print(f"{prefix}.mode={detector.mode}")
+        print(f"{prefix}.boxes={len(detector.boxes)}")
+        print(f"{prefix}.cells={detector.cells}")
+        print(f"{prefix}.full_search_cells={detector.full_search_cells}")
+        print(f"{prefix}.cell_fraction={detector.cell_fraction:.6f}")
+        print(f"{prefix}.seconds={detector.seconds:.6f}")
+        print(f"{prefix}.sim_only_records={detector.sim_only_records}")
+        print(f"{prefix}.supported_sim_only_records={detector.supported_sim_only_records}")
+        print(f"{prefix}.unsupported_sim_only_records={detector.unsupported_sim_only_records}")
+        print(f"{prefix}.recall={detector.recall:.6f}")
+        print(f"{prefix}.candidate_records={detector.candidate_records}")
+        print(f"{prefix}.false_positive_boxes={detector.false_positive_boxes}")
+        print(f"{prefix}.output_mutations={detector.output_mutations}")
+        for category in GAP_CATEGORIES:
+            category_recall = pct(
+                detector.supported_by_category.get(category, 0),
+                detector.sim_only_by_category.get(category, 0),
+            )
+            print(f"{prefix}.{category}_covered={detector.supported_by_category.get(category, 0)}")
+            print(f"{prefix}.{category}_recall={category_recall:.6f}")
+
+    print("benchmark.fasim_sim_recovery_risk_detector.total.enabled=1")
+    print("benchmark.fasim_sim_recovery_risk_detector.total.mode=all_fasim_records_baseline")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.boxes={total_boxes}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.cells={total_cells}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.full_search_cells={total_full_search_cells}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.cell_fraction={pct(total_cells, total_full_search_cells):.6f}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.seconds={total_seconds:.6f}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.sim_only_records={total_sim_only}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.supported_sim_only_records={total_supported}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.unsupported_sim_only_records={total_unsupported}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.recall={pct(total_supported, total_sim_only):.6f}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.candidate_records={total_candidates}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.false_positive_boxes={total_false_positive_boxes}")
+    print(f"benchmark.fasim_sim_recovery_risk_detector.total.output_mutations={total_output_mutations}")
+    for category in GAP_CATEGORIES:
+        category_recall = pct(
+            aggregate_supported_by_category.get(category, 0),
+            aggregate_sim_only_by_category.get(category, 0),
+        )
+        print(f"benchmark.fasim_sim_recovery_risk_detector.total.{category}_covered={aggregate_supported_by_category.get(category, 0)}")
+        print(f"benchmark.fasim_sim_recovery_risk_detector.total.{category}_recall={category_recall:.6f}")
+
+    print(
+        "benchmark.fasim_sim_recovery_risk_detector.total.internal_peak_recall="
+        f"{pct(aggregate_supported_by_category.get('long_hit_internal_peak', 0), aggregate_sim_only_by_category.get('long_hit_internal_peak', 0)):.6f}"
+    )
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -1188,6 +1548,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery-shadow", action="store_true")
     parser.add_argument("--recovery-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_shadow.md"))
     parser.add_argument("--recovery-shadow-margin-bp", type=int, default=32)
+    parser.add_argument("--risk-detector", action="store_true")
+    parser.add_argument("--risk-detector-output", default=str(ROOT / "docs" / "fasim_sim_recovery_risk_detector.md"))
+    parser.add_argument("--risk-detector-margin-bp", type=int, default=32)
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -1205,6 +1568,7 @@ def main() -> int:
             raise RuntimeError(f"missing Fasim binary: {bin_path}")
 
         recovery_shadow_enabled = args.recovery_shadow or os.environ.get("FASIM_SIM_RECOVERY_SHADOW") == "1"
+        risk_detector_enabled = args.risk_detector or os.environ.get("FASIM_SIM_RECOVERY_RISK_DETECTOR") == "1"
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
         for spec in fixtures_for(args.profile_set):
@@ -1233,6 +1597,8 @@ def main() -> int:
                     merge_gap_bp=args.merge_gap_bp,
                     recovery_shadow_enabled=recovery_shadow_enabled,
                     recovery_shadow_margin_bp=args.recovery_shadow_margin_bp,
+                    risk_detector_enabled=risk_detector_enabled,
+                    risk_detector_margin_bp=args.risk_detector_margin_bp,
                 )
             )
 
@@ -1263,6 +1629,16 @@ def main() -> int:
                     output_path=Path(args.recovery_shadow_output),
                     profile_set=args.profile_set,
                     margin_bp=args.recovery_shadow_margin_bp,
+                    merge_gap_bp=args.merge_gap_bp,
+                )
+            )
+        if risk_detector_enabled:
+            print(
+                render_risk_detector_report(
+                    gaps=gaps,
+                    output_path=Path(args.risk_detector_output),
+                    profile_set=args.profile_set,
+                    margin_bp=args.risk_detector_margin_bp,
                     merge_gap_bp=args.merge_gap_bp,
                 )
             )

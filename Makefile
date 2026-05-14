@@ -393,6 +393,14 @@ benchmark-fasim-local-sim-recovery-shadow:
 	$(MAKE) build-fasim
 	FASIM_SIM_RECOVERY_SHADOW=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --recovery-shadow --recovery-shadow-output docs/fasim_local_sim_recovery_shadow.md
 
+check-fasim-sim-recovery-risk-detector:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_risk_detector.sh
+
+benchmark-fasim-sim-recovery-risk-detector:
+	$(MAKE) build-fasim
+	FASIM_SIM_RECOVERY_RISK_DETECTOR=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --risk-detector --risk-detector-output docs/fasim_sim_recovery_risk_detector.md
+
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
