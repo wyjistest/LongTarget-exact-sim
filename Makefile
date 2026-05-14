@@ -401,6 +401,10 @@ benchmark-fasim-gpu-dp-column-post-topk-pack-shadow:
 	fi
 	python3 ./scripts/benchmark_fasim_gpu_dp_column_post_topk_pack_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-17kb-debug-window-index "$${FASIM_HUMAN_17KB_DEBUG_WINDOW_INDEX:-3}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --human-508kb-debug-window-index "$${FASIM_HUMAN_508KB_DEBUG_WINDOW_INDEX:-5}" --repeat "$${FASIM_GPU_DP_COLUMN_POST_TOPK_PACK_SHADOW_REPEAT:-1}" --debug-max-records "$${FASIM_GPU_DP_COLUMN_DEBUG_MAX_RECORDS:-8}" --require-human --require-profile
 
+check-fasim-gpu-dp-column-compact-scoreinfo-packing:
+	$(MAKE) build-fasim-cuda
+	bash ./scripts/check_fasim_gpu_dp_column_compact_scoreinfo_packing.sh
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
@@ -870,6 +874,7 @@ check-longtarget-lite-output:
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
 		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
