@@ -123,6 +123,11 @@ static inline bool fasim_gpu_dp_column_post_topk_pack_shadow_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_POST_TOPK_PACK_SHADOW");
 }
 
+static inline bool fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_COMPACT_SCOREINFO");
+}
+
 static inline int fasim_env_int_or_default_allow_zero(const char *name, int defaultValue)
 {
     const char *env = getenv(name);
@@ -235,7 +240,14 @@ struct FasimProfileStats
         gpuDpColumnPostTopKFieldMismatchMask(0),
         gpuDpColumnPostTopKCountMismatches(0),
         gpuDpColumnPostTopKPositionMismatches(0),
-        gpuDpColumnPostTopKScoreMismatches(0)
+        gpuDpColumnPostTopKScoreMismatches(0),
+        gpuDpColumnCompactScoreInfoActive(0),
+        gpuDpColumnCompactScoreInfoRecords(0),
+        gpuDpColumnCompactScoreInfoD2HBytes(0),
+        gpuDpColumnCompactScoreInfoMismatches(0),
+        gpuDpColumnCompactScoreInfoFallbacks(0),
+        gpuDpColumnExactScoreInfoExtendCalls(0),
+        gpuDpColumnExactScoreInfoExtendD2HBytes(0)
     {
     }
 
@@ -318,6 +330,13 @@ struct FasimProfileStats
     uint64_t gpuDpColumnPostTopKCountMismatches;
     uint64_t gpuDpColumnPostTopKPositionMismatches;
     uint64_t gpuDpColumnPostTopKScoreMismatches;
+    uint64_t gpuDpColumnCompactScoreInfoActive;
+    uint64_t gpuDpColumnCompactScoreInfoRecords;
+    uint64_t gpuDpColumnCompactScoreInfoD2HBytes;
+    uint64_t gpuDpColumnCompactScoreInfoMismatches;
+    uint64_t gpuDpColumnCompactScoreInfoFallbacks;
+    uint64_t gpuDpColumnExactScoreInfoExtendCalls;
+    uint64_t gpuDpColumnExactScoreInfoExtendD2HBytes;
     FasimTransferStringProfileStats transferStringProfile;
 };
 
@@ -464,6 +483,14 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_count_mismatches=" << stats.gpuDpColumnPostTopKCountMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_position_mismatches=" << stats.gpuDpColumnPostTopKPositionMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_score_mismatches=" << stats.gpuDpColumnPostTopKScoreMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_requested=" << (fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_active=" << stats.gpuDpColumnCompactScoreInfoActive << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_records=" << stats.gpuDpColumnCompactScoreInfoRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_d2h_bytes=" << stats.gpuDpColumnCompactScoreInfoD2HBytes << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_mismatches=" << stats.gpuDpColumnCompactScoreInfoMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_fallbacks=" << stats.gpuDpColumnCompactScoreInfoFallbacks << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_exact_scoreinfo_extend_calls=" << stats.gpuDpColumnExactScoreInfoExtendCalls << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_exact_scoreinfo_extend_d2h_bytes=" << stats.gpuDpColumnExactScoreInfoExtendD2HBytes << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -957,6 +984,8 @@ int main(int argc, char* const* argv)
 			fasim_gpu_dp_column_full_scoreinfo_debug_enabled_runtime();
 		const bool gpuDpColumnPostTopKPackShadow =
 			fasim_gpu_dp_column_post_topk_pack_shadow_enabled_runtime();
+		const bool gpuDpColumnCompactScoreInfo =
+			fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime();
 		const int gpuDpColumnDebugMaxWindows =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
 		const int gpuDpColumnDebugWindowIndex =
@@ -999,6 +1028,10 @@ int main(int argc, char* const* argv)
 			if (profileEnabled && gpuDpColumnRequested && useCudaBatch)
 			{
 				profileStats.gpuDpColumnActive = 1;
+				if (gpuDpColumnCompactScoreInfo)
+				{
+					profileStats.gpuDpColumnCompactScoreInfoActive = 1;
+				}
 			}
 		}
 
@@ -1071,6 +1104,12 @@ int main(int argc, char* const* argv)
 			profileStats.gpuDpColumnD2HBytes +=
 				static_cast<uint64_t>(peakCount) *
 				static_cast<uint64_t>(sizeof(PreAlignCudaPeak));
+			if (gpuDpColumnCompactScoreInfo)
+			{
+				profileStats.gpuDpColumnCompactScoreInfoD2HBytes +=
+					static_cast<uint64_t>(peakCount) *
+					static_cast<uint64_t>(sizeof(PreAlignCudaPeak));
+			}
 			profileStats.gpuDpColumnKernelNanoseconds +=
 				fasim_profile_nanoseconds_from_seconds(batchResult.gpuSeconds);
 			profileStats.gpuDpColumnTotalNanoseconds +=
@@ -1137,6 +1176,29 @@ int main(int argc, char* const* argv)
 				candidates.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
 			}
 			build_scoreinfo_from_candidates(candidates, outScoreInfo);
+		};
+
+		auto gpu_peaks_have_topk_overflow = [&](const PreAlignCudaPeak *taskPeaks,
+		                                        int minScore)
+		{
+			if (topK <= 0)
+			{
+				return false;
+			}
+			const PreAlignCudaPeak &lastPeak = taskPeaks[static_cast<size_t>(topK - 1)];
+			return lastPeak.position >= 0 && lastPeak.score > minScore;
+		};
+
+		auto record_exact_scoreinfo_extend = [&]()
+		{
+			if (!profileEnabled)
+			{
+				return;
+			}
+			++profileStats.gpuDpColumnExactScoreInfoExtendCalls;
+			profileStats.gpuDpColumnExactScoreInfoExtendD2HBytes +=
+				static_cast<uint64_t>(currentTargetLength > 0 ? currentTargetLength : 0) *
+				static_cast<uint64_t>(sizeof(int));
 		};
 
 		auto build_scoreinfo_from_column_scores = [&](
@@ -1386,11 +1448,12 @@ int main(int argc, char* const* argv)
 			int gpuMaxScore = taskPeaks[0].score;
 			std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
 			std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+			std::vector<struct StripedSmithWaterman::scoreInfo> gpuExactColumnScoreInfo;
 			std::vector<int> gpuExactColumnScores;
 			const bool needExactColumnScores =
 				gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow;
 			bool gpuScoreInfoFromExactColumns = false;
-			if (gpuDpColumnRequested)
+			if (gpuDpColumnRequested && !gpuDpColumnCompactScoreInfo)
 			{
 				if (debugQuery == NULL || debugEncodedTarget == NULL ||
 				    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
@@ -1409,6 +1472,26 @@ int main(int argc, char* const* argv)
 					return false;
 				}
 				gpuScoreInfoFromExactColumns = true;
+			}
+			else if (gpuDpColumnRequested && needExactColumnScores)
+			{
+				int exactColumnMaxScore = 0;
+				if (debugQuery == NULL || debugEncodedTarget == NULL ||
+				    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
+				                                            debugEncodedTarget,
+				                                            debugTargetLength,
+				                                            &exactColumnMaxScore,
+				                                            gpuExactColumnScoreInfo,
+				                                            &gpuExactColumnScores,
+				                                            "validate_debug"))
+				{
+					if (profileEnabled)
+					{
+						fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
+						                          validateStart);
+					}
+					return false;
+				}
 			}
 			if (cpuMaxScore != gpuMaxScore)
 			{
@@ -1435,17 +1518,39 @@ int main(int argc, char* const* argv)
 			}
 
 			const int minScore = static_cast<int>(static_cast<double>(gpuMaxScore) * 0.8);
-			if (!gpuScoreInfoFromExactColumns)
-			{
-				build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
-			}
 			if (topK > 0)
 			{
-				const PreAlignCudaPeak &lastPeak = taskPeaks[static_cast<size_t>(topK - 1)];
-				topKOverflow = lastPeak.position >= 0 && lastPeak.score > minScore;
+				topKOverflow = gpu_peaks_have_topk_overflow(taskPeaks, minScore);
 				if (topKOverflow && profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
 				{
 					++profileStats.gpuDpColumnTopKOverflowWindows;
+				}
+			}
+			if (!gpuScoreInfoFromExactColumns)
+			{
+				if (gpuDpColumnRequested && gpuDpColumnCompactScoreInfo && topKOverflow)
+				{
+					if (debugQuery == NULL || debugEncodedTarget == NULL ||
+					    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
+					                                            debugEncodedTarget,
+					                                            debugTargetLength,
+					                                            &gpuMaxScore,
+					                                            gpuScoreInfo,
+					                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
+					                                            "validate_compact_overflow"))
+					{
+						if (profileEnabled)
+						{
+							fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
+							                          validateStart);
+						}
+						return false;
+					}
+					gpuScoreInfoFromExactColumns = true;
+				}
+				else
+				{
+					build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
 				}
 			}
 			StripedSmithWaterman::Aligner cpuAligner;
@@ -1469,6 +1574,10 @@ int main(int argc, char* const* argv)
 			if (!gpuScoreInfoMatchesCpu)
 			{
 				ok = false;
+				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnCompactScoreInfo)
+				{
+					++profileStats.gpuDpColumnCompactScoreInfoMismatches;
+				}
 				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
 				{
 					++profileStats.gpuDpColumnScoreInfoMismatches;
@@ -2186,6 +2295,11 @@ int main(int argc, char* const* argv)
 							if (profileEnabled && gpuDpColumnRequested)
 							{
 								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+								if (gpuDpColumnCompactScoreInfo)
+								{
+									profileStats.gpuDpColumnCompactScoreInfoFallbacks +=
+										static_cast<uint64_t>(tasks.size());
+								}
 							}
 						}
 						else if (gpuDpColumnRequested || extendThreadCount <= 1 || tasks.size() <= 1)
@@ -2196,10 +2310,19 @@ int main(int argc, char* const* argv)
 								const size_t base = t * static_cast<size_t>(topK);
 								int maxScore = peaks[base].score;
 								int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
-								const uint8_t *exactTarget =
-									encodedTargets.data() + t * static_cast<size_t>(currentTargetLength);
-								if (gpuDpColumnRequested)
+								const bool compactTopKOverflow =
+									gpuDpColumnRequested &&
+									gpuDpColumnCompactScoreInfo &&
+									gpu_peaks_have_topk_overflow(peaks.data() + base, minScore);
+								if (gpuDpColumnRequested && (!gpuDpColumnCompactScoreInfo || compactTopKOverflow))
 								{
+									const uint8_t *exactTarget =
+										encodedTargets.data() + t * static_cast<size_t>(currentTargetLength);
+									record_exact_scoreinfo_extend();
+									if (profileEnabled && gpuDpColumnCompactScoreInfo && compactTopKOverflow)
+									{
+										++profileStats.gpuDpColumnCompactScoreInfoFallbacks;
+									}
 									if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
 									                                            exactTarget,
 									                                            currentTargetLength,
@@ -2216,6 +2339,11 @@ int main(int argc, char* const* argv)
 								else
 								{
 									build_scoreinfo_from_gpu_peaks(peaks.data() + base, minScore, finalScoreInfo);
+									if (profileEnabled && gpuDpColumnRequested && gpuDpColumnCompactScoreInfo)
+									{
+										profileStats.gpuDpColumnCompactScoreInfoRecords +=
+											static_cast<uint64_t>(finalScoreInfo.size());
+									}
 								}
 
 								if (debugCuda && t == 0)
@@ -2576,6 +2704,12 @@ int main(int argc, char* const* argv)
 								profileStats.gpuDpColumnD2HBytes +=
 									static_cast<uint64_t>(peaksByDevice[d].size()) *
 									static_cast<uint64_t>(sizeof(PreAlignCudaPeak));
+								if (gpuDpColumnCompactScoreInfo)
+								{
+									profileStats.gpuDpColumnCompactScoreInfoD2HBytes +=
+										static_cast<uint64_t>(peaksByDevice[d].size()) *
+										static_cast<uint64_t>(sizeof(PreAlignCudaPeak));
+								}
 								profileStats.gpuDpColumnKernelNanoseconds +=
 									fasim_profile_nanoseconds_from_seconds(batchResults[d].gpuSeconds);
 								profileStats.gpuDpColumnTotalNanoseconds += batchTotalNanoseconds[d];
@@ -2609,6 +2743,11 @@ int main(int argc, char* const* argv)
 							if (profileEnabled && gpuDpColumnRequested)
 							{
 								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+								if (gpuDpColumnCompactScoreInfo)
+								{
+									profileStats.gpuDpColumnCompactScoreInfoFallbacks +=
+										static_cast<uint64_t>(tasks.size());
+								}
 							}
 						}
 						else
@@ -2680,11 +2819,20 @@ int main(int argc, char* const* argv)
 										int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 
 										finalScoreInfoLocal.clear();
-										if (gpuDpColumnRequested)
+										const bool compactTopKOverflow =
+											gpuDpColumnRequested &&
+											gpuDpColumnCompactScoreInfo &&
+											gpu_peaks_have_topk_overflow(taskPeaks, minScore);
+										if (gpuDpColumnRequested && (!gpuDpColumnCompactScoreInfo || compactTopKOverflow))
 										{
 											const uint8_t *exactTarget =
 												encodedTargets.data() +
 												(localBegin + local) * static_cast<size_t>(currentTargetLength);
+											record_exact_scoreinfo_extend();
+											if (profileEnabled && gpuDpColumnCompactScoreInfo && compactTopKOverflow)
+											{
+												++profileStats.gpuDpColumnCompactScoreInfoFallbacks;
+											}
 											if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[d],
 											                                            exactTarget,
 											                                            currentTargetLength,
@@ -2697,6 +2845,15 @@ int main(int argc, char* const* argv)
 												break;
 											}
 											minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
+										}
+										else if (gpuDpColumnRequested && gpuDpColumnCompactScoreInfo)
+										{
+											build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, finalScoreInfoLocal);
+											if (profileEnabled)
+											{
+												profileStats.gpuDpColumnCompactScoreInfoRecords +=
+													static_cast<uint64_t>(finalScoreInfoLocal.size());
+											}
 										}
 										else
 										{
