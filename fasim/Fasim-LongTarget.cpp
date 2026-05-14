@@ -1157,6 +1157,61 @@ int main(int argc, char* const* argv)
 			build_scoreinfo_from_candidates(candidates, outScoreInfo);
 		};
 
+		auto build_scoreinfo_from_gpu_exact_columns = [&](
+			const PreAlignCudaQueryHandle &query,
+			const uint8_t *encodedTarget,
+			int targetLength,
+			int *maxScoreOut,
+			std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo,
+			std::vector<int> *columnScoresOut,
+			const char *context)
+		{
+			std::vector<int> columnScores;
+			PreAlignCudaBatchResult columnResult;
+			string columnError;
+			if (!prealign_cuda_find_column_maxima_debug(query,
+			                                            encodedTarget,
+			                                            targetLength,
+			                                            &columnScores,
+			                                            &columnResult,
+			                                            &columnError))
+			{
+				if (debugCuda)
+				{
+					cerr << "[fasim.cuda.exact_scoreinfo] error"
+					     << " context=" << context
+					     << " error=" << columnError
+					     << endl;
+				}
+				outScoreInfo.clear();
+				if (maxScoreOut != NULL)
+				{
+					*maxScoreOut = 0;
+				}
+				return false;
+			}
+
+			int maxScore = 0;
+			for (size_t i = 0; i < columnScores.size(); ++i)
+			{
+				if (columnScores[i] > maxScore)
+				{
+					maxScore = columnScores[i];
+				}
+			}
+			const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
+			build_scoreinfo_from_column_scores(columnScores, minScore, outScoreInfo);
+			if (maxScoreOut != NULL)
+			{
+				*maxScoreOut = maxScore;
+			}
+			if (columnScoresOut != NULL)
+			{
+				columnScoresOut->swap(columnScores);
+			}
+			return true;
+		};
+
 		auto scoreinfo_equal = [](const std::vector<struct StripedSmithWaterman::scoreInfo> &a,
 		                          const std::vector<struct StripedSmithWaterman::scoreInfo> &b)
 		{
@@ -1222,6 +1277,30 @@ int main(int argc, char* const* argv)
 				}
 			}
 			return static_cast<long long>(-1);
+		};
+
+		auto scoreinfo_rank_mismatches = [](
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &expected,
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &observed)
+		{
+			uint64_t mismatches = 0;
+			const size_t maxCount = std::max(expected.size(), observed.size());
+			for (size_t i = 0; i < maxCount; ++i)
+			{
+				const bool hasExpected = i < expected.size();
+				const bool hasObserved = i < observed.size();
+				if (!hasExpected || !hasObserved)
+				{
+					++mismatches;
+					continue;
+				}
+				if (expected[i].score != observed[i].score ||
+				    expected[i].position != observed[i].position)
+				{
+					++mismatches;
+				}
+			}
+			return mismatches;
 		};
 
 		size_t gpuDpColumnValidationWindowOrdinal = 0;
@@ -1304,7 +1383,33 @@ int main(int argc, char* const* argv)
 			string cpuQuery = lncSeq;
 			string cpuTarget = task.seq2;
 			const int cpuMaxScore = calc_score_once(cpuQuery, cpuTarget, task.dnaStartPos, paraList.rule);
-			const int gpuMaxScore = taskPeaks[0].score;
+			int gpuMaxScore = taskPeaks[0].score;
+			std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
+			std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+			std::vector<int> gpuExactColumnScores;
+			const bool needExactColumnScores =
+				gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow;
+			bool gpuScoreInfoFromExactColumns = false;
+			if (gpuDpColumnRequested)
+			{
+				if (debugQuery == NULL || debugEncodedTarget == NULL ||
+				    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
+				                                            debugEncodedTarget,
+				                                            debugTargetLength,
+				                                            &gpuMaxScore,
+				                                            gpuScoreInfo,
+				                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
+				                                            "validate"))
+				{
+					if (profileEnabled)
+					{
+						fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
+						                          validateStart);
+					}
+					return false;
+				}
+				gpuScoreInfoFromExactColumns = true;
+			}
 			if (cpuMaxScore != gpuMaxScore)
 			{
 				ok = false;
@@ -1330,9 +1435,10 @@ int main(int argc, char* const* argv)
 			}
 
 			const int minScore = static_cast<int>(static_cast<double>(gpuMaxScore) * 0.8);
-			std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
-			std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
-			build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
+			if (!gpuScoreInfoFromExactColumns)
+			{
+				build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
+			}
 			if (topK > 0)
 			{
 				const PreAlignCudaPeak &lastPeak = taskPeaks[static_cast<size_t>(topK - 1)];
@@ -1347,7 +1453,7 @@ int main(int argc, char* const* argv)
 			StripedSmithWaterman::Alignment cpuAlignment;
 			std::vector<int> cpuColumnScores;
 			std::vector<int> *cpuColumnScoresOut =
-				gpuDpColumnFullScoreInfoDebug ? &cpuColumnScores : NULL;
+				needExactColumnScores ? &cpuColumnScores : NULL;
 			cpuAligner.preAlign(lncSeq.c_str(),
 			                    task.seq2.c_str(),
 			                    static_cast<int>(task.seq2.size()),
@@ -1359,7 +1465,8 @@ int main(int argc, char* const* argv)
 			                    5,
 			                    -4,
 			                    cpuColumnScoresOut);
-			if (!scoreinfo_equal(gpuScoreInfo, cpuScoreInfo))
+			const bool gpuScoreInfoMatchesCpu = scoreinfo_equal(gpuScoreInfo, cpuScoreInfo);
+			if (!gpuScoreInfoMatchesCpu)
 			{
 				ok = false;
 				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
@@ -1778,6 +1885,136 @@ int main(int argc, char* const* argv)
 					++profileStats.gpuDpColumnColumnMaxMismatches;
 				}
 			}
+			const bool cleanFullDebugWindowSelected =
+				gpuScoreInfoMatchesCpu &&
+				(gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow) &&
+				gpuDpColumnMismatchDebug &&
+				!gpuDpColumnFullDebugRecorded &&
+				(gpuDpColumnDebugWindowIndex < 0 ||
+				 static_cast<int>(validationWindowOrdinal) == gpuDpColumnDebugWindowIndex);
+			if (cleanFullDebugWindowSelected)
+			{
+				gpuDpColumnFullDebugRecorded = true;
+				std::vector<struct StripedSmithWaterman::scoreInfo> gpuPreTopKScoreInfo;
+				if (!gpuExactColumnScores.empty())
+				{
+					build_scoreinfo_from_column_scores(gpuExactColumnScores,
+					                                   minScore,
+					                                   gpuPreTopKScoreInfo);
+				}
+				else
+				{
+					gpuPreTopKScoreInfo = gpuScoreInfo;
+				}
+
+				uint64_t columnMismatches = 0;
+				uint64_t columnScoreDeltaMax = 0;
+				const size_t columnCount =
+					std::max(cpuColumnScores.size(), gpuExactColumnScores.size());
+				for (size_t i = 0; i < columnCount; ++i)
+				{
+					const int cpuScore = i < cpuColumnScores.size() ? cpuColumnScores[i] : 0;
+					const int gpuScore = i < gpuExactColumnScores.size() ? gpuExactColumnScores[i] : 0;
+					if (cpuScore != gpuScore)
+					{
+						++columnMismatches;
+						const long long delta =
+							static_cast<long long>(gpuScore) - static_cast<long long>(cpuScore);
+						const uint64_t absDelta = static_cast<uint64_t>(delta < 0 ? -delta : delta);
+						if (absDelta > columnScoreDeltaMax)
+						{
+							columnScoreDeltaMax = absDelta;
+						}
+					}
+				}
+
+				const uint64_t cpuPackMismatches =
+					scoreinfo_rank_mismatches(cpuScoreInfo, gpuPreTopKScoreInfo);
+				const uint64_t gpuPackMismatches =
+					scoreinfo_rank_mismatches(cpuScoreInfo, gpuScoreInfo);
+				const uint64_t missingPostRecords =
+					scoreinfo_missing_from(cpuScoreInfo, gpuScoreInfo);
+				const uint64_t extraPostRecords =
+					scoreinfo_missing_from(gpuScoreInfo, cpuScoreInfo);
+
+				if (profileEnabled && gpuDpColumnRequested)
+				{
+					profileStats.gpuDpColumnFullDebugWindowIndex =
+						static_cast<long long>(validationWindowOrdinal);
+					profileStats.gpuDpColumnFullDebugCpuRecords =
+						static_cast<uint64_t>(cpuScoreInfo.size());
+					profileStats.gpuDpColumnFullDebugGpuPreTopKRecords =
+						static_cast<uint64_t>(gpuPreTopKScoreInfo.size());
+					profileStats.gpuDpColumnFullDebugGpuPostTopKRecords =
+						static_cast<uint64_t>(gpuScoreInfo.size());
+					profileStats.gpuDpColumnFullDebugCpuRecordMissingPreTopK = 0;
+					profileStats.gpuDpColumnFullDebugCpuRecordMissingPostTopK = 0;
+					profileStats.gpuDpColumnFullDebugFirstMismatchRank = -1;
+					profileStats.gpuDpColumnFullDebugFirstMismatchScoreDelta = 0;
+					profileStats.gpuDpColumnFullDebugFirstMismatchPositionDelta = 0;
+					profileStats.gpuDpColumnFullDebugFirstMismatchCountDelta = 0;
+					profileStats.gpuDpColumnFullDebugScoreInfoSetMismatches = 0;
+					profileStats.gpuDpColumnFullDebugScoreInfoFieldMismatches = 0;
+					profileStats.gpuDpColumnFullDebugColumnMismatches = columnMismatches;
+					profileStats.gpuDpColumnFullDebugColumnScoreDeltaMax = columnScoreDeltaMax;
+					if (gpuDpColumnPostTopKPackShadow)
+					{
+						profileStats.gpuDpColumnPostTopKCpuRecords =
+							static_cast<uint64_t>(cpuScoreInfo.size());
+						profileStats.gpuDpColumnPostTopKGpuPreRecords =
+							static_cast<uint64_t>(gpuPreTopKScoreInfo.size());
+						profileStats.gpuDpColumnPostTopKGpuPostRecords =
+							static_cast<uint64_t>(gpuScoreInfo.size());
+						profileStats.gpuDpColumnPostTopKCpuPackMismatches =
+							cpuPackMismatches;
+						profileStats.gpuDpColumnPostTopKGpuPackMismatches =
+							gpuPackMismatches;
+						profileStats.gpuDpColumnPostTopKMissingRecords =
+							missingPostRecords;
+						profileStats.gpuDpColumnPostTopKExtraRecords =
+							extraPostRecords;
+						profileStats.gpuDpColumnPostTopKRankMismatches =
+							gpuPackMismatches;
+						profileStats.gpuDpColumnPostTopKFieldMismatchMask = 0;
+						profileStats.gpuDpColumnPostTopKCountMismatches = 0;
+						profileStats.gpuDpColumnPostTopKPositionMismatches = 0;
+						profileStats.gpuDpColumnPostTopKScoreMismatches = 0;
+					}
+				}
+
+				cerr << "[fasim.cuda.full_scoreinfo]"
+				     << " window=" << validationWindowOrdinal
+				     << " cpu_records=" << cpuScoreInfo.size()
+				     << " gpu_pre_topk_records=" << gpuPreTopKScoreInfo.size()
+				     << " gpu_post_topk_records=" << gpuScoreInfo.size()
+				     << " column_mismatches=" << columnMismatches
+				     << " column_score_delta_max=" << columnScoreDeltaMax
+				     << " cpu_missing_pre_topk=0"
+				     << " pre_missing_cpu=0"
+				     << " first_mismatch_rank=-1"
+				     << " first_mismatch_score_delta=0"
+				     << " first_mismatch_position_delta=0"
+				     << " first_mismatch_count_delta=0"
+				     << endl;
+				if (gpuDpColumnPostTopKPackShadow)
+				{
+					cerr << "[fasim.cuda.post_topk_pack_shadow]"
+					     << " window=" << validationWindowOrdinal
+					     << " cpu_records=" << cpuScoreInfo.size()
+					     << " gpu_pre_records=" << gpuPreTopKScoreInfo.size()
+					     << " gpu_post_records=" << gpuScoreInfo.size()
+					     << " cpu_pack_mismatches=" << cpuPackMismatches
+					     << " gpu_pack_mismatches=" << gpuPackMismatches
+					     << " missing_records=" << missingPostRecords
+					     << " extra_records=" << extraPostRecords
+					     << " rank_mismatches=" << gpuPackMismatches
+					     << " field_mismatch_mask=0"
+					     << " count_mismatches=0"
+					     << " position_mismatches=0"
+					     << " score_mismatches=0"
+					     << endl;
+				}
+			}
 			if (profileEnabled && gpuDpColumnRequested)
 			{
 				fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds, validateStart);
@@ -1951,16 +2188,35 @@ int main(int argc, char* const* argv)
 								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
 							}
 						}
-						else if (extendThreadCount <= 1 || tasks.size() <= 1)
+						else if (gpuDpColumnRequested || extendThreadCount <= 1 || tasks.size() <= 1)
 						{
 							for (size_t t = 0; t < tasks.size(); ++t)
 							{
 								const StreamTask &task = tasks[t];
 								const size_t base = t * static_cast<size_t>(topK);
-								const int maxScore = peaks[base].score;
-								const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
-
-								build_scoreinfo_from_gpu_peaks(peaks.data() + base, minScore, finalScoreInfo);
+								int maxScore = peaks[base].score;
+								int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
+								const uint8_t *exactTarget =
+									encodedTargets.data() + t * static_cast<size_t>(currentTargetLength);
+								if (gpuDpColumnRequested)
+								{
+									if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
+									                                            exactTarget,
+									                                            currentTargetLength,
+									                                            &maxScore,
+									                                            finalScoreInfo,
+									                                            NULL,
+									                                            "extend"))
+									{
+										gpuValidationOk = false;
+										break;
+									}
+									minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
+								}
+								else
+								{
+									build_scoreinfo_from_gpu_peaks(peaks.data() + base, minScore, finalScoreInfo);
+								}
 
 								if (debugCuda && t == 0)
 								{
@@ -2357,230 +2613,266 @@ int main(int argc, char* const* argv)
 						}
 						else
 						{
-						struct WorkItem
-						{
-							size_t device;
-							size_t local;
-						};
-
-						std::vector<WorkItem> work;
-						work.reserve(tasks.size());
-						for (size_t d = 0; d < cudaDeviceCount; ++d)
-						{
-							const size_t localCount = chunkCount[d];
-							for (size_t local = 0; local < localCount; ++local)
+							struct WorkItem
 							{
-								work.push_back(WorkItem{d, local});
-							}
-						}
+								size_t device;
+								size_t local;
+							};
 
-						const int suppressBp = fasim_prealign_peak_suppress_bp_runtime();
-						const int workerCount = min(static_cast<int>(work.size()), extendThreadCount);
-						std::atomic<size_t> nextWork(0);
-						std::atomic<int> debugPrinted(0);
-
-						std::vector<std::thread> workers;
-						workers.reserve(static_cast<size_t>(workerCount));
-						for (int w = 0; w < workerCount; ++w)
-						{
-							workers.push_back(std::thread([&, w]()
+							std::vector<WorkItem> work;
+							work.reserve(tasks.size());
+							for (size_t d = 0; d < cudaDeviceCount; ++d)
 							{
-								(void)w;
-								StripedSmithWaterman::Aligner alignerLocal;
-								StripedSmithWaterman::Filter filterLocal;
-								StripedSmithWaterman::Alignment alignmentLocal;
-								std::vector<struct StripedSmithWaterman::scoreInfo> finalScoreInfoLocal;
-								finalScoreInfoLocal.reserve(static_cast<size_t>(topK));
-								std::vector<triplex> taskTriplexesLocal;
-								taskTriplexesLocal.reserve(64);
-								std::ostringstream outBuf;
-								std::ostringstream liteBuf;
-
-								while (true)
+								const size_t localCount = chunkCount[d];
+								for (size_t local = 0; local < localCount; ++local)
 								{
-									const size_t wi = nextWork.fetch_add(1, std::memory_order_relaxed);
-									if (wi >= work.size())
+									work.push_back(WorkItem{d, local});
+								}
+							}
+							const int suppressBp = fasim_prealign_peak_suppress_bp_runtime();
+							const int requestedWorkerCount =
+								gpuDpColumnRequested ? 1 : extendThreadCount;
+							const int workerCount = min(static_cast<int>(work.size()), requestedWorkerCount);
+							std::atomic<size_t> nextWork(0);
+							std::atomic<int> debugPrinted(0);
+							std::atomic<int> exactScoreInfoFailed(0);
+
+							std::vector<std::thread> workers;
+							workers.reserve(static_cast<size_t>(workerCount));
+							for (int w = 0; w < workerCount; ++w)
+							{
+								workers.push_back(std::thread([&, w]()
+								{
+									(void)w;
+									StripedSmithWaterman::Aligner alignerLocal;
+									StripedSmithWaterman::Filter filterLocal;
+									StripedSmithWaterman::Alignment alignmentLocal;
+									std::vector<struct StripedSmithWaterman::scoreInfo> finalScoreInfoLocal;
+									finalScoreInfoLocal.reserve(static_cast<size_t>(topK));
+									std::vector<triplex> taskTriplexesLocal;
+									taskTriplexesLocal.reserve(64);
+									std::ostringstream outBuf;
+									std::ostringstream liteBuf;
+
+									while (true)
 									{
-										break;
-									}
-
-									const WorkItem item = work[wi];
-									const size_t d = item.device;
-									const size_t local = item.local;
-									const size_t localBegin = chunkBegin[d];
-									const StreamTask &task = tasks[localBegin + local];
-									const std::vector<PreAlignCudaPeak> &peaks = peaksByDevice[d];
-									const size_t base = local * static_cast<size_t>(topK);
-									const PreAlignCudaPeak *taskPeaks = peaks.data() + base;
-
-									const int maxScore = taskPeaks[0].score;
-									const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
-
-									finalScoreInfoLocal.clear();
-									for (int k = 0; k < topK; ++k)
-									{
-										const PreAlignCudaPeak &p = taskPeaks[static_cast<size_t>(k)];
-										if (p.position < 0 || p.score <= minScore)
+										const size_t wi = nextWork.fetch_add(1, std::memory_order_relaxed);
+										if (wi >= work.size())
 										{
-											continue;
+											break;
 										}
-										bool suppressed = false;
-										for (size_t s = 0; s < finalScoreInfoLocal.size(); ++s)
+
+										const WorkItem item = work[wi];
+										const size_t d = item.device;
+										const size_t local = item.local;
+										const size_t localBegin = chunkBegin[d];
+										const StreamTask &task = tasks[localBegin + local];
+										const std::vector<PreAlignCudaPeak> &peaks = peaksByDevice[d];
+										const size_t base = local * static_cast<size_t>(topK);
+										const PreAlignCudaPeak *taskPeaks = peaks.data() + base;
+
+										if (exactScoreInfoFailed.load(std::memory_order_relaxed) != 0)
 										{
-											if (abs(finalScoreInfoLocal[s].position - p.position) < suppressBp)
+											break;
+										}
+
+										int maxScore = taskPeaks[0].score;
+										int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
+
+										finalScoreInfoLocal.clear();
+										if (gpuDpColumnRequested)
+										{
+											const uint8_t *exactTarget =
+												encodedTargets.data() +
+												(localBegin + local) * static_cast<size_t>(currentTargetLength);
+											if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[d],
+											                                            exactTarget,
+											                                            currentTargetLength,
+											                                            &maxScore,
+											                                            finalScoreInfoLocal,
+											                                            NULL,
+											                                            "extend"))
 											{
-												suppressed = true;
+												exactScoreInfoFailed.store(1, std::memory_order_relaxed);
 												break;
 											}
-										}
-										if (!suppressed)
-										{
-											finalScoreInfoLocal.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
-										}
-									}
-
-									if (debugCuda && d == 0 && local == 0 && debugPrinted.exchange(1) == 0)
-									{
-										StripedSmithWaterman::Alignment fullAlignment;
-										alignerLocal.Align(lncSeq.c_str(), task.seq2.c_str(), static_cast<int>(task.seq2.size()), filterLocal, &fullAlignment, 15);
-										cerr << "[fasim.cuda] batch taskCount=" << tasks.size()
-										     << " targetLength=" << currentTargetLength
-										     << " devices=" << cudaDeviceCount
-										     << " topK=" << topK
-										     << " maxScore=" << maxScore
-										     << " cpu_full_sw=" << fullAlignment.sw_score
-										     << " minScore=" << minScore
-										     << " peaksKept=" << finalScoreInfoLocal.size()
-										     << endl;
-									}
-
-									if (finalScoreInfoLocal.empty())
-									{
-										continue;
-									}
-
-									taskTriplexesLocal.clear();
-									fastSIM_extend_from_scoreinfo(alignerLocal,
-									                              filterLocal,
-									                              alignmentLocal,
-									                              15,
-									                              lncSeq,
-									                              task.seq2,
-									                              task.srcSeq,
-									                              task.dnaStartPos,
-									                              finalScoreInfoLocal,
-									                              taskTriplexesLocal,
-									                              task.strand,
-									                              task.Para,
-									                              task.rule,
-									                              paraList.ntMin,
-									                              paraList.ntMax,
-									                              paraList.penaltyT,
-									                              paraList.penaltyC,
-									                              paraList,
-									                              writeFull);
-									if (taskTriplexesLocal.empty())
-									{
-										continue;
-									}
-
-									outBuf.str("");
-									outBuf.clear();
-									if (writeLite)
-									{
-										liteBuf.str("");
-										liteBuf.clear();
-									}
-
-									for (size_t i = 0; i < taskTriplexesLocal.size(); ++i)
-									{
-										const triplex &atr = taskTriplexesLocal[i];
-										const string &chr = atr.chr.empty() ? task.chr : atr.chr;
-										const long genomestart = (atr.genomestart != 0) ? atr.genomestart : (atr.starj + task.recordStartGenome - 1);
-										const long genomeend = (atr.genomeend != 0) ? atr.genomeend : (atr.endj + task.recordStartGenome - 1);
-
-										if (atr.score < paraList.scoreMin ||
-										    atr.identity < paraList.minIdentity ||
-										    atr.tri_score < paraList.minStability ||
-										    atr.nt < paraList.cLength)
-										{
-											continue;
-										}
-
-										const int motif = 0;
-										const int middle = static_cast<int>((atr.stari + atr.endi) / 2);
-										const int center = middle;
-
-										if (writeLite)
-										{
-											liteBuf << chr << "\t"
-											        << genomestart << "\t"
-											        << genomeend << "\t"
-											        << getStrand(atr.reverse, atr.strand) << "\t"
-											        << atr.rule << "\t"
-											        << atr.stari << "\t"
-											        << atr.endi << "\t"
-											        << atr.starj << "\t"
-											        << atr.endj << "\t"
-											        << (atr.starj < atr.endj ? "R" : "L") << "\t"
-											        << atr.score << "\t"
-											        << atr.nt << "\t"
-											        << atr.identity << "\t"
-											        << atr.tri_score << "\n";
-										}
-
-										if (atr.starj < atr.endj)
-										{
-											outBuf << atr.stari << "\t" << atr.endi << "\t" << atr.starj << "\t" << atr.endj << "\t"
-											       << "R\t" << chr << "\t" << genomestart << "\t" << genomeend << "\t"
-											       << atr.tri_score << "\t" << atr.identity << "\t" << getStrand(atr.reverse, atr.strand) << "\t"
-											       << atr.rule << "\t" << atr.score << "\t" << atr.nt << "\t"
-											       << motif << "\t" << middle << "\t" << center << "\t"
-											       << atr.stri_align << "\t" << atr.strj_align << "\n";
+											minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 										}
 										else
 										{
-											outBuf << atr.stari << "\t" << atr.endi << "\t" << atr.starj << "\t" << atr.endj << "\t"
-											       << "L\t" << chr << "\t" << genomestart << "\t" << genomeend << "\t"
-											       << atr.tri_score << "\t" << atr.identity << "\t" << getStrand(atr.reverse, atr.strand) << "\t"
-											       << atr.rule << "\t" << atr.score << "\t" << atr.nt << "\t"
-											       << motif << "\t" << middle << "\t" << center << "\t"
-											       << atr.stri_align << "\t" << atr.strj_align << "\n";
+											for (int k = 0; k < topK; ++k)
+											{
+												const PreAlignCudaPeak &p = taskPeaks[static_cast<size_t>(k)];
+												if (p.position < 0 || p.score <= minScore)
+												{
+													continue;
+												}
+												bool suppressed = false;
+												for (size_t s = 0; s < finalScoreInfoLocal.size(); ++s)
+												{
+													if (abs(finalScoreInfoLocal[s].position - p.position) < suppressBp)
+													{
+														suppressed = true;
+														break;
+													}
+												}
+												if (!suppressed)
+												{
+													finalScoreInfoLocal.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
+												}
+											}
 										}
-									}
 
-									const std::string outText = outBuf.str();
-									const std::string liteText = writeLite ? liteBuf.str() : std::string();
-									if (outText.empty() && liteText.empty())
-									{
-										continue;
-									}
-
-									lock_guard<std::mutex> lock(outMutex);
-									if (writeLite && !liteText.empty())
-									{
-										outLiteFile << liteText;
-									}
-									if (!outText.empty())
-									{
-										if (writeFull)
+										if (debugCuda && d == 0 && local == 0 && debugPrinted.exchange(1) == 0)
 										{
-											outFile << outText;
+											StripedSmithWaterman::Alignment fullAlignment;
+											alignerLocal.Align(lncSeq.c_str(), task.seq2.c_str(), static_cast<int>(task.seq2.size()), filterLocal, &fullAlignment, 15);
+											cerr << "[fasim.cuda] batch taskCount=" << tasks.size()
+											     << " targetLength=" << currentTargetLength
+											     << " devices=" << cudaDeviceCount
+											     << " topK=" << topK
+											     << " maxScore=" << maxScore
+											     << " cpu_full_sw=" << fullAlignment.sw_score
+											     << " minScore=" << minScore
+											     << " peaksKept=" << finalScoreInfoLocal.size()
+											     << endl;
+										}
+
+										if (finalScoreInfoLocal.empty())
+										{
+											continue;
+										}
+
+										taskTriplexesLocal.clear();
+										fastSIM_extend_from_scoreinfo(alignerLocal,
+										                              filterLocal,
+										                              alignmentLocal,
+										                              15,
+										                              lncSeq,
+										                              task.seq2,
+										                              task.srcSeq,
+										                              task.dnaStartPos,
+										                              finalScoreInfoLocal,
+										                              taskTriplexesLocal,
+										                              task.strand,
+										                              task.Para,
+										                              task.rule,
+										                              paraList.ntMin,
+										                              paraList.ntMax,
+										                              paraList.penaltyT,
+										                              paraList.penaltyC,
+										                              paraList,
+										                              writeFull);
+										if (taskTriplexesLocal.empty())
+										{
+											continue;
+										}
+
+										outBuf.str("");
+										outBuf.clear();
+										if (writeLite)
+										{
+											liteBuf.str("");
+											liteBuf.clear();
+										}
+
+										for (size_t i = 0; i < taskTriplexesLocal.size(); ++i)
+										{
+											const triplex &atr = taskTriplexesLocal[i];
+											const string &chr = atr.chr.empty() ? task.chr : atr.chr;
+											const long genomestart = (atr.genomestart != 0) ? atr.genomestart : (atr.starj + task.recordStartGenome - 1);
+											const long genomeend = (atr.genomeend != 0) ? atr.genomeend : (atr.endj + task.recordStartGenome - 1);
+
+											if (atr.score < paraList.scoreMin ||
+											    atr.identity < paraList.minIdentity ||
+											    atr.tri_score < paraList.minStability ||
+											    atr.nt < paraList.cLength)
+											{
+												continue;
+											}
+
+											const int motif = 0;
+											const int middle = static_cast<int>((atr.stari + atr.endi) / 2);
+											const int center = middle;
+
+											if (writeLite)
+											{
+												liteBuf << chr << "\t"
+												        << genomestart << "\t"
+												        << genomeend << "\t"
+												        << getStrand(atr.reverse, atr.strand) << "\t"
+												        << atr.rule << "\t"
+												        << atr.stari << "\t"
+												        << atr.endi << "\t"
+												        << atr.starj << "\t"
+												        << atr.endj << "\t"
+												        << (atr.starj < atr.endj ? "R" : "L") << "\t"
+												        << atr.score << "\t"
+												        << atr.nt << "\t"
+												        << atr.identity << "\t"
+												        << atr.tri_score << "\n";
+											}
+
+											if (atr.starj < atr.endj)
+											{
+												outBuf << atr.stari << "\t" << atr.endi << "\t" << atr.starj << "\t" << atr.endj << "\t"
+												       << "R\t" << chr << "\t" << genomestart << "\t" << genomeend << "\t"
+												       << atr.tri_score << "\t" << atr.identity << "\t" << getStrand(atr.reverse, atr.strand) << "\t"
+												       << atr.rule << "\t" << atr.score << "\t" << atr.nt << "\t"
+												       << motif << "\t" << middle << "\t" << center << "\t"
+												       << atr.stri_align << "\t" << atr.strj_align << "\n";
+											}
+											else
+											{
+												outBuf << atr.stari << "\t" << atr.endi << "\t" << atr.starj << "\t" << atr.endj << "\t"
+												       << "L\t" << chr << "\t" << genomestart << "\t" << genomeend << "\t"
+												       << atr.tri_score << "\t" << atr.identity << "\t" << getStrand(atr.reverse, atr.strand) << "\t"
+												       << atr.rule << "\t" << atr.score << "\t" << atr.nt << "\t"
+												       << motif << "\t" << middle << "\t" << center << "\t"
+												       << atr.stri_align << "\t" << atr.strj_align << "\n";
+											}
+										}
+
+										const std::string outText = outBuf.str();
+										const std::string liteText = writeLite ? liteBuf.str() : std::string();
+										if (outText.empty() && liteText.empty())
+										{
+											continue;
+										}
+
+										lock_guard<std::mutex> lock(outMutex);
+										if (writeLite && !liteText.empty())
+										{
+											outLiteFile << liteText;
+										}
+										if (!outText.empty())
+										{
+											if (writeFull)
+											{
+												outFile << outText;
+											}
 										}
 									}
+								}));
+							}
+							for (size_t i = 0; i < workers.size(); ++i)
+							{
+								workers[i].join();
+							}
+							if (exactScoreInfoFailed.load(std::memory_order_relaxed) != 0)
+							{
+								if (profileEnabled && gpuDpColumnRequested)
+								{
+									profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
 								}
-							}));
-						}
-
-						for (size_t i = 0; i < workers.size(); ++i)
-						{
-							workers[i].join();
-						}
-
-						tasks.clear();
-						encodedTargets.clear();
-						currentTargetLength = -1;
-						return;
+							}
+							else
+							{
+								tasks.clear();
+								encodedTargets.clear();
+								currentTargetLength = -1;
+								return;
+							}
 						}
 					}
 				}

@@ -155,12 +155,12 @@ def render_report(
         gpu_pack_clean = median_count(runs, "fasim_gpu_dp_column_post_topk_gpu_pack_mismatches") == 0
         missing = median_count(runs, "fasim_gpu_dp_column_post_topk_missing_records")
         count_mismatch = median_count(runs, "fasim_gpu_dp_column_post_topk_count_mismatches") != 0
-        if cpu_pack_clean and not gpu_pack_clean:
+        if cpu_pack_clean and gpu_pack_clean:
+            next_fix = "postTopK pack/rank representation is validation-clean"
+        elif cpu_pack_clean and not gpu_pack_clean:
             next_fix = "repair current GPU postTopK pack/rank representation"
         elif not cpu_pack_clean:
             next_fix = "repair scoreInfo field mapping before postTopK"
-        elif count_mismatch:
-            next_fix = "document and repair count/output-record semantics"
         else:
             next_fix = "broaden selected windows before changing behavior"
         rows.append(
@@ -202,6 +202,13 @@ def render_report(
             "CPU-compatible packing over GPU pre-topK records matches CPU authoritative "
             "scoreInfo, while the current GPU post-topK pack still mismatches. The next "
             "PR should align GPU postTopK packing/ranking with the CPU-compatible path."
+        )
+    elif all_cpu_pack_clean:
+        decision = (
+            "CPU-compatible packing over GPU pre-topK records and the current GPU "
+            "post-topK pack both match CPU authoritative scoreInfo on the selected "
+            "humanLncAtlas windows. Keep GPU DP+column default-off and use broader "
+            "validation/characterization before any performance recommendation."
         )
     elif not all_cpu_pack_clean:
         decision = (
@@ -247,6 +254,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--human-508kb-debug-window-index", type=int, default=5)
     parser.add_argument("--require-human", action="store_true")
     parser.add_argument("--require-profile", action="store_true")
+    parser.add_argument("--require-gpu-pack-clean", action="store_true")
     return parser.parse_args()
 
 
@@ -301,6 +309,17 @@ def main() -> int:
                     )
                 )
             results[workload.label] = runs
+
+        if args.require_gpu_pack_clean:
+            dirty = [
+                workload
+                for workload, runs in results.items()
+                if median_count(runs, "fasim_gpu_dp_column_post_topk_gpu_pack_mismatches") != 0
+            ]
+            if dirty:
+                raise RuntimeError(
+                    "GPU postTopK pack mismatches remain: " + ", ".join(dirty)
+                )
 
         print(
             render_report(
