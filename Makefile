@@ -425,6 +425,14 @@ benchmark-fasim-local-sim-recovery-filter-shadow:
 	$(MAKE) build-fasim
 	FASIM_SIM_RECOVERY_RISK_DETECTOR=1 FASIM_SIM_RECOVERY_EXECUTOR_SHADOW=1 FASIM_SIM_RECOVERY_INTEGRATION_SHADOW=1 FASIM_SIM_RECOVERY_FILTER_SHADOW=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --risk-detector --executor-shadow --integration-shadow --filter-shadow --output $(CURDIR)/.tmp/fasim_local_sim_recovery_filter_shadow/taxonomy.md --risk-detector-output $(CURDIR)/.tmp/fasim_local_sim_recovery_filter_shadow/risk_detector.md --executor-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_filter_shadow/executor_shadow.md --integration-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_filter_shadow/integration_shadow.md --filter-shadow-output docs/fasim_local_sim_recovery_filter_shadow.md --work-dir $(CURDIR)/.tmp/fasim_local_sim_recovery_filter_shadow
 
+check-fasim-local-sim-recovery-replacement-shadow:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_local_sim_recovery_replacement_shadow.sh
+
+benchmark-fasim-local-sim-recovery-replacement-shadow:
+	$(MAKE) build-fasim
+	FASIM_SIM_RECOVERY_RISK_DETECTOR=1 FASIM_SIM_RECOVERY_EXECUTOR_SHADOW=1 FASIM_SIM_RECOVERY_INTEGRATION_SHADOW=1 FASIM_SIM_RECOVERY_FILTER_SHADOW=1 FASIM_SIM_RECOVERY_REPLACEMENT_SHADOW=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --risk-detector --executor-shadow --integration-shadow --filter-shadow --replacement-shadow --output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_shadow/taxonomy.md --risk-detector-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_shadow/risk_detector.md --executor-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_shadow/executor_shadow.md --integration-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_shadow/integration_shadow.md --filter-shadow-output $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_shadow/filter_shadow.md --replacement-shadow-output docs/fasim_local_sim_recovery_replacement_shadow.md --work-dir $(CURDIR)/.tmp/fasim_local_sim_recovery_replacement_shadow
+
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \

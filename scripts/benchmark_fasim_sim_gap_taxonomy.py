@@ -275,6 +275,41 @@ class FilterShadow:
 
 
 @dataclasses.dataclass(frozen=True)
+class ReplacementStrategyResult:
+    workload_label: str
+    strategy: str
+    fasim_records: int
+    recovered_candidates: int
+    fasim_records_suppressed: int
+    recovered_records_accepted: int
+    integrated_records: int
+    sim_records: int
+    sim_only_recovered: int
+    shared_records_vs_sim: int
+    extra_records_vs_sim: int
+    overlap_conflicts: int
+    output_mutations: int
+    oracle: bool
+
+    @property
+    def recall_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.sim_records)
+
+    @property
+    def precision_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.integrated_records)
+
+
+@dataclasses.dataclass(frozen=True)
+class ReplacementShadow:
+    workload_label: str
+    fasim_records: int
+    recovered_candidates: int
+    output_mutations: int
+    strategies: Tuple[ReplacementStrategyResult, ...]
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkloadGap:
     spec: FixtureSpec
     sim: ModeRun
@@ -291,6 +326,7 @@ class WorkloadGap:
     executor_shadow: Optional[ExecutorShadow] = None
     integration_shadow: Optional[IntegrationShadow] = None
     filter_shadow: Optional[FilterShadow] = None
+    replacement_shadow: Optional[ReplacementShadow] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -1093,6 +1129,177 @@ def evaluate_filter_strategy(
     )
 
 
+def evaluate_replacement_strategy(
+    *,
+    workload_label: str,
+    strategy: str,
+    fasim_raw: Set[str],
+    candidate_raw: Set[str],
+    suppressed_fasim_raw: Set[str],
+    accepted_candidate_raw: Set[str],
+    sim_raw: Set[str],
+    sim_only_raw: Set[str],
+    oracle: bool = False,
+) -> ReplacementStrategyResult:
+    integrated_raw = (fasim_raw - suppressed_fasim_raw) | accepted_candidate_raw
+    integrated_records = parse_lite_records(sorted(integrated_raw))
+    shared_records_vs_sim = integrated_raw & sim_raw
+    return ReplacementStrategyResult(
+        workload_label=workload_label,
+        strategy=strategy,
+        fasim_records=len(fasim_raw),
+        recovered_candidates=len(candidate_raw),
+        fasim_records_suppressed=len(suppressed_fasim_raw),
+        recovered_records_accepted=len(accepted_candidate_raw),
+        integrated_records=len(integrated_raw),
+        sim_records=len(sim_raw),
+        sim_only_recovered=len(sim_only_raw & integrated_raw),
+        shared_records_vs_sim=len(shared_records_vs_sim),
+        extra_records_vs_sim=len(integrated_raw - sim_raw),
+        overlap_conflicts=count_same_family_genomic_overlaps(integrated_records),
+        output_mutations=0,
+        oracle=oracle,
+    )
+
+
+def records_by_box(
+    records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+) -> Tuple[Set[str], Dict[int, Set[str]]]:
+    contained: Set[str] = set()
+    per_box: Dict[int, Set[str]] = {}
+    for index, box in enumerate(boxes):
+        raw_in_box = {record.raw for record in records if record_in_box(record, box)}
+        per_box[index] = raw_in_box
+        contained.update(raw_in_box)
+    return contained, per_box
+
+
+def build_local_sim_recovery_replacement_shadow(
+    *,
+    workload_label: str,
+    sim_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    sim_only: Sequence[GapRecord],
+    executor_shadow: ExecutorShadow,
+) -> ReplacementShadow:
+    fasim_raw = {record.raw for record in fasim_records}
+    sim_raw = {record.raw for record in sim_records}
+    sim_only_raw = {gap.record.raw for gap in sim_only}
+    candidate_raw = set(executor_shadow.candidate_records_raw)
+    candidate_records = parse_lite_records(sorted(candidate_raw))
+    candidate_by_raw = {record.raw: record for record in candidate_records}
+    fasim_by_raw = {record.raw: record for record in fasim_records}
+    boxes = executor_shadow.boxes
+
+    filtered_candidate_raw = {
+        raw
+        for raw, record in candidate_by_raw.items()
+        if record.score >= 89.0 and record.nt >= 50
+    }
+
+    fasim_in_boxes, fasim_raw_by_box = records_by_box(fasim_records, boxes)
+    candidate_in_boxes, candidate_raw_by_box = records_by_box(candidate_records, boxes)
+    filtered_candidate_in_boxes = filtered_candidate_raw & candidate_in_boxes
+
+    candidate_families = {record.family for record in candidate_records if record.raw in filtered_candidate_raw}
+    family_suppressed_fasim = {
+        record.raw
+        for record in fasim_records
+        if record.family in candidate_families
+    }
+    family_accepted_candidates = {
+        raw
+        for raw, record in candidate_by_raw.items()
+        if raw in filtered_candidate_raw and record.family in candidate_families
+    }
+
+    conservative_suppressed: Set[str] = set()
+    conservative_accepted: Set[str] = set()
+    for index, box in enumerate(boxes):
+        fasim_box_raw = fasim_raw_by_box.get(index, set())
+        candidate_box_raw = candidate_raw_by_box.get(index, set()) & filtered_candidate_raw
+        if not fasim_box_raw or not candidate_box_raw:
+            continue
+        fasim_score_max = max(fasim_by_raw[raw].score for raw in fasim_box_raw)
+        candidate_score_max = max(candidate_by_raw[raw].score for raw in candidate_box_raw)
+        if len(candidate_box_raw) >= len(fasim_box_raw) and candidate_score_max >= fasim_score_max:
+            conservative_suppressed.update(fasim_box_raw)
+            conservative_accepted.update(candidate_box_raw)
+
+    strategies = (
+        evaluate_replacement_strategy(
+            workload_label=workload_label,
+            strategy="raw_union",
+            fasim_raw=fasim_raw,
+            candidate_raw=candidate_raw,
+            suppressed_fasim_raw=set(),
+            accepted_candidate_raw=set(candidate_raw),
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+        ),
+        evaluate_replacement_strategy(
+            workload_label=workload_label,
+            strategy="filtered_union",
+            fasim_raw=fasim_raw,
+            candidate_raw=candidate_raw,
+            suppressed_fasim_raw=set(),
+            accepted_candidate_raw=set(filtered_candidate_raw),
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+        ),
+        evaluate_replacement_strategy(
+            workload_label=workload_label,
+            strategy="box_local_replacement",
+            fasim_raw=fasim_raw,
+            candidate_raw=candidate_raw,
+            suppressed_fasim_raw=fasim_in_boxes,
+            accepted_candidate_raw=filtered_candidate_in_boxes,
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+        ),
+        evaluate_replacement_strategy(
+            workload_label=workload_label,
+            strategy="family_replacement",
+            fasim_raw=fasim_raw,
+            candidate_raw=candidate_raw,
+            suppressed_fasim_raw=family_suppressed_fasim,
+            accepted_candidate_raw=family_accepted_candidates,
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+        ),
+        evaluate_replacement_strategy(
+            workload_label=workload_label,
+            strategy="conservative_replacement",
+            fasim_raw=fasim_raw,
+            candidate_raw=candidate_raw,
+            suppressed_fasim_raw=conservative_suppressed,
+            accepted_candidate_raw=conservative_accepted,
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+        ),
+        evaluate_replacement_strategy(
+            workload_label=workload_label,
+            strategy="oracle_box_replacement",
+            fasim_raw=fasim_raw,
+            candidate_raw=candidate_raw,
+            suppressed_fasim_raw=fasim_in_boxes,
+            accepted_candidate_raw=candidate_raw & sim_raw,
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+            oracle=True,
+        ),
+    )
+
+    return ReplacementShadow(
+        workload_label=workload_label,
+        fasim_records=len(fasim_raw),
+        recovered_candidates=len(candidate_raw),
+        output_mutations=0,
+        strategies=strategies,
+    )
+
+
 def build_local_sim_recovery_filter_shadow(
     *,
     workload_label: str,
@@ -1278,6 +1485,7 @@ def analyze_gap(
     executor_shadow_enabled: bool,
     integration_shadow_enabled: bool,
     filter_shadow_enabled: bool,
+    replacement_shadow_enabled: bool,
     executor_shadow_work_dir: Path,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
@@ -1315,7 +1523,13 @@ def analyze_gap(
             merge_gap_bp=merge_gap_bp,
             margin_bp=risk_detector_margin_bp,
         )
-        if risk_detector_enabled or executor_shadow_enabled or integration_shadow_enabled or filter_shadow_enabled
+        if (
+            risk_detector_enabled
+            or executor_shadow_enabled
+            or integration_shadow_enabled
+            or filter_shadow_enabled
+            or replacement_shadow_enabled
+        )
         else None
     )
 
@@ -1327,7 +1541,7 @@ def analyze_gap(
             sim_only=sim_only,
             work_dir=executor_shadow_work_dir,
         )
-        if executor_shadow_enabled or integration_shadow_enabled or filter_shadow_enabled
+        if executor_shadow_enabled or integration_shadow_enabled or filter_shadow_enabled or replacement_shadow_enabled
         else None
     )
 
@@ -1352,6 +1566,18 @@ def analyze_gap(
             executor_shadow=executor_shadow,
         )
         if filter_shadow_enabled and executor_shadow is not None
+        else None
+    )
+
+    replacement_shadow = (
+        build_local_sim_recovery_replacement_shadow(
+            workload_label=spec.label,
+            sim_records=sim.records,
+            fasim_records=fasim.records,
+            sim_only=sim_only,
+            executor_shadow=executor_shadow,
+        )
+        if replacement_shadow_enabled and executor_shadow is not None
         else None
     )
 
@@ -1382,6 +1608,7 @@ def analyze_gap(
         executor_shadow=(executor_shadow if executor_shadow_enabled else None),
         integration_shadow=integration_shadow,
         filter_shadow=filter_shadow,
+        replacement_shadow=replacement_shadow,
     )
 
 
@@ -3002,6 +3229,305 @@ def render_filter_shadow_report(
     return report
 
 
+def render_replacement_shadow_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    profile_set: str,
+) -> str:
+    shadows = [gap.replacement_shadow for gap in gaps if gap.replacement_shadow is not None]
+    if len(shadows) != len(gaps):
+        raise RuntimeError("replacement shadow report requested without replacement shadow data")
+
+    lines: List[str] = []
+    lines.append("# Fasim Local SIM Recovery Replacement Shadow")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-local-sim-recovery-filter-shadow")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This report is diagnostic-only. It evaluates side replacement and merge "
+        "strategies for Fasim records plus bounded local SIM recovery candidates. "
+        "It does not add a real `FASIM_SIM_RECOVERY=1` mode, does not mutate "
+        "Fasim output, and does not replace final non-overlap authority."
+    )
+    lines.append("")
+    lines.append(
+        "The `oracle_box_replacement` strategy uses legacy SIM membership after "
+        "candidate generation and is included only as an upper-bound analysis. "
+        "It is forbidden as production selection input."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["input_candidates", "bounded local SIM executor raw records"],
+            ["replacement_candidate_filter", "candidate score >= 89 and Nt >= 50"],
+            ["box_local_replacement", "suppress Fasim records inside detector boxes"],
+            ["family_replacement", "suppress Fasim records in recovered candidate families"],
+            ["output_mutations_expected", "0"],
+        ],
+    )
+    lines.append("")
+
+    strategy_order = [
+        "raw_union",
+        "filtered_union",
+        "box_local_replacement",
+        "family_replacement",
+        "conservative_replacement",
+        "oracle_box_replacement",
+    ]
+    strategy_totals: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    strategy_oracle: Dict[str, bool] = {}
+    workload_rows: List[List[str]] = []
+
+    for shadow in shadows:
+        for result in shadow.strategies:
+            totals = strategy_totals[result.strategy]
+            strategy_oracle[result.strategy] = result.oracle
+            totals["fasim_records"] += result.fasim_records
+            totals["recovered_candidates"] += result.recovered_candidates
+            totals["fasim_records_suppressed"] += result.fasim_records_suppressed
+            totals["recovered_records_accepted"] += result.recovered_records_accepted
+            totals["integrated_records"] += result.integrated_records
+            totals["sim_records"] += result.sim_records
+            totals["sim_only_recovered"] += result.sim_only_recovered
+            totals["shared_records_vs_sim"] += result.shared_records_vs_sim
+            totals["extra_records_vs_sim"] += result.extra_records_vs_sim
+            totals["overlap_conflicts"] += result.overlap_conflicts
+            totals["output_mutations"] += result.output_mutations
+            workload_rows.append(
+                [
+                    result.workload_label,
+                    result.strategy,
+                    "yes" if result.oracle else "no",
+                    str(result.integrated_records),
+                    str(result.fasim_records_suppressed),
+                    str(result.recovered_records_accepted),
+                    fmt_pct(result.recall_vs_sim),
+                    fmt_pct(result.precision_vs_sim),
+                    str(result.extra_records_vs_sim),
+                    str(result.overlap_conflicts),
+                    str(result.output_mutations),
+                ]
+            )
+
+    lines.append("## Workload Strategy Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "Strategy",
+            "Oracle",
+            "Integrated records",
+            "Fasim suppressed",
+            "Recovered accepted",
+            "Recall vs SIM",
+            "Precision vs SIM",
+            "Extra vs SIM",
+            "Overlap conflicts",
+            "Output mutations",
+        ],
+        workload_rows,
+    )
+    lines.append("")
+
+    strategy_rows: List[List[str]] = []
+    for strategy in strategy_order:
+        totals = strategy_totals[strategy]
+        strategy_rows.append(
+            [
+                strategy,
+                "yes" if strategy_oracle.get(strategy, False) else "no",
+                str(totals.get("integrated_records", 0)),
+                str(totals.get("fasim_records_suppressed", 0)),
+                str(totals.get("recovered_records_accepted", 0)),
+                fmt_pct(pct(totals.get("shared_records_vs_sim", 0), totals.get("sim_records", 0))),
+                fmt_pct(pct(totals.get("shared_records_vs_sim", 0), totals.get("integrated_records", 0))),
+                str(totals.get("extra_records_vs_sim", 0)),
+                str(totals.get("overlap_conflicts", 0)),
+                str(totals.get("output_mutations", 0)),
+            ]
+        )
+
+    lines.append("## Strategy Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Strategy",
+            "Oracle",
+            "Integrated records",
+            "Fasim suppressed",
+            "Recovered accepted",
+            "Recall vs SIM",
+            "Precision vs SIM",
+            "Extra vs SIM",
+            "Overlap conflicts",
+            "Output mutations",
+        ],
+        strategy_rows,
+    )
+    lines.append("")
+
+    non_oracle_replacement_order = [
+        "box_local_replacement",
+        "family_replacement",
+        "conservative_replacement",
+    ]
+    selected_strategy = max(
+        non_oracle_replacement_order,
+        key=lambda strategy: (
+            pct(strategy_totals[strategy].get("shared_records_vs_sim", 0), strategy_totals[strategy].get("sim_records", 0)),
+            pct(strategy_totals[strategy].get("shared_records_vs_sim", 0), strategy_totals[strategy].get("integrated_records", 0)),
+            -strategy_totals[strategy].get("extra_records_vs_sim", 0),
+        ),
+    )
+    selected = strategy_totals[selected_strategy]
+    oracle = strategy_totals["oracle_box_replacement"]
+    total_fasim = strategy_totals["raw_union"].get("fasim_records", 0)
+    total_candidates = strategy_totals["raw_union"].get("recovered_candidates", 0)
+    selected_recall = pct(selected.get("shared_records_vs_sim", 0), selected.get("sim_records", 0))
+    selected_precision = pct(selected.get("shared_records_vs_sim", 0), selected.get("integrated_records", 0))
+    oracle_precision = pct(oracle.get("shared_records_vs_sim", 0), oracle.get("integrated_records", 0))
+    total_output_mutations = selected.get("output_mutations", 0)
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_replacement_shadow_enabled", "1"],
+            ["fasim_sim_recovery_replacement_shadow_strategy", selected_strategy],
+            ["fasim_sim_recovery_replacement_shadow_fasim_records", str(total_fasim)],
+            ["fasim_sim_recovery_replacement_shadow_recovered_candidates", str(total_candidates)],
+            ["fasim_sim_recovery_replacement_shadow_fasim_records_suppressed", str(selected.get("fasim_records_suppressed", 0))],
+            ["fasim_sim_recovery_replacement_shadow_recovered_records_accepted", str(selected.get("recovered_records_accepted", 0))],
+            ["fasim_sim_recovery_replacement_shadow_integrated_records", str(selected.get("integrated_records", 0))],
+            ["fasim_sim_recovery_replacement_shadow_sim_records", str(selected.get("sim_records", 0))],
+            ["fasim_sim_recovery_replacement_shadow_sim_only_recovered", str(selected.get("sim_only_recovered", 0))],
+            ["fasim_sim_recovery_replacement_shadow_recall_vs_sim", fmt_pct(selected_recall)],
+            ["fasim_sim_recovery_replacement_shadow_precision_vs_sim", fmt_pct(selected_precision)],
+            ["fasim_sim_recovery_replacement_shadow_extra_records_vs_sim", str(selected.get("extra_records_vs_sim", 0))],
+            ["fasim_sim_recovery_replacement_shadow_overlap_conflicts", str(selected.get("overlap_conflicts", 0))],
+            ["fasim_sim_recovery_replacement_shadow_output_mutations", str(total_output_mutations)],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Decision")
+    lines.append("")
+    if total_output_mutations:
+        decision = "Stop: replacement shadow observed output mutations, which violates diagnostic-only scope."
+    elif selected_recall >= 90.0 and selected_precision >= 70.0:
+        decision = (
+            "A non-oracle replacement strategy keeps high SIM recall and greatly "
+            "reduces extras/conflicts. A real SIM-close mode design is plausible next."
+        )
+    elif selected_recall >= 90.0 and selected_precision >= 50.0:
+        decision = (
+            "Replacement semantics improve the raw-union shape but precision is "
+            "still below the strong threshold. Refine replacement guards, "
+            "candidate ranking, or box/family selection before a real mode."
+        )
+    elif oracle_precision >= 90.0:
+        decision = (
+            "The oracle replacement upper bound is strong, but non-oracle "
+            "replacement still loses too much precision or recall. Improve "
+            "non-oracle guards before a real mode."
+        )
+    else:
+        decision = (
+            "Replacement does not yet provide a clean SIM-close side output. Keep "
+            "this diagnostic-only and revisit the canonical output model."
+        )
+    lines.append(decision)
+    lines.append("")
+    lines.append("Forbidden-scope check:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("Fasim output change: no")
+    lines.append("Recovered records added to output: no")
+    lines.append("Real FASIM_SIM_RECOVERY mode: no")
+    lines.append("SIM-only labels used as production selection input: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("```")
+
+    for shadow in shadows:
+        prefix = f"benchmark.fasim_sim_recovery_replacement_shadow.{shadow.workload_label}"
+        print(f"{prefix}.enabled=1")
+        print(f"{prefix}.fasim_records={shadow.fasim_records}")
+        print(f"{prefix}.recovered_candidates={shadow.recovered_candidates}")
+        print(f"{prefix}.output_mutations={shadow.output_mutations}")
+        for result in shadow.strategies:
+            strategy_prefix = f"{prefix}.strategy.{result.strategy}"
+            print(f"{strategy_prefix}.oracle={1 if result.oracle else 0}")
+            print(f"{strategy_prefix}.fasim_records_suppressed={result.fasim_records_suppressed}")
+            print(f"{strategy_prefix}.recovered_records_accepted={result.recovered_records_accepted}")
+            print(f"{strategy_prefix}.integrated_records={result.integrated_records}")
+            print(f"{strategy_prefix}.sim_only_recovered={result.sim_only_recovered}")
+            print(f"{strategy_prefix}.recall_vs_sim={result.recall_vs_sim:.6f}")
+            print(f"{strategy_prefix}.precision_vs_sim={result.precision_vs_sim:.6f}")
+            print(f"{strategy_prefix}.extra_records_vs_sim={result.extra_records_vs_sim}")
+            print(f"{strategy_prefix}.overlap_conflicts={result.overlap_conflicts}")
+            print(f"{strategy_prefix}.output_mutations={result.output_mutations}")
+
+    print("benchmark.fasim_sim_recovery_replacement_shadow.total.enabled=1")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.strategy={selected_strategy}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.fasim_records={total_fasim}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.recovered_candidates={total_candidates}")
+    print(
+        "benchmark.fasim_sim_recovery_replacement_shadow.total.fasim_records_suppressed="
+        f"{selected.get('fasim_records_suppressed', 0)}"
+    )
+    print(
+        "benchmark.fasim_sim_recovery_replacement_shadow.total.recovered_records_accepted="
+        f"{selected.get('recovered_records_accepted', 0)}"
+    )
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.integrated_records={selected.get('integrated_records', 0)}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.sim_records={selected.get('sim_records', 0)}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.sim_only_recovered={selected.get('sim_only_recovered', 0)}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.recall_vs_sim={selected_recall:.6f}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.precision_vs_sim={selected_precision:.6f}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.extra_records_vs_sim={selected.get('extra_records_vs_sim', 0)}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.overlap_conflicts={selected.get('overlap_conflicts', 0)}")
+    print(f"benchmark.fasim_sim_recovery_replacement_shadow.total.output_mutations={total_output_mutations}")
+    for strategy in strategy_order:
+        totals = strategy_totals[strategy]
+        prefix = f"benchmark.fasim_sim_recovery_replacement_shadow.strategy.{strategy}"
+        print(f"{prefix}.oracle={1 if strategy_oracle.get(strategy, False) else 0}")
+        print(f"{prefix}.fasim_records_suppressed={totals.get('fasim_records_suppressed', 0)}")
+        print(f"{prefix}.recovered_records_accepted={totals.get('recovered_records_accepted', 0)}")
+        print(f"{prefix}.integrated_records={totals.get('integrated_records', 0)}")
+        print(f"{prefix}.sim_only_recovered={totals.get('sim_only_recovered', 0)}")
+        print(
+            f"{prefix}.recall_vs_sim="
+            f"{pct(totals.get('shared_records_vs_sim', 0), totals.get('sim_records', 0)):.6f}"
+        )
+        print(
+            f"{prefix}.precision_vs_sim="
+            f"{pct(totals.get('shared_records_vs_sim', 0), totals.get('integrated_records', 0)):.6f}"
+        )
+        print(f"{prefix}.extra_records_vs_sim={totals.get('extra_records_vs_sim', 0)}")
+        print(f"{prefix}.overlap_conflicts={totals.get('overlap_conflicts', 0)}")
+        print(f"{prefix}.output_mutations={totals.get('output_mutations', 0)}")
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -3032,6 +3558,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--integration-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_integration_shadow.md"))
     parser.add_argument("--filter-shadow", action="store_true")
     parser.add_argument("--filter-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_filter_shadow.md"))
+    parser.add_argument("--replacement-shadow", action="store_true")
+    parser.add_argument("--replacement-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_replacement_shadow.md"))
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -3053,6 +3581,7 @@ def main() -> int:
         executor_shadow_enabled = args.executor_shadow or os.environ.get("FASIM_SIM_RECOVERY_EXECUTOR_SHADOW") == "1"
         integration_shadow_enabled = args.integration_shadow or os.environ.get("FASIM_SIM_RECOVERY_INTEGRATION_SHADOW") == "1"
         filter_shadow_enabled = args.filter_shadow or os.environ.get("FASIM_SIM_RECOVERY_FILTER_SHADOW") == "1"
+        replacement_shadow_enabled = args.replacement_shadow or os.environ.get("FASIM_SIM_RECOVERY_REPLACEMENT_SHADOW") == "1"
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
         for spec in fixtures_for(args.profile_set):
@@ -3087,6 +3616,7 @@ def main() -> int:
                     executor_shadow_enabled=executor_shadow_enabled,
                     integration_shadow_enabled=integration_shadow_enabled,
                     filter_shadow_enabled=filter_shadow_enabled,
+                    replacement_shadow_enabled=replacement_shadow_enabled,
                     executor_shadow_work_dir=work_dir_base / spec.label / "executor_shadow",
                 )
             )
@@ -3152,6 +3682,14 @@ def main() -> int:
                 render_filter_shadow_report(
                     gaps=gaps,
                     output_path=Path(args.filter_shadow_output),
+                    profile_set=args.profile_set,
+                )
+            )
+        if replacement_shadow_enabled:
+            print(
+                render_replacement_shadow_report(
+                    gaps=gaps,
+                    output_path=Path(args.replacement_shadow_output),
                     profile_set=args.profile_set,
                 )
             )
