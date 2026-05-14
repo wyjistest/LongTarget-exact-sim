@@ -457,6 +457,18 @@ benchmark-fasim-sim-recovery-real-mode-characterization:
 	$(MAKE) build-fasim
 	PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_mode_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --repeat $${FASIM_SIM_RECOVERY_CHARACTERIZATION_REPEAT:-3} --output docs/fasim_sim_recovery_real_mode_characterization.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_mode_characterization
 
+check-fasim-sim-recovery-real-corpus-characterization:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_real_corpus_characterization.sh
+
+benchmark-fasim-sim-recovery-real-corpus-characterization:
+	$(MAKE) build-fasim
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-2}" --require-profile --output docs/fasim_sim_recovery_real_corpus_characterization.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_corpus_characterization
+
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
