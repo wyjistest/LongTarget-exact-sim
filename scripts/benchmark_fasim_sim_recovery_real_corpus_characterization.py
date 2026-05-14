@@ -67,12 +67,26 @@ class CaseRun:
     sim_close_wall_seconds: float
     validate_mode: Optional[object]
     validate_wall_seconds: float
+    validation_coverage: "ValidationCoverage"
 
 
 @dataclasses.dataclass(frozen=True)
 class CaseSummary:
     spec: CaseSpec
     runs: List[CaseRun]
+
+
+@dataclasses.dataclass(frozen=True)
+class ValidationCoverage:
+    requested: bool
+    supported: bool
+    unsupported_reason: str
+    supported_records: int
+    sim_records: int
+    sim_close_records: int
+    shared_records: int
+    sim_only_records: int
+    sim_close_extra_records: int
 
 
 def ensure_label(label: str) -> str:
@@ -308,6 +322,36 @@ def write_lite_output(path: Path, raw_records: Sequence[str]) -> None:
             handle.write("\n")
 
 
+def build_validation_coverage(
+    *,
+    requested: bool,
+    sim_records: Sequence[TriplexRecord],
+    sim_only: Sequence[GapRecord],
+    mode: object,
+) -> ValidationCoverage:
+    sim_raw = {record.raw for record in sim_records}
+    sim_only_raw = {gap.record.raw for gap in sim_only}
+    sim_close_raw = set(getattr(mode, "output_raw_records", ()))
+    supported = requested and bool(sim_raw)
+    if not requested:
+        unsupported_reason = "not_requested"
+    elif supported:
+        unsupported_reason = "supported"
+    else:
+        unsupported_reason = "no_legacy_sim_records"
+    return ValidationCoverage(
+        requested=requested,
+        supported=supported,
+        unsupported_reason=unsupported_reason,
+        supported_records=len(sim_raw) if supported else 0,
+        sim_records=len(sim_raw) if requested else 0,
+        sim_close_records=len(sim_close_raw),
+        shared_records=len(sim_close_raw & sim_raw) if supported else 0,
+        sim_only_records=len(sim_only_raw) if supported else 0,
+        sim_close_extra_records=len(sim_close_raw - sim_raw) if supported else 0,
+    )
+
+
 def build_sim_close_mode(
     *,
     bin_path: Path,
@@ -320,7 +364,7 @@ def build_sim_close_mode(
     near_tie_delta: float,
     threshold_score_band: float,
     long_hit_nt: int,
-) -> Tuple[object, float]:
+) -> Tuple[object, float, ValidationCoverage]:
     start = time.perf_counter()
     dna_entries = sequence_entries_from_fasta(spec.dna_path)
     query_sequence = query_sequence_from_fasta(spec.rna_path)
@@ -368,7 +412,13 @@ def build_sim_close_mode(
         validate_enabled=validate,
     )
     write_lite_output(work_dir / "sim_close.lite", mode.output_raw_records)
-    return mode, time.perf_counter() - start
+    coverage = build_validation_coverage(
+        requested=validate,
+        sim_records=sim.records,
+        sim_only=sim_only,
+        mode=mode,
+    )
+    return mode, time.perf_counter() - start, coverage
 
 
 def median_float(values: Iterable[float]) -> float:
@@ -437,7 +487,7 @@ def run_case(
             work_dir=run_dir / "fast",
             require_profile=require_profile,
         )
-        sim_close, sim_close_wall = build_sim_close_mode(
+        sim_close, sim_close_wall, sim_close_coverage = build_sim_close_mode(
             bin_path=bin_path,
             spec=spec,
             fasim=fast,
@@ -451,8 +501,9 @@ def run_case(
         )
         validate_mode: Optional[object] = None
         validate_wall = 0.0
+        validation_coverage = sim_close_coverage
         if spec.validate:
-            validate_mode, validate_wall = build_sim_close_mode(
+            validate_mode, validate_wall, validation_coverage = build_sim_close_mode(
                 bin_path=bin_path,
                 spec=spec,
                 fasim=fast,
@@ -473,6 +524,7 @@ def run_case(
                 sim_close_wall_seconds=sim_close_wall,
                 validate_mode=validate_mode,
                 validate_wall_seconds=validate_wall,
+                validation_coverage=validation_coverage,
             )
         )
     return CaseSummary(spec=spec, runs=runs)
@@ -523,6 +575,16 @@ def total_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -
     return totals
 
 
+def total_coverage_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -> List[float]:
+    totals: List[float] = []
+    for run_index in range(repeat):
+        total = 0.0
+        for summary in summaries:
+            total += float(getattr(summary.runs[run_index].validation_coverage, attr))
+        totals.append(total)
+    return totals
+
+
 def total_fast_seconds_per_repeat(summaries: Sequence[CaseSummary], repeat: int) -> List[float]:
     return [
         sum(metric_float(summary.runs[run_index].fast.metrics, "fasim_total_seconds") for summary in summaries)
@@ -553,6 +615,9 @@ def render_report(
     summaries: Sequence[CaseSummary],
     repeat: int,
     output_path: Path,
+    title: str,
+    base_branch: str,
+    coverage_report: bool,
 ) -> Tuple[str, Dict[str, str]]:
     fast_digest_stable = all(case_fast_stable(summary) for summary in summaries)
     sim_close_digest_stable = all(case_sim_close_stable(summary) for summary in summaries)
@@ -573,12 +638,12 @@ def render_report(
     )
 
     lines: List[str] = []
-    lines.append("# Fasim SIM-Close Recovery Real-Corpus Characterization")
+    lines.append(f"# {title}")
     lines.append("")
     lines.append("Base branch:")
     lines.append("")
     lines.append("```text")
-    lines.append("fasim-sim-recovery-real-mode-characterization")
+    lines.append(base_branch)
     lines.append("```")
     lines.append("")
     lines.append(
@@ -603,6 +668,7 @@ def render_report(
             ["fast_mode", "default Fasim on the same FASTA"],
             ["sim_close_mode", "FASIM_SIM_RECOVERY=1 side-output harness"],
             ["validate_mode", "post-hoc legacy SIM only for validate cases"],
+            ["coverage_report", "yes" if coverage_report else "no"],
         ],
     )
     lines.append("")
@@ -612,16 +678,24 @@ def render_report(
         first_run = summary.runs[0]
         selected = selected_mode(first_run)
         validation = first_run.validate_mode
+        coverage = first_run.validation_coverage
         validate_supported = bool(getattr(selected, "validate_supported", False))
         case_rows.append(
             [
                 summary.spec.label,
                 "yes" if summary.spec.validate else "no",
+                "yes" if coverage.supported else "no",
+                str(coverage.supported_records),
+                coverage.unsupported_reason,
                 first_run.fast.digest,
                 mode_text(first_run.sim_close, "output_digest"),
                 mode_text(validation, "output_digest", "NA") if validation is not None else "NA",
                 str(len(first_run.fast.records)),
+                str(coverage.sim_records),
                 str(int(mode_value(selected, "output_records"))),
+                str(coverage.shared_records),
+                str(coverage.sim_only_records),
+                str(coverage.sim_close_extra_records) if coverage.supported else "NA",
                 str(int(mode_value(selected, "boxes"))),
                 str(int(mode_value(selected, "cells"))),
                 fmt_metric(mode_cell_fraction(selected)),
@@ -643,11 +717,18 @@ def render_report(
         [
             "Case",
             "Validated",
+            "Validate supported",
+            "Validate supported records",
+            "validate_unsupported_reason",
             "Fast digest",
             "SIM-close digest",
             "Validate digest",
             "Fast records",
+            "SIM records",
             "SIM-close records",
+            "Shared records",
+            "SIM-only records",
+            "SIM-close extra records",
             "Boxes",
             "Cells",
             "Cell fraction",
@@ -669,6 +750,7 @@ def render_report(
         for run in summary.runs:
             selected = selected_mode(run)
             validate_digest = mode_text(run.validate_mode, "output_digest", "NA") if run.validate_mode else "NA"
+            coverage = run.validation_coverage
             run_rows.append(
                 [
                     summary.spec.label,
@@ -677,7 +759,14 @@ def render_report(
                     run.fast.digest,
                     mode_text(run.sim_close, "output_digest"),
                     validate_digest,
+                    "1" if coverage.supported else "0",
+                    str(coverage.supported_records),
+                    coverage.unsupported_reason,
+                    str(coverage.sim_records),
                     str(int(mode_value(selected, "output_records"))),
+                    str(coverage.shared_records),
+                    str(coverage.sim_only_records),
+                    str(coverage.sim_close_extra_records) if coverage.supported else "NA",
                     str(int(mode_value(selected, "boxes"))),
                     str(int(mode_value(selected, "cells"))),
                     fmt_metric(mode_value(selected, "executor_seconds")),
@@ -697,7 +786,14 @@ def render_report(
             "Fast digest",
             "SIM-close digest",
             "Validate digest",
+            "Validate supported",
+            "Validate supported records",
+            "validate_unsupported_reason",
+            "SIM records",
             "Output records",
+            "Shared records",
+            "SIM-only records",
+            "SIM-close extra records",
             "Boxes",
             "Cells",
             "Executor seconds",
@@ -731,6 +827,14 @@ def render_report(
     recall_median = median_float(mode_value(mode, "recall_vs_sim") for mode in recall_source)
     precision_median = median_float(mode_value(mode, "precision_vs_sim") for mode in precision_source)
     extra_median = median_float(mode_value(mode, "extra_vs_sim") for mode in validation_modes)
+    validate_supported_records_median = median_float(total_coverage_per_repeat(summaries, repeat, "supported_records"))
+    sim_records_median = median_float(total_coverage_per_repeat(summaries, repeat, "sim_records"))
+    sim_close_records_coverage_median = median_float(total_coverage_per_repeat(summaries, repeat, "sim_close_records"))
+    shared_records_median = median_float(total_coverage_per_repeat(summaries, repeat, "shared_records"))
+    sim_only_records_median = median_float(total_coverage_per_repeat(summaries, repeat, "sim_only_records"))
+    sim_close_extra_records_median = median_float(
+        total_coverage_per_repeat(summaries, repeat, "sim_close_extra_records")
+    )
 
     telemetry = {
         "cases": str(len(summaries)),
@@ -766,6 +870,12 @@ def render_report(
         "recovered_accepted_median": fmt_metric(recovered_accepted_median),
         "fasim_suppressed_median": fmt_metric(fasim_suppressed_median),
         "sim_close_output_records_median": fmt_metric(output_records_median),
+        "validate_supported_records_median": fmt_metric(validate_supported_records_median),
+        "sim_records_median": fmt_metric(sim_records_median),
+        "sim_close_records_median": fmt_metric(sim_close_records_coverage_median),
+        "shared_records_median": fmt_metric(shared_records_median),
+        "sim_only_records_median": fmt_metric(sim_only_records_median),
+        "sim_close_extra_records_median": fmt_metric(sim_close_extra_records_median),
         "recall_vs_sim_median": fmt_metric(recall_median),
         "precision_vs_sim_median": fmt_metric(precision_median),
         "extra_vs_sim_median": fmt_metric(extra_median),
@@ -788,11 +898,26 @@ def render_report(
     lines.append("")
     lines.append(
         "Keep `FASIM_SIM_RECOVERY=1` as an experimental opt-in. This "
-        "characterization checks output stability and recovery footprint on "
-        "the supplied FASTA cases; production recommendation still requires "
-        "broader real-corpus evidence."
+        "characterization checks validation coverage, output stability, and "
+        "recovery footprint on the supplied FASTA cases; production "
+        "recommendation still requires broader real-corpus evidence."
     )
     lines.append("")
+    if coverage_report and validation_modes:
+        lines.append(
+            "At least one supplied case produced validate-supported legacy SIM "
+            "records. Interpret recall/precision only for those supported "
+            "cases; unsupported cases remain footprint/stability evidence."
+        )
+        lines.append("")
+        if recall_median < 80.0:
+            lines.append(
+                "The current supported-case recall is below the synthetic "
+                "representative signal. This does not justify recommending "
+                "SIM-close mode; it points to further real-corpus "
+                "guard/replacement refinement before any high-accuracy claim."
+            )
+            lines.append("")
     requested_validation = any(summary.spec.validate for summary in summaries)
     if requested_validation and not validation_modes:
         lines.append(
@@ -836,6 +961,15 @@ def render_report(
             print(f"{prefix}.sim_close_digest={mode_text(run.sim_close, 'output_digest')}")
             if run.validate_mode is not None:
                 print(f"{prefix}.validate_digest={mode_text(run.validate_mode, 'output_digest')}")
+            coverage = run.validation_coverage
+            print(f"{prefix}.validate_supported={1 if coverage.supported else 0}")
+            print(f"{prefix}.validate_supported_records={coverage.supported_records}")
+            print(f"{prefix}.validate_unsupported_reason={coverage.unsupported_reason}")
+            print(f"{prefix}.sim_records={coverage.sim_records}")
+            print(f"{prefix}.sim_close_records={coverage.sim_close_records}")
+            print(f"{prefix}.shared_records={coverage.shared_records}")
+            print(f"{prefix}.sim_only_records={coverage.sim_only_records}")
+            print(f"{prefix}.sim_close_extra_records={coverage.sim_close_extra_records}")
             print(f"{prefix}.output_records={int(mode_value(selected, 'output_records'))}")
             print(f"{prefix}.boxes={int(mode_value(selected, 'boxes'))}")
             print(f"{prefix}.cells={int(mode_value(selected, 'cells'))}")
@@ -897,6 +1031,9 @@ def main() -> int:
     parser.add_argument("--long-hit-nt", type=int, default=80)
     parser.add_argument("--work-dir", default=str(ROOT / ".tmp" / "fasim_sim_recovery_real_corpus_characterization"))
     parser.add_argument("--output", default=str(ROOT / "docs" / "fasim_sim_recovery_real_corpus_characterization.md"))
+    parser.add_argument("--report-title", default="Fasim SIM-Close Recovery Real-Corpus Characterization")
+    parser.add_argument("--base-branch", default="fasim-sim-recovery-real-mode-characterization")
+    parser.add_argument("--validation-coverage-report", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -933,6 +1070,9 @@ def main() -> int:
             summaries=summaries,
             repeat=repeat,
             output_path=Path(args.output),
+            title=args.report_title,
+            base_branch=args.base_branch,
+            coverage_report=args.validation_coverage_report,
         )
         print(report)
         return 0
