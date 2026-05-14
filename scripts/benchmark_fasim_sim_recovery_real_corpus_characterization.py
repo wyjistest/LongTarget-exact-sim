@@ -35,15 +35,21 @@ from benchmark_fasim_sim_gap_taxonomy import (  # noqa: E402
     RecoveryBox,
     SequenceEntry,
     TriplexRecord,
+    box_cells,
     build_sim_recovery_real_mode,
+    candidate_local_ranks,
     classify_sim_only_record,
     combined_non_oracle_candidate_raw,
+    count_same_family_genomic_overlaps,
+    dominated_by_higher_score,
     expand_interval,
     index_by_family,
     merge_recovery_boxes,
     parse_genomic_header,
     parse_lite_records,
+    pct,
     record_in_any_box,
+    records_by_box,
     records_overlap_in_both_axes,
     read_fasta_entries,
     run_executor_box,
@@ -72,6 +78,7 @@ class CaseRun:
     validate_wall_seconds: float
     validation_coverage: "ValidationCoverage"
     miss_taxonomy: Optional["MissTaxonomy"]
+    recall_repair_results: Tuple["RecallRepairResult", ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -105,6 +112,40 @@ class MissTaxonomy:
     replacement_suppressed: int
     canonicalization_mismatches: int
     metric_ambiguity_records: int
+
+
+@dataclasses.dataclass(frozen=True)
+class RecallRepairResult:
+    workload_label: str
+    strategy: str
+    enabled: bool
+    boxes: int
+    cells: int
+    full_search_cells: int
+    sim_records: int
+    shared_records: int
+    missed_records: int
+    not_box_covered: int
+    guard_rejected: int
+    recovered_from_box_expansion: int
+    recovered_from_guard_relaxation: int
+    extra_vs_sim: int
+    overlap_conflicts: int
+    output_mutations: int
+    oracle: bool = False
+
+    @property
+    def cell_fraction(self) -> float:
+        return (self.cells / self.full_search_cells * 100.0) if self.full_search_cells else 0.0
+
+    @property
+    def recall_vs_sim(self) -> float:
+        return pct(self.shared_records, self.sim_records) if self.sim_records else 0.0
+
+    @property
+    def precision_vs_sim(self) -> float:
+        output_records = self.shared_records + self.extra_vs_sim
+        return pct(self.shared_records, output_records) if output_records else 0.0
 
 
 def ensure_label(label: str) -> str:
@@ -401,35 +442,60 @@ def classify_missed_sim_records(
     sim_raw = {record.raw for record in sim_records}
     sim_close_raw = {record.raw for record in sim_close_records}
     missed = [record for record in sim_records if record.raw not in sim_close_raw]
-    boxes_by_family = _boxes_by_family(boxes)
-
-    counts = Counter()
-    for record in missed:
-        if _has_canonicalization_mismatch(record, sim_close_records):
-            counts["canonicalization_mismatches"] += 1
-        elif not record_in_any_box(record, boxes_by_family):
-            counts["not_box_covered"] += 1
-        elif record.raw not in candidate_raw:
-            counts["box_covered_but_executor_missing"] += 1
-        elif record.raw not in accepted_candidate_raw:
-            counts["guard_rejected"] += 1
-        elif record.raw not in sim_close_raw:
-            counts["replacement_suppressed"] += 1
-        else:
-            counts["metric_ambiguity_records"] += 1
+    buckets = missed_sim_record_buckets(
+        missed_records=missed,
+        sim_close_records=sim_close_records,
+        boxes=boxes,
+        candidate_raw=candidate_raw,
+        accepted_candidate_raw=accepted_candidate_raw,
+    )
 
     return MissTaxonomy(
         enabled=True,
         sim_records=len(sim_raw),
         shared_records=len(sim_raw & sim_close_raw),
         missed_records=len(missed),
-        not_box_covered=counts["not_box_covered"],
-        box_covered_but_executor_missing=counts["box_covered_but_executor_missing"],
-        guard_rejected=counts["guard_rejected"],
-        replacement_suppressed=counts["replacement_suppressed"],
-        canonicalization_mismatches=counts["canonicalization_mismatches"],
-        metric_ambiguity_records=counts["metric_ambiguity_records"],
+        not_box_covered=len(buckets["not_box_covered"]),
+        box_covered_but_executor_missing=len(buckets["box_covered_but_executor_missing"]),
+        guard_rejected=len(buckets["guard_rejected"]),
+        replacement_suppressed=len(buckets["replacement_suppressed"]),
+        canonicalization_mismatches=len(buckets["canonicalization_mismatches"]),
+        metric_ambiguity_records=len(buckets["metric_ambiguity_records"]),
     )
+
+
+def missed_sim_record_buckets(
+    *,
+    missed_records: Sequence[TriplexRecord],
+    sim_close_records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+    candidate_raw: Set[str],
+    accepted_candidate_raw: Set[str],
+) -> Dict[str, Set[str]]:
+    buckets: Dict[str, Set[str]] = {
+        "not_box_covered": set(),
+        "box_covered_but_executor_missing": set(),
+        "guard_rejected": set(),
+        "replacement_suppressed": set(),
+        "canonicalization_mismatches": set(),
+        "metric_ambiguity_records": set(),
+    }
+    boxes_by_family = _boxes_by_family(boxes)
+    sim_close_raw = {record.raw for record in sim_close_records}
+    for record in missed_records:
+        if _has_canonicalization_mismatch(record, sim_close_records):
+            buckets["canonicalization_mismatches"].add(record.raw)
+        elif not record_in_any_box(record, boxes_by_family):
+            buckets["not_box_covered"].add(record.raw)
+        elif record.raw not in candidate_raw:
+            buckets["box_covered_but_executor_missing"].add(record.raw)
+        elif record.raw not in accepted_candidate_raw:
+            buckets["guard_rejected"].add(record.raw)
+        elif record.raw not in sim_close_raw:
+            buckets["replacement_suppressed"].add(record.raw)
+        else:
+            buckets["metric_ambiguity_records"].add(record.raw)
+    return buckets
 
 
 def build_miss_taxonomy(
@@ -460,6 +526,208 @@ def build_miss_taxonomy(
     )
 
 
+def accepted_candidate_raw_for_guard(
+    *,
+    guard: str,
+    candidate_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+    sim_raw: Set[str],
+) -> Set[str]:
+    if guard == "combined_non_oracle":
+        return combined_non_oracle_candidate_raw(
+            candidate_records=candidate_records,
+            fasim_records=fasim_records,
+            boxes=boxes,
+        )
+
+    candidate_in_boxes, _ = records_by_box(candidate_records, boxes)
+    in_box_records = [record for record in candidate_records if record.raw in candidate_in_boxes]
+    if guard == "score_nt_threshold":
+        return {record.raw for record in in_box_records if record.score >= 89.0 and record.nt >= 50}
+    if guard == "oracle_sim_match":
+        return {record.raw for record in in_box_records if record.raw in sim_raw}
+
+    if guard == "local_rank_top3":
+        min_score = 89.0
+        min_nt = 50
+    elif guard == "relaxed_score_nt_rank3":
+        min_score = 85.0
+        min_nt = 45
+    else:
+        raise RuntimeError(f"unknown recall repair guard: {guard}")
+
+    threshold_records = [
+        record for record in in_box_records if record.score >= min_score and record.nt >= min_nt
+    ]
+    local_ranks = candidate_local_ranks(threshold_records, boxes)
+    dominance_references = list(fasim_records) + list(threshold_records)
+    return {
+        record.raw
+        for record in threshold_records
+        if local_ranks.get(record.raw, 0)
+        and local_ranks[record.raw] <= 3
+        and not dominated_by_higher_score(record, dominance_references)
+    }
+
+
+def evaluate_recall_repair_strategy(
+    *,
+    strategy: str,
+    boxes: Sequence[RecoveryBox],
+    full_search_cells: int,
+    fasim_records: Sequence[TriplexRecord],
+    sim_records: Sequence[TriplexRecord],
+    baseline_shared_raw: Set[str],
+    baseline_not_box_covered_raw: Set[str],
+    baseline_guard_rejected_raw: Set[str],
+    candidate_raw: Set[str],
+    accepted_candidate_raw: Set[str],
+    suppressed_fasim_raw: Set[str],
+    output_mutations: int,
+    oracle: bool = False,
+) -> RecallRepairResult:
+    fasim_raw = {record.raw for record in fasim_records}
+    sim_raw = {record.raw for record in sim_records}
+    integrated_raw = (fasim_raw - suppressed_fasim_raw) | accepted_candidate_raw
+    integrated_records = parse_lite_records(sorted(integrated_raw))
+    shared_raw = integrated_raw & sim_raw
+    missed_records = [record for record in sim_records if record.raw not in integrated_raw]
+    taxonomy = classify_missed_sim_records(
+        sim_records=sim_records,
+        sim_close_records=integrated_records,
+        boxes=boxes,
+        candidate_raw=candidate_raw,
+        accepted_candidate_raw=accepted_candidate_raw,
+    )
+    newly_shared = shared_raw - baseline_shared_raw
+    return RecallRepairResult(
+        workload_label="",
+        strategy=strategy,
+        enabled=True,
+        boxes=len(boxes),
+        cells=sum(box_cells(box) for box in boxes),
+        full_search_cells=full_search_cells,
+        sim_records=len(sim_raw),
+        shared_records=len(shared_raw),
+        missed_records=len(missed_records),
+        not_box_covered=taxonomy.not_box_covered,
+        guard_rejected=taxonomy.guard_rejected,
+        recovered_from_box_expansion=len(newly_shared & baseline_not_box_covered_raw),
+        recovered_from_guard_relaxation=len(newly_shared & baseline_guard_rejected_raw),
+        extra_vs_sim=len(integrated_raw - sim_raw),
+        overlap_conflicts=count_same_family_genomic_overlaps(integrated_records),
+        output_mutations=output_mutations,
+        oracle=oracle,
+    )
+
+
+def build_recall_repair_shadow(
+    *,
+    enabled: bool,
+    validate: bool,
+    label: str,
+    bin_path: Path,
+    sim_records: Sequence[TriplexRecord],
+    fasim: ModeRun,
+    base_executor: ExecutorShadow,
+    mode: object,
+    dna_entries: Sequence[SequenceEntry],
+    query_sequence: str,
+    full_cells: int,
+    work_dir: Path,
+    merge_gap_bp: int,
+) -> Tuple[RecallRepairResult, ...]:
+    if not enabled or not validate:
+        return ()
+
+    sim_raw = {record.raw for record in sim_records}
+    base_candidate_raw = set(base_executor.candidate_records_raw)
+    base_candidate_records = parse_lite_records(sorted(base_candidate_raw))
+    base_accepted = combined_non_oracle_candidate_raw(
+        candidate_records=base_candidate_records,
+        fasim_records=fasim.records,
+        boxes=base_executor.boxes,
+    )
+    base_fasim_in_boxes, _ = records_by_box(fasim.records, base_executor.boxes)
+    base_integrated_records = parse_lite_records(getattr(mode, "output_raw_records", ()))
+    base_integrated_raw = {record.raw for record in base_integrated_records}
+    baseline_shared_raw = base_integrated_raw & sim_raw
+    base_missed = [record for record in sim_records if record.raw not in base_integrated_raw]
+    base_buckets = missed_sim_record_buckets(
+        missed_records=base_missed,
+        sim_close_records=base_integrated_records,
+        boxes=base_executor.boxes,
+        candidate_raw=base_candidate_raw,
+        accepted_candidate_raw=base_accepted,
+    )
+
+    executor_by_box_variant: Dict[str, ExecutorShadow] = {"current": base_executor}
+    for variant, margin in (("margin128", 128), ("margin256", 256)):
+        boxes = build_fasim_visible_boxes(
+            fasim_records=fasim.records,
+            merge_gap_bp=merge_gap_bp,
+            margin_bp=margin,
+        )
+        executor_by_box_variant[variant] = build_external_executor_shadow(
+            label=label,
+            bin_path=bin_path,
+            boxes=boxes,
+            dna_entries=dna_entries,
+            query_sequence=query_sequence,
+            sim_only=(),
+            full_cells=full_cells,
+            work_dir=work_dir / variant,
+        )
+
+    strategy_specs = (
+        ("baseline_current", "current", "combined_non_oracle", False),
+        ("box_margin_128_current_guard", "margin128", "combined_non_oracle", False),
+        ("box_margin_256_current_guard", "margin256", "combined_non_oracle", False),
+        ("guard_local_rank_top3", "current", "local_rank_top3", False),
+        ("guard_score_nt_threshold", "current", "score_nt_threshold", False),
+        ("guard_relaxed_score_nt_rank3", "current", "relaxed_score_nt_rank3", False),
+        ("box_margin_128_guard_local_rank_top3", "margin128", "local_rank_top3", False),
+        ("box_margin_128_guard_relaxed_score_nt_rank3", "margin128", "relaxed_score_nt_rank3", False),
+        ("oracle_upper_bound", "margin256", "oracle_sim_match", True),
+    )
+    results: List[RecallRepairResult] = []
+    for strategy, box_variant, guard, oracle in strategy_specs:
+        executor = executor_by_box_variant[box_variant]
+        candidate_raw = set(executor.candidate_records_raw)
+        candidate_records = parse_lite_records(sorted(candidate_raw))
+        fallbacks = executor.executor_failures + executor.unsupported_boxes
+        accepted_raw = (
+            set()
+            if fallbacks
+            else accepted_candidate_raw_for_guard(
+                guard=guard,
+                candidate_records=candidate_records,
+                fasim_records=fasim.records,
+                boxes=executor.boxes,
+                sim_raw=sim_raw,
+            )
+        )
+        suppressed_fasim_raw = set() if fallbacks else records_by_box(fasim.records, executor.boxes)[0]
+        result = evaluate_recall_repair_strategy(
+            strategy=strategy,
+            boxes=executor.boxes,
+            full_search_cells=executor.full_search_cells,
+            fasim_records=fasim.records,
+            sim_records=sim_records,
+            baseline_shared_raw=baseline_shared_raw,
+            baseline_not_box_covered_raw=base_buckets["not_box_covered"],
+            baseline_guard_rejected_raw=base_buckets["guard_rejected"],
+            candidate_raw=candidate_raw,
+            accepted_candidate_raw=accepted_raw,
+            suppressed_fasim_raw=suppressed_fasim_raw,
+            output_mutations=0,
+            oracle=oracle,
+        )
+        results.append(dataclasses.replace(result, workload_label=label))
+    return tuple(results)
+
+
 def build_sim_close_mode(
     *,
     bin_path: Path,
@@ -467,13 +735,14 @@ def build_sim_close_mode(
     fasim: ModeRun,
     validate: bool,
     miss_taxonomy_enabled: bool,
+    recall_repair_enabled: bool,
     work_dir: Path,
     merge_gap_bp: int,
     margin_bp: int,
     near_tie_delta: float,
     threshold_score_band: float,
     long_hit_nt: int,
-) -> Tuple[object, float, ValidationCoverage, Optional[MissTaxonomy]]:
+) -> Tuple[object, float, ValidationCoverage, Optional[MissTaxonomy], Tuple[RecallRepairResult, ...]]:
     start = time.perf_counter()
     dna_entries = sequence_entries_from_fasta(spec.dna_path)
     query_sequence = query_sequence_from_fasta(spec.rna_path)
@@ -535,7 +804,22 @@ def build_sim_close_mode(
         executor_shadow=executor,
         mode=mode,
     )
-    return mode, time.perf_counter() - start, coverage, miss_taxonomy
+    recall_repair_results = build_recall_repair_shadow(
+        enabled=recall_repair_enabled,
+        validate=validate,
+        label=spec.label,
+        bin_path=bin_path,
+        sim_records=sim.records,
+        fasim=fasim,
+        base_executor=executor,
+        mode=mode,
+        dna_entries=dna_entries,
+        query_sequence=query_sequence,
+        full_cells=full_cells,
+        work_dir=work_dir / "recall_repair",
+        merge_gap_bp=merge_gap_bp,
+    )
+    return mode, time.perf_counter() - start, coverage, miss_taxonomy, recall_repair_results
 
 
 def median_float(values: Iterable[float]) -> float:
@@ -594,6 +878,7 @@ def run_case(
     threshold_score_band: float,
     long_hit_nt: int,
     miss_taxonomy_report: bool,
+    recall_repair_shadow: bool,
 ) -> CaseSummary:
     runs: List[CaseRun] = []
     for index in range(1, repeat + 1):
@@ -605,12 +890,13 @@ def run_case(
             work_dir=run_dir / "fast",
             require_profile=require_profile,
         )
-        sim_close, sim_close_wall, sim_close_coverage, _ = build_sim_close_mode(
+        sim_close, sim_close_wall, sim_close_coverage, _, _ = build_sim_close_mode(
             bin_path=bin_path,
             spec=spec,
             fasim=fast,
             validate=False,
             miss_taxonomy_enabled=False,
+            recall_repair_enabled=False,
             work_dir=run_dir / "sim_close",
             merge_gap_bp=merge_gap_bp,
             margin_bp=margin_bp,
@@ -622,13 +908,21 @@ def run_case(
         validate_wall = 0.0
         validation_coverage = sim_close_coverage
         miss_taxonomy: Optional[MissTaxonomy] = None
+        recall_repair_results: Tuple[RecallRepairResult, ...] = ()
         if spec.validate:
-            validate_mode, validate_wall, validation_coverage, miss_taxonomy = build_sim_close_mode(
+            (
+                validate_mode,
+                validate_wall,
+                validation_coverage,
+                miss_taxonomy,
+                recall_repair_results,
+            ) = build_sim_close_mode(
                 bin_path=bin_path,
                 spec=spec,
                 fasim=fast,
                 validate=True,
                 miss_taxonomy_enabled=miss_taxonomy_report,
+                recall_repair_enabled=recall_repair_shadow,
                 work_dir=run_dir / "sim_close_validate",
                 merge_gap_bp=merge_gap_bp,
                 margin_bp=margin_bp,
@@ -647,6 +941,7 @@ def run_case(
                 validate_wall_seconds=validate_wall,
                 validation_coverage=validation_coverage,
                 miss_taxonomy=miss_taxonomy,
+                recall_repair_results=recall_repair_results,
             )
         )
     return CaseSummary(spec=spec, runs=runs)
@@ -709,6 +1004,26 @@ def total_miss_taxonomy_per_repeat(summaries: Sequence[CaseSummary], repeat: int
     return totals
 
 
+def recall_repair_results(summaries: Sequence[CaseSummary]) -> List[RecallRepairResult]:
+    return [result for summary in summaries for run in summary.runs for result in run.recall_repair_results]
+
+
+def best_recall_repair_result(results: Sequence[RecallRepairResult]) -> Optional[RecallRepairResult]:
+    non_oracle = [result for result in results if not result.oracle]
+    if not non_oracle:
+        return None
+    return max(
+        non_oracle,
+        key=lambda result: (
+            result.recall_vs_sim,
+            result.precision_vs_sim,
+            -result.extra_vs_sim,
+            -result.cells,
+            result.strategy,
+        ),
+    )
+
+
 def total_coverage_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -> List[float]:
     totals: List[float] = []
     for run_index in range(repeat):
@@ -753,6 +1068,7 @@ def render_report(
     base_branch: str,
     coverage_report: bool,
     miss_taxonomy_report: bool,
+    recall_repair_shadow: bool,
 ) -> Tuple[str, Dict[str, str]]:
     fast_digest_stable = all(case_fast_stable(summary) for summary in summaries)
     sim_close_digest_stable = all(case_sim_close_stable(summary) for summary in summaries)
@@ -805,6 +1121,7 @@ def render_report(
             ["validate_mode", "post-hoc legacy SIM only for validate cases"],
             ["coverage_report", "yes" if coverage_report else "no"],
             ["miss_taxonomy_report", "yes" if miss_taxonomy_report else "no"],
+            ["recall_repair_shadow", "yes" if recall_repair_shadow else "no"],
         ],
     )
     lines.append("")
@@ -1022,6 +1339,64 @@ def render_report(
         )
         lines.append("")
 
+    repair_results = recall_repair_results(summaries)
+    if recall_repair_shadow:
+        repair_rows: List[List[str]] = []
+        for result in repair_results:
+            repair_rows.append(
+                [
+                    result.workload_label,
+                    result.strategy + ("_oracle" if result.oracle else ""),
+                    str(result.boxes),
+                    str(result.cells),
+                    fmt_metric(result.cell_fraction),
+                    str(result.shared_records),
+                    str(result.missed_records),
+                    str(result.not_box_covered),
+                    str(result.guard_rejected),
+                    str(result.recovered_from_box_expansion),
+                    str(result.recovered_from_guard_relaxation),
+                    fmt_metric(result.recall_vs_sim),
+                    fmt_metric(result.precision_vs_sim),
+                    str(result.extra_vs_sim),
+                    str(result.overlap_conflicts),
+                    str(result.output_mutations),
+                ]
+            )
+
+        lines.append("## Recall Repair Shadow")
+        lines.append("")
+        append_table(
+            lines,
+            [
+                "Case",
+                "Strategy",
+                "Boxes",
+                "Cells",
+                "Cell fraction",
+                "Shared",
+                "Missed",
+                "Not box covered",
+                "Guard rejected",
+                "Recovered from box expansion",
+                "Recovered from guard relaxation",
+                "Recall",
+                "Precision",
+                "Extra",
+                "Conflicts",
+                "Output mutations",
+            ],
+            repair_rows,
+        )
+        lines.append("")
+        lines.append(
+            "Recall repair strategies are shadow-only. Non-oracle strategies "
+            "vary Fasim-visible box margins and candidate guards. The oracle "
+            "upper bound is analysis-only and must not be used for production "
+            "selection."
+        )
+        lines.append("")
+
     boxes_median = median_float(total_per_repeat(summaries, repeat, "boxes"))
     cells_median = median_float(total_per_repeat(summaries, repeat, "cells"))
     full_cells_median = median_float(total_per_repeat(summaries, repeat, "full_search_cells"))
@@ -1141,6 +1516,32 @@ def render_report(
             metric_ambiguity_records
         ),
     }
+    best_repair = best_recall_repair_result(repair_results)
+    repair_telemetry = {
+        "enabled": "1" if recall_repair_shadow else "0",
+        "strategy": best_repair.strategy if best_repair is not None else "NA",
+        "boxes": str(best_repair.boxes) if best_repair is not None else "0",
+        "cells": str(best_repair.cells) if best_repair is not None else "0",
+        "cell_fraction": fmt_metric(best_repair.cell_fraction) if best_repair is not None else fmt_metric(0.0),
+        "sim_records": str(best_repair.sim_records) if best_repair is not None else "0",
+        "shared_records": str(best_repair.shared_records) if best_repair is not None else "0",
+        "missed_records": str(best_repair.missed_records) if best_repair is not None else "0",
+        "not_box_covered": str(best_repair.not_box_covered) if best_repair is not None else "0",
+        "guard_rejected": str(best_repair.guard_rejected) if best_repair is not None else "0",
+        "recovered_from_box_expansion": (
+            str(best_repair.recovered_from_box_expansion) if best_repair is not None else "0"
+        ),
+        "recovered_from_guard_relaxation": (
+            str(best_repair.recovered_from_guard_relaxation) if best_repair is not None else "0"
+        ),
+        "recall_vs_sim": fmt_metric(best_repair.recall_vs_sim) if best_repair is not None else fmt_metric(0.0),
+        "precision_vs_sim": (
+            fmt_metric(best_repair.precision_vs_sim) if best_repair is not None else fmt_metric(0.0)
+        ),
+        "extra_vs_sim": str(best_repair.extra_vs_sim) if best_repair is not None else "0",
+        "overlap_conflicts": str(best_repair.overlap_conflicts) if best_repair is not None else "0",
+        "output_mutations": str(best_repair.output_mutations) if best_repair is not None else "0",
+    }
 
     lines.append("## Aggregate")
     lines.append("")
@@ -1158,6 +1559,16 @@ def render_report(
             lines,
             ["Metric", "Value"],
             [[key, value] for key, value in miss_telemetry.items()],
+        )
+        lines.append("")
+
+    if recall_repair_shadow:
+        lines.append("## Recall Repair Best Non-Oracle Aggregate")
+        lines.append("")
+        append_table(
+            lines,
+            ["Metric", "Value"],
+            [[f"fasim_sim_recovery_recall_repair_{key}", value] for key, value in repair_telemetry.items()],
         )
         lines.append("")
 
@@ -1203,6 +1614,39 @@ def render_report(
             "records, and real-corpus guard refinement for covered executor "
             "candidates. This PR does not make those changes."
         )
+        lines.append("")
+    if recall_repair_shadow and best_repair is not None:
+        lines.append(
+            "The best non-oracle recall-repair shadow strategy is "
+            f"`{best_repair.strategy}` with recall {best_repair.recall_vs_sim:.2f}%, "
+            f"precision {best_repair.precision_vs_sim:.2f}%, extra records "
+            f"{best_repair.extra_vs_sim}, and cell fraction {best_repair.cell_fraction:.6f}%. "
+            "This is diagnostic evidence only; it does not change SIM-close "
+            "real output."
+        )
+        lines.append("")
+        if (
+            best_repair.recall_vs_sim > recall_median
+            and best_repair.recall_vs_sim >= 70.0
+            and best_repair.precision_vs_sim >= 85.0
+        ):
+            lines.append(
+                "The repair shadow shows a stronger recall/precision tradeoff "
+                "than the current conservative real-corpus checkpoint. The "
+                "next PR should turn the winning detector or guard change into "
+                "a separate shadow/design step, not default SIM-close mode."
+            )
+        elif best_repair.recall_vs_sim > recall_median:
+            lines.append(
+                "The repair shadow improves recall but does not yet clear the "
+                "strong tradeoff threshold. Keep SIM-close experimental and "
+                "continue detector/guard analysis before any real-mode update."
+            )
+        else:
+            lines.append(
+                "The repair shadow does not materially improve recall. Keep "
+                "SIM-close experimental and avoid broadening real-mode behavior."
+            )
         lines.append("")
     requested_validation = any(summary.spec.validate for summary in summaries)
     if requested_validation and not validation_modes:
@@ -1276,12 +1720,37 @@ def render_report(
                 print(f"{prefix}.replacement_suppressed={taxonomy.replacement_suppressed}")
                 print(f"{prefix}.canonicalization_mismatches={taxonomy.canonicalization_mismatches}")
                 print(f"{prefix}.metric_ambiguity_records={taxonomy.metric_ambiguity_records}")
+            for result in run.recall_repair_results:
+                repair_prefix = (
+                    f"benchmark.fasim_sim_recovery_recall_repair."
+                    f"{summary.spec.label}.{result.strategy}"
+                )
+                print(f"{repair_prefix}.enabled={1 if result.enabled else 0}")
+                print(f"{repair_prefix}.oracle={1 if result.oracle else 0}")
+                print(f"{repair_prefix}.boxes={result.boxes}")
+                print(f"{repair_prefix}.cells={result.cells}")
+                print(f"{repair_prefix}.cell_fraction={result.cell_fraction:.6f}")
+                print(f"{repair_prefix}.sim_records={result.sim_records}")
+                print(f"{repair_prefix}.shared_records={result.shared_records}")
+                print(f"{repair_prefix}.missed_records={result.missed_records}")
+                print(f"{repair_prefix}.not_box_covered={result.not_box_covered}")
+                print(f"{repair_prefix}.guard_rejected={result.guard_rejected}")
+                print(f"{repair_prefix}.recovered_from_box_expansion={result.recovered_from_box_expansion}")
+                print(f"{repair_prefix}.recovered_from_guard_relaxation={result.recovered_from_guard_relaxation}")
+                print(f"{repair_prefix}.recall_vs_sim={result.recall_vs_sim:.6f}")
+                print(f"{repair_prefix}.precision_vs_sim={result.precision_vs_sim:.6f}")
+                print(f"{repair_prefix}.extra_vs_sim={result.extra_vs_sim}")
+                print(f"{repair_prefix}.overlap_conflicts={result.overlap_conflicts}")
+                print(f"{repair_prefix}.output_mutations={result.output_mutations}")
 
     for key, value in telemetry.items():
         print(f"benchmark.fasim_sim_recovery_real_corpus.total.{key}={value}")
     if miss_taxonomy_report:
         for key, value in miss_telemetry.items():
             print(f"benchmark.{key}={value}")
+    if recall_repair_shadow:
+        for key, value in repair_telemetry.items():
+            print(f"benchmark.fasim_sim_recovery_recall_repair.total.{key}={value}")
 
     report = "\n".join(lines)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1336,6 +1805,7 @@ def main() -> int:
     parser.add_argument("--base-branch", default="fasim-sim-recovery-real-mode-characterization")
     parser.add_argument("--validation-coverage-report", action="store_true")
     parser.add_argument("--miss-taxonomy-report", action="store_true")
+    parser.add_argument("--recall-repair-shadow", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -1345,7 +1815,13 @@ def main() -> int:
         if not bin_path.exists():
             raise RuntimeError(f"missing Fasim binary: {bin_path}")
 
+        recall_repair_shadow = (
+            args.recall_repair_shadow
+            or os.environ.get("FASIM_SIM_RECOVERY_RECALL_REPAIR_SHADOW", "0") == "1"
+        )
         validate_labels = parse_validate_labels([*args.validate_case, *args.validate_cases])
+        if recall_repair_shadow and not validate_labels and args.case:
+            validate_labels = {ensure_label(raw[0]) for raw in args.case}
         cases = parse_cases(args.case, validate_labels)
         repeat = args.repeat if args.repeat > 0 else 1
         work_dir = Path(args.work_dir).resolve()
@@ -1365,7 +1841,8 @@ def main() -> int:
                 near_tie_delta=args.near_tie_delta,
                 threshold_score_band=args.threshold_score_band,
                 long_hit_nt=args.long_hit_nt,
-                miss_taxonomy_report=args.miss_taxonomy_report,
+                miss_taxonomy_report=args.miss_taxonomy_report or recall_repair_shadow,
+                recall_repair_shadow=recall_repair_shadow,
             )
             for case in cases
         ]
@@ -1375,8 +1852,9 @@ def main() -> int:
             output_path=Path(args.output),
             title=args.report_title,
             base_branch=args.base_branch,
-            coverage_report=args.validation_coverage_report,
-            miss_taxonomy_report=args.miss_taxonomy_report,
+            coverage_report=args.validation_coverage_report or recall_repair_shadow,
+            miss_taxonomy_report=args.miss_taxonomy_report or recall_repair_shadow,
+            recall_repair_shadow=recall_repair_shadow,
         )
         print(report)
         return 0
