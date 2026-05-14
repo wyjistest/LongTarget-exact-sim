@@ -461,6 +461,10 @@ check-fasim-sim-recovery-real-corpus-characterization:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_real_corpus_characterization.sh
 
+check-fasim-sim-recovery-real-corpus-validation-coverage:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_real_corpus_validation_coverage.sh
+
 benchmark-fasim-sim-recovery-real-corpus-characterization:
 	$(MAKE) build-fasim
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
@@ -468,6 +472,14 @@ benchmark-fasim-sim-recovery-real-corpus-characterization:
 		exit 2; \
 	fi
 	PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-2}" --require-profile --output docs/fasim_sim_recovery_real_corpus_characterization.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_corpus_characterization
+
+benchmark-fasim-sim-recovery-real-corpus-validation-coverage:
+	$(MAKE) build-fasim
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-human_lnc_atlas_17kb_target,human_lnc_atlas_508kb_target}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-1}" --require-profile --validation-coverage-report --report-title "Fasim SIM-Close Recovery Real-Corpus Validation Coverage" --base-branch fasim-sim-recovery-real-corpus-characterization --output docs/fasim_sim_recovery_real_corpus_validation_coverage.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_corpus_validation_coverage
 
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
