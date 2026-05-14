@@ -43,6 +43,10 @@ GAP_CATEGORIES = [
     "threshold_near",
     "unknown",
 ]
+LITE_HEADER = (
+    "Chr\tStartInGenome\tEndInGenome\tStrand\tRule\tQueryStart\tQueryEnd\t"
+    "StartInSeq\tEndInSeq\tDirection\tScore\tNt(bp)\tMeanIdentity(%)\tMeanStability"
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -375,6 +379,43 @@ class ReplacementExtraTaxonomy:
 
 
 @dataclasses.dataclass(frozen=True)
+class SimRecoveryRealMode:
+    workload_label: str
+    requested: bool
+    active: bool
+    validate_enabled: bool
+    validate_supported: bool
+    boxes: int
+    cells: int
+    full_search_cells: int
+    executor_seconds: float
+    fasim_records: int
+    recovered_candidates: int
+    recovered_accepted: int
+    fasim_suppressed: int
+    output_records: int
+    output_digest_available: bool
+    output_digest: str
+    sim_records: int
+    sim_only_records: int
+    sim_only_recovered: int
+    shared_records_vs_sim: int
+    extra_vs_sim: int
+    overlap_conflicts: int
+    fallbacks: int
+    output_mutations_fast_mode: int
+    output_raw_records: Tuple[str, ...]
+
+    @property
+    def recall_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.sim_records) if self.validate_supported else 0.0
+
+    @property
+    def precision_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.output_records) if self.validate_supported else 0.0
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkloadGap:
     spec: FixtureSpec
     sim: ModeRun
@@ -393,6 +434,7 @@ class WorkloadGap:
     filter_shadow: Optional[FilterShadow] = None
     replacement_shadow: Optional[ReplacementShadow] = None
     replacement_extra_taxonomy: Optional[ReplacementExtraTaxonomy] = None
+    sim_recovery: Optional[SimRecoveryRealMode] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -1507,6 +1549,107 @@ def build_local_sim_recovery_replacement_extra_taxonomy(
     )
 
 
+def sim_recovery_output_key(record: TriplexRecord) -> Tuple[str, str, str, int, int, int, int, float, int, str]:
+    return (
+        record.chr_name,
+        record.strand,
+        record.rule,
+        record.genome_interval[0],
+        record.genome_interval[1],
+        record.query_interval[0],
+        record.query_interval[1],
+        -record.score,
+        -record.nt,
+        record.raw,
+    )
+
+
+def canonical_sim_recovery_raw(records: Iterable[TriplexRecord]) -> Tuple[str, ...]:
+    return tuple(record.raw for record in sorted(records, key=sim_recovery_output_key))
+
+
+def combined_non_oracle_candidate_raw(
+    *,
+    candidate_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+) -> Set[str]:
+    candidate_in_boxes, _ = records_by_box(candidate_records, boxes)
+    accepted_records = [
+        record
+        for record in candidate_records
+        if record.raw in candidate_in_boxes and record.score >= 89.0 and record.nt >= 50
+    ]
+    local_ranks = candidate_local_ranks(accepted_records, boxes)
+    dominance_references = list(fasim_records) + list(accepted_records)
+    return {
+        record.raw
+        for record in accepted_records
+        if local_ranks.get(record.raw, 0) and local_ranks[record.raw] <= 2
+        and not dominated_by_higher_score(record, dominance_references)
+    }
+
+
+def build_sim_recovery_real_mode(
+    *,
+    workload_label: str,
+    sim_records: Sequence[TriplexRecord],
+    fasim: ModeRun,
+    sim_only: Sequence[GapRecord],
+    executor_shadow: ExecutorShadow,
+    validate_enabled: bool,
+) -> SimRecoveryRealMode:
+    fasim_raw = {record.raw for record in fasim.records}
+    sim_raw = {record.raw for record in sim_records}
+    sim_only_raw = {gap.record.raw for gap in sim_only}
+    candidate_raw = set(executor_shadow.candidate_records_raw)
+    candidate_records = parse_lite_records(sorted(candidate_raw))
+    accepted_candidate_raw = combined_non_oracle_candidate_raw(
+        candidate_records=candidate_records,
+        fasim_records=fasim.records,
+        boxes=executor_shadow.boxes,
+    )
+    fallbacks = executor_shadow.executor_failures + executor_shadow.unsupported_boxes
+    fasim_in_boxes, _ = records_by_box(fasim.records, executor_shadow.boxes)
+    suppressed_fasim_raw = set() if fallbacks else fasim_in_boxes
+    integrated_raw = (fasim_raw - suppressed_fasim_raw) | accepted_candidate_raw
+    integrated_records = parse_lite_records(sorted(integrated_raw))
+    output_raw_records = canonical_sim_recovery_raw(integrated_records)
+    validate_supported = validate_enabled and bool(sim_records)
+    shared_records_vs_sim = len(integrated_raw & sim_raw) if validate_supported else 0
+    extra_vs_sim = len(integrated_raw - sim_raw) if validate_supported else 0
+    sim_only_recovered = len(sim_only_raw & integrated_raw) if validate_supported else 0
+    fast_mode_digest = digest_records(sorted(fasim_raw))
+
+    return SimRecoveryRealMode(
+        workload_label=workload_label,
+        requested=True,
+        active=True,
+        validate_enabled=validate_enabled,
+        validate_supported=validate_supported,
+        boxes=len(executor_shadow.boxes),
+        cells=sum(box_cells(box) for box in executor_shadow.boxes),
+        full_search_cells=executor_shadow.full_search_cells,
+        executor_seconds=executor_shadow.seconds,
+        fasim_records=len(fasim_raw),
+        recovered_candidates=len(candidate_raw),
+        recovered_accepted=len(accepted_candidate_raw),
+        fasim_suppressed=len(suppressed_fasim_raw),
+        output_records=len(integrated_raw),
+        output_digest_available=bool(output_raw_records),
+        output_digest=digest_records(output_raw_records),
+        sim_records=len(sim_raw) if validate_supported else 0,
+        sim_only_records=len(sim_only_raw) if validate_supported else 0,
+        sim_only_recovered=sim_only_recovered,
+        shared_records_vs_sim=shared_records_vs_sim,
+        extra_vs_sim=extra_vs_sim,
+        overlap_conflicts=count_same_family_genomic_overlaps(integrated_records),
+        fallbacks=fallbacks,
+        output_mutations_fast_mode=0 if fast_mode_digest == fasim.digest else 1,
+        output_raw_records=output_raw_records,
+    )
+
+
 def build_local_sim_recovery_replacement_shadow(
     *,
     workload_label: str,
@@ -1819,6 +1962,8 @@ def analyze_gap(
     filter_shadow_enabled: bool,
     replacement_shadow_enabled: bool,
     replacement_extra_taxonomy_enabled: bool,
+    sim_recovery_enabled: bool,
+    sim_recovery_validate_enabled: bool,
     executor_shadow_work_dir: Path,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
@@ -1863,6 +2008,7 @@ def analyze_gap(
             or filter_shadow_enabled
             or replacement_shadow_enabled
             or replacement_extra_taxonomy_enabled
+            or sim_recovery_enabled
         )
         else None
     )
@@ -1881,6 +2027,7 @@ def analyze_gap(
             or filter_shadow_enabled
             or replacement_shadow_enabled
             or replacement_extra_taxonomy_enabled
+            or sim_recovery_enabled
         )
         else None
     )
@@ -1933,6 +2080,19 @@ def analyze_gap(
         else None
     )
 
+    sim_recovery = (
+        build_sim_recovery_real_mode(
+            workload_label=spec.label,
+            sim_records=sim.records,
+            fasim=fasim,
+            sim_only=sim_only,
+            executor_shadow=executor_shadow,
+            validate_enabled=sim_recovery_validate_enabled,
+        )
+        if sim_recovery_enabled and executor_shadow is not None
+        else None
+    )
+
     return WorkloadGap(
         spec=spec,
         sim=sim,
@@ -1962,6 +2122,7 @@ def analyze_gap(
         filter_shadow=filter_shadow,
         replacement_shadow=replacement_shadow,
         replacement_extra_taxonomy=replacement_extra_taxonomy,
+        sim_recovery=sim_recovery,
     )
 
 
@@ -4270,6 +4431,245 @@ def render_replacement_extra_taxonomy_report(
     return report
 
 
+def write_sim_recovery_output(output_path: Path, raw_records: Sequence[str]) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        handle.write(LITE_HEADER)
+        handle.write("\n")
+        for raw in raw_records:
+            handle.write(raw)
+            handle.write("\n")
+
+
+def render_sim_recovery_real_mode_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    side_output_path: Path,
+    profile_set: str,
+) -> str:
+    modes = [gap.sim_recovery for gap in gaps if gap.sim_recovery is not None]
+    if len(modes) != len(gaps):
+        raise RuntimeError("SIM-close recovery report requested without real-mode data")
+
+    combined_records = parse_lite_records(raw for mode in modes for raw in mode.output_raw_records)
+    combined_raw_records = canonical_sim_recovery_raw(combined_records)
+    write_sim_recovery_output(side_output_path, combined_raw_records)
+
+    total_boxes = sum(mode.boxes for mode in modes)
+    total_cells = sum(mode.cells for mode in modes)
+    total_full_search_cells = sum(mode.full_search_cells for mode in modes)
+    total_executor_seconds = sum(mode.executor_seconds for mode in modes)
+    total_fasim_records = sum(mode.fasim_records for mode in modes)
+    total_recovered_candidates = sum(mode.recovered_candidates for mode in modes)
+    total_recovered_accepted = sum(mode.recovered_accepted for mode in modes)
+    total_fasim_suppressed = sum(mode.fasim_suppressed for mode in modes)
+    total_output_records = sum(mode.output_records for mode in modes)
+    total_sim_records = sum(mode.sim_records for mode in modes)
+    total_sim_only_records = sum(mode.sim_only_records for mode in modes)
+    total_sim_only_recovered = sum(mode.sim_only_recovered for mode in modes)
+    total_shared_records_vs_sim = sum(mode.shared_records_vs_sim for mode in modes)
+    total_extra_vs_sim = sum(mode.extra_vs_sim for mode in modes)
+    total_overlap_conflicts = sum(mode.overlap_conflicts for mode in modes)
+    total_fallbacks = sum(mode.fallbacks for mode in modes)
+    total_output_mutations_fast_mode = sum(mode.output_mutations_fast_mode for mode in modes)
+    validate_enabled = any(mode.validate_enabled for mode in modes)
+    validate_supported = all(mode.validate_supported for mode in modes) if validate_enabled else False
+    total_output_digest = digest_records(combined_raw_records)
+    total_output_digest_available = bool(combined_raw_records)
+    total_recall = pct(total_shared_records_vs_sim, total_sim_records) if validate_supported else 0.0
+    total_precision = pct(total_shared_records_vs_sim, total_output_records) if validate_supported else 0.0
+
+    lines: List[str] = []
+    lines.append("# Fasim SIM-Close Recovery Real Mode")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-sim-recovery-real-mode-design")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This is the first default-off SIM-close recovery real-mode skeleton in "
+        "the benchmark/check harness. It uses the existing Fasim binary, "
+        "Fasim-visible risk boxes, the bounded local legacy SIM executor, the "
+        "`combined_non_oracle` guard, and box-local replacement to emit a side "
+        "SIM-close lite output."
+    )
+    lines.append("")
+    lines.append(
+        "Default fast-mode Fasim output remains the authority when "
+        "`FASIM_SIM_RECOVERY` is unset. `FASIM_SIM_RECOVERY_VALIDATE=1` uses "
+        "legacy SIM only after output generation for recall/precision/extra "
+        "metrics; SIM labels are not production selection input."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["mode", "SIM-close recovery side output"],
+            ["env", "FASIM_SIM_RECOVERY=1"],
+            ["validate_env", "FASIM_SIM_RECOVERY_VALIDATE=1"],
+            ["guard", "combined_non_oracle"],
+            ["merge", "box-local replacement"],
+            ["side_output", str(side_output_path)],
+            ["default_or_recommended", "no"],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Workload Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "Boxes",
+            "Cells",
+            "Executor seconds",
+            "Fasim records",
+            "Recovered candidates",
+            "Recovered accepted",
+            "Fasim suppressed",
+            "Output records",
+            "Digest",
+            "Recall vs SIM",
+            "Precision vs SIM",
+            "Extra vs SIM",
+            "Overlap conflicts",
+            "Fallbacks",
+            "Fast mutations",
+        ],
+        [
+            [
+                mode.workload_label,
+                str(mode.boxes),
+                str(mode.cells),
+                f"{mode.executor_seconds:.6f}",
+                str(mode.fasim_records),
+                str(mode.recovered_candidates),
+                str(mode.recovered_accepted),
+                str(mode.fasim_suppressed),
+                str(mode.output_records),
+                mode.output_digest,
+                fmt_pct(mode.recall_vs_sim),
+                fmt_pct(mode.precision_vs_sim),
+                str(mode.extra_vs_sim),
+                str(mode.overlap_conflicts),
+                str(mode.fallbacks),
+                str(mode.output_mutations_fast_mode),
+            ]
+            for mode in modes
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_requested", "1"],
+            ["fasim_sim_recovery_active", "1"],
+            ["fasim_sim_recovery_validate_enabled", "1" if validate_enabled else "0"],
+            ["fasim_sim_recovery_validate_supported", "1" if validate_supported else "0"],
+            ["fasim_sim_recovery_boxes", str(total_boxes)],
+            ["fasim_sim_recovery_cells", str(total_cells)],
+            ["fasim_sim_recovery_full_search_cells", str(total_full_search_cells)],
+            ["fasim_sim_recovery_cell_fraction", fmt_pct(pct(total_cells, total_full_search_cells))],
+            ["fasim_sim_recovery_executor_seconds", f"{total_executor_seconds:.6f}"],
+            ["fasim_sim_recovery_fasim_records", str(total_fasim_records)],
+            ["fasim_sim_recovery_recovered_candidates", str(total_recovered_candidates)],
+            ["fasim_sim_recovery_recovered_accepted", str(total_recovered_accepted)],
+            ["fasim_sim_recovery_fasim_suppressed", str(total_fasim_suppressed)],
+            ["fasim_sim_recovery_output_records", str(total_output_records)],
+            ["fasim_sim_recovery_output_digest_available", "1" if total_output_digest_available else "0"],
+            ["fasim_sim_recovery_output_digest", total_output_digest],
+            ["fasim_sim_recovery_recall_vs_sim", fmt_pct(total_recall)],
+            ["fasim_sim_recovery_precision_vs_sim", fmt_pct(total_precision)],
+            ["fasim_sim_recovery_extra_vs_sim", str(total_extra_vs_sim)],
+            ["fasim_sim_recovery_overlap_conflicts", str(total_overlap_conflicts)],
+            ["fasim_sim_recovery_fallbacks", str(total_fallbacks)],
+            ["fasim_sim_recovery_output_mutations_fast_mode", str(total_output_mutations_fast_mode)],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Scope")
+    lines.append("")
+    lines.append("```text")
+    lines.append("Default Fasim output changed: no")
+    lines.append("SIM labels used for production selection: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Recommended/default mode: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("```")
+    lines.append("")
+
+    for mode in modes:
+        prefix = f"benchmark.fasim_sim_recovery.{mode.workload_label}"
+        print(f"{prefix}.requested={1 if mode.requested else 0}")
+        print(f"{prefix}.active={1 if mode.active else 0}")
+        print(f"{prefix}.validate_enabled={1 if mode.validate_enabled else 0}")
+        print(f"{prefix}.validate_supported={1 if mode.validate_supported else 0}")
+        print(f"{prefix}.boxes={mode.boxes}")
+        print(f"{prefix}.cells={mode.cells}")
+        print(f"{prefix}.full_search_cells={mode.full_search_cells}")
+        print(f"{prefix}.cell_fraction={pct(mode.cells, mode.full_search_cells):.6f}")
+        print(f"{prefix}.executor_seconds={mode.executor_seconds:.6f}")
+        print(f"{prefix}.fasim_records={mode.fasim_records}")
+        print(f"{prefix}.recovered_candidates={mode.recovered_candidates}")
+        print(f"{prefix}.recovered_accepted={mode.recovered_accepted}")
+        print(f"{prefix}.fasim_suppressed={mode.fasim_suppressed}")
+        print(f"{prefix}.output_records={mode.output_records}")
+        print(f"{prefix}.output_digest_available={1 if mode.output_digest_available else 0}")
+        print(f"{prefix}.output_digest={mode.output_digest}")
+        print(f"{prefix}.sim_records={mode.sim_records}")
+        print(f"{prefix}.sim_only_records={mode.sim_only_records}")
+        print(f"{prefix}.sim_only_recovered={mode.sim_only_recovered}")
+        print(f"{prefix}.recall_vs_sim={mode.recall_vs_sim:.6f}")
+        print(f"{prefix}.precision_vs_sim={mode.precision_vs_sim:.6f}")
+        print(f"{prefix}.extra_vs_sim={mode.extra_vs_sim}")
+        print(f"{prefix}.overlap_conflicts={mode.overlap_conflicts}")
+        print(f"{prefix}.fallbacks={mode.fallbacks}")
+        print(f"{prefix}.output_mutations_fast_mode={mode.output_mutations_fast_mode}")
+
+    print("benchmark.fasim_sim_recovery.total.requested=1")
+    print("benchmark.fasim_sim_recovery.total.active=1")
+    print(f"benchmark.fasim_sim_recovery.total.validate_enabled={1 if validate_enabled else 0}")
+    print(f"benchmark.fasim_sim_recovery.total.validate_supported={1 if validate_supported else 0}")
+    print(f"benchmark.fasim_sim_recovery.total.boxes={total_boxes}")
+    print(f"benchmark.fasim_sim_recovery.total.cells={total_cells}")
+    print(f"benchmark.fasim_sim_recovery.total.full_search_cells={total_full_search_cells}")
+    print(f"benchmark.fasim_sim_recovery.total.cell_fraction={pct(total_cells, total_full_search_cells):.6f}")
+    print(f"benchmark.fasim_sim_recovery.total.executor_seconds={total_executor_seconds:.6f}")
+    print(f"benchmark.fasim_sim_recovery.total.fasim_records={total_fasim_records}")
+    print(f"benchmark.fasim_sim_recovery.total.recovered_candidates={total_recovered_candidates}")
+    print(f"benchmark.fasim_sim_recovery.total.recovered_accepted={total_recovered_accepted}")
+    print(f"benchmark.fasim_sim_recovery.total.fasim_suppressed={total_fasim_suppressed}")
+    print(f"benchmark.fasim_sim_recovery.total.output_records={total_output_records}")
+    print(f"benchmark.fasim_sim_recovery.total.output_digest_available={1 if total_output_digest_available else 0}")
+    print(f"benchmark.fasim_sim_recovery.total.output_digest={total_output_digest}")
+    print(f"benchmark.fasim_sim_recovery.total.sim_records={total_sim_records}")
+    print(f"benchmark.fasim_sim_recovery.total.sim_only_records={total_sim_only_records}")
+    print(f"benchmark.fasim_sim_recovery.total.sim_only_recovered={total_sim_only_recovered}")
+    print(f"benchmark.fasim_sim_recovery.total.recall_vs_sim={total_recall:.6f}")
+    print(f"benchmark.fasim_sim_recovery.total.precision_vs_sim={total_precision:.6f}")
+    print(f"benchmark.fasim_sim_recovery.total.extra_vs_sim={total_extra_vs_sim}")
+    print(f"benchmark.fasim_sim_recovery.total.overlap_conflicts={total_overlap_conflicts}")
+    print(f"benchmark.fasim_sim_recovery.total.fallbacks={total_fallbacks}")
+    print(f"benchmark.fasim_sim_recovery.total.output_mutations_fast_mode={total_output_mutations_fast_mode}")
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -4307,6 +4707,16 @@ def parse_args() -> argparse.Namespace:
         "--replacement-extra-taxonomy-output",
         default=str(ROOT / "docs" / "fasim_local_sim_recovery_replacement_extra_taxonomy.md"),
     )
+    parser.add_argument("--sim-recovery", action="store_true")
+    parser.add_argument("--sim-recovery-validate", action="store_true")
+    parser.add_argument(
+        "--sim-recovery-output",
+        default=str(ROOT / ".tmp" / "fasim_sim_recovery_real_mode" / "sim_close.lite"),
+    )
+    parser.add_argument(
+        "--sim-recovery-report",
+        default=str(ROOT / "docs" / "fasim_sim_recovery_real_mode.md"),
+    )
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -4332,6 +4742,10 @@ def main() -> int:
         replacement_extra_taxonomy_enabled = (
             args.replacement_extra_taxonomy
             or os.environ.get("FASIM_SIM_RECOVERY_REPLACEMENT_EXTRA_TAXONOMY") == "1"
+        )
+        sim_recovery_enabled = args.sim_recovery or os.environ.get("FASIM_SIM_RECOVERY") == "1"
+        sim_recovery_validate_enabled = sim_recovery_enabled and (
+            args.sim_recovery_validate or os.environ.get("FASIM_SIM_RECOVERY_VALIDATE") == "1"
         )
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
@@ -4369,6 +4783,8 @@ def main() -> int:
                     filter_shadow_enabled=filter_shadow_enabled,
                     replacement_shadow_enabled=replacement_shadow_enabled,
                     replacement_extra_taxonomy_enabled=replacement_extra_taxonomy_enabled,
+                    sim_recovery_enabled=sim_recovery_enabled,
+                    sim_recovery_validate_enabled=sim_recovery_validate_enabled,
                     executor_shadow_work_dir=work_dir_base / spec.label / "executor_shadow",
                 )
             )
@@ -4450,6 +4866,15 @@ def main() -> int:
                 render_replacement_extra_taxonomy_report(
                     gaps=gaps,
                     output_path=Path(args.replacement_extra_taxonomy_output),
+                    profile_set=args.profile_set,
+                )
+            )
+        if sim_recovery_enabled:
+            print(
+                render_sim_recovery_real_mode_report(
+                    gaps=gaps,
+                    output_path=Path(args.sim_recovery_report),
+                    side_output_path=Path(args.sim_recovery_output),
                     profile_set=args.profile_set,
                 )
             )
