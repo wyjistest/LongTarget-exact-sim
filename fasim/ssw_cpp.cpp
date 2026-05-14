@@ -385,9 +385,10 @@ namespace StripedSmithWaterman {
 			return false;
 	}
 
-	bool Aligner::preAlign(const char* query, const char* ref, const int& ref_len,
-		const Filter& filter, Alignment* alignment, const int32_t maskLen,
-		int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch) const
+		bool Aligner::preAlign(const char* query, const char* ref, const int& ref_len,
+			const Filter& filter, Alignment* alignment, const int32_t maskLen,
+			int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch,
+			std::vector<int> *scoreVectorOut) const
 	{
 		if (!translation_matrix_) return false;
 
@@ -432,12 +433,16 @@ namespace StripedSmithWaterman {
 		int outputNum = -1;
 		int start = 0, num = 0, numa = 0, maxScore = 0, maxIndex = 0;
 		std::vector<int> scoreVector;
-		for (i = 0; i < ref_len; i++)
-		{
-			scoreVector.push_back(scoreMatrix[i]);
-		}
-		// free scoreMatrix.
-		free(scoreMatrix);
+			for (i = 0; i < ref_len; i++)
+			{
+				scoreVector.push_back(scoreMatrix[i]);
+			}
+			if (scoreVectorOut != NULL)
+			{
+				*scoreVectorOut = scoreVector;
+			}
+			// free scoreMatrix.
+			free(scoreMatrix);
 		// begin to get information.
 		std::vector<struct scoreInfo> tmpScoreInfo;
 
@@ -715,5 +720,4 @@ namespace StripedSmithWaterman {
 		translation_matrix_ = NULL;
 	}
 } // namespace StripedSmithWaterman
-
 

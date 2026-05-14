@@ -95,6 +95,21 @@ GPU_DP_COLUMN_REQUIRED_FIELDS = [
     "fasim_gpu_dp_column_pre_topk_mismatches",
     "fasim_gpu_dp_column_post_topk_mismatches",
     "fasim_gpu_dp_column_debug_windows_examined",
+    "fasim_gpu_dp_column_full_debug_enabled",
+    "fasim_gpu_dp_column_full_debug_window_index",
+    "fasim_gpu_dp_column_full_debug_cpu_records",
+    "fasim_gpu_dp_column_full_debug_gpu_pre_topk_records",
+    "fasim_gpu_dp_column_full_debug_gpu_post_topk_records",
+    "fasim_gpu_dp_column_full_debug_cpu_record_missing_pre_topk",
+    "fasim_gpu_dp_column_full_debug_cpu_record_missing_post_topk",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_rank",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_score_delta",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_position_delta",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_count_delta",
+    "fasim_gpu_dp_column_full_debug_scoreinfo_set_mismatches",
+    "fasim_gpu_dp_column_full_debug_scoreinfo_field_mismatches",
+    "fasim_gpu_dp_column_full_debug_column_mismatches",
+    "fasim_gpu_dp_column_full_debug_column_score_delta_max",
 ]
 
 

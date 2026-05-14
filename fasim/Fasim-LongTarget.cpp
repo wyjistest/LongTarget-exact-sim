@@ -113,6 +113,11 @@ static inline bool fasim_gpu_dp_column_mismatch_debug_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_MISMATCH_DEBUG");
 }
 
+static inline bool fasim_gpu_dp_column_full_scoreinfo_debug_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_FULL_SCOREINFO_DEBUG");
+}
+
 static inline int fasim_env_int_or_default_allow_zero(const char *name, int defaultValue)
 {
     const char *env = getenv(name);
@@ -199,7 +204,21 @@ struct FasimProfileStats
         gpuDpColumnTopKTruncatedWindows(0),
         gpuDpColumnTopKOverflowWindows(0),
         gpuDpColumnPreTopKMismatches(0),
-        gpuDpColumnPostTopKMismatches(0)
+        gpuDpColumnPostTopKMismatches(0),
+        gpuDpColumnFullDebugWindowIndex(-1),
+        gpuDpColumnFullDebugCpuRecords(0),
+        gpuDpColumnFullDebugGpuPreTopKRecords(0),
+        gpuDpColumnFullDebugGpuPostTopKRecords(0),
+        gpuDpColumnFullDebugCpuRecordMissingPreTopK(0),
+        gpuDpColumnFullDebugCpuRecordMissingPostTopK(0),
+        gpuDpColumnFullDebugFirstMismatchRank(-1),
+        gpuDpColumnFullDebugFirstMismatchScoreDelta(0),
+        gpuDpColumnFullDebugFirstMismatchPositionDelta(0),
+        gpuDpColumnFullDebugFirstMismatchCountDelta(0),
+        gpuDpColumnFullDebugScoreInfoSetMismatches(0),
+        gpuDpColumnFullDebugScoreInfoFieldMismatches(0),
+        gpuDpColumnFullDebugColumnMismatches(0),
+        gpuDpColumnFullDebugColumnScoreDeltaMax(0)
     {
     }
 
@@ -256,6 +275,20 @@ struct FasimProfileStats
     uint64_t gpuDpColumnTopKOverflowWindows;
     uint64_t gpuDpColumnPreTopKMismatches;
     uint64_t gpuDpColumnPostTopKMismatches;
+    long long gpuDpColumnFullDebugWindowIndex;
+    uint64_t gpuDpColumnFullDebugCpuRecords;
+    uint64_t gpuDpColumnFullDebugGpuPreTopKRecords;
+    uint64_t gpuDpColumnFullDebugGpuPostTopKRecords;
+    uint64_t gpuDpColumnFullDebugCpuRecordMissingPreTopK;
+    uint64_t gpuDpColumnFullDebugCpuRecordMissingPostTopK;
+    long long gpuDpColumnFullDebugFirstMismatchRank;
+    long long gpuDpColumnFullDebugFirstMismatchScoreDelta;
+    long long gpuDpColumnFullDebugFirstMismatchPositionDelta;
+    long long gpuDpColumnFullDebugFirstMismatchCountDelta;
+    uint64_t gpuDpColumnFullDebugScoreInfoSetMismatches;
+    uint64_t gpuDpColumnFullDebugScoreInfoFieldMismatches;
+    uint64_t gpuDpColumnFullDebugColumnMismatches;
+    uint64_t gpuDpColumnFullDebugColumnScoreDeltaMax;
     FasimTransferStringProfileStats transferStringProfile;
 };
 
@@ -374,6 +407,21 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_pre_topk_mismatches=" << stats.gpuDpColumnPreTopKMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_mismatches=" << stats.gpuDpColumnPostTopKMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_debug_windows_examined=" << stats.gpuDpColumnDebugWindowsExamined << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_enabled=" << (fasim_gpu_dp_column_full_scoreinfo_debug_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_window_index=" << stats.gpuDpColumnFullDebugWindowIndex << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_cpu_records=" << stats.gpuDpColumnFullDebugCpuRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_gpu_pre_topk_records=" << stats.gpuDpColumnFullDebugGpuPreTopKRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_gpu_post_topk_records=" << stats.gpuDpColumnFullDebugGpuPostTopKRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_cpu_record_missing_pre_topk=" << stats.gpuDpColumnFullDebugCpuRecordMissingPreTopK << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_cpu_record_missing_post_topk=" << stats.gpuDpColumnFullDebugCpuRecordMissingPostTopK << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_first_mismatch_rank=" << stats.gpuDpColumnFullDebugFirstMismatchRank << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_first_mismatch_score_delta=" << stats.gpuDpColumnFullDebugFirstMismatchScoreDelta << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_first_mismatch_position_delta=" << stats.gpuDpColumnFullDebugFirstMismatchPositionDelta << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_first_mismatch_count_delta=" << stats.gpuDpColumnFullDebugFirstMismatchCountDelta << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_scoreinfo_set_mismatches=" << stats.gpuDpColumnFullDebugScoreInfoSetMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_scoreinfo_field_mismatches=" << stats.gpuDpColumnFullDebugScoreInfoFieldMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_column_mismatches=" << stats.gpuDpColumnFullDebugColumnMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_full_debug_column_score_delta_max=" << stats.gpuDpColumnFullDebugColumnScoreDeltaMax << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -863,10 +911,14 @@ int main(int argc, char* const* argv)
 		const bool gpuDpColumnRequested = fasim_gpu_dp_column_requested_runtime();
 		const bool gpuDpColumnValidate = fasim_gpu_dp_column_validate_enabled_runtime();
 		const bool gpuDpColumnMismatchDebug = fasim_gpu_dp_column_mismatch_debug_enabled_runtime();
+		const bool gpuDpColumnFullScoreInfoDebug =
+			fasim_gpu_dp_column_full_scoreinfo_debug_enabled_runtime();
 		const int gpuDpColumnDebugMaxWindows =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
 		const int gpuDpColumnDebugWindowIndex =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_WINDOW_INDEX", -1);
+		const int gpuDpColumnDebugMaxRecords =
+			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_RECORDS", 5);
 		bool useCudaBatch = false;
 		std::vector<int> cudaDevices;
 		std::vector<PreAlignCudaQueryHandle> cudaQueries;
@@ -981,22 +1033,11 @@ int main(int argc, char* const* argv)
 				fasim_profile_now_nanoseconds() - totalStart;
 		};
 
-		auto build_scoreinfo_from_gpu_peaks = [&](const PreAlignCudaPeak *taskPeaks,
-		                                          int minScore,
-		                                          std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
+		auto build_scoreinfo_from_candidates = [](
+			std::vector<struct StripedSmithWaterman::scoreInfo> &candidates,
+			std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
 		{
 			outScoreInfo.clear();
-			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
-			candidates.reserve(static_cast<size_t>(topK));
-			for (int k = 0; k < topK; ++k)
-			{
-				const PreAlignCudaPeak &p = taskPeaks[static_cast<size_t>(k)];
-				if (p.position < 0 || p.score <= minScore)
-				{
-					continue;
-				}
-				candidates.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
-			}
 			std::sort(candidates.begin(),
 			          candidates.end(),
 			          [](const StripedSmithWaterman::scoreInfo &a,
@@ -1036,6 +1077,42 @@ int main(int argc, char* const* argv)
 			}
 		};
 
+		auto build_scoreinfo_from_gpu_peaks = [&](const PreAlignCudaPeak *taskPeaks,
+		                                          int minScore,
+		                                          std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
+		{
+			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
+			candidates.reserve(static_cast<size_t>(topK));
+			for (int k = 0; k < topK; ++k)
+			{
+				const PreAlignCudaPeak &p = taskPeaks[static_cast<size_t>(k)];
+				if (p.position < 0 || p.score <= minScore)
+				{
+					continue;
+				}
+				candidates.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
+			}
+			build_scoreinfo_from_candidates(candidates, outScoreInfo);
+		};
+
+		auto build_scoreinfo_from_column_scores = [&](
+			const std::vector<int> &columnScores,
+			int minScore,
+			std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
+		{
+			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
+			candidates.reserve(columnScores.size());
+			for (size_t i = 0; i < columnScores.size(); ++i)
+			{
+				if (columnScores[i] > minScore)
+				{
+					candidates.push_back(StripedSmithWaterman::scoreInfo(columnScores[i],
+					                                                      static_cast<int>(i)));
+				}
+			}
+			build_scoreinfo_from_candidates(candidates, outScoreInfo);
+		};
+
 		auto scoreinfo_equal = [](const std::vector<struct StripedSmithWaterman::scoreInfo> &a,
 		                          const std::vector<struct StripedSmithWaterman::scoreInfo> &b)
 		{
@@ -1053,11 +1130,65 @@ int main(int argc, char* const* argv)
 			return true;
 		};
 
+		auto scoreinfo_contains_exact = [](
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &items,
+			const StripedSmithWaterman::scoreInfo &needle)
+		{
+			for (size_t i = 0; i < items.size(); ++i)
+			{
+				if (items[i].score == needle.score && items[i].position == needle.position)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+		auto scoreinfo_missing_from = [&](
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &expected,
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &observed)
+		{
+			uint64_t missing = 0;
+			for (size_t i = 0; i < expected.size(); ++i)
+			{
+				if (!scoreinfo_contains_exact(observed, expected[i]))
+				{
+					++missing;
+				}
+			}
+			return missing;
+		};
+
+		auto scoreinfo_first_diff_rank = [](
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &a,
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &b)
+		{
+			const size_t maxCount = std::max(a.size(), b.size());
+			for (size_t i = 0; i < maxCount; ++i)
+			{
+				const bool hasA = i < a.size();
+				const bool hasB = i < b.size();
+				if (!hasA || !hasB)
+				{
+					return static_cast<long long>(i);
+				}
+				if (a[i].score != b[i].score || a[i].position != b[i].position)
+				{
+					return static_cast<long long>(i);
+				}
+			}
+			return static_cast<long long>(-1);
+		};
+
 		size_t gpuDpColumnValidationWindowOrdinal = 0;
 		uint64_t gpuDpColumnDebugPrintedWindows = 0;
+		bool gpuDpColumnFullDebugRecorded = false;
 
 		auto validate_gpu_dp_column_task = [&](const StreamTask &task,
-		                                       const PreAlignCudaPeak *taskPeaks)
+		                                       const PreAlignCudaPeak *taskPeaks,
+		                                       const PreAlignCudaQueryHandle *debugQuery,
+		                                       const uint8_t *debugEncodedTarget,
+		                                       int debugTargetLength)
 		{
 			if (!gpuDpColumnValidate)
 			{
@@ -1170,6 +1301,9 @@ int main(int argc, char* const* argv)
 			StripedSmithWaterman::Aligner cpuAligner;
 			StripedSmithWaterman::Filter cpuFilter;
 			StripedSmithWaterman::Alignment cpuAlignment;
+			std::vector<int> cpuColumnScores;
+			std::vector<int> *cpuColumnScoresOut =
+				gpuDpColumnFullScoreInfoDebug ? &cpuColumnScores : NULL;
 			cpuAligner.preAlign(lncSeq.c_str(),
 			                    task.seq2.c_str(),
 			                    static_cast<int>(task.seq2.size()),
@@ -1179,7 +1313,8 @@ int main(int argc, char* const* argv)
 			                    minScore,
 			                    cpuScoreInfo,
 			                    5,
-			                    -4);
+			                    -4,
+			                    cpuColumnScoresOut);
 			if (!scoreinfo_equal(gpuScoreInfo, cpuScoreInfo))
 			{
 				ok = false;
@@ -1308,6 +1443,179 @@ int main(int argc, char* const* argv)
 							cerr << " cpu=(none)";
 						}
 						cerr << endl;
+					}
+				}
+				const bool fullDebugWindowSelected =
+					gpuDpColumnFullScoreInfoDebug &&
+					gpuDpColumnMismatchDebug &&
+					!gpuDpColumnFullDebugRecorded &&
+					(gpuDpColumnDebugWindowIndex < 0 ||
+					 static_cast<int>(validationWindowOrdinal) == gpuDpColumnDebugWindowIndex);
+				if (fullDebugWindowSelected)
+				{
+					gpuDpColumnFullDebugRecorded = true;
+					if (profileEnabled && gpuDpColumnRequested)
+					{
+						profileStats.gpuDpColumnFullDebugWindowIndex =
+							static_cast<long long>(validationWindowOrdinal);
+						profileStats.gpuDpColumnFullDebugCpuRecords =
+							static_cast<uint64_t>(cpuScoreInfo.size());
+						profileStats.gpuDpColumnFullDebugGpuPostTopKRecords =
+							static_cast<uint64_t>(gpuScoreInfo.size());
+					}
+
+					std::vector<int> gpuColumnScores;
+					PreAlignCudaBatchResult debugBatchResult;
+					string fullDebugError;
+					const bool fullDebugOk =
+						debugQuery != NULL &&
+						debugEncodedTarget != NULL &&
+						prealign_cuda_find_column_maxima_debug(*debugQuery,
+						                                       debugEncodedTarget,
+						                                       debugTargetLength,
+						                                       &gpuColumnScores,
+						                                       &debugBatchResult,
+						                                       &fullDebugError);
+					if (!fullDebugOk)
+					{
+						cerr << "[fasim.cuda.full_scoreinfo] debug_error"
+						     << " window=" << validationWindowOrdinal
+						     << " error=" << fullDebugError
+						     << endl;
+					}
+					else
+					{
+						std::vector<struct StripedSmithWaterman::scoreInfo> gpuPreTopKScoreInfo;
+						build_scoreinfo_from_column_scores(gpuColumnScores, minScore, gpuPreTopKScoreInfo);
+
+						uint64_t columnMismatches = 0;
+						uint64_t columnScoreDeltaMax = 0;
+						const size_t columnCount = std::max(cpuColumnScores.size(), gpuColumnScores.size());
+						for (size_t i = 0; i < columnCount; ++i)
+						{
+							const int cpuScore = i < cpuColumnScores.size() ? cpuColumnScores[i] : 0;
+							const int gpuScore = i < gpuColumnScores.size() ? gpuColumnScores[i] : 0;
+							if (cpuScore != gpuScore)
+							{
+								++columnMismatches;
+								const long long delta =
+									static_cast<long long>(gpuScore) - static_cast<long long>(cpuScore);
+								const uint64_t absDelta = static_cast<uint64_t>(delta < 0 ? -delta : delta);
+								if (absDelta > columnScoreDeltaMax)
+								{
+									columnScoreDeltaMax = absDelta;
+								}
+							}
+						}
+
+						const uint64_t cpuMissingPre =
+							scoreinfo_missing_from(cpuScoreInfo, gpuPreTopKScoreInfo);
+						const uint64_t preMissingCpu =
+							scoreinfo_missing_from(gpuPreTopKScoreInfo, cpuScoreInfo);
+						const long long firstMismatchRank =
+							scoreinfo_first_diff_rank(cpuScoreInfo, gpuScoreInfo);
+
+						uint64_t missingPreTopK = 0;
+						uint64_t missingPostTopK = 0;
+						long long scoreDelta = 0;
+						long long positionDelta = 0;
+						if (firstMismatchRank >= 0 &&
+						    static_cast<size_t>(firstMismatchRank) < cpuScoreInfo.size())
+						{
+							const StripedSmithWaterman::scoreInfo &cpuRecord =
+								cpuScoreInfo[static_cast<size_t>(firstMismatchRank)];
+							missingPreTopK =
+								scoreinfo_contains_exact(gpuPreTopKScoreInfo, cpuRecord) ? 0 : 1;
+							missingPostTopK =
+								scoreinfo_contains_exact(gpuScoreInfo, cpuRecord) ? 0 : 1;
+
+							const bool hasGpuPost =
+								static_cast<size_t>(firstMismatchRank) < gpuScoreInfo.size();
+							const int gpuPostScore = hasGpuPost ?
+								gpuScoreInfo[static_cast<size_t>(firstMismatchRank)].score : 0;
+							const int gpuPostPosition = hasGpuPost ?
+								gpuScoreInfo[static_cast<size_t>(firstMismatchRank)].position : -1;
+							scoreDelta =
+								static_cast<long long>(gpuPostScore) -
+								static_cast<long long>(cpuRecord.score);
+							positionDelta =
+								static_cast<long long>(gpuPostPosition) -
+								static_cast<long long>(cpuRecord.position);
+						}
+						const long long countDelta =
+							static_cast<long long>(gpuScoreInfo.size()) -
+							static_cast<long long>(cpuScoreInfo.size());
+						uint64_t fieldMismatches = 0;
+						if (scoreDelta != 0)
+						{
+							++fieldMismatches;
+						}
+						if (positionDelta != 0)
+						{
+							++fieldMismatches;
+						}
+						if (countDelta != 0)
+						{
+							++fieldMismatches;
+						}
+
+						if (profileEnabled && gpuDpColumnRequested)
+						{
+							profileStats.gpuDpColumnFullDebugGpuPreTopKRecords =
+								static_cast<uint64_t>(gpuPreTopKScoreInfo.size());
+							profileStats.gpuDpColumnFullDebugCpuRecordMissingPreTopK = missingPreTopK;
+							profileStats.gpuDpColumnFullDebugCpuRecordMissingPostTopK = missingPostTopK;
+							profileStats.gpuDpColumnFullDebugFirstMismatchRank = firstMismatchRank;
+							profileStats.gpuDpColumnFullDebugFirstMismatchScoreDelta = scoreDelta;
+							profileStats.gpuDpColumnFullDebugFirstMismatchPositionDelta = positionDelta;
+							profileStats.gpuDpColumnFullDebugFirstMismatchCountDelta = countDelta;
+							profileStats.gpuDpColumnFullDebugScoreInfoSetMismatches =
+								cpuMissingPre + preMissingCpu;
+							profileStats.gpuDpColumnFullDebugScoreInfoFieldMismatches =
+								fieldMismatches;
+							profileStats.gpuDpColumnFullDebugColumnMismatches =
+								columnMismatches;
+							profileStats.gpuDpColumnFullDebugColumnScoreDeltaMax =
+								columnScoreDeltaMax;
+						}
+
+						cerr << "[fasim.cuda.full_scoreinfo]"
+						     << " window=" << validationWindowOrdinal
+						     << " cpu_records=" << cpuScoreInfo.size()
+						     << " gpu_pre_topk_records=" << gpuPreTopKScoreInfo.size()
+						     << " gpu_post_topk_records=" << gpuScoreInfo.size()
+						     << " column_mismatches=" << columnMismatches
+						     << " column_score_delta_max=" << columnScoreDeltaMax
+						     << " cpu_missing_pre_topk=" << cpuMissingPre
+						     << " pre_missing_cpu=" << preMissingCpu
+						     << " first_mismatch_rank=" << firstMismatchRank
+						     << " first_mismatch_score_delta=" << scoreDelta
+						     << " first_mismatch_position_delta=" << positionDelta
+						     << " first_mismatch_count_delta=" << countDelta
+						     << endl;
+
+						if (gpuDpColumnDebugMaxRecords > 0)
+						{
+							const size_t sampleCount =
+								static_cast<size_t>(gpuDpColumnDebugMaxRecords);
+							auto print_scoreinfo_sample = [&](const char *label,
+							                                  const std::vector<struct StripedSmithWaterman::scoreInfo> &items)
+							{
+								const size_t limit = std::min(items.size(), sampleCount);
+								for (size_t i = 0; i < limit; ++i)
+								{
+									cerr << "[fasim.cuda.full_scoreinfo] "
+									     << label
+									     << "[" << i << "]=("
+									     << items[i].score << ","
+									     << items[i].position << ")"
+									     << endl;
+								}
+							};
+							print_scoreinfo_sample("cpu", cpuScoreInfo);
+							print_scoreinfo_sample("gpu_pre_topk", gpuPreTopKScoreInfo);
+							print_scoreinfo_sample("gpu_post_topk", gpuScoreInfo);
+						}
 					}
 				}
 				if (profileEnabled && gpuDpColumnRequested)
@@ -1469,7 +1777,13 @@ int main(int argc, char* const* argv)
 							for (size_t t = 0; t < tasks.size(); ++t)
 							{
 								const size_t base = t * static_cast<size_t>(topK);
-								if (!validate_gpu_dp_column_task(tasks[t], peaks.data() + base))
+								const uint8_t *debugTarget =
+									encodedTargets.data() + t * static_cast<size_t>(currentTargetLength);
+								if (!validate_gpu_dp_column_task(tasks[t],
+								                                  peaks.data() + base,
+								                                  &cudaQueries[0],
+								                                  debugTarget,
+								                                  currentTargetLength))
 								{
 									gpuValidationOk = false;
 								}
@@ -1865,8 +2179,14 @@ int main(int argc, char* const* argv)
 								{
 									const size_t taskIndex = chunkBegin[d] + local;
 									const size_t base = local * static_cast<size_t>(topK);
+									const uint8_t *debugTarget =
+										encodedTargets.data() +
+										taskIndex * static_cast<size_t>(currentTargetLength);
 									if (!validate_gpu_dp_column_task(tasks[taskIndex],
-									                                  peaksByDevice[d].data() + base))
+									                                  peaksByDevice[d].data() + base,
+									                                  &cudaQueries[d],
+									                                  debugTarget,
+									                                  currentTargetLength))
 									{
 										gpuValidationOk = false;
 									}

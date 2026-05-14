@@ -53,5 +53,11 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
                                            PreAlignCudaBatchResult *batchResult,
                                            std::string *errorOut);
 
-#endif
+bool prealign_cuda_find_column_maxima_debug(const PreAlignCudaQueryHandle &handle,
+                                            const uint8_t *encodedTargetHost,
+                                            int targetLength,
+                                            std::vector<int> *outColumnMaxima,
+                                            PreAlignCudaBatchResult *batchResult,
+                                            std::string *errorOut);
 
+#endif
