@@ -310,6 +310,71 @@ class ReplacementShadow:
 
 
 @dataclasses.dataclass(frozen=True)
+class ExtraCandidateFeature:
+    raw: str
+    true_sim_record: bool
+    score: float
+    nt: int
+    genome_length: int
+    query_length: int
+    local_rank: int
+    family_rank: int
+    dominated_by_higher_score: bool
+    contained_in_fasim: bool
+    overlaps_fasim: bool
+    boundary_distance: int
+    conflict_degree: int
+    box_cells: int
+    nested_candidate: bool
+    internal_peak_candidate: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class ExtraGuardResult:
+    workload_label: str
+    guard: str
+    selected_candidates: int
+    integrated_records: int
+    sim_records: int
+    sim_only_recovered: int
+    shared_records_vs_sim: int
+    extra_records_vs_sim: int
+    overlap_conflicts: int
+    output_mutations: int
+    oracle: bool
+
+    @property
+    def recall_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.sim_records)
+
+    @property
+    def precision_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.integrated_records)
+
+
+@dataclasses.dataclass(frozen=True)
+class ReplacementExtraTaxonomy:
+    workload_label: str
+    true_sim_records: int
+    extra_records: int
+    score_min_true: float
+    score_min_extra: float
+    nt_min_true: int
+    nt_min_extra: int
+    rank_true_p50: float
+    rank_extra_p50: float
+    dominated_true: int
+    dominated_extra: int
+    contained_true: int
+    contained_extra: int
+    boundary_distance_true_p50: float
+    boundary_distance_extra_p50: float
+    overlap_conflicts: int
+    output_mutations: int
+    guards: Tuple[ExtraGuardResult, ...]
+
+
+@dataclasses.dataclass(frozen=True)
 class WorkloadGap:
     spec: FixtureSpec
     sim: ModeRun
@@ -327,6 +392,7 @@ class WorkloadGap:
     integration_shadow: Optional[IntegrationShadow] = None
     filter_shadow: Optional[FilterShadow] = None
     replacement_shadow: Optional[ReplacementShadow] = None
+    replacement_extra_taxonomy: Optional[ReplacementExtraTaxonomy] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -1175,6 +1241,272 @@ def records_by_box(
     return contained, per_box
 
 
+def candidate_order_key(record: TriplexRecord) -> Tuple[float, int, int, int, str]:
+    return (-record.score, -record.nt, record.genome_interval[0], record.query_interval[0], record.raw)
+
+
+def median_value(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return float(ordered[middle])
+    return float(ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def min_float(values: Sequence[float]) -> float:
+    return min(values) if values else 0.0
+
+
+def min_int(values: Sequence[int]) -> int:
+    return min(values) if values else 0
+
+
+def candidate_local_ranks(
+    records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+) -> Dict[str, int]:
+    ranks: Dict[str, int] = {record.raw: 0 for record in records}
+    for box in boxes:
+        in_box = [record for record in records if record_in_box(record, box)]
+        for rank, record in enumerate(sorted(in_box, key=candidate_order_key), start=1):
+            previous = ranks.get(record.raw, 0)
+            if previous == 0 or rank < previous:
+                ranks[record.raw] = rank
+    return ranks
+
+
+def candidate_family_ranks(records: Sequence[TriplexRecord]) -> Dict[str, int]:
+    by_family: Dict[Tuple[str, str, str], List[TriplexRecord]] = defaultdict(list)
+    for record in records:
+        by_family[record.family].append(record)
+    ranks: Dict[str, int] = {}
+    for family_records in by_family.values():
+        for rank, record in enumerate(sorted(family_records, key=candidate_order_key), start=1):
+            ranks[record.raw] = rank
+    return ranks
+
+
+def candidate_box_cells(
+    record: TriplexRecord,
+    boxes: Sequence[RecoveryBox],
+) -> int:
+    cells = [box_cells(box) for box in boxes if record_in_box(record, box)]
+    return min_int(cells)
+
+
+def candidate_boundary_distance(
+    record: TriplexRecord,
+    fasim_records: Sequence[TriplexRecord],
+) -> int:
+    distances: List[int] = []
+    for fasim_record in fasim_records:
+        if not records_overlap_in_both_axes(record, fasim_record):
+            continue
+        distances.extend(
+            [
+                abs(record.genome_interval[0] - fasim_record.genome_interval[0]),
+                abs(record.genome_interval[1] - fasim_record.genome_interval[1]),
+                abs(record.query_interval[0] - fasim_record.query_interval[0]),
+                abs(record.query_interval[1] - fasim_record.query_interval[1]),
+            ]
+        )
+    return min_int(distances)
+
+
+def candidate_conflict_degrees(records: Sequence[TriplexRecord]) -> Dict[str, int]:
+    degrees: Dict[str, int] = {record.raw: 0 for record in records}
+    by_family: Dict[Tuple[str, str, str], List[TriplexRecord]] = defaultdict(list)
+    for record in records:
+        by_family[record.family].append(record)
+    for family_records in by_family.values():
+        ordered = sorted(family_records, key=lambda record: (record.genome_interval[0], record.genome_interval[1], record.raw))
+        for left_index, left in enumerate(ordered):
+            for right in ordered[left_index + 1 :]:
+                if right.genome_interval[0] > left.genome_interval[1]:
+                    break
+                if overlaps(left.genome_interval, right.genome_interval):
+                    degrees[left.raw] += 1
+                    degrees[right.raw] += 1
+    return degrees
+
+
+def dominated_by_higher_score(
+    record: TriplexRecord,
+    references: Sequence[TriplexRecord],
+) -> bool:
+    return any(
+        reference.raw != record.raw
+        and reference.family == record.family
+        and reference.score > record.score
+        and contains(reference.genome_interval, record.genome_interval)
+        and contains(reference.query_interval, record.query_interval)
+        for reference in references
+    )
+
+
+def build_extra_candidate_features(
+    *,
+    candidate_records: Sequence[TriplexRecord],
+    sim_raw: Set[str],
+    fasim_records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+) -> List[ExtraCandidateFeature]:
+    local_ranks = candidate_local_ranks(candidate_records, boxes)
+    family_ranks = candidate_family_ranks(candidate_records)
+    conflict_degrees = candidate_conflict_degrees(candidate_records)
+    dominance_references = list(fasim_records) + list(candidate_records)
+    features: List[ExtraCandidateFeature] = []
+    for record in candidate_records:
+        features.append(
+            ExtraCandidateFeature(
+                raw=record.raw,
+                true_sim_record=record.raw in sim_raw,
+                score=record.score,
+                nt=record.nt,
+                genome_length=interval_length(record.genome_interval),
+                query_length=interval_length(record.query_interval),
+                local_rank=local_ranks.get(record.raw, 0),
+                family_rank=family_ranks.get(record.raw, 0),
+                dominated_by_higher_score=dominated_by_higher_score(record, dominance_references),
+                contained_in_fasim=is_nested_candidate(record, fasim_records),
+                overlaps_fasim=is_near_duplicate_candidate(record, fasim_records),
+                boundary_distance=candidate_boundary_distance(record, fasim_records),
+                conflict_degree=conflict_degrees.get(record.raw, 0),
+                box_cells=candidate_box_cells(record, boxes),
+                nested_candidate=is_nested_candidate(record, fasim_records),
+                internal_peak_candidate=is_internal_peak_candidate(record, fasim_records),
+            )
+        )
+    return features
+
+
+def evaluate_extra_guard(
+    *,
+    workload_label: str,
+    guard: str,
+    selected_candidate_raw: Set[str],
+    fasim_raw: Set[str],
+    suppressed_fasim_raw: Set[str],
+    sim_raw: Set[str],
+    sim_only_raw: Set[str],
+    oracle: bool = False,
+) -> ExtraGuardResult:
+    integrated_raw = (fasim_raw - suppressed_fasim_raw) | selected_candidate_raw
+    integrated_records = parse_lite_records(sorted(integrated_raw))
+    shared_records_vs_sim = integrated_raw & sim_raw
+    return ExtraGuardResult(
+        workload_label=workload_label,
+        guard=guard,
+        selected_candidates=len(selected_candidate_raw),
+        integrated_records=len(integrated_raw),
+        sim_records=len(sim_raw),
+        sim_only_recovered=len(sim_only_raw & integrated_raw),
+        shared_records_vs_sim=len(shared_records_vs_sim),
+        extra_records_vs_sim=len(integrated_raw - sim_raw),
+        overlap_conflicts=count_same_family_genomic_overlaps(integrated_records),
+        output_mutations=0,
+        oracle=oracle,
+    )
+
+
+def build_local_sim_recovery_replacement_extra_taxonomy(
+    *,
+    workload_label: str,
+    sim_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    sim_only: Sequence[GapRecord],
+    executor_shadow: ExecutorShadow,
+) -> ReplacementExtraTaxonomy:
+    fasim_raw = {record.raw for record in fasim_records}
+    sim_raw = {record.raw for record in sim_records}
+    sim_only_raw = {gap.record.raw for gap in sim_only}
+    candidate_raw = set(executor_shadow.candidate_records_raw)
+    candidate_records = parse_lite_records(sorted(candidate_raw))
+    candidate_by_raw = {record.raw: record for record in candidate_records}
+    boxes = executor_shadow.boxes
+    fasim_in_boxes, _ = records_by_box(fasim_records, boxes)
+    candidate_in_boxes, _ = records_by_box(candidate_records, boxes)
+
+    accepted_raw = {
+        raw
+        for raw, record in candidate_by_raw.items()
+        if raw in candidate_in_boxes and record.score >= 89.0 and record.nt >= 50
+    }
+    accepted_records = [candidate_by_raw[raw] for raw in sorted(accepted_raw)]
+    features = build_extra_candidate_features(
+        candidate_records=accepted_records,
+        sim_raw=sim_raw,
+        fasim_records=fasim_records,
+        boxes=boxes,
+    )
+    true_features = [feature for feature in features if feature.true_sim_record]
+    extra_features = [feature for feature in features if not feature.true_sim_record]
+
+    score_nt_threshold = set(accepted_raw)
+    local_rank_topk = {feature.raw for feature in features if feature.local_rank and feature.local_rank <= 2}
+    family_rank_topk = {feature.raw for feature in features if feature.family_rank and feature.family_rank <= 2}
+    dominance_filter = {feature.raw for feature in features if not feature.dominated_by_higher_score}
+    containment_boundary_guard = {
+        feature.raw
+        for feature in features
+        if feature.contained_in_fasim or feature.boundary_distance <= 4
+    }
+    combined_non_oracle = {
+        feature.raw
+        for feature in features
+        if feature.local_rank
+        and feature.local_rank <= 2
+        and not feature.dominated_by_higher_score
+    }
+    oracle_sim_match = accepted_raw & sim_raw
+
+    guard_specs = (
+        ("score_nt_threshold", score_nt_threshold, False),
+        ("local_rank_topk_per_box", local_rank_topk, False),
+        ("family_rank_topk", family_rank_topk, False),
+        ("dominance_filter", dominance_filter, False),
+        ("containment_boundary_guard", containment_boundary_guard, False),
+        ("combined_non_oracle", combined_non_oracle, False),
+        ("oracle_sim_match", oracle_sim_match, True),
+    )
+    guards = tuple(
+        evaluate_extra_guard(
+            workload_label=workload_label,
+            guard=guard,
+            selected_candidate_raw=selected_raw,
+            fasim_raw=fasim_raw,
+            suppressed_fasim_raw=fasim_in_boxes,
+            sim_raw=sim_raw,
+            sim_only_raw=sim_only_raw,
+            oracle=oracle,
+        )
+        for guard, selected_raw, oracle in guard_specs
+    )
+
+    return ReplacementExtraTaxonomy(
+        workload_label=workload_label,
+        true_sim_records=len(true_features),
+        extra_records=len(extra_features),
+        score_min_true=min_float([feature.score for feature in true_features]),
+        score_min_extra=min_float([feature.score for feature in extra_features]),
+        nt_min_true=min_int([feature.nt for feature in true_features]),
+        nt_min_extra=min_int([feature.nt for feature in extra_features]),
+        rank_true_p50=median_value([float(feature.local_rank) for feature in true_features]),
+        rank_extra_p50=median_value([float(feature.local_rank) for feature in extra_features]),
+        dominated_true=sum(1 for feature in true_features if feature.dominated_by_higher_score),
+        dominated_extra=sum(1 for feature in extra_features if feature.dominated_by_higher_score),
+        contained_true=sum(1 for feature in true_features if feature.contained_in_fasim),
+        contained_extra=sum(1 for feature in extra_features if feature.contained_in_fasim),
+        boundary_distance_true_p50=median_value([float(feature.boundary_distance) for feature in true_features]),
+        boundary_distance_extra_p50=median_value([float(feature.boundary_distance) for feature in extra_features]),
+        overlap_conflicts=count_same_family_genomic_overlaps(accepted_records),
+        output_mutations=0,
+        guards=guards,
+    )
+
+
 def build_local_sim_recovery_replacement_shadow(
     *,
     workload_label: str,
@@ -1486,6 +1818,7 @@ def analyze_gap(
     integration_shadow_enabled: bool,
     filter_shadow_enabled: bool,
     replacement_shadow_enabled: bool,
+    replacement_extra_taxonomy_enabled: bool,
     executor_shadow_work_dir: Path,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
@@ -1529,6 +1862,7 @@ def analyze_gap(
             or integration_shadow_enabled
             or filter_shadow_enabled
             or replacement_shadow_enabled
+            or replacement_extra_taxonomy_enabled
         )
         else None
     )
@@ -1541,7 +1875,13 @@ def analyze_gap(
             sim_only=sim_only,
             work_dir=executor_shadow_work_dir,
         )
-        if executor_shadow_enabled or integration_shadow_enabled or filter_shadow_enabled or replacement_shadow_enabled
+        if (
+            executor_shadow_enabled
+            or integration_shadow_enabled
+            or filter_shadow_enabled
+            or replacement_shadow_enabled
+            or replacement_extra_taxonomy_enabled
+        )
         else None
     )
 
@@ -1581,6 +1921,18 @@ def analyze_gap(
         else None
     )
 
+    replacement_extra_taxonomy = (
+        build_local_sim_recovery_replacement_extra_taxonomy(
+            workload_label=spec.label,
+            sim_records=sim.records,
+            fasim_records=fasim.records,
+            sim_only=sim_only,
+            executor_shadow=executor_shadow,
+        )
+        if replacement_extra_taxonomy_enabled and executor_shadow is not None
+        else None
+    )
+
     return WorkloadGap(
         spec=spec,
         sim=sim,
@@ -1609,6 +1961,7 @@ def analyze_gap(
         integration_shadow=integration_shadow,
         filter_shadow=filter_shadow,
         replacement_shadow=replacement_shadow,
+        replacement_extra_taxonomy=replacement_extra_taxonomy,
     )
 
 
@@ -3528,6 +3881,395 @@ def render_replacement_shadow_report(
     return report
 
 
+def fmt_float(value: float) -> str:
+    return f"{value:.2f}"
+
+
+def render_replacement_extra_taxonomy_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    profile_set: str,
+) -> str:
+    taxonomies = [gap.replacement_extra_taxonomy for gap in gaps if gap.replacement_extra_taxonomy is not None]
+    if len(taxonomies) != len(gaps):
+        raise RuntimeError("replacement extra taxonomy report requested without replacement extra taxonomy data")
+
+    lines: List[str] = []
+    lines.append("# Fasim Local SIM Recovery Replacement Extra Taxonomy")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-local-sim-recovery-replacement-shadow")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This report is diagnostic-only. It analyzes the extra records left by "
+        "the best non-oracle replacement shape and evaluates non-oracle guards "
+        "against the side replacement candidate set. It does not add a real "
+        "`FASIM_SIM_RECOVERY=1` mode and does not mutate Fasim output."
+    )
+    lines.append("")
+    lines.append(
+        "Legacy SIM membership is used only after candidate generation for "
+        "taxonomy and guard evaluation. It is forbidden as production selection "
+        "input."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["input_candidates", "box-local replacement accepted candidates"],
+            ["base_replacement_filter", "candidate score >= 89 and Nt >= 50"],
+            ["selected_non_oracle_guard", "combined_non_oracle"],
+            ["oracle_guard", "oracle_sim_match, analysis-only upper bound"],
+            ["output_mutations_expected", "0"],
+        ],
+    )
+    lines.append("")
+
+    feature_rows: List[List[str]] = []
+    guard_rows: List[List[str]] = []
+    total_true = 0
+    total_extra = 0
+    total_dominated_true = 0
+    total_dominated_extra = 0
+    total_contained_true = 0
+    total_contained_extra = 0
+    total_output_mutations = 0
+    total_overlap_conflicts = 0
+    true_score_mins: List[float] = []
+    extra_score_mins: List[float] = []
+    true_nt_mins: List[int] = []
+    extra_nt_mins: List[int] = []
+    true_rank_p50s: List[float] = []
+    extra_rank_p50s: List[float] = []
+    true_boundary_p50s: List[float] = []
+    extra_boundary_p50s: List[float] = []
+    guard_order = [
+        "score_nt_threshold",
+        "local_rank_topk_per_box",
+        "family_rank_topk",
+        "dominance_filter",
+        "containment_boundary_guard",
+        "combined_non_oracle",
+        "oracle_sim_match",
+    ]
+    guard_totals: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    guard_oracle: Dict[str, bool] = {}
+
+    for taxonomy in taxonomies:
+        total_true += taxonomy.true_sim_records
+        total_extra += taxonomy.extra_records
+        total_dominated_true += taxonomy.dominated_true
+        total_dominated_extra += taxonomy.dominated_extra
+        total_contained_true += taxonomy.contained_true
+        total_contained_extra += taxonomy.contained_extra
+        total_output_mutations += taxonomy.output_mutations
+        total_overlap_conflicts += taxonomy.overlap_conflicts
+        if taxonomy.true_sim_records:
+            true_score_mins.append(taxonomy.score_min_true)
+            true_nt_mins.append(taxonomy.nt_min_true)
+            true_rank_p50s.append(taxonomy.rank_true_p50)
+            true_boundary_p50s.append(taxonomy.boundary_distance_true_p50)
+        if taxonomy.extra_records:
+            extra_score_mins.append(taxonomy.score_min_extra)
+            extra_nt_mins.append(taxonomy.nt_min_extra)
+            extra_rank_p50s.append(taxonomy.rank_extra_p50)
+            extra_boundary_p50s.append(taxonomy.boundary_distance_extra_p50)
+        feature_rows.append(
+            [
+                taxonomy.workload_label,
+                str(taxonomy.true_sim_records),
+                str(taxonomy.extra_records),
+                fmt_float(taxonomy.score_min_true),
+                fmt_float(taxonomy.score_min_extra),
+                str(taxonomy.nt_min_true),
+                str(taxonomy.nt_min_extra),
+                fmt_float(taxonomy.rank_true_p50),
+                fmt_float(taxonomy.rank_extra_p50),
+                str(taxonomy.dominated_true),
+                str(taxonomy.dominated_extra),
+                str(taxonomy.contained_true),
+                str(taxonomy.contained_extra),
+                fmt_float(taxonomy.boundary_distance_true_p50),
+                fmt_float(taxonomy.boundary_distance_extra_p50),
+                str(taxonomy.overlap_conflicts),
+                str(taxonomy.output_mutations),
+            ]
+        )
+        for guard in taxonomy.guards:
+            totals = guard_totals[guard.guard]
+            guard_oracle[guard.guard] = guard.oracle
+            totals["selected_candidates"] += guard.selected_candidates
+            totals["integrated_records"] += guard.integrated_records
+            totals["sim_records"] += guard.sim_records
+            totals["sim_only_recovered"] += guard.sim_only_recovered
+            totals["shared_records_vs_sim"] += guard.shared_records_vs_sim
+            totals["extra_records_vs_sim"] += guard.extra_records_vs_sim
+            totals["overlap_conflicts"] += guard.overlap_conflicts
+            totals["output_mutations"] += guard.output_mutations
+            guard_rows.append(
+                [
+                    guard.workload_label,
+                    guard.guard,
+                    "yes" if guard.oracle else "no",
+                    str(guard.selected_candidates),
+                    str(guard.integrated_records),
+                    str(guard.sim_only_recovered),
+                    fmt_pct(guard.recall_vs_sim),
+                    fmt_pct(guard.precision_vs_sim),
+                    str(guard.extra_records_vs_sim),
+                    str(guard.overlap_conflicts),
+                    str(guard.output_mutations),
+                ]
+            )
+
+    lines.append("## Workload Feature Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "True SIM records",
+            "Extra records",
+            "Score min true",
+            "Score min extra",
+            "Nt min true",
+            "Nt min extra",
+            "Local rank true p50",
+            "Local rank extra p50",
+            "Dominated true",
+            "Dominated extra",
+            "Contained true",
+            "Contained extra",
+            "Boundary true p50",
+            "Boundary extra p50",
+            "Overlap conflicts",
+            "Output mutations",
+        ],
+        feature_rows,
+    )
+    lines.append("")
+
+    lines.append("## Guard Evaluation")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "Guard",
+            "Oracle",
+            "Selected candidates",
+            "Integrated records",
+            "SIM-only recovered",
+            "Recall vs SIM",
+            "Precision vs SIM",
+            "Extra vs SIM",
+            "Overlap conflicts",
+            "Output mutations",
+        ],
+        guard_rows,
+    )
+    lines.append("")
+
+    guard_summary_rows: List[List[str]] = []
+    for guard in guard_order:
+        totals = guard_totals[guard]
+        guard_summary_rows.append(
+            [
+                guard,
+                "yes" if guard_oracle.get(guard, False) else "no",
+                str(totals.get("selected_candidates", 0)),
+                str(totals.get("integrated_records", 0)),
+                str(totals.get("sim_only_recovered", 0)),
+                fmt_pct(pct(totals.get("shared_records_vs_sim", 0), totals.get("sim_records", 0))),
+                fmt_pct(pct(totals.get("shared_records_vs_sim", 0), totals.get("integrated_records", 0))),
+                str(totals.get("extra_records_vs_sim", 0)),
+                str(totals.get("overlap_conflicts", 0)),
+                str(totals.get("output_mutations", 0)),
+            ]
+        )
+
+    lines.append("## Guard Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Guard",
+            "Oracle",
+            "Selected candidates",
+            "Integrated records",
+            "SIM-only recovered",
+            "Recall vs SIM",
+            "Precision vs SIM",
+            "Extra vs SIM",
+            "Overlap conflicts",
+            "Output mutations",
+        ],
+        guard_summary_rows,
+    )
+    lines.append("")
+
+    selected_guard = "combined_non_oracle"
+    selected = guard_totals[selected_guard]
+    oracle = guard_totals["oracle_sim_match"]
+    selected_recall = pct(selected.get("shared_records_vs_sim", 0), selected.get("sim_records", 0))
+    selected_precision = pct(selected.get("shared_records_vs_sim", 0), selected.get("integrated_records", 0))
+    oracle_precision = pct(oracle.get("shared_records_vs_sim", 0), oracle.get("integrated_records", 0))
+    aggregate_score_min_true = min_float(true_score_mins)
+    aggregate_score_min_extra = min_float(extra_score_mins)
+    aggregate_nt_min_true = min_int(true_nt_mins)
+    aggregate_nt_min_extra = min_int(extra_nt_mins)
+    aggregate_rank_true_p50 = median_value(true_rank_p50s)
+    aggregate_rank_extra_p50 = median_value(extra_rank_p50s)
+    aggregate_boundary_true_p50 = median_value(true_boundary_p50s)
+    aggregate_boundary_extra_p50 = median_value(extra_boundary_p50s)
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_extra_taxonomy_enabled", "1"],
+            ["fasim_sim_recovery_extra_taxonomy_true_sim_records", str(total_true)],
+            ["fasim_sim_recovery_extra_taxonomy_extra_records", str(total_extra)],
+            ["fasim_sim_recovery_extra_taxonomy_score_min_true", fmt_float(aggregate_score_min_true)],
+            ["fasim_sim_recovery_extra_taxonomy_score_min_extra", fmt_float(aggregate_score_min_extra)],
+            ["fasim_sim_recovery_extra_taxonomy_nt_min_true", str(aggregate_nt_min_true)],
+            ["fasim_sim_recovery_extra_taxonomy_nt_min_extra", str(aggregate_nt_min_extra)],
+            ["fasim_sim_recovery_extra_taxonomy_rank_true_p50", fmt_float(aggregate_rank_true_p50)],
+            ["fasim_sim_recovery_extra_taxonomy_rank_extra_p50", fmt_float(aggregate_rank_extra_p50)],
+            ["fasim_sim_recovery_extra_taxonomy_dominated_true", str(total_dominated_true)],
+            ["fasim_sim_recovery_extra_taxonomy_dominated_extra", str(total_dominated_extra)],
+            ["fasim_sim_recovery_extra_taxonomy_contained_true", str(total_contained_true)],
+            ["fasim_sim_recovery_extra_taxonomy_contained_extra", str(total_contained_extra)],
+            ["fasim_sim_recovery_extra_taxonomy_boundary_distance_true_p50", fmt_float(aggregate_boundary_true_p50)],
+            ["fasim_sim_recovery_extra_taxonomy_boundary_distance_extra_p50", fmt_float(aggregate_boundary_extra_p50)],
+            ["fasim_sim_recovery_extra_taxonomy_overlap_conflicts", str(total_overlap_conflicts)],
+            ["fasim_sim_recovery_extra_taxonomy_selected_guard", selected_guard],
+            ["fasim_sim_recovery_extra_taxonomy_selected_guard_recall_vs_sim", fmt_pct(selected_recall)],
+            ["fasim_sim_recovery_extra_taxonomy_selected_guard_precision_vs_sim", fmt_pct(selected_precision)],
+            ["fasim_sim_recovery_extra_taxonomy_selected_guard_extra_records_vs_sim", str(selected.get("extra_records_vs_sim", 0))],
+            ["fasim_sim_recovery_extra_taxonomy_selected_guard_overlap_conflicts", str(selected.get("overlap_conflicts", 0))],
+            ["fasim_sim_recovery_extra_taxonomy_output_mutations", str(total_output_mutations + selected.get("output_mutations", 0))],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Decision")
+    lines.append("")
+    if total_output_mutations or selected.get("output_mutations", 0):
+        decision = "Stop: extra taxonomy observed output mutations, which violates diagnostic-only scope."
+    elif selected_recall >= 90.0 and selected_precision >= 80.0:
+        decision = (
+            "A non-oracle guard reaches the strong recall/precision target on "
+            "these representative synthetic fixtures. The next PR can design a "
+            "real SIM-close mode, but this remains diagnostic-only."
+        )
+    elif selected_recall >= 90.0 and selected_precision >= 70.0:
+        decision = (
+            "The selected non-oracle guard keeps high recall but precision remains "
+            "in the 70-80% band. Refine ranking or merge semantics before a real mode."
+        )
+    elif oracle_precision >= 90.0:
+        decision = (
+            "The oracle upper bound is strong, but non-oracle guards do not yet "
+            "separate extras cleanly. Do not proceed to real recovery."
+        )
+    else:
+        decision = (
+            "Extras are not cleanly separated by the current feature set. "
+            "SIM-close mode may need a different output model."
+        )
+    lines.append(decision)
+    lines.append("")
+    lines.append("Forbidden-scope check:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("Fasim output change: no")
+    lines.append("Recovered records added to output: no")
+    lines.append("Real FASIM_SIM_RECOVERY mode: no")
+    lines.append("SIM-only labels used as production selection input: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("```")
+
+    for taxonomy in taxonomies:
+        prefix = f"benchmark.fasim_sim_recovery_extra_taxonomy.{taxonomy.workload_label}"
+        print(f"{prefix}.enabled=1")
+        print(f"{prefix}.true_sim_records={taxonomy.true_sim_records}")
+        print(f"{prefix}.extra_records={taxonomy.extra_records}")
+        print(f"{prefix}.score_min_true={taxonomy.score_min_true:.6f}")
+        print(f"{prefix}.score_min_extra={taxonomy.score_min_extra:.6f}")
+        print(f"{prefix}.nt_min_true={taxonomy.nt_min_true}")
+        print(f"{prefix}.nt_min_extra={taxonomy.nt_min_extra}")
+        print(f"{prefix}.rank_true_p50={taxonomy.rank_true_p50:.6f}")
+        print(f"{prefix}.rank_extra_p50={taxonomy.rank_extra_p50:.6f}")
+        print(f"{prefix}.dominated_true={taxonomy.dominated_true}")
+        print(f"{prefix}.dominated_extra={taxonomy.dominated_extra}")
+        print(f"{prefix}.contained_true={taxonomy.contained_true}")
+        print(f"{prefix}.contained_extra={taxonomy.contained_extra}")
+        print(f"{prefix}.boundary_distance_true_p50={taxonomy.boundary_distance_true_p50:.6f}")
+        print(f"{prefix}.boundary_distance_extra_p50={taxonomy.boundary_distance_extra_p50:.6f}")
+        print(f"{prefix}.overlap_conflicts={taxonomy.overlap_conflicts}")
+        print(f"{prefix}.output_mutations={taxonomy.output_mutations}")
+        for guard in taxonomy.guards:
+            guard_prefix = f"{prefix}.guard.{guard.guard}"
+            print(f"{guard_prefix}.oracle={1 if guard.oracle else 0}")
+            print(f"{guard_prefix}.selected_candidates={guard.selected_candidates}")
+            print(f"{guard_prefix}.integrated_records={guard.integrated_records}")
+            print(f"{guard_prefix}.sim_only_recovered={guard.sim_only_recovered}")
+            print(f"{guard_prefix}.recall_vs_sim={guard.recall_vs_sim:.6f}")
+            print(f"{guard_prefix}.precision_vs_sim={guard.precision_vs_sim:.6f}")
+            print(f"{guard_prefix}.extra_records_vs_sim={guard.extra_records_vs_sim}")
+            print(f"{guard_prefix}.overlap_conflicts={guard.overlap_conflicts}")
+            print(f"{guard_prefix}.output_mutations={guard.output_mutations}")
+
+    print("benchmark.fasim_sim_recovery_extra_taxonomy.total.enabled=1")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.true_sim_records={total_true}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.extra_records={total_extra}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.score_min_true={aggregate_score_min_true:.6f}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.score_min_extra={aggregate_score_min_extra:.6f}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.nt_min_true={aggregate_nt_min_true}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.nt_min_extra={aggregate_nt_min_extra}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.rank_true_p50={aggregate_rank_true_p50:.6f}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.rank_extra_p50={aggregate_rank_extra_p50:.6f}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.dominated_true={total_dominated_true}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.dominated_extra={total_dominated_extra}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.contained_true={total_contained_true}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.contained_extra={total_contained_extra}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.boundary_distance_true_p50={aggregate_boundary_true_p50:.6f}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.boundary_distance_extra_p50={aggregate_boundary_extra_p50:.6f}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.overlap_conflicts={total_overlap_conflicts}")
+    print(f"benchmark.fasim_sim_recovery_extra_taxonomy.total.output_mutations={total_output_mutations + selected.get('output_mutations', 0)}")
+    for guard in guard_order:
+        totals = guard_totals[guard]
+        prefix = f"benchmark.fasim_sim_recovery_extra_taxonomy.guard.{guard}"
+        print(f"{prefix}.oracle={1 if guard_oracle.get(guard, False) else 0}")
+        print(f"{prefix}.selected_candidates={totals.get('selected_candidates', 0)}")
+        print(f"{prefix}.integrated_records={totals.get('integrated_records', 0)}")
+        print(f"{prefix}.sim_only_recovered={totals.get('sim_only_recovered', 0)}")
+        print(f"{prefix}.recall_vs_sim={pct(totals.get('shared_records_vs_sim', 0), totals.get('sim_records', 0)):.6f}")
+        print(
+            f"{prefix}.precision_vs_sim="
+            f"{pct(totals.get('shared_records_vs_sim', 0), totals.get('integrated_records', 0)):.6f}"
+        )
+        print(f"{prefix}.extra_records_vs_sim={totals.get('extra_records_vs_sim', 0)}")
+        print(f"{prefix}.overlap_conflicts={totals.get('overlap_conflicts', 0)}")
+        print(f"{prefix}.output_mutations={totals.get('output_mutations', 0)}")
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -3560,6 +4302,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--filter-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_filter_shadow.md"))
     parser.add_argument("--replacement-shadow", action="store_true")
     parser.add_argument("--replacement-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_replacement_shadow.md"))
+    parser.add_argument("--replacement-extra-taxonomy", action="store_true")
+    parser.add_argument(
+        "--replacement-extra-taxonomy-output",
+        default=str(ROOT / "docs" / "fasim_local_sim_recovery_replacement_extra_taxonomy.md"),
+    )
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -3582,6 +4329,10 @@ def main() -> int:
         integration_shadow_enabled = args.integration_shadow or os.environ.get("FASIM_SIM_RECOVERY_INTEGRATION_SHADOW") == "1"
         filter_shadow_enabled = args.filter_shadow or os.environ.get("FASIM_SIM_RECOVERY_FILTER_SHADOW") == "1"
         replacement_shadow_enabled = args.replacement_shadow or os.environ.get("FASIM_SIM_RECOVERY_REPLACEMENT_SHADOW") == "1"
+        replacement_extra_taxonomy_enabled = (
+            args.replacement_extra_taxonomy
+            or os.environ.get("FASIM_SIM_RECOVERY_REPLACEMENT_EXTRA_TAXONOMY") == "1"
+        )
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
         for spec in fixtures_for(args.profile_set):
@@ -3617,6 +4368,7 @@ def main() -> int:
                     integration_shadow_enabled=integration_shadow_enabled,
                     filter_shadow_enabled=filter_shadow_enabled,
                     replacement_shadow_enabled=replacement_shadow_enabled,
+                    replacement_extra_taxonomy_enabled=replacement_extra_taxonomy_enabled,
                     executor_shadow_work_dir=work_dir_base / spec.label / "executor_shadow",
                 )
             )
@@ -3690,6 +4442,14 @@ def main() -> int:
                 render_replacement_shadow_report(
                     gaps=gaps,
                     output_path=Path(args.replacement_shadow_output),
+                    profile_set=args.profile_set,
+                )
+            )
+        if replacement_extra_taxonomy_enabled:
+            print(
+                render_replacement_extra_taxonomy_report(
+                    gaps=gaps,
+                    output_path=Path(args.replacement_extra_taxonomy_output),
                     profile_set=args.profile_set,
                 )
             )
