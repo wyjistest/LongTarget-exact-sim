@@ -24,8 +24,8 @@ FASIM_GPU_DP_COLUMN_DEBUG_WINDOW_INDEX=<selected mismatching window>
 
 | Workload | Window | Raw score mismatches | ScoreInfo mismatches | CPU records | GPU pre records | GPU post records | CPU-pack mismatches | GPU-pack mismatches | Missing | Extra | Rank mismatches | Field mask | Count mismatches | Position mismatches | Score mismatches |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| human_lnc_atlas_17kb_target | 3 | 0 | 1 | 51 | 51 | 44 | 0 | 44 | 9 | 2 | 44 | 15 | 1 | 44 | 44 |
-| human_lnc_atlas_508kb_target | 5 | 0 | 12 | 52 | 52 | 46 | 0 | 40 | 9 | 3 | 40 | 15 | 1 | 40 | 34 |
+| human_lnc_atlas_17kb_target | 3 | 0 | 0 | 51 | 51 | 51 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| human_lnc_atlas_508kb_target | 5 | 0 | 0 | 52 | 52 | 52 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 Field mask:
 
@@ -45,12 +45,12 @@ Field mask:
 
 | Workload | CPU-compatible pack matches CPU | Current GPU pack matches CPU | Missing records | Count mismatch | Next fix |
 | --- | --- | --- | --- | --- | --- |
-| human_lnc_atlas_17kb_target | yes | no | 9 | yes | repair current GPU postTopK pack/rank representation |
-| human_lnc_atlas_508kb_target | yes | no | 9 | yes | repair current GPU postTopK pack/rank representation |
+| human_lnc_atlas_17kb_target | yes | yes | 0 | no | postTopK pack/rank representation is validation-clean |
+| human_lnc_atlas_508kb_target | yes | yes | 0 | no | postTopK pack/rank representation is validation-clean |
 
 ## Decision
 
-CPU-compatible packing over GPU pre-topK records matches CPU authoritative scoreInfo, while the current GPU post-topK pack still mismatches. The next PR should align GPU postTopK packing/ranking with the CPU-compatible path.
+CPU-compatible packing over GPU pre-topK records and the current GPU post-topK pack both match CPU authoritative scoreInfo on the selected humanLncAtlas windows. Keep GPU DP+column default-off and use broader validation/characterization before any performance recommendation.
 
 Forbidden-scope check:
 
