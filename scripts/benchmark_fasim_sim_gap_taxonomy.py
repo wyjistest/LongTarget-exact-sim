@@ -191,6 +191,7 @@ class ExecutorShadow:
     unsupported_boxes: int
     recovered_by_category: Counter
     sim_only_by_category: Counter
+    candidate_records_raw: frozenset[str]
 
     @property
     def cells(self) -> int:
@@ -203,6 +204,33 @@ class ExecutorShadow:
     @property
     def recall(self) -> float:
         return pct(self.recovered_records, self.sim_only_records)
+
+
+@dataclasses.dataclass(frozen=True)
+class IntegrationShadow:
+    workload_label: str
+    fasim_records: int
+    recovered_candidates: int
+    unique_recovered_records: int
+    duplicate_recovered_records: int
+    integrated_records: int
+    sim_records: int
+    sim_only_records: int
+    sim_only_recovered: int
+    shared_records_vs_sim: int
+    extra_records_vs_sim: int
+    nonoverlap_conflicts: int
+    output_mutations: int
+    recovered_by_category: Counter
+    sim_only_by_category: Counter
+
+    @property
+    def recall_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.sim_records)
+
+    @property
+    def precision_vs_sim(self) -> float:
+        return pct(self.shared_records_vs_sim, self.integrated_records)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -220,6 +248,7 @@ class WorkloadGap:
     recovery_shadow: Optional[RecoveryShadow] = None
     risk_detector: Optional[RiskDetectorResult] = None
     executor_shadow: Optional[ExecutorShadow] = None
+    integration_shadow: Optional[IntegrationShadow] = None
 
 
 def normalized_interval(a: int, b: int) -> Tuple[int, int]:
@@ -926,6 +955,66 @@ def build_bounded_local_sim_executor_shadow(
         unsupported_boxes=unsupported_boxes,
         recovered_by_category=recovered_by_category,
         sim_only_by_category=sim_only_by_category,
+        candidate_records_raw=frozenset(candidate_raw),
+    )
+
+
+def count_same_family_genomic_overlaps(records: Sequence[TriplexRecord]) -> int:
+    by_family: Dict[Tuple[str, str, str], List[TriplexRecord]] = defaultdict(list)
+    for record in records:
+        by_family[record.family].append(record)
+
+    conflicts = 0
+    for family_records in by_family.values():
+        ordered = sorted(family_records, key=lambda record: (record.genome_interval[0], record.genome_interval[1], record.raw))
+        active: List[TriplexRecord] = []
+        for record in ordered:
+            active = [candidate for candidate in active if candidate.genome_interval[1] >= record.genome_interval[0]]
+            for candidate in active:
+                if overlaps(candidate.genome_interval, record.genome_interval):
+                    conflicts += 1
+            active.append(record)
+    return conflicts
+
+
+def build_local_sim_recovery_integration_shadow(
+    *,
+    workload_label: str,
+    sim_records: Sequence[TriplexRecord],
+    fasim_records: Sequence[TriplexRecord],
+    sim_only: Sequence[GapRecord],
+    executor_shadow: ExecutorShadow,
+) -> IntegrationShadow:
+    fasim_raw = {record.raw for record in fasim_records}
+    sim_raw = {record.raw for record in sim_records}
+    candidate_raw = set(executor_shadow.candidate_records_raw)
+    integrated_raw = fasim_raw | candidate_raw
+    sim_only_raw = {gap.record.raw for gap in sim_only}
+    shared_vs_sim = integrated_raw & sim_raw
+
+    recovered_by_category: Counter = Counter()
+    sim_only_by_category: Counter = Counter(gap.primary for gap in sim_only)
+    for gap in sim_only:
+        if gap.record.raw in integrated_raw:
+            recovered_by_category.update([gap.primary])
+
+    integrated_records = parse_lite_records(sorted(integrated_raw))
+    return IntegrationShadow(
+        workload_label=workload_label,
+        fasim_records=len(fasim_raw),
+        recovered_candidates=len(candidate_raw),
+        unique_recovered_records=len(candidate_raw - fasim_raw),
+        duplicate_recovered_records=len(candidate_raw & fasim_raw),
+        integrated_records=len(integrated_raw),
+        sim_records=len(sim_raw),
+        sim_only_records=len(sim_only_raw),
+        sim_only_recovered=len(sim_only_raw & integrated_raw),
+        shared_records_vs_sim=len(shared_vs_sim),
+        extra_records_vs_sim=len(integrated_raw - sim_raw),
+        nonoverlap_conflicts=count_same_family_genomic_overlaps(integrated_records),
+        output_mutations=0,
+        recovered_by_category=recovered_by_category,
+        sim_only_by_category=sim_only_by_category,
     )
 
 
@@ -944,6 +1033,7 @@ def analyze_gap(
     risk_detector_enabled: bool,
     risk_detector_margin_bp: int,
     executor_shadow_enabled: bool,
+    integration_shadow_enabled: bool,
     executor_shadow_work_dir: Path,
 ) -> WorkloadGap:
     sim_raw = {record.raw for record in sim.records}
@@ -981,7 +1071,31 @@ def analyze_gap(
             merge_gap_bp=merge_gap_bp,
             margin_bp=risk_detector_margin_bp,
         )
-        if risk_detector_enabled or executor_shadow_enabled
+        if risk_detector_enabled or executor_shadow_enabled or integration_shadow_enabled
+        else None
+    )
+
+    executor_shadow = (
+        build_bounded_local_sim_executor_shadow(
+            spec=spec,
+            bin_path=bin_path,
+            boxes=detector.boxes if detector is not None else [],
+            sim_only=sim_only,
+            work_dir=executor_shadow_work_dir,
+        )
+        if executor_shadow_enabled or integration_shadow_enabled
+        else None
+    )
+
+    integration_shadow = (
+        build_local_sim_recovery_integration_shadow(
+            workload_label=spec.label,
+            sim_records=sim.records,
+            fasim_records=fasim.records,
+            sim_only=sim_only,
+            executor_shadow=executor_shadow,
+        )
+        if integration_shadow_enabled and executor_shadow is not None
         else None
     )
 
@@ -1009,17 +1123,8 @@ def analyze_gap(
             else None
         ),
         risk_detector=(detector if risk_detector_enabled else None),
-        executor_shadow=(
-            build_bounded_local_sim_executor_shadow(
-                spec=spec,
-                bin_path=bin_path,
-                boxes=detector.boxes if detector is not None else [],
-                sim_only=sim_only,
-                work_dir=executor_shadow_work_dir,
-            )
-            if executor_shadow_enabled
-            else None
-        ),
+        executor_shadow=(executor_shadow if executor_shadow_enabled else None),
+        integration_shadow=integration_shadow,
     )
 
 
@@ -2093,6 +2198,255 @@ def render_executor_shadow_report(
     return report
 
 
+def render_integration_shadow_report(
+    *,
+    gaps: Sequence[WorkloadGap],
+    output_path: Path,
+    profile_set: str,
+) -> str:
+    shadows = [gap.integration_shadow for gap in gaps if gap.integration_shadow is not None]
+    if len(shadows) != len(gaps):
+        raise RuntimeError("integration shadow report requested without integration shadow data")
+
+    lines: List[str] = []
+    lines.append("# Fasim Local SIM Recovery Integration Shadow")
+    lines.append("")
+    lines.append("Base branch:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("fasim-local-sim-recovery-executor-shadow")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "This report is diagnostic-only. It runs the Fasim-visible risk detector "
+        "and bounded local SIM executor, then builds a side candidate set from "
+        "Fasim output records plus recovered local SIM records. The side set is "
+        "evaluated with an exact raw-record de-duplication comparator; it is not "
+        "written as Fasim output and does not replace final non-overlap authority."
+    )
+    lines.append("")
+    lines.append(
+        "The representative fixtures are deterministic synthetic fixtures. This "
+        "shadow measures integration feasibility only; it is not a production "
+        "accuracy claim and it is not a real `FASIM_SIM_RECOVERY=1` mode."
+    )
+    lines.append("")
+    append_table(
+        lines,
+        ["Setting", "Value"],
+        [
+            ["profile_set", profile_set],
+            ["candidate_set", "Fasim raw records union bounded local SIM raw records"],
+            ["dedup_comparator", "exact canonical lite record identity"],
+            ["nonoverlap_conflicts", "diagnostic same-family genomic overlap pairs only"],
+            ["output_mutations_expected", "0"],
+        ],
+    )
+    lines.append("")
+
+    rows: List[List[str]] = []
+    total_fasim = 0
+    total_candidates = 0
+    total_unique_recovered = 0
+    total_duplicate_recovered = 0
+    total_integrated = 0
+    total_sim = 0
+    total_sim_only = 0
+    total_sim_only_recovered = 0
+    total_shared_vs_sim = 0
+    total_extra_vs_sim = 0
+    total_nonoverlap_conflicts = 0
+    total_output_mutations = 0
+    aggregate_sim_only_by_category: Counter = Counter()
+    aggregate_recovered_by_category: Counter = Counter()
+
+    for shadow in shadows:
+        total_fasim += shadow.fasim_records
+        total_candidates += shadow.recovered_candidates
+        total_unique_recovered += shadow.unique_recovered_records
+        total_duplicate_recovered += shadow.duplicate_recovered_records
+        total_integrated += shadow.integrated_records
+        total_sim += shadow.sim_records
+        total_sim_only += shadow.sim_only_records
+        total_sim_only_recovered += shadow.sim_only_recovered
+        total_shared_vs_sim += shadow.shared_records_vs_sim
+        total_extra_vs_sim += shadow.extra_records_vs_sim
+        total_nonoverlap_conflicts += shadow.nonoverlap_conflicts
+        total_output_mutations += shadow.output_mutations
+        aggregate_sim_only_by_category.update(shadow.sim_only_by_category)
+        aggregate_recovered_by_category.update(shadow.recovered_by_category)
+        rows.append(
+            [
+                shadow.workload_label,
+                str(shadow.fasim_records),
+                str(shadow.recovered_candidates),
+                str(shadow.unique_recovered_records),
+                str(shadow.duplicate_recovered_records),
+                str(shadow.integrated_records),
+                str(shadow.sim_records),
+                str(shadow.sim_only_records),
+                str(shadow.sim_only_recovered),
+                fmt_pct(shadow.recall_vs_sim),
+                fmt_pct(shadow.precision_vs_sim),
+                str(shadow.extra_records_vs_sim),
+                str(shadow.nonoverlap_conflicts),
+                str(shadow.output_mutations),
+            ]
+        )
+
+    lines.append("## Workload Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Workload",
+            "Fasim records",
+            "Recovered candidates",
+            "Unique recovered",
+            "Duplicate recovered",
+            "Integrated records",
+            "SIM records",
+            "SIM-only",
+            "SIM-only recovered",
+            "Recall vs SIM",
+            "Precision vs SIM",
+            "Extra vs SIM",
+            "Overlap conflicts",
+            "Output mutations",
+        ],
+        rows,
+    )
+    lines.append("")
+
+    lines.append("## Category Summary")
+    lines.append("")
+    append_table(
+        lines,
+        ["Category", "SIM-only", "Recovered after side integration", "Unrecovered", "Recall"],
+        [
+            [
+                category,
+                str(aggregate_sim_only_by_category.get(category, 0)),
+                str(aggregate_recovered_by_category.get(category, 0)),
+                str(
+                    aggregate_sim_only_by_category.get(category, 0)
+                    - aggregate_recovered_by_category.get(category, 0)
+                ),
+                fmt_pct(
+                    pct(
+                        aggregate_recovered_by_category.get(category, 0),
+                        aggregate_sim_only_by_category.get(category, 0),
+                    )
+                ),
+            ]
+            for category in GAP_CATEGORIES
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Aggregate")
+    lines.append("")
+    append_table(
+        lines,
+        ["Metric", "Value"],
+        [
+            ["fasim_sim_recovery_integration_shadow_enabled", "1"],
+            ["fasim_sim_recovery_integration_shadow_fasim_records", str(total_fasim)],
+            ["fasim_sim_recovery_integration_shadow_recovered_candidates", str(total_candidates)],
+            ["fasim_sim_recovery_integration_shadow_unique_recovered_records", str(total_unique_recovered)],
+            ["fasim_sim_recovery_integration_shadow_duplicate_recovered_records", str(total_duplicate_recovered)],
+            ["fasim_sim_recovery_integration_shadow_integrated_records", str(total_integrated)],
+            ["fasim_sim_recovery_integration_shadow_sim_records", str(total_sim)],
+            ["fasim_sim_recovery_integration_shadow_sim_only_records", str(total_sim_only)],
+            ["fasim_sim_recovery_integration_shadow_sim_only_recovered", str(total_sim_only_recovered)],
+            ["fasim_sim_recovery_integration_shadow_recall_vs_sim", fmt_pct(pct(total_shared_vs_sim, total_sim))],
+            ["fasim_sim_recovery_integration_shadow_precision_vs_sim", fmt_pct(pct(total_shared_vs_sim, total_integrated))],
+            ["fasim_sim_recovery_integration_shadow_extra_records_vs_sim", str(total_extra_vs_sim)],
+            ["fasim_sim_recovery_integration_shadow_nonoverlap_conflicts", str(total_nonoverlap_conflicts)],
+            ["fasim_sim_recovery_integration_shadow_output_mutations", str(total_output_mutations)],
+        ],
+    )
+    lines.append("")
+
+    lines.append("## Decision")
+    lines.append("")
+    recall = pct(total_shared_vs_sim, total_sim)
+    precision = pct(total_shared_vs_sim, total_integrated)
+    if total_output_mutations != 0:
+        decision = "Stop: integration shadow observed output mutations, which violates diagnostic-only scope."
+    elif recall >= 90.0 and precision >= 50.0:
+        decision = (
+            "The side integration recovers most SIM records with a bounded extra "
+            "candidate set. A real `FASIM_SIM_RECOVERY=1` SIM-close opt-in design "
+            "is a plausible next PR."
+        )
+    elif recall >= 90.0:
+        decision = (
+            "The side integration recovers most SIM records, but extra candidates "
+            "are high. Refine candidate filtering, de-duplication, or documented "
+            "merge semantics before a real opt-in."
+        )
+    else:
+        decision = (
+            "Recovery candidates do not survive side integration with enough SIM "
+            "recall. Improve executor output or integration semantics before a "
+            "real opt-in."
+        )
+    lines.append(decision)
+    lines.append("")
+    lines.append("Forbidden-scope check:")
+    lines.append("")
+    lines.append("```text")
+    lines.append("Fasim output change: no")
+    lines.append("Recovered records added to output: no")
+    lines.append("Real FASIM_SIM_RECOVERY mode: no")
+    lines.append("Scoring/threshold/non-overlap behavior change: no")
+    lines.append("GPU/filter behavior change: no")
+    lines.append("Production accuracy claim: no")
+    lines.append("```")
+    lines.append("")
+
+    for shadow in shadows:
+        prefix = f"benchmark.fasim_sim_recovery_integration_shadow.{shadow.workload_label}"
+        print(f"{prefix}.enabled=1")
+        print(f"{prefix}.fasim_records={shadow.fasim_records}")
+        print(f"{prefix}.recovered_candidates={shadow.recovered_candidates}")
+        print(f"{prefix}.unique_recovered_records={shadow.unique_recovered_records}")
+        print(f"{prefix}.duplicate_recovered_records={shadow.duplicate_recovered_records}")
+        print(f"{prefix}.integrated_records={shadow.integrated_records}")
+        print(f"{prefix}.sim_records={shadow.sim_records}")
+        print(f"{prefix}.sim_only_records={shadow.sim_only_records}")
+        print(f"{prefix}.sim_only_recovered={shadow.sim_only_recovered}")
+        print(f"{prefix}.recall_vs_sim={shadow.recall_vs_sim:.6f}")
+        print(f"{prefix}.precision_vs_sim={shadow.precision_vs_sim:.6f}")
+        print(f"{prefix}.extra_records_vs_sim={shadow.extra_records_vs_sim}")
+        print(f"{prefix}.nonoverlap_conflicts={shadow.nonoverlap_conflicts}")
+        print(f"{prefix}.output_mutations={shadow.output_mutations}")
+
+    print("benchmark.fasim_sim_recovery_integration_shadow.total.enabled=1")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.fasim_records={total_fasim}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.recovered_candidates={total_candidates}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.unique_recovered_records={total_unique_recovered}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.duplicate_recovered_records={total_duplicate_recovered}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.integrated_records={total_integrated}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.sim_records={total_sim}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.sim_only_records={total_sim_only}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.sim_only_recovered={total_sim_only_recovered}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.recall_vs_sim={pct(total_shared_vs_sim, total_sim):.6f}")
+    print(
+        "benchmark.fasim_sim_recovery_integration_shadow.total.precision_vs_sim="
+        f"{pct(total_shared_vs_sim, total_integrated):.6f}"
+    )
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.extra_records_vs_sim={total_extra_vs_sim}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.nonoverlap_conflicts={total_nonoverlap_conflicts}")
+    print(f"benchmark.fasim_sim_recovery_integration_shadow.total.output_mutations={total_output_mutations}")
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def fixtures_for(profile_set: str) -> List[FixtureSpec]:
     if profile_set == "smoke":
         return SMOKE_FIXTURES
@@ -2119,6 +2473,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--risk-detector-margin-bp", type=int, default=32)
     parser.add_argument("--executor-shadow", action="store_true")
     parser.add_argument("--executor-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_executor_shadow.md"))
+    parser.add_argument("--integration-shadow", action="store_true")
+    parser.add_argument("--integration-shadow-output", default=str(ROOT / "docs" / "fasim_local_sim_recovery_integration_shadow.md"))
     parser.add_argument("--near-tie-delta", type=float, default=1.0)
     parser.add_argument("--threshold-score-band", type=float, default=5.0)
     parser.add_argument("--long-hit-nt", type=int, default=80)
@@ -2138,6 +2494,7 @@ def main() -> int:
         recovery_shadow_enabled = args.recovery_shadow or os.environ.get("FASIM_SIM_RECOVERY_SHADOW") == "1"
         risk_detector_enabled = args.risk_detector or os.environ.get("FASIM_SIM_RECOVERY_RISK_DETECTOR") == "1"
         executor_shadow_enabled = args.executor_shadow or os.environ.get("FASIM_SIM_RECOVERY_EXECUTOR_SHADOW") == "1"
+        integration_shadow_enabled = args.integration_shadow or os.environ.get("FASIM_SIM_RECOVERY_INTEGRATION_SHADOW") == "1"
         work_dir_base = Path(args.work_dir)
         gaps: List[WorkloadGap] = []
         for spec in fixtures_for(args.profile_set):
@@ -2170,6 +2527,7 @@ def main() -> int:
                     risk_detector_enabled=risk_detector_enabled,
                     risk_detector_margin_bp=args.risk_detector_margin_bp,
                     executor_shadow_enabled=executor_shadow_enabled,
+                    integration_shadow_enabled=integration_shadow_enabled,
                     executor_shadow_work_dir=work_dir_base / spec.label / "executor_shadow",
                 )
             )
@@ -2219,6 +2577,14 @@ def main() -> int:
                 render_executor_shadow_report(
                     gaps=gaps,
                     output_path=Path(args.executor_shadow_output),
+                    profile_set=args.profile_set,
+                )
+            )
+        if integration_shadow_enabled:
+            print(
+                render_integration_shadow_report(
+                    gaps=gaps,
+                    output_path=Path(args.integration_shadow_output),
                     profile_set=args.profile_set,
                 )
             )
