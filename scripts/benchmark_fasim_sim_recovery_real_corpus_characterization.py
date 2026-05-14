@@ -37,11 +37,14 @@ from benchmark_fasim_sim_gap_taxonomy import (  # noqa: E402
     TriplexRecord,
     build_sim_recovery_real_mode,
     classify_sim_only_record,
+    combined_non_oracle_candidate_raw,
     expand_interval,
     index_by_family,
     merge_recovery_boxes,
     parse_genomic_header,
     parse_lite_records,
+    record_in_any_box,
+    records_overlap_in_both_axes,
     read_fasta_entries,
     run_executor_box,
 )
@@ -68,6 +71,7 @@ class CaseRun:
     validate_mode: Optional[object]
     validate_wall_seconds: float
     validation_coverage: "ValidationCoverage"
+    miss_taxonomy: Optional["MissTaxonomy"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -87,6 +91,20 @@ class ValidationCoverage:
     shared_records: int
     sim_only_records: int
     sim_close_extra_records: int
+
+
+@dataclasses.dataclass(frozen=True)
+class MissTaxonomy:
+    enabled: bool
+    sim_records: int
+    shared_records: int
+    missed_records: int
+    not_box_covered: int
+    box_covered_but_executor_missing: int
+    guard_rejected: int
+    replacement_suppressed: int
+    canonicalization_mismatches: int
+    metric_ambiguity_records: int
 
 
 def ensure_label(label: str) -> str:
@@ -352,19 +370,110 @@ def build_validation_coverage(
     )
 
 
+def _boxes_by_family(boxes: Sequence[RecoveryBox]) -> Dict[Tuple[str, str, str], List[RecoveryBox]]:
+    boxes_by_family: Dict[Tuple[str, str, str], List[RecoveryBox]] = {}
+    for box in boxes:
+        boxes_by_family.setdefault(box.family, []).append(box)
+    return boxes_by_family
+
+
+def _has_canonicalization_mismatch(
+    record: TriplexRecord,
+    sim_close_records: Sequence[TriplexRecord],
+) -> bool:
+    return any(
+        other.raw != record.raw
+        and records_overlap_in_both_axes(record, other)
+        and other.nt == record.nt
+        and abs(other.score - record.score) <= 0.001
+        for other in sim_close_records
+    )
+
+
+def classify_missed_sim_records(
+    *,
+    sim_records: Sequence[TriplexRecord],
+    sim_close_records: Sequence[TriplexRecord],
+    boxes: Sequence[RecoveryBox],
+    candidate_raw: Set[str],
+    accepted_candidate_raw: Set[str],
+) -> MissTaxonomy:
+    sim_raw = {record.raw for record in sim_records}
+    sim_close_raw = {record.raw for record in sim_close_records}
+    missed = [record for record in sim_records if record.raw not in sim_close_raw]
+    boxes_by_family = _boxes_by_family(boxes)
+
+    counts = Counter()
+    for record in missed:
+        if _has_canonicalization_mismatch(record, sim_close_records):
+            counts["canonicalization_mismatches"] += 1
+        elif not record_in_any_box(record, boxes_by_family):
+            counts["not_box_covered"] += 1
+        elif record.raw not in candidate_raw:
+            counts["box_covered_but_executor_missing"] += 1
+        elif record.raw not in accepted_candidate_raw:
+            counts["guard_rejected"] += 1
+        elif record.raw not in sim_close_raw:
+            counts["replacement_suppressed"] += 1
+        else:
+            counts["metric_ambiguity_records"] += 1
+
+    return MissTaxonomy(
+        enabled=True,
+        sim_records=len(sim_raw),
+        shared_records=len(sim_raw & sim_close_raw),
+        missed_records=len(missed),
+        not_box_covered=counts["not_box_covered"],
+        box_covered_but_executor_missing=counts["box_covered_but_executor_missing"],
+        guard_rejected=counts["guard_rejected"],
+        replacement_suppressed=counts["replacement_suppressed"],
+        canonicalization_mismatches=counts["canonicalization_mismatches"],
+        metric_ambiguity_records=counts["metric_ambiguity_records"],
+    )
+
+
+def build_miss_taxonomy(
+    *,
+    enabled: bool,
+    validate: bool,
+    sim_records: Sequence[TriplexRecord],
+    fasim: ModeRun,
+    executor_shadow: ExecutorShadow,
+    mode: object,
+) -> Optional[MissTaxonomy]:
+    if not enabled or not validate:
+        return None
+    candidate_raw = set(executor_shadow.candidate_records_raw)
+    candidate_records = parse_lite_records(sorted(candidate_raw))
+    accepted_candidate_raw = combined_non_oracle_candidate_raw(
+        candidate_records=candidate_records,
+        fasim_records=fasim.records,
+        boxes=executor_shadow.boxes,
+    )
+    sim_close_records = parse_lite_records(getattr(mode, "output_raw_records", ()))
+    return classify_missed_sim_records(
+        sim_records=sim_records,
+        sim_close_records=sim_close_records,
+        boxes=executor_shadow.boxes,
+        candidate_raw=candidate_raw,
+        accepted_candidate_raw=accepted_candidate_raw,
+    )
+
+
 def build_sim_close_mode(
     *,
     bin_path: Path,
     spec: CaseSpec,
     fasim: ModeRun,
     validate: bool,
+    miss_taxonomy_enabled: bool,
     work_dir: Path,
     merge_gap_bp: int,
     margin_bp: int,
     near_tie_delta: float,
     threshold_score_band: float,
     long_hit_nt: int,
-) -> Tuple[object, float, ValidationCoverage]:
+) -> Tuple[object, float, ValidationCoverage, Optional[MissTaxonomy]]:
     start = time.perf_counter()
     dna_entries = sequence_entries_from_fasta(spec.dna_path)
     query_sequence = query_sequence_from_fasta(spec.rna_path)
@@ -418,7 +527,15 @@ def build_sim_close_mode(
         sim_only=sim_only,
         mode=mode,
     )
-    return mode, time.perf_counter() - start, coverage
+    miss_taxonomy = build_miss_taxonomy(
+        enabled=miss_taxonomy_enabled,
+        validate=validate,
+        sim_records=sim.records,
+        fasim=fasim,
+        executor_shadow=executor,
+        mode=mode,
+    )
+    return mode, time.perf_counter() - start, coverage, miss_taxonomy
 
 
 def median_float(values: Iterable[float]) -> float:
@@ -476,6 +593,7 @@ def run_case(
     near_tie_delta: float,
     threshold_score_band: float,
     long_hit_nt: int,
+    miss_taxonomy_report: bool,
 ) -> CaseSummary:
     runs: List[CaseRun] = []
     for index in range(1, repeat + 1):
@@ -487,11 +605,12 @@ def run_case(
             work_dir=run_dir / "fast",
             require_profile=require_profile,
         )
-        sim_close, sim_close_wall, sim_close_coverage = build_sim_close_mode(
+        sim_close, sim_close_wall, sim_close_coverage, _ = build_sim_close_mode(
             bin_path=bin_path,
             spec=spec,
             fasim=fast,
             validate=False,
+            miss_taxonomy_enabled=False,
             work_dir=run_dir / "sim_close",
             merge_gap_bp=merge_gap_bp,
             margin_bp=margin_bp,
@@ -502,12 +621,14 @@ def run_case(
         validate_mode: Optional[object] = None
         validate_wall = 0.0
         validation_coverage = sim_close_coverage
+        miss_taxonomy: Optional[MissTaxonomy] = None
         if spec.validate:
-            validate_mode, validate_wall, validation_coverage = build_sim_close_mode(
+            validate_mode, validate_wall, validation_coverage, miss_taxonomy = build_sim_close_mode(
                 bin_path=bin_path,
                 spec=spec,
                 fasim=fast,
                 validate=True,
+                miss_taxonomy_enabled=miss_taxonomy_report,
                 work_dir=run_dir / "sim_close_validate",
                 merge_gap_bp=merge_gap_bp,
                 margin_bp=margin_bp,
@@ -525,6 +646,7 @@ def run_case(
                 validate_mode=validate_mode,
                 validate_wall_seconds=validate_wall,
                 validation_coverage=validation_coverage,
+                miss_taxonomy=miss_taxonomy,
             )
         )
     return CaseSummary(spec=spec, runs=runs)
@@ -575,6 +697,18 @@ def total_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -
     return totals
 
 
+def total_miss_taxonomy_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -> List[float]:
+    totals: List[float] = []
+    for run_index in range(repeat):
+        total = 0.0
+        for summary in summaries:
+            taxonomy = summary.runs[run_index].miss_taxonomy
+            if taxonomy is not None:
+                total += float(getattr(taxonomy, attr))
+        totals.append(total)
+    return totals
+
+
 def total_coverage_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -> List[float]:
     totals: List[float] = []
     for run_index in range(repeat):
@@ -618,6 +752,7 @@ def render_report(
     title: str,
     base_branch: str,
     coverage_report: bool,
+    miss_taxonomy_report: bool,
 ) -> Tuple[str, Dict[str, str]]:
     fast_digest_stable = all(case_fast_stable(summary) for summary in summaries)
     sim_close_digest_stable = all(case_sim_close_stable(summary) for summary in summaries)
@@ -669,6 +804,7 @@ def render_report(
             ["sim_close_mode", "FASIM_SIM_RECOVERY=1 side-output harness"],
             ["validate_mode", "post-hoc legacy SIM only for validate cases"],
             ["coverage_report", "yes" if coverage_report else "no"],
+            ["miss_taxonomy_report", "yes" if miss_taxonomy_report else "no"],
         ],
     )
     lines.append("")
@@ -804,6 +940,88 @@ def render_report(
     )
     lines.append("")
 
+    if miss_taxonomy_report:
+        miss_rows: List[List[str]] = []
+        for summary in summaries:
+            for run in summary.runs:
+                taxonomy = run.miss_taxonomy
+                if taxonomy is None:
+                    miss_rows.append(
+                        [
+                            summary.spec.label,
+                            str(run.index),
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "0",
+                            "not_validated",
+                        ]
+                    )
+                    continue
+                miss_rows.append(
+                    [
+                        summary.spec.label,
+                        str(run.index),
+                        "1" if taxonomy.enabled else "0",
+                        str(taxonomy.sim_records),
+                        str(taxonomy.shared_records),
+                        str(taxonomy.missed_records),
+                        str(taxonomy.not_box_covered),
+                        str(taxonomy.box_covered_but_executor_missing),
+                        str(taxonomy.guard_rejected),
+                        str(taxonomy.replacement_suppressed),
+                        str(taxonomy.canonicalization_mismatches),
+                        str(taxonomy.metric_ambiguity_records),
+                        run.validation_coverage.unsupported_reason,
+                    ]
+                )
+
+        lines.append("## Miss Taxonomy")
+        lines.append("")
+        append_table(
+            lines,
+            [
+                "Case",
+                "Run",
+                "Enabled",
+                "SIM records",
+                "Shared records",
+                "Missed records",
+                "Not box covered",
+                "Box covered executor missing",
+                "Guard rejected",
+                "Replacement suppressed",
+                "Canonicalization mismatches",
+                "Metric ambiguity records",
+                "validate_unsupported_reason",
+            ],
+            miss_rows,
+        )
+        lines.append("")
+        lines.append("Metric consistency note:")
+        lines.append("")
+        lines.append(
+            "`SIM-only records` in the coverage tables are legacy SIM records "
+            "not matched by the default Fasim fast-mode output. `Missed "
+            "records` in this taxonomy are legacy SIM records not matched by "
+            "the SIM-close side output. These are different comparisons, so "
+            "`shared_records + sim_only_records` is not expected to equal "
+            "`sim_records`."
+        )
+        lines.append("")
+        lines.append(
+            "SIM labels are used only after SIM-close selection to assign "
+            "diagnostic miss buckets. They do not influence risk boxes, local "
+            "SIM execution, guard selection, replacement, or output ordering."
+        )
+        lines.append("")
+
     boxes_median = median_float(total_per_repeat(summaries, repeat, "boxes"))
     cells_median = median_float(total_per_repeat(summaries, repeat, "cells"))
     full_cells_median = median_float(total_per_repeat(summaries, repeat, "full_search_cells"))
@@ -834,6 +1052,24 @@ def render_report(
     sim_only_records_median = median_float(total_coverage_per_repeat(summaries, repeat, "sim_only_records"))
     sim_close_extra_records_median = median_float(
         total_coverage_per_repeat(summaries, repeat, "sim_close_extra_records")
+    )
+    miss_taxonomy_enabled = int(miss_taxonomy_report)
+    miss_taxonomy_sim_records = median_float(total_miss_taxonomy_per_repeat(summaries, repeat, "sim_records"))
+    miss_taxonomy_shared_records = median_float(total_miss_taxonomy_per_repeat(summaries, repeat, "shared_records"))
+    missed_records = median_float(total_miss_taxonomy_per_repeat(summaries, repeat, "missed_records"))
+    not_box_covered = median_float(total_miss_taxonomy_per_repeat(summaries, repeat, "not_box_covered"))
+    box_covered_executor_missing = median_float(
+        total_miss_taxonomy_per_repeat(summaries, repeat, "box_covered_but_executor_missing")
+    )
+    guard_rejected = median_float(total_miss_taxonomy_per_repeat(summaries, repeat, "guard_rejected"))
+    replacement_suppressed = median_float(
+        total_miss_taxonomy_per_repeat(summaries, repeat, "replacement_suppressed")
+    )
+    canonicalization_mismatches = median_float(
+        total_miss_taxonomy_per_repeat(summaries, repeat, "canonicalization_mismatches")
+    )
+    metric_ambiguity_records = median_float(
+        total_miss_taxonomy_per_repeat(summaries, repeat, "metric_ambiguity_records")
     )
 
     telemetry = {
@@ -885,6 +1121,27 @@ def render_report(
         "recommendation": recommendation,
     }
 
+    miss_telemetry = {
+        "fasim_sim_recovery_real_corpus_miss_taxonomy_enabled": str(miss_taxonomy_enabled),
+        "fasim_sim_recovery_real_corpus_sim_records": fmt_metric(miss_taxonomy_sim_records),
+        "fasim_sim_recovery_real_corpus_shared_records": fmt_metric(miss_taxonomy_shared_records),
+        "fasim_sim_recovery_real_corpus_missed_records": fmt_metric(missed_records),
+        "fasim_sim_recovery_real_corpus_not_box_covered": fmt_metric(not_box_covered),
+        "fasim_sim_recovery_real_corpus_box_covered_executor_missing": fmt_metric(
+            box_covered_executor_missing
+        ),
+        "fasim_sim_recovery_real_corpus_guard_rejected": fmt_metric(guard_rejected),
+        "fasim_sim_recovery_real_corpus_replacement_suppressed": fmt_metric(
+            replacement_suppressed
+        ),
+        "fasim_sim_recovery_real_corpus_canonicalization_mismatches": fmt_metric(
+            canonicalization_mismatches
+        ),
+        "fasim_sim_recovery_real_corpus_metric_ambiguity_records": fmt_metric(
+            metric_ambiguity_records
+        ),
+    }
+
     lines.append("## Aggregate")
     lines.append("")
     append_table(
@@ -893,6 +1150,16 @@ def render_report(
         [[f"fasim_sim_recovery_real_corpus_{key}", value] for key, value in telemetry.items()],
     )
     lines.append("")
+
+    if miss_taxonomy_report:
+        lines.append("## Miss Taxonomy Aggregate")
+        lines.append("")
+        append_table(
+            lines,
+            ["Metric", "Value"],
+            [[key, value] for key, value in miss_telemetry.items()],
+        )
+        lines.append("")
 
     lines.append("## Decision")
     lines.append("")
@@ -918,6 +1185,25 @@ def render_report(
                 "guard/replacement refinement before any high-accuracy claim."
             )
             lines.append("")
+    if miss_taxonomy_report and missed_records:
+        lines.append(
+            "The miss taxonomy attributes the current SIM-close recall gap to "
+            f"{int(not_box_covered)} records outside the Fasim-visible recovery "
+            f"boxes and {int(guard_rejected)} records rejected by the current "
+            "`combined_non_oracle` guard. Executor-missing, replacement-"
+            "suppressed, canonicalization-mismatch, and metric-ambiguity "
+            f"counts are {int(box_covered_executor_missing)}, "
+            f"{int(replacement_suppressed)}, {int(canonicalization_mismatches)}, "
+            f"and {int(metric_ambiguity_records)}, respectively."
+        )
+        lines.append("")
+        lines.append(
+            "The next algorithmic work should therefore be split between "
+            "real-corpus risk detector or box expansion for the uncovered "
+            "records, and real-corpus guard refinement for covered executor "
+            "candidates. This PR does not make those changes."
+        )
+        lines.append("")
     requested_validation = any(summary.spec.validate for summary in summaries)
     if requested_validation and not validation_modes:
         lines.append(
@@ -978,9 +1264,24 @@ def render_report(
             print(f"{prefix}.fasim_suppressed={int(mode_value(selected, 'fasim_suppressed'))}")
             print(f"{prefix}.fallbacks={int(mode_value(selected, 'fallbacks'))}")
             print(f"{prefix}.output_mutations_fast_mode={int(mode_value(selected, 'output_mutations_fast_mode'))}")
+            taxonomy = run.miss_taxonomy
+            if taxonomy is not None:
+                print(f"{prefix}.miss_taxonomy_enabled={1 if taxonomy.enabled else 0}")
+                print(f"{prefix}.miss_taxonomy_sim_records={taxonomy.sim_records}")
+                print(f"{prefix}.miss_taxonomy_shared_records={taxonomy.shared_records}")
+                print(f"{prefix}.missed_records={taxonomy.missed_records}")
+                print(f"{prefix}.not_box_covered={taxonomy.not_box_covered}")
+                print(f"{prefix}.box_covered_executor_missing={taxonomy.box_covered_but_executor_missing}")
+                print(f"{prefix}.guard_rejected={taxonomy.guard_rejected}")
+                print(f"{prefix}.replacement_suppressed={taxonomy.replacement_suppressed}")
+                print(f"{prefix}.canonicalization_mismatches={taxonomy.canonicalization_mismatches}")
+                print(f"{prefix}.metric_ambiguity_records={taxonomy.metric_ambiguity_records}")
 
     for key, value in telemetry.items():
         print(f"benchmark.fasim_sim_recovery_real_corpus.total.{key}={value}")
+    if miss_taxonomy_report:
+        for key, value in miss_telemetry.items():
+            print(f"benchmark.{key}={value}")
 
     report = "\n".join(lines)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1034,6 +1335,7 @@ def main() -> int:
     parser.add_argument("--report-title", default="Fasim SIM-Close Recovery Real-Corpus Characterization")
     parser.add_argument("--base-branch", default="fasim-sim-recovery-real-mode-characterization")
     parser.add_argument("--validation-coverage-report", action="store_true")
+    parser.add_argument("--miss-taxonomy-report", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -1063,6 +1365,7 @@ def main() -> int:
                 near_tie_delta=args.near_tie_delta,
                 threshold_score_band=args.threshold_score_band,
                 long_hit_nt=args.long_hit_nt,
+                miss_taxonomy_report=args.miss_taxonomy_report,
             )
             for case in cases
         ]
@@ -1073,6 +1376,7 @@ def main() -> int:
             title=args.report_title,
             base_branch=args.base_branch,
             coverage_report=args.validation_coverage_report,
+            miss_taxonomy_report=args.miss_taxonomy_report,
         )
         print(report)
         return 0
