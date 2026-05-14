@@ -477,13 +477,19 @@ check-fasim-sim-recovery-real-corpus-validation-matrix:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_real_corpus_validation_matrix.sh
 
+check-fasim-sim-recovery-score-landscape-detector:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_score_landscape_detector.sh
+
 benchmark-fasim-sim-recovery-real-corpus-characterization:
 	$(MAKE) build-fasim
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
 		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
 		exit 2; \
 	fi
-	@if [ "$${FASIM_SIM_RECOVERY_RECALL_REPAIR_SHADOW:-0}" = "1" ]; then \
+	@if [ "$${FASIM_SIM_RECOVERY_SCORE_LANDSCAPE_DETECTOR_SHADOW:-0}" = "1" ]; then \
+		PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-human_lnc_atlas_17kb_target,human_lnc_atlas_508kb_target}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-1}" --require-profile --validation-coverage-report --miss-taxonomy-report --score-landscape-detector-shadow --report-title "Fasim SIM-Close Score-Landscape Detector Shadow" --base-branch fasim-sim-recovery-real-corpus-validation-matrix --output docs/fasim_sim_recovery_score_landscape_detector.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_score_landscape_detector; \
+	elif [ "$${FASIM_SIM_RECOVERY_RECALL_REPAIR_SHADOW:-0}" = "1" ]; then \
 		PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-human_lnc_atlas_17kb_target,human_lnc_atlas_508kb_target}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-1}" --require-profile --validation-coverage-report --miss-taxonomy-report --recall-repair-shadow --report-title "Fasim SIM-Close Recovery Real-Corpus Recall Repair" --base-branch fasim-sim-recovery-real-corpus-miss-taxonomy --output docs/fasim_sim_recovery_real_corpus_recall_repair.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_corpus_recall_repair; \
 	else \
 		PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-2}" --require-profile --output docs/fasim_sim_recovery_real_corpus_characterization.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_corpus_characterization; \
@@ -520,6 +526,14 @@ benchmark-fasim-sim-recovery-real-corpus-validation-matrix:
 		exit 2; \
 	fi
 	FASIM_SIM_RECOVERY_VALIDATION_MATRIX=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" $${FASIM_SIM_RECOVERY_REAL_CORPUS_EXTRA_CASE_ARGS:-} --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-human_lnc_atlas_17kb_target,human_lnc_atlas_508kb_target}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-1}" --require-profile --validation-coverage-report --miss-taxonomy-report --validation-matrix-report --report-title "Fasim SIM-Close Recovery Real-Corpus Validation Matrix" --base-branch fasim-sim-recovery-real-corpus-recall-repair --output docs/fasim_sim_recovery_real_corpus_validation_matrix.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_corpus_validation_matrix
+
+benchmark-fasim-sim-recovery-score-landscape-detector:
+	$(MAKE) build-fasim
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	FASIM_SIM_RECOVERY_SCORE_LANDSCAPE_DETECTOR_SHADOW=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_corpus_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --case human_lnc_atlas_17kb_target "$${FASIM_HUMAN_17KB_DNA}" "$${FASIM_HUMAN_17KB_RNA}" --case human_lnc_atlas_508kb_target "$${FASIM_HUMAN_508KB_DNA}" "$${FASIM_HUMAN_508KB_RNA}" $${FASIM_SIM_RECOVERY_REAL_CORPUS_EXTRA_CASE_ARGS:-} --validate-cases "$${FASIM_SIM_RECOVERY_REAL_CORPUS_VALIDATE_CASES:-human_lnc_atlas_17kb_target,human_lnc_atlas_508kb_target}" --repeat "$${FASIM_SIM_RECOVERY_REAL_CORPUS_REPEAT:-1}" --require-profile --validation-coverage-report --miss-taxonomy-report --score-landscape-detector-shadow --report-title "Fasim SIM-Close Score-Landscape Detector Shadow" --base-branch fasim-sim-recovery-real-corpus-validation-matrix --output docs/fasim_sim_recovery_score_landscape_detector.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_score_landscape_detector
 
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
