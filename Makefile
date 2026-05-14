@@ -449,6 +449,14 @@ benchmark-fasim-sim-recovery-real-mode:
 	$(MAKE) build-fasim
 	FASIM_SIM_RECOVERY=1 FASIM_SIM_RECOVERY_VALIDATE=1 PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_gap_taxonomy.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-sim-gap-taxonomy --sim-recovery --sim-recovery-validate --sim-recovery-output $(CURDIR)/.tmp/fasim_sim_recovery_real_mode/sim_close.lite --sim-recovery-report docs/fasim_sim_recovery_real_mode.md --output $(CURDIR)/.tmp/fasim_sim_recovery_real_mode/taxonomy.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_mode
 
+check-fasim-sim-recovery-real-mode-characterization:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_real_mode_characterization.sh
+
+benchmark-fasim-sim-recovery-real-mode-characterization:
+	$(MAKE) build-fasim
+	PYTHONDONTWRITEBYTECODE=1 python3 ./scripts/benchmark_fasim_sim_recovery_real_mode_characterization.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --repeat $${FASIM_SIM_RECOVERY_CHARACTERIZATION_REPEAT:-3} --output docs/fasim_sim_recovery_real_mode_characterization.md --work-dir $(CURDIR)/.tmp/fasim_sim_recovery_real_mode_characterization
+
 benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
