@@ -409,12 +409,23 @@ benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization:
 	fi
 	python3 ./scripts/benchmark_fasim_gpu_dp_column_compact_scoreinfo_characterization.py --x86-bin $(CURDIR)/$(FASIM_TARGET) --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --repeat "$${FASIM_GPU_DP_COLUMN_COMPACT_SCOREINFO_CHARACTERIZATION_REPEAT:-3}" --require-human --require-profile
 
+benchmark-fasim-gpu-dp-column-compact-threshold:
+	$(MAKE) build-fasim build-fasim-cuda
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_compact_threshold.py --x86-bin $(CURDIR)/$(FASIM_TARGET) --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --repeat "$${FASIM_GPU_DP_COLUMN_COMPACT_THRESHOLD_REPEAT:-3}" --require-human --require-profile
+
 check-fasim-gpu-dp-column-compact-scoreinfo-packing:
 	$(MAKE) build-fasim-cuda
 	bash ./scripts/check_fasim_gpu_dp_column_compact_scoreinfo_packing.sh
 
 check-fasim-gpu-dp-column-compact-scoreinfo-characterization:
 	bash ./scripts/check_fasim_gpu_dp_column_compact_scoreinfo_characterization.sh
+
+check-fasim-gpu-dp-column-compact-threshold:
+	bash ./scripts/check_fasim_gpu_dp_column_compact_threshold.sh
 
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
@@ -884,8 +895,8 @@ check-longtarget-lite-output:
 		check-matrix-openmp-par benchmark-sample benchmark-smoke benchmark-sample-cuda benchmark-smoke-cuda \
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
-		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization \
-		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization \
+		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
