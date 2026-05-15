@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+import csv
+from collections import Counter, defaultdict
 import dataclasses
 from pathlib import Path
 import os
@@ -45,6 +46,7 @@ from benchmark_fasim_sim_gap_taxonomy import (  # noqa: E402
     expand_interval,
     index_by_family,
     merge_recovery_boxes,
+    overlaps,
     parse_genomic_header,
     parse_lite_records,
     pct,
@@ -74,11 +76,14 @@ class CaseRun:
     fast_wall_seconds: float
     sim_close: object
     sim_close_wall_seconds: float
+    sim_close_artifacts: "RecoveryRunArtifacts"
     validate_mode: Optional[object]
     validate_wall_seconds: float
+    validate_artifacts: Optional["RecoveryRunArtifacts"]
     validation_coverage: "ValidationCoverage"
     miss_taxonomy: Optional["MissTaxonomy"]
     recall_repair_results: Tuple["RecallRepairResult", ...]
+    score_landscape_results: Tuple["ScoreLandscapeDetectorResult", ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -146,6 +151,47 @@ class RecallRepairResult:
     def precision_vs_sim(self) -> float:
         output_records = self.shared_records + self.extra_vs_sim
         return pct(self.shared_records, output_records) if output_records else 0.0
+
+
+@dataclasses.dataclass(frozen=True)
+class ScoreLandscapeDetectorResult:
+    workload_label: str
+    strategy: str
+    enabled: bool
+    boxes: int
+    cells: int
+    full_search_cells: int
+    sim_records: int
+    shared_records: int
+    missed_records: int
+    not_box_covered: int
+    guard_rejected: int
+    extra_vs_sim: int
+    overlap_conflicts: int
+    output_mutations: int
+
+    @property
+    def cell_fraction(self) -> float:
+        return (self.cells / self.full_search_cells * 100.0) if self.full_search_cells else 0.0
+
+    @property
+    def recall_vs_sim(self) -> float:
+        return pct(self.shared_records, self.sim_records) if self.sim_records else 0.0
+
+    @property
+    def precision_vs_sim(self) -> float:
+        output_records = self.shared_records + self.extra_vs_sim
+        return pct(self.shared_records, output_records) if output_records else 0.0
+
+
+@dataclasses.dataclass(frozen=True)
+class RecoveryRunArtifacts:
+    boxes: Tuple[RecoveryBox, ...]
+    candidate_raw: frozenset[str]
+    accepted_candidate_raw: frozenset[str]
+    suppressed_fasim_raw: frozenset[str]
+    sim_records: Tuple[TriplexRecord, ...]
+    sim_only: Tuple[GapRecord, ...]
 
 
 def ensure_label(label: str) -> str:
@@ -728,6 +774,277 @@ def build_recall_repair_shadow(
     return tuple(results)
 
 
+def record_box(
+    record: TriplexRecord,
+    *,
+    margin_bp: int,
+    category: str,
+) -> RecoveryBox:
+    return RecoveryBox(
+        family=record.family,
+        genome_interval=expand_interval(record.genome_interval, margin_bp),
+        query_interval=expand_interval(record.query_interval, margin_bp),
+        categories=frozenset([category]),
+    )
+
+
+def overlap_density_boxes(
+    *,
+    fasim_records: Sequence[TriplexRecord],
+    margin_bp: int,
+) -> List[RecoveryBox]:
+    grouped: Dict[Tuple[str, str, str], List[TriplexRecord]] = defaultdict(list)
+    for record in fasim_records:
+        grouped[record.family].append(record)
+
+    boxes: List[RecoveryBox] = []
+    for family, records in grouped.items():
+        ordered = sorted(records, key=lambda record: (record.genome_interval[0], record.genome_interval[1], record.raw))
+        cluster: List[TriplexRecord] = []
+        cluster_genome: Optional[List[int]] = None
+        cluster_query: Optional[List[int]] = None
+        for record in ordered:
+            genome = record.genome_interval
+            query = record.query_interval
+            if cluster_genome is None or cluster_query is None:
+                cluster = [record]
+                cluster_genome = [genome[0], genome[1]]
+                cluster_query = [query[0], query[1]]
+                continue
+            if genome[0] <= cluster_genome[1] + margin_bp or any(
+                overlaps(genome, existing.genome_interval) for existing in cluster
+            ):
+                cluster.append(record)
+                cluster_genome[0] = min(cluster_genome[0], genome[0])
+                cluster_genome[1] = max(cluster_genome[1], genome[1])
+                cluster_query[0] = min(cluster_query[0], query[0])
+                cluster_query[1] = max(cluster_query[1], query[1])
+                continue
+            if len(cluster) >= 2:
+                boxes.append(
+                    RecoveryBox(
+                        family=family,
+                        genome_interval=expand_interval(tuple(cluster_genome), margin_bp),
+                        query_interval=expand_interval(tuple(cluster_query), margin_bp),
+                        categories=frozenset(["overlap_density"]),
+                    )
+                )
+            cluster = [record]
+            cluster_genome = [genome[0], genome[1]]
+            cluster_query = [query[0], query[1]]
+        if cluster_genome is not None and cluster_query is not None and len(cluster) >= 2:
+            boxes.append(
+                RecoveryBox(
+                    family=family,
+                    genome_interval=expand_interval(tuple(cluster_genome), margin_bp),
+                    query_interval=expand_interval(tuple(cluster_query), margin_bp),
+                    categories=frozenset(["overlap_density"]),
+                )
+            )
+    return boxes
+
+
+def build_score_landscape_boxes(
+    *,
+    fasim_records: Sequence[TriplexRecord],
+    strategy: str,
+    merge_gap_bp: int,
+    margin_bp: int,
+) -> List[RecoveryBox]:
+    if strategy == "baseline_current":
+        return build_fasim_visible_boxes(
+            fasim_records=fasim_records,
+            merge_gap_bp=merge_gap_bp,
+            margin_bp=margin_bp,
+        )
+
+    if not fasim_records:
+        return []
+
+    scores = [record.score for record in fasim_records]
+    min_score = min(scores)
+    near_threshold = [record for record in fasim_records if record.score <= min_score + 5.0]
+    long_hits = [record for record in fasim_records if record.nt >= 80]
+
+    raw_boxes: List[RecoveryBox] = []
+    if strategy == "score_peak_box_expansion":
+        raw_boxes = [
+            record_box(record, margin_bp=96, category="score_peak_box_expansion")
+            for record in fasim_records
+        ]
+    elif strategy == "near_threshold_peak_detector":
+        raw_boxes = [
+            record_box(record, margin_bp=192, category="near_threshold_peak")
+            for record in near_threshold
+        ]
+    elif strategy == "long_hit_internal_peak_detector":
+        raw_boxes = [
+            record_box(record, margin_bp=192, category="long_hit_internal_peak")
+            for record in long_hits
+        ]
+    elif strategy == "overlap_density_detector":
+        raw_boxes = overlap_density_boxes(fasim_records=fasim_records, margin_bp=192)
+    elif strategy == "combined_score_landscape_detector":
+        raw_boxes = [
+            record_box(record, margin_bp=margin_bp, category="fasim_output_record")
+            for record in fasim_records
+        ]
+        raw_boxes.extend(
+            record_box(record, margin_bp=96, category="score_peak_box_expansion")
+            for record in fasim_records
+        )
+        raw_boxes.extend(
+            record_box(record, margin_bp=192, category="near_threshold_peak")
+            for record in near_threshold
+        )
+        raw_boxes.extend(
+            record_box(record, margin_bp=192, category="long_hit_internal_peak")
+            for record in long_hits
+        )
+        raw_boxes.extend(overlap_density_boxes(fasim_records=fasim_records, margin_bp=192))
+    else:
+        raise RuntimeError(f"unknown score-landscape detector strategy: {strategy}")
+
+    return merge_recovery_boxes(raw_boxes, merge_gap_bp=merge_gap_bp)
+
+
+def evaluate_score_landscape_strategy(
+    *,
+    label: str,
+    strategy: str,
+    boxes: Sequence[RecoveryBox],
+    full_search_cells: int,
+    fasim_records: Sequence[TriplexRecord],
+    sim_records: Sequence[TriplexRecord],
+    candidate_raw: Set[str],
+    accepted_candidate_raw: Set[str],
+    suppressed_fasim_raw: Set[str],
+    output_mutations: int,
+) -> ScoreLandscapeDetectorResult:
+    fasim_raw = {record.raw for record in fasim_records}
+    sim_raw = {record.raw for record in sim_records}
+    integrated_raw = (fasim_raw - suppressed_fasim_raw) | accepted_candidate_raw
+    integrated_records = parse_lite_records(sorted(integrated_raw))
+    taxonomy = classify_missed_sim_records(
+        sim_records=sim_records,
+        sim_close_records=integrated_records,
+        boxes=boxes,
+        candidate_raw=candidate_raw,
+        accepted_candidate_raw=accepted_candidate_raw,
+    )
+    return ScoreLandscapeDetectorResult(
+        workload_label=label,
+        strategy=strategy,
+        enabled=True,
+        boxes=len(boxes),
+        cells=sum(box_cells(box) for box in boxes),
+        full_search_cells=full_search_cells,
+        sim_records=len(sim_raw),
+        shared_records=len(integrated_raw & sim_raw),
+        missed_records=taxonomy.missed_records,
+        not_box_covered=taxonomy.not_box_covered,
+        guard_rejected=taxonomy.guard_rejected,
+        extra_vs_sim=len(integrated_raw - sim_raw),
+        overlap_conflicts=count_same_family_genomic_overlaps(integrated_records),
+        output_mutations=output_mutations,
+    )
+
+
+def build_score_landscape_detector_shadow(
+    *,
+    enabled: bool,
+    validate: bool,
+    label: str,
+    bin_path: Path,
+    sim_records: Sequence[TriplexRecord],
+    fasim: ModeRun,
+    base_executor: ExecutorShadow,
+    dna_entries: Sequence[SequenceEntry],
+    query_sequence: str,
+    full_cells: int,
+    work_dir: Path,
+    merge_gap_bp: int,
+    margin_bp: int,
+) -> Tuple[ScoreLandscapeDetectorResult, ...]:
+    if not enabled or not validate:
+        return ()
+
+    sim_raw = {record.raw for record in sim_records}
+    box_strategies = (
+        "baseline_current",
+        "score_peak_box_expansion",
+        "near_threshold_peak_detector",
+        "long_hit_internal_peak_detector",
+        "overlap_density_detector",
+        "combined_score_landscape_detector",
+    )
+    executor_by_strategy: Dict[str, ExecutorShadow] = {"baseline_current": base_executor}
+    for strategy in box_strategies:
+        if strategy == "baseline_current":
+            continue
+        boxes = build_score_landscape_boxes(
+            fasim_records=fasim.records,
+            strategy=strategy,
+            merge_gap_bp=merge_gap_bp,
+            margin_bp=margin_bp,
+        )
+        executor_by_strategy[strategy] = build_external_executor_shadow(
+            label=label,
+            bin_path=bin_path,
+            boxes=boxes,
+            dna_entries=dna_entries,
+            query_sequence=query_sequence,
+            sim_only=(),
+            full_cells=full_cells,
+            work_dir=work_dir / strategy,
+        )
+
+    strategy_specs = (
+        ("baseline_current", "baseline_current", "combined_non_oracle"),
+        ("score_peak_box_expansion", "score_peak_box_expansion", "combined_non_oracle"),
+        ("near_threshold_peak_detector", "near_threshold_peak_detector", "combined_non_oracle"),
+        ("long_hit_internal_peak_detector", "long_hit_internal_peak_detector", "combined_non_oracle"),
+        ("overlap_density_detector", "overlap_density_detector", "combined_non_oracle"),
+        ("combined_score_landscape_detector", "combined_score_landscape_detector", "score_nt_threshold"),
+        ("combined_detector_current_guard", "combined_score_landscape_detector", "combined_non_oracle"),
+        ("combined_detector_relaxed_guard", "combined_score_landscape_detector", "relaxed_score_nt_rank3"),
+    )
+
+    results: List[ScoreLandscapeDetectorResult] = []
+    for strategy, box_strategy, guard in strategy_specs:
+        executor = executor_by_strategy[box_strategy]
+        candidate_raw = set(executor.candidate_records_raw)
+        candidate_records = parse_lite_records(sorted(candidate_raw))
+        fallbacks = executor.executor_failures + executor.unsupported_boxes
+        accepted_raw = (
+            set()
+            if fallbacks
+            else accepted_candidate_raw_for_guard(
+                guard=guard,
+                candidate_records=candidate_records,
+                fasim_records=fasim.records,
+                boxes=executor.boxes,
+                sim_raw=sim_raw,
+            )
+        )
+        suppressed_fasim_raw = set() if fallbacks else records_by_box(fasim.records, executor.boxes)[0]
+        results.append(
+            evaluate_score_landscape_strategy(
+                label=label,
+                strategy=strategy,
+                boxes=executor.boxes,
+                full_search_cells=executor.full_search_cells,
+                fasim_records=fasim.records,
+                sim_records=sim_records,
+                candidate_raw=candidate_raw,
+                accepted_candidate_raw=accepted_raw,
+                suppressed_fasim_raw=suppressed_fasim_raw,
+                output_mutations=0,
+            )
+        )
+    return tuple(results)
+
+
 def build_sim_close_mode(
     *,
     bin_path: Path,
@@ -736,13 +1053,22 @@ def build_sim_close_mode(
     validate: bool,
     miss_taxonomy_enabled: bool,
     recall_repair_enabled: bool,
+    score_landscape_detector_enabled: bool,
     work_dir: Path,
     merge_gap_bp: int,
     margin_bp: int,
     near_tie_delta: float,
     threshold_score_band: float,
     long_hit_nt: int,
-) -> Tuple[object, float, ValidationCoverage, Optional[MissTaxonomy], Tuple[RecallRepairResult, ...]]:
+) -> Tuple[
+    object,
+    float,
+    RecoveryRunArtifacts,
+    ValidationCoverage,
+    Optional[MissTaxonomy],
+    Tuple[RecallRepairResult, ...],
+    Tuple[ScoreLandscapeDetectorResult, ...],
+]:
     start = time.perf_counter()
     dna_entries = sequence_entries_from_fasta(spec.dna_path)
     query_sequence = query_sequence_from_fasta(spec.rna_path)
@@ -789,6 +1115,22 @@ def build_sim_close_mode(
         executor_shadow=executor,
         validate_enabled=validate,
     )
+    candidate_records = parse_lite_records(sorted(executor.candidate_records_raw))
+    accepted_candidate_raw = combined_non_oracle_candidate_raw(
+        candidate_records=candidate_records,
+        fasim_records=fasim.records,
+        boxes=executor.boxes,
+    )
+    fallbacks = executor.executor_failures + executor.unsupported_boxes
+    fasim_in_boxes, _ = records_by_box(fasim.records, executor.boxes)
+    artifacts = RecoveryRunArtifacts(
+        boxes=tuple(executor.boxes),
+        candidate_raw=executor.candidate_records_raw,
+        accepted_candidate_raw=frozenset() if fallbacks else frozenset(accepted_candidate_raw),
+        suppressed_fasim_raw=frozenset() if fallbacks else frozenset(fasim_in_boxes),
+        sim_records=tuple(sim.records),
+        sim_only=tuple(sim_only),
+    )
     write_lite_output(work_dir / "sim_close.lite", mode.output_raw_records)
     coverage = build_validation_coverage(
         requested=validate,
@@ -819,7 +1161,32 @@ def build_sim_close_mode(
         work_dir=work_dir / "recall_repair",
         merge_gap_bp=merge_gap_bp,
     )
-    return mode, time.perf_counter() - start, coverage, miss_taxonomy, recall_repair_results
+    score_landscape_results = build_score_landscape_detector_shadow(
+        enabled=score_landscape_detector_enabled,
+        validate=validate,
+        label=spec.label,
+        bin_path=bin_path,
+        sim_records=sim.records,
+        fasim=fasim,
+        base_executor=executor,
+        dna_entries=dna_entries,
+        query_sequence=query_sequence,
+        full_cells=full_cells,
+        work_dir=work_dir / "score_landscape_detector",
+        merge_gap_bp=merge_gap_bp,
+        margin_bp=margin_bp,
+    )
+    return (
+        mode,
+        time.perf_counter() - start,
+        artifacts,
+        coverage,
+        miss_taxonomy,
+        recall_repair_results,
+        score_landscape_results,
+    )
+
+
 
 
 def median_float(values: Iterable[float]) -> float:
@@ -879,6 +1246,7 @@ def run_case(
     long_hit_nt: int,
     miss_taxonomy_report: bool,
     recall_repair_shadow: bool,
+    score_landscape_detector_shadow: bool,
 ) -> CaseSummary:
     runs: List[CaseRun] = []
     for index in range(1, repeat + 1):
@@ -890,13 +1258,14 @@ def run_case(
             work_dir=run_dir / "fast",
             require_profile=require_profile,
         )
-        sim_close, sim_close_wall, sim_close_coverage, _, _ = build_sim_close_mode(
+        sim_close, sim_close_wall, sim_close_artifacts, sim_close_coverage, _, _, _ = build_sim_close_mode(
             bin_path=bin_path,
             spec=spec,
             fasim=fast,
             validate=False,
             miss_taxonomy_enabled=False,
             recall_repair_enabled=False,
+            score_landscape_detector_enabled=False,
             work_dir=run_dir / "sim_close",
             merge_gap_bp=merge_gap_bp,
             margin_bp=margin_bp,
@@ -906,16 +1275,20 @@ def run_case(
         )
         validate_mode: Optional[object] = None
         validate_wall = 0.0
+        validate_artifacts: Optional[RecoveryRunArtifacts] = None
         validation_coverage = sim_close_coverage
         miss_taxonomy: Optional[MissTaxonomy] = None
         recall_repair_results: Tuple[RecallRepairResult, ...] = ()
+        score_landscape_results: Tuple[ScoreLandscapeDetectorResult, ...] = ()
         if spec.validate:
             (
                 validate_mode,
                 validate_wall,
+                validate_artifacts,
                 validation_coverage,
                 miss_taxonomy,
                 recall_repair_results,
+                score_landscape_results,
             ) = build_sim_close_mode(
                 bin_path=bin_path,
                 spec=spec,
@@ -923,6 +1296,7 @@ def run_case(
                 validate=True,
                 miss_taxonomy_enabled=miss_taxonomy_report,
                 recall_repair_enabled=recall_repair_shadow,
+                score_landscape_detector_enabled=score_landscape_detector_shadow,
                 work_dir=run_dir / "sim_close_validate",
                 merge_gap_bp=merge_gap_bp,
                 margin_bp=margin_bp,
@@ -937,11 +1311,14 @@ def run_case(
                 fast_wall_seconds=fast_wall,
                 sim_close=sim_close,
                 sim_close_wall_seconds=sim_close_wall,
+                sim_close_artifacts=sim_close_artifacts,
                 validate_mode=validate_mode,
                 validate_wall_seconds=validate_wall,
+                validate_artifacts=validate_artifacts,
                 validation_coverage=validation_coverage,
                 miss_taxonomy=miss_taxonomy,
                 recall_repair_results=recall_repair_results,
+                score_landscape_results=score_landscape_results,
             )
         )
     return CaseSummary(spec=spec, runs=runs)
@@ -1008,12 +1385,33 @@ def recall_repair_results(summaries: Sequence[CaseSummary]) -> List[RecallRepair
     return [result for summary in summaries for run in summary.runs for result in run.recall_repair_results]
 
 
+def score_landscape_results(summaries: Sequence[CaseSummary]) -> List[ScoreLandscapeDetectorResult]:
+    return [result for summary in summaries for run in summary.runs for result in run.score_landscape_results]
+
+
 def best_recall_repair_result(results: Sequence[RecallRepairResult]) -> Optional[RecallRepairResult]:
     non_oracle = [result for result in results if not result.oracle]
     if not non_oracle:
         return None
     return max(
         non_oracle,
+        key=lambda result: (
+            result.recall_vs_sim,
+            result.precision_vs_sim,
+            -result.extra_vs_sim,
+            -result.cells,
+            result.strategy,
+        ),
+    )
+
+
+def best_score_landscape_result(
+    results: Sequence[ScoreLandscapeDetectorResult],
+) -> Optional[ScoreLandscapeDetectorResult]:
+    if not results:
+        return None
+    return max(
+        results,
         key=lambda result: (
             result.recall_vs_sim,
             result.precision_vs_sim,
@@ -1106,6 +1504,305 @@ def validation_matrix(
     return rows, telemetry
 
 
+LEARNED_DETECTOR_DATASET_FIELDS = [
+    "workload_label",
+    "run_index",
+    "candidate_id",
+    "source",
+    "validate_supported",
+    "validate_unsupported_reason",
+    "chr",
+    "genome_start",
+    "genome_end",
+    "query_start",
+    "query_end",
+    "genome_len",
+    "query_len",
+    "score",
+    "tri_score",
+    "nt",
+    "identity",
+    "mean_stability",
+    "rule",
+    "strand",
+    "direction",
+    "same_family_overlap_count",
+    "nearest_fasim_score_delta",
+    "local_rank",
+    "box_covered",
+    "box_count_covering",
+    "box_categories",
+    "cell_cost",
+    "label_available",
+    "label_in_sim",
+    "label_sim_only",
+    "label_shared_sim_close",
+    "label_guard_should_accept",
+    "label_miss_stage",
+]
+
+
+def selected_artifacts(run: CaseRun) -> RecoveryRunArtifacts:
+    return run.validate_artifacts if run.validate_artifacts is not None else run.sim_close_artifacts
+
+
+def record_length(interval: Tuple[int, int]) -> int:
+    return interval[1] - interval[0] + 1
+
+
+def covering_recovery_boxes(
+    record: TriplexRecord,
+    boxes: Sequence[RecoveryBox],
+) -> List[RecoveryBox]:
+    genome = record.genome_interval
+    query = record.query_interval
+    return [
+        box
+        for box in boxes
+        if box.family == record.family
+        and box.genome_interval[0] <= genome[0]
+        and genome[1] <= box.genome_interval[1]
+        and box.query_interval[0] <= query[0]
+        and query[1] <= box.query_interval[1]
+    ]
+
+
+def same_family_overlap_count(
+    record: TriplexRecord,
+    fasim_records: Sequence[TriplexRecord],
+) -> int:
+    return sum(
+        1
+        for other in fasim_records
+        if other.raw != record.raw
+        and other.family == record.family
+        and overlaps(record.genome_interval, other.genome_interval)
+    )
+
+
+def nearest_fasim_score_delta(
+    record: TriplexRecord,
+    fasim_records: Sequence[TriplexRecord],
+) -> str:
+    same_family = [other for other in fasim_records if other.family == record.family]
+    if not same_family:
+        return "NA"
+    return fmt_metric(min(abs(record.score - other.score) for other in same_family))
+
+
+def learned_detector_label_stage(
+    *,
+    raw: str,
+    validate_supported: bool,
+    sim_raw: Set[str],
+    sim_close_raw: Set[str],
+    miss_stage_by_raw: Dict[str, str],
+) -> str:
+    if not validate_supported:
+        return "unlabeled"
+    if raw in miss_stage_by_raw:
+        return miss_stage_by_raw[raw]
+    if raw in sim_raw and raw in sim_close_raw:
+        return "shared"
+    if raw not in sim_raw and raw in sim_close_raw:
+        return "extra"
+    return "negative"
+
+
+def append_learned_detector_source_rows(
+    *,
+    rows: List[Dict[str, str]],
+    source: str,
+    records: Sequence[TriplexRecord],
+    summary: CaseSummary,
+    run: CaseRun,
+    artifacts: RecoveryRunArtifacts,
+    local_ranks: Dict[str, int],
+    sim_raw: Set[str],
+    sim_only_raw: Set[str],
+    sim_close_raw: Set[str],
+    miss_stage_by_raw: Dict[str, str],
+) -> None:
+    coverage = run.validation_coverage
+    validate_supported = coverage.supported
+    label_available = "1" if validate_supported else "0"
+    for record in sorted(
+        records,
+        key=lambda item: (
+            item.chr_name,
+            item.genome_interval[0],
+            item.genome_interval[1],
+            item.query_interval[0],
+            item.query_interval[1],
+            item.raw,
+        ),
+    ):
+        covering_boxes = covering_recovery_boxes(record, artifacts.boxes)
+        categories = sorted({category for box in covering_boxes for category in box.categories})
+        raw = record.raw
+        stage = learned_detector_label_stage(
+            raw=raw,
+            validate_supported=validate_supported,
+            sim_raw=sim_raw,
+            sim_close_raw=sim_close_raw,
+            miss_stage_by_raw=miss_stage_by_raw,
+        )
+        rows.append(
+            {
+                "workload_label": summary.spec.label,
+                "run_index": str(run.index),
+                "candidate_id": f"{summary.spec.label}_run{run.index}_{len(rows) + 1:06d}",
+                "source": source,
+                "validate_supported": "1" if validate_supported else "0",
+                "validate_unsupported_reason": coverage.unsupported_reason,
+                "chr": record.chr_name,
+                "genome_start": str(record.genome_interval[0]),
+                "genome_end": str(record.genome_interval[1]),
+                "query_start": str(record.query_interval[0]),
+                "query_end": str(record.query_interval[1]),
+                "genome_len": str(record_length(record.genome_interval)),
+                "query_len": str(record_length(record.query_interval)),
+                "score": fmt_metric(record.score),
+                "tri_score": fmt_metric(record.score),
+                "nt": str(record.nt),
+                "identity": fmt_metric(record.identity),
+                "mean_stability": fmt_metric(record.stability),
+                "rule": record.rule,
+                "strand": record.strand,
+                "direction": record.direction,
+                "same_family_overlap_count": str(same_family_overlap_count(record, run.fast.records)),
+                "nearest_fasim_score_delta": nearest_fasim_score_delta(record, run.fast.records),
+                "local_rank": str(local_ranks.get(raw, 0)),
+                "box_covered": "1" if covering_boxes else "0",
+                "box_count_covering": str(len(covering_boxes)),
+                "box_categories": ";".join(categories) if categories else "NA",
+                "cell_cost": str(sum(box_cells(box) for box in covering_boxes)),
+                "label_available": label_available,
+                "label_in_sim": "1" if validate_supported and raw in sim_raw else ("0" if validate_supported else "NA"),
+                "label_sim_only": "1" if validate_supported and raw in sim_only_raw else ("0" if validate_supported else "NA"),
+                "label_shared_sim_close": (
+                    "1" if validate_supported and raw in sim_raw and raw in sim_close_raw else (
+                        "0" if validate_supported else "NA"
+                    )
+                ),
+                "label_guard_should_accept": (
+                    "1" if validate_supported and raw in sim_raw and raw in artifacts.candidate_raw else (
+                        "0" if validate_supported else "NA"
+                    )
+                ),
+                "label_miss_stage": stage,
+            }
+        )
+
+
+def learned_detector_dataset_rows(summaries: Sequence[CaseSummary]) -> List[Dict[str, str]]:
+    rows: List[Dict[str, str]] = []
+    for summary in summaries:
+        for run in summary.runs:
+            artifacts = selected_artifacts(run)
+            selected = selected_mode(run)
+            sim_records = list(artifacts.sim_records)
+            sim_raw = {record.raw for record in sim_records}
+            sim_only_raw = {gap.record.raw for gap in artifacts.sim_only}
+            sim_close_raw = set(getattr(selected, "output_raw_records", ()))
+            candidate_records = parse_lite_records(sorted(artifacts.candidate_raw))
+            accepted_records = parse_lite_records(sorted(artifacts.accepted_candidate_raw))
+            local_ranks = candidate_local_ranks(candidate_records, artifacts.boxes)
+            miss_stage_by_raw: Dict[str, str] = {}
+            if run.validation_coverage.supported:
+                sim_close_records = parse_lite_records(sorted(sim_close_raw))
+                missed = [record for record in sim_records if record.raw not in sim_close_raw]
+                buckets = missed_sim_record_buckets(
+                    missed_records=missed,
+                    sim_close_records=sim_close_records,
+                    boxes=artifacts.boxes,
+                    candidate_raw=set(artifacts.candidate_raw),
+                    accepted_candidate_raw=set(artifacts.accepted_candidate_raw),
+                )
+                for stage, raw_values in buckets.items():
+                    for raw in raw_values:
+                        miss_stage_by_raw[raw] = stage
+
+            sources = (
+                ("fasim_record", run.fast.records),
+                ("sim_record", sim_records),
+                ("executor_candidate", candidate_records),
+                ("accepted_candidate", accepted_records),
+            )
+            for source, records in sources:
+                append_learned_detector_source_rows(
+                    rows=rows,
+                    source=source,
+                    records=records,
+                    summary=summary,
+                    run=run,
+                    artifacts=artifacts,
+                    local_ranks=local_ranks,
+                    sim_raw=sim_raw,
+                    sim_only_raw=sim_only_raw,
+                    sim_close_raw=sim_close_raw,
+                    miss_stage_by_raw=miss_stage_by_raw,
+                )
+    return rows
+
+
+def write_learned_detector_dataset(
+    *,
+    summaries: Sequence[CaseSummary],
+    output_path: Path,
+) -> Dict[str, str]:
+    rows = learned_detector_dataset_rows(summaries)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=LEARNED_DETECTOR_DATASET_FIELDS, delimiter="\t")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    sources = Counter(row["source"] for row in rows)
+    label_stages = Counter(row["label_miss_stage"] for row in rows)
+    output_mutations = max(
+        (
+            int(mode_value(selected_mode(run), "output_mutations_fast_mode"))
+            for summary in summaries
+            for run in summary.runs
+        ),
+        default=0,
+    )
+    return {
+        "enabled": "1",
+        "rows": str(len(rows)),
+        "path": str(output_path),
+        "sim_label_columns": "1",
+        "output_mutations": str(output_mutations),
+        "validate_supported_rows": str(sum(1 for row in rows if row["validate_supported"] == "1")),
+        "source_fasim_records": str(sources.get("fasim_record", 0)),
+        "source_sim_records": str(sources.get("sim_record", 0)),
+        "source_executor_candidates": str(sources.get("executor_candidate", 0)),
+        "source_accepted_candidates": str(sources.get("accepted_candidate", 0)),
+        "label_shared": str(label_stages.get("shared", 0)),
+        "label_extra": str(label_stages.get("extra", 0)),
+        "label_unlabeled": str(label_stages.get("unlabeled", 0)),
+    }
+
+
+def empty_learned_detector_dataset_telemetry() -> Dict[str, str]:
+    return {
+        "enabled": "0",
+        "rows": "0",
+        "path": "NA",
+        "sim_label_columns": "0",
+        "output_mutations": "0",
+        "validate_supported_rows": "0",
+        "source_fasim_records": "0",
+        "source_sim_records": "0",
+        "source_executor_candidates": "0",
+        "source_accepted_candidates": "0",
+        "label_shared": "0",
+        "label_extra": "0",
+        "label_unlabeled": "0",
+    }
+
+
 def total_coverage_per_repeat(summaries: Sequence[CaseSummary], repeat: int, attr: str) -> List[float]:
     totals: List[float] = []
     for run_index in range(repeat):
@@ -1152,6 +1849,9 @@ def render_report(
     miss_taxonomy_report: bool,
     recall_repair_shadow: bool,
     validation_matrix_report: bool,
+    score_landscape_detector_shadow: bool,
+    learned_detector_dataset_report: bool,
+    learned_detector_dataset_telemetry: Dict[str, str],
 ) -> Tuple[str, Dict[str, str]]:
     fast_digest_stable = all(case_fast_stable(summary) for summary in summaries)
     sim_close_digest_stable = all(case_sim_close_stable(summary) for summary in summaries)
@@ -1206,6 +1906,8 @@ def render_report(
             ["miss_taxonomy_report", "yes" if miss_taxonomy_report else "no"],
             ["recall_repair_shadow", "yes" if recall_repair_shadow else "no"],
             ["validation_matrix_report", "yes" if validation_matrix_report else "no"],
+            ["score_landscape_detector_shadow", "yes" if score_landscape_detector_shadow else "no"],
+            ["learned_detector_dataset_report", "yes" if learned_detector_dataset_report else "no"],
         ],
     )
     lines.append("")
@@ -1473,6 +2175,94 @@ def render_report(
         )
         lines.append("")
 
+    landscape_results = score_landscape_results(summaries)
+    if score_landscape_detector_shadow:
+        lines.append("## Score-Landscape Detector Shadow")
+        lines.append("")
+        landscape_rows: List[List[str]] = []
+        for result in landscape_results:
+            landscape_rows.append(
+                [
+                    result.workload_label,
+                    result.strategy,
+                    str(result.boxes),
+                    str(result.cells),
+                    fmt_metric(result.cell_fraction),
+                    str(result.shared_records),
+                    str(result.missed_records),
+                    str(result.not_box_covered),
+                    str(result.guard_rejected),
+                    fmt_metric(result.recall_vs_sim),
+                    fmt_metric(result.precision_vs_sim),
+                    str(result.extra_vs_sim),
+                    str(result.overlap_conflicts),
+                    str(result.output_mutations),
+                ]
+            )
+        append_table(
+            lines,
+            [
+                "Case",
+                "Strategy",
+                "Boxes",
+                "Cells",
+                "Cell fraction",
+                "Shared",
+                "Missed",
+                "Not box covered",
+                "Guard rejected",
+                "Recall",
+                "Precision",
+                "Extra",
+                "Conflicts",
+                "Output mutations",
+            ],
+            landscape_rows,
+        )
+        lines.append("")
+        lines.append(
+            "This score-landscape/local-max detector shadow is diagnostic-only. "
+            "It uses non-oracle Fasim-visible local-max proxies from final "
+            "records, score/Nt bands, long-hit records, and overlap-density "
+            "clusters. It does not add recovery logic or change production "
+            "selection."
+        )
+        lines.append("")
+        lines.append(
+            "Current Fasim profile output does not expose column-max coordinates "
+            "as a stable production input, so this shadow evaluates deployable "
+            "score-landscape proxies before any C++ or output-path change."
+        )
+        lines.append("")
+
+    if learned_detector_dataset_report:
+        lines.append("## Learned Detector Dataset")
+        lines.append("")
+        append_table(
+            lines,
+            ["Metric", "Value"],
+            [
+                [f"fasim_sim_recovery_learned_detector_dataset_{key}", value]
+                for key, value in learned_detector_dataset_telemetry.items()
+            ],
+        )
+        lines.append("")
+        lines.append(
+            "This export is a diagnostic training/evaluation dataset for a "
+            "learned SIM-gap risk detector. It records Fasim-visible candidate "
+            "features plus post-hoc SIM labels; it does not train a model, "
+            "load a model, or change SIM-close production selection."
+        )
+        lines.append("")
+        lines.append(
+            "SIM labels are post-hoc training labels only. They must not be "
+            "used as runtime detector inputs, recovery-box inputs, guard "
+            "inputs, replacement inputs, or output ordering inputs."
+        )
+        lines.append("")
+        lines.append("Do not train or ship a production learned detector from this report.")
+        lines.append("")
+
     repair_results = recall_repair_results(summaries)
     if recall_repair_shadow:
         repair_rows: List[List[str]] = []
@@ -1676,6 +2466,30 @@ def render_report(
         "overlap_conflicts": str(best_repair.overlap_conflicts) if best_repair is not None else "0",
         "output_mutations": str(best_repair.output_mutations) if best_repair is not None else "0",
     }
+    best_landscape = best_score_landscape_result(landscape_results)
+    landscape_telemetry = {
+        "enabled": "1" if score_landscape_detector_shadow else "0",
+        "strategy": best_landscape.strategy if best_landscape is not None else "NA",
+        "boxes": str(best_landscape.boxes) if best_landscape is not None else "0",
+        "cells": str(best_landscape.cells) if best_landscape is not None else "0",
+        "cell_fraction": (
+            fmt_metric(best_landscape.cell_fraction) if best_landscape is not None else fmt_metric(0.0)
+        ),
+        "sim_records": str(best_landscape.sim_records) if best_landscape is not None else "0",
+        "shared_records": str(best_landscape.shared_records) if best_landscape is not None else "0",
+        "missed_records": str(best_landscape.missed_records) if best_landscape is not None else "0",
+        "not_box_covered": str(best_landscape.not_box_covered) if best_landscape is not None else "0",
+        "guard_rejected": str(best_landscape.guard_rejected) if best_landscape is not None else "0",
+        "recall_vs_sim": (
+            fmt_metric(best_landscape.recall_vs_sim) if best_landscape is not None else fmt_metric(0.0)
+        ),
+        "precision_vs_sim": (
+            fmt_metric(best_landscape.precision_vs_sim) if best_landscape is not None else fmt_metric(0.0)
+        ),
+        "extra_vs_sim": str(best_landscape.extra_vs_sim) if best_landscape is not None else "0",
+        "overlap_conflicts": str(best_landscape.overlap_conflicts) if best_landscape is not None else "0",
+        "output_mutations": str(best_landscape.output_mutations) if best_landscape is not None else "0",
+    }
 
     lines.append("## Aggregate")
     lines.append("")
@@ -1703,6 +2517,32 @@ def render_report(
             lines,
             ["Metric", "Value"],
             [[f"fasim_sim_recovery_validation_matrix_{key}", value] for key, value in matrix_telemetry.items()],
+        )
+        lines.append("")
+
+    if score_landscape_detector_shadow:
+        lines.append("## Score-Landscape Detector Best Aggregate")
+        lines.append("")
+        append_table(
+            lines,
+            ["Metric", "Value"],
+            [
+                [f"fasim_sim_recovery_score_landscape_detector_{key}", value]
+                for key, value in landscape_telemetry.items()
+            ],
+        )
+        lines.append("")
+
+    if learned_detector_dataset_report:
+        lines.append("## Learned Detector Dataset Aggregate")
+        lines.append("")
+        append_table(
+            lines,
+            ["Metric", "Value"],
+            [
+                [f"fasim_sim_recovery_learned_detector_dataset_{key}", value]
+                for key, value in learned_detector_dataset_telemetry.items()
+            ],
         )
         lines.append("")
 
@@ -1783,6 +2623,47 @@ def render_report(
             "records, and real-corpus guard refinement for covered executor "
             "candidates. This PR does not make those changes."
         )
+        lines.append("")
+    if score_landscape_detector_shadow and best_landscape is not None:
+        lines.append(
+            "The best non-oracle score-landscape/local-max detector shadow "
+            f"strategy is `{best_landscape.strategy}` with recall "
+            f"{best_landscape.recall_vs_sim:.2f}%, precision "
+            f"{best_landscape.precision_vs_sim:.2f}%, extra records "
+            f"{best_landscape.extra_vs_sim}, and cell fraction "
+            f"{best_landscape.cell_fraction:.6f}%. This is diagnostic evidence "
+            "only; it does not change SIM-close real output."
+        )
+        lines.append("")
+        if missed_records == 0:
+            lines.append(
+                "The supplied validate-supported cases have no SIM-close "
+                "missed records, so this score-landscape sweep is a smoke "
+                "check rather than evidence that the detector clears the "
+                "real-corpus recall-repair threshold."
+            )
+        elif (
+            best_landscape.recall_vs_sim >= 70.0
+            and best_landscape.precision_vs_sim >= 90.0
+            and best_landscape.cell_fraction < 1.0
+        ):
+            lines.append(
+                "This detector shadow clears the strong real-corpus tradeoff "
+                "threshold for a follow-up detector/guard design update. It "
+                "still does not justify defaulting or recommending SIM-close."
+            )
+        elif best_landscape.recall_vs_sim > recall_median:
+            lines.append(
+                "The detector shadow improves recall but does not clear the "
+                "strong tradeoff threshold. Continue detector analysis before "
+                "any real-mode update."
+            )
+        else:
+            lines.append(
+                "The detector shadow does not materially improve recall. Keep "
+                "SIM-close experimental/research-only and avoid broadening "
+                "real-mode behavior from this evidence."
+            )
         lines.append("")
     if recall_repair_shadow and best_repair is not None:
         lines.append(
@@ -1911,6 +2792,25 @@ def render_report(
                 print(f"{repair_prefix}.extra_vs_sim={result.extra_vs_sim}")
                 print(f"{repair_prefix}.overlap_conflicts={result.overlap_conflicts}")
                 print(f"{repair_prefix}.output_mutations={result.output_mutations}")
+            for result in run.score_landscape_results:
+                landscape_prefix = (
+                    f"benchmark.fasim_sim_recovery_score_landscape_detector."
+                    f"{summary.spec.label}.{result.strategy}"
+                )
+                print(f"{landscape_prefix}.enabled={1 if result.enabled else 0}")
+                print(f"{landscape_prefix}.boxes={result.boxes}")
+                print(f"{landscape_prefix}.cells={result.cells}")
+                print(f"{landscape_prefix}.cell_fraction={result.cell_fraction:.6f}")
+                print(f"{landscape_prefix}.sim_records={result.sim_records}")
+                print(f"{landscape_prefix}.shared_records={result.shared_records}")
+                print(f"{landscape_prefix}.missed_records={result.missed_records}")
+                print(f"{landscape_prefix}.not_box_covered={result.not_box_covered}")
+                print(f"{landscape_prefix}.guard_rejected={result.guard_rejected}")
+                print(f"{landscape_prefix}.recall_vs_sim={result.recall_vs_sim:.6f}")
+                print(f"{landscape_prefix}.precision_vs_sim={result.precision_vs_sim:.6f}")
+                print(f"{landscape_prefix}.extra_vs_sim={result.extra_vs_sim}")
+                print(f"{landscape_prefix}.overlap_conflicts={result.overlap_conflicts}")
+                print(f"{landscape_prefix}.output_mutations={result.output_mutations}")
 
     for key, value in telemetry.items():
         print(f"benchmark.fasim_sim_recovery_real_corpus.total.{key}={value}")
@@ -1920,6 +2820,12 @@ def render_report(
     if validation_matrix_report:
         for key, value in matrix_telemetry.items():
             print(f"benchmark.fasim_sim_recovery_validation_matrix.{key}={value}")
+    if score_landscape_detector_shadow:
+        for key, value in landscape_telemetry.items():
+            print(f"benchmark.fasim_sim_recovery_score_landscape_detector.total.{key}={value}")
+    if learned_detector_dataset_report:
+        for key, value in learned_detector_dataset_telemetry.items():
+            print(f"benchmark.fasim_sim_recovery_learned_detector_dataset.total.{key}={value}")
     if recall_repair_shadow:
         for key, value in repair_telemetry.items():
             print(f"benchmark.fasim_sim_recovery_recall_repair.total.{key}={value}")
@@ -1979,6 +2885,9 @@ def main() -> int:
     parser.add_argument("--miss-taxonomy-report", action="store_true")
     parser.add_argument("--recall-repair-shadow", action="store_true")
     parser.add_argument("--validation-matrix-report", action="store_true")
+    parser.add_argument("--score-landscape-detector-shadow", action="store_true")
+    parser.add_argument("--learned-detector-dataset", default="")
+    parser.add_argument("--learned-detector-dataset-report", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -1996,8 +2905,17 @@ def main() -> int:
             args.validation_matrix_report
             or os.environ.get("FASIM_SIM_RECOVERY_VALIDATION_MATRIX", "0") == "1"
         )
+        score_landscape_detector_shadow = (
+            args.score_landscape_detector_shadow
+            or os.environ.get("FASIM_SIM_RECOVERY_SCORE_LANDSCAPE_DETECTOR_SHADOW", "0") == "1"
+        )
+        learned_detector_dataset_report = (
+            args.learned_detector_dataset_report
+            or os.environ.get("FASIM_SIM_RECOVERY_LEARNED_DETECTOR_DATASET", "0") == "1"
+            or bool(args.learned_detector_dataset)
+        )
         validate_labels = parse_validate_labels([*args.validate_case, *args.validate_cases])
-        if recall_repair_shadow and not validate_labels and args.case:
+        if (recall_repair_shadow or score_landscape_detector_shadow) and not validate_labels and args.case:
             validate_labels = {ensure_label(raw[0]) for raw in args.case}
         cases = parse_cases(args.case, validate_labels)
         repeat = args.repeat if args.repeat > 0 else 1
@@ -2019,12 +2937,27 @@ def main() -> int:
                 threshold_score_band=args.threshold_score_band,
                 long_hit_nt=args.long_hit_nt,
                 miss_taxonomy_report=(
-                    args.miss_taxonomy_report or recall_repair_shadow or validation_matrix_report
+                    args.miss_taxonomy_report
+                    or recall_repair_shadow
+                    or validation_matrix_report
+                    or score_landscape_detector_shadow
                 ),
                 recall_repair_shadow=recall_repair_shadow,
+                score_landscape_detector_shadow=score_landscape_detector_shadow,
             )
             for case in cases
         ]
+        learned_detector_dataset_telemetry = empty_learned_detector_dataset_telemetry()
+        if learned_detector_dataset_report:
+            dataset_path = (
+                Path(args.learned_detector_dataset).resolve()
+                if args.learned_detector_dataset
+                else work_dir / "learned_detector_dataset.tsv"
+            )
+            learned_detector_dataset_telemetry = write_learned_detector_dataset(
+                summaries=summaries,
+                output_path=dataset_path,
+            )
         report, _ = render_report(
             summaries=summaries,
             repeat=repeat,
@@ -2032,13 +2965,22 @@ def main() -> int:
             title=args.report_title,
             base_branch=args.base_branch,
             coverage_report=(
-                args.validation_coverage_report or recall_repair_shadow or validation_matrix_report
+                args.validation_coverage_report
+                or recall_repair_shadow
+                or validation_matrix_report
+                or score_landscape_detector_shadow
             ),
             miss_taxonomy_report=(
-                args.miss_taxonomy_report or recall_repair_shadow or validation_matrix_report
+                args.miss_taxonomy_report
+                or recall_repair_shadow
+                or validation_matrix_report
+                or score_landscape_detector_shadow
             ),
             recall_repair_shadow=recall_repair_shadow,
             validation_matrix_report=validation_matrix_report,
+            score_landscape_detector_shadow=score_landscape_detector_shadow,
+            learned_detector_dataset_report=learned_detector_dataset_report,
+            learned_detector_dataset_telemetry=learned_detector_dataset_telemetry,
         )
         print(report)
         return 0
