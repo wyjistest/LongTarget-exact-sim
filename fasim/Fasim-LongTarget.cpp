@@ -128,6 +128,52 @@ static inline bool fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_COMPACT_SCOREINFO");
 }
 
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_CELLS = 1500000000ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_WINDOWS = 128ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NONE = 0ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_BELOW_THRESHOLD = 1ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_CUDA_UNAVAILABLE = 2ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_MANUAL_GPU = 3ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NON_FASTSIM = 4ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_TABLE = 0ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_COMPACT_GPU = 1ULL;
+static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_MANUAL_GPU = 2ULL;
+
+static inline bool fasim_gpu_dp_column_auto_requested_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_AUTO");
+}
+
+static inline uint64_t fasim_env_uint64_or_default(const char *name, uint64_t defaultValue)
+{
+    const char *env = getenv(name);
+    if (env == NULL || env[0] == '\0')
+    {
+        return defaultValue;
+    }
+    char *parseEnd = NULL;
+    const unsigned long long value = strtoull(env, &parseEnd, 10);
+    if (parseEnd == env || value == 0ULL)
+    {
+        return defaultValue;
+    }
+    return static_cast<uint64_t>(value);
+}
+
+static inline uint64_t fasim_gpu_dp_column_auto_min_cells_runtime()
+{
+    return fasim_env_uint64_or_default(
+        "FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS",
+        FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_CELLS);
+}
+
+static inline uint64_t fasim_gpu_dp_column_auto_min_windows_runtime()
+{
+    return fasim_env_uint64_or_default(
+        "FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS",
+        FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_WINDOWS);
+}
+
 static inline int fasim_env_int_or_default_allow_zero(const char *name, int defaultValue)
 {
     const char *env = getenv(name);
@@ -183,6 +229,7 @@ struct FasimProfileStats
         numCandidates(0),
         numValidatedCandidates(0),
         numFinalHits(0),
+        gpuDpColumnRequested(0),
         gpuDpColumnActive(0),
         gpuDpColumnCalls(0),
         gpuDpColumnWindows(0),
@@ -241,13 +288,23 @@ struct FasimProfileStats
         gpuDpColumnPostTopKCountMismatches(0),
         gpuDpColumnPostTopKPositionMismatches(0),
         gpuDpColumnPostTopKScoreMismatches(0),
+        gpuDpColumnCompactScoreInfoRequested(0),
         gpuDpColumnCompactScoreInfoActive(0),
         gpuDpColumnCompactScoreInfoRecords(0),
         gpuDpColumnCompactScoreInfoD2HBytes(0),
         gpuDpColumnCompactScoreInfoMismatches(0),
         gpuDpColumnCompactScoreInfoFallbacks(0),
         gpuDpColumnExactScoreInfoExtendCalls(0),
-        gpuDpColumnExactScoreInfoExtendD2HBytes(0)
+        gpuDpColumnExactScoreInfoExtendD2HBytes(0),
+        gpuDpColumnAutoRequested(0),
+        gpuDpColumnAutoActive(0),
+        gpuDpColumnAutoMinCells(0),
+        gpuDpColumnAutoMinWindows(0),
+        gpuDpColumnAutoObservedCells(0),
+        gpuDpColumnAutoObservedWindows(0),
+        gpuDpColumnAutoDisabledReason(0),
+        gpuDpColumnAutoSelectedPath(0),
+        gpuDpColumnAutoThresholdMatched(0)
     {
     }
 
@@ -272,6 +329,7 @@ struct FasimProfileStats
     uint64_t numCandidates;
     uint64_t numValidatedCandidates;
     uint64_t numFinalHits;
+    uint64_t gpuDpColumnRequested;
     uint64_t gpuDpColumnActive;
     uint64_t gpuDpColumnCalls;
     uint64_t gpuDpColumnWindows;
@@ -330,6 +388,7 @@ struct FasimProfileStats
     uint64_t gpuDpColumnPostTopKCountMismatches;
     uint64_t gpuDpColumnPostTopKPositionMismatches;
     uint64_t gpuDpColumnPostTopKScoreMismatches;
+    uint64_t gpuDpColumnCompactScoreInfoRequested;
     uint64_t gpuDpColumnCompactScoreInfoActive;
     uint64_t gpuDpColumnCompactScoreInfoRecords;
     uint64_t gpuDpColumnCompactScoreInfoD2HBytes;
@@ -337,6 +396,15 @@ struct FasimProfileStats
     uint64_t gpuDpColumnCompactScoreInfoFallbacks;
     uint64_t gpuDpColumnExactScoreInfoExtendCalls;
     uint64_t gpuDpColumnExactScoreInfoExtendD2HBytes;
+    uint64_t gpuDpColumnAutoRequested;
+    uint64_t gpuDpColumnAutoActive;
+    uint64_t gpuDpColumnAutoMinCells;
+    uint64_t gpuDpColumnAutoMinWindows;
+    uint64_t gpuDpColumnAutoObservedCells;
+    uint64_t gpuDpColumnAutoObservedWindows;
+    uint64_t gpuDpColumnAutoDisabledReason;
+    uint64_t gpuDpColumnAutoSelectedPath;
+    uint64_t gpuDpColumnAutoThresholdMatched;
     FasimTransferStringProfileStats transferStringProfile;
 };
 
@@ -416,9 +484,18 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_num_candidates=" << stats.numCandidates << endl;
     cerr << "benchmark.fasim_num_validated_candidates=" << stats.numValidatedCandidates << endl;
     cerr << "benchmark.fasim_num_final_hits=" << stats.numFinalHits << endl;
-    cerr << "benchmark.fasim_gpu_dp_column_requested=" << (fasim_gpu_dp_column_requested_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_requested=" << stats.gpuDpColumnRequested << endl;
     cerr << "benchmark.fasim_gpu_dp_column_active=" << stats.gpuDpColumnActive << endl;
     cerr << "benchmark.fasim_gpu_dp_column_validate_enabled=" << (fasim_gpu_dp_column_validate_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_requested=" << stats.gpuDpColumnAutoRequested << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_active=" << stats.gpuDpColumnAutoActive << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_min_cells=" << stats.gpuDpColumnAutoMinCells << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_min_windows=" << stats.gpuDpColumnAutoMinWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_observed_cells=" << stats.gpuDpColumnAutoObservedCells << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_observed_windows=" << stats.gpuDpColumnAutoObservedWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_disabled_reason=" << stats.gpuDpColumnAutoDisabledReason << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_selected_path=" << stats.gpuDpColumnAutoSelectedPath << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_auto_threshold_matched=" << stats.gpuDpColumnAutoThresholdMatched << endl;
     cerr << "benchmark.fasim_gpu_dp_column_calls=" << stats.gpuDpColumnCalls << endl;
     cerr << "benchmark.fasim_gpu_dp_column_windows=" << stats.gpuDpColumnWindows << endl;
     cerr << "benchmark.fasim_gpu_dp_column_cells=" << stats.gpuDpColumnCells << endl;
@@ -483,7 +560,7 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_count_mismatches=" << stats.gpuDpColumnPostTopKCountMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_position_mismatches=" << stats.gpuDpColumnPostTopKPositionMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_post_topk_score_mismatches=" << stats.gpuDpColumnPostTopKScoreMismatches << endl;
-    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_requested=" << (fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_requested=" << stats.gpuDpColumnCompactScoreInfoRequested << endl;
     cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_active=" << stats.gpuDpColumnCompactScoreInfoActive << endl;
     cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_records=" << stats.gpuDpColumnCompactScoreInfoRecords << endl;
     cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_d2h_bytes=" << stats.gpuDpColumnCompactScoreInfoD2HBytes << endl;
@@ -851,6 +928,123 @@ void readDna(string dnaFileName, vector<string> &speciess, vector<string> &chroT
 string readRna(string rnaFileName, string &lncName);
 void cluster_triplex(int dd, int length, vector<struct triplex>& triplex_list, map<size_t, size_t> class1[], map<size_t, size_t> class1a[], map<size_t, size_t> class1b[], int class_level);
 void print_cluster(int c_level, map<size_t, size_t> class1[], int start_genome, string &chro_info, int dna_size, string &rna_name, int distance, int length, string &outFilePath, string &c_tmp_dd, string &c_tmp_length, vector<struct tmp_class> &w_tmp_class);
+
+struct FasimGpuDpColumnAutoObservation
+{
+	uint64_t cells;
+	uint64_t windows;
+};
+
+static inline uint64_t fasim_uint64_max_value()
+{
+	return ~static_cast<uint64_t>(0);
+}
+
+static inline uint64_t fasim_saturating_add_uint64(uint64_t lhs, uint64_t rhs)
+{
+	const uint64_t maxValue = fasim_uint64_max_value();
+	if (maxValue - lhs < rhs)
+	{
+		return maxValue;
+	}
+	return lhs + rhs;
+}
+
+static inline uint64_t fasim_saturating_mul_uint64(uint64_t lhs, uint64_t rhs)
+{
+	const uint64_t maxValue = fasim_uint64_max_value();
+	if (lhs != 0 && rhs > maxValue / lhs)
+	{
+		return maxValue;
+	}
+	return lhs * rhs;
+}
+
+static inline uint64_t fasim_gpu_dp_column_tasks_per_window(const struct para &paraList)
+{
+	uint64_t taskCount = 0;
+	if (paraList.strand >= 0)
+	{
+		if (paraList.rule == 0)
+		{
+			taskCount += 12;
+		}
+		else if (paraList.rule > 0 && paraList.rule < 7)
+		{
+			taskCount += 2;
+		}
+	}
+	if (paraList.strand <= 0)
+	{
+		if (paraList.rule == 0)
+		{
+			taskCount += 36;
+		}
+		else
+		{
+			taskCount += 2;
+		}
+	}
+	return taskCount;
+}
+
+static inline FasimGpuDpColumnAutoObservation
+fasim_observe_gpu_dp_column_auto_workload(ifstream &dnaIn,
+                                          const struct para &paraList,
+                                          uint64_t queryLength)
+{
+	FasimGpuDpColumnAutoObservation observation;
+	observation.cells = 0;
+	observation.windows = 0;
+	if (queryLength == 0)
+	{
+		return observation;
+	}
+
+	const uint64_t tasksPerWindow = fasim_gpu_dp_column_tasks_per_window(paraList);
+	if (tasksPerWindow == 0)
+	{
+		return observation;
+	}
+
+	dnaIn.clear();
+	dnaIn.seekg(0, ios::beg);
+	string pendingHeader;
+	FasimFastaRecord record;
+	while (fasim_read_next_fasta_record(dnaIn, pendingHeader, record))
+	{
+		if (record.sequence.empty())
+		{
+			continue;
+		}
+		vector<string> dnaSequencesVec;
+		vector<int> dnaSequencesStartPos;
+		int cutNum = 0;
+		cutSequence(record.sequence, dnaSequencesVec, dnaSequencesStartPos,
+		            paraList.cutLength, paraList.overlapLength, cutNum);
+		for (size_t i = 0; i < dnaSequencesVec.size(); ++i)
+		{
+			const string &seq1 = dnaSequencesVec[i];
+			if (same_seq(seq1))
+			{
+				continue;
+			}
+			observation.windows =
+				fasim_saturating_add_uint64(observation.windows, tasksPerWindow);
+			const uint64_t taskCells =
+				fasim_saturating_mul_uint64(
+					fasim_saturating_mul_uint64(tasksPerWindow,
+					                            static_cast<uint64_t>(seq1.size())),
+					queryLength);
+			observation.cells =
+				fasim_saturating_add_uint64(observation.cells, taskCells);
+		}
+	}
+	dnaIn.clear();
+	dnaIn.seekg(0, ios::beg);
+	return observation;
+}
+
 int main(int argc, char* const* argv)
 {
 	struct para paraList;
@@ -892,6 +1086,22 @@ int main(int argc, char* const* argv)
 	const bool profileEnabled = fasim_profile_enabled_runtime();
 	const uint64_t profileTotalStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
 	FasimProfileStats profileStats;
+	const bool gpuDpColumnAutoRequestedGlobal =
+		fasim_gpu_dp_column_auto_requested_runtime();
+	const uint64_t gpuDpColumnAutoMinCellsGlobal =
+		fasim_gpu_dp_column_auto_min_cells_runtime();
+	const uint64_t gpuDpColumnAutoMinWindowsGlobal =
+		fasim_gpu_dp_column_auto_min_windows_runtime();
+	if (profileEnabled)
+	{
+		profileStats.gpuDpColumnRequested =
+			fasim_gpu_dp_column_requested_runtime() ? 1 : 0;
+		profileStats.gpuDpColumnCompactScoreInfoRequested =
+			fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime() ? 1 : 0;
+		profileStats.gpuDpColumnAutoRequested = gpuDpColumnAutoRequestedGlobal ? 1 : 0;
+		profileStats.gpuDpColumnAutoMinCells = gpuDpColumnAutoMinCellsGlobal;
+		profileStats.gpuDpColumnAutoMinWindows = gpuDpColumnAutoMinWindowsGlobal;
+	}
     if(paraList.doFastSim==true)
     cout<<"Searching triplexes using Fasim"<<endl;
     else
@@ -977,7 +1187,55 @@ int main(int argc, char* const* argv)
 			outOpened = true;
 		};
 
-		const bool gpuDpColumnRequested = fasim_gpu_dp_column_requested_runtime();
+		const bool gpuDpColumnManualRequested = fasim_gpu_dp_column_requested_runtime();
+		const bool gpuDpColumnAutoRequested = gpuDpColumnAutoRequestedGlobal;
+		const uint64_t gpuDpColumnAutoMinCells = gpuDpColumnAutoMinCellsGlobal;
+		const uint64_t gpuDpColumnAutoMinWindows = gpuDpColumnAutoMinWindowsGlobal;
+		FasimGpuDpColumnAutoObservation gpuDpColumnAutoObservation;
+		gpuDpColumnAutoObservation.cells = 0;
+		gpuDpColumnAutoObservation.windows = 0;
+		bool gpuDpColumnAutoThresholdMatched = false;
+		uint64_t gpuDpColumnAutoDisabledReason = FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NONE;
+		uint64_t gpuDpColumnAutoSelectedPath = FASIM_GPU_DP_COLUMN_AUTO_PATH_TABLE;
+		if (gpuDpColumnAutoRequested && !gpuDpColumnManualRequested)
+		{
+			if (!paraList.doFastSim)
+			{
+				gpuDpColumnAutoDisabledReason = FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NON_FASTSIM;
+			}
+			else
+			{
+				gpuDpColumnAutoObservation =
+					fasim_observe_gpu_dp_column_auto_workload(
+						dnaIn, paraList, static_cast<uint64_t>(lncSeq.size()));
+				gpuDpColumnAutoThresholdMatched =
+					gpuDpColumnAutoObservation.cells >= gpuDpColumnAutoMinCells &&
+					gpuDpColumnAutoObservation.windows >= gpuDpColumnAutoMinWindows;
+				if (!gpuDpColumnAutoThresholdMatched)
+				{
+					gpuDpColumnAutoDisabledReason =
+						FASIM_GPU_DP_COLUMN_AUTO_DISABLED_BELOW_THRESHOLD;
+				}
+				else if (!prealign_cuda_is_built())
+				{
+					gpuDpColumnAutoDisabledReason =
+						FASIM_GPU_DP_COLUMN_AUTO_DISABLED_CUDA_UNAVAILABLE;
+				}
+			}
+		}
+		else if (gpuDpColumnAutoRequested && gpuDpColumnManualRequested)
+		{
+			gpuDpColumnAutoDisabledReason =
+				FASIM_GPU_DP_COLUMN_AUTO_DISABLED_MANUAL_GPU;
+			gpuDpColumnAutoSelectedPath = FASIM_GPU_DP_COLUMN_AUTO_PATH_MANUAL_GPU;
+		}
+		const bool gpuDpColumnAutoEffective =
+			gpuDpColumnAutoRequested &&
+			!gpuDpColumnManualRequested &&
+			gpuDpColumnAutoThresholdMatched &&
+			prealign_cuda_is_built();
+		const bool gpuDpColumnRequested =
+			gpuDpColumnManualRequested || gpuDpColumnAutoEffective;
 		const bool gpuDpColumnValidate = fasim_gpu_dp_column_validate_enabled_runtime();
 		const bool gpuDpColumnMismatchDebug = fasim_gpu_dp_column_mismatch_debug_enabled_runtime();
 		const bool gpuDpColumnFullScoreInfoDebug =
@@ -985,7 +1243,27 @@ int main(int argc, char* const* argv)
 		const bool gpuDpColumnPostTopKPackShadow =
 			fasim_gpu_dp_column_post_topk_pack_shadow_enabled_runtime();
 		const bool gpuDpColumnCompactScoreInfo =
-			fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime();
+			fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime() ||
+			gpuDpColumnAutoEffective;
+		if (profileEnabled)
+		{
+			profileStats.gpuDpColumnRequested = gpuDpColumnRequested ? 1 : 0;
+			profileStats.gpuDpColumnCompactScoreInfoRequested =
+				gpuDpColumnCompactScoreInfo ? 1 : 0;
+			profileStats.gpuDpColumnAutoRequested = gpuDpColumnAutoRequested ? 1 : 0;
+			profileStats.gpuDpColumnAutoMinCells = gpuDpColumnAutoMinCells;
+			profileStats.gpuDpColumnAutoMinWindows = gpuDpColumnAutoMinWindows;
+			profileStats.gpuDpColumnAutoObservedCells =
+				gpuDpColumnAutoObservation.cells;
+			profileStats.gpuDpColumnAutoObservedWindows =
+				gpuDpColumnAutoObservation.windows;
+			profileStats.gpuDpColumnAutoThresholdMatched =
+				gpuDpColumnAutoThresholdMatched ? 1 : 0;
+			profileStats.gpuDpColumnAutoDisabledReason =
+				gpuDpColumnAutoDisabledReason;
+			profileStats.gpuDpColumnAutoSelectedPath =
+				gpuDpColumnAutoSelectedPath;
+		}
 		const int gpuDpColumnDebugMaxWindows =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
 		const int gpuDpColumnDebugWindowIndex =
@@ -1031,6 +1309,24 @@ int main(int argc, char* const* argv)
 				if (gpuDpColumnCompactScoreInfo)
 				{
 					profileStats.gpuDpColumnCompactScoreInfoActive = 1;
+				}
+			}
+			if (profileEnabled && gpuDpColumnAutoEffective)
+			{
+				if (useCudaBatch)
+				{
+					profileStats.gpuDpColumnAutoActive = 1;
+					profileStats.gpuDpColumnAutoDisabledReason =
+						FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NONE;
+					profileStats.gpuDpColumnAutoSelectedPath =
+						FASIM_GPU_DP_COLUMN_AUTO_PATH_COMPACT_GPU;
+				}
+				else
+				{
+					profileStats.gpuDpColumnAutoDisabledReason =
+						FASIM_GPU_DP_COLUMN_AUTO_DISABLED_CUDA_UNAVAILABLE;
+					profileStats.gpuDpColumnAutoSelectedPath =
+						FASIM_GPU_DP_COLUMN_AUTO_PATH_TABLE;
 				}
 			}
 		}

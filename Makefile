@@ -427,6 +427,10 @@ check-fasim-gpu-dp-column-compact-scoreinfo-characterization:
 check-fasim-gpu-dp-column-compact-threshold:
 	bash ./scripts/check_fasim_gpu_dp_column_compact_threshold.sh
 
+check-fasim-gpu-dp-column-auto-policy:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_gpu_dp_column_auto_policy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
@@ -896,7 +900,7 @@ check-longtarget-lite-output:
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
 		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold \
-		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
