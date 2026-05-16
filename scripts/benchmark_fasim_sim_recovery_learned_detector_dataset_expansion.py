@@ -329,6 +329,11 @@ def render_report(
     )
     lines.append("")
     lines.append(
+        "This PR audits the current dataset and shows it is still too small and "
+        "too narrow for production learned-detector claims."
+    )
+    lines.append("")
+    lines.append(
         "No production model is trained or loaded. SIM labels remain offline "
         "labels only. They must not be used as runtime detector inputs, guard "
         "inputs, replacement inputs, or output ordering inputs."
