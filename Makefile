@@ -517,6 +517,10 @@ check-fasim-sim-recovery-learned-detector-expanded-hard-negative-model-shadow:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_learned_detector_expanded_hard_negative_model_shadow.sh
 
+check-fasim-sim-recovery-learned-detector-large-corpus-expansion:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_learned_detector_large_corpus_expansion.sh
+
 benchmark-fasim-sim-recovery-real-corpus-characterization:
 	$(MAKE) build-fasim
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
