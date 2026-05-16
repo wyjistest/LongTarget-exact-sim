@@ -181,6 +181,16 @@ def telemetry(rows: Sequence[Dict[str, str]], source_rows: Sequence[Dict[str, st
     workload = split_counts(rows, workload_heldout_split)
     unique_workloads = len({row.get("workload_id", "unknown") for row in rows})
     unique_families = len({row.get("family_id", "unknown") for row in rows})
+    validate_supported_workloads = {
+        row.get("workload_label", "unknown")
+        for row in source_rows
+        if row.get("validate_supported") == "1"
+    }
+    no_legacy_workloads = {
+        row.get("workload_label", "unknown")
+        for row in source_rows
+        if row.get("validate_unsupported_reason") == "no_legacy_sim_records"
+    }
     hard_negative_source_count = sum(1 for value in hard_negative_sources.values() if value)
     heldout_workload_available = unique_workloads >= 2 and workload["degenerate"] == "0"
     heldout_family_available = unique_families >= 2 and family["degenerate"] == "0"
@@ -209,6 +219,8 @@ def telemetry(rows: Sequence[Dict[str, str]], source_rows: Sequence[Dict[str, st
         "source_rows": str(len(source_rows)),
         "workload_count": str(unique_workloads),
         "family_count": str(unique_families),
+        "validate_supported_workload_count": str(len(validate_supported_workloads)),
+        "no_legacy_sim_records_workload_count": str(len(no_legacy_workloads)),
         "unique_workloads": str(unique_workloads),
         "unique_families": str(unique_families),
         "hard_negative_sources": source_counts_string(hard_negative_sources),
@@ -318,6 +330,8 @@ def render_report(
     for key in (
         "workload_count",
         "family_count",
+        "validate_supported_workload_count",
+        "no_legacy_sim_records_workload_count",
         "hard_negative_source_count",
         "heldout_workload_available",
         "heldout_family_available",
@@ -366,10 +380,17 @@ def render_report(
         "from the source TSV, the correct result is an explicit zero count."
     )
     lines.append("")
-    lines.append(
-        "This PR audits the current dataset and shows it is still too small and "
-        "too narrow for production learned-detector claims."
-    )
+    if metrics["modeling_gate"] == "ready_for_offline_shadow":
+        lines.append(
+            "This PR meets the local corpus gate for a future offline shadow PR, "
+            "but it remains an offline research dataset and is still not evidence "
+            "for production learned-detector claims."
+        )
+    else:
+        lines.append(
+            "This PR audits the current dataset and shows it is still too small "
+            "and too narrow for production learned-detector claims."
+        )
     lines.append("")
     lines.append(
         "No production model is trained or loaded. SIM labels remain offline "
