@@ -25,7 +25,17 @@ OUTPUT_FIELDS = [
     "family_rank",
     "overlap_degree",
     "distance_to_fasim_boundary",
+    "family_size",
+    "family_span",
     "box_size",
+    "interval_overlap_ratio",
+    "dominance_margin",
+    "score_margin",
+    "Nt_margin",
+    "near_threshold_density",
+    "peak_count",
+    "second_peak_gap",
+    "plateau_width",
     "candidate_category",
     "hard_negative_source",
     "label",
@@ -95,6 +105,36 @@ def row_interval_length(row: Dict[str, str]) -> int:
     return max(genome_len, query_len)
 
 
+def row_genome_interval(row: Dict[str, str]) -> Tuple[int, int]:
+    return (
+        parse_int(row.get("genome_start", "0")),
+        parse_int(row.get("genome_end", "0")),
+    )
+
+
+def row_query_interval(row: Dict[str, str]) -> Tuple[int, int]:
+    return (
+        parse_int(row.get("query_start", "0")),
+        parse_int(row.get("query_end", "0")),
+    )
+
+
+def interval_length(interval: Tuple[int, int]) -> int:
+    return max(interval[1] - interval[0] + 1, 0)
+
+
+def overlap_length(left: Tuple[int, int], right: Tuple[int, int]) -> int:
+    return max(min(left[1], right[1]) - max(left[0], right[0]) + 1, 0)
+
+
+def overlaps(left: Tuple[int, int], right: Tuple[int, int]) -> bool:
+    return overlap_length(left, right) > 0
+
+
+def contains(outer: Tuple[int, int], inner: Tuple[int, int]) -> bool:
+    return outer[0] <= inner[0] and inner[1] <= outer[1]
+
+
 def box_id(row: Dict[str, str]) -> str:
     categories = row.get("box_categories", "NA")
     if categories in ("", "NA"):
@@ -132,6 +172,14 @@ def fasim_records_by_group(rows: Sequence[Dict[str, str]]) -> Dict[Tuple[str, st
     return grouped
 
 
+def accepted_records_by_group(rows: Sequence[Dict[str, str]]) -> Dict[Tuple[str, str, str], List[Dict[str, str]]]:
+    grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        if row.get("source") == "accepted_candidate":
+            grouped[group_key(row)].append(row)
+    return grouped
+
+
 def distance_to_fasim_boundary(
     row: Dict[str, str],
     fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
@@ -154,6 +202,155 @@ def distance_to_fasim_boundary(
             ]
         )
     return str(min(distances)) if distances else "NA"
+
+
+def interval_overlap_ratio(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    fasim_rows = fasim_grouped.get(group_key(row), [])
+    if not fasim_rows:
+        return "0.000000"
+    genome = row_genome_interval(row)
+    query = row_query_interval(row)
+    genome_len = interval_length(genome) or 1
+    query_len = interval_length(query) or 1
+    best = 0.0
+    for fasim in fasim_rows:
+        genome_fraction = overlap_length(genome, row_genome_interval(fasim)) / genome_len
+        query_fraction = overlap_length(query, row_query_interval(fasim)) / query_len
+        best = max(best, min(genome_fraction, query_fraction))
+    return fmt(best)
+
+
+def family_size(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    return str(len(fasim_grouped.get(group_key(row), [])))
+
+
+def family_span(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    fasim_rows = fasim_grouped.get(group_key(row), [])
+    if not fasim_rows:
+        return str(interval_length(row_genome_interval(row)))
+    starts = [parse_int(fasim.get("genome_start", "0")) for fasim in fasim_rows]
+    ends = [parse_int(fasim.get("genome_end", "0")) for fasim in fasim_rows]
+    return str(max(ends) - min(starts) + 1)
+
+
+def containing_higher_score_margin(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    score = parse_float(row.get("score", "0"))
+    genome = row_genome_interval(row)
+    query = row_query_interval(row)
+    margins: List[float] = []
+    for fasim in fasim_grouped.get(group_key(row), []):
+        fasim_score = parse_float(fasim.get("score", "0"))
+        if fasim_score <= score:
+            continue
+        if contains(row_genome_interval(fasim), genome) and contains(row_query_interval(fasim), query):
+            margins.append(fasim_score - score)
+    return fmt(max(margins) if margins else 0.0)
+
+
+def best_reference_rows(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    accepted_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> List[Dict[str, str]]:
+    return accepted_grouped.get(group_key(row), []) or fasim_grouped.get(group_key(row), [])
+
+
+def score_margin(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    accepted_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    references = best_reference_rows(row, fasim_grouped, accepted_grouped)
+    if not references:
+        return "0.000000"
+    best_score = max(parse_float(reference.get("score", "0")) for reference in references)
+    return fmt(parse_float(row.get("score", "0")) - best_score)
+
+
+def nt_margin(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    accepted_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    references = best_reference_rows(row, fasim_grouped, accepted_grouped)
+    if not references:
+        return "0"
+    best_nt = max(parse_int(reference.get("nt", "0")) for reference in references)
+    return str(parse_int(row.get("nt", "0")) - best_nt)
+
+
+def near_threshold_density(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    score = parse_float(row.get("score", "0"))
+    genome = row_genome_interval(row)
+    query = row_query_interval(row)
+    count = 0
+    for fasim in fasim_grouped.get(group_key(row), []):
+        if abs(parse_float(fasim.get("score", "0")) - score) > 5.0:
+            continue
+        if overlaps(genome, row_genome_interval(fasim)) or overlaps(query, row_query_interval(fasim)):
+            count += 1
+    return str(count)
+
+
+def peak_count(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    genome = row_genome_interval(row)
+    query = row_query_interval(row)
+    count = 0
+    for fasim in fasim_grouped.get(group_key(row), []):
+        if overlaps(genome, row_genome_interval(fasim)) or overlaps(query, row_query_interval(fasim)):
+            count += 1
+    return str(count)
+
+
+def second_peak_gap(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    scores = sorted(
+        {parse_float(fasim.get("score", "0")) for fasim in fasim_grouped.get(group_key(row), [])},
+        reverse=True,
+    )
+    if len(scores) < 2:
+        return "0.000000"
+    return fmt(scores[0] - scores[1])
+
+
+def plateau_width(
+    row: Dict[str, str],
+    fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+) -> str:
+    fasim_rows = fasim_grouped.get(group_key(row), [])
+    if not fasim_rows:
+        return "0"
+    best_score = max(parse_float(fasim.get("score", "0")) for fasim in fasim_rows)
+    plateau = [
+        fasim
+        for fasim in fasim_rows
+        if best_score - parse_float(fasim.get("score", "0")) <= 1.0
+    ]
+    if not plateau:
+        return "0"
+    starts = [parse_int(fasim.get("genome_start", "0")) for fasim in plateau]
+    ends = [parse_int(fasim.get("genome_end", "0")) for fasim in plateau]
+    return str(max(ends) - min(starts) + 1)
 
 
 def split_for_key(split_key: str) -> str:
@@ -198,6 +395,7 @@ def output_row(
     source: str,
     label: str,
     fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    accepted_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
 ) -> Dict[str, str]:
     workload = row.get("workload_label", "unknown")
     family = family_id(row)
@@ -217,7 +415,17 @@ def output_row(
         "family_rank": "0",
         "overlap_degree": row.get("same_family_overlap_count", "0"),
         "distance_to_fasim_boundary": distance_to_fasim_boundary(row, fasim_grouped),
+        "family_size": family_size(row, fasim_grouped),
+        "family_span": family_span(row, fasim_grouped),
         "box_size": str(box_size(row)),
+        "interval_overlap_ratio": interval_overlap_ratio(row, fasim_grouped),
+        "dominance_margin": containing_higher_score_margin(row, fasim_grouped),
+        "score_margin": score_margin(row, fasim_grouped, accepted_grouped),
+        "Nt_margin": nt_margin(row, fasim_grouped, accepted_grouped),
+        "near_threshold_density": near_threshold_density(row, fasim_grouped),
+        "peak_count": peak_count(row, fasim_grouped),
+        "second_peak_gap": second_peak_gap(row, fasim_grouped),
+        "plateau_width": plateau_width(row, fasim_grouped),
         "candidate_category": candidate_category(row, source),
         "hard_negative_source": hard_negative_source(row, source, label),
         "label": label,
@@ -235,6 +443,7 @@ def add_row(
     source: str,
     label: str,
     fasim_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
+    accepted_grouped: Dict[Tuple[str, str, str], List[Dict[str, str]]],
 ) -> None:
     key = row_key(source_row, label)
     if key in seen:
@@ -246,6 +455,7 @@ def add_row(
             source=source,
             label=label,
             fasim_grouped=fasim_grouped,
+            accepted_grouped=accepted_grouped,
         )
     )
 
@@ -269,6 +479,7 @@ def assign_family_ranks(rows: List[Dict[str, str]]) -> None:
 
 def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[str, str]]:
     fasim_grouped = fasim_records_by_group(source_rows)
+    accepted_grouped = accepted_records_by_group(source_rows)
     output: List[Dict[str, str]] = []
     seen: set[Tuple[str, ...]] = set()
 
@@ -281,6 +492,7 @@ def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[s
                 source="executor_candidate_sim_positive",
                 label="1",
                 fasim_grouped=fasim_grouped,
+                accepted_grouped=accepted_grouped,
             )
 
     for row in source_rows:
@@ -292,6 +504,7 @@ def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[s
                 source="sim_record_target_positive",
                 label="1",
                 fasim_grouped=fasim_grouped,
+                accepted_grouped=accepted_grouped,
             )
 
     for row in source_rows:
@@ -303,6 +516,7 @@ def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[s
                 source="accepted_extra_negative",
                 label="0",
                 fasim_grouped=fasim_grouped,
+                accepted_grouped=accepted_grouped,
             )
 
     for row in source_rows:
@@ -314,6 +528,7 @@ def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[s
                 source="executor_candidate_negative",
                 label="0",
                 fasim_grouped=fasim_grouped,
+                accepted_grouped=accepted_grouped,
             )
 
     for row in source_rows:
@@ -325,6 +540,7 @@ def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[s
                 source="fasim_supported_negative",
                 label="0",
                 fasim_grouped=fasim_grouped,
+                accepted_grouped=accepted_grouped,
             )
 
     for row in source_rows:
@@ -340,6 +556,7 @@ def build_negative_dataset(source_rows: Sequence[Dict[str, str]]) -> List[Dict[s
                 source="no_legacy_sim_records_proxy_negative",
                 label="0",
                 fasim_grouped=fasim_grouped,
+                accepted_grouped=accepted_grouped,
             )
 
     assign_family_ranks(output)
