@@ -112,6 +112,8 @@ Workload-heldout evaluation can be degenerate when only one workload has candida
 
 This is a dataset expansion and split-discipline checkpoint, not a model promotion checkpoint. When requested hard-negative sources are absent from the source TSV, the correct result is an explicit zero count.
 
+This PR audits the current dataset and shows it is still too small and too narrow for production learned-detector claims.
+
 No production model is trained or loaded. SIM labels remain offline labels only. They must not be used as runtime detector inputs, guard inputs, replacement inputs, or output ordering inputs.
 
 ## Scope
