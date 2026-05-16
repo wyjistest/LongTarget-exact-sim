@@ -181,6 +181,19 @@ def telemetry(rows: Sequence[Dict[str, str]], source_rows: Sequence[Dict[str, st
     workload = split_counts(rows, workload_heldout_split)
     unique_workloads = len({row.get("workload_id", "unknown") for row in rows})
     unique_families = len({row.get("family_id", "unknown") for row in rows})
+    validate_supported_workloads = {
+        row.get("workload_label", "unknown")
+        for row in source_rows
+        if row.get("validate_supported") == "1"
+    }
+    no_legacy_workloads = {
+        row.get("workload_label", "unknown")
+        for row in source_rows
+        if row.get("validate_unsupported_reason") == "no_legacy_sim_records"
+    }
+    hard_negative_source_count = sum(1 for value in hard_negative_sources.values() if value)
+    heldout_workload_available = unique_workloads >= 2 and workload["degenerate"] == "0"
+    heldout_family_available = unique_families >= 2 and family["degenerate"] == "0"
     candidate_eligible_positive = sum(
         1 for row in rows if row.get("label") == "1" and row.get("source") != "sim_record_target_positive"
     )
@@ -188,6 +201,14 @@ def telemetry(rows: Sequence[Dict[str, str]], source_rows: Sequence[Dict[str, st
     missing_requested_sources = [
         source for source in REQUESTED_NEGATIVE_SOURCES if hard_negative_sources.get(source, 0) == 0
     ]
+    if not heldout_workload_available:
+        modeling_gate = "collect_more_workloads"
+    elif not heldout_family_available:
+        modeling_gate = "collect_more_families"
+    elif hard_negative_source_count < 3:
+        modeling_gate = "collect_more_hard_negatives"
+    else:
+        modeling_gate = "ready_for_offline_shadow"
 
     metrics = {
         "enabled": "1",
@@ -196,13 +217,21 @@ def telemetry(rows: Sequence[Dict[str, str]], source_rows: Sequence[Dict[str, st
         "negative_rows": str(labels.get("0", 0)),
         "learnable_two_class": "1" if labels.get("1", 0) and labels.get("0", 0) else "0",
         "source_rows": str(len(source_rows)),
+        "workload_count": str(unique_workloads),
+        "family_count": str(unique_families),
+        "validate_supported_workload_count": str(len(validate_supported_workloads)),
+        "no_legacy_sim_records_workload_count": str(len(no_legacy_workloads)),
         "unique_workloads": str(unique_workloads),
         "unique_families": str(unique_families),
         "hard_negative_sources": source_counts_string(hard_negative_sources),
+        "hard_negative_source_count": str(hard_negative_source_count),
         "available_requested_negative_sources": source_counts_string(source_avail),
         "missing_requested_negative_sources": safe_metric_value(",".join(missing_requested_sources)),
         "candidate_eligible_positive_rows": str(candidate_eligible_positive),
         "candidate_eligible_negative_rows": str(candidate_eligible_negative),
+        "heldout_workload_available": "1" if heldout_workload_available else "0",
+        "heldout_family_available": "1" if heldout_family_available else "0",
+        "modeling_gate": modeling_gate,
         "production_model": "0",
         "sim_labels_runtime_inputs": "0",
         "runtime_behavior_changed": "0",
@@ -294,6 +323,29 @@ def render_report(
         "of treating the split as held-out evidence."
     )
     lines.append("")
+    lines.append("## Corpus Expansion Gate")
+    lines.append("")
+    lines.append("| Gate | Value |")
+    lines.append("| --- | --- |")
+    for key in (
+        "workload_count",
+        "family_count",
+        "validate_supported_workload_count",
+        "no_legacy_sim_records_workload_count",
+        "hard_negative_source_count",
+        "heldout_workload_available",
+        "heldout_family_available",
+        "modeling_gate",
+    ):
+        lines.append(f"| {key} | {metrics[key]} |")
+    lines.append("")
+    lines.append(
+        "`modeling_gate=ready_for_offline_shadow` requires non-degenerate "
+        "workload and family held-out evidence plus at least three hard-negative "
+        "sources. Otherwise the next step remains corpus expansion, not runtime "
+        "model promotion."
+    )
+    lines.append("")
     lines.append("## Current Split Shadow Metrics")
     lines.append("")
     lines.append("| Method | Precision | Recall | False positives | False negatives |")
@@ -328,10 +380,17 @@ def render_report(
         "from the source TSV, the correct result is an explicit zero count."
     )
     lines.append("")
-    lines.append(
-        "This PR audits the current dataset and shows it is still too small and "
-        "too narrow for production learned-detector claims."
-    )
+    if metrics["modeling_gate"] == "ready_for_offline_shadow":
+        lines.append(
+            "This PR meets the local corpus gate for a future offline shadow PR, "
+            "but it remains an offline research dataset and is still not evidence "
+            "for production learned-detector claims."
+        )
+    else:
+        lines.append(
+            "This PR audits the current dataset and shows it is still too small "
+            "and too narrow for production learned-detector claims."
+        )
     lines.append("")
     lines.append(
         "No production model is trained or loaded. SIM labels remain offline "

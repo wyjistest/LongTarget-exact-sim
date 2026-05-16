@@ -15,13 +15,19 @@ Input source learned dataset: `/data/wenyujianData/LongTarget-exact-sim/.worktre
 | fasim_sim_recovery_learned_detector_dataset_expansion_negative_rows | 25 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_learnable_two_class | 1 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_source_rows | 118 |
+| fasim_sim_recovery_learned_detector_dataset_expansion_workload_count | 1 |
+| fasim_sim_recovery_learned_detector_dataset_expansion_family_count | 4 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_unique_workloads | 1 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_unique_families | 4 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_hard_negative_sources | fasim_supported_non_sim:25 |
+| fasim_sim_recovery_learned_detector_dataset_expansion_hard_negative_source_count | 1 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_available_requested_negative_sources | fasim_supported_non_sim:25 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_missing_requested_negative_sources | executor_candidate_non_sim,extra_vs_sim_candidate,near_threshold_rejected_candidate,no_legacy_sim_records_proxy |
 | fasim_sim_recovery_learned_detector_dataset_expansion_candidate_eligible_positive_rows | 30 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_candidate_eligible_negative_rows | 25 |
+| fasim_sim_recovery_learned_detector_dataset_expansion_heldout_workload_available | 0 |
+| fasim_sim_recovery_learned_detector_dataset_expansion_heldout_family_available | 1 |
+| fasim_sim_recovery_learned_detector_dataset_expansion_modeling_gate | collect_more_workloads |
 | fasim_sim_recovery_learned_detector_dataset_expansion_production_model | 0 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_sim_labels_runtime_inputs | 0 |
 | fasim_sim_recovery_learned_detector_dataset_expansion_runtime_behavior_changed | 0 |
@@ -99,6 +105,19 @@ No unavailable hard-negative rows are fabricated.
 | workload_heldout | 0 | 0 | 40 | 25 | 1 |
 
 Workload-heldout evaluation can be degenerate when only one workload has candidate rows. In that case the report records the limitation instead of treating the split as held-out evidence.
+
+## Corpus Expansion Gate
+
+| Gate | Value |
+| --- | --- |
+| workload_count | 1 |
+| family_count | 4 |
+| hard_negative_source_count | 1 |
+| heldout_workload_available | 0 |
+| heldout_family_available | 1 |
+| modeling_gate | collect_more_workloads |
+
+`modeling_gate=ready_for_offline_shadow` requires non-degenerate workload and family held-out evidence plus at least three hard-negative sources. Otherwise the next step remains corpus expansion, not runtime model promotion.
 
 ## Current Split Shadow Metrics
 
