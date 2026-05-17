@@ -431,6 +431,14 @@ check-fasim-gpu-dp-column-auto-policy:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_gpu_dp_column_auto_policy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+benchmark-fasim-gpu-dp-column-auto-large-workload-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_large_workload_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_SYNTHETIC_ENTRIES:-1,32,64,128}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --large-real-dna "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REAL_DNA}" --large-real-rna "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REAL_RNA}" --large-real-label "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REAL_LABEL:-large_real_corpus_target}" --whole-genome-dna "$${FASIM_GPU_DP_COLUMN_AUTO_WHOLE_GENOME_DNA}" --whole-genome-rna "$${FASIM_GPU_DP_COLUMN_AUTO_WHOLE_GENOME_RNA}" --whole-genome-label "$${FASIM_GPU_DP_COLUMN_AUTO_WHOLE_GENOME_LABEL:-whole_genome_style_sample}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REPEAT:-3}" --require-profile
+
+check-fasim-gpu-dp-column-auto-large-workload-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_large_workload_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_CHECK_SYNTHETIC_ENTRIES:-1,32}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_CHECK_REPEAT:-1}" --work-dir $(CURDIR)/.tmp/fasim_gpu_dp_column_auto_large_workload_characterization_check --output $(CURDIR)/.tmp/fasim_gpu_dp_column_auto_large_workload_characterization_check.md --require-profile --check
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
@@ -900,7 +908,7 @@ check-longtarget-lite-output:
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
 		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold \
-		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
