@@ -525,6 +525,10 @@ check-fasim-sim-recovery-learned-detector-large-corpus-model-shadow:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_learned_detector_large_corpus_model_shadow.sh
 
+check-fasim-sim-recovery-learned-detector-precision-sweep:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/$(FASIM_TARGET) ./scripts/check_fasim_sim_recovery_learned_detector_precision_sweep.sh
+
 benchmark-fasim-sim-recovery-real-corpus-characterization:
 	$(MAKE) build-fasim
 	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
