@@ -20,6 +20,7 @@ from benchmark_fasim_gpu_dp_column_characterization import (  # noqa: E402
     fmt_int,
     fmt_seconds,
     fmt_speedup,
+    metric_float,
     median_count,
     median_metric,
     run_once,
@@ -44,26 +45,39 @@ FIRST_FAILURE_REASONS = {
 }
 
 
-def make_modes() -> List[ModeSpec]:
+def auto_gate_env(auto_min_windows: int | None, auto_min_cells: int | None) -> Dict[str, str]:
+    env: Dict[str, str] = {}
+    if auto_min_windows is not None:
+        env["FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS"] = str(auto_min_windows)
+    if auto_min_cells is not None:
+        env["FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS"] = str(auto_min_cells)
+    return env
+
+
+def make_modes(
+    *,
+    auto_min_windows: int | None = None,
+    auto_min_cells: int | None = None,
+    threshold_shadow: bool = False,
+) -> List[ModeSpec]:
+    gate_env = auto_gate_env(auto_min_windows, auto_min_cells)
+    auto_env = {
+        "FASIM_TRANSFERSTRING_TABLE": "1",
+        "FASIM_GPU_DP_COLUMN_AUTO": "1",
+        **gate_env,
+    }
+    validate_env = {
+        "FASIM_TRANSFERSTRING_TABLE": "1",
+        "FASIM_GPU_DP_COLUMN_AUTO": "1",
+        "FASIM_GPU_DP_COLUMN_VALIDATE": "1",
+        **gate_env,
+    }
+    if threshold_shadow:
+        validate_env["FASIM_GPU_DP_COLUMN_THRESHOLD_SHADOW"] = "1"
     return [
         ModeSpec("table_only", "cuda", {"FASIM_TRANSFERSTRING_TABLE": "1"}),
-        ModeSpec(
-            "auto",
-            "cuda",
-            {
-                "FASIM_TRANSFERSTRING_TABLE": "1",
-                "FASIM_GPU_DP_COLUMN_AUTO": "1",
-            },
-        ),
-        ModeSpec(
-            "auto_validate",
-            "cuda",
-            {
-                "FASIM_TRANSFERSTRING_TABLE": "1",
-                "FASIM_GPU_DP_COLUMN_AUTO": "1",
-                "FASIM_GPU_DP_COLUMN_VALIDATE": "1",
-            },
-        ),
+        ModeSpec("auto", "cuda", auto_env),
+        ModeSpec("auto_validate", "cuda", validate_env),
     ]
 
 
@@ -189,6 +203,7 @@ def render_report(
     workload: WorkloadSpec,
     modes: List[ModeSpec],
     results: Dict[str, List[RunResult]],
+    topk_sweep_results: List[tuple[int, RunResult]],
     repeat: int,
     output_path: Path,
 ) -> str:
@@ -198,14 +213,26 @@ def render_report(
     lines.append("Base branch:")
     lines.append("")
     lines.append("```text")
-    lines.append("fasim-gpu-dp-column-auto-large-workload-characterization")
+    lines.append("fasim-gpu-dp-column-auto-hg38-validation-taxonomy")
     lines.append("```")
     lines.append("")
     lines.append(
         "This report classifies `FASIM_GPU_DP_COLUMN_AUTO=1` validation fallbacks "
-        "on a large real hg38 workload. It adds telemetry only: no GPU logic, "
-        "default behavior, scoring, threshold, non-overlap, output, SIM-close, "
-        "recovery, or validation semantics change."
+        "on a large real hg38 workload after the score-mismatch and lowercase "
+        "soft-mask fixes. GPU AUTO remains default-off. Lowercase FASTA bases are "
+        "now treated as their uppercase bases during Fasim transforms instead of "
+        "being converted to `N`; that is an intentional output semantic fix."
+    )
+    lines.append("")
+    lines.append("## Root Cause And Fix")
+    lines.append("")
+    lines.append(
+        "The original hg38 score mismatches were threshold-score mismatches, not CUDA "
+        "DP recurrence mismatches. A second issue was that legacy Fasim transformed "
+        "lowercase soft-masked `a/c/g/t` bases to `N`; this report uses the corrected "
+        "case-insensitive transform. GPU AUTO also keeps exact-column scoreInfo "
+        "reconstruction on the already-selected threshold, so compact overflow repair "
+        "cannot drift from the CPU threshold contract."
     )
     lines.append("")
     lines.append(f"Workload: `{workload.label}`. Each mode uses {repeat} run(s); tables report medians.")
@@ -311,6 +338,35 @@ def render_report(
         ],
     )
     lines.append("")
+    lines.append("## Threshold Source")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Mode",
+            "GPU threshold windows",
+            "CPU threshold windows",
+            "CPU threshold seconds",
+            "Shadow enabled",
+            "Shadow compared windows",
+            "Shadow mismatches",
+            "Shadow max delta",
+        ],
+        [
+            [
+                mode,
+                fmt_int(mode_count(results, mode, "fasim_gpu_dp_column_threshold_gpu_windows")),
+                fmt_int(mode_count(results, mode, "fasim_gpu_dp_column_threshold_cpu_windows")),
+                fmt_seconds(mode_metric(results, mode, "fasim_gpu_dp_column_threshold_cpu_seconds")),
+                str(mode_count(results, mode, "fasim_gpu_dp_column_threshold_shadow_enabled")),
+                fmt_int(mode_count(results, mode, "fasim_gpu_dp_column_threshold_shadow_compared_windows")),
+                fmt_int(mode_count(results, mode, "fasim_gpu_dp_column_threshold_shadow_mismatches")),
+                fmt_int(mode_count(results, mode, "fasim_gpu_dp_column_threshold_shadow_delta_max")),
+            ]
+            for mode in ["auto", "auto_validate"]
+        ],
+    )
+    lines.append("")
     lines.append("## Fallback Taxonomy")
     lines.append("")
     append_table(
@@ -318,6 +374,54 @@ def render_report(
         ["Reason", "Windows", "Percent of validated windows", "Digest affected", "Notes"],
         taxonomy_rows(results),
     )
+    if topk_sweep_results:
+        lines.append("")
+        lines.append("## TopK Sweep")
+        lines.append("")
+        base_topk = mode_count(results, "auto_validate", "fasim_gpu_dp_column_topk_cap")
+        sweep_rows = [
+            [
+                f"default ({base_topk})",
+                fmt_seconds(mode_metric(results, "auto_validate", "fasim_total_seconds")),
+                fmt_int(mode_count(results, "auto_validate", "fasim_gpu_dp_column_exact_scoreinfo_extend_calls")),
+                fmt_int(mode_count(results, "auto_validate", "fasim_gpu_dp_column_compact_scoreinfo_fallbacks")),
+                "yes" if digest_matches_reference(results, "auto_validate") else "no",
+                fmt_int(mode_count(results, "auto_validate", "fasim_gpu_dp_column_validate_windows_failed")),
+            ]
+        ]
+        sweep_rows.extend(
+            [
+                [
+                    str(topk),
+                    fmt_seconds(metric_float(run.metrics, "fasim_total_seconds")),
+                    fmt_int(int(round(metric_float(run.metrics, "fasim_gpu_dp_column_exact_scoreinfo_extend_calls")))),
+                    fmt_int(int(round(metric_float(run.metrics, "fasim_gpu_dp_column_compact_scoreinfo_fallbacks")))),
+                    "yes" if run.digest == stable_digest(results["table_only"]) else "no",
+                    fmt_int(int(round(metric_float(run.metrics, "fasim_gpu_dp_column_validate_windows_failed")))),
+                ]
+                for topk, run in topk_sweep_results
+            ]
+        )
+        append_table(
+            lines,
+            [
+                "TopK",
+                "AUTO+validate seconds",
+                "Exact extends",
+                "Compact fallback windows",
+                "Digest match",
+                "Validation failed windows",
+            ],
+            sweep_rows,
+        )
+        lines.append("")
+        lines.append(
+            "The sweep is characterization only. Runtime dynamic TopK remains a follow-up "
+            "candidate unless a later PR turns this evidence into a strict policy change. "
+            "Values below the default TopK test whether reducing TopK creates more exact "
+            "extends; values above the default require a separate implementation because "
+            "the current runtime caps TopK at 256."
+        )
     lines.append("")
     lines.append("## Finding")
     lines.append("")
@@ -355,10 +459,31 @@ def render_report(
     lines.append("## Decision")
     lines.append("")
     if failed == 0 and digest_matches_reference(results, "auto_validate"):
-        decision = (
-            "Validation taxonomy is clean for this workload. AUTO remains default-off; "
-            "a later PR may decide whether this supports a large-workload opt-in recommendation."
+        shadow_compared = mode_count(
+            results, "auto_validate", "fasim_gpu_dp_column_threshold_shadow_compared_windows"
         )
+        shadow_mismatches = mode_count(
+            results, "auto_validate", "fasim_gpu_dp_column_threshold_shadow_mismatches"
+        )
+        shadow_delta = mode_count(
+            results, "auto_validate", "fasim_gpu_dp_column_threshold_shadow_delta_max"
+        )
+        if shadow_compared > 0 and shadow_mismatches > 0:
+            decision = (
+                "Validation taxonomy is clean for this workload. Threshold shadow shows true "
+                f"non-ACGT windows cannot yet switch blindly to GPU peak thresholds: "
+                f"{fmt_int(shadow_compared)} shadow comparisons produced "
+                f"{fmt_int(shadow_mismatches)} mismatches with max delta {fmt_int(shadow_delta)}, "
+                "while the production path keeps CPU threshold fallback for those windows. "
+                "TopK sweep rows below the default test whether reducing TopK creates more exact-column "
+                "extends; >default dynamic TopK or batched exact-column remains a later optimization. "
+                "AUTO remains default-off."
+            )
+        else:
+            decision = (
+                "Validation taxonomy is clean for this workload. AUTO remains default-off; "
+                "a later PR may decide whether this supports a large-workload opt-in recommendation."
+            )
     elif digest_matches_reference(results, "auto_validate"):
         decision = (
             "AUTO has a strong large-workload speed signal and final digest match, but strict "
@@ -378,8 +503,9 @@ def render_report(
     lines.append("new GPU/kernel optimization logic: no")
     lines.append("default GPU DP+column: no")
     lines.append("validation relaxation or hidden mismatches: no")
-    lines.append("scoring/threshold/non-overlap/output change: no")
-    lines.append("SIM-close/recovery change: no")
+    lines.append("lowercase soft-mask output semantic fix: yes")
+    lines.append("threshold contract fix for non-ACGT transformed targets: yes")
+    lines.append("non-overlap/SIM-close/recovery change: no")
     lines.append("```")
 
     report = "\n".join(lines)
@@ -405,7 +531,26 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--require-profile", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--auto-min-windows", type=int)
+    parser.add_argument("--auto-min-cells", type=int)
+    parser.add_argument("--threshold-shadow", action="store_true")
+    parser.add_argument("--topk-sweep", default="")
     return parser.parse_args()
+
+
+def parse_topk_sweep(value: str) -> List[int]:
+    if not value:
+        return []
+    out: List[int] = []
+    for raw in value.split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        parsed = int(item)
+        if parsed <= 0:
+            raise RuntimeError("--topk-sweep values must be positive")
+        out.append(parsed)
+    return out
 
 
 def main() -> int:
@@ -425,7 +570,11 @@ def main() -> int:
         dna_path=Path(args.dna).resolve(),
         rna_path=Path(args.rna).resolve(),
     )
-    modes = make_modes()
+    modes = make_modes(
+        auto_min_windows=args.auto_min_windows,
+        auto_min_cells=args.auto_min_cells,
+        threshold_shadow=args.threshold_shadow,
+    )
     results: Dict[str, List[RunResult]] = {}
     work_dir = Path(args.work_dir)
     for mode in modes:
@@ -442,6 +591,26 @@ def main() -> int:
             )
         results[mode.label] = runs
 
+    topk_sweep_results: List[tuple[int, RunResult]] = []
+    for topk in parse_topk_sweep(args.topk_sweep):
+        env = {
+            "FASIM_TRANSFERSTRING_TABLE": "1",
+            "FASIM_GPU_DP_COLUMN_AUTO": "1",
+            "FASIM_GPU_DP_COLUMN_VALIDATE": "1",
+            "FASIM_GPU_DP_COLUMN_TOPK_CAP": str(topk),
+            **auto_gate_env(args.auto_min_windows, args.auto_min_cells),
+        }
+        if args.threshold_shadow:
+            env["FASIM_GPU_DP_COLUMN_THRESHOLD_SHADOW"] = "1"
+        run = run_once(
+            workload=workload,
+            mode=ModeSpec(f"topk_{topk}", "cuda", env),
+            bin_path=cuda_bin,
+            work_dir=work_dir / workload.label / "topk_sweep" / f"topk_{topk}",
+            require_profile=args.require_profile,
+        )
+        topk_sweep_results.append((topk, run))
+
     if args.check:
         if not digest_matches_reference(results, "auto"):
             raise RuntimeError("auto digest does not match table_only")
@@ -449,11 +618,17 @@ def main() -> int:
             raise RuntimeError("auto_validate digest does not match table_only")
         if mode_count(results, "auto_validate", "fasim_gpu_dp_column_validate_windows_total") <= 0:
             raise RuntimeError("auto_validate did not report validation windows")
+        for topk, run in topk_sweep_results:
+            if run.digest != stable_digest(results["table_only"]):
+                raise RuntimeError(f"topK {topk} digest does not match table_only")
+            if int(round(metric_float(run.metrics, "fasim_gpu_dp_column_validate_windows_failed"))) != 0:
+                raise RuntimeError(f"topK {topk} validation failed")
 
     render_report(
         workload=workload,
         modes=modes,
         results=results,
+        topk_sweep_results=topk_sweep_results,
         repeat=args.repeat,
         output_path=Path(args.output),
     )

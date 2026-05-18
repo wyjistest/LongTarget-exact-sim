@@ -128,6 +128,11 @@ static inline bool fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_COMPACT_SCOREINFO");
 }
 
+static inline bool fasim_gpu_dp_column_threshold_shadow_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_THRESHOLD_SHADOW");
+}
+
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_CELLS = 1500000000ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_WINDOWS = 128ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NONE = 0ULL;
@@ -239,6 +244,15 @@ struct FasimProfileStats
         gpuDpColumnKernelNanoseconds(0),
         gpuDpColumnTotalNanoseconds(0),
         gpuDpColumnValidateNanoseconds(0),
+        gpuDpColumnEmitNanoseconds(0),
+        gpuDpColumnScoreInfoReconstructNanoseconds(0),
+        gpuDpColumnExactColumnExtendNanoseconds(0),
+        gpuDpColumnTopKPostprocessNanoseconds(0),
+        gpuDpColumnCompactUnpackNanoseconds(0),
+        gpuDpColumnCpuEmitRecords(0),
+        gpuDpColumnExactExtendWindows(0),
+        gpuDpColumnOverflowWindows(0),
+        gpuDpColumnScoreInfoReconstructRecords(0),
         gpuDpColumnTopKCap(0),
         gpuDpColumnScoreMismatches(0),
         gpuDpColumnColumnMaxMismatches(0),
@@ -311,6 +325,12 @@ struct FasimProfileStats
         gpuDpColumnCompactScoreInfoFallbacks(0),
         gpuDpColumnExactScoreInfoExtendCalls(0),
         gpuDpColumnExactScoreInfoExtendD2HBytes(0),
+        gpuDpColumnThresholdGpuWindows(0),
+        gpuDpColumnThresholdCpuWindows(0),
+        gpuDpColumnThresholdCpuNanoseconds(0),
+        gpuDpColumnThresholdShadowComparedWindows(0),
+        gpuDpColumnThresholdShadowMismatches(0),
+        gpuDpColumnThresholdShadowDeltaMax(0),
         gpuDpColumnAutoRequested(0),
         gpuDpColumnAutoActive(0),
         gpuDpColumnAutoMinCells(0),
@@ -354,6 +374,15 @@ struct FasimProfileStats
     uint64_t gpuDpColumnKernelNanoseconds;
     uint64_t gpuDpColumnTotalNanoseconds;
     uint64_t gpuDpColumnValidateNanoseconds;
+    uint64_t gpuDpColumnEmitNanoseconds;
+    uint64_t gpuDpColumnScoreInfoReconstructNanoseconds;
+    uint64_t gpuDpColumnExactColumnExtendNanoseconds;
+    uint64_t gpuDpColumnTopKPostprocessNanoseconds;
+    uint64_t gpuDpColumnCompactUnpackNanoseconds;
+    uint64_t gpuDpColumnCpuEmitRecords;
+    uint64_t gpuDpColumnExactExtendWindows;
+    uint64_t gpuDpColumnOverflowWindows;
+    uint64_t gpuDpColumnScoreInfoReconstructRecords;
     uint64_t gpuDpColumnTopKCap;
     uint64_t gpuDpColumnScoreMismatches;
     uint64_t gpuDpColumnColumnMaxMismatches;
@@ -426,6 +455,12 @@ struct FasimProfileStats
     uint64_t gpuDpColumnCompactScoreInfoFallbacks;
     uint64_t gpuDpColumnExactScoreInfoExtendCalls;
     uint64_t gpuDpColumnExactScoreInfoExtendD2HBytes;
+    uint64_t gpuDpColumnThresholdGpuWindows;
+    uint64_t gpuDpColumnThresholdCpuWindows;
+    uint64_t gpuDpColumnThresholdCpuNanoseconds;
+    uint64_t gpuDpColumnThresholdShadowComparedWindows;
+    uint64_t gpuDpColumnThresholdShadowMismatches;
+    uint64_t gpuDpColumnThresholdShadowDeltaMax;
     uint64_t gpuDpColumnAutoRequested;
     uint64_t gpuDpColumnAutoActive;
     uint64_t gpuDpColumnAutoMinCells;
@@ -436,6 +471,7 @@ struct FasimProfileStats
     uint64_t gpuDpColumnAutoSelectedPath;
     uint64_t gpuDpColumnAutoThresholdMatched;
     FasimTransferStringProfileStats transferStringProfile;
+    FasimFastSimExtendProfileStats fastSimExtendProfile;
 };
 
 static inline void fasim_profile_add_elapsed(uint64_t &slot, uint64_t startNanoseconds)
@@ -454,6 +490,60 @@ static inline void fasim_profile_add_elapsed_to(uint64_t &slot,
 
 static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
 {
+    const double alignCalls =
+        static_cast<double>(stats.fastSimExtendProfile.alignerAlignCalls);
+    const double avgAlignQueryLen =
+        alignCalls > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.alignerAlignTotalQueryBases) / alignCalls :
+        0.0;
+    const double avgAlignTargetLen =
+        alignCalls > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.alignerAlignTotalTargetBases) / alignCalls :
+        0.0;
+    const double preAlignPredictedReject =
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFilterPredictedReject);
+    const double preAlignTrueReject =
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFilterTrueReject);
+    const double preAlignActualRejected =
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFilterActualRejected);
+    const double preAlignPrecision =
+        preAlignPredictedReject > 0.0 ? preAlignTrueReject / preAlignPredictedReject : 0.0;
+    const double preAlignRecall =
+        preAlignActualRejected > 0.0 ? preAlignTrueReject / preAlignActualRejected : 0.0;
+    const double preAlignActualEmitted =
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFilterActualEmitted);
+    const double preAlignEmittedScoreMean =
+        preAlignActualEmitted > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureEmittedScoreSum) / preAlignActualEmitted :
+        0.0;
+    const double preAlignRejectedScoreMean =
+        preAlignActualRejected > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureRejectedScoreSum) / preAlignActualRejected :
+        0.0;
+    const double preAlignEmittedRankMean =
+        preAlignActualEmitted > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureEmittedRankSum) / preAlignActualEmitted :
+        0.0;
+    const double preAlignRejectedRankMean =
+        preAlignActualRejected > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureRejectedRankSum) / preAlignActualRejected :
+        0.0;
+    const double preAlignEmittedTargetLenMean =
+        preAlignActualEmitted > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureEmittedTargetLenSum) / preAlignActualEmitted :
+        0.0;
+    const double preAlignRejectedTargetLenMean =
+        preAlignActualRejected > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureRejectedTargetLenSum) / preAlignActualRejected :
+        0.0;
+    const double preAlignEmittedAlignCallsMean =
+        preAlignActualEmitted > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureEmittedAlignCallsSum) / preAlignActualEmitted :
+        0.0;
+    const double preAlignRejectedAlignCallsMean =
+        preAlignActualRejected > 0.0 ?
+        static_cast<double>(stats.fastSimExtendProfile.preAlignFeatureRejectedAlignCallsSum) / preAlignActualRejected :
+        0.0;
     cerr << "benchmark.fasim_total_seconds=" << fasim_profile_seconds(stats.totalNanoseconds) << endl;
     cerr << "benchmark.fasim_io_seconds=" << fasim_profile_seconds(stats.ioNanoseconds) << endl;
     cerr << "benchmark.fasim_window_generation_seconds=" << fasim_profile_seconds(stats.windowGenerationNanoseconds) << endl;
@@ -514,6 +604,91 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_num_candidates=" << stats.numCandidates << endl;
     cerr << "benchmark.fasim_num_validated_candidates=" << stats.numValidatedCandidates << endl;
     cerr << "benchmark.fasim_num_final_hits=" << stats.numFinalHits << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_inclusive_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.inclusiveNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_exclusive_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.exclusiveNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_calls=" << stats.fastSimExtendProfile.calls << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_scoreinfo_records=" << stats.fastSimExtendProfile.scoreInfoRecords << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_records_considered=" << stats.fastSimExtendProfile.recordsConsidered << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_records_emitted=" << stats.fastSimExtendProfile.recordsEmitted << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_records_rejected=" << stats.fastSimExtendProfile.recordsRejected << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_exact_column_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.exactColumnNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_scoreinfo_scan_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.scoreInfoScanNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_candidate_filter_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.candidateFilterNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_record_build_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.recordBuildNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_alignment_reconstruct_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.alignmentReconstructNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_cigar_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.cigarNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_vector_push_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.vectorPushNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_allocation_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.allocationNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_output_stage_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.outputStageNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_duplicate_overlap_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.duplicateOverlapNanoseconds) << endl;
+    cerr << "benchmark.fasim_fastSIM_extend_string_format_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.stringFormatNanoseconds) << endl;
+    cerr << "benchmark.fasim_aligner_align_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.alignerAlignNanoseconds) << endl;
+    cerr << "benchmark.fasim_aligner_align_calls=" << stats.fastSimExtendProfile.alignerAlignCalls << endl;
+    cerr << "benchmark.fasim_aligner_align_total_cells=" << stats.fastSimExtendProfile.alignerAlignTotalCells << endl;
+    cerr << "benchmark.fasim_aligner_align_total_query_bases=" << stats.fastSimExtendProfile.alignerAlignTotalQueryBases << endl;
+    cerr << "benchmark.fasim_aligner_align_total_target_bases=" << stats.fastSimExtendProfile.alignerAlignTotalTargetBases << endl;
+    cerr << "benchmark.fasim_aligner_align_avg_query_len=" << avgAlignQueryLen << endl;
+    cerr << "benchmark.fasim_aligner_align_avg_target_len=" << avgAlignTargetLen << endl;
+    cerr << "benchmark.fasim_aligner_align_max_query_len=" << stats.fastSimExtendProfile.alignerAlignMaxQueryLen << endl;
+    cerr << "benchmark.fasim_aligner_align_max_target_len=" << stats.fastSimExtendProfile.alignerAlignMaxTargetLen << endl;
+    cerr << "benchmark.fasim_aligner_align_records_considered=" << stats.fastSimExtendProfile.alignerAlignRecordsConsidered << endl;
+    cerr << "benchmark.fasim_aligner_align_records_emitted=" << stats.fastSimExtendProfile.alignerAlignRecordsEmitted << endl;
+    cerr << "benchmark.fasim_aligner_align_records_rejected_after_align=" << stats.fastSimExtendProfile.alignerAlignRecordsRejectedAfterAlign << endl;
+    cerr << "benchmark.fasim_aligner_align_scoreinfo_exact_score_matches=" << stats.fastSimExtendProfile.alignerAlignScoreInfoExactScoreMatches << endl;
+    cerr << "benchmark.fasim_aligner_align_scoreinfo_position_matches=" << stats.fastSimExtendProfile.alignerAlignScoreInfoPositionMatches << endl;
+    cerr << "benchmark.fasim_aligner_align_required_for_cigar=" << stats.fastSimExtendProfile.alignerAlignRequiredForCigar << endl;
+    cerr << "benchmark.fasim_aligner_align_required_for_score=" << stats.fastSimExtendProfile.alignerAlignRequiredForScore << endl;
+    cerr << "benchmark.fasim_aligner_align_required_for_coordinates=" << stats.fastSimExtendProfile.alignerAlignRequiredForCoordinates << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_enabled=" << stats.fastSimExtendProfile.alignerAlignBypassShadowEnabled << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_bypassable_records=" << stats.fastSimExtendProfile.alignerAlignBypassShadowBypassableRecords << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_non_bypassable_records=" << stats.fastSimExtendProfile.alignerAlignBypassShadowNonBypassableRecords << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_est_seconds_saved=" << fasim_profile_seconds(stats.fastSimExtendProfile.alignerAlignBypassShadowEstSavedNanoseconds) << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_score_mismatches=" << stats.fastSimExtendProfile.alignerAlignBypassShadowScoreMismatches << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_coordinate_mismatches=" << stats.fastSimExtendProfile.alignerAlignBypassShadowCoordinateMismatches << endl;
+    cerr << "benchmark.fasim_aligner_align_bypass_shadow_cigar_missing_records=" << stats.fastSimExtendProfile.alignerAlignBypassShadowCigarMissingRecords << endl;
+    cerr << "benchmark.fasim_pre_align_filter_shadow_enabled=" << stats.fastSimExtendProfile.preAlignFilterShadowEnabled << endl;
+    cerr << "benchmark.fasim_pre_align_filter_candidates=" << stats.fastSimExtendProfile.preAlignFilterCandidates << endl;
+    cerr << "benchmark.fasim_pre_align_filter_actual_emitted=" << stats.fastSimExtendProfile.preAlignFilterActualEmitted << endl;
+    cerr << "benchmark.fasim_pre_align_filter_actual_rejected=" << stats.fastSimExtendProfile.preAlignFilterActualRejected << endl;
+    cerr << "benchmark.fasim_pre_align_filter_predicted_reject=" << stats.fastSimExtendProfile.preAlignFilterPredictedReject << endl;
+    cerr << "benchmark.fasim_pre_align_filter_true_reject=" << stats.fastSimExtendProfile.preAlignFilterTrueReject << endl;
+    cerr << "benchmark.fasim_pre_align_filter_false_reject=" << stats.fastSimExtendProfile.preAlignFilterFalseReject << endl;
+    cerr << "benchmark.fasim_pre_align_filter_false_keep=" << stats.fastSimExtendProfile.preAlignFilterFalseKeep << endl;
+    cerr << "benchmark.fasim_pre_align_filter_precision=" << preAlignPrecision << endl;
+    cerr << "benchmark.fasim_pre_align_filter_recall=" << preAlignRecall << endl;
+    cerr << "benchmark.fasim_pre_align_filter_est_align_calls_saved=" << stats.fastSimExtendProfile.preAlignFilterEstAlignCallsSaved << endl;
+    cerr << "benchmark.fasim_pre_align_filter_est_align_cells_saved=" << stats.fastSimExtendProfile.preAlignFilterEstAlignCellsSaved << endl;
+    cerr << "benchmark.fasim_pre_align_filter_est_seconds_saved=" << fasim_profile_seconds(stats.fastSimExtendProfile.preAlignFilterEstSavedNanoseconds) << endl;
+    cerr << "benchmark.fasim_pre_align_filter_output_digest_affected=0" << endl;
+    cerr << "benchmark.fasim_pre_align_filter_actual_emitted_align_calls=" << stats.fastSimExtendProfile.preAlignFilterActualEmittedAlignCalls << endl;
+    cerr << "benchmark.fasim_pre_align_filter_actual_rejected_align_calls=" << stats.fastSimExtendProfile.preAlignFilterActualRejectedAlignCalls << endl;
+    cerr << "benchmark.fasim_pre_align_filter_actual_emitted_align_cells=" << stats.fastSimExtendProfile.preAlignFilterActualEmittedAlignCells << endl;
+    cerr << "benchmark.fasim_pre_align_filter_actual_rejected_align_cells=" << stats.fastSimExtendProfile.preAlignFilterActualRejectedAlignCells << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_score=" << stats.fastSimExtendProfile.preAlignRejectReasonScore << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_Nt=" << stats.fastSimExtendProfile.preAlignRejectReasonNt << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_length=" << stats.fastSimExtendProfile.preAlignRejectReasonLength << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_coordinates=" << stats.fastSimExtendProfile.preAlignRejectReasonCoordinates << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_overlap=" << stats.fastSimExtendProfile.preAlignRejectReasonOverlap << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_cigar=" << stats.fastSimExtendProfile.preAlignRejectReasonCigar << endl;
+    cerr << "benchmark.fasim_pre_align_reject_reason_unknown=" << stats.fastSimExtendProfile.preAlignRejectReasonUnknown << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_enabled=" << stats.fastSimExtendProfile.preAlignFeatureSweepEnabled << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_rules_tested=" << stats.fastSimExtendProfile.preAlignFeatureSweepRulesTested << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_zero_false_reject_rule=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestZeroFalseRejectRule << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_predicted_reject=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestPredictedReject << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_true_reject=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestTrueReject << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_false_reject=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestFalseReject << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_false_keep=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestFalseKeep << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_est_calls_saved=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestEstCallsSaved << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_est_cells_saved=" << stats.fastSimExtendProfile.preAlignFeatureSweepBestEstCellsSaved << endl;
+    cerr << "benchmark.fasim_pre_align_feature_sweep_best_est_seconds_saved=" << fasim_profile_seconds(stats.fastSimExtendProfile.preAlignFeatureSweepBestEstSavedNanoseconds) << endl;
+    cerr << "benchmark.fasim_pre_align_feature_emitted_score_mean=" << preAlignEmittedScoreMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_rejected_score_mean=" << preAlignRejectedScoreMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_emitted_rank_mean=" << preAlignEmittedRankMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_rejected_rank_mean=" << preAlignRejectedRankMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_emitted_target_len_mean=" << preAlignEmittedTargetLenMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_rejected_target_len_mean=" << preAlignRejectedTargetLenMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_emitted_align_calls_mean=" << preAlignEmittedAlignCallsMean << endl;
+    cerr << "benchmark.fasim_pre_align_feature_rejected_align_calls_mean=" << preAlignRejectedAlignCallsMean << endl;
     cerr << "benchmark.fasim_gpu_dp_column_requested=" << stats.gpuDpColumnRequested << endl;
     cerr << "benchmark.fasim_gpu_dp_column_active=" << stats.gpuDpColumnActive << endl;
     cerr << "benchmark.fasim_gpu_dp_column_validate_enabled=" << (fasim_gpu_dp_column_validate_enabled_runtime() ? 1 : 0) << endl;
@@ -534,6 +709,17 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_kernel_seconds=" << fasim_profile_seconds(stats.gpuDpColumnKernelNanoseconds) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_total_seconds=" << fasim_profile_seconds(stats.gpuDpColumnTotalNanoseconds) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_validate_seconds=" << fasim_profile_seconds(stats.gpuDpColumnValidateNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_emit_seconds=" << fasim_profile_seconds(stats.gpuDpColumnEmitNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_scoreinfo_reconstruct_seconds=" << fasim_profile_seconds(stats.gpuDpColumnScoreInfoReconstructNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_exact_column_extend_seconds=" << fasim_profile_seconds(stats.gpuDpColumnExactColumnExtendNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_fallback_seconds=" << fasim_profile_seconds(stats.gpuDpColumnThresholdCpuNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_topk_postprocess_seconds=" << fasim_profile_seconds(stats.gpuDpColumnTopKPostprocessNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_compact_unpack_seconds=" << fasim_profile_seconds(stats.gpuDpColumnCompactUnpackNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_cpu_emit_records=" << stats.gpuDpColumnCpuEmitRecords << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_exact_extend_windows=" << stats.gpuDpColumnExactExtendWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_overflow_windows=" << stats.gpuDpColumnOverflowWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_fallback_windows=" << stats.gpuDpColumnThresholdCpuWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_scoreinfo_reconstruct_records=" << stats.gpuDpColumnScoreInfoReconstructRecords << endl;
     cerr << "benchmark.fasim_gpu_dp_column_topk_cap=" << stats.gpuDpColumnTopKCap << endl;
     cerr << "benchmark.fasim_gpu_dp_column_score_mismatches=" << stats.gpuDpColumnScoreMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_column_max_mismatches=" << stats.gpuDpColumnColumnMaxMismatches << endl;
@@ -613,6 +799,13 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_compact_scoreinfo_fallbacks=" << stats.gpuDpColumnCompactScoreInfoFallbacks << endl;
     cerr << "benchmark.fasim_gpu_dp_column_exact_scoreinfo_extend_calls=" << stats.gpuDpColumnExactScoreInfoExtendCalls << endl;
     cerr << "benchmark.fasim_gpu_dp_column_exact_scoreinfo_extend_d2h_bytes=" << stats.gpuDpColumnExactScoreInfoExtendD2HBytes << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_gpu_windows=" << stats.gpuDpColumnThresholdGpuWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_cpu_windows=" << stats.gpuDpColumnThresholdCpuWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_cpu_seconds=" << fasim_profile_seconds(stats.gpuDpColumnThresholdCpuNanoseconds) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_shadow_enabled=" << (fasim_gpu_dp_column_threshold_shadow_enabled_runtime() ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_shadow_compared_windows=" << stats.gpuDpColumnThresholdShadowComparedWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_shadow_mismatches=" << stats.gpuDpColumnThresholdShadowMismatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_threshold_shadow_delta_max=" << stats.gpuDpColumnThresholdShadowDeltaMax << endl;
 }
 
 static inline bool fasim_write_tfosorted_lite_enabled_runtime()
@@ -680,6 +873,124 @@ static inline int fasim_extend_threads_runtime(int corenum)
         threads = 256;
     }
     return threads;
+}
+
+static inline int fasim_gpu_dp_column_peak_max_score(const PreAlignCudaPeak *taskPeaks, int topK)
+{
+    int maxScore = 0;
+    if (taskPeaks == NULL || topK <= 0)
+    {
+        return maxScore;
+    }
+    for (int k = 0; k < topK; ++k)
+    {
+        const PreAlignCudaPeak &peak = taskPeaks[static_cast<size_t>(k)];
+        if (peak.position >= 0 && peak.score > maxScore)
+        {
+            maxScore = peak.score;
+        }
+    }
+    return maxScore;
+}
+
+static inline bool fasim_gpu_dp_column_peaks_have_topk_overflow(
+    const PreAlignCudaPeak *taskPeaks,
+    int topK,
+    int minScore)
+{
+    if (taskPeaks == NULL || topK <= 0)
+    {
+        return false;
+    }
+
+    bool rowFull = true;
+    bool havePeak = false;
+    int minKeptScore = 0;
+    for (int k = 0; k < topK; ++k)
+    {
+        const PreAlignCudaPeak &peak = taskPeaks[static_cast<size_t>(k)];
+        if (peak.position < 0)
+        {
+            rowFull = false;
+            continue;
+        }
+        if (!havePeak || peak.score < minKeptScore)
+        {
+            minKeptScore = peak.score;
+            havePeak = true;
+        }
+    }
+
+    return rowFull && havePeak && minKeptScore > minScore;
+}
+
+static inline bool fasim_gpu_dp_column_target_requires_cpu_threshold_score(const std::string &target)
+{
+    for (size_t i = 0; i < target.size(); ++i)
+    {
+        switch (target[i])
+        {
+        case 'A':
+        case 'a':
+        case 'C':
+        case 'c':
+        case 'G':
+        case 'g':
+        case 'T':
+        case 't':
+            break;
+        default:
+            return true;
+        }
+    }
+    return false;
+}
+
+static inline int fasim_gpu_dp_column_threshold_max_score(
+    const std::string &query,
+    const std::string &target,
+    long dnaStartPos,
+    int rule,
+    const PreAlignCudaPeak *taskPeaks,
+    int topK,
+    FasimProfileStats *profileStats)
+{
+    const int gpuMaxScore = fasim_gpu_dp_column_peak_max_score(taskPeaks, topK);
+    if (fasim_gpu_dp_column_target_requires_cpu_threshold_score(target))
+    {
+        if (profileStats != NULL)
+        {
+            ++profileStats->gpuDpColumnThresholdCpuWindows;
+        }
+        const uint64_t thresholdStart = profileStats != NULL ? fasim_profile_now_nanoseconds() : 0;
+        std::string queryCopy = query;
+        std::string targetCopy = target;
+        const int cpuMaxScore = calc_score_once(queryCopy, targetCopy, static_cast<int>(dnaStartPos), rule);
+        if (profileStats != NULL)
+        {
+            fasim_profile_add_elapsed(profileStats->gpuDpColumnThresholdCpuNanoseconds,
+                                      thresholdStart);
+            if (fasim_gpu_dp_column_threshold_shadow_enabled_runtime())
+            {
+                ++profileStats->gpuDpColumnThresholdShadowComparedWindows;
+                const uint64_t delta = static_cast<uint64_t>(abs(cpuMaxScore - gpuMaxScore));
+                if (delta > profileStats->gpuDpColumnThresholdShadowDeltaMax)
+                {
+                    profileStats->gpuDpColumnThresholdShadowDeltaMax = delta;
+                }
+                if (cpuMaxScore != gpuMaxScore)
+                {
+                    ++profileStats->gpuDpColumnThresholdShadowMismatches;
+                }
+            }
+        }
+        return cpuMaxScore;
+    }
+    if (profileStats != NULL)
+    {
+        ++profileStats->gpuDpColumnThresholdGpuWindows;
+    }
+    return gpuMaxScore;
 }
 
 static inline void fasim_cuda_devices_runtime(std::vector<int> &devicesOut)
@@ -1505,6 +1816,9 @@ int main(int argc, char* const* argv)
 		                                          int minScore,
 		                                          std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
 		{
+			const uint64_t reconstructStart =
+				(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
+			size_t unpackedRecords = 0;
 			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
 			candidates.reserve(static_cast<size_t>(topK));
 			for (int k = 0; k < topK; ++k)
@@ -1515,19 +1829,29 @@ int main(int argc, char* const* argv)
 					continue;
 				}
 				candidates.push_back(StripedSmithWaterman::scoreInfo(p.score, p.position));
+				++unpackedRecords;
 			}
+			const uint64_t topKPostprocessStart =
+				(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
 			build_scoreinfo_from_candidates(candidates, outScoreInfo);
+			if (profileEnabled && gpuDpColumnRequested)
+			{
+				profileStats.gpuDpColumnCompactUnpackNanoseconds +=
+					topKPostprocessStart - reconstructStart;
+				fasim_profile_add_elapsed(profileStats.gpuDpColumnTopKPostprocessNanoseconds,
+				                          topKPostprocessStart);
+				fasim_profile_add_elapsed(profileStats.gpuDpColumnScoreInfoReconstructNanoseconds,
+				                          reconstructStart);
+				profileStats.gpuDpColumnScoreInfoReconstructRecords +=
+					static_cast<uint64_t>(outScoreInfo.size());
+				(void)unpackedRecords;
+			}
 		};
 
 		auto gpu_peaks_have_topk_overflow = [&](const PreAlignCudaPeak *taskPeaks,
 		                                        int minScore)
 		{
-			if (topK <= 0)
-			{
-				return false;
-			}
-			const PreAlignCudaPeak &lastPeak = taskPeaks[static_cast<size_t>(topK - 1)];
-			return lastPeak.position >= 0 && lastPeak.score > minScore;
+			return fasim_gpu_dp_column_peaks_have_topk_overflow(taskPeaks, topK, minScore);
 		};
 
 		auto record_exact_scoreinfo_extend = [&]()
@@ -1537,6 +1861,7 @@ int main(int argc, char* const* argv)
 				return;
 			}
 			++profileStats.gpuDpColumnExactScoreInfoExtendCalls;
+			++profileStats.gpuDpColumnExactExtendWindows;
 			profileStats.gpuDpColumnExactScoreInfoExtendD2HBytes +=
 				static_cast<uint64_t>(currentTargetLength > 0 ? currentTargetLength : 0) *
 				static_cast<uint64_t>(sizeof(int));
@@ -1547,6 +1872,8 @@ int main(int argc, char* const* argv)
 			int minScore,
 			std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
 		{
+			const uint64_t reconstructStart =
+				(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
 			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
 			candidates.reserve(columnScores.size());
 			for (size_t i = 0; i < columnScores.size(); ++i)
@@ -1557,18 +1884,32 @@ int main(int argc, char* const* argv)
 					                                                      static_cast<int>(i)));
 				}
 			}
+			const uint64_t topKPostprocessStart =
+				(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
 			build_scoreinfo_from_candidates(candidates, outScoreInfo);
+			if (profileEnabled && gpuDpColumnRequested)
+			{
+				fasim_profile_add_elapsed(profileStats.gpuDpColumnTopKPostprocessNanoseconds,
+				                          topKPostprocessStart);
+				fasim_profile_add_elapsed(profileStats.gpuDpColumnScoreInfoReconstructNanoseconds,
+				                          reconstructStart);
+				profileStats.gpuDpColumnScoreInfoReconstructRecords +=
+					static_cast<uint64_t>(outScoreInfo.size());
+			}
 		};
 
-		auto build_scoreinfo_from_gpu_exact_columns = [&](
-			const PreAlignCudaQueryHandle &query,
-			const uint8_t *encodedTarget,
-			int targetLength,
-			int *maxScoreOut,
-			std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo,
-			std::vector<int> *columnScoresOut,
-			const char *context)
+			auto build_scoreinfo_from_gpu_exact_columns = [&](
+				const PreAlignCudaQueryHandle &query,
+				const uint8_t *encodedTarget,
+				int targetLength,
+				int minScore,
+				int *maxScoreOut,
+				std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo,
+				std::vector<int> *columnScoresOut,
+				const char *context)
 		{
+			const uint64_t exactColumnStart =
+				(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
 			std::vector<int> columnScores;
 			PreAlignCudaBatchResult columnResult;
 			string columnError;
@@ -1593,6 +1934,13 @@ int main(int argc, char* const* argv)
 				}
 				return false;
 			}
+			if (profileEnabled && gpuDpColumnRequested)
+			{
+				fasim_profile_add_elapsed(profileStats.gpuDpColumnExactColumnExtendNanoseconds,
+				                          exactColumnStart);
+				fasim_fastsim_profile_add_elapsed(profileStats.fastSimExtendProfile.exactColumnNanoseconds,
+				                                  exactColumnStart);
+			}
 
 			int maxScore = 0;
 			for (size_t i = 0; i < columnScores.size(); ++i)
@@ -1602,8 +1950,9 @@ int main(int argc, char* const* argv)
 					maxScore = columnScores[i];
 				}
 			}
-			const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
-			build_scoreinfo_from_column_scores(columnScores, minScore, outScoreInfo);
+			const int scoreInfoMinScore =
+				minScore >= 0 ? minScore : static_cast<int>(static_cast<double>(maxScore) * 0.8);
+			build_scoreinfo_from_column_scores(columnScores, scoreInfoMinScore, outScoreInfo);
 			if (maxScoreOut != NULL)
 			{
 				*maxScoreOut = maxScore;
@@ -1847,24 +2196,32 @@ int main(int argc, char* const* argv)
 					++profileStats.gpuDpColumnDebugWindowsExamined;
 				}
 
-			string cpuQuery = lncSeq;
-			string cpuTarget = task.seq2;
-			const int cpuMaxScore = calc_score_once(cpuQuery, cpuTarget, task.dnaStartPos, paraList.rule);
-			int gpuMaxScore = taskPeaks[0].score;
-			std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
-			std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
-			std::vector<struct StripedSmithWaterman::scoreInfo> gpuExactColumnScoreInfo;
-			std::vector<int> gpuExactColumnScores;
-			const bool needExactColumnScores =
-				gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow;
-			bool gpuScoreInfoFromExactColumns = false;
+				string cpuQuery = lncSeq;
+				string cpuTarget = task.seq2;
+				const int cpuMaxScore = calc_score_once(cpuQuery, cpuTarget, task.dnaStartPos, paraList.rule);
+					int gpuMaxScore = fasim_gpu_dp_column_threshold_max_score(lncSeq,
+					                                                          task.seq2,
+					                                                          task.dnaStartPos,
+					                                                          task.rule,
+					                                                          taskPeaks,
+					                                                          topK,
+					                                                          profileEnabled ? &profileStats : NULL);
+				const int minScore = static_cast<int>(static_cast<double>(gpuMaxScore) * 0.8);
+				std::vector<struct StripedSmithWaterman::scoreInfo> gpuScoreInfo;
+				std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+				std::vector<struct StripedSmithWaterman::scoreInfo> gpuExactColumnScoreInfo;
+				std::vector<int> gpuExactColumnScores;
+				const bool needExactColumnScores =
+					gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow;
+				bool gpuScoreInfoFromExactColumns = false;
 				if (gpuDpColumnRequested && !gpuDpColumnCompactScoreInfo)
 				{
 					if (debugQuery == NULL || debugEncodedTarget == NULL ||
 					    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
 					                                            debugEncodedTarget,
 					                                            debugTargetLength,
-					                                            &gpuMaxScore,
+					                                            minScore,
+					                                            NULL,
 					                                            gpuScoreInfo,
 					                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
 					                                            "validate"))
@@ -1881,6 +2238,7 @@ int main(int argc, char* const* argv)
 					    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
 					                                            debugEncodedTarget,
 					                                            debugTargetLength,
+					                                            minScore,
 					                                            &exactColumnMaxScore,
 					                                            gpuExactColumnScoreInfo,
 					                                            &gpuExactColumnScores,
@@ -1914,15 +2272,14 @@ int main(int argc, char* const* argv)
 				}
 			}
 
-			const int minScore = static_cast<int>(static_cast<double>(gpuMaxScore) * 0.8);
-			if (topK > 0)
-			{
-				topKOverflow = gpu_peaks_have_topk_overflow(taskPeaks, minScore);
-				if (topKOverflow && profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
+				if (topK > 0)
 				{
-					++profileStats.gpuDpColumnTopKOverflowWindows;
+					topKOverflow = gpu_peaks_have_topk_overflow(taskPeaks, minScore);
+					if (topKOverflow && profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
+					{
+						++profileStats.gpuDpColumnTopKOverflowWindows;
+					}
 				}
-			}
 				if (!gpuScoreInfoFromExactColumns)
 				{
 					if (gpuDpColumnRequested && gpuDpColumnCompactScoreInfo && topKOverflow)
@@ -1932,7 +2289,8 @@ int main(int argc, char* const* argv)
 						    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
 						                                            debugEncodedTarget,
 						                                            debugTargetLength,
-						                                            &gpuMaxScore,
+						                                            minScore,
+						                                            NULL,
 						                                            gpuScoreInfo,
 						                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
 						                                            "validate_compact_overflow"))
@@ -2528,6 +2886,11 @@ int main(int argc, char* const* argv)
 			if (profileEnabled)
 			{
 				profileStats.numCandidates += static_cast<uint64_t>(taskTriplexes.size());
+				if (gpuDpColumnRequested)
+				{
+					profileStats.gpuDpColumnCpuEmitRecords +=
+						static_cast<uint64_t>(taskTriplexes.size());
+				}
 			}
 			for (size_t i = 0; i < taskTriplexes.size(); ++i)
 			{
@@ -2709,12 +3072,22 @@ int main(int argc, char* const* argv)
 							{
 								const StreamTask &task = tasks[t];
 								const size_t base = t * static_cast<size_t>(topK);
-								int maxScore = peaks[base].score;
+									int maxScore = fasim_gpu_dp_column_threshold_max_score(lncSeq,
+									                                                      task.seq2,
+									                                                      task.dnaStartPos,
+									                                                      task.rule,
+									                                                      peaks.data() + base,
+									                                                      topK,
+									                                                      profileEnabled ? &profileStats : NULL);
 								int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 								const bool compactTopKOverflow =
 									gpuDpColumnRequested &&
 									gpuDpColumnCompactScoreInfo &&
 									gpu_peaks_have_topk_overflow(peaks.data() + base, minScore);
+								if (profileEnabled && gpuDpColumnRequested && compactTopKOverflow)
+								{
+									++profileStats.gpuDpColumnOverflowWindows;
+								}
 								if (gpuDpColumnRequested && (!gpuDpColumnCompactScoreInfo || compactTopKOverflow))
 								{
 									const uint8_t *exactTarget =
@@ -2724,13 +3097,14 @@ int main(int argc, char* const* argv)
 									{
 										++profileStats.gpuDpColumnCompactScoreInfoFallbacks;
 									}
-									if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
-									                                            exactTarget,
-									                                            currentTargetLength,
-									                                            &maxScore,
-									                                            finalScoreInfo,
-									                                            NULL,
-									                                            "extend"))
+										if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
+										                                            exactTarget,
+										                                            currentTargetLength,
+										                                            minScore,
+										                                            NULL,
+										                                            finalScoreInfo,
+										                                            NULL,
+										                                            "extend"))
 									{
 										gpuValidationOk = false;
 										break;
@@ -2767,6 +3141,8 @@ int main(int argc, char* const* argv)
 								}
 
 								taskTriplexes.clear();
+								const uint64_t emitStart =
+									(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
 								fastSIM_extend_from_scoreinfo(aligner,
 								                              filter,
 								                              alignment,
@@ -2785,8 +3161,14 @@ int main(int argc, char* const* argv)
 								                              paraList.penaltyT,
 								                              paraList.penaltyC,
 								                              paraList,
-								                              writeFull);
+								                              writeFull,
+								                              profileEnabled ? &profileStats.fastSimExtendProfile : NULL);
 								write_task_triplexes(task);
+								if (profileEnabled && gpuDpColumnRequested)
+								{
+									fasim_profile_add_elapsed(profileStats.gpuDpColumnEmitNanoseconds,
+									                          emitStart);
+								}
 							}
 						}
 						else
@@ -2824,7 +3206,13 @@ int main(int argc, char* const* argv)
 										const StreamTask &task = tasks[t];
 										const size_t base = t * static_cast<size_t>(topK);
 										const PreAlignCudaPeak *taskPeaks = peaks.data() + base;
-										const int maxScore = taskPeaks[0].score;
+											const int maxScore = fasim_gpu_dp_column_threshold_max_score(lncSeq,
+											                                                            task.seq2,
+											                                                            task.dnaStartPos,
+											                                                            task.rule,
+											                                                            taskPeaks,
+											                                                            topK,
+											                                                            profileEnabled ? &profileStats : NULL);
 										const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 
 										finalScoreInfoLocal.clear();
@@ -2869,10 +3257,12 @@ int main(int argc, char* const* argv)
 											continue;
 										}
 
-										taskTriplexesLocal.clear();
-										fastSIM_extend_from_scoreinfo(alignerLocal,
-										                              filterLocal,
-										                              alignmentLocal,
+									taskTriplexesLocal.clear();
+									const uint64_t emitStart =
+										(profileEnabled && gpuDpColumnRequested) ? fasim_profile_now_nanoseconds() : 0;
+									fastSIM_extend_from_scoreinfo(alignerLocal,
+									                              filterLocal,
+									                              alignmentLocal,
 										                              15,
 										                              lncSeq,
 										                              task.seq2,
@@ -2888,10 +3278,18 @@ int main(int argc, char* const* argv)
 										                              paraList.penaltyT,
 										                              paraList.penaltyC,
 									                              paraList,
-									                              writeFull);
-										if (taskTriplexesLocal.empty())
-										{
-											continue;
+									                              writeFull,
+									                              profileEnabled ? &profileStats.fastSimExtendProfile : NULL);
+									if (profileEnabled && gpuDpColumnRequested)
+									{
+										fasim_profile_add_elapsed(profileStats.gpuDpColumnEmitNanoseconds,
+										                          emitStart);
+										profileStats.gpuDpColumnCpuEmitRecords +=
+											static_cast<uint64_t>(taskTriplexesLocal.size());
+									}
+									if (taskTriplexesLocal.empty())
+									{
+										continue;
 										}
 
 										outBuf.str("");
@@ -3225,7 +3623,13 @@ int main(int argc, char* const* argv)
 											break;
 										}
 
-										int maxScore = taskPeaks[0].score;
+											int maxScore = fasim_gpu_dp_column_threshold_max_score(lncSeq,
+											                                                      task.seq2,
+											                                                      task.dnaStartPos,
+											                                                      task.rule,
+											                                                      taskPeaks,
+											                                                      topK,
+											                                                      profileEnabled ? &profileStats : NULL);
 										int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 
 										finalScoreInfoLocal.clear();
@@ -3233,6 +3637,10 @@ int main(int argc, char* const* argv)
 											gpuDpColumnRequested &&
 											gpuDpColumnCompactScoreInfo &&
 											gpu_peaks_have_topk_overflow(taskPeaks, minScore);
+										if (profileEnabled && gpuDpColumnRequested && compactTopKOverflow)
+										{
+											++profileStats.gpuDpColumnOverflowWindows;
+										}
 										if (gpuDpColumnRequested && (!gpuDpColumnCompactScoreInfo || compactTopKOverflow))
 										{
 											const uint8_t *exactTarget =
@@ -3243,19 +3651,19 @@ int main(int argc, char* const* argv)
 											{
 												++profileStats.gpuDpColumnCompactScoreInfoFallbacks;
 											}
-											if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[d],
-											                                            exactTarget,
-											                                            currentTargetLength,
-											                                            &maxScore,
-											                                            finalScoreInfoLocal,
-											                                            NULL,
-											                                            "extend"))
+												if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[d],
+												                                            exactTarget,
+												                                            currentTargetLength,
+												                                            minScore,
+												                                            NULL,
+												                                            finalScoreInfoLocal,
+												                                            NULL,
+												                                            "extend"))
 											{
 												exactScoreInfoFailed.store(1, std::memory_order_relaxed);
 												break;
 											}
-											minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
-										}
+											}
 										else if (gpuDpColumnRequested && gpuDpColumnCompactScoreInfo)
 										{
 											build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, finalScoreInfoLocal);
@@ -3326,10 +3734,11 @@ int main(int argc, char* const* argv)
 										                              task.rule,
 										                              paraList.ntMin,
 										                              paraList.ntMax,
-										                              paraList.penaltyT,
-										                              paraList.penaltyC,
-										                              paraList,
-										                              writeFull);
+											                              paraList.penaltyT,
+											                              paraList.penaltyC,
+											                              paraList,
+											                              writeFull,
+											                              profileEnabled ? &profileStats.fastSimExtendProfile : NULL);
 										if (taskTriplexesLocal.empty())
 										{
 											continue;
@@ -4149,7 +4558,13 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				{
 					FasimPrealignCudaTask &task = tasks[t];
 					const size_t base = t * static_cast<size_t>(topK);
-					const int maxScore = peaks[base].score;
+						const int maxScore = fasim_gpu_dp_column_threshold_max_score(rnaSequence,
+						                                                             task.seq2,
+						                                                             task.dnaStartPos,
+						                                                             task.rule,
+						                                                             peaks.data() + base,
+						                                                             topK,
+						                                                             NULL);
 					const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
 
 					finalScoreInfo.clear();
