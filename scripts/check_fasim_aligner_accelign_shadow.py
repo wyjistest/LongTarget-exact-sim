@@ -51,6 +51,24 @@ REQUIRED_KEYS = [
     "fasim_aligner_accelign_shadow_uses_runtime_output",
 ]
 
+SCORE_ONLY_REQUIRED_KEYS = [
+    "fasim_accelign_score_only_shadow_enabled",
+    "fasim_accelign_score_only_mode",
+    "fasim_accelign_score_only_requests",
+    "fasim_accelign_score_only_requests_compared",
+    "fasim_accelign_score_only_score_mismatches",
+    "fasim_accelign_score_only_cpu_seconds",
+    "fasim_accelign_score_only_kernel_seconds",
+    "fasim_accelign_score_only_total_seconds",
+    "fasim_accelign_score_only_h2d_bytes",
+    "fasim_accelign_score_only_d2h_bytes",
+    "fasim_accelign_score_only_query_reuse_active",
+    "fasim_accelign_score_only_query_staging_bytes",
+    "fasim_accelign_score_only_target_staging_bytes",
+    "fasim_accelign_score_only_has_endpoint_contract",
+    "fasim_accelign_score_only_uses_runtime_output",
+]
+
 
 def metric_float(metrics: Dict[str, str], key: str) -> float:
     try:
@@ -160,6 +178,54 @@ def main() -> int:
         raise RuntimeError("Accelign shadow must not claim CIGAR coverage")
     if metric_int(shadow.metrics, "fasim_aligner_accelign_shadow_has_alignment_string_contract") != 0:
         raise RuntimeError("Accelign shadow must not claim alignment-string coverage")
+
+    score_only = run_once(
+        workload=workload,
+        mode=ModeSpec(
+            "accelign_score_only_shadow",
+            "cuda",
+            {
+                "FASIM_TRANSFERSTRING_TABLE": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS": "1",
+                "FASIM_ALIGNER_ACCELIGN_SCORE_ONLY_SHADOW": "1",
+                "FASIM_ALIGNER_ACCELIGN_SCORE_ONLY_SHADOW_MAX_REQUESTS": "256",
+            },
+        ),
+        bin_path=cuda_bin,
+        work_dir=work_dir / workload.label / "accelign_score_only_shadow",
+        require_profile=True,
+    )
+    require_digest_match(table, score_only, "accelign_score_only_shadow")
+    require_metrics(score_only.metrics, SCORE_ONLY_REQUIRED_KEYS)
+
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_shadow_enabled") != 1:
+        raise RuntimeError("Accelign score-only shadow was not enabled")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_requests") <= 0:
+        raise RuntimeError("Accelign score-only shadow did not compare any requests")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_requests_compared") <= 0:
+        raise RuntimeError("Accelign score-only shadow did not compare any sampled requests")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_uses_runtime_output") != 0:
+        raise RuntimeError("Accelign score-only shadow must not feed runtime output")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_has_endpoint_contract") != 0:
+        raise RuntimeError("Accelign score-only shadow must not claim endpoint coverage")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_score_mismatches") != 0:
+        raise RuntimeError("Accelign score-only shadow score contract mismatched")
+    if metric_float(score_only.metrics, "fasim_accelign_score_only_cpu_seconds") <= 0.0:
+        raise RuntimeError("Accelign score-only shadow did not report CPU reference time")
+    if metric_float(score_only.metrics, "fasim_accelign_score_only_kernel_seconds") <= 0.0:
+        raise RuntimeError("Accelign score-only shadow did not report GPU kernel time")
+    if metric_float(score_only.metrics, "fasim_accelign_score_only_total_seconds") <= 0.0:
+        raise RuntimeError("Accelign score-only shadow did not report total time")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_h2d_bytes") <= 0:
+        raise RuntimeError("Accelign score-only shadow did not report H2D bytes")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_d2h_bytes") <= 0:
+        raise RuntimeError("Accelign score-only shadow did not report D2H bytes")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_query_staging_bytes") <= 0:
+        raise RuntimeError("Accelign score-only shadow did not report query staging bytes")
+    if metric_int(score_only.metrics, "fasim_accelign_score_only_target_staging_bytes") <= 0:
+        raise RuntimeError("Accelign score-only shadow did not report target staging bytes")
 
     print("Fasim Accelign aligner shadow checks passed")
     return 0

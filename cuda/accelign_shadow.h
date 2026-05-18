@@ -46,6 +46,9 @@ struct AccelignShadowBatchResult
     : gpuSeconds(0.0),
       h2dBytes(0),
       d2hBytes(0),
+      queryStagingBytes(0),
+      targetStagingBytes(0),
+      queryReuseActive(false),
       usedCuda(false)
   {
   }
@@ -53,6 +56,9 @@ struct AccelignShadowBatchResult
   double gpuSeconds;
   uint64_t h2dBytes;
   uint64_t d2hBytes;
+  uint64_t queryStagingBytes;
+  uint64_t targetStagingBytes;
+  bool queryReuseActive;
   bool usedCuda;
 };
 
@@ -60,6 +66,18 @@ bool accelign_shadow_is_built();
 bool accelign_shadow_init(int device, std::string *errorOut);
 
 bool accelign_shadow_run_local_affine_float(
+  const std::vector<AccelignShadowRequest> &requests,
+  std::vector<AccelignShadowResult> *outResults,
+  AccelignShadowBatchResult *batchResult,
+  std::string *errorOut);
+
+bool accelign_shadow_run_local_affine_score_only_float(
+  const std::vector<AccelignShadowRequest> &requests,
+  std::vector<AccelignShadowResult> *outResults,
+  AccelignShadowBatchResult *batchResult,
+  std::string *errorOut);
+
+bool accelign_shadow_run_local_affine_score_only_one_to_all_float(
   const std::vector<AccelignShadowRequest> &requests,
   std::vector<AccelignShadowResult> *outResults,
   AccelignShadowBatchResult *batchResult,

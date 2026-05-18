@@ -36,3 +36,27 @@ bool accelign_shadow_run_local_affine_float(
   }
   return false;
 }
+
+bool accelign_shadow_run_local_affine_score_only_float(
+  const std::vector<AccelignShadowRequest> &requests,
+  std::vector<AccelignShadowResult> *outResults,
+  AccelignShadowBatchResult *batchResult,
+  std::string *errorOut)
+{
+  return accelign_shadow_run_local_affine_float(requests,
+                                                outResults,
+                                                batchResult,
+                                                errorOut);
+}
+
+bool accelign_shadow_run_local_affine_score_only_one_to_all_float(
+  const std::vector<AccelignShadowRequest> &requests,
+  std::vector<AccelignShadowResult> *outResults,
+  AccelignShadowBatchResult *batchResult,
+  std::string *errorOut)
+{
+  return accelign_shadow_run_local_affine_float(requests,
+                                                outResults,
+                                                batchResult,
+                                                errorOut);
+}

@@ -73,6 +73,25 @@ SCALING_KEYS = [
     "fasim_aligner_accelign_shadow_uses_runtime_output",
 ]
 
+SCORE_ONLY_KEYS = [
+    "fasim_accelign_score_only_shadow_enabled",
+    "fasim_accelign_score_only_mode",
+    "fasim_accelign_score_only_requests",
+    "fasim_accelign_score_only_requests_compared",
+    "fasim_accelign_score_only_requests_unsupported",
+    "fasim_accelign_score_only_score_mismatches",
+    "fasim_accelign_score_only_cpu_seconds",
+    "fasim_accelign_score_only_kernel_seconds",
+    "fasim_accelign_score_only_total_seconds",
+    "fasim_accelign_score_only_h2d_bytes",
+    "fasim_accelign_score_only_d2h_bytes",
+    "fasim_accelign_score_only_query_reuse_active",
+    "fasim_accelign_score_only_query_staging_bytes",
+    "fasim_accelign_score_only_target_staging_bytes",
+    "fasim_accelign_score_only_has_endpoint_contract",
+    "fasim_accelign_score_only_uses_runtime_output",
+]
+
 
 def parse_sample_sizes(value: str) -> List[int]:
     sizes: List[int] = []
@@ -115,6 +134,12 @@ def digest_matches_reference(results: Dict[str, List[RunResult]], mode: str) -> 
 def require_scaling_metrics(results: Dict[str, List[RunResult]], modes: List[str]) -> None:
     for mode in modes:
         for key in SCALING_KEYS:
+            mode_metric(results, mode, key)
+
+
+def require_score_only_metrics(results: Dict[str, List[RunResult]], modes: List[str]) -> None:
+    for mode in modes:
+        for key in SCORE_ONLY_KEYS:
             mode_metric(results, mode, key)
 
 
@@ -469,6 +494,182 @@ def render_report(
     return report
 
 
+def render_score_only_report(
+    *,
+    workload: WorkloadSpec,
+    results: Dict[str, List[RunResult]],
+    sample_sizes: List[int],
+    repeat: int,
+    output_path: Path,
+) -> str:
+    score_modes = [f"accelign_score_only_{sample_label(size)}" for size in sample_sizes]
+    lines: List[str] = []
+    lines.append("# Fasim Accelign Score-Only Query-Reuse Shadow")
+    lines.append("")
+    lines.append(
+        "This report characterizes a default-off Accelign score-only shadow. "
+        "CPU `aligner.Align` remains the runtime authority; Accelign scores are "
+        "not used for output, thresholding, non-overlap, CIGAR/alignment output, "
+        "SIM-close, or recovery."
+    )
+    lines.append("")
+    lines.append(
+        "Endpoint comparison is intentionally unsupported here because the "
+        "endpoint taxonomy showed same-score endpoint selection differences. "
+        "This mode measures score contract, timing, and duplicate query staging "
+        "costs before any one-to-many/PSSM reuse work."
+    )
+    lines.append("")
+    lines.append(f"Workload: `{workload.label}`. Each mode uses {repeat} run(s); tables report medians.")
+    lines.append("")
+
+    rows: List[List[str]] = []
+    for size in sample_sizes:
+        mode = f"accelign_score_only_{sample_label(size)}"
+        requests = mode_count(results, mode, "fasim_accelign_score_only_requests")
+        compared = mode_count(results, mode, "fasim_accelign_score_only_requests_compared")
+        cpu_seconds = mode_metric(results, mode, "fasim_accelign_score_only_cpu_seconds")
+        kernel_seconds = mode_metric(results, mode, "fasim_accelign_score_only_kernel_seconds")
+        total_seconds = mode_metric(results, mode, "fasim_accelign_score_only_total_seconds")
+        overhead_seconds = total_seconds - kernel_seconds
+        rows.append(
+            [
+                sample_label(size),
+                fmt_int(requests),
+                fmt_int(compared),
+                fmt_int(mode_count(results, mode, "fasim_accelign_score_only_requests_unsupported")),
+                fmt_seconds(cpu_seconds),
+                fmt_seconds(kernel_seconds),
+                fmt_seconds(overhead_seconds),
+                fmt_seconds(total_seconds),
+                fmt_speedup(speedup(cpu_seconds, kernel_seconds)),
+                fmt_speedup(speedup(cpu_seconds, total_seconds)),
+                fmt_int(mode_count(results, mode, "fasim_accelign_score_only_score_mismatches")),
+                str(mode_count(results, mode, "fasim_accelign_score_only_has_endpoint_contract")),
+                str(mode_count(results, mode, "fasim_accelign_score_only_uses_runtime_output")),
+            ]
+        )
+    lines.append("## Score-Only Timing")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Sample cap",
+            "Requests",
+            "Compared",
+            "Unsupported",
+            "CPU reference seconds",
+            "Accelign kernel seconds",
+            "Staging/overhead seconds",
+            "Accelign total seconds",
+            "Kernel vs CPU speedup",
+            "Total vs CPU speedup",
+            "Score mismatches",
+            "Endpoint contract",
+            "Uses runtime output",
+        ],
+        rows,
+    )
+    lines.append("")
+
+    staging_rows: List[List[str]] = []
+    for size in sample_sizes:
+        mode = f"accelign_score_only_{sample_label(size)}"
+        h2d = mode_count(results, mode, "fasim_accelign_score_only_h2d_bytes")
+        d2h = mode_count(results, mode, "fasim_accelign_score_only_d2h_bytes")
+        query_bytes = mode_count(results, mode, "fasim_accelign_score_only_query_staging_bytes")
+        target_bytes = mode_count(results, mode, "fasim_accelign_score_only_target_staging_bytes")
+        staging_rows.append(
+            [
+                sample_label(size),
+                fmt_int(h2d),
+                fmt_int(d2h),
+                fmt_int(query_bytes),
+                fmt_int(target_bytes),
+                f"{(query_bytes / h2d * 100.0) if h2d else 0.0:.2f}%",
+                f"{(target_bytes / h2d * 100.0) if h2d else 0.0:.2f}%",
+                str(mode_count(results, mode, "fasim_accelign_score_only_query_reuse_active")),
+            ]
+        )
+    lines.append("## Staging")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Sample cap",
+            "H2D bytes",
+            "D2H bytes",
+            "Query staging bytes",
+            "Target staging bytes",
+            "Query share of H2D",
+            "Target share of H2D",
+            "Query reuse active",
+        ],
+        staging_rows,
+    )
+    lines.append("")
+
+    largest_mode = score_modes[-1]
+    largest_score_mismatches = mode_count(
+        results, largest_mode, "fasim_accelign_score_only_score_mismatches"
+    )
+    largest_cpu = mode_metric(results, largest_mode, "fasim_accelign_score_only_cpu_seconds")
+    largest_kernel = mode_metric(results, largest_mode, "fasim_accelign_score_only_kernel_seconds")
+    largest_total = mode_metric(results, largest_mode, "fasim_accelign_score_only_total_seconds")
+    largest_query_reuse = mode_count(
+        results, largest_mode, "fasim_accelign_score_only_query_reuse_active"
+    )
+
+    lines.append("## Decision")
+    lines.append("")
+    if largest_score_mismatches != 0:
+        lines.append("Accelign score-only mismatched CPU `aligner.Align`; stop this path.")
+    elif largest_total < largest_cpu and largest_query_reuse != 0:
+        lines.append(
+            "Score-only is clean and query reuse is active with total shadow "
+            "time below the sampled CPU reference. Next work can design a "
+            "score-only precheck/CPU traceback bridge."
+        )
+    elif largest_total < largest_cpu:
+        lines.append(
+            "Score-only is clean and faster than sampled CPU reference, but "
+            "query reuse is not active. Next work should evaluate one-to-many "
+            "or PSSM query reuse before any real-path design."
+        )
+    elif largest_kernel < largest_cpu:
+        lines.append(
+            "Score-only kernel is faster than sampled CPU reference, but total "
+            "time is not. Request staging/layout dominates the next decision."
+        )
+    else:
+        lines.append("Score-only is clean but not faster; stop Accelign score-only work.")
+    lines.append("")
+    lines.append("```text")
+    lines.append(f"largest_cpu_reference_seconds = {fmt_seconds(largest_cpu)}")
+    lines.append(f"largest_accelign_score_only_kernel_seconds = {fmt_seconds(largest_kernel)}")
+    lines.append(f"largest_accelign_score_only_total_seconds = {fmt_seconds(largest_total)}")
+    lines.append(f"query_reuse_active = {largest_query_reuse}")
+    lines.append("```")
+    lines.append("")
+    lines.append("## Boundaries")
+    lines.append("")
+    lines.append("```text")
+    lines.append("use Accelign result for output: no")
+    lines.append("use Accelign endpoints: no")
+    lines.append("skip CPU aligner.Align: no")
+    lines.append("CIGAR/alignment-string reconstruction: no")
+    lines.append("scoring/threshold/non-overlap change: no")
+    lines.append("GPU DP column AUTO policy change: no")
+    lines.append("validation relaxation: no")
+    lines.append("mandatory Accelign dependency: no")
+    lines.append("```")
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cuda-bin", required=True)
@@ -484,6 +685,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         default=str(ROOT / "docs" / "fasim_aligner_accelign_shadow_scaling.md"),
+    )
+    parser.add_argument(
+        "--score-only-output",
+        default=str(ROOT / "docs" / "fasim_accelign_score_only_query_reuse_shadow.md"),
     )
     parser.add_argument("--require-profile", action="store_true")
     parser.add_argument("--check", action="store_true")
@@ -535,6 +740,21 @@ def main() -> int:
                 },
             )
         )
+        modes.append(
+            ModeSpec(
+                f"accelign_score_only_{sample_label(size)}",
+                "cuda",
+                {
+                    "FASIM_TRANSFERSTRING_TABLE": "1",
+                    "FASIM_GPU_DP_COLUMN_AUTO": "1",
+                    "FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS": "1",
+                    "FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS": "1",
+                    "FASIM_ALIGNER_ACCELIGN_SCORE_ONLY_SHADOW": "1",
+                    "FASIM_ALIGNER_ACCELIGN_SCORE_ONLY_SHADOW_MAX_REQUESTS": sample_cap(size),
+                    "FASIM_ALIGNER_ACCELIGN_SCORE_ONLY_SHADOW_REQUEST_STRIDE": "1",
+                },
+            )
+        )
 
     results: Dict[str, List[RunResult]] = {}
     work_dir = Path(args.work_dir)
@@ -553,7 +773,9 @@ def main() -> int:
         results[mode.label] = runs
 
     shadow_modes = [f"accelign_{sample_label(size)}" for size in sample_sizes]
+    score_only_modes = [f"accelign_score_only_{sample_label(size)}" for size in sample_sizes]
     require_scaling_metrics(results, shadow_modes)
+    require_score_only_metrics(results, score_only_modes)
     report = render_report(
         workload=workload,
         results=results,
@@ -561,9 +783,16 @@ def main() -> int:
         repeat=args.repeat,
         output_path=Path(args.output),
     )
+    render_score_only_report(
+        workload=workload,
+        results=results,
+        sample_sizes=sample_sizes,
+        repeat=args.repeat,
+        output_path=Path(args.score_only_output),
+    )
 
     if args.check:
-        for mode in ["auto"] + shadow_modes:
+        for mode in ["auto"] + shadow_modes + score_only_modes:
             if not digest_matches_reference(results, mode):
                 raise RuntimeError(f"{mode}: digest mismatch vs table_only")
         for mode in shadow_modes:
@@ -581,6 +810,19 @@ def main() -> int:
                 raise RuntimeError(f"{mode}: Accelign shadow must not claim CIGAR coverage")
             if mode_count(results, mode, "fasim_aligner_accelign_shadow_has_alignment_string_contract") != 0:
                 raise RuntimeError(f"{mode}: Accelign shadow must not claim alignment-string coverage")
+        for mode in score_only_modes:
+            if mode_count(results, mode, "fasim_accelign_score_only_shadow_enabled") != 1:
+                raise RuntimeError(f"{mode}: Accelign score-only shadow not enabled")
+            if mode_count(results, mode, "fasim_accelign_score_only_uses_runtime_output") != 0:
+                raise RuntimeError(f"{mode}: Accelign score-only shadow must not feed output")
+            if mode_count(results, mode, "fasim_accelign_score_only_requests") <= 0:
+                raise RuntimeError(f"{mode}: no score-only requests")
+            if mode_count(results, mode, "fasim_accelign_score_only_requests_compared") <= 0:
+                raise RuntimeError(f"{mode}: no compared score-only requests")
+            if mode_count(results, mode, "fasim_accelign_score_only_score_mismatches") != 0:
+                raise RuntimeError(f"{mode}: Accelign score-only contract mismatched")
+            if mode_count(results, mode, "fasim_accelign_score_only_has_endpoint_contract") != 0:
+                raise RuntimeError(f"{mode}: Accelign score-only must not claim endpoint coverage")
 
     print(report)
     return 0
