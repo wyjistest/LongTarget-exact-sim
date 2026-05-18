@@ -10,7 +10,7 @@ Workload: `hg38_chr21_H19`. Each mode uses 1 run(s); tables report medians.
 
 | Observed windows | Observed cells | Table seconds | AUTO seconds | AUTO speedup | Digest | Records | AUTO digest match |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 32,836 | 461,674,160,000 | 126.468000 | 73.483700 | 1.72x | `sha256:81b9c5e23d63534b27f0742d512323ff678bbf648e5ae5e6ea03aab1c4717d26` | 6546 | yes |
+| 32,836 | 461,674,160,000 | 126.690000 | 73.685900 | 1.72x | `sha256:81b9c5e23d63534b27f0742d512323ff678bbf648e5ae5e6ea03aab1c4717d26` | 6546 | yes |
 
 ## Scaling
 
@@ -19,7 +19,7 @@ Workload: `hg38_chr21_H19`. Each mode uses 1 run(s); tables report medians.
 | 1000 | 979,282 | 1,000 | 978,282 | 0.047064 | 0.020658 | 0.030068 | 0.050725 | 2.28x | 0.93x | 0 | 6 | 6 |
 | 10000 | 979,282 | 10,000 | 969,282 | 0.457947 | 0.137534 | 0.128548 | 0.266082 | 3.33x | 1.72x | 0 | 114 | 114 |
 | 50000 | 979,282 | 50,000 | 929,282 | 2.248550 | 0.650194 | 0.551386 | 1.201580 | 3.46x | 1.87x | 0 | 578 | 578 |
-| 100000 | 979,282 | 100,000 | 879,282 | 4.532690 | 1.346930 | 1.106100 | 2.453030 | 3.37x | 1.85x | 0 | 1,140 | 1,140 |
+| 100000 | 979,282 | 100,000 | 879,282 | 4.503150 | 1.345230 | 1.090080 | 2.435310 | 3.35x | 1.85x | 0 | 1,140 | 1,140 |
 
 ## Throughput
 
@@ -28,7 +28,25 @@ Workload: `hg38_chr21_H19`. Each mode uses 1 run(s); tables report medians.
 | 1000 | 1,000 | 192,222,696 | 21247.71 | 48408.33 | 19714.11 | 4084291697.03 | 9305180466.27 | 3789498611.14 |
 | 10000 | 10,000 | 1,900,141,512 | 21836.59 | 72709.29 | 37582.40 | 4149260748.51 | 13815794727.12 | 7141187724.09 |
 | 50000 | 50,000 | 9,340,873,480 | 22236.55 | 76900.13 | 41611.88 | 4154176460.39 | 14366286800.55 | 7773825696.17 |
-| 100000 | 100,000 | 18,691,791,424 | 22061.95 | 74242.91 | 40765.91 | 4123774496.82 | 13877329500.42 | 7619878853.50 |
+| 100000 | 100,000 | 18,691,791,424 | 22206.68 | 74336.73 | 41062.53 | 4150825849.46 | 13894866620.58 | 7675323233.59 |
+
+## Endpoint Taxonomy
+
+| Sample cap | Endpoint mismatches | Same-score endpoint mismatches | Ref-end mismatches | Query-end mismatches | Both-end mismatches | Off-by-one mismatches |
+| --- | --- | --- | --- | --- | --- | --- |
+| 100000 | 1,140 | 1,140 | 1,140 | 1,140 | 1,140 | 0 |
+
+## Endpoint Direction
+
+| Sample cap | Ref-end GPU before CPU | Ref-end GPU after CPU | Query-end GPU before CPU | Query-end GPU after CPU | Max abs ref-end delta | Max abs query-end delta |
+| --- | --- | --- | --- | --- | --- | --- |
+| 100000 | 0 | 1,140 | 1,140 | 0 | 58 | 2,333 |
+
+## First Mismatch
+
+| Sample cap | Request | CPU score | Accelign score | CPU ref_end | Accelign ref_end | CPU query_end | Accelign query_end |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 100000 | 21 | 56 | 56 | 18 | 19 | 1,942 | 318 |
 
 ## Contract Coverage
 
@@ -46,9 +64,9 @@ Accelign score is clean at the largest sampled size, but endpoint mismatches rem
 The useful speed signal is sampled `aligner.Align` throughput:
 
 ```text
-100k sampled CPU reference = 4.532690s
-100k Accelign kernel       = 1.346930s  (3.37x vs CPU)
-100k Accelign total        = 2.453030s  (1.85x vs CPU)
+100k sampled CPU reference = 4.503150s
+100k Accelign kernel       = 1.345230s  (3.35x vs CPU)
+100k Accelign total        = 2.435310s  (1.85x vs CPU)
 ```
 
 This is not an end-to-end Fasim speedup claim. The current shadow still pays
@@ -57,9 +75,9 @@ duplicates the query in a simple one-to-one layout, so staging remains a
 material part of total time.
 
 ```text
-largest_cpu_reference_seconds = 4.532690
-largest_accelign_kernel_seconds = 1.346930
-largest_accelign_total_seconds = 2.453030
+largest_cpu_reference_seconds = 4.503150
+largest_accelign_kernel_seconds = 1.345230
+largest_accelign_total_seconds = 2.435310
 ```
 
 ## Boundaries

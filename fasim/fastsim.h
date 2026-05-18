@@ -96,6 +96,24 @@ struct FasimFastSimExtendProfileStats
 		accelignShadowCpuReferenceNanoseconds(0),
 		accelignShadowScoreMismatches(0),
 		accelignShadowEndpointMismatches(0),
+		accelignShadowEndpointSameScoreMismatches(0),
+		accelignShadowRefEndMismatches(0),
+		accelignShadowQueryEndMismatches(0),
+		accelignShadowBothEndMismatches(0),
+		accelignShadowOffByOneMismatches(0),
+		accelignShadowRefEndGpuBeforeCpu(0),
+		accelignShadowRefEndGpuAfterCpu(0),
+		accelignShadowQueryEndGpuBeforeCpu(0),
+		accelignShadowQueryEndGpuAfterCpu(0),
+		accelignShadowRefEndDeltaAbsMax(0),
+		accelignShadowQueryEndDeltaAbsMax(0),
+		accelignShadowFirstMismatchRequest(0),
+		accelignShadowFirstMismatchCpuScore(0),
+		accelignShadowFirstMismatchGpuScore(0),
+		accelignShadowFirstMismatchCpuRefEnd(0),
+		accelignShadowFirstMismatchGpuRefEnd(0),
+		accelignShadowFirstMismatchCpuQueryEnd(0),
+		accelignShadowFirstMismatchGpuQueryEnd(0),
 		accelignShadowTotalMismatches(0),
 		accelignShadowFallbacks(0),
 		accelignShadowHasScoreContract(0),
@@ -228,6 +246,24 @@ struct FasimFastSimExtendProfileStats
 	uint64_t accelignShadowCpuReferenceNanoseconds;
 	uint64_t accelignShadowScoreMismatches;
 	uint64_t accelignShadowEndpointMismatches;
+	uint64_t accelignShadowEndpointSameScoreMismatches;
+	uint64_t accelignShadowRefEndMismatches;
+	uint64_t accelignShadowQueryEndMismatches;
+	uint64_t accelignShadowBothEndMismatches;
+	uint64_t accelignShadowOffByOneMismatches;
+	uint64_t accelignShadowRefEndGpuBeforeCpu;
+	uint64_t accelignShadowRefEndGpuAfterCpu;
+	uint64_t accelignShadowQueryEndGpuBeforeCpu;
+	uint64_t accelignShadowQueryEndGpuAfterCpu;
+	uint64_t accelignShadowRefEndDeltaAbsMax;
+	uint64_t accelignShadowQueryEndDeltaAbsMax;
+	uint64_t accelignShadowFirstMismatchRequest;
+	uint64_t accelignShadowFirstMismatchCpuScore;
+	uint64_t accelignShadowFirstMismatchGpuScore;
+	uint64_t accelignShadowFirstMismatchCpuRefEnd;
+	uint64_t accelignShadowFirstMismatchGpuRefEnd;
+	uint64_t accelignShadowFirstMismatchCpuQueryEnd;
+	uint64_t accelignShadowFirstMismatchGpuQueryEnd;
 	uint64_t accelignShadowTotalMismatches;
 	uint64_t accelignShadowFallbacks;
 	uint64_t accelignShadowHasScoreContract;
@@ -301,6 +337,13 @@ inline uint64_t fasim_fastsim_profile_nanoseconds_from_seconds(double seconds)
 		return 0;
 	}
 	return static_cast<uint64_t>(seconds * 1000000000.0);
+}
+
+inline uint64_t fasim_abs_delta_int(int left, int right)
+{
+	return left >= right ?
+		static_cast<uint64_t>(left - right) :
+		static_cast<uint64_t>(right - left);
 }
 
 inline bool fasim_gpu_dp_column_requested_runtime()
@@ -1517,6 +1560,76 @@ inline void fasim_aligner_accelign_shadow_finalize(
 		{
 			++profileStats->accelignShadowEndpointMismatches;
 			++profileStats->accelignShadowTotalMismatches;
+			if (result.score == request.cpuScore)
+			{
+				++profileStats->accelignShadowEndpointSameScoreMismatches;
+			}
+			const bool refMismatch = result.refEnd != request.cpuRefEnd;
+			const bool queryMismatch = result.queryEnd != request.cpuQueryEnd;
+			if (refMismatch)
+			{
+				++profileStats->accelignShadowRefEndMismatches;
+				if (result.refEnd < request.cpuRefEnd)
+				{
+					++profileStats->accelignShadowRefEndGpuBeforeCpu;
+				}
+				else
+				{
+					++profileStats->accelignShadowRefEndGpuAfterCpu;
+				}
+				const uint64_t delta =
+					fasim_abs_delta_int(result.refEnd, request.cpuRefEnd);
+				if (delta > profileStats->accelignShadowRefEndDeltaAbsMax)
+				{
+					profileStats->accelignShadowRefEndDeltaAbsMax = delta;
+				}
+			}
+			if (queryMismatch)
+			{
+				++profileStats->accelignShadowQueryEndMismatches;
+				if (result.queryEnd < request.cpuQueryEnd)
+				{
+					++profileStats->accelignShadowQueryEndGpuBeforeCpu;
+				}
+				else
+				{
+					++profileStats->accelignShadowQueryEndGpuAfterCpu;
+				}
+				const uint64_t delta =
+					fasim_abs_delta_int(result.queryEnd, request.cpuQueryEnd);
+				if (delta > profileStats->accelignShadowQueryEndDeltaAbsMax)
+				{
+					profileStats->accelignShadowQueryEndDeltaAbsMax = delta;
+				}
+			}
+			if (refMismatch && queryMismatch)
+			{
+				++profileStats->accelignShadowBothEndMismatches;
+			}
+			if ((!refMismatch ||
+			     fasim_abs_delta_int(result.refEnd, request.cpuRefEnd) == 1) &&
+			    (!queryMismatch ||
+			     fasim_abs_delta_int(result.queryEnd, request.cpuQueryEnd) == 1))
+			{
+				++profileStats->accelignShadowOffByOneMismatches;
+			}
+			if (profileStats->accelignShadowFirstMismatchRequest == 0)
+			{
+				profileStats->accelignShadowFirstMismatchRequest =
+					static_cast<uint64_t>(i + 1);
+				profileStats->accelignShadowFirstMismatchCpuScore =
+					static_cast<uint64_t>(request.cpuScore);
+				profileStats->accelignShadowFirstMismatchGpuScore =
+					static_cast<uint64_t>(result.score);
+				profileStats->accelignShadowFirstMismatchCpuRefEnd =
+					static_cast<uint64_t>(request.cpuRefEnd);
+				profileStats->accelignShadowFirstMismatchGpuRefEnd =
+					static_cast<uint64_t>(result.refEnd);
+				profileStats->accelignShadowFirstMismatchCpuQueryEnd =
+					static_cast<uint64_t>(request.cpuQueryEnd);
+				profileStats->accelignShadowFirstMismatchGpuQueryEnd =
+					static_cast<uint64_t>(result.queryEnd);
+			}
 		}
 	}
 

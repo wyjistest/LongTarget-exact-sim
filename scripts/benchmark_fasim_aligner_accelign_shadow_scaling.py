@@ -46,6 +46,24 @@ SCALING_KEYS = [
     "fasim_aligner_accelign_shadow_cpu_reference_seconds",
     "fasim_aligner_accelign_shadow_score_mismatches",
     "fasim_aligner_accelign_shadow_endpoint_mismatches",
+    "fasim_aligner_accelign_shadow_endpoint_same_score_mismatches",
+    "fasim_aligner_accelign_shadow_ref_end_mismatches",
+    "fasim_aligner_accelign_shadow_query_end_mismatches",
+    "fasim_aligner_accelign_shadow_both_end_mismatches",
+    "fasim_aligner_accelign_shadow_off_by_one_mismatches",
+    "fasim_aligner_accelign_shadow_ref_end_gpu_before_cpu",
+    "fasim_aligner_accelign_shadow_ref_end_gpu_after_cpu",
+    "fasim_aligner_accelign_shadow_query_end_gpu_before_cpu",
+    "fasim_aligner_accelign_shadow_query_end_gpu_after_cpu",
+    "fasim_aligner_accelign_shadow_ref_end_delta_abs_max",
+    "fasim_aligner_accelign_shadow_query_end_delta_abs_max",
+    "fasim_aligner_accelign_shadow_first_mismatch_request",
+    "fasim_aligner_accelign_shadow_first_mismatch_cpu_score",
+    "fasim_aligner_accelign_shadow_first_mismatch_gpu_score",
+    "fasim_aligner_accelign_shadow_first_mismatch_cpu_ref_end",
+    "fasim_aligner_accelign_shadow_first_mismatch_gpu_ref_end",
+    "fasim_aligner_accelign_shadow_first_mismatch_cpu_query_end",
+    "fasim_aligner_accelign_shadow_first_mismatch_gpu_query_end",
     "fasim_aligner_accelign_shadow_total_mismatches",
     "fasim_aligner_accelign_shadow_fallbacks",
     "fasim_aligner_accelign_shadow_has_score_contract",
@@ -252,6 +270,101 @@ def render_report(
             "Accelign total cells/sec",
         ],
         throughput_rows,
+    )
+    lines.append("")
+
+    taxonomy_rows: List[List[str]] = []
+    for size in sample_sizes:
+        mode = f"accelign_{sample_label(size)}"
+        taxonomy_rows.append(
+            [
+                sample_label(size),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_endpoint_mismatches")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_endpoint_same_score_mismatches")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_ref_end_mismatches")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_query_end_mismatches")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_both_end_mismatches")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_off_by_one_mismatches")),
+            ]
+        )
+    lines.append("## Endpoint Taxonomy")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Sample cap",
+            "Endpoint mismatches",
+            "Same-score endpoint mismatches",
+            "Ref-end mismatches",
+            "Query-end mismatches",
+            "Both-end mismatches",
+            "Off-by-one mismatches",
+        ],
+        taxonomy_rows,
+    )
+    lines.append("")
+
+    direction_rows: List[List[str]] = []
+    for size in sample_sizes:
+        mode = f"accelign_{sample_label(size)}"
+        direction_rows.append(
+            [
+                sample_label(size),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_ref_end_gpu_before_cpu")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_ref_end_gpu_after_cpu")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_query_end_gpu_before_cpu")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_query_end_gpu_after_cpu")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_ref_end_delta_abs_max")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_query_end_delta_abs_max")),
+            ]
+        )
+    lines.append("## Endpoint Direction")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Sample cap",
+            "Ref-end GPU before CPU",
+            "Ref-end GPU after CPU",
+            "Query-end GPU before CPU",
+            "Query-end GPU after CPU",
+            "Max abs ref-end delta",
+            "Max abs query-end delta",
+        ],
+        direction_rows,
+    )
+    lines.append("")
+
+    first_rows: List[List[str]] = []
+    for size in sample_sizes:
+        mode = f"accelign_{sample_label(size)}"
+        first_rows.append(
+            [
+                sample_label(size),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_request")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_cpu_score")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_gpu_score")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_cpu_ref_end")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_gpu_ref_end")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_cpu_query_end")),
+                fmt_int(mode_count(results, mode, "fasim_aligner_accelign_shadow_first_mismatch_gpu_query_end")),
+            ]
+        )
+    lines.append("## First Mismatch")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Sample cap",
+            "Request",
+            "CPU score",
+            "Accelign score",
+            "CPU ref_end",
+            "Accelign ref_end",
+            "CPU query_end",
+            "Accelign query_end",
+        ],
+        first_rows,
     )
     lines.append("")
 
