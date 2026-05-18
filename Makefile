@@ -439,6 +439,14 @@ check-fasim-gpu-dp-column-auto-large-workload-characterization:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_large_workload_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_CHECK_SYNTHETIC_ENTRIES:-1,32}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_CHECK_REPEAT:-1}" --work-dir $(CURDIR)/.tmp/fasim_gpu_dp_column_auto_large_workload_characterization_check --output $(CURDIR)/.tmp/fasim_gpu_dp_column_auto_large_workload_characterization_check.md --require-profile --check
 
+benchmark-fasim-gpu-dp-column-auto-hg38-validation-taxonomy:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_hg38_validation_taxonomy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 

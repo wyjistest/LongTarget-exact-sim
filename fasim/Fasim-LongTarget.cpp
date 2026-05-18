@@ -243,6 +243,21 @@ struct FasimProfileStats
         gpuDpColumnScoreMismatches(0),
         gpuDpColumnColumnMaxMismatches(0),
         gpuDpColumnFallbacks(0),
+        gpuDpColumnValidateWindowsTotal(0),
+        gpuDpColumnValidateWindowsFailed(0),
+        gpuDpColumnValidateScoreMismatchWindows(0),
+        gpuDpColumnValidateScoreInfoMismatchWindows(0),
+        gpuDpColumnValidateCompactScoreInfoMismatchWindows(0),
+        gpuDpColumnValidateTopKOverflowWindows(0),
+        gpuDpColumnValidateExactScoreInfoExtendWindows(0),
+        gpuDpColumnValidateExactScoreInfoFailureWindows(0),
+        gpuDpColumnValidateBatchFallbackBatches(0),
+        gpuDpColumnValidateBatchFallbackWindows(0),
+        gpuDpColumnValidateBatchFallbackFailedWindows(0),
+        gpuDpColumnCudaFailureFallbackWindows(0),
+        gpuDpColumnExactScoreInfoFailureFallbackWindows(0),
+        gpuDpColumnValidateFirstFailedWindow(-1),
+        gpuDpColumnValidateFirstFailureReason(0),
         gpuDpColumnDebugWindowsExamined(0),
         gpuDpColumnFirstMismatchWindow(-1),
         gpuDpColumnFirstMismatchColumn(-1),
@@ -343,6 +358,21 @@ struct FasimProfileStats
     uint64_t gpuDpColumnScoreMismatches;
     uint64_t gpuDpColumnColumnMaxMismatches;
     uint64_t gpuDpColumnFallbacks;
+    uint64_t gpuDpColumnValidateWindowsTotal;
+    uint64_t gpuDpColumnValidateWindowsFailed;
+    uint64_t gpuDpColumnValidateScoreMismatchWindows;
+    uint64_t gpuDpColumnValidateScoreInfoMismatchWindows;
+    uint64_t gpuDpColumnValidateCompactScoreInfoMismatchWindows;
+    uint64_t gpuDpColumnValidateTopKOverflowWindows;
+    uint64_t gpuDpColumnValidateExactScoreInfoExtendWindows;
+    uint64_t gpuDpColumnValidateExactScoreInfoFailureWindows;
+    uint64_t gpuDpColumnValidateBatchFallbackBatches;
+    uint64_t gpuDpColumnValidateBatchFallbackWindows;
+    uint64_t gpuDpColumnValidateBatchFallbackFailedWindows;
+    uint64_t gpuDpColumnCudaFailureFallbackWindows;
+    uint64_t gpuDpColumnExactScoreInfoFailureFallbackWindows;
+    long long gpuDpColumnValidateFirstFailedWindow;
+    uint64_t gpuDpColumnValidateFirstFailureReason;
     uint64_t gpuDpColumnDebugWindowsExamined;
     long long gpuDpColumnFirstMismatchWindow;
     long long gpuDpColumnFirstMismatchColumn;
@@ -508,6 +538,21 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_score_mismatches=" << stats.gpuDpColumnScoreMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_column_max_mismatches=" << stats.gpuDpColumnColumnMaxMismatches << endl;
     cerr << "benchmark.fasim_gpu_dp_column_fallbacks=" << stats.gpuDpColumnFallbacks << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_windows_total=" << stats.gpuDpColumnValidateWindowsTotal << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_windows_failed=" << stats.gpuDpColumnValidateWindowsFailed << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_score_mismatch_windows=" << stats.gpuDpColumnValidateScoreMismatchWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_scoreinfo_mismatch_windows=" << stats.gpuDpColumnValidateScoreInfoMismatchWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_compact_scoreinfo_mismatch_windows=" << stats.gpuDpColumnValidateCompactScoreInfoMismatchWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_topk_overflow_windows=" << stats.gpuDpColumnValidateTopKOverflowWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_exact_scoreinfo_extend_windows=" << stats.gpuDpColumnValidateExactScoreInfoExtendWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_exact_scoreinfo_failure_windows=" << stats.gpuDpColumnValidateExactScoreInfoFailureWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_batch_fallback_batches=" << stats.gpuDpColumnValidateBatchFallbackBatches << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_batch_fallback_windows=" << stats.gpuDpColumnValidateBatchFallbackWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_batch_fallback_failed_windows=" << stats.gpuDpColumnValidateBatchFallbackFailedWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_cuda_failure_fallback_windows=" << stats.gpuDpColumnCudaFailureFallbackWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_exact_scoreinfo_failure_fallback_windows=" << stats.gpuDpColumnExactScoreInfoFailureFallbackWindows << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_first_failed_window=" << stats.gpuDpColumnValidateFirstFailedWindow << endl;
+    cerr << "benchmark.fasim_gpu_dp_column_validate_first_failure_reason=" << stats.gpuDpColumnValidateFirstFailureReason << endl;
     cerr << "benchmark.fasim_gpu_dp_column_debug_enabled=" << (fasim_gpu_dp_column_mismatch_debug_enabled_runtime() ? 1 : 0) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_window=" << stats.gpuDpColumnFirstMismatchWindow << endl;
     cerr << "benchmark.fasim_gpu_dp_column_first_mismatch_column=" << stats.gpuDpColumnFirstMismatchColumn << endl;
@@ -1677,10 +1722,14 @@ int main(int argc, char* const* argv)
 			}
 			const size_t validationWindowOrdinal = gpuDpColumnValidationWindowOrdinal++;
 			const uint64_t validateStart = profileEnabled ? fasim_profile_now_nanoseconds() : 0;
-			bool ok = true;
-			bool scoreMismatch = false;
-			bool topKOverflow = false;
-			bool topKTruncated = false;
+				bool ok = true;
+				bool scoreMismatch = false;
+				bool scoreInfoMismatch = false;
+				bool compactScoreInfoMismatch = false;
+				bool topKOverflow = false;
+				bool topKTruncated = false;
+				bool exactScoreInfoExtend = false;
+				bool exactScoreInfoFailure = false;
 			int firstColumnMismatch = -1;
 			int firstCpuScore = 0;
 			int firstGpuScore = 0;
@@ -1729,14 +1778,74 @@ int main(int argc, char* const* argv)
 				profileStats.gpuDpColumnFirstMismatchGpuPosition = gpuPosition;
 				profileStats.gpuDpColumnFirstMismatchCpuCount = static_cast<uint64_t>(cpuCount);
 				profileStats.gpuDpColumnFirstMismatchGpuCount = static_cast<uint64_t>(gpuCount);
-				profileStats.gpuDpColumnFirstMismatchTie = tieMismatch ? 1 : 0;
-				profileStats.gpuDpColumnScoreInfoFieldMismatchMask = scoreInfoFieldMismatchMask;
-			};
+					profileStats.gpuDpColumnFirstMismatchTie = tieMismatch ? 1 : 0;
+					profileStats.gpuDpColumnScoreInfoFieldMismatchMask = scoreInfoFieldMismatchMask;
+				};
 
-			if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
-			{
-				++profileStats.gpuDpColumnDebugWindowsExamined;
-			}
+				auto finish_validation = [&](bool success)
+				{
+					if (profileEnabled && gpuDpColumnRequested)
+					{
+						++profileStats.gpuDpColumnValidateWindowsTotal;
+						if (!success)
+						{
+							++profileStats.gpuDpColumnValidateWindowsFailed;
+							if (scoreMismatch)
+							{
+								++profileStats.gpuDpColumnValidateScoreMismatchWindows;
+							}
+							if (scoreInfoMismatch)
+							{
+								++profileStats.gpuDpColumnValidateScoreInfoMismatchWindows;
+							}
+							if (compactScoreInfoMismatch)
+							{
+								++profileStats.gpuDpColumnValidateCompactScoreInfoMismatchWindows;
+							}
+							if (exactScoreInfoFailure)
+							{
+								++profileStats.gpuDpColumnValidateExactScoreInfoFailureWindows;
+							}
+							if (profileStats.gpuDpColumnValidateFirstFailedWindow < 0)
+							{
+								profileStats.gpuDpColumnValidateFirstFailedWindow =
+									static_cast<long long>(validationWindowOrdinal);
+								if (scoreMismatch)
+								{
+									profileStats.gpuDpColumnValidateFirstFailureReason = 1;
+								}
+								else if (scoreInfoMismatch)
+								{
+									profileStats.gpuDpColumnValidateFirstFailureReason = 2;
+								}
+								else if (exactScoreInfoFailure)
+								{
+									profileStats.gpuDpColumnValidateFirstFailureReason = 3;
+								}
+								else
+								{
+									profileStats.gpuDpColumnValidateFirstFailureReason = 4;
+								}
+							}
+						}
+						if (topKOverflow)
+						{
+							++profileStats.gpuDpColumnValidateTopKOverflowWindows;
+						}
+						if (exactScoreInfoExtend)
+						{
+							++profileStats.gpuDpColumnValidateExactScoreInfoExtendWindows;
+						}
+						fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
+						                          validateStart);
+					}
+					return success;
+				};
+
+				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
+				{
+					++profileStats.gpuDpColumnDebugWindowsExamined;
+				}
 
 			string cpuQuery = lncSeq;
 			string cpuTarget = task.seq2;
@@ -1749,46 +1858,38 @@ int main(int argc, char* const* argv)
 			const bool needExactColumnScores =
 				gpuDpColumnFullScoreInfoDebug || gpuDpColumnPostTopKPackShadow;
 			bool gpuScoreInfoFromExactColumns = false;
-			if (gpuDpColumnRequested && !gpuDpColumnCompactScoreInfo)
-			{
-				if (debugQuery == NULL || debugEncodedTarget == NULL ||
-				    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
-				                                            debugEncodedTarget,
-				                                            debugTargetLength,
-				                                            &gpuMaxScore,
-				                                            gpuScoreInfo,
-				                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
-				                                            "validate"))
+				if (gpuDpColumnRequested && !gpuDpColumnCompactScoreInfo)
 				{
-					if (profileEnabled)
+					if (debugQuery == NULL || debugEncodedTarget == NULL ||
+					    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
+					                                            debugEncodedTarget,
+					                                            debugTargetLength,
+					                                            &gpuMaxScore,
+					                                            gpuScoreInfo,
+					                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
+					                                            "validate"))
 					{
-						fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
-						                          validateStart);
+						exactScoreInfoFailure = true;
+						return finish_validation(false);
 					}
-					return false;
+					gpuScoreInfoFromExactColumns = true;
 				}
-				gpuScoreInfoFromExactColumns = true;
-			}
-			else if (gpuDpColumnRequested && needExactColumnScores)
-			{
-				int exactColumnMaxScore = 0;
-				if (debugQuery == NULL || debugEncodedTarget == NULL ||
-				    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
-				                                            debugEncodedTarget,
-				                                            debugTargetLength,
-				                                            &exactColumnMaxScore,
-				                                            gpuExactColumnScoreInfo,
-				                                            &gpuExactColumnScores,
-				                                            "validate_debug"))
+				else if (gpuDpColumnRequested && needExactColumnScores)
 				{
-					if (profileEnabled)
+					int exactColumnMaxScore = 0;
+					if (debugQuery == NULL || debugEncodedTarget == NULL ||
+					    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
+					                                            debugEncodedTarget,
+					                                            debugTargetLength,
+					                                            &exactColumnMaxScore,
+					                                            gpuExactColumnScoreInfo,
+					                                            &gpuExactColumnScores,
+					                                            "validate_debug"))
 					{
-						fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
-						                          validateStart);
+						exactScoreInfoFailure = true;
+						return finish_validation(false);
 					}
-					return false;
 				}
-			}
 			if (cpuMaxScore != gpuMaxScore)
 			{
 				ok = false;
@@ -1822,33 +1923,30 @@ int main(int argc, char* const* argv)
 					++profileStats.gpuDpColumnTopKOverflowWindows;
 				}
 			}
-			if (!gpuScoreInfoFromExactColumns)
-			{
-				if (gpuDpColumnRequested && gpuDpColumnCompactScoreInfo && topKOverflow)
+				if (!gpuScoreInfoFromExactColumns)
 				{
-					if (debugQuery == NULL || debugEncodedTarget == NULL ||
-					    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
-					                                            debugEncodedTarget,
-					                                            debugTargetLength,
-					                                            &gpuMaxScore,
-					                                            gpuScoreInfo,
-					                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
-					                                            "validate_compact_overflow"))
+					if (gpuDpColumnRequested && gpuDpColumnCompactScoreInfo && topKOverflow)
 					{
-						if (profileEnabled)
+						exactScoreInfoExtend = true;
+						if (debugQuery == NULL || debugEncodedTarget == NULL ||
+						    !build_scoreinfo_from_gpu_exact_columns(*debugQuery,
+						                                            debugEncodedTarget,
+						                                            debugTargetLength,
+						                                            &gpuMaxScore,
+						                                            gpuScoreInfo,
+						                                            needExactColumnScores ? &gpuExactColumnScores : NULL,
+						                                            "validate_compact_overflow"))
 						{
-							fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds,
-							                          validateStart);
+							exactScoreInfoFailure = true;
+							return finish_validation(false);
 						}
-						return false;
+						gpuScoreInfoFromExactColumns = true;
 					}
-					gpuScoreInfoFromExactColumns = true;
+					else
+					{
+						build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
+					}
 				}
-				else
-				{
-					build_scoreinfo_from_gpu_peaks(taskPeaks, minScore, gpuScoreInfo);
-				}
-			}
 			StripedSmithWaterman::Aligner cpuAligner;
 			StripedSmithWaterman::Filter cpuFilter;
 			StripedSmithWaterman::Alignment cpuAlignment;
@@ -1866,14 +1964,16 @@ int main(int argc, char* const* argv)
 			                    5,
 			                    -4,
 			                    cpuColumnScoresOut);
-			const bool gpuScoreInfoMatchesCpu = scoreinfo_equal(gpuScoreInfo, cpuScoreInfo);
-			if (!gpuScoreInfoMatchesCpu)
-			{
-				ok = false;
-				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnCompactScoreInfo)
+				const bool gpuScoreInfoMatchesCpu = scoreinfo_equal(gpuScoreInfo, cpuScoreInfo);
+				if (!gpuScoreInfoMatchesCpu)
 				{
-					++profileStats.gpuDpColumnCompactScoreInfoMismatches;
-				}
+					ok = false;
+					scoreInfoMismatch = true;
+					if (profileEnabled && gpuDpColumnRequested && gpuDpColumnCompactScoreInfo)
+					{
+						compactScoreInfoMismatch = true;
+						++profileStats.gpuDpColumnCompactScoreInfoMismatches;
+					}
 				if (profileEnabled && gpuDpColumnRequested && gpuDpColumnMismatchDebug)
 				{
 					++profileStats.gpuDpColumnScoreInfoMismatches;
@@ -2420,12 +2520,8 @@ int main(int argc, char* const* argv)
 					     << endl;
 				}
 			}
-			if (profileEnabled && gpuDpColumnRequested)
-			{
-				fasim_profile_add_elapsed(profileStats.gpuDpColumnValidateNanoseconds, validateStart);
-			}
-			return ok;
-		};
+				return finish_validation(ok);
+			};
 
 		auto write_task_triplexes = [&](const StreamTask &task)
 		{
@@ -2557,22 +2653,25 @@ int main(int argc, char* const* argv)
 						                           batchResult,
 						                           gpuTotalStart);
 					}
-					if (!ok)
-					{
-						if (profileEnabled && gpuDpColumnRequested)
+						if (!ok)
 						{
-							profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
-						}
-						useCudaBatch = false;
-						maxTasksTotal = 1;
-					}
-					else
-					{
-						bool gpuValidationOk = true;
-						if (gpuDpColumnValidate)
-						{
-							for (size_t t = 0; t < tasks.size(); ++t)
+							if (profileEnabled && gpuDpColumnRequested)
 							{
+								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+								profileStats.gpuDpColumnCudaFailureFallbackWindows +=
+									static_cast<uint64_t>(tasks.size());
+							}
+							useCudaBatch = false;
+							maxTasksTotal = 1;
+						}
+						else
+						{
+							bool gpuValidationOk = true;
+							uint64_t gpuValidationFailedTasks = 0;
+							if (gpuDpColumnValidate)
+							{
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
 								const size_t base = t * static_cast<size_t>(topK);
 								const uint8_t *debugTarget =
 									encodedTargets.data() + t * static_cast<size_t>(currentTargetLength);
@@ -2581,19 +2680,25 @@ int main(int argc, char* const* argv)
 								                                  &cudaQueries[0],
 								                                  debugTarget,
 								                                  currentTargetLength))
-								{
-									gpuValidationOk = false;
+									{
+										gpuValidationOk = false;
+										++gpuValidationFailedTasks;
+									}
 								}
 							}
-						}
-						if (!gpuValidationOk)
-						{
-							if (profileEnabled && gpuDpColumnRequested)
+							if (!gpuValidationOk)
 							{
-								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
-								if (gpuDpColumnCompactScoreInfo)
+								if (profileEnabled && gpuDpColumnRequested)
 								{
-									profileStats.gpuDpColumnCompactScoreInfoFallbacks +=
+									profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+									++profileStats.gpuDpColumnValidateBatchFallbackBatches;
+									profileStats.gpuDpColumnValidateBatchFallbackWindows +=
+										static_cast<uint64_t>(tasks.size());
+									profileStats.gpuDpColumnValidateBatchFallbackFailedWindows +=
+										gpuValidationFailedTasks;
+									if (gpuDpColumnCompactScoreInfo)
+									{
+										profileStats.gpuDpColumnCompactScoreInfoFallbacks +=
 										static_cast<uint64_t>(tasks.size());
 								}
 							}
@@ -2966,15 +3071,17 @@ int main(int argc, char* const* argv)
 							break;
 						}
 					}
-					if (!allOk)
-					{
-						if (profileEnabled && gpuDpColumnRequested)
+						if (!allOk)
 						{
-							profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+							if (profileEnabled && gpuDpColumnRequested)
+							{
+								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+								profileStats.gpuDpColumnCudaFailureFallbackWindows +=
+									static_cast<uint64_t>(tasks.size());
+							}
+							useCudaBatch = false;
+							maxTasksTotal = 1;
 						}
-						useCudaBatch = false;
-						maxTasksTotal = 1;
-					}
 					else
 					{
 						if (profileEnabled && gpuDpColumnRequested)
@@ -3010,12 +3117,13 @@ int main(int argc, char* const* argv)
 									fasim_profile_nanoseconds_from_seconds(batchResults[d].gpuSeconds);
 								profileStats.gpuDpColumnTotalNanoseconds += batchTotalNanoseconds[d];
 							}
-						}
-						bool gpuValidationOk = true;
-						if (gpuDpColumnValidate)
-						{
-							for (size_t d = 0; d < cudaDeviceCount; ++d)
+							}
+							bool gpuValidationOk = true;
+							uint64_t gpuValidationFailedTasks = 0;
+							if (gpuDpColumnValidate)
 							{
+								for (size_t d = 0; d < cudaDeviceCount; ++d)
+								{
 								for (size_t local = 0; local < chunkCount[d]; ++local)
 								{
 									const size_t taskIndex = chunkBegin[d] + local;
@@ -3028,20 +3136,26 @@ int main(int argc, char* const* argv)
 									                                  &cudaQueries[d],
 									                                  debugTarget,
 									                                  currentTargetLength))
-									{
-										gpuValidationOk = false;
+										{
+											gpuValidationOk = false;
+											++gpuValidationFailedTasks;
+										}
 									}
 								}
 							}
-						}
 						if (!gpuValidationOk)
 						{
-							if (profileEnabled && gpuDpColumnRequested)
-							{
-								profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
-								if (gpuDpColumnCompactScoreInfo)
+								if (profileEnabled && gpuDpColumnRequested)
 								{
-									profileStats.gpuDpColumnCompactScoreInfoFallbacks +=
+									profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+									++profileStats.gpuDpColumnValidateBatchFallbackBatches;
+									profileStats.gpuDpColumnValidateBatchFallbackWindows +=
+										static_cast<uint64_t>(tasks.size());
+									profileStats.gpuDpColumnValidateBatchFallbackFailedWindows +=
+										gpuValidationFailedTasks;
+									if (gpuDpColumnCompactScoreInfo)
+									{
+										profileStats.gpuDpColumnCompactScoreInfoFallbacks +=
 										static_cast<uint64_t>(tasks.size());
 								}
 							}
@@ -3312,13 +3426,15 @@ int main(int argc, char* const* argv)
 							{
 								workers[i].join();
 							}
-							if (exactScoreInfoFailed.load(std::memory_order_relaxed) != 0)
-							{
-								if (profileEnabled && gpuDpColumnRequested)
+								if (exactScoreInfoFailed.load(std::memory_order_relaxed) != 0)
 								{
-									profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+									if (profileEnabled && gpuDpColumnRequested)
+									{
+										profileStats.gpuDpColumnFallbacks += static_cast<uint64_t>(tasks.size());
+										profileStats.gpuDpColumnExactScoreInfoFailureFallbackWindows +=
+											static_cast<uint64_t>(tasks.size());
+									}
 								}
-							}
 							else
 							{
 								tasks.clear();

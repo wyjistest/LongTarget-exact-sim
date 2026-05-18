@@ -21,12 +21,24 @@ from benchmark_fasim_gpu_dp_column_characterization import (  # noqa: E402
 )
 
 
-VALIDATION_KEYS = (
+VALIDATION_ZERO_KEYS = (
     "fasim_gpu_dp_column_score_mismatches",
     "fasim_gpu_dp_column_column_max_mismatches",
     "fasim_gpu_dp_column_scoreinfo_mismatches",
     "fasim_gpu_dp_column_compact_scoreinfo_mismatches",
     "fasim_gpu_dp_column_fallbacks",
+    "fasim_gpu_dp_column_validate_windows_failed",
+    "fasim_gpu_dp_column_validate_score_mismatch_windows",
+    "fasim_gpu_dp_column_validate_scoreinfo_mismatch_windows",
+    "fasim_gpu_dp_column_validate_compact_scoreinfo_mismatch_windows",
+    "fasim_gpu_dp_column_validate_topk_overflow_windows",
+    "fasim_gpu_dp_column_validate_exact_scoreinfo_extend_windows",
+    "fasim_gpu_dp_column_validate_exact_scoreinfo_failure_windows",
+    "fasim_gpu_dp_column_validate_batch_fallback_batches",
+    "fasim_gpu_dp_column_validate_batch_fallback_windows",
+    "fasim_gpu_dp_column_validate_batch_fallback_failed_windows",
+    "fasim_gpu_dp_column_cuda_failure_fallback_windows",
+    "fasim_gpu_dp_column_exact_scoreinfo_failure_fallback_windows",
 )
 
 
@@ -147,7 +159,10 @@ def check_above_threshold(cuda_bin: Path, work_dir: Path) -> None:
     require_count(metrics, "fasim_gpu_dp_column_auto_selected_path", 1)
     require_count(metrics, "fasim_gpu_dp_column_active", 1)
     require_count(metrics, "fasim_gpu_dp_column_compact_scoreinfo_active", 1)
-    for key in VALIDATION_KEYS:
+    require_count(metrics, "fasim_gpu_dp_column_validate_windows_total", 128)
+    require_count(metrics, "fasim_gpu_dp_column_validate_first_failed_window", -1)
+    require_count(metrics, "fasim_gpu_dp_column_validate_first_failure_reason", 0)
+    for key in VALIDATION_ZERO_KEYS:
         require_count(metrics, key, 0)
 
 
