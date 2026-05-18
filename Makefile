@@ -470,6 +470,10 @@ check-fasim-pre-align-rejection-feature-taxonomy:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_pre_align_rejection_feature_taxonomy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+check-fasim-aligner-align-batch-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_aligner_align_batch_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 benchmark-fasim-fastSIM-extend-emit-decomposition:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
@@ -501,6 +505,14 @@ benchmark-fasim-pre-align-rejection-feature-taxonomy:
 		exit 2; \
 	fi
 	python3 ./scripts/benchmark_fasim_pre_align_rejection_feature_taxonomy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-aligner-align-batch-shadow:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_aligner_align_batch_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --max-requests "$${FASIM_ALIGNER_ALIGN_BATCH_SHADOW_MAX_REQUESTS:-10000}" --request-stride "$${FASIM_ALIGNER_ALIGN_BATCH_SHADOW_REQUEST_STRIDE:-1}" --require-profile --check
 
 benchmark-fasim-gpu-emit-scoreinfo-decomposition:
 	$(MAKE) build-fasim-cuda
@@ -987,7 +999,7 @@ check-longtarget-lite-output:
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
 		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold \
-		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy check-fasim-aligner-align-batch-shadow benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-aligner-align-batch-shadow \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
