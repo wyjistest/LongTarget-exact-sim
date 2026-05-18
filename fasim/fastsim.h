@@ -33,6 +33,7 @@ struct FasimFastSimExtendProfileStats
 		duplicateOverlapNanoseconds(0),
 		stringFormatNanoseconds(0),
 		alignerAlignNanoseconds(0),
+		alignerAlignCpuInternalsEnabled(0),
 		alignerAlignCalls(0),
 		alignerAlignTotalCells(0),
 		alignerAlignTotalQueryBases(0),
@@ -140,6 +141,8 @@ struct FasimFastSimExtendProfileStats
 	uint64_t duplicateOverlapNanoseconds;
 	uint64_t stringFormatNanoseconds;
 	uint64_t alignerAlignNanoseconds;
+	uint64_t alignerAlignCpuInternalsEnabled;
+	StripedSmithWaterman::AlignerCpuInternalsProfileStats alignerAlignCpuInternals;
 	uint64_t alignerAlignCalls;
 	uint64_t alignerAlignTotalCells;
 	uint64_t alignerAlignTotalQueryBases;
@@ -314,6 +317,20 @@ inline bool fasim_align_batch_shadow_enabled_runtime()
 	static const bool enabled = []()
 	{
 		const char* env = getenv("FASIM_ALIGNER_ALIGN_BATCH_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_aligner_align_cpu_internals_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_ALIGNER_ALIGN_INTERNALS");
 		if (env == NULL || env[0] == '\0')
 		{
 			return false;
@@ -1414,10 +1431,17 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		profileStats != NULL && fasim_pre_align_filter_shadow_enabled_runtime();
 	const bool alignBatchShadowEnabled =
 		profileStats != NULL && fasim_align_batch_shadow_enabled_runtime();
+	const bool alignerCpuInternalsEnabled =
+		profileStats != NULL && fasim_aligner_align_cpu_internals_enabled_runtime();
 	if (profileStats != NULL)
 	{
 		fasim_fastsim_profile_add_elapsed(profileStats->allocationNanoseconds,
 		                                  allocationStart);
+		if (alignerCpuInternalsEnabled)
+		{
+			profileStats->alignerAlignCpuInternalsEnabled = 1;
+			profileStats->alignerAlignCpuInternals.enabled = 1;
+		}
 		if (preAlignShadowEnabled)
 		{
 			profileStats->preAlignFilterShadowEnabled = 1;
@@ -1504,7 +1528,18 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			smallSeq = strB.substr(finalScoreInfo[i].position - cutlength + 1, cutlength);
 				const uint64_t alignStart =
 					profileStats != NULL ? fasim_fastsim_profile_now_nanoseconds() : 0;
+				StripedSmithWaterman::AlignerCpuInternalsProfileStats* previousInternalsStats = NULL;
+				if (alignerCpuInternalsEnabled)
+				{
+					previousInternalsStats =
+						StripedSmithWaterman::SetAlignerCpuInternalsProfileStats(
+							&profileStats->alignerAlignCpuInternals);
+				}
 				aligner.Align(strA.c_str(), smallSeq.c_str(), smallSeq.size(), filter, &alignment, maskLen);
+				if (alignerCpuInternalsEnabled)
+				{
+					StripedSmithWaterman::SetAlignerCpuInternalsProfileStats(previousInternalsStats);
+				}
 				if (profileStats != NULL)
 				{
 					const uint64_t alignElapsed =

@@ -11,6 +11,39 @@
 
 namespace StripedSmithWaterman {
 
+	struct AlignerCpuInternalsProfileStats {
+		AlignerCpuInternalsProfileStats()
+			: enabled(0)
+			, strlenNanoseconds(0)
+			, queryAllocNanoseconds(0)
+			, queryTranslateNanoseconds(0)
+			, refAllocNanoseconds(0)
+			, refTranslateNanoseconds(0)
+			, profileBuildNanoseconds(0)
+			, sswAlignNanoseconds(0)
+			, convertNanoseconds(0)
+			, destroyNanoseconds(0)
+			, calls(0)
+			, nullResults(0)
+		{};
+
+		uint64_t enabled;
+		uint64_t strlenNanoseconds;
+		uint64_t queryAllocNanoseconds;
+		uint64_t queryTranslateNanoseconds;
+		uint64_t refAllocNanoseconds;
+		uint64_t refTranslateNanoseconds;
+		uint64_t profileBuildNanoseconds;
+		uint64_t sswAlignNanoseconds;
+		uint64_t convertNanoseconds;
+		uint64_t destroyNanoseconds;
+		uint64_t calls;
+		uint64_t nullResults;
+	};
+
+	AlignerCpuInternalsProfileStats* SetAlignerCpuInternalsProfileStats(
+		AlignerCpuInternalsProfileStats* stats);
+
 	struct Alignment {
 		uint16_t sw_score;           // The best alignment score
 		uint16_t sw_score_next_best; // The next best alignment score

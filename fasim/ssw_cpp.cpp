@@ -5,10 +5,24 @@
 #include "ssw_cpp.h"
 #include "ssw.h"
 #include<algorithm>
+#include <chrono>
 #include <iostream>
 #include <sstream>
 
 namespace {
+
+	static thread_local StripedSmithWaterman::AlignerCpuInternalsProfileStats*
+		g_aligner_cpu_internals_profile_stats = NULL;
+
+	uint64_t CpuInternalsNowNanoseconds() {
+		return static_cast<uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count());
+	}
+
+	void CpuInternalsAddElapsed(uint64_t& slot, uint64_t startNanoseconds) {
+		slot += CpuInternalsNowNanoseconds() - startNanoseconds;
+	}
 
 	static const int8_t kBaseTranslation[128] = {
 		4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
@@ -234,6 +248,14 @@ namespace {
 
 
 namespace StripedSmithWaterman {
+
+	AlignerCpuInternalsProfileStats* SetAlignerCpuInternalsProfileStats(
+		AlignerCpuInternalsProfileStats* stats) {
+		AlignerCpuInternalsProfileStats* previous =
+			g_aligner_cpu_internals_profile_stats;
+		g_aligner_cpu_internals_profile_stats = stats;
+		return previous;
+	}
 
 	Aligner::Aligner(void)
 		: score_matrix_(NULL)
@@ -604,45 +626,110 @@ namespace StripedSmithWaterman {
 	bool Aligner::Align(const char* query, const char* ref, const int& ref_len,
 		const Filter& filter, Alignment* alignment, const int32_t maskLen) const
 	{
+		AlignerCpuInternalsProfileStats* internalsStats =
+			g_aligner_cpu_internals_profile_stats;
+		if (internalsStats != NULL) {
+			internalsStats->enabled = 1;
+			++internalsStats->calls;
+		}
 		if (!translation_matrix_) return false;
 
+		const uint64_t strlenStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		int query_len = strlen(query);
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->strlenNanoseconds, strlenStart);
+		}
 		if (query_len == 0) return false;
+
+		const uint64_t queryAllocStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		int8_t* translated_query = new int8_t[query_len];
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->queryAllocNanoseconds, queryAllocStart);
+		}
+
+		const uint64_t queryTranslateStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		TranslateBase(query, query_len, translated_query);
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->queryTranslateNanoseconds,
+			                       queryTranslateStart);
+		}
 
 		// calculate the valid length
 		int valid_ref_len = ref_len;
+		const uint64_t refAllocStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		int8_t* translated_ref = new int8_t[valid_ref_len];
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->refAllocNanoseconds, refAllocStart);
+		}
+
+		const uint64_t refTranslateStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		TranslateBase(ref, valid_ref_len, translated_ref);
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->refTranslateNanoseconds,
+			                       refTranslateStart);
+		}
 
 
 		const int8_t score_size = 2;
+		const uint64_t profileBuildStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->profileBuildNanoseconds,
+			                       profileBuildStart);
+		}
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
+		const uint64_t sswAlignStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		s_align* s_al = ssw_align(profile, translated_ref, valid_ref_len,
 			static_cast<int>(gap_opening_penalty_),
 			static_cast<int>(gap_extending_penalty_),
 			flag, filter.score_filter, filter.distance_filter, maskLen);
-
-		alignment->Clear();
-				if(s_al!=NULL){
-		    ConvertAlignment(*s_al, query_len, alignment);
-		    align_destroy(s_al);
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->sswAlignNanoseconds,
+			                       sswAlignStart);
 		}
-		else{
-		    alignment->sw_score = 0;
+
+		const uint64_t convertStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
+		alignment->Clear();
+		if (s_al != NULL) {
+			ConvertAlignment(*s_al, query_len, alignment);
+		}
+		else {
+			alignment->sw_score = 0;
+			if (internalsStats != NULL) {
+				++internalsStats->nullResults;
+			}
+		}
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->convertNanoseconds,
+			                       convertStart);
 		}
 		//2021-09-16 22:38:00: to get original cigar string.
 		//alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_ref, translated_query, query_len);
 
 		// Free memory
+		const uint64_t destroyStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		delete[] translated_query;
 		delete[] translated_ref;
+		if (s_al != NULL) {
+		    align_destroy(s_al);
+		}
 		init_destroy(profile);
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->destroyNanoseconds,
+			                       destroyStart);
+		}
 
 		return true;
 	}
@@ -720,4 +807,3 @@ namespace StripedSmithWaterman {
 		translation_matrix_ = NULL;
 	}
 } // namespace StripedSmithWaterman
-
