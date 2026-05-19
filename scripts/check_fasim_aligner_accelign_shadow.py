@@ -69,6 +69,24 @@ SCORE_ONLY_REQUIRED_KEYS = [
     "fasim_accelign_score_only_uses_runtime_output",
 ]
 
+SCORE_PRECHECK_REQUIRED_KEYS = [
+    "fasim_accelign_score_precheck_shadow_enabled",
+    "fasim_accelign_score_precheck_requests",
+    "fasim_accelign_score_precheck_requests_compared",
+    "fasim_accelign_score_precheck_score_mismatches",
+    "fasim_accelign_score_precheck_predicted_reject",
+    "fasim_accelign_score_precheck_true_reject",
+    "fasim_accelign_score_precheck_false_reject",
+    "fasim_accelign_score_precheck_false_keep",
+    "fasim_accelign_score_precheck_est_cpu_align_calls_saved",
+    "fasim_accelign_score_precheck_est_cpu_align_seconds_saved",
+    "fasim_accelign_score_precheck_accelign_seconds",
+    "fasim_accelign_score_precheck_net_est_seconds_saved",
+    "fasim_accelign_score_precheck_query_reuse_active",
+    "fasim_accelign_score_precheck_has_endpoint_contract",
+    "fasim_accelign_score_precheck_uses_runtime_output",
+]
+
 
 def metric_float(metrics: Dict[str, str], key: str) -> float:
     try:
@@ -226,6 +244,53 @@ def main() -> int:
         raise RuntimeError("Accelign score-only shadow did not report query staging bytes")
     if metric_int(score_only.metrics, "fasim_accelign_score_only_target_staging_bytes") <= 0:
         raise RuntimeError("Accelign score-only shadow did not report target staging bytes")
+
+    precheck = run_once(
+        workload=workload,
+        mode=ModeSpec(
+            "accelign_score_precheck_shadow",
+            "cuda",
+            {
+                "FASIM_TRANSFERSTRING_TABLE": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS": "1",
+                "FASIM_ALIGNER_ACCELIGN_SCORE_PRECHECK_SHADOW": "1",
+                "FASIM_ALIGNER_ACCELIGN_SCORE_PRECHECK_SHADOW_MAX_REQUESTS": "256",
+            },
+        ),
+        bin_path=cuda_bin,
+        work_dir=work_dir / workload.label / "accelign_score_precheck_shadow",
+        require_profile=True,
+    )
+    require_digest_match(table, precheck, "accelign_score_precheck_shadow")
+    require_metrics(precheck.metrics, SCORE_PRECHECK_REQUIRED_KEYS)
+
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_shadow_enabled") != 1:
+        raise RuntimeError("Accelign score precheck shadow was not enabled")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_requests") <= 0:
+        raise RuntimeError("Accelign score precheck shadow did not observe requests")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_requests_compared") <= 0:
+        raise RuntimeError("Accelign score precheck shadow did not compare requests")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_uses_runtime_output") != 0:
+        raise RuntimeError("Accelign score precheck shadow must not feed runtime output")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_has_endpoint_contract") != 0:
+        raise RuntimeError("Accelign score precheck shadow must not use endpoint contract")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_score_mismatches") != 0:
+        raise RuntimeError("Accelign score precheck score contract mismatched")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_false_reject") != 0:
+        raise RuntimeError("Accelign score precheck would false-reject a CPU score-pass call")
+    if metric_float(precheck.metrics, "fasim_accelign_score_precheck_accelign_seconds") <= 0.0:
+        raise RuntimeError("Accelign score precheck did not report Accelign seconds")
+    saved_seconds = metric_float(
+        precheck.metrics, "fasim_accelign_score_precheck_est_cpu_align_seconds_saved"
+    )
+    accelign_seconds = metric_float(precheck.metrics, "fasim_accelign_score_precheck_accelign_seconds")
+    net_seconds = metric_float(precheck.metrics, "fasim_accelign_score_precheck_net_est_seconds_saved")
+    if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.000001:
+        raise RuntimeError(
+            "Accelign score precheck net estimate must equal saved CPU seconds minus Accelign seconds"
+        )
 
     print("Fasim Accelign aligner shadow checks passed")
     return 0
