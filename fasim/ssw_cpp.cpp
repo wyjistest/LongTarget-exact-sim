@@ -64,6 +64,33 @@ namespace {
 	static thread_local std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >
 		g_ssw_profile_cache;
 
+	struct SswProfileContextShadowEntry {
+		SswProfileContextShadowEntry()
+			: hits(0)
+			, firstQueryTranslateNanoseconds(0)
+			, firstLookupNanoseconds(0)
+			, profile(NULL)
+		{
+		}
+
+		~SswProfileContextShadowEntry()
+		{
+			if (profile != NULL) {
+				init_destroy(profile);
+			}
+		}
+
+		std::vector<int8_t> query;
+		std::vector<int8_t> matrix;
+		uint64_t hits;
+		uint64_t firstQueryTranslateNanoseconds;
+		uint64_t firstLookupNanoseconds;
+		s_profile* profile;
+	};
+
+	static thread_local std::map<std::string, std::unique_ptr<SswProfileContextShadowEntry> >
+		g_ssw_profile_context_shadow;
+
 	uint64_t CpuInternalsNowNanoseconds() {
 		return static_cast<uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -109,6 +136,29 @@ namespace {
 			return env[0] != '0';
 		}();
 		return enabled;
+	}
+
+	bool SswProfileContextShadowEnabledRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CONTEXT_SHADOW");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	uint64_t SswProfileContextShadowMaxCompareRuntime() {
+		static const uint64_t maxCompare = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CONTEXT_SHADOW_MAX_COMPARE");
+			if (env == NULL || env[0] == '\0') {
+				return static_cast<uint64_t>(1024);
+			}
+			const long long parsed = atoll(env);
+			return parsed > 0 ? static_cast<uint64_t>(parsed) : static_cast<uint64_t>(0);
+		}();
+		return maxCompare;
 	}
 
 	uint64_t SswProfileReuseShadowMaxCompareRuntime() {
@@ -466,6 +516,101 @@ namespace {
 		                             gapOpeningPenalty, gapExtendingPenalty,
 		                             flag, filter, maskLen, cpuAlignment,
 		                             stats);
+	}
+
+	void SswProfileContextShadowRecord(const int8_t* translatedQuery,
+		const int queryLen,
+		const int8_t* translatedRef,
+		const int validRefLen,
+		const int8_t* scoreMatrix,
+		const int scoreMatrixSize,
+		const int8_t scoreSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const uint8_t flag,
+		const StripedSmithWaterman::Filter& filter,
+		const int32_t maskLen,
+		const uint64_t queryTranslateElapsed,
+		const uint64_t profileLookupElapsed,
+		const uint64_t profileBuildElapsed,
+		const StripedSmithWaterman::Alignment& cpuAlignment,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		if (stats == NULL || !SswProfileContextShadowEnabledRuntime()) {
+			return;
+		}
+		stats->sswProfileContextShadowEnabled = 1;
+		++stats->sswProfileContextCalls;
+		uint64_t scoringHash = 0;
+		const std::string key = SswProfileReuseShadowKey(
+			translatedQuery, queryLen, scoreMatrix, scoreMatrixSize,
+			gapOpeningPenalty, gapExtendingPenalty, scoreSize, &scoringHash);
+		std::map<std::string, std::unique_ptr<SswProfileContextShadowEntry> >::iterator it =
+			g_ssw_profile_context_shadow.find(key);
+		if (it == g_ssw_profile_context_shadow.end()) {
+			std::unique_ptr<SswProfileContextShadowEntry> entry(
+				new SswProfileContextShadowEntry());
+			entry->query.assign(translatedQuery, translatedQuery + queryLen);
+			entry->matrix.assign(scoreMatrix,
+				scoreMatrix + scoreMatrixSize * scoreMatrixSize);
+			entry->hits = 1;
+			entry->firstQueryTranslateNanoseconds = queryTranslateElapsed;
+			entry->firstLookupNanoseconds = profileLookupElapsed;
+			const uint64_t contextBuildStart = CpuInternalsNowNanoseconds();
+			entry->profile = ssw_init(entry->query.data(), queryLen,
+				entry->matrix.data(), scoreMatrixSize, scoreSize);
+			stats->sswProfileContextBuildNanoseconds +=
+				CpuInternalsNowNanoseconds() - contextBuildStart;
+			g_ssw_profile_context_shadow.insert(std::make_pair(key, std::move(entry)));
+			stats->sswProfileContextUniqueKeys =
+				static_cast<uint64_t>(g_ssw_profile_context_shadow.size());
+			return;
+		}
+
+		++it->second->hits;
+		++stats->sswProfileContextReusableCalls;
+		stats->sswProfileContextUniqueKeys =
+			static_cast<uint64_t>(g_ssw_profile_context_shadow.size());
+		stats->sswProfileContextQueryTranslateSavedNanoseconds +=
+			queryTranslateElapsed;
+		stats->sswProfileContextLookupSavedNanoseconds += profileLookupElapsed;
+		if (stats->sswProfileContextShadowCompared >=
+		    SswProfileContextShadowMaxCompareRuntime()) {
+			return;
+		}
+
+		s_align* shadowAlign = ssw_align(it->second->profile,
+			translatedRef, validRefLen,
+			static_cast<int>(gapOpeningPenalty),
+			static_cast<int>(gapExtendingPenalty),
+			flag, filter.score_filter, filter.distance_filter, maskLen);
+		StripedSmithWaterman::Alignment shadowAlignment;
+		SswProfileConvertNullableAlignment(shadowAlign, queryLen,
+		                                   &shadowAlignment, NULL);
+		++stats->sswProfileContextShadowCompared;
+		bool matches = true;
+		if (shadowAlignment.sw_score != cpuAlignment.sw_score ||
+		    shadowAlignment.sw_score_next_best != cpuAlignment.sw_score_next_best) {
+			++stats->sswProfileContextScoreMismatches;
+			matches = false;
+		}
+		if (shadowAlignment.ref_begin != cpuAlignment.ref_begin ||
+		    shadowAlignment.ref_end != cpuAlignment.ref_end ||
+		    shadowAlignment.query_begin != cpuAlignment.query_begin ||
+		    shadowAlignment.query_end != cpuAlignment.query_end ||
+		    shadowAlignment.ref_end_next_best != cpuAlignment.ref_end_next_best) {
+			++stats->sswProfileContextEndpointMismatches;
+			matches = false;
+		}
+		if (!SswProfileReuseShadowCigarEquals(shadowAlignment, cpuAlignment)) {
+			++stats->sswProfileContextCigarMismatches;
+			matches = false;
+		}
+		if (!matches) {
+			++stats->sswProfileContextDigestMismatches;
+		}
+		if (shadowAlign != NULL) {
+			align_destroy(shadowAlign);
+		}
 	}
 
 	static const int8_t kBaseTranslation[128] = {
@@ -1108,9 +1253,11 @@ namespace StripedSmithWaterman {
 		const uint64_t queryTranslateStart =
 			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		TranslateBase(query, query_len, translated_query);
+		uint64_t queryTranslateElapsed = 0;
 		if (internalsStats != NULL) {
-			CpuInternalsAddElapsed(internalsStats->queryTranslateNanoseconds,
-			                       queryTranslateStart);
+			queryTranslateElapsed =
+				CpuInternalsNowNanoseconds() - queryTranslateStart;
+			internalsStats->queryTranslateNanoseconds += queryTranslateElapsed;
 		}
 
 		// calculate the valid length
@@ -1135,6 +1282,9 @@ namespace StripedSmithWaterman {
 		s_profile* profile = NULL;
 		bool destroyProfile = true;
 		uint64_t profileBuildElapsed = 0;
+		const uint64_t profileLookupBefore =
+			internalsStats != NULL ?
+				internalsStats->profileCacheLookupNanoseconds : 0;
 		if (profileCacheEnabled) {
 			profile = SswProfileCacheGetOrBuild(translated_query, query_len,
 				score_matrix_, score_matrix_size_, score_size,
@@ -1151,6 +1301,9 @@ namespace StripedSmithWaterman {
 				internalsStats->profileBuildNanoseconds += profileBuildElapsed;
 			}
 		}
+		const uint64_t profileLookupElapsed =
+			internalsStats != NULL && internalsStats->profileCacheLookupNanoseconds >= profileLookupBefore ?
+				internalsStats->profileCacheLookupNanoseconds - profileLookupBefore : 0;
 		if (internalsStats != NULL) {
 			CpuInternalsAddElapsed(internalsStats->setupNanoseconds, setupStart);
 		}
@@ -1212,6 +1365,18 @@ namespace StripedSmithWaterman {
 		                                      flag, filter, maskLen,
 		                                      profileBuildElapsed,
 		                                      *alignment, internalsStats);
+		SswProfileContextShadowRecord(translated_query, query_len,
+		                              translated_ref, valid_ref_len,
+		                              score_matrix_, score_matrix_size_,
+		                              score_size,
+		                              gap_opening_penalty_,
+		                              gap_extending_penalty_,
+		                              flag, filter, maskLen,
+		                              queryTranslateElapsed,
+		                              profileLookupElapsed,
+		                              profileBuildElapsed,
+		                              *alignment,
+		                              internalsStats);
 		//2021-09-16 22:38:00: to get original cigar string.
 		//alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_ref, translated_query, query_len);
 
