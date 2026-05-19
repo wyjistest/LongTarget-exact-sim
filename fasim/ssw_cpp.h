@@ -69,18 +69,26 @@ namespace StripedSmithWaterman {
 			, sswProfileCacheCigarMismatches(0)
 			, sswProfileCacheDigestMismatches(0)
 			, sswProfileCacheFallbacks(0)
+			, sswProfileContextRequested(0)
+			, sswProfileContextActive(0)
+			, sswProfileContextDisabledReason(0)
+			, sswProfileContextValidateEnabled(0)
 			, sswProfileContextShadowEnabled(0)
 			, sswProfileContextUniqueKeys(0)
 			, sswProfileContextCalls(0)
 			, sswProfileContextReusableCalls(0)
+			, sswProfileContextHits(0)
+			, sswProfileContextMisses(0)
 			, sswProfileContextQueryTranslateSavedNanoseconds(0)
 			, sswProfileContextLookupSavedNanoseconds(0)
 			, sswProfileContextBuildNanoseconds(0)
+			, sswProfileContextValidateNanoseconds(0)
 			, sswProfileContextShadowCompared(0)
 			, sswProfileContextScoreMismatches(0)
 			, sswProfileContextEndpointMismatches(0)
 			, sswProfileContextCigarMismatches(0)
 			, sswProfileContextDigestMismatches(0)
+			, sswProfileContextFallbacks(0)
 		{};
 
 		uint64_t enabled;
@@ -139,18 +147,26 @@ namespace StripedSmithWaterman {
 		uint64_t sswProfileCacheCigarMismatches;
 		uint64_t sswProfileCacheDigestMismatches;
 		uint64_t sswProfileCacheFallbacks;
+		uint64_t sswProfileContextRequested;
+		uint64_t sswProfileContextActive;
+		uint64_t sswProfileContextDisabledReason;
+		uint64_t sswProfileContextValidateEnabled;
 		uint64_t sswProfileContextShadowEnabled;
 		uint64_t sswProfileContextUniqueKeys;
 		uint64_t sswProfileContextCalls;
 		uint64_t sswProfileContextReusableCalls;
+		uint64_t sswProfileContextHits;
+		uint64_t sswProfileContextMisses;
 		uint64_t sswProfileContextQueryTranslateSavedNanoseconds;
 		uint64_t sswProfileContextLookupSavedNanoseconds;
 		uint64_t sswProfileContextBuildNanoseconds;
+		uint64_t sswProfileContextValidateNanoseconds;
 		uint64_t sswProfileContextShadowCompared;
 		uint64_t sswProfileContextScoreMismatches;
 		uint64_t sswProfileContextEndpointMismatches;
 		uint64_t sswProfileContextCigarMismatches;
 		uint64_t sswProfileContextDigestMismatches;
+		uint64_t sswProfileContextFallbacks;
 	};
 
 	AlignerCpuInternalsProfileStats* SetAlignerCpuInternalsProfileStats(
