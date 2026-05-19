@@ -41,6 +41,29 @@ namespace {
 	static thread_local std::map<std::string, std::unique_ptr<SswProfileReuseShadowCacheEntry> >
 		g_ssw_profile_reuse_shadow_cache;
 
+	struct SswProfileCacheEntry {
+		SswProfileCacheEntry()
+			: profile(NULL)
+			, buildNanoseconds(0)
+		{
+		}
+
+		~SswProfileCacheEntry()
+		{
+			if (profile != NULL) {
+				init_destroy(profile);
+			}
+		}
+
+		std::vector<int8_t> query;
+		std::vector<int8_t> matrix;
+		s_profile* profile;
+		uint64_t buildNanoseconds;
+	};
+
+	static thread_local std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >
+		g_ssw_profile_cache;
+
 	uint64_t CpuInternalsNowNanoseconds() {
 		return static_cast<uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -58,6 +81,28 @@ namespace {
 	bool SswProfileReuseShadowEnabledRuntime() {
 		static const bool enabled = []() {
 			const char* env = getenv("FASIM_SSW_PROFILE_REUSE_SHADOW");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	bool SswProfileCacheEnabledRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CACHE");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	bool SswProfileCacheValidateRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CACHE_VALIDATE");
 			if (env == NULL || env[0] == '\0') {
 				return false;
 			}
@@ -147,6 +192,119 @@ namespace {
 			}
 		}
 		return true;
+	}
+
+	bool SswProfileAlignmentEquals(const StripedSmithWaterman::Alignment& lhs,
+		const StripedSmithWaterman::Alignment& rhs,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats,
+		const bool countMismatches) {
+		bool matches = true;
+		if (lhs.sw_score != rhs.sw_score ||
+		    lhs.sw_score_next_best != rhs.sw_score_next_best) {
+			matches = false;
+			if (countMismatches && stats != NULL) {
+				++stats->sswProfileCacheScoreMismatches;
+			}
+		}
+		if (lhs.ref_begin != rhs.ref_begin ||
+		    lhs.ref_end != rhs.ref_end ||
+		    lhs.query_begin != rhs.query_begin ||
+		    lhs.query_end != rhs.query_end ||
+		    lhs.ref_end_next_best != rhs.ref_end_next_best) {
+			matches = false;
+			if (countMismatches && stats != NULL) {
+				++stats->sswProfileCacheEndpointMismatches;
+			}
+		}
+		if (!SswProfileReuseShadowCigarEquals(lhs, rhs)) {
+			matches = false;
+			if (countMismatches && stats != NULL) {
+				++stats->sswProfileCacheCigarMismatches;
+			}
+		}
+		if (!matches && countMismatches && stats != NULL) {
+			++stats->sswProfileCacheDigestMismatches;
+		}
+		return matches;
+	}
+
+	s_align* SswProfileRunAlign(s_profile* profile,
+		const int8_t* translatedRef,
+		const int validRefLen,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const uint8_t flag,
+		const StripedSmithWaterman::Filter& filter,
+		const int32_t maskLen) {
+		return ssw_align(profile, translatedRef, validRefLen,
+			static_cast<int>(gapOpeningPenalty),
+			static_cast<int>(gapExtendingPenalty),
+			flag, filter.score_filter, filter.distance_filter, maskLen);
+	}
+
+	void SswProfileConvertNullableAlignment(s_align* sAl,
+		const int queryLen,
+		StripedSmithWaterman::Alignment* alignment,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		alignment->Clear();
+		if (sAl != NULL) {
+			ConvertAlignment(*sAl, queryLen, alignment);
+		}
+		else {
+			alignment->sw_score = 0;
+			if (stats != NULL) {
+				++stats->nullResults;
+			}
+		}
+	}
+
+	s_profile* SswProfileCacheGetOrBuild(const int8_t* translatedQuery,
+		const int queryLen,
+		const int8_t* scoreMatrix,
+		const int scoreMatrixSize,
+		const int8_t scoreSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		uint64_t scoringHash = 0;
+		const std::string key = SswProfileReuseShadowKey(
+			translatedQuery, queryLen, scoreMatrix, scoreMatrixSize,
+			gapOpeningPenalty, gapExtendingPenalty, scoreSize, &scoringHash);
+		std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >::iterator it =
+			g_ssw_profile_cache.find(key);
+		if (it != g_ssw_profile_cache.end()) {
+			if (stats != NULL) {
+				++stats->sswProfileCacheHits;
+				stats->sswProfileCacheSavedBuildNanoseconds +=
+					it->second->buildNanoseconds;
+				stats->sswProfileCacheUniqueKeys =
+					static_cast<uint64_t>(g_ssw_profile_cache.size());
+			}
+			return it->second->profile;
+		}
+
+		if (stats != NULL) {
+			++stats->sswProfileCacheMisses;
+		}
+		std::unique_ptr<SswProfileCacheEntry> entry(new SswProfileCacheEntry());
+		entry->query.assign(translatedQuery, translatedQuery + queryLen);
+		entry->matrix.assign(scoreMatrix,
+			scoreMatrix + scoreMatrixSize * scoreMatrixSize);
+		const uint64_t buildStart =
+			stats != NULL ? CpuInternalsNowNanoseconds() : 0;
+		entry->profile = ssw_init(entry->query.data(), queryLen,
+			entry->matrix.data(), scoreMatrixSize, scoreSize);
+		if (stats != NULL) {
+			entry->buildNanoseconds = CpuInternalsNowNanoseconds() - buildStart;
+			stats->sswProfileCacheBuildNanoseconds += entry->buildNanoseconds;
+		}
+		s_profile* profile = entry->profile;
+		g_ssw_profile_cache.insert(std::make_pair(key, std::move(entry)));
+		if (stats != NULL) {
+			stats->sswProfileCacheUniqueKeys =
+				static_cast<uint64_t>(g_ssw_profile_cache.size());
+		}
+		return profile;
 	}
 
 	void SswProfileReuseShadowCompare(s_profile* profile,
@@ -871,9 +1029,19 @@ namespace StripedSmithWaterman {
 	{
 		AlignerCpuInternalsProfileStats* internalsStats =
 			g_aligner_cpu_internals_profile_stats;
+		const bool profileCacheEnabled = SswProfileCacheEnabledRuntime();
+		const bool profileCacheValidate =
+			profileCacheEnabled && SswProfileCacheValidateRuntime();
 		if (internalsStats != NULL) {
 			internalsStats->enabled = 1;
 			++internalsStats->calls;
+			if (profileCacheEnabled) {
+				internalsStats->sswProfileCacheRequested = 1;
+				internalsStats->sswProfileCacheActive = 1;
+				internalsStats->sswProfileCacheValidateEnabled =
+					profileCacheValidate ? 1 : 0;
+				++internalsStats->sswProfileCacheCalls;
+			}
 		}
 		if (!translation_matrix_) return false;
 
@@ -919,24 +1087,32 @@ namespace StripedSmithWaterman {
 
 
 		const int8_t score_size = 2;
-		const uint64_t profileBuildStart =
-			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
-		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
-			score_matrix_size_, score_size);
+		s_profile* profile = NULL;
+		bool destroyProfile = true;
 		uint64_t profileBuildElapsed = 0;
-		if (internalsStats != NULL) {
-			profileBuildElapsed = CpuInternalsNowNanoseconds() - profileBuildStart;
-			internalsStats->profileBuildNanoseconds += profileBuildElapsed;
+		if (profileCacheEnabled) {
+			profile = SswProfileCacheGetOrBuild(translated_query, query_len,
+				score_matrix_, score_matrix_size_, score_size,
+				gap_opening_penalty_, gap_extending_penalty_, internalsStats);
+			destroyProfile = false;
+		}
+		else {
+			const uint64_t profileBuildStart =
+				internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
+			profile = ssw_init(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size);
+			if (internalsStats != NULL) {
+				profileBuildElapsed = CpuInternalsNowNanoseconds() - profileBuildStart;
+				internalsStats->profileBuildNanoseconds += profileBuildElapsed;
+			}
 		}
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
 		const uint64_t sswAlignStart =
 			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
-		s_align* s_al = ssw_align(profile, translated_ref, valid_ref_len,
-			static_cast<int>(gap_opening_penalty_),
-			static_cast<int>(gap_extending_penalty_),
-			flag, filter.score_filter, filter.distance_filter, maskLen);
+		s_align* s_al = SswProfileRunAlign(profile, translated_ref, valid_ref_len,
+			gap_opening_penalty_, gap_extending_penalty_, flag, filter, maskLen);
 		if (internalsStats != NULL) {
 			CpuInternalsAddElapsed(internalsStats->sswAlignNanoseconds,
 			                       sswAlignStart);
@@ -944,19 +1120,39 @@ namespace StripedSmithWaterman {
 
 		const uint64_t convertStart =
 			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
-		alignment->Clear();
-		if (s_al != NULL) {
-			ConvertAlignment(*s_al, query_len, alignment);
-		}
-		else {
-			alignment->sw_score = 0;
-			if (internalsStats != NULL) {
-				++internalsStats->nullResults;
-			}
-		}
+		SswProfileConvertNullableAlignment(s_al, query_len, alignment, internalsStats);
 		if (internalsStats != NULL) {
 			CpuInternalsAddElapsed(internalsStats->convertNanoseconds,
 			                       convertStart);
+		}
+		if (profileCacheValidate) {
+			const uint64_t validateStart =
+				internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
+			s_profile* legacyProfile = ssw_init(translated_query, query_len,
+				score_matrix_, score_matrix_size_, score_size);
+			s_align* legacyAlign = SswProfileRunAlign(legacyProfile,
+				translated_ref, valid_ref_len,
+				gap_opening_penalty_, gap_extending_penalty_,
+				flag, filter, maskLen);
+			Alignment legacyAlignment;
+			SswProfileConvertNullableAlignment(legacyAlign, query_len,
+			                                   &legacyAlignment, NULL);
+			if (!SswProfileAlignmentEquals(*alignment, legacyAlignment,
+			                               internalsStats, true)) {
+				if (internalsStats != NULL) {
+					++internalsStats->sswProfileCacheFallbacks;
+				}
+				*alignment = legacyAlignment;
+			}
+			if (legacyAlign != NULL) {
+				align_destroy(legacyAlign);
+			}
+			init_destroy(legacyProfile);
+			if (internalsStats != NULL) {
+				CpuInternalsAddElapsed(
+					internalsStats->sswProfileCacheValidateNanoseconds,
+					validateStart);
+			}
 		}
 		SswProfileReuseShadowRecordAndCompare(translated_query, query_len,
 		                                      translated_ref, valid_ref_len,
@@ -978,7 +1174,9 @@ namespace StripedSmithWaterman {
 		if (s_al != NULL) {
 		    align_destroy(s_al);
 		}
-		init_destroy(profile);
+		if (destroyProfile) {
+			init_destroy(profile);
+		}
 		if (internalsStats != NULL) {
 			CpuInternalsAddElapsed(internalsStats->destroyNanoseconds,
 			                       destroyStart);

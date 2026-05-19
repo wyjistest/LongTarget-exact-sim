@@ -490,6 +490,10 @@ check-fasim-ssw-profile-reuse-shadow:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_ssw_profile_reuse_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+check-fasim-ssw-profile-cache:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_cache.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 check-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_pre_align_filter_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
@@ -529,6 +533,14 @@ benchmark-fasim-aligner-align-cpu-internals:
 		exit 2; \
 	fi
 	python3 ./scripts/benchmark_fasim_aligner_align_cpu_internals.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-cache:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_ssw_profile_cache.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
 
 benchmark-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
