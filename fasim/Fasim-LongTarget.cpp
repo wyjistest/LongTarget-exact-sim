@@ -748,6 +748,9 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_accelign_score_precheck_true_reject=" << stats.fastSimExtendProfile.accelignScorePrecheckTrueReject << endl;
     cerr << "benchmark.fasim_accelign_score_precheck_false_reject=" << stats.fastSimExtendProfile.accelignScorePrecheckFalseReject << endl;
     cerr << "benchmark.fasim_accelign_score_precheck_false_keep=" << stats.fastSimExtendProfile.accelignScorePrecheckFalseKeep << endl;
+    cerr << "benchmark.fasim_accelign_score_precheck_predicted_reject_candidates=" << stats.fastSimExtendProfile.accelignScorePrecheckPredictedRejectCandidates << endl;
+    cerr << "benchmark.fasim_accelign_score_precheck_false_reject_candidates=" << stats.fastSimExtendProfile.accelignScorePrecheckFalseRejectCandidates << endl;
+    cerr << "benchmark.fasim_accelign_score_precheck_output_digest_affected=" << stats.fastSimExtendProfile.accelignScorePrecheckOutputDigestAffected << endl;
     cerr << "benchmark.fasim_accelign_score_precheck_est_cpu_align_calls_saved=" << stats.fastSimExtendProfile.accelignScorePrecheckEstCpuAlignCallsSaved << endl;
     cerr << "benchmark.fasim_accelign_score_precheck_est_cpu_align_seconds_saved=" << fasim_profile_seconds(stats.fastSimExtendProfile.accelignScorePrecheckEstCpuAlignNanosecondsSaved) << endl;
     cerr << "benchmark.fasim_accelign_score_precheck_cpu_seconds=" << fasim_profile_seconds(stats.fastSimExtendProfile.accelignScorePrecheckCpuReferenceNanoseconds) << endl;

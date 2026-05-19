@@ -10,28 +10,32 @@ Workload: `hg38_chr21_H19`. Each mode uses 1 run(s); tables report medians.
 
 | Sample cap | Requests | Compared | Unsupported | CPU reference seconds | Accelign kernel seconds | Accelign total seconds | Predicted reject calls | True reject calls | False reject calls | False keep calls | Estimated CPU calls saved | Estimated CPU seconds saved | Net estimated seconds saved | Accelign vs CPU speedup |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10000 | 979,282 | 10,000 | 969,282 | 0.452303 | 0.110370 | 0.184157 | 4,835 | 4,835 | 0 | 0 | 4,835 | 0.201002 | 0.016846 | 2.46x |
+| 10000 | 979,282 | 10,000 | 969,282 | 0.449884 | 0.115411 | 0.189680 | 4,835 | 4,835 | 0 | 0 | 4,835 | 0.199134 | 0.009454 | 2.37x |
+| 50000 | 979,282 | 50,000 | 929,282 | 2.264930 | 0.527653 | 0.762224 | 28,176 | 28,176 | 0 | 0 | 28,176 | 1.181550 | 0.419322 | 2.97x |
 
 ## Contract
 
 | Sample cap | Score mismatches | Endpoint contract | Uses runtime output | Query reuse active |
 | --- | --- | --- | --- | --- |
 | 10000 | 0 | 0 | 0 | 1 |
+| 50000 | 0 | 0 | 0 | 1 |
 
 ## Staging
 
 | Sample cap | H2D bytes | D2H bytes | Query staging bytes | Target staging bytes | Query share of H2D | Target share of H2D |
 | --- | --- | --- | --- | --- | --- | --- |
 | 10000 | 1,698,378 | 40,000 | 902,652 | 675,726 | 53.15% | 39.79% |
+| 50000 | 8,271,954 | 200,000 | 4,350,164 | 3,321,790 | 52.59% | 40.16% |
 
 ## Decision
 
-The score-gate simulation is score-clean with zero false rejects and positive net estimated savings at the largest sample. Next work can design a default-off real precheck with validation/fallback, but only for the same call-scoped score gate unless a separate candidate/output proof is added.
+The score-gate simulation is score-clean with zero call-level false rejects and positive net estimated savings at the largest sample. The companion scaling report found candidate-level false rejects, so do not promote this to candidate/output-level filtering. Keep this as shadow unless a narrower call-level real path with validation/fallback is designed separately.
 
 ```text
-largest_predicted_reject_calls = 4,835
+largest_predicted_reject_calls = 28,176
 largest_false_reject_calls = 0
-largest_net_est_seconds_saved = 0.016846
+largest_net_est_seconds_saved = 0.419322
+candidate_level_filter_safe = no
 ```
 
 ## Boundaries

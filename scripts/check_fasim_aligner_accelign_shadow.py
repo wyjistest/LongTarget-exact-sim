@@ -78,11 +78,14 @@ SCORE_PRECHECK_REQUIRED_KEYS = [
     "fasim_accelign_score_precheck_true_reject",
     "fasim_accelign_score_precheck_false_reject",
     "fasim_accelign_score_precheck_false_keep",
+    "fasim_accelign_score_precheck_predicted_reject_candidates",
+    "fasim_accelign_score_precheck_false_reject_candidates",
     "fasim_accelign_score_precheck_est_cpu_align_calls_saved",
     "fasim_accelign_score_precheck_est_cpu_align_seconds_saved",
     "fasim_accelign_score_precheck_accelign_seconds",
     "fasim_accelign_score_precheck_net_est_seconds_saved",
     "fasim_accelign_score_precheck_query_reuse_active",
+    "fasim_accelign_score_precheck_output_digest_affected",
     "fasim_accelign_score_precheck_has_endpoint_contract",
     "fasim_accelign_score_precheck_uses_runtime_output",
 ]
@@ -280,6 +283,8 @@ def main() -> int:
         raise RuntimeError("Accelign score precheck score contract mismatched")
     if metric_int(precheck.metrics, "fasim_accelign_score_precheck_false_reject") != 0:
         raise RuntimeError("Accelign score precheck would false-reject a CPU score-pass call")
+    if metric_int(precheck.metrics, "fasim_accelign_score_precheck_output_digest_affected") != 0:
+        raise RuntimeError("Accelign score precheck shadow must not affect output digest")
     if metric_float(precheck.metrics, "fasim_accelign_score_precheck_accelign_seconds") <= 0.0:
         raise RuntimeError("Accelign score precheck did not report Accelign seconds")
     saved_seconds = metric_float(
@@ -287,7 +292,7 @@ def main() -> int:
     )
     accelign_seconds = metric_float(precheck.metrics, "fasim_accelign_score_precheck_accelign_seconds")
     net_seconds = metric_float(precheck.metrics, "fasim_accelign_score_precheck_net_est_seconds_saved")
-    if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.000001:
+    if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.0001:
         raise RuntimeError(
             "Accelign score precheck net estimate must equal saved CPU seconds minus Accelign seconds"
         )

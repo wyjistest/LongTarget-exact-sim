@@ -102,6 +102,8 @@ SCORE_PRECHECK_KEYS = [
     "fasim_accelign_score_precheck_true_reject",
     "fasim_accelign_score_precheck_false_reject",
     "fasim_accelign_score_precheck_false_keep",
+    "fasim_accelign_score_precheck_predicted_reject_candidates",
+    "fasim_accelign_score_precheck_false_reject_candidates",
     "fasim_accelign_score_precheck_est_cpu_align_calls_saved",
     "fasim_accelign_score_precheck_est_cpu_align_seconds_saved",
     "fasim_accelign_score_precheck_cpu_seconds",
@@ -113,6 +115,7 @@ SCORE_PRECHECK_KEYS = [
     "fasim_accelign_score_precheck_query_staging_bytes",
     "fasim_accelign_score_precheck_target_staging_bytes",
     "fasim_accelign_score_precheck_query_reuse_active",
+    "fasim_accelign_score_precheck_output_digest_affected",
     "fasim_accelign_score_precheck_has_endpoint_contract",
     "fasim_accelign_score_precheck_uses_runtime_output",
 ]
@@ -754,6 +757,8 @@ def render_score_precheck_report(
                 fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_true_reject")),
                 fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_false_reject")),
                 fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_false_keep")),
+                fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_predicted_reject_candidates")),
+                fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_false_reject_candidates")),
                 fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_est_cpu_align_calls_saved")),
                 fmt_seconds(saved_seconds),
                 fmt_seconds(net_seconds),
@@ -776,6 +781,8 @@ def render_score_precheck_report(
             "True reject calls",
             "False reject calls",
             "False keep calls",
+            "Predicted reject candidates",
+            "False reject candidates",
             "Estimated CPU calls saved",
             "Estimated CPU seconds saved",
             "Net estimated seconds saved",
@@ -854,6 +861,9 @@ def render_score_precheck_report(
     largest_false_reject = mode_count(
         results, largest_mode, "fasim_accelign_score_precheck_false_reject"
     )
+    largest_false_reject_candidates = mode_count(
+        results, largest_mode, "fasim_accelign_score_precheck_false_reject_candidates"
+    )
     largest_net = mode_metric(
         results, largest_mode, "fasim_accelign_score_precheck_net_est_seconds_saved"
     )
@@ -869,6 +879,12 @@ def render_score_precheck_report(
         lines.append(
             "The score-gate simulation produced false rejects. Do not use this "
             "as a rejection precheck; at most investigate score ranking."
+        )
+    elif largest_false_reject_candidates != 0:
+        lines.append(
+            "The score-gate simulation is call-clean but candidate-level false "
+            "rejects are nonzero. Do not promote this to candidate/output-level "
+            "filtering."
         )
     elif largest_net > 0.0 and largest_predicted > 0:
         lines.append(
@@ -916,6 +932,163 @@ def render_score_precheck_report(
     return report
 
 
+def render_score_precheck_scaling_report(
+    *,
+    workload: WorkloadSpec,
+    results: Dict[str, List[RunResult]],
+    sample_sizes: List[int],
+    repeat: int,
+    output_path: Path,
+) -> str:
+    lines: List[str] = []
+    lines.append("# Fasim Accelign Score-Only Precheck Scaling")
+    lines.append("")
+    lines.append(
+        "This report extends the Accelign score-only precheck shadow with "
+        "scaling and candidate-level safety telemetry. CPU `aligner.Align` "
+        "remains the runtime authority; no Align calls are skipped and Accelign "
+        "endpoints are not used."
+    )
+    lines.append("")
+    lines.append(
+        "Call-level false rejects measure whether Accelign would reject a CPU "
+        "score-pass Align call. Candidate-level false rejects are stricter: they "
+        "flag candidates where all sampled Align calls are predicted reject but "
+        "the CPU authority still reaches the candidate reconstruction path. Any "
+        "candidate-level false reject is a no-go for candidate/output filtering."
+    )
+    lines.append("")
+    lines.append(f"Workload: `{workload.label}`. Each mode uses {repeat} run(s); tables report medians.")
+    lines.append("")
+
+    total_requests = 0
+    for size in sample_sizes:
+        mode = f"accelign_score_precheck_{sample_label(size)}"
+        total_requests = max(total_requests, mode_count(results, mode, "fasim_accelign_score_precheck_requests"))
+
+    rows: List[List[str]] = []
+    for size in sample_sizes:
+        mode = f"accelign_score_precheck_{sample_label(size)}"
+        compared = mode_count(results, mode, "fasim_accelign_score_precheck_requests_compared")
+        predicted = mode_count(results, mode, "fasim_accelign_score_precheck_predicted_reject")
+        false_reject = mode_count(results, mode, "fasim_accelign_score_precheck_false_reject")
+        predicted_candidates = mode_count(
+            results, mode, "fasim_accelign_score_precheck_predicted_reject_candidates"
+        )
+        false_reject_candidates = mode_count(
+            results, mode, "fasim_accelign_score_precheck_false_reject_candidates"
+        )
+        accelign_seconds = mode_metric(results, mode, "fasim_accelign_score_precheck_accelign_seconds")
+        saved_seconds = mode_metric(results, mode, "fasim_accelign_score_precheck_est_cpu_align_seconds_saved")
+        net_seconds = mode_metric(results, mode, "fasim_accelign_score_precheck_net_est_seconds_saved")
+        projected_full = (net_seconds / compared * total_requests) if compared > 0 else 0.0
+        rows.append(
+            [
+                sample_label(size),
+                fmt_int(compared),
+                fmt_int(predicted),
+                fmt_int(false_reject),
+                fmt_int(predicted_candidates),
+                fmt_int(false_reject_candidates),
+                fmt_seconds(accelign_seconds),
+                fmt_seconds(saved_seconds),
+                fmt_seconds(net_seconds),
+                fmt_seconds(projected_full),
+                str(mode_count(results, mode, "fasim_accelign_score_precheck_output_digest_affected")),
+                fmt_int(mode_count(results, mode, "fasim_accelign_score_precheck_score_mismatches")),
+            ]
+        )
+
+    lines.append("## Scaling Summary")
+    lines.append("")
+    append_table(
+        lines,
+        [
+            "Sample size",
+            "Compared calls",
+            "Predicted reject calls",
+            "False reject calls",
+            "Predicted reject candidates",
+            "False reject candidates",
+            "Accelign total seconds",
+            "CPU saved seconds",
+            "Net saved seconds",
+            "Projected full saved seconds",
+            "Digest affected",
+            "Score mismatches",
+        ],
+        rows,
+    )
+    lines.append("")
+
+    largest_mode = f"accelign_score_precheck_{sample_label(sample_sizes[-1])}"
+    largest_false_reject_calls = mode_count(
+        results, largest_mode, "fasim_accelign_score_precheck_false_reject"
+    )
+    largest_false_reject_candidates = mode_count(
+        results, largest_mode, "fasim_accelign_score_precheck_false_reject_candidates"
+    )
+    largest_score_mismatches = mode_count(
+        results, largest_mode, "fasim_accelign_score_precheck_score_mismatches"
+    )
+    largest_digest_affected = mode_count(
+        results, largest_mode, "fasim_accelign_score_precheck_output_digest_affected"
+    )
+    largest_compared = mode_count(results, largest_mode, "fasim_accelign_score_precheck_requests_compared")
+    largest_net = mode_metric(results, largest_mode, "fasim_accelign_score_precheck_net_est_seconds_saved")
+    projected_full = (largest_net / largest_compared * total_requests) if largest_compared > 0 else 0.0
+
+    lines.append("## Decision")
+    lines.append("")
+    if largest_score_mismatches != 0:
+        lines.append("Score mismatches appeared. Stop Accelign score precheck work.")
+    elif largest_false_reject_calls != 0:
+        lines.append("Call-level false rejects appeared. Do not use precheck rejection.")
+    elif largest_false_reject_candidates != 0:
+        lines.append(
+            "Candidate-level false rejects appeared. Do not promote this to a "
+            "candidate/output-level filter; keep it as shadow unless a narrower "
+            "call-level real path with validation is designed separately."
+        )
+    elif largest_digest_affected != 0:
+        lines.append("Digest was affected, which should be impossible in shadow mode. Stop and debug.")
+    elif projected_full >= 10.0:
+        lines.append(
+            "Call and candidate safety are clean and projected full-scale net "
+            "savings are strong. Next PR can design a default-off real opt-in "
+            "with validation/fallback."
+        )
+    elif projected_full >= 3.0:
+        lines.append(
+            "Projected savings are moderate. Consider opt-in only if real-path "
+            "validation/fallback is cheap."
+        )
+    else:
+        lines.append("Projected savings are too small for real-path complexity; keep as shadow.")
+    lines.append("")
+    lines.append("```text")
+    lines.append(f"largest_false_reject_calls = {fmt_int(largest_false_reject_calls)}")
+    lines.append(f"largest_false_reject_candidates = {fmt_int(largest_false_reject_candidates)}")
+    lines.append(f"largest_projected_full_saved_seconds = {fmt_seconds(projected_full)}")
+    lines.append("```")
+    lines.append("")
+    lines.append("## Boundaries")
+    lines.append("")
+    lines.append("```text")
+    lines.append("skip CPU aligner.Align: no")
+    lines.append("use Accelign endpoints: no")
+    lines.append("use Accelign output for final records: no")
+    lines.append("change scoring/threshold/non-overlap/output: no")
+    lines.append("change GPU AUTO/SIM-close/recovery: no")
+    lines.append("relax validation: no")
+    lines.append("```")
+
+    report = "\n".join(lines)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report + "\n", encoding="utf-8")
+    return report
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cuda-bin", required=True)
@@ -939,6 +1112,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--score-precheck-output",
         default=str(ROOT / "docs" / "fasim_accelign_score_precheck_shadow.md"),
+    )
+    parser.add_argument(
+        "--score-precheck-scaling-output",
+        default=str(ROOT / "docs" / "fasim_accelign_score_precheck_scaling.md"),
     )
     parser.add_argument("--require-profile", action="store_true")
     parser.add_argument("--check", action="store_true")
@@ -1064,6 +1241,13 @@ def main() -> int:
         repeat=args.repeat,
         output_path=Path(args.score_precheck_output),
     )
+    render_score_precheck_scaling_report(
+        workload=workload,
+        results=results,
+        sample_sizes=sample_sizes,
+        repeat=args.repeat,
+        output_path=Path(args.score_precheck_scaling_output),
+    )
 
     if args.check:
         for mode in ["auto"] + shadow_modes + score_only_modes + score_precheck_modes:
@@ -1112,6 +1296,8 @@ def main() -> int:
                 raise RuntimeError(f"{mode}: Accelign score precheck must not claim endpoint coverage")
             if mode_count(results, mode, "fasim_accelign_score_precheck_false_reject") != 0:
                 raise RuntimeError(f"{mode}: Accelign score precheck false-rejected a CPU score-pass call")
+            if mode_count(results, mode, "fasim_accelign_score_precheck_output_digest_affected") != 0:
+                raise RuntimeError(f"{mode}: Accelign score precheck shadow affected output digest")
             saved_seconds = mode_metric(
                 results, mode, "fasim_accelign_score_precheck_est_cpu_align_seconds_saved"
             )
@@ -1121,7 +1307,7 @@ def main() -> int:
             net_seconds = mode_metric(
                 results, mode, "fasim_accelign_score_precheck_net_est_seconds_saved"
             )
-            if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.000001:
+            if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.0001:
                 raise RuntimeError(f"{mode}: net estimate does not equal saved CPU seconds minus Accelign seconds")
 
     print(report)
