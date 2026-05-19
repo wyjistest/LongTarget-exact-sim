@@ -494,6 +494,10 @@ check-fasim-ssw-profile-cache:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_ssw_profile_cache.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+check-fasim-ssw-profile-cache-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_cache_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 check-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_pre_align_filter_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
@@ -541,6 +545,10 @@ benchmark-fasim-ssw-profile-cache:
 		exit 2; \
 	fi
 	python3 ./scripts/benchmark_fasim_ssw_profile_cache.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-cache-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_profile_cache_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_SSW_PROFILE_CACHE_CHARACTERIZATION_SYNTHETIC_ENTRIES:-1,8,32}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA:-}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA:-}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA:-}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA:-}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_PROFILE_CACHE_CHARACTERIZATION_REPEAT:-3}" --require-profile --check
 
 benchmark-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
