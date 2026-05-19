@@ -125,6 +125,24 @@ extern "C" {
 		const int32_t filterd,
 		const int32_t maskLen);
 
+	typedef struct {
+		uint64_t forward_score_end_nanoseconds;
+		uint64_t reverse_start_nanoseconds;
+		uint64_t banded_sw_nanoseconds;
+		uint64_t cigar_nanoseconds;
+		uint64_t endpoint_bookkeeping_nanoseconds;
+		uint64_t byte_path_nanoseconds;
+		uint64_t word_path_nanoseconds;
+		uint64_t fallback_calls;
+		uint64_t forward_calls;
+		uint64_t reverse_calls;
+		uint64_t banded_sw_calls;
+	} ssw_align_internal_stats;
+
+	ssw_align_internal_stats ssw_align_internal_stats_snapshot(void);
+	void ssw_align_internal_stats_set_enabled(uint8_t enabled);
+	uint8_t ssw_align_internal_stats_enabled(void);
+
 	int * ssw_pre_align(const s_profile* prof,
 		const int8_t* ref,
 		int32_t refLen,

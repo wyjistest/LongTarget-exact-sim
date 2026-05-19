@@ -15,12 +15,27 @@ namespace StripedSmithWaterman {
 		AlignerCpuInternalsProfileStats()
 			: enabled(0)
 			, strlenNanoseconds(0)
+			, setupNanoseconds(0)
 			, queryAllocNanoseconds(0)
 			, queryTranslateNanoseconds(0)
 			, refAllocNanoseconds(0)
 			, refTranslateNanoseconds(0)
+			, profileCacheLookupNanoseconds(0)
+			, profileCacheHitNanoseconds(0)
+			, profileCacheMissNanoseconds(0)
 			, profileBuildNanoseconds(0)
 			, sswAlignNanoseconds(0)
+			, sswForwardScoreEndNanoseconds(0)
+			, sswReverseStartNanoseconds(0)
+			, sswBandedSwNanoseconds(0)
+			, sswCigarNanoseconds(0)
+			, sswEndpointBookkeepingNanoseconds(0)
+			, sswBytePathNanoseconds(0)
+			, sswWordPathNanoseconds(0)
+			, sswFallbackCalls(0)
+			, sswForwardCalls(0)
+			, sswReverseCalls(0)
+			, sswBandedSwCalls(0)
 			, convertNanoseconds(0)
 			, destroyNanoseconds(0)
 			, calls(0)
@@ -58,12 +73,27 @@ namespace StripedSmithWaterman {
 
 		uint64_t enabled;
 		uint64_t strlenNanoseconds;
+		uint64_t setupNanoseconds;
 		uint64_t queryAllocNanoseconds;
 		uint64_t queryTranslateNanoseconds;
 		uint64_t refAllocNanoseconds;
 		uint64_t refTranslateNanoseconds;
+		uint64_t profileCacheLookupNanoseconds;
+		uint64_t profileCacheHitNanoseconds;
+		uint64_t profileCacheMissNanoseconds;
 		uint64_t profileBuildNanoseconds;
 		uint64_t sswAlignNanoseconds;
+		uint64_t sswForwardScoreEndNanoseconds;
+		uint64_t sswReverseStartNanoseconds;
+		uint64_t sswBandedSwNanoseconds;
+		uint64_t sswCigarNanoseconds;
+		uint64_t sswEndpointBookkeepingNanoseconds;
+		uint64_t sswBytePathNanoseconds;
+		uint64_t sswWordPathNanoseconds;
+		uint64_t sswFallbackCalls;
+		uint64_t sswForwardCalls;
+		uint64_t sswReverseCalls;
+		uint64_t sswBandedSwCalls;
 		uint64_t convertNanoseconds;
 		uint64_t destroyNanoseconds;
 		uint64_t calls;

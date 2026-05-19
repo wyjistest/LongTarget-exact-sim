@@ -235,11 +235,44 @@ namespace {
 		const uint8_t gapExtendingPenalty,
 		const uint8_t flag,
 		const StripedSmithWaterman::Filter& filter,
-		const int32_t maskLen) {
-		return ssw_align(profile, translatedRef, validRefLen,
+		const int32_t maskLen,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		if (stats == NULL) {
+			return ssw_align(profile, translatedRef, validRefLen,
+				static_cast<int>(gapOpeningPenalty),
+				static_cast<int>(gapExtendingPenalty),
+				flag, filter.score_filter, filter.distance_filter, maskLen);
+		}
+		const ssw_align_internal_stats before =
+			ssw_align_internal_stats_snapshot();
+		const uint8_t previousEnabled = ssw_align_internal_stats_enabled();
+		ssw_align_internal_stats_set_enabled(1);
+		s_align* result = ssw_align(profile, translatedRef, validRefLen,
 			static_cast<int>(gapOpeningPenalty),
 			static_cast<int>(gapExtendingPenalty),
 			flag, filter.score_filter, filter.distance_filter, maskLen);
+		ssw_align_internal_stats_set_enabled(previousEnabled);
+		const ssw_align_internal_stats after =
+			ssw_align_internal_stats_snapshot();
+		stats->sswForwardScoreEndNanoseconds +=
+			after.forward_score_end_nanoseconds - before.forward_score_end_nanoseconds;
+		stats->sswReverseStartNanoseconds +=
+			after.reverse_start_nanoseconds - before.reverse_start_nanoseconds;
+		stats->sswBandedSwNanoseconds +=
+			after.banded_sw_nanoseconds - before.banded_sw_nanoseconds;
+		stats->sswCigarNanoseconds +=
+			after.cigar_nanoseconds - before.cigar_nanoseconds;
+		stats->sswEndpointBookkeepingNanoseconds +=
+			after.endpoint_bookkeeping_nanoseconds - before.endpoint_bookkeeping_nanoseconds;
+		stats->sswBytePathNanoseconds +=
+			after.byte_path_nanoseconds - before.byte_path_nanoseconds;
+		stats->sswWordPathNanoseconds +=
+			after.word_path_nanoseconds - before.word_path_nanoseconds;
+		stats->sswFallbackCalls += after.fallback_calls - before.fallback_calls;
+		stats->sswForwardCalls += after.forward_calls - before.forward_calls;
+		stats->sswReverseCalls += after.reverse_calls - before.reverse_calls;
+		stats->sswBandedSwCalls += after.banded_sw_calls - before.banded_sw_calls;
+		return result;
 	}
 
 	void SswProfileConvertNullableAlignment(s_align* sAl,
@@ -266,6 +299,8 @@ namespace {
 		const uint8_t gapOpeningPenalty,
 		const uint8_t gapExtendingPenalty,
 		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		const uint64_t lookupStart =
+			stats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		uint64_t scoringHash = 0;
 		const std::string key = SswProfileReuseShadowKey(
 			translatedQuery, queryLen, scoreMatrix, scoreMatrixSize,
@@ -274,6 +309,10 @@ namespace {
 			g_ssw_profile_cache.find(key);
 		if (it != g_ssw_profile_cache.end()) {
 			if (stats != NULL) {
+				const uint64_t elapsed =
+					CpuInternalsNowNanoseconds() - lookupStart;
+				stats->profileCacheLookupNanoseconds += elapsed;
+				stats->profileCacheHitNanoseconds += elapsed;
 				++stats->sswProfileCacheHits;
 				stats->sswProfileCacheSavedBuildNanoseconds +=
 					it->second->buildNanoseconds;
@@ -303,6 +342,10 @@ namespace {
 		if (stats != NULL) {
 			stats->sswProfileCacheUniqueKeys =
 				static_cast<uint64_t>(g_ssw_profile_cache.size());
+			const uint64_t elapsed =
+				CpuInternalsNowNanoseconds() - lookupStart;
+			stats->profileCacheLookupNanoseconds += elapsed;
+			stats->profileCacheMissNanoseconds += elapsed;
 		}
 		return profile;
 	}
@@ -1045,6 +1088,8 @@ namespace StripedSmithWaterman {
 		}
 		if (!translation_matrix_) return false;
 
+		const uint64_t setupStart =
+			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		const uint64_t strlenStart =
 			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		int query_len = strlen(query);
@@ -1106,13 +1151,17 @@ namespace StripedSmithWaterman {
 				internalsStats->profileBuildNanoseconds += profileBuildElapsed;
 			}
 		}
+		if (internalsStats != NULL) {
+			CpuInternalsAddElapsed(internalsStats->setupNanoseconds, setupStart);
+		}
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
 		const uint64_t sswAlignStart =
 			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		s_align* s_al = SswProfileRunAlign(profile, translated_ref, valid_ref_len,
-			gap_opening_penalty_, gap_extending_penalty_, flag, filter, maskLen);
+			gap_opening_penalty_, gap_extending_penalty_, flag, filter, maskLen,
+			internalsStats);
 		if (internalsStats != NULL) {
 			CpuInternalsAddElapsed(internalsStats->sswAlignNanoseconds,
 			                       sswAlignStart);
@@ -1133,7 +1182,7 @@ namespace StripedSmithWaterman {
 			s_align* legacyAlign = SswProfileRunAlign(legacyProfile,
 				translated_ref, valid_ref_len,
 				gap_opening_penalty_, gap_extending_penalty_,
-				flag, filter, maskLen);
+				flag, filter, maskLen, NULL);
 			Alignment legacyAlignment;
 			SswProfileConvertNullableAlignment(legacyAlign, query_len,
 			                                   &legacyAlignment, NULL);

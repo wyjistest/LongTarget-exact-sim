@@ -90,6 +90,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 #include "ssw.h"
 #include <iostream>
 using std::cout;
@@ -171,6 +172,34 @@ const uint8_t encoded_ops[] = {
 	0 /* x */, 0 /* y */, 0 /* z */, 0 /* { */,
 	0 /* | */, 0 /* } */, 0 /* ~ */, 0 /*  */
 };
+
+static thread_local ssw_align_internal_stats g_ssw_align_internal_stats = {0};
+static thread_local uint8_t g_ssw_align_internal_stats_enabled = 0;
+
+static uint64_t ssw_now_nanoseconds(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return static_cast<uint64_t>(ts.tv_sec) * 1000000000ULL +
+		static_cast<uint64_t>(ts.tv_nsec);
+}
+
+static void ssw_add_elapsed(uint64_t* slot, uint64_t start_nanoseconds) {
+	if (slot != 0 && g_ssw_align_internal_stats_enabled) {
+		*slot += ssw_now_nanoseconds() - start_nanoseconds;
+	}
+}
+
+ssw_align_internal_stats ssw_align_internal_stats_snapshot(void) {
+	return g_ssw_align_internal_stats;
+}
+
+void ssw_align_internal_stats_set_enabled(uint8_t enabled) {
+	g_ssw_align_internal_stats_enabled = enabled != 0 ? 1 : 0;
+}
+
+uint8_t ssw_align_internal_stats_enabled(void) {
+	return g_ssw_align_internal_stats_enabled;
+}
 
 /* Generate query profile rearrange query sequence & calculate the weight of match/mismatch. */
 static __m128i* qP_byte(const int8_t* read_num,
@@ -1457,39 +1486,61 @@ s_align* ssw_align(const s_profile* prof,
 	__m128i* vP = 0;
 	int32_t word = 0, band_width = 0, readLen = prof->readLen;
 	int8_t* read_reverse = 0;
+	uint64_t reverse_start = 0;
+	uint64_t reverse_endpoint_start = 0;
+	uint64_t cigar_start = 0;
+	uint64_t banded_sw_start = 0;
 	cigar* path;
 	s_align* r = (s_align*)calloc(1, sizeof(s_align));
 	r->ref_begin1 = -1;
 	r->read_begin1 = -1;
 	r->cigar = 0;
 	r->cigarLen = 0;
+	const uint8_t collect_internal_stats = ssw_align_internal_stats_enabled();
 	if (maskLen < 1) {
 		fprintf(stderr, "When maskLen < 15, the function ssw_align doesn't return 2nd best alignment information.\n");
 	}
 
 	// Find the alignment scores and ending positions
+	if (collect_internal_stats) {
+		++g_ssw_align_internal_stats.forward_calls;
+	}
+	const uint64_t forward_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	if (prof->profile_byte) {
+		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 		bests = sw_sse2_byte(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte, -1, prof->bias, maskLen);
+		ssw_add_elapsed(&g_ssw_align_internal_stats.byte_path_nanoseconds, byte_start);
 		if (prof->profile_word && bests[0].score == 255) {
+			if (collect_internal_stats) {
+				++g_ssw_align_internal_stats.fallback_calls;
+			}
 			free(bests);
+			const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 			bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+			ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds, word_start);
 			word = 1;
 		}
 		else if (bests[0].score == 255) {
+			ssw_add_elapsed(&g_ssw_align_internal_stats.forward_score_end_nanoseconds, forward_start);
 			fprintf(stderr, "Please set 2 to the score_size parameter of the function ssw_init, otherwise the alignment results will be incorrect.\n");
 			free(r);
 			return NULL;
 		}
 	}
 	else if (prof->profile_word) {
+		const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 		bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+		ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds, word_start);
 		word = 1;
 	}
 	else {
+		ssw_add_elapsed(&g_ssw_align_internal_stats.forward_score_end_nanoseconds, forward_start);
 		fprintf(stderr, "Please call the function ssw_init before ssw_align.\n");
 		free(r);
 		return NULL;
 	}
+	ssw_add_elapsed(&g_ssw_align_internal_stats.forward_score_end_nanoseconds, forward_start);
+	const uint64_t endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	r->score1 = bests[0].score;
 	r->ref_end1 = bests[0].ref;
 	r->read_end1 = bests[0].read;
@@ -1501,37 +1552,55 @@ s_align* ssw_align(const s_profile* prof,
 		r->score2 = 0;
 		r->ref_end2 = -1;
 	}
+	ssw_add_elapsed(&g_ssw_align_internal_stats.endpoint_bookkeeping_nanoseconds, endpoint_start);
 
 	if (flag == 0 || (flag == 2 && r->score1 < filters)) goto end;
 
 	// Find the beginning position of the best alignment.
+	if (collect_internal_stats) {
+		++g_ssw_align_internal_stats.reverse_calls;
+	}
+	reverse_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	read_reverse = seq_reverse(prof->read, r->read_end1);
 	if (word == 0) {
 		vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
+		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 		bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, prof->bias, maskLen);
+		ssw_add_elapsed(&g_ssw_align_internal_stats.byte_path_nanoseconds, byte_start);
 	}
 	else {
 		vP = qP_word(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
+		const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 		bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, maskLen);
+		ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds, word_start);
 	}
 //	cout<<bests_reverse[0].score<<"\t"<<bests[0].score<<"\n";
+	reverse_endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	r->score1 = bests_reverse[0].score<bests[0].score?bests_reverse[0].score:bests[0].score;
 	r->ref_begin1 = bests_reverse[0].ref;
 	r->read_begin1 = r->read_end1 - bests_reverse[0].read;
+	ssw_add_elapsed(&g_ssw_align_internal_stats.endpoint_bookkeeping_nanoseconds, reverse_endpoint_start);
 	free(bests_reverse);
 	free(vP);
 	free(read_reverse);
 	free(bests);
+	ssw_add_elapsed(&g_ssw_align_internal_stats.reverse_start_nanoseconds, reverse_start);
 	if ((7 & flag) == 0 || ((2 & flag) != 0 && r->score1 < filters) || ((4 & flag) != 0 && (r->ref_end1 - r->ref_begin1 > filterd || r->read_end1 - r->read_begin1 > filterd))) goto end;
 
 	// Generate cigar.
+	cigar_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	refLen = r->ref_end1 - r->ref_begin1 + 1;
 	readLen = r->read_end1 - r->read_begin1 + 1;
 	band_width = abs(refLen - readLen) + 1;
 
 //	cout<<r->score1<<"\tref_begin1\t"<<r->ref_begin1<<"\tref_end1\t"<<r->ref_end1<<"\tread_begin1\t"<<r->read_begin1<<"\tread_end1\t"<<r->read_end1<<"\t"<<band_width<<"\n";
 
+	if (collect_internal_stats) {
+		++g_ssw_align_internal_stats.banded_sw_calls;
+	}
+	banded_sw_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds, banded_sw_start);
 	if (path == 0) {
 		free(r);
 		r = NULL;
@@ -1541,6 +1610,7 @@ s_align* ssw_align(const s_profile* prof,
 		r->cigarLen = path->length;
 		free(path);
 	}
+	ssw_add_elapsed(&g_ssw_align_internal_stats.cigar_nanoseconds, cigar_start);
 
 end:
 	return r;
@@ -1646,4 +1716,3 @@ int32_t mark_mismatch(int32_t ref_begin1,
 	(*cigar) = new_cigar;
 	return mismatch_length;
 }
-
