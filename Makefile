@@ -108,6 +108,9 @@ FASIM_ACCELIGN_ENABLE ?= 0
 FASIM_ACCELIGN_DIR ?=
 FASIM_ACCELIGN_CUDA_ARCH ?= $(CUDA_ARCH)
 FASIM_ACCELIGN_NVCCFLAGS ?= -O3 -std=c++17 --extended-lambda -DNDEBUG -Xcompiler "--signed-char" --generate-code=arch=compute_$(FASIM_ACCELIGN_CUDA_ARCH),code=sm_$(FASIM_ACCELIGN_CUDA_ARCH) -DFASIM_ACCELIGN_CUDA_ARCH=$(shell expr $(FASIM_ACCELIGN_CUDA_ARCH) \* 10)
+FASIM_PARASAIL_ENABLE ?= 0
+FASIM_PARASAIL_CPPFLAGS ?=
+FASIM_PARASAIL_LDFLAGS ?= -lparasail
 ifeq ($(FASIM_ACCELIGN_ENABLE),1)
   ifeq ($(strip $(FASIM_ACCELIGN_DIR)),)
     $(error FASIM_ACCELIGN_ENABLE=1 requires FASIM_ACCELIGN_DIR=/path/to/Accelign)
@@ -118,6 +121,12 @@ else
   FASIM_ACCELIGN_OBJ := cuda/accelign_shadow_stub.o
   FASIM_ACCELIGN_LDFLAGS :=
 endif
+ifeq ($(FASIM_PARASAIL_ENABLE),1)
+  FASIM_PARASAIL_OBJ := cpu/parasail_shadow.o
+else
+  FASIM_PARASAIL_OBJ := cpu/parasail_shadow_stub.o
+  FASIM_PARASAIL_LDFLAGS :=
+endif
 
 build-fasim: $(FASIM_TARGET)
 
@@ -127,13 +136,19 @@ cuda/accelign_shadow.o: cuda/accelign_shadow.cu cuda/accelign_shadow.h
 cuda/accelign_shadow_stub.o: cuda/accelign_shadow_stub.cpp cuda/accelign_shadow.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) -c $< -o $@
 
-$(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h cuda/accelign_shadow.h $(FASIM_ACCELIGN_OBJ)
-	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda_stub.cpp $(FASIM_ACCELIGN_OBJ) $(LDFLAGS) $(LDLIBS) $(FASIM_ACCELIGN_LDFLAGS) -o $@
+cpu/parasail_shadow.o: cpu/parasail_shadow.cpp cpu/parasail_shadow.h
+	$(CXX) $(CPPFLAGS) $(FASIM_PARASAIL_CPPFLAGS) $(FASIM_CXXFLAGS) -c $< -o $@
+
+cpu/parasail_shadow_stub.o: cpu/parasail_shadow_stub.cpp cpu/parasail_shadow.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) -c $< -o $@
+
+$(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h cuda/accelign_shadow.h cpu/parasail_shadow.h $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda_stub.cpp $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ) $(LDFLAGS) $(LDLIBS) $(FASIM_ACCELIGN_LDFLAGS) $(FASIM_PARASAIL_LDFLAGS) -o $@
 
 build-fasim-cuda: $(FASIM_CUDA_TARGET)
 
-$(FASIM_CUDA_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.o cuda/prealign_cuda.h cuda/accelign_shadow.h $(FASIM_ACCELIGN_OBJ)
-	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda.o $(FASIM_ACCELIGN_OBJ) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+$(FASIM_CUDA_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.o cuda/prealign_cuda.h cuda/accelign_shadow.h cpu/parasail_shadow.h $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda.o $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) $(FASIM_PARASAIL_LDFLAGS) -o $@
 
 oracle-sample: $(TARGET)
 	./scripts/run_sample_exactness.sh --generate-oracle
@@ -538,6 +553,10 @@ check-fasim-aligner-accelign-shadow:
 	$(MAKE) build-fasim-cuda FASIM_ACCELIGN_ENABLE=1
 	python3 ./scripts/check_fasim_aligner_accelign_shadow.py --cuda-bin $(CURDIR)/$(FASIM_CUDA_TARGET)
 
+check-fasim-parasail-aligner-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_parasail_aligner_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 benchmark-fasim-fastSIM-extend-emit-decomposition:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
@@ -609,6 +628,10 @@ benchmark-fasim-ssw-profile-context:
 benchmark-fasim-ssw-profile-context-characterization:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/benchmark_fasim_ssw_profile_context_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_SSW_PROFILE_CONTEXT_CHARACTERIZATION_SYNTHETIC_ENTRIES:-1,8,32}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA:-}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA:-}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA:-}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA:-}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_PROFILE_CONTEXT_CHARACTERIZATION_REPEAT:-3}" --force-auto-small --require-profile --check
+
+benchmark-fasim-parasail-aligner-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_parasail_aligner_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --output docs/fasim_parasail_aligner_shadow.md --require-profile --check
 
 benchmark-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
@@ -1143,7 +1166,7 @@ check-longtarget-lite-output:
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
 		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold \
-		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-aligner-align-cpu-internals check-fasim-ssw-align-internal-decomposition check-fasim-ssw-align-internal-hg38-characterization check-fasim-ssw-profile-context-shadow check-fasim-ssw-profile-context check-fasim-ssw-profile-context-characterization check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy check-fasim-aligner-align-batch-shadow check-fasim-aligner-accelign-shadow benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-aligner-align-cpu-internals benchmark-fasim-ssw-align-internal-decomposition benchmark-fasim-ssw-align-internal-hg38-characterization benchmark-fasim-ssw-profile-context-shadow benchmark-fasim-ssw-profile-context benchmark-fasim-ssw-profile-context-characterization benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-aligner-align-batch-shadow benchmark-fasim-aligner-align-batch-shadow-scaling benchmark-fasim-aligner-accelign-shadow-scaling \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-aligner-align-cpu-internals check-fasim-ssw-align-internal-decomposition check-fasim-ssw-align-internal-hg38-characterization check-fasim-ssw-profile-context-shadow check-fasim-ssw-profile-context check-fasim-ssw-profile-context-characterization check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy check-fasim-aligner-align-batch-shadow check-fasim-aligner-accelign-shadow check-fasim-parasail-aligner-shadow benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-aligner-align-cpu-internals benchmark-fasim-ssw-align-internal-decomposition benchmark-fasim-ssw-align-internal-hg38-characterization benchmark-fasim-ssw-profile-context-shadow benchmark-fasim-ssw-profile-context benchmark-fasim-ssw-profile-context-characterization benchmark-fasim-parasail-aligner-shadow benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-aligner-align-batch-shadow benchmark-fasim-aligner-align-batch-shadow-scaling benchmark-fasim-aligner-accelign-shadow-scaling \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \

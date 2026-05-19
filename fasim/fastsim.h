@@ -11,6 +11,7 @@
 #include "../cuda/prealign_cuda.h"
 #include "../cuda/prealign_shared.h"
 #include "../cuda/accelign_shadow.h"
+#include "../cpu/parasail_shadow.h"
 #define N 50
 using std::string;
 using std::cout;
@@ -202,6 +203,32 @@ struct FasimFastSimExtendProfileStats
 		accelignEndpointEnvelopeHasCigarContract(0),
 		accelignEndpointEnvelopeHasAlignmentStringContract(0),
 		accelignEndpointEnvelopeUsesRuntimeOutput(0),
+		parasailShadowEnabled(0),
+		parasailShadowSupported(0),
+		parasailShadowDisabledReason(0),
+		parasailShadowRequestsTotal(0),
+		parasailShadowRequestsCompared(0),
+		parasailShadowRequestsUnsupported(0),
+		parasailShadowQueryBases(0),
+		parasailShadowTargetBases(0),
+		parasailShadowCells(0),
+		parasailShadowCpuReferenceNanoseconds(0),
+		parasailShadowProfileNanoseconds(0),
+		parasailShadowAlignNanoseconds(0),
+		parasailShadowCigarNanoseconds(0),
+		parasailShadowTotalNanoseconds(0),
+		parasailShadowScoreMismatches(0),
+		parasailShadowEndpointMismatches(0),
+		parasailShadowCigarMismatches(0),
+		parasailShadowDigestMismatches(0),
+		parasailShadowTotalMismatches(0),
+		parasailShadowFallbacks(0),
+		parasailShadowSecondaryScoreSupported(0),
+		parasailShadowHasScoreContract(0),
+		parasailShadowHasEndpointContract(0),
+		parasailShadowHasCigarContract(0),
+		parasailShadowHasAlignmentStringContract(0),
+		parasailShadowUsesRuntimeOutput(0),
 		preAlignFilterShadowEnabled(0),
 		preAlignFilterCandidates(0),
 		preAlignFilterActualEmitted(0),
@@ -433,6 +460,32 @@ struct FasimFastSimExtendProfileStats
 	uint64_t accelignEndpointEnvelopeHasCigarContract;
 	uint64_t accelignEndpointEnvelopeHasAlignmentStringContract;
 	uint64_t accelignEndpointEnvelopeUsesRuntimeOutput;
+	uint64_t parasailShadowEnabled;
+	uint64_t parasailShadowSupported;
+	uint64_t parasailShadowDisabledReason;
+	uint64_t parasailShadowRequestsTotal;
+	uint64_t parasailShadowRequestsCompared;
+	uint64_t parasailShadowRequestsUnsupported;
+	uint64_t parasailShadowQueryBases;
+	uint64_t parasailShadowTargetBases;
+	uint64_t parasailShadowCells;
+	uint64_t parasailShadowCpuReferenceNanoseconds;
+	uint64_t parasailShadowProfileNanoseconds;
+	uint64_t parasailShadowAlignNanoseconds;
+	uint64_t parasailShadowCigarNanoseconds;
+	uint64_t parasailShadowTotalNanoseconds;
+	uint64_t parasailShadowScoreMismatches;
+	uint64_t parasailShadowEndpointMismatches;
+	uint64_t parasailShadowCigarMismatches;
+	uint64_t parasailShadowDigestMismatches;
+	uint64_t parasailShadowTotalMismatches;
+	uint64_t parasailShadowFallbacks;
+	uint64_t parasailShadowSecondaryScoreSupported;
+	uint64_t parasailShadowHasScoreContract;
+	uint64_t parasailShadowHasEndpointContract;
+	uint64_t parasailShadowHasCigarContract;
+	uint64_t parasailShadowHasAlignmentStringContract;
+	uint64_t parasailShadowUsesRuntimeOutput;
 	uint64_t preAlignFilterShadowEnabled;
 	uint64_t preAlignFilterCandidates;
 	uint64_t preAlignFilterActualEmitted;
@@ -592,6 +645,20 @@ inline bool fasim_aligner_accelign_shadow_enabled_runtime()
 	return enabled;
 }
 
+inline bool fasim_aligner_parasail_shadow_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_ALIGNER_PARASAIL_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_accelign_score_only_shadow_enabled_runtime()
 {
 	static const bool enabled = []()
@@ -692,6 +759,21 @@ inline int fasim_aligner_accelign_shadow_max_requests_runtime()
 	return maxRequests;
 }
 
+inline int fasim_aligner_parasail_shadow_max_requests_runtime()
+{
+	static const int maxRequests = []()
+	{
+		const char* env = getenv("FASIM_ALIGNER_PARASAIL_SHADOW_MAX_REQUESTS");
+		if (env == NULL || env[0] == '\0')
+		{
+			return 10000;
+		}
+		const int value = atoi(env);
+		return value > 0 ? value : 10000;
+	}();
+	return maxRequests;
+}
+
 inline int fasim_accelign_endpoint_envelope_shadow_max_requests_runtime()
 {
 	static const int maxRequests = []()
@@ -761,6 +843,21 @@ inline int fasim_aligner_accelign_shadow_request_stride_runtime()
 	static const int stride = []()
 	{
 		const char* env = getenv("FASIM_ALIGNER_ACCELIGN_SHADOW_REQUEST_STRIDE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return 1;
+		}
+		const int value = atoi(env);
+		return value > 0 ? value : 1;
+	}();
+	return stride;
+}
+
+inline int fasim_aligner_parasail_shadow_request_stride_runtime()
+{
+	static const int stride = []()
+	{
+		const char* env = getenv("FASIM_ALIGNER_PARASAIL_SHADOW_REQUEST_STRIDE");
 		if (env == NULL || env[0] == '\0')
 		{
 			return 1;
@@ -1690,6 +1787,52 @@ inline void fasim_aligner_accelign_shadow_record_request(
 	requests.push_back(request);
 }
 
+inline void fasim_aligner_parasail_shadow_record_request(
+	std::vector<FasimAlignBatchShadowRequest> &requests,
+	FasimFastSimExtendProfileStats *profileStats,
+	const string &query,
+	const string &target,
+	const StripedSmithWaterman::Alignment &cpuAlignment,
+	uint64_t cpuNanoseconds)
+{
+	if (profileStats == NULL)
+	{
+		return;
+	}
+	++profileStats->parasailShadowRequestsTotal;
+
+	const int maxRequests = fasim_aligner_parasail_shadow_max_requests_runtime();
+	const int stride = fasim_aligner_parasail_shadow_request_stride_runtime();
+	const uint64_t requestIndex = profileStats->parasailShadowRequestsTotal - 1;
+	if (stride > 1 && (requestIndex % static_cast<uint64_t>(stride)) != 0)
+	{
+		++profileStats->parasailShadowRequestsUnsupported;
+		return;
+	}
+	const uint64_t sampledSoFar =
+		profileStats->parasailShadowRequestsCompared +
+		static_cast<uint64_t>(requests.size());
+	if (sampledSoFar >= static_cast<uint64_t>(maxRequests))
+	{
+		++profileStats->parasailShadowRequestsUnsupported;
+		return;
+	}
+
+	FasimAlignBatchShadowRequest request;
+	request.queryLength = static_cast<uint32_t>(query.size());
+	request.targetLength = static_cast<uint32_t>(target.size());
+	request.querySequence = query;
+	request.targetSequence = target;
+	request.cpuScore = static_cast<int>(cpuAlignment.sw_score);
+	request.cpuRefBegin = cpuAlignment.ref_begin;
+	request.cpuRefEnd = cpuAlignment.ref_end;
+	request.cpuQueryBegin = cpuAlignment.query_begin;
+	request.cpuQueryEnd = cpuAlignment.query_end;
+	request.cpuCigarString = cpuAlignment.cigar_string;
+	request.cpuNanoseconds = cpuNanoseconds;
+	requests.push_back(request);
+}
+
 inline void fasim_accelign_endpoint_envelope_shadow_record_request(
 	std::vector<FasimAlignBatchShadowRequest> &requests,
 	FasimFastSimExtendProfileStats *profileStats,
@@ -2250,6 +2393,145 @@ inline void fasim_aligner_accelign_shadow_finalize(
 	}
 
 	profileStats->accelignShadowTotalNanoseconds +=
+		fasim_fastsim_profile_now_nanoseconds() - totalStart;
+}
+
+inline void fasim_aligner_parasail_shadow_finalize(
+	const std::vector<FasimAlignBatchShadowRequest> &requests,
+	FasimFastSimExtendProfileStats *profileStats)
+{
+	if (profileStats == NULL)
+	{
+		return;
+	}
+	profileStats->parasailShadowEnabled = 1;
+	profileStats->parasailShadowHasScoreContract = 1;
+	profileStats->parasailShadowHasEndpointContract = 1;
+	profileStats->parasailShadowHasCigarContract = 1;
+	profileStats->parasailShadowHasAlignmentStringContract = 0;
+	profileStats->parasailShadowUsesRuntimeOutput = 0;
+
+	const uint64_t totalStart = fasim_fastsim_profile_now_nanoseconds();
+	for (size_t i = 0; i < requests.size(); ++i)
+	{
+		const FasimAlignBatchShadowRequest &request = requests[i];
+		++profileStats->parasailShadowRequestsCompared;
+		profileStats->parasailShadowQueryBases += request.queryLength;
+		profileStats->parasailShadowTargetBases += request.targetLength;
+		profileStats->parasailShadowCells +=
+			static_cast<uint64_t>(request.queryLength) *
+			static_cast<uint64_t>(request.targetLength);
+		profileStats->parasailShadowCpuReferenceNanoseconds +=
+			request.cpuNanoseconds;
+	}
+	if (requests.empty())
+	{
+		if (profileStats->parasailShadowRequestsCompared == 0 &&
+		    profileStats->parasailShadowSupported == 0)
+		{
+			profileStats->parasailShadowDisabledReason = 4;
+		}
+		profileStats->parasailShadowTotalNanoseconds +=
+			fasim_fastsim_profile_now_nanoseconds() - totalStart;
+		return;
+	}
+
+	if (!parasail_shadow_is_built())
+	{
+		profileStats->parasailShadowSupported = 0;
+		profileStats->parasailShadowDisabledReason = 1;
+		profileStats->parasailShadowFallbacks +=
+			static_cast<uint64_t>(requests.size());
+		profileStats->parasailShadowTotalNanoseconds +=
+			fasim_fastsim_profile_now_nanoseconds() - totalStart;
+		return;
+	}
+
+	std::vector<ParasailShadowRequest> parasailRequests;
+	parasailRequests.reserve(requests.size());
+	for (size_t i = 0; i < requests.size(); ++i)
+	{
+		ParasailShadowRequest request;
+		request.queryLength = requests[i].queryLength;
+		request.targetLength = requests[i].targetLength;
+		request.querySequence = requests[i].querySequence;
+		request.targetSequence = requests[i].targetSequence;
+		request.cpuScore = requests[i].cpuScore;
+		request.cpuRefBegin = requests[i].cpuRefBegin;
+		request.cpuRefEnd = requests[i].cpuRefEnd;
+		request.cpuQueryBegin = requests[i].cpuQueryBegin;
+		request.cpuQueryEnd = requests[i].cpuQueryEnd;
+		request.cpuCigarString = requests[i].cpuCigarString;
+		request.cpuNanoseconds = requests[i].cpuNanoseconds;
+		parasailRequests.push_back(request);
+	}
+
+	std::vector<ParasailShadowResult> results;
+	ParasailShadowBatchResult batchResult;
+	string parasailError;
+	const bool ok = parasail_shadow_run_local_ssw(
+		parasailRequests,
+		&results,
+		&batchResult,
+		&parasailError);
+	if (!ok || results.size() != requests.size())
+	{
+		profileStats->parasailShadowSupported = 0;
+		profileStats->parasailShadowDisabledReason = 3;
+		profileStats->parasailShadowFallbacks +=
+			static_cast<uint64_t>(requests.size());
+		profileStats->parasailShadowTotalNanoseconds +=
+			fasim_fastsim_profile_now_nanoseconds() - totalStart;
+		return;
+	}
+
+	profileStats->parasailShadowSupported = 1;
+	profileStats->parasailShadowProfileNanoseconds +=
+		fasim_fastsim_profile_nanoseconds_from_seconds(batchResult.profileSeconds);
+	profileStats->parasailShadowAlignNanoseconds +=
+		fasim_fastsim_profile_nanoseconds_from_seconds(batchResult.alignSeconds);
+	profileStats->parasailShadowCigarNanoseconds +=
+		fasim_fastsim_profile_nanoseconds_from_seconds(batchResult.cigarSeconds);
+	profileStats->parasailShadowSecondaryScoreSupported =
+		batchResult.secondaryScoreSupported ? 1 : 0;
+
+	for (size_t i = 0; i < requests.size(); ++i)
+	{
+		const FasimAlignBatchShadowRequest &request = requests[i];
+		const ParasailShadowResult &result = results[i];
+		if (result.secondaryScoreSupported)
+		{
+			profileStats->parasailShadowSecondaryScoreSupported = 1;
+		}
+		bool requestMismatch = false;
+		if (result.score != request.cpuScore)
+		{
+			++profileStats->parasailShadowScoreMismatches;
+			++profileStats->parasailShadowTotalMismatches;
+			requestMismatch = true;
+		}
+		if (result.refBegin != request.cpuRefBegin ||
+		    result.refEnd != request.cpuRefEnd ||
+		    result.queryBegin != request.cpuQueryBegin ||
+		    result.queryEnd != request.cpuQueryEnd)
+		{
+			++profileStats->parasailShadowEndpointMismatches;
+			++profileStats->parasailShadowTotalMismatches;
+			requestMismatch = true;
+		}
+		if (result.cigarString != request.cpuCigarString)
+		{
+			++profileStats->parasailShadowCigarMismatches;
+			++profileStats->parasailShadowTotalMismatches;
+			requestMismatch = true;
+		}
+		if (requestMismatch)
+		{
+			++profileStats->parasailShadowDigestMismatches;
+		}
+	}
+
+	profileStats->parasailShadowTotalNanoseconds +=
 		fasim_fastsim_profile_now_nanoseconds() - totalStart;
 }
 
@@ -3198,6 +3480,7 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 	std::vector<FasimPreAlignFilterShadowRecord> preAlignShadowRecords;
 	std::vector<FasimAlignBatchShadowRequest> alignBatchShadowRequests;
 	std::vector<FasimAlignBatchShadowRequest> accelignShadowRequests;
+	std::vector<FasimAlignBatchShadowRequest> parasailShadowRequests;
 	std::vector<FasimAlignBatchShadowRequest> accelignEndpointEnvelopeShadowRequests;
 	std::vector<FasimAlignBatchShadowRequest> accelignScoreOnlyShadowRequests;
 	std::vector<FasimAlignBatchShadowRequest> accelignScorePrecheckShadowRequests;
@@ -3209,6 +3492,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		profileStats != NULL && fasim_align_batch_shadow_enabled_runtime();
 	const bool accelignShadowEnabled =
 		profileStats != NULL && fasim_aligner_accelign_shadow_enabled_runtime();
+	const bool parasailShadowEnabled =
+		profileStats != NULL && fasim_aligner_parasail_shadow_enabled_runtime();
 	const bool accelignEndpointEnvelopeShadowEnabled =
 		profileStats != NULL && fasim_accelign_endpoint_envelope_shadow_enabled_runtime();
 	const bool accelignScoreOnlyShadowEnabled =
@@ -3246,6 +3531,13 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			profileStats->accelignShadowEnabled = 1;
 			accelignShadowRequests.reserve(
 				static_cast<size_t>(fasim_aligner_accelign_shadow_max_requests_runtime()));
+		}
+		if (parasailShadowEnabled)
+		{
+			profileStats->parasailShadowEnabled = 1;
+			profileStats->parasailShadowUsesRuntimeOutput = 0;
+			parasailShadowRequests.reserve(
+				static_cast<size_t>(fasim_aligner_parasail_shadow_max_requests_runtime()));
 		}
 		if (accelignEndpointEnvelopeShadowEnabled)
 		{
@@ -3421,6 +3713,15 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					if (accelignShadowEnabled)
 					{
 						fasim_aligner_accelign_shadow_record_request(accelignShadowRequests,
+						                                             profileStats,
+						                                             strA,
+						                                             smallSeq,
+						                                             alignment,
+						                                             alignElapsed);
+					}
+					if (parasailShadowEnabled)
+					{
+						fasim_aligner_parasail_shadow_record_request(parasailShadowRequests,
 						                                             profileStats,
 						                                             strA,
 						                                             smallSeq,
@@ -3852,6 +4153,10 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		if (accelignShadowEnabled)
 		{
 			fasim_aligner_accelign_shadow_finalize(accelignShadowRequests, profileStats);
+		}
+		if (parasailShadowEnabled)
+		{
+			fasim_aligner_parasail_shadow_finalize(parasailShadowRequests, profileStats);
 		}
 		if (accelignEndpointEnvelopeShadowEnabled)
 		{
