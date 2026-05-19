@@ -25,6 +25,20 @@ namespace StripedSmithWaterman {
 			, destroyNanoseconds(0)
 			, calls(0)
 			, nullResults(0)
+			, sswProfileReuseShadowEnabled(0)
+			, sswProfileBuildCalls(0)
+			, sswProfileUniqueKeys(0)
+			, sswProfileReusedPossibleCalls(0)
+			, sswProfileBuildNanoseconds(0)
+			, sswProfileEstReuseSavedNanoseconds(0)
+			, sswProfileKeyQueryLength(0)
+			, sswProfileKeyScoringHash(0)
+			, sswProfileKeyOrientation(0)
+			, sswProfileShadowCompared(0)
+			, sswProfileShadowScoreMismatches(0)
+			, sswProfileShadowEndpointMismatches(0)
+			, sswProfileShadowCigarMismatches(0)
+			, sswProfileShadowOutputDigestMismatches(0)
 		{};
 
 		uint64_t enabled;
@@ -39,6 +53,20 @@ namespace StripedSmithWaterman {
 		uint64_t destroyNanoseconds;
 		uint64_t calls;
 		uint64_t nullResults;
+		uint64_t sswProfileReuseShadowEnabled;
+		uint64_t sswProfileBuildCalls;
+		uint64_t sswProfileUniqueKeys;
+		uint64_t sswProfileReusedPossibleCalls;
+		uint64_t sswProfileBuildNanoseconds;
+		uint64_t sswProfileEstReuseSavedNanoseconds;
+		uint64_t sswProfileKeyQueryLength;
+		uint64_t sswProfileKeyScoringHash;
+		uint64_t sswProfileKeyOrientation;
+		uint64_t sswProfileShadowCompared;
+		uint64_t sswProfileShadowScoreMismatches;
+		uint64_t sswProfileShadowEndpointMismatches;
+		uint64_t sswProfileShadowCigarMismatches;
+		uint64_t sswProfileShadowOutputDigestMismatches;
 	};
 
 	AlignerCpuInternalsProfileStats* SetAlignerCpuInternalsProfileStats(

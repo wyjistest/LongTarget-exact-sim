@@ -44,6 +44,23 @@ INTERNAL_KEYS = [
     "fasim_aligner_align_cpu_null_results",
 ]
 
+PROFILE_REUSE_KEYS = [
+    "fasim_ssw_profile_reuse_shadow_enabled",
+    "fasim_ssw_profile_build_calls",
+    "fasim_ssw_profile_unique_keys",
+    "fasim_ssw_profile_reused_possible_calls",
+    "fasim_ssw_profile_build_seconds",
+    "fasim_ssw_profile_est_reuse_saved_seconds",
+    "fasim_ssw_profile_key_query_length",
+    "fasim_ssw_profile_key_scoring_hash",
+    "fasim_ssw_profile_key_orientation",
+    "fasim_ssw_profile_shadow_compared",
+    "fasim_ssw_profile_shadow_score_mismatches",
+    "fasim_ssw_profile_shadow_endpoint_mismatches",
+    "fasim_ssw_profile_shadow_cigar_mismatches",
+    "fasim_ssw_profile_shadow_output_digest_mismatches",
+]
+
 
 def mode_count(results: Dict[str, List[RunResult]], mode: str, key: str) -> int:
     return median_count(results[mode], key)
@@ -66,6 +83,9 @@ def percent(numerator: float, denominator: float) -> str:
 def require_internal_metrics(results: Dict[str, List[RunResult]]) -> None:
     for key in INTERNAL_KEYS:
         mode_metric(results, "auto_cpu_internals", key)
+    if "auto_profile_reuse_shadow" in results:
+        for key in INTERNAL_KEYS + PROFILE_REUSE_KEYS:
+            mode_metric(results, "auto_profile_reuse_shadow", key)
 
 
 def render_report(
@@ -188,6 +208,58 @@ def render_report(
     profile_seconds = mode_metric(results, "auto_cpu_internals", "fasim_aligner_align_cpu_profile_build_seconds")
     ref_translate_seconds = mode_metric(results, "auto_cpu_internals", "fasim_aligner_align_cpu_ref_translate_seconds")
     destroy_seconds = mode_metric(results, "auto_cpu_internals", "fasim_aligner_align_cpu_destroy_seconds")
+    if "auto_profile_reuse_shadow" in results:
+        lines.append("## SSW Profile Reuse Shadow")
+        lines.append("")
+        shadow_calls = mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_build_calls")
+        shadow_reusable = mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_reused_possible_calls")
+        shadow_unique = mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_unique_keys")
+        append_table(
+            lines,
+            [
+                "Build calls",
+                "Unique keys",
+                "Reusable calls",
+                "Reuse opportunity",
+                "Build seconds",
+                "Est saved seconds",
+                "Compared",
+                "Score mismatches",
+                "Endpoint mismatches",
+                "CIGAR mismatches",
+                "Digest mismatches",
+            ],
+            [
+                [
+                    fmt_int(shadow_calls),
+                    fmt_int(shadow_unique),
+                    fmt_int(shadow_reusable),
+                    percent(float(shadow_reusable), float(shadow_calls)),
+                    fmt_seconds(mode_metric(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_build_seconds")),
+                    fmt_seconds(mode_metric(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_est_reuse_saved_seconds")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_compared")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_score_mismatches")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_endpoint_mismatches")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_cigar_mismatches")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_output_digest_mismatches")),
+                ]
+            ],
+        )
+        lines.append("")
+        append_table(
+            lines,
+            ["Last query length", "Scoring hash", "Orientation key", "Digest match"],
+            [
+                [
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_key_query_length")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_key_scoring_hash")),
+                    fmt_int(mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_key_orientation")),
+                    "yes" if digest_matches_reference(results, "auto_profile_reuse_shadow") else "no",
+                ]
+            ],
+        )
+        lines.append("")
+
     lines.append("## Decision")
     lines.append("")
     if ssw_seconds >= align_seconds * 0.60:
@@ -237,6 +309,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rna", required=True)
     parser.add_argument("--label", default="hg38_chr21_H19")
     parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--force-auto", action="store_true")
     parser.add_argument(
         "--work-dir",
         default=str(ROOT / ".tmp" / "fasim_aligner_align_cpu_internals"),
@@ -267,20 +340,36 @@ def main() -> int:
         dna_path=Path(args.dna).resolve(),
         rna_path=Path(args.rna).resolve(),
     )
+    auto_env = {
+        "FASIM_TRANSFERSTRING_TABLE": "1",
+        "FASIM_GPU_DP_COLUMN_AUTO": "1",
+        "FASIM_ALIGNER_ALIGN_INTERNALS": "1",
+    }
+    shadow_env = dict(auto_env)
+    shadow_env["FASIM_SSW_PROFILE_REUSE_SHADOW"] = "1"
+    if args.force_auto:
+        auto_env["FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS"] = "1"
+        auto_env["FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS"] = "1"
+        shadow_env["FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS"] = "1"
+        shadow_env["FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS"] = "1"
+
     modes = [
         ModeSpec("table_only", "cuda", {"FASIM_TRANSFERSTRING_TABLE": "1"}),
         ModeSpec(
             "auto_cpu_internals",
             "cuda",
-            {
-                "FASIM_TRANSFERSTRING_TABLE": "1",
-                "FASIM_GPU_DP_COLUMN_AUTO": "1",
-                "FASIM_ALIGNER_ALIGN_INTERNALS": "1",
-            },
+            auto_env,
+        ),
+        ModeSpec(
+            "auto_profile_reuse_shadow",
+            "cuda",
+            shadow_env,
         ),
     ]
     results: Dict[str, List[RunResult]] = {}
     work_dir = Path(args.work_dir)
+    if not work_dir.is_absolute():
+        work_dir = (ROOT / work_dir).resolve()
     for mode in modes:
         runs: List[RunResult] = []
         for index in range(args.repeat):
@@ -300,20 +389,34 @@ def main() -> int:
         workload=workload,
         results=results,
         repeat=args.repeat,
-        output_path=Path(args.output),
+        output_path=Path(args.output).resolve(),
     )
 
     if args.check:
         if not digest_matches_reference(results, "auto_cpu_internals"):
             raise RuntimeError("auto_cpu_internals digest does not match table_only")
+        if not digest_matches_reference(results, "auto_profile_reuse_shadow"):
+            raise RuntimeError("auto_profile_reuse_shadow digest does not match table_only")
         if mode_count(results, "auto_cpu_internals", "fasim_gpu_dp_column_auto_active") != 1:
             raise RuntimeError("AUTO did not activate GPU DP+column")
+        if mode_count(results, "auto_profile_reuse_shadow", "fasim_gpu_dp_column_auto_active") != 1:
+            raise RuntimeError("AUTO did not activate GPU DP+column in profile reuse shadow")
         if mode_count(results, "auto_cpu_internals", "fasim_aligner_align_cpu_internals_enabled") != 1:
             raise RuntimeError("CPU aligner internals telemetry was not enabled")
+        if mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_reuse_shadow_enabled") != 1:
+            raise RuntimeError("SSW profile reuse shadow telemetry was not enabled")
         if mode_count(results, "auto_cpu_internals", "fasim_aligner_align_cpu_calls") != mode_count(
             results, "auto_cpu_internals", "fasim_aligner_align_calls"
         ):
             raise RuntimeError("CPU internals call count does not match aligner.Align calls")
+        if mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_score_mismatches") != 0:
+            raise RuntimeError("SSW profile reuse shadow score mismatched")
+        if mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_endpoint_mismatches") != 0:
+            raise RuntimeError("SSW profile reuse shadow endpoint mismatched")
+        if mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_cigar_mismatches") != 0:
+            raise RuntimeError("SSW profile reuse shadow CIGAR mismatched")
+        if mode_count(results, "auto_profile_reuse_shadow", "fasim_ssw_profile_shadow_output_digest_mismatches") != 0:
+            raise RuntimeError("SSW profile reuse shadow output digest mismatched")
 
     print(report)
     return 0

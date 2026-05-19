@@ -7,12 +7,39 @@
 #include<algorithm>
 #include <chrono>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace {
 
 	static thread_local StripedSmithWaterman::AlignerCpuInternalsProfileStats*
 		g_aligner_cpu_internals_profile_stats = NULL;
+
+	struct SswProfileReuseShadowCacheEntry {
+		SswProfileReuseShadowCacheEntry()
+			: profile(NULL)
+			, hits(0)
+		{
+		}
+
+		~SswProfileReuseShadowCacheEntry()
+		{
+			if (profile != NULL) {
+				init_destroy(profile);
+			}
+		}
+
+		std::vector<int8_t> query;
+		std::vector<int8_t> matrix;
+		s_profile* profile;
+		uint64_t hits;
+	};
+
+	static thread_local std::map<std::string, std::unique_ptr<SswProfileReuseShadowCacheEntry> >
+		g_ssw_profile_reuse_shadow_cache;
 
 	uint64_t CpuInternalsNowNanoseconds() {
 		return static_cast<uint64_t>(
@@ -22,6 +49,222 @@ namespace {
 
 	void CpuInternalsAddElapsed(uint64_t& slot, uint64_t startNanoseconds) {
 		slot += CpuInternalsNowNanoseconds() - startNanoseconds;
+	}
+
+	void ConvertAlignment(const s_align& s_al,
+		const int& query_len,
+		StripedSmithWaterman::Alignment* al);
+
+	bool SswProfileReuseShadowEnabledRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_REUSE_SHADOW");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	uint64_t SswProfileReuseShadowMaxCompareRuntime() {
+		static const uint64_t maxCompare = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_REUSE_SHADOW_MAX_COMPARE");
+			if (env == NULL || env[0] == '\0') {
+				return static_cast<uint64_t>(1024);
+			}
+			const long long parsed = atoll(env);
+			return parsed > 0 ? static_cast<uint64_t>(parsed) : static_cast<uint64_t>(0);
+		}();
+		return maxCompare;
+	}
+
+	uint64_t SswProfileReuseShadowHashBytes(const int8_t* data, size_t size) {
+		uint64_t hash = 1469598103934665603ULL;
+		for (size_t i = 0; i < size; ++i) {
+			hash ^= static_cast<uint8_t>(data[i]);
+			hash *= 1099511628211ULL;
+		}
+		return hash;
+	}
+
+	void SswProfileReuseShadowHashAppendUint64(uint64_t& hash, uint64_t value) {
+		for (int i = 0; i < 8; ++i) {
+			hash ^= static_cast<uint8_t>((value >> (i * 8)) & 0xff);
+			hash *= 1099511628211ULL;
+		}
+	}
+
+	uint64_t SswProfileReuseShadowScoringHash(const int8_t* matrix,
+		const int matrixSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const int8_t scoreSize) {
+		uint64_t hash = SswProfileReuseShadowHashBytes(
+			matrix, static_cast<size_t>(matrixSize) * static_cast<size_t>(matrixSize));
+		SswProfileReuseShadowHashAppendUint64(hash, static_cast<uint64_t>(matrixSize));
+		SswProfileReuseShadowHashAppendUint64(hash, static_cast<uint64_t>(gapOpeningPenalty));
+		SswProfileReuseShadowHashAppendUint64(hash, static_cast<uint64_t>(gapExtendingPenalty));
+		SswProfileReuseShadowHashAppendUint64(hash, static_cast<uint64_t>(scoreSize));
+		return hash;
+	}
+
+	std::string SswProfileReuseShadowKey(const int8_t* query,
+		const int queryLen,
+		const int8_t* matrix,
+		const int matrixSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const int8_t scoreSize,
+		uint64_t* scoringHashOut) {
+		const uint64_t queryHash =
+			SswProfileReuseShadowHashBytes(query, static_cast<size_t>(queryLen));
+		const uint64_t scoringHash =
+			SswProfileReuseShadowScoringHash(matrix, matrixSize,
+			                                 gapOpeningPenalty,
+			                                 gapExtendingPenalty,
+			                                 scoreSize);
+		if (scoringHashOut != NULL) {
+			*scoringHashOut = scoringHash;
+		}
+		std::ostringstream key;
+		key << queryLen << ':' << matrixSize << ':'
+		    << static_cast<int>(scoreSize) << ':'
+		    << queryHash << ':' << scoringHash;
+		return key.str();
+	}
+
+	bool SswProfileReuseShadowCigarEquals(const StripedSmithWaterman::Alignment& lhs,
+		const StripedSmithWaterman::Alignment& rhs) {
+		if (lhs.cigar_string != rhs.cigar_string) {
+			return false;
+		}
+		if (lhs.cigar.size() != rhs.cigar.size()) {
+			return false;
+		}
+		for (size_t i = 0; i < lhs.cigar.size(); ++i) {
+			if (lhs.cigar[i] != rhs.cigar[i]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	void SswProfileReuseShadowCompare(s_profile* profile,
+		const int queryLen,
+		const int8_t* translatedRef,
+		const int validRefLen,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const uint8_t flag,
+		const StripedSmithWaterman::Filter& filter,
+		const int32_t maskLen,
+		const StripedSmithWaterman::Alignment& cpuAlignment,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		if (profile == NULL || translatedRef == NULL || stats == NULL) {
+			return;
+		}
+		if (stats->sswProfileShadowCompared >= SswProfileReuseShadowMaxCompareRuntime()) {
+			return;
+		}
+		s_align* shadowAlign = ssw_align(profile, translatedRef, validRefLen,
+			static_cast<int>(gapOpeningPenalty),
+			static_cast<int>(gapExtendingPenalty),
+			flag, filter.score_filter, filter.distance_filter, maskLen);
+		StripedSmithWaterman::Alignment shadowAlignment;
+		shadowAlignment.Clear();
+		if (shadowAlign != NULL) {
+			ConvertAlignment(*shadowAlign, queryLen, &shadowAlignment);
+		}
+		else {
+			shadowAlignment.sw_score = 0;
+		}
+		++stats->sswProfileShadowCompared;
+		if (shadowAlignment.sw_score != cpuAlignment.sw_score ||
+		    shadowAlignment.sw_score_next_best != cpuAlignment.sw_score_next_best) {
+			++stats->sswProfileShadowScoreMismatches;
+		}
+		if (shadowAlignment.ref_begin != cpuAlignment.ref_begin ||
+		    shadowAlignment.ref_end != cpuAlignment.ref_end ||
+		    shadowAlignment.query_begin != cpuAlignment.query_begin ||
+		    shadowAlignment.query_end != cpuAlignment.query_end ||
+		    shadowAlignment.ref_end_next_best != cpuAlignment.ref_end_next_best) {
+			++stats->sswProfileShadowEndpointMismatches;
+		}
+		if (!SswProfileReuseShadowCigarEquals(shadowAlignment, cpuAlignment)) {
+			++stats->sswProfileShadowCigarMismatches;
+		}
+		if (shadowAlignment.sw_score != cpuAlignment.sw_score ||
+		    shadowAlignment.sw_score_next_best != cpuAlignment.sw_score_next_best ||
+		    shadowAlignment.ref_begin != cpuAlignment.ref_begin ||
+		    shadowAlignment.ref_end != cpuAlignment.ref_end ||
+		    shadowAlignment.query_begin != cpuAlignment.query_begin ||
+		    shadowAlignment.query_end != cpuAlignment.query_end ||
+		    shadowAlignment.ref_end_next_best != cpuAlignment.ref_end_next_best ||
+		    !SswProfileReuseShadowCigarEquals(shadowAlignment, cpuAlignment)) {
+			++stats->sswProfileShadowOutputDigestMismatches;
+		}
+		if (shadowAlign != NULL) {
+			align_destroy(shadowAlign);
+		}
+	}
+
+	void SswProfileReuseShadowRecordAndCompare(const int8_t* translatedQuery,
+		const int queryLen,
+		const int8_t* translatedRef,
+		const int validRefLen,
+		const int8_t* scoreMatrix,
+		const int scoreMatrixSize,
+		const int8_t scoreSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const uint8_t flag,
+		const StripedSmithWaterman::Filter& filter,
+		const int32_t maskLen,
+		const uint64_t profileBuildElapsed,
+		const StripedSmithWaterman::Alignment& cpuAlignment,
+		StripedSmithWaterman::AlignerCpuInternalsProfileStats* stats) {
+		if (stats == NULL || !SswProfileReuseShadowEnabledRuntime()) {
+			return;
+		}
+		stats->sswProfileReuseShadowEnabled = 1;
+		++stats->sswProfileBuildCalls;
+		stats->sswProfileBuildNanoseconds += profileBuildElapsed;
+		stats->sswProfileKeyQueryLength = static_cast<uint64_t>(queryLen);
+		stats->sswProfileKeyOrientation = 0;
+
+		uint64_t scoringHash = 0;
+		const std::string key = SswProfileReuseShadowKey(
+			translatedQuery, queryLen, scoreMatrix, scoreMatrixSize,
+			gapOpeningPenalty, gapExtendingPenalty, scoreSize, &scoringHash);
+		stats->sswProfileKeyScoringHash = scoringHash;
+
+		std::map<std::string, std::unique_ptr<SswProfileReuseShadowCacheEntry> >::iterator it =
+			g_ssw_profile_reuse_shadow_cache.find(key);
+		if (it == g_ssw_profile_reuse_shadow_cache.end()) {
+			std::unique_ptr<SswProfileReuseShadowCacheEntry> entry(
+				new SswProfileReuseShadowCacheEntry());
+			entry->query.assign(translatedQuery, translatedQuery + queryLen);
+			entry->matrix.assign(scoreMatrix,
+				scoreMatrix + scoreMatrixSize * scoreMatrixSize);
+			entry->profile = ssw_init(entry->query.data(), queryLen,
+				entry->matrix.data(), scoreMatrixSize, scoreSize);
+			entry->hits = 1;
+			g_ssw_profile_reuse_shadow_cache.insert(std::make_pair(key, std::move(entry)));
+			stats->sswProfileUniqueKeys =
+				static_cast<uint64_t>(g_ssw_profile_reuse_shadow_cache.size());
+			return;
+		}
+
+		++stats->sswProfileReusedPossibleCalls;
+		stats->sswProfileEstReuseSavedNanoseconds += profileBuildElapsed;
+		++it->second->hits;
+		stats->sswProfileUniqueKeys =
+			static_cast<uint64_t>(g_ssw_profile_reuse_shadow_cache.size());
+		SswProfileReuseShadowCompare(it->second->profile, queryLen,
+		                             translatedRef, validRefLen,
+		                             gapOpeningPenalty, gapExtendingPenalty,
+		                             flag, filter, maskLen, cpuAlignment,
+		                             stats);
 	}
 
 	static const int8_t kBaseTranslation[128] = {
@@ -680,9 +923,10 @@ namespace StripedSmithWaterman {
 			internalsStats != NULL ? CpuInternalsNowNanoseconds() : 0;
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
+		uint64_t profileBuildElapsed = 0;
 		if (internalsStats != NULL) {
-			CpuInternalsAddElapsed(internalsStats->profileBuildNanoseconds,
-			                       profileBuildStart);
+			profileBuildElapsed = CpuInternalsNowNanoseconds() - profileBuildStart;
+			internalsStats->profileBuildNanoseconds += profileBuildElapsed;
 		}
 
 		uint8_t flag = 0;
@@ -714,6 +958,15 @@ namespace StripedSmithWaterman {
 			CpuInternalsAddElapsed(internalsStats->convertNanoseconds,
 			                       convertStart);
 		}
+		SswProfileReuseShadowRecordAndCompare(translated_query, query_len,
+		                                      translated_ref, valid_ref_len,
+		                                      score_matrix_, score_matrix_size_,
+		                                      score_size,
+		                                      gap_opening_penalty_,
+		                                      gap_extending_penalty_,
+		                                      flag, filter, maskLen,
+		                                      profileBuildElapsed,
+		                                      *alignment, internalsStats);
 		//2021-09-16 22:38:00: to get original cigar string.
 		//alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_ref, translated_query, query_len);
 

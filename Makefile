@@ -486,6 +486,10 @@ check-fasim-aligner-align-cpu-internals:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_aligner_align_cpu_internals.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+check-fasim-ssw-profile-reuse-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_reuse_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 check-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_pre_align_filter_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
