@@ -162,6 +162,22 @@ struct FasimFastSimExtendProfileStats
 		accelignScorePrecheckQueryReuseActive(0),
 		accelignScorePrecheckHasEndpointContract(0),
 		accelignScorePrecheckUsesRuntimeOutput(0),
+		accelignCallPrecheckShadowEnabled(0),
+		accelignCallPrecheckRequests(0),
+		accelignCallPrecheckRequestsCompared(0),
+		accelignCallPrecheckScoreMismatches(0),
+		accelignCallPrecheckPredictedSkipCalls(0),
+		accelignCallPrecheckFalseRejectCalls(0),
+		accelignCallPrecheckFalseRejectCandidates(0),
+		accelignCallPrecheckCandidateStateMismatches(0),
+		accelignCallPrecheckEmittedRecordMismatches(0),
+		accelignCallPrecheckOutputDigestMismatches(0),
+		accelignCallPrecheckEstCpuNanosecondsSaved(0),
+		accelignCallPrecheckAccelignNanoseconds(0),
+		accelignCallPrecheckNetEstNanosecondsSaved(0),
+		accelignCallPrecheckProjectedFullNanosecondsSaved(0),
+		accelignCallPrecheckHasEndpointContract(0),
+		accelignCallPrecheckUsesRuntimeOutput(0),
 		preAlignFilterShadowEnabled(0),
 		preAlignFilterCandidates(0),
 		preAlignFilterActualEmitted(0),
@@ -353,6 +369,22 @@ struct FasimFastSimExtendProfileStats
 	uint64_t accelignScorePrecheckQueryReuseActive;
 	uint64_t accelignScorePrecheckHasEndpointContract;
 	uint64_t accelignScorePrecheckUsesRuntimeOutput;
+	uint64_t accelignCallPrecheckShadowEnabled;
+	uint64_t accelignCallPrecheckRequests;
+	uint64_t accelignCallPrecheckRequestsCompared;
+	uint64_t accelignCallPrecheckScoreMismatches;
+	uint64_t accelignCallPrecheckPredictedSkipCalls;
+	uint64_t accelignCallPrecheckFalseRejectCalls;
+	uint64_t accelignCallPrecheckFalseRejectCandidates;
+	uint64_t accelignCallPrecheckCandidateStateMismatches;
+	uint64_t accelignCallPrecheckEmittedRecordMismatches;
+	uint64_t accelignCallPrecheckOutputDigestMismatches;
+	uint64_t accelignCallPrecheckEstCpuNanosecondsSaved;
+	uint64_t accelignCallPrecheckAccelignNanoseconds;
+	int64_t accelignCallPrecheckNetEstNanosecondsSaved;
+	int64_t accelignCallPrecheckProjectedFullNanosecondsSaved;
+	uint64_t accelignCallPrecheckHasEndpointContract;
+	uint64_t accelignCallPrecheckUsesRuntimeOutput;
 	uint64_t preAlignFilterShadowEnabled;
 	uint64_t preAlignFilterCandidates;
 	uint64_t preAlignFilterActualEmitted;
@@ -531,6 +563,20 @@ inline bool fasim_accelign_score_precheck_shadow_enabled_runtime()
 	static const bool enabled = []()
 	{
 		const char* env = getenv("FASIM_ALIGNER_ACCELIGN_SCORE_PRECHECK_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_accelign_score_precheck_contract_shadow_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_ALIGNER_ACCELIGN_SCORE_PRECHECK_CONTRACT_SHADOW");
 		if (env == NULL || env[0] == '\0')
 		{
 			return false;
@@ -972,6 +1018,10 @@ struct FasimAlignBatchShadowRequest
 		cpuQueryEnd(0),
 		scoreThreshold(0),
 		candidateId(0),
+		candidateCallOrdinal(0),
+		cutlength(0),
+		cpuScorePass(0),
+		cpuBestEligible(0),
 		cpuNanoseconds(0)
 	{
 	}
@@ -987,6 +1037,10 @@ struct FasimAlignBatchShadowRequest
 	int cpuQueryEnd;
 	int scoreThreshold;
 	uint64_t candidateId;
+	uint64_t candidateCallOrdinal;
+	int cutlength;
+	uint8_t cpuScorePass;
+	uint8_t cpuBestEligible;
 	uint64_t cpuNanoseconds;
 };
 
@@ -998,7 +1052,20 @@ struct FasimAccelignScorePrecheckCandidateShadowRecord
 		sampledAlignCalls(0),
 		predictedRejectCalls(0),
 		cpuScorePassCalls(0),
-		cpuCandidateWouldContinue(0)
+		cpuCandidateWouldContinue(0),
+		cpuFinalMyflag(0),
+		cpuFinalScore(0),
+		cpuFinalRefBegin(0),
+		cpuFinalRefEnd(0),
+		cpuFinalQueryBegin(0),
+		cpuFinalQueryEnd(0),
+		cpuFinalCutlength(0),
+		cpuFinalSelectedCallOrdinal(0),
+		cpuHasCandidateTriplex(0),
+		cpuTriplexCountBeforeConvert(0),
+		cpuTriplexCountAfterConvert(0),
+		cpuSurvivedOutputFilter(0),
+		cpuEmittedOutput(0)
 	{
 	}
 
@@ -1008,6 +1075,20 @@ struct FasimAccelignScorePrecheckCandidateShadowRecord
 	uint64_t predictedRejectCalls;
 	uint64_t cpuScorePassCalls;
 	uint8_t cpuCandidateWouldContinue;
+	uint8_t cpuFinalMyflag;
+	int cpuFinalScore;
+	int cpuFinalRefBegin;
+	int cpuFinalRefEnd;
+	int cpuFinalQueryBegin;
+	int cpuFinalQueryEnd;
+	int cpuFinalCutlength;
+	uint64_t cpuFinalSelectedCallOrdinal;
+	uint8_t cpuHasCandidateTriplex;
+	uint64_t cpuTriplexCountBeforeConvert;
+	uint64_t cpuTriplexCountAfterConvert;
+	uint8_t cpuSurvivedOutputFilter;
+	uint8_t cpuEmittedOutput;
+	triplex cpuCandidateTriplex;
 };
 
 static const uint8_t FASIM_PRE_ALIGN_REJECT_REASON_SCORE = 1;
@@ -1543,6 +1624,13 @@ inline void fasim_accelign_score_precheck_shadow_record_request(
 	}
 	++profileStats->accelignScorePrecheckRequests;
 
+	uint64_t alreadyCompared = profileStats->accelignScorePrecheckRequestsCompared;
+	if (fasim_accelign_score_precheck_contract_shadow_enabled_runtime() &&
+	    !fasim_accelign_score_precheck_shadow_enabled_runtime())
+	{
+		alreadyCompared = profileStats->accelignCallPrecheckRequestsCompared;
+	}
+
 	const int maxRequests = fasim_accelign_score_precheck_shadow_max_requests_runtime();
 	const int stride = fasim_accelign_score_precheck_shadow_request_stride_runtime();
 	const uint64_t requestIndex = profileStats->accelignScorePrecheckRequests - 1;
@@ -1552,7 +1640,7 @@ inline void fasim_accelign_score_precheck_shadow_record_request(
 		return;
 	}
 	const uint64_t sampledSoFar = static_cast<uint64_t>(requests.size());
-	if (profileStats->accelignScorePrecheckRequestsCompared + sampledSoFar >=
+	if (alreadyCompared + sampledSoFar >=
 	    static_cast<uint64_t>(maxRequests))
 	{
 		++profileStats->accelignScorePrecheckRequestsUnsupported;
@@ -1571,6 +1659,73 @@ inline void fasim_accelign_score_precheck_shadow_record_request(
 	request.cpuQueryEnd = cpuAlignment.query_end;
 	request.scoreThreshold = scoreThreshold;
 	request.candidateId = candidateId;
+	request.cpuNanoseconds = cpuNanoseconds;
+	requests.push_back(request);
+}
+
+inline void fasim_accelign_score_precheck_shadow_record_request(
+	std::vector<FasimAlignBatchShadowRequest> &requests,
+	FasimFastSimExtendProfileStats *profileStats,
+	const string &query,
+	const string &target,
+	const StripedSmithWaterman::Alignment &cpuAlignment,
+	int scoreThreshold,
+	uint64_t candidateId,
+	int cutlength,
+	uint64_t candidateCallOrdinal,
+	uint8_t cpuScorePass,
+	uint8_t cpuBestEligible,
+	uint64_t cpuNanoseconds)
+{
+	if (profileStats == NULL)
+	{
+		return;
+	}
+	++profileStats->accelignScorePrecheckRequests;
+	if (fasim_accelign_score_precheck_contract_shadow_enabled_runtime())
+	{
+		++profileStats->accelignCallPrecheckRequests;
+	}
+
+	uint64_t alreadyCompared = profileStats->accelignScorePrecheckRequestsCompared;
+	if (fasim_accelign_score_precheck_contract_shadow_enabled_runtime() &&
+	    !fasim_accelign_score_precheck_shadow_enabled_runtime())
+	{
+		alreadyCompared = profileStats->accelignCallPrecheckRequestsCompared;
+	}
+
+	const int maxRequests = fasim_accelign_score_precheck_shadow_max_requests_runtime();
+	const int stride = fasim_accelign_score_precheck_shadow_request_stride_runtime();
+	const uint64_t requestIndex = profileStats->accelignScorePrecheckRequests - 1;
+	if (stride > 1 && (requestIndex % static_cast<uint64_t>(stride)) != 0)
+	{
+		++profileStats->accelignScorePrecheckRequestsUnsupported;
+		return;
+	}
+	const uint64_t sampledSoFar = static_cast<uint64_t>(requests.size());
+	if (alreadyCompared + sampledSoFar >=
+	    static_cast<uint64_t>(maxRequests))
+	{
+		++profileStats->accelignScorePrecheckRequestsUnsupported;
+		return;
+	}
+
+	FasimAlignBatchShadowRequest request;
+	request.queryLength = static_cast<uint32_t>(query.size());
+	request.targetLength = static_cast<uint32_t>(target.size());
+	request.querySequence = query;
+	request.targetSequence = target;
+	request.cpuScore = static_cast<int>(cpuAlignment.sw_score);
+	request.cpuRefBegin = cpuAlignment.ref_begin;
+	request.cpuRefEnd = cpuAlignment.ref_end;
+	request.cpuQueryBegin = cpuAlignment.query_begin;
+	request.cpuQueryEnd = cpuAlignment.query_end;
+	request.scoreThreshold = scoreThreshold;
+	request.candidateId = candidateId;
+	request.cutlength = cutlength;
+	request.candidateCallOrdinal = candidateCallOrdinal;
+	request.cpuScorePass = cpuScorePass;
+	request.cpuBestEligible = cpuBestEligible;
 	request.cpuNanoseconds = cpuNanoseconds;
 	requests.push_back(request);
 }
@@ -2048,6 +2203,272 @@ inline void fasim_accelign_score_precheck_shadow_update_net(
 		static_cast<int64_t>(profileStats->accelignScorePrecheckAccelignNanoseconds);
 }
 
+inline void fasim_accelign_call_precheck_shadow_update_net(
+	FasimFastSimExtendProfileStats *profileStats)
+{
+	if (profileStats == NULL)
+	{
+		return;
+	}
+	profileStats->accelignCallPrecheckNetEstNanosecondsSaved =
+		static_cast<int64_t>(profileStats->accelignCallPrecheckEstCpuNanosecondsSaved) -
+		static_cast<int64_t>(profileStats->accelignCallPrecheckAccelignNanoseconds);
+	if (profileStats->accelignCallPrecheckRequestsCompared != 0)
+	{
+		const double scale =
+			static_cast<double>(profileStats->accelignCallPrecheckRequests) /
+			static_cast<double>(profileStats->accelignCallPrecheckRequestsCompared);
+		profileStats->accelignCallPrecheckProjectedFullNanosecondsSaved =
+			static_cast<int64_t>(
+				static_cast<double>(profileStats->accelignCallPrecheckNetEstNanosecondsSaved) *
+				scale);
+	}
+}
+
+inline bool fasim_accelign_call_precheck_same_final_state(
+	const FasimAccelignScorePrecheckCandidateShadowRecord &record,
+	uint8_t sideMyflag,
+	int sideScore,
+	int sideRefBegin,
+	int sideRefEnd,
+	int sideQueryBegin,
+	int sideQueryEnd,
+	int sideCutlength,
+	uint64_t sideSelectedCallOrdinal)
+{
+	return record.cpuFinalMyflag == sideMyflag &&
+	       record.cpuFinalScore == sideScore &&
+	       record.cpuFinalRefBegin == sideRefBegin &&
+	       record.cpuFinalRefEnd == sideRefEnd &&
+	       record.cpuFinalQueryBegin == sideQueryBegin &&
+	       record.cpuFinalQueryEnd == sideQueryEnd &&
+	       record.cpuFinalCutlength == sideCutlength &&
+	       record.cpuFinalSelectedCallOrdinal == sideSelectedCallOrdinal;
+}
+
+inline void fasim_accelign_call_precheck_shadow_finalize(
+	const std::vector<FasimAlignBatchShadowRequest> &requests,
+	const std::vector<FasimAccelignScorePrecheckCandidateShadowRecord> &candidateRecords,
+	FasimFastSimExtendProfileStats *profileStats)
+{
+	if (profileStats == NULL)
+	{
+		return;
+	}
+	profileStats->accelignCallPrecheckShadowEnabled = 1;
+	profileStats->accelignCallPrecheckHasEndpointContract = 0;
+	profileStats->accelignCallPrecheckUsesRuntimeOutput = 0;
+	profileStats->accelignCallPrecheckRequestsCompared +=
+		static_cast<uint64_t>(requests.size());
+
+	if (profileStats->accelignCallPrecheckRequests == 0)
+	{
+		fasim_accelign_call_precheck_shadow_update_net(profileStats);
+		return;
+	}
+
+	if (requests.empty())
+	{
+		fasim_accelign_call_precheck_shadow_update_net(profileStats);
+		return;
+	}
+
+	if (!accelign_shadow_is_built())
+	{
+		profileStats->accelignCallPrecheckAccelignNanoseconds += 0;
+		fasim_accelign_call_precheck_shadow_update_net(profileStats);
+		return;
+	}
+
+	string accelignError;
+	if (!accelign_shadow_init(0, &accelignError))
+	{
+		fasim_accelign_call_precheck_shadow_update_net(profileStats);
+		return;
+	}
+
+	const uint64_t totalStart = fasim_fastsim_profile_now_nanoseconds();
+	std::vector<AccelignShadowRequest> accelignRequests;
+	accelignRequests.reserve(requests.size());
+	for (size_t i = 0; i < requests.size(); ++i)
+	{
+		AccelignShadowRequest request;
+		request.queryLength = requests[i].queryLength;
+		request.targetLength = requests[i].targetLength;
+		request.querySequence = requests[i].querySequence;
+		request.targetSequence = requests[i].targetSequence;
+		request.cpuScore = requests[i].cpuScore;
+		accelignRequests.push_back(request);
+	}
+
+	std::vector<AccelignShadowResult> results;
+	AccelignShadowBatchResult batchResult;
+	bool oneQuery = !accelignRequests.empty();
+	for (size_t i = 1; i < accelignRequests.size(); ++i)
+	{
+		if (accelignRequests[i].querySequence != accelignRequests[0].querySequence)
+		{
+			oneQuery = false;
+			break;
+		}
+	}
+	const bool ok = oneQuery ?
+		accelign_shadow_run_local_affine_score_only_one_to_all_float(
+			accelignRequests,
+			&results,
+			&batchResult,
+			&accelignError) :
+		accelign_shadow_run_local_affine_score_only_float(
+			accelignRequests,
+			&results,
+			&batchResult,
+			&accelignError);
+	if (!ok || results.size() != requests.size())
+	{
+		profileStats->accelignCallPrecheckAccelignNanoseconds +=
+			fasim_fastsim_profile_now_nanoseconds() - totalStart;
+		fasim_accelign_call_precheck_shadow_update_net(profileStats);
+		return;
+	}
+
+	std::map<uint64_t, std::vector<size_t> > requestIndicesByCandidate;
+	for (size_t i = 0; i < requests.size(); ++i)
+	{
+		const bool predictedSkip = results[i].score < requests[i].scoreThreshold;
+		const bool actualReject = requests[i].cpuScore < requests[i].scoreThreshold;
+		if (results[i].score != requests[i].cpuScore)
+		{
+			++profileStats->accelignCallPrecheckScoreMismatches;
+		}
+		if (predictedSkip)
+		{
+			++profileStats->accelignCallPrecheckPredictedSkipCalls;
+			profileStats->accelignCallPrecheckEstCpuNanosecondsSaved +=
+				requests[i].cpuNanoseconds;
+			if (actualReject)
+			{
+				(void)requestIndicesByCandidate[requests[i].candidateId];
+			}
+			else
+			{
+				++profileStats->accelignCallPrecheckFalseRejectCalls;
+			}
+		}
+		else
+		{
+			requestIndicesByCandidate[requests[i].candidateId].push_back(i);
+		}
+	}
+
+	for (size_t i = 0; i < candidateRecords.size(); ++i)
+	{
+		const FasimAccelignScorePrecheckCandidateShadowRecord &record =
+			candidateRecords[i];
+		if (record.totalAlignCalls == 0 ||
+		    record.sampledAlignCalls != record.totalAlignCalls)
+		{
+			continue;
+		}
+
+		const std::vector<size_t> &indices = requestIndicesByCandidate[record.candidateId];
+		uint8_t sideMyflag = 0;
+		int sideScore = 0;
+		int sideRefBegin = 0;
+		int sideRefEnd = 0;
+		int sideQueryBegin = 0;
+		int sideQueryEnd = 0;
+		int sideCutlength = 0;
+		uint64_t sideSelectedCallOrdinal = 0;
+		int bestScore = 0;
+		int bestRefBegin = 0;
+		int bestRefEnd = 0;
+		int bestQueryBegin = 0;
+		int bestQueryEnd = 0;
+		int bestCutlength = 0;
+		uint64_t bestSelectedCallOrdinal = 0;
+		uint8_t bestSeen = 0;
+
+		for (size_t j = 0; j < indices.size(); ++j)
+		{
+			const FasimAlignBatchShadowRequest &request = requests[indices[j]];
+			sideScore = request.cpuScore;
+			sideRefBegin = request.cpuRefBegin;
+			sideRefEnd = request.cpuRefEnd;
+			sideQueryBegin = request.cpuQueryBegin;
+			sideQueryEnd = request.cpuQueryEnd;
+			sideCutlength = request.cutlength;
+			sideSelectedCallOrdinal = request.candidateCallOrdinal;
+			if (request.cpuScorePass)
+			{
+				sideMyflag = 1;
+				break;
+			}
+			if (request.cpuBestEligible && request.cpuScore > bestScore)
+			{
+				bestSeen = 1;
+				bestScore = request.cpuScore;
+				bestRefBegin = request.cpuRefBegin;
+				bestRefEnd = request.cpuRefEnd;
+				bestQueryBegin = request.cpuQueryBegin;
+				bestQueryEnd = request.cpuQueryEnd;
+				bestCutlength = request.cutlength;
+				bestSelectedCallOrdinal = request.candidateCallOrdinal;
+				sideMyflag = 2;
+			}
+		}
+		if (sideMyflag == 2 && bestSeen)
+		{
+			sideScore = bestScore;
+			sideRefBegin = bestRefBegin;
+			sideRefEnd = bestRefEnd;
+			sideQueryBegin = bestQueryBegin;
+			sideQueryEnd = bestQueryEnd;
+			sideCutlength = bestCutlength;
+			sideSelectedCallOrdinal = bestSelectedCallOrdinal;
+		}
+		if (indices.empty())
+		{
+			sideMyflag = 0;
+			sideScore = 0;
+			sideRefBegin = 0;
+			sideRefEnd = 0;
+			sideQueryBegin = 0;
+			sideQueryEnd = 0;
+			sideCutlength = 0;
+			sideSelectedCallOrdinal = 0;
+		}
+
+		if (!fasim_accelign_call_precheck_same_final_state(record,
+		                                                   sideMyflag,
+		                                                   sideScore,
+		                                                   sideRefBegin,
+		                                                   sideRefEnd,
+		                                                   sideQueryBegin,
+		                                                   sideQueryEnd,
+		                                                   sideCutlength,
+		                                                   sideSelectedCallOrdinal))
+		{
+			++profileStats->accelignCallPrecheckCandidateStateMismatches;
+			if (record.cpuCandidateWouldContinue)
+			{
+				++profileStats->accelignCallPrecheckFalseRejectCandidates;
+			}
+			if (record.cpuSurvivedOutputFilter)
+			{
+				++profileStats->accelignCallPrecheckEmittedRecordMismatches;
+			}
+			if (record.cpuEmittedOutput)
+			{
+				++profileStats->accelignCallPrecheckOutputDigestMismatches;
+			}
+		}
+	}
+
+	profileStats->accelignCallPrecheckAccelignNanoseconds +=
+		fasim_fastsim_profile_now_nanoseconds() - totalStart;
+	fasim_accelign_call_precheck_shadow_update_net(profileStats);
+}
+
 inline void fasim_accelign_score_precheck_shadow_finalize(
 	const std::vector<FasimAlignBatchShadowRequest> &requests,
 	const std::vector<FasimAccelignScorePrecheckCandidateShadowRecord> &candidateRecords,
@@ -2395,6 +2816,10 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		profileStats != NULL && fasim_accelign_score_only_shadow_enabled_runtime();
 	const bool accelignScorePrecheckShadowEnabled =
 		profileStats != NULL && fasim_accelign_score_precheck_shadow_enabled_runtime();
+	const bool accelignScorePrecheckContractShadowEnabled =
+		profileStats != NULL && fasim_accelign_score_precheck_contract_shadow_enabled_runtime();
+	const bool accelignScorePrecheckAnyShadowEnabled =
+		accelignScorePrecheckShadowEnabled || accelignScorePrecheckContractShadowEnabled;
 	const bool alignerCpuInternalsEnabled =
 		profileStats != NULL && fasim_aligner_align_cpu_internals_enabled_runtime();
 	if (profileStats != NULL)
@@ -2429,9 +2854,18 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			accelignScoreOnlyShadowRequests.reserve(
 				static_cast<size_t>(fasim_accelign_score_only_shadow_max_requests_runtime()));
 		}
-		if (accelignScorePrecheckShadowEnabled)
+		if (accelignScorePrecheckAnyShadowEnabled)
 		{
-			profileStats->accelignScorePrecheckShadowEnabled = 1;
+			if (accelignScorePrecheckShadowEnabled)
+			{
+				profileStats->accelignScorePrecheckShadowEnabled = 1;
+			}
+			if (accelignScorePrecheckContractShadowEnabled)
+			{
+				profileStats->accelignCallPrecheckShadowEnabled = 1;
+				profileStats->accelignCallPrecheckHasEndpointContract = 0;
+				profileStats->accelignCallPrecheckUsesRuntimeOutput = 0;
+			}
 			accelignScorePrecheckShadowRequests.reserve(
 				static_cast<size_t>(fasim_accelign_score_precheck_shadow_max_requests_runtime()));
 			accelignScorePrecheckCandidateRecords.reserve(finalScoreInfo.size());
@@ -2470,7 +2904,7 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		uint64_t candidateAlignCells = 0;
 		uint64_t candidateAlignNanoseconds = 0;
 		size_t accelignScorePrecheckCandidateIndex = static_cast<size_t>(-1);
-		if (accelignScorePrecheckShadowEnabled)
+		if (accelignScorePrecheckAnyShadowEnabled)
 		{
 			FasimAccelignScorePrecheckCandidateShadowRecord record;
 			record.candidateId = static_cast<uint64_t>(i + 1);
@@ -2594,13 +3028,18 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 						                                                alignment,
 						                                                alignElapsed);
 					}
-					if (accelignScorePrecheckShadowEnabled)
+					if (accelignScorePrecheckAnyShadowEnabled)
 					{
 						FasimAccelignScorePrecheckCandidateShadowRecord &record =
 							accelignScorePrecheckCandidateRecords[
 								accelignScorePrecheckCandidateIndex];
 						++record.totalAlignCalls;
-						if (alignment.sw_score >= finalScoreInfo[i].score)
+						const uint8_t cpuScorePass =
+							alignment.sw_score >= finalScoreInfo[i].score ? 1 : 0;
+						const uint8_t cpuBestEligible =
+							alignment.sw_score > bestalignment.sw_score &&
+							alignment.ref_end == cutlength - 1 ? 1 : 0;
+						if (cpuScorePass)
 						{
 							++record.cpuScorePassCalls;
 						}
@@ -2614,6 +3053,10 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 							alignment,
 							finalScoreInfo[i].score,
 							record.candidateId,
+							cutlength,
+							record.totalAlignCalls,
+							cpuScorePass,
+							cpuBestEligible,
 							alignElapsed);
 						if (static_cast<uint64_t>(accelignScorePrecheckShadowRequests.size()) >
 						    beforeSampled)
@@ -2658,13 +3101,54 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			alignment.cigar = bestalignment.cigar;
 			cutlength = bestcutregion;
 		}
+		if (accelignScorePrecheckAnyShadowEnabled &&
+		    accelignScorePrecheckCandidateIndex <
+		        accelignScorePrecheckCandidateRecords.size())
+		{
+			FasimAccelignScorePrecheckCandidateShadowRecord &record =
+				accelignScorePrecheckCandidateRecords[
+					accelignScorePrecheckCandidateIndex];
+			record.cpuFinalMyflag = static_cast<uint8_t>(myflag);
+			record.cpuFinalScore = alignment.sw_score;
+			record.cpuFinalRefBegin = alignment.ref_begin;
+			record.cpuFinalRefEnd = alignment.ref_end;
+			record.cpuFinalQueryBegin = alignment.query_begin;
+			record.cpuFinalQueryEnd = alignment.query_end;
+			record.cpuFinalCutlength = cutlength;
+			if (myflag != 0)
+			{
+				uint64_t selectedOrdinal = 0;
+				for (size_t requestIndex = accelignScorePrecheckShadowRequests.size();
+				     requestIndex > 0;
+				     --requestIndex)
+				{
+					const FasimAlignBatchShadowRequest &request =
+						accelignScorePrecheckShadowRequests[requestIndex - 1];
+					if (request.candidateId != record.candidateId)
+					{
+						continue;
+					}
+					if (request.cpuScore == record.cpuFinalScore &&
+					    request.cpuRefBegin == record.cpuFinalRefBegin &&
+					    request.cpuRefEnd == record.cpuFinalRefEnd &&
+					    request.cpuQueryBegin == record.cpuFinalQueryBegin &&
+					    request.cpuQueryEnd == record.cpuFinalQueryEnd &&
+					    request.cutlength == record.cpuFinalCutlength)
+					{
+						selectedOrdinal = request.candidateCallOrdinal;
+						break;
+					}
+				}
+				record.cpuFinalSelectedCallOrdinal = selectedOrdinal;
+			}
+		}
 		bestalignment.Clear();
 		const uint64_t filterStart =
 			profileStats != NULL ? fasim_fastsim_profile_now_nanoseconds() : 0;
 			if (alignment.sw_score != 0)
 			{
 				const size_t triplexListSizeBeforeConvert = myTriplexList.size();
-				if (accelignScorePrecheckShadowEnabled &&
+				if (accelignScorePrecheckAnyShadowEnabled &&
 				    accelignScorePrecheckCandidateIndex <
 				        accelignScorePrecheckCandidateRecords.size())
 				{
@@ -2738,6 +3222,23 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					record.reason = FASIM_PRE_ALIGN_REJECT_REASON_NT;
 				}
 			}
+			if (accelignScorePrecheckAnyShadowEnabled &&
+			    accelignScorePrecheckCandidateIndex <
+			        accelignScorePrecheckCandidateRecords.size())
+			{
+				FasimAccelignScorePrecheckCandidateShadowRecord &record =
+					accelignScorePrecheckCandidateRecords[
+						accelignScorePrecheckCandidateIndex];
+				record.cpuTriplexCountBeforeConvert =
+					static_cast<uint64_t>(triplexListSizeBeforeConvert);
+				record.cpuTriplexCountAfterConvert =
+					static_cast<uint64_t>(myTriplexList.size());
+				if (myTriplexList.size() > triplexListSizeBeforeConvert)
+				{
+					record.cpuHasCandidateTriplex = 1;
+					record.cpuCandidateTriplex = myTriplexList.back();
+				}
+			}
 		}
 		else if (profileStats != NULL)
 		{
@@ -2795,6 +3296,25 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 						}
 					}
 				}
+				if (accelignScorePrecheckAnyShadowEnabled)
+				{
+					for (size_t shadowIndex = 0;
+					     shadowIndex < accelignScorePrecheckCandidateRecords.size();
+					     ++shadowIndex)
+					{
+						FasimAccelignScorePrecheckCandidateShadowRecord &record =
+							accelignScorePrecheckCandidateRecords[shadowIndex];
+						if (record.cpuHasCandidateTriplex &&
+						    !record.cpuEmittedOutput &&
+						    fasim_triplex_exact_same_for_shadow(record.cpuCandidateTriplex,
+						                                        atr))
+						{
+							record.cpuSurvivedOutputFilter = 1;
+							record.cpuEmittedOutput = 1;
+							break;
+						}
+					}
+				}
 			}
 		}
 		else if (profileStats != NULL)
@@ -2815,6 +3335,24 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 						                                                           paraList,
 						                                                           ntMin,
 						                                                           ntMax);
+						break;
+					}
+				}
+			}
+			if (accelignScorePrecheckAnyShadowEnabled)
+			{
+				for (size_t shadowIndex = 0;
+				     shadowIndex < accelignScorePrecheckCandidateRecords.size();
+				     ++shadowIndex)
+				{
+					FasimAccelignScorePrecheckCandidateShadowRecord &record =
+						accelignScorePrecheckCandidateRecords[shadowIndex];
+					if (record.cpuHasCandidateTriplex &&
+					    !record.cpuSurvivedOutputFilter &&
+					    fasim_triplex_exact_same_for_shadow(record.cpuCandidateTriplex,
+					                                        atr))
+					{
+						record.cpuSurvivedOutputFilter = 1;
 						break;
 					}
 				}
@@ -2905,6 +3443,13 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		if (accelignScorePrecheckShadowEnabled)
 		{
 			fasim_accelign_score_precheck_shadow_finalize(
+				accelignScorePrecheckShadowRequests,
+				accelignScorePrecheckCandidateRecords,
+				profileStats);
+		}
+		if (accelignScorePrecheckContractShadowEnabled)
+		{
+			fasim_accelign_call_precheck_shadow_finalize(
 				accelignScorePrecheckShadowRequests,
 				accelignScorePrecheckCandidateRecords,
 				profileStats);

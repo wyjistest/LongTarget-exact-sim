@@ -90,6 +90,25 @@ SCORE_PRECHECK_REQUIRED_KEYS = [
     "fasim_accelign_score_precheck_uses_runtime_output",
 ]
 
+CALL_PRECHECK_REQUIRED_KEYS = [
+    "fasim_accelign_call_precheck_shadow_enabled",
+    "fasim_accelign_call_precheck_requests",
+    "fasim_accelign_call_precheck_requests_compared",
+    "fasim_accelign_call_precheck_score_mismatches",
+    "fasim_accelign_call_precheck_predicted_skip_calls",
+    "fasim_accelign_call_precheck_false_reject_calls",
+    "fasim_accelign_call_precheck_false_reject_candidates",
+    "fasim_accelign_call_precheck_candidate_state_mismatches",
+    "fasim_accelign_call_precheck_emitted_record_mismatches",
+    "fasim_accelign_call_precheck_output_digest_mismatches",
+    "fasim_accelign_call_precheck_est_cpu_seconds_saved",
+    "fasim_accelign_call_precheck_accelign_seconds",
+    "fasim_accelign_call_precheck_net_est_seconds_saved",
+    "fasim_accelign_call_precheck_projected_full_saved",
+    "fasim_accelign_call_precheck_has_endpoint_contract",
+    "fasim_accelign_call_precheck_uses_runtime_output",
+]
+
 
 def metric_float(metrics: Dict[str, str], key: str) -> float:
     try:
@@ -295,6 +314,59 @@ def main() -> int:
     if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.0001:
         raise RuntimeError(
             "Accelign score precheck net estimate must equal saved CPU seconds minus Accelign seconds"
+        )
+
+    call_precheck = run_once(
+        workload=workload,
+        mode=ModeSpec(
+            "accelign_call_precheck_shadow",
+            "cuda",
+            {
+                "FASIM_TRANSFERSTRING_TABLE": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS": "1",
+                "FASIM_ALIGNER_ACCELIGN_SCORE_PRECHECK_CONTRACT_SHADOW": "1",
+                "FASIM_ALIGNER_ACCELIGN_SCORE_PRECHECK_SHADOW_MAX_REQUESTS": "256",
+            },
+        ),
+        bin_path=cuda_bin,
+        work_dir=work_dir / workload.label / "accelign_call_precheck_shadow",
+        require_profile=True,
+    )
+    require_digest_match(table, call_precheck, "accelign_call_precheck_shadow")
+    require_metrics(call_precheck.metrics, CALL_PRECHECK_REQUIRED_KEYS)
+
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_shadow_enabled") != 1:
+        raise RuntimeError("Accelign call-level precheck contract shadow was not enabled")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_requests") <= 0:
+        raise RuntimeError("Accelign call-level precheck did not observe requests")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_requests_compared") <= 0:
+        raise RuntimeError("Accelign call-level precheck did not compare sampled requests")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_score_mismatches") != 0:
+        raise RuntimeError("Accelign call-level precheck score contract mismatched")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_has_endpoint_contract") != 0:
+        raise RuntimeError("Accelign call-level precheck must not use endpoint contract")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_uses_runtime_output") != 0:
+        raise RuntimeError("Accelign call-level precheck must not feed runtime output")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_false_reject_calls") != 0:
+        raise RuntimeError("Accelign call-level precheck would skip a CPU score-pass call")
+    if metric_int(call_precheck.metrics, "fasim_accelign_call_precheck_output_digest_mismatches") != 0:
+        raise RuntimeError("Accelign call-level precheck shadow must not affect output digest")
+    if metric_float(call_precheck.metrics, "fasim_accelign_call_precheck_accelign_seconds") <= 0.0:
+        raise RuntimeError("Accelign call-level precheck did not report Accelign seconds")
+    saved_seconds = metric_float(
+        call_precheck.metrics, "fasim_accelign_call_precheck_est_cpu_seconds_saved"
+    )
+    accelign_seconds = metric_float(
+        call_precheck.metrics, "fasim_accelign_call_precheck_accelign_seconds"
+    )
+    net_seconds = metric_float(
+        call_precheck.metrics, "fasim_accelign_call_precheck_net_est_seconds_saved"
+    )
+    if abs(net_seconds - (saved_seconds - accelign_seconds)) > 0.0001:
+        raise RuntimeError(
+            "Accelign call-level precheck net estimate must equal saved CPU seconds minus Accelign seconds"
         )
 
     print("Fasim Accelign aligner shadow checks passed")
