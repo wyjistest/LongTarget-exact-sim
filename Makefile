@@ -506,6 +506,10 @@ check-fasim-ssw-profile-cache-characterization:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_ssw_profile_cache_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+check-fasim-ssw-profile-context-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_context_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
 check-fasim-ssw-align-internal-decomposition:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_ssw_align_internal_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
@@ -601,6 +605,10 @@ benchmark-fasim-ssw-profile-context:
 		exit 2; \
 	fi
 	python3 ./scripts/benchmark_fasim_ssw_profile_context.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-context-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_profile_context_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_SSW_PROFILE_CONTEXT_CHARACTERIZATION_SYNTHETIC_ENTRIES:-1,8,32}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA:-}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA:-}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA:-}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA:-}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_PROFILE_CONTEXT_CHARACTERIZATION_REPEAT:-3}" --force-auto-small --require-profile --check
 
 benchmark-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
@@ -1135,7 +1143,7 @@ check-longtarget-lite-output:
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
 		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold \
-		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-aligner-align-cpu-internals check-fasim-ssw-align-internal-decomposition check-fasim-ssw-align-internal-hg38-characterization check-fasim-ssw-profile-context-shadow check-fasim-ssw-profile-context check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy check-fasim-aligner-align-batch-shadow check-fasim-aligner-accelign-shadow benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-aligner-align-cpu-internals benchmark-fasim-ssw-align-internal-decomposition benchmark-fasim-ssw-align-internal-hg38-characterization benchmark-fasim-ssw-profile-context-shadow benchmark-fasim-ssw-profile-context benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-aligner-align-batch-shadow benchmark-fasim-aligner-align-batch-shadow-scaling benchmark-fasim-aligner-accelign-shadow-scaling \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-aligner-align-cpu-internals check-fasim-ssw-align-internal-decomposition check-fasim-ssw-align-internal-hg38-characterization check-fasim-ssw-profile-context-shadow check-fasim-ssw-profile-context check-fasim-ssw-profile-context-characterization check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy check-fasim-aligner-align-batch-shadow check-fasim-aligner-accelign-shadow benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-aligner-align-cpu-internals benchmark-fasim-ssw-align-internal-decomposition benchmark-fasim-ssw-align-internal-hg38-characterization benchmark-fasim-ssw-profile-context-shadow benchmark-fasim-ssw-profile-context benchmark-fasim-ssw-profile-context-characterization benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-aligner-align-batch-shadow benchmark-fasim-aligner-align-batch-shadow-scaling benchmark-fasim-aligner-accelign-shadow-scaling \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
