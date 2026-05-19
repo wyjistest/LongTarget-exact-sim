@@ -109,6 +109,33 @@ CALL_PRECHECK_REQUIRED_KEYS = [
     "fasim_accelign_call_precheck_uses_runtime_output",
 ]
 
+ENDPOINT_ENVELOPE_REQUIRED_KEYS = [
+    "fasim_accelign_endpoint_envelope_shadow_enabled",
+    "fasim_accelign_endpoint_envelope_shadow_requests",
+    "fasim_accelign_endpoint_envelope_shadow_requests_compared",
+    "fasim_accelign_endpoint_envelope_shadow_requests_unsupported",
+    "fasim_accelign_endpoint_envelope_shadow_flank",
+    "fasim_accelign_endpoint_envelope_shadow_score_mismatches",
+    "fasim_accelign_endpoint_envelope_shadow_endpoint_mismatches",
+    "fasim_accelign_endpoint_envelope_shadow_cigar_mismatches",
+    "fasim_accelign_endpoint_envelope_shadow_alignment_string_mismatches",
+    "fasim_accelign_endpoint_envelope_shadow_total_mismatches",
+    "fasim_accelign_endpoint_envelope_shadow_contains_cpu_endpoint",
+    "fasim_accelign_endpoint_envelope_shadow_misses_cpu_endpoint",
+    "fasim_accelign_endpoint_envelope_shadow_contains_cpu_interval",
+    "fasim_accelign_endpoint_envelope_shadow_misses_cpu_interval",
+    "fasim_accelign_endpoint_envelope_shadow_accelign_seconds",
+    "fasim_accelign_endpoint_envelope_shadow_cpu_full_seconds",
+    "fasim_accelign_endpoint_envelope_shadow_cpu_envelope_seconds",
+    "fasim_accelign_endpoint_envelope_shadow_net_est_seconds_saved",
+    "fasim_accelign_endpoint_envelope_shadow_projected_full_saved",
+    "fasim_accelign_endpoint_envelope_shadow_has_score_contract",
+    "fasim_accelign_endpoint_envelope_shadow_has_endpoint_contract",
+    "fasim_accelign_endpoint_envelope_shadow_has_cigar_contract",
+    "fasim_accelign_endpoint_envelope_shadow_has_alignment_string_contract",
+    "fasim_accelign_endpoint_envelope_shadow_uses_runtime_output",
+]
+
 
 def metric_float(metrics: Dict[str, str], key: str) -> float:
     try:
@@ -368,6 +395,51 @@ def main() -> int:
         raise RuntimeError(
             "Accelign call-level precheck net estimate must equal saved CPU seconds minus Accelign seconds"
         )
+
+    endpoint_envelope = run_once(
+        workload=workload,
+        mode=ModeSpec(
+            "accelign_endpoint_envelope_shadow",
+            "cuda",
+            {
+                "FASIM_TRANSFERSTRING_TABLE": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS": "1",
+                "FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS": "1",
+                "FASIM_ALIGNER_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW": "1",
+                "FASIM_ALIGNER_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW_MAX_REQUESTS": "256",
+                "FASIM_ALIGNER_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW_FLANK": "64",
+            },
+        ),
+        bin_path=cuda_bin,
+        work_dir=work_dir / workload.label / "accelign_endpoint_envelope_shadow",
+        require_profile=True,
+    )
+    require_digest_match(table, endpoint_envelope, "accelign_endpoint_envelope_shadow")
+    require_metrics(endpoint_envelope.metrics, ENDPOINT_ENVELOPE_REQUIRED_KEYS)
+
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_enabled") != 1:
+        raise RuntimeError("Accelign endpoint-envelope shadow was not enabled")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_requests") <= 0:
+        raise RuntimeError("Accelign endpoint-envelope shadow did not observe requests")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_requests_compared") <= 0:
+        raise RuntimeError("Accelign endpoint-envelope shadow did not compare requests")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_flank") != 64:
+        raise RuntimeError("Accelign endpoint-envelope flank telemetry did not match env")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_uses_runtime_output") != 0:
+        raise RuntimeError("Accelign endpoint-envelope shadow must not feed runtime output")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_has_score_contract") != 1:
+        raise RuntimeError("Accelign endpoint-envelope shadow must compare scores")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_has_endpoint_contract") != 1:
+        raise RuntimeError("Accelign endpoint-envelope shadow must compare endpoints")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_has_cigar_contract") != 1:
+        raise RuntimeError("Accelign endpoint-envelope shadow must compare CIGAR")
+    if metric_int(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_has_alignment_string_contract") != 0:
+        raise RuntimeError("Accelign endpoint-envelope shadow must not claim materialized alignment strings")
+    if metric_float(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_accelign_seconds") <= 0.0:
+        raise RuntimeError("Accelign endpoint-envelope shadow did not report Accelign time")
+    if metric_float(endpoint_envelope.metrics, "fasim_accelign_endpoint_envelope_shadow_cpu_envelope_seconds") <= 0.0:
+        raise RuntimeError("Accelign endpoint-envelope shadow did not report CPU envelope time")
 
     print("Fasim Accelign aligner shadow checks passed")
     return 0

@@ -570,6 +570,14 @@ benchmark-fasim-aligner-accelign-shadow-scaling:
 	fi
 	python3 ./scripts/benchmark_fasim_aligner_accelign_shadow_scaling.py --cuda-bin $(CURDIR)/$(FASIM_CUDA_TARGET) --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --sample-sizes "$${FASIM_ALIGNER_ACCELIGN_SHADOW_SCALING_SIZES:-1000,10000,50000}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
 
+benchmark-fasim-accelign-endpoint-envelope-shadow:
+	$(MAKE) build-fasim-cuda FASIM_ACCELIGN_ENABLE=1
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_accelign_endpoint_envelope_shadow.py --cuda-bin $(CURDIR)/$(FASIM_CUDA_TARGET) --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --sample-sizes "$${FASIM_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW_SIZES:-1000}" --flanks "$${FASIM_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW_FLANKS:-32,64,128}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
 benchmark-fasim-gpu-emit-scoreinfo-decomposition:
 	$(MAKE) build-fasim-cuda
 	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
