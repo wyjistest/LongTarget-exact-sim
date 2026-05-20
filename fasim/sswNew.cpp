@@ -160,6 +160,23 @@ static bool ssw_avx2_requested_runtime() {
 	return enabled;
 }
 
+static bool ssw_env_equals(const char* name, const char* expected) {
+	const char* env = getenv(name);
+	return env != NULL && strcmp(env, expected) == 0;
+}
+
+static bool ssw_avx2_forward_enabled_runtime() {
+	if (!ssw_avx2_requested_runtime()) return false;
+	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "off")) return false;
+	return !ssw_env_equals("FASIM_SSW_AVX2_MODE", "reverse_only");
+}
+
+static bool ssw_avx2_reverse_enabled_runtime() {
+	if (!ssw_avx2_requested_runtime()) return false;
+	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "off")) return false;
+	return !ssw_env_equals("FASIM_SSW_AVX2_MODE", "forward_only");
+}
+
 static void* ssw_aligned_calloc(size_t count, size_t size, size_t alignment) {
 	void* ptr = NULL;
 	if (count == 0 || size == 0) return NULL;
@@ -1764,7 +1781,7 @@ s_profile* ssw_init(const int8_t* read, const int32_t readLen, const int8_t* mat
 		p->bias = bias;
 		p->profile_byte = qP_byte(read, mat, readLen, n, bias);
 #if defined(__AVX2__)
-		if (ssw_avx2_requested_runtime()) {
+		if (ssw_avx2_forward_enabled_runtime()) {
 			p->profile_byte_avx2 = qP_byte_avx2(read, mat, readLen, n, bias);
 		}
 #endif
@@ -1772,7 +1789,7 @@ s_profile* ssw_init(const int8_t* read, const int32_t readLen, const int8_t* mat
 	if (score_size == 1 || score_size == 2) {
 		p->profile_word = qP_word(read, mat, readLen, n);
 #if defined(__AVX2__)
-		if (ssw_avx2_requested_runtime()) {
+		if (ssw_avx2_forward_enabled_runtime()) {
 			p->profile_word_avx2 = qP_word_avx2(read, mat, readLen, n);
 		}
 #endif
@@ -1967,7 +1984,8 @@ s_align* ssw_align(const s_profile* prof,
 	}
 
 #if defined(__AVX2__)
-	const bool useAvx2 = ssw_avx2_requested_runtime();
+	const bool useAvx2Forward = ssw_avx2_forward_enabled_runtime();
+	const bool useAvx2Reverse = ssw_avx2_reverse_enabled_runtime();
 #else
 	if (ssw_avx2_requested_runtime()) {
 		++g_ssw_avx2_fallback_calls;
@@ -1982,7 +2000,7 @@ s_align* ssw_align(const s_profile* prof,
 	if (prof->profile_byte) {
 		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
-		if (useAvx2 && prof->profile_byte_avx2 != NULL) {
+		if (useAvx2Forward && prof->profile_byte_avx2 != NULL) {
 			++g_ssw_avx2_calls;
 			++g_ssw_avx2_byte_calls;
 			g_ssw_avx2_active = 1;
@@ -2001,7 +2019,7 @@ s_align* ssw_align(const s_profile* prof,
 			free(bests);
 			const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
-			if (useAvx2 && prof->profile_word_avx2 != NULL) {
+			if (useAvx2Forward && prof->profile_word_avx2 != NULL) {
 				++g_ssw_avx2_calls;
 				++g_ssw_avx2_word_calls;
 				g_ssw_avx2_active = 1;
@@ -2025,7 +2043,7 @@ s_align* ssw_align(const s_profile* prof,
 	else if (prof->profile_word) {
 		const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
-		if (useAvx2 && prof->profile_word_avx2 != NULL) {
+		if (useAvx2Forward && prof->profile_word_avx2 != NULL) {
 			++g_ssw_avx2_calls;
 			++g_ssw_avx2_word_calls;
 			g_ssw_avx2_active = 1;
@@ -2075,7 +2093,7 @@ s_align* ssw_align(const s_profile* prof,
 		vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
 		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
-		if (useAvx2) {
+		if (useAvx2Reverse) {
 			vPAvx2 = qP_byte_avx2(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
 			if (vPAvx2 != NULL) {
 				++g_ssw_avx2_calls;
@@ -2103,7 +2121,7 @@ s_align* ssw_align(const s_profile* prof,
 		vP = qP_word(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
 		const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
-		if (useAvx2) {
+		if (useAvx2Reverse) {
 			vPAvx2 = qP_word_avx2(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
 			if (vPAvx2 != NULL) {
 				++g_ssw_avx2_calls;

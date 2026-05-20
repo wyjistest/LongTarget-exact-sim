@@ -126,6 +126,16 @@ s_align *run_alignment(const std::string &query,
     return alignment;
 }
 
+std::string avx2_mode()
+{
+    const char *env = std::getenv("FASIM_SSW_AVX2_MODE");
+    if (env == NULL || env[0] == '\0')
+    {
+        return "all";
+    }
+    return env;
+}
+
 } // namespace
 
 int main()
@@ -156,15 +166,30 @@ int main()
         std::cerr << "AVX2 was not compiled into this test binary\n";
         std::exit(1);
     }
-    if (ssw_avx2_active() != 1)
+    const std::string mode = avx2_mode();
+    const bool expect_active = mode != "off";
+    const uint64_t expected_byte_calls =
+        mode == "all" ? 3 : mode == "forward_only" ? 2 : mode == "reverse_only" ? 1 : 0;
+    const uint64_t expected_word_calls =
+        mode == "all" ? 2 : mode == "forward_only" ? 1 : mode == "reverse_only" ? 1 : 0;
+
+    if (ssw_avx2_active() != (expect_active ? 1 : 0))
     {
-        std::cerr << "AVX2 did not activate\n";
+        std::cerr << "AVX2 active mismatch for mode " << mode
+                  << ": " << ssw_avx2_active() << "\n";
         std::exit(1);
     }
-    if (ssw_avx2_byte_calls() <= 0 || ssw_avx2_word_calls() <= 0)
+    if (ssw_avx2_byte_calls() != expected_byte_calls ||
+        ssw_avx2_word_calls() != expected_word_calls ||
+        ssw_avx2_calls() != expected_byte_calls + expected_word_calls)
     {
-        std::cerr << "AVX2 byte/word calls were not both observed: byte="
-                  << ssw_avx2_byte_calls() << " word=" << ssw_avx2_word_calls() << "\n";
+        std::cerr << "AVX2 call distribution mismatch for mode " << mode
+                  << ": calls=" << ssw_avx2_calls()
+                  << " byte=" << ssw_avx2_byte_calls()
+                  << " word=" << ssw_avx2_word_calls()
+                  << " expected_calls=" << (expected_byte_calls + expected_word_calls)
+                  << " expected_byte=" << expected_byte_calls
+                  << " expected_word=" << expected_word_calls << "\n";
         std::exit(1);
     }
     if (ssw_avx2_fallback_calls() != 0)
