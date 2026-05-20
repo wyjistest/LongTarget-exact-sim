@@ -133,6 +133,11 @@ static inline bool fasim_gpu_dp_column_threshold_shadow_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_GPU_DP_COLUMN_THRESHOLD_SHADOW");
 }
 
+static inline bool fasim_exact_column_extend_batch_shadow_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW");
+}
+
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_CELLS = 1500000000ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_WINDOWS = 128ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NONE = 0ULL;
@@ -143,6 +148,9 @@ static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NON_FASTSIM = 4ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_TABLE = 0ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_COMPACT_GPU = 1ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_MANUAL_GPU = 2ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NONE = 0ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NOT_REQUESTED = 1ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_GPU_COLUMN_INACTIVE = 2ULL;
 
 static inline bool fasim_gpu_dp_column_auto_requested_runtime()
 {
@@ -339,7 +347,24 @@ struct FasimProfileStats
         gpuDpColumnAutoObservedWindows(0),
         gpuDpColumnAutoDisabledReason(0),
         gpuDpColumnAutoSelectedPath(0),
-        gpuDpColumnAutoThresholdMatched(0)
+        gpuDpColumnAutoThresholdMatched(0),
+        exactColumnBatchShadowEnabled(0),
+        exactColumnBatchShadowSupported(0),
+        exactColumnBatchShadowDisabledReason(FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NOT_REQUESTED),
+        exactColumnBatchShadowRequestsTotal(0),
+        exactColumnBatchShadowRequestsCompared(0),
+        exactColumnBatchShadowCells(0),
+        exactColumnBatchShadowCpuReferenceNanoseconds(0),
+        exactColumnBatchShadowShadowTotalNanoseconds(0),
+        exactColumnBatchShadowKernelNanoseconds(0),
+        exactColumnBatchShadowH2DBytes(0),
+        exactColumnBatchShadowD2HBytes(0),
+        exactColumnBatchShadowScoreMismatches(0),
+        exactColumnBatchShadowEndpointMismatches(0),
+        exactColumnBatchShadowScoreInfoMismatches(0),
+        exactColumnBatchShadowTotalMismatches(0),
+        exactColumnBatchShadowFirstMismatchRequest(-1),
+        exactColumnBatchShadowEstNanosecondsSaved(0)
     {
     }
 
@@ -470,6 +495,23 @@ struct FasimProfileStats
     uint64_t gpuDpColumnAutoDisabledReason;
     uint64_t gpuDpColumnAutoSelectedPath;
     uint64_t gpuDpColumnAutoThresholdMatched;
+    uint64_t exactColumnBatchShadowEnabled;
+    uint64_t exactColumnBatchShadowSupported;
+    uint64_t exactColumnBatchShadowDisabledReason;
+    uint64_t exactColumnBatchShadowRequestsTotal;
+    uint64_t exactColumnBatchShadowRequestsCompared;
+    uint64_t exactColumnBatchShadowCells;
+    uint64_t exactColumnBatchShadowCpuReferenceNanoseconds;
+    uint64_t exactColumnBatchShadowShadowTotalNanoseconds;
+    uint64_t exactColumnBatchShadowKernelNanoseconds;
+    uint64_t exactColumnBatchShadowH2DBytes;
+    uint64_t exactColumnBatchShadowD2HBytes;
+    uint64_t exactColumnBatchShadowScoreMismatches;
+    uint64_t exactColumnBatchShadowEndpointMismatches;
+    uint64_t exactColumnBatchShadowScoreInfoMismatches;
+    uint64_t exactColumnBatchShadowTotalMismatches;
+    long long exactColumnBatchShadowFirstMismatchRequest;
+    uint64_t exactColumnBatchShadowEstNanosecondsSaved;
     FasimTransferStringProfileStats transferStringProfile;
     FasimFastSimExtendProfileStats fastSimExtendProfile;
 };
@@ -967,6 +1009,23 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_gpu_dp_column_auto_disabled_reason=" << stats.gpuDpColumnAutoDisabledReason << endl;
     cerr << "benchmark.fasim_gpu_dp_column_auto_selected_path=" << stats.gpuDpColumnAutoSelectedPath << endl;
     cerr << "benchmark.fasim_gpu_dp_column_auto_threshold_matched=" << stats.gpuDpColumnAutoThresholdMatched << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_enabled=" << stats.exactColumnBatchShadowEnabled << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_supported=" << stats.exactColumnBatchShadowSupported << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_disabled_reason=" << stats.exactColumnBatchShadowDisabledReason << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_requests_total=" << stats.exactColumnBatchShadowRequestsTotal << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_requests_compared=" << stats.exactColumnBatchShadowRequestsCompared << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_cells=" << stats.exactColumnBatchShadowCells << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_cpu_reference_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowCpuReferenceNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_shadow_total_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowShadowTotalNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_kernel_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowKernelNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_h2d_bytes=" << stats.exactColumnBatchShadowH2DBytes << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_d2h_bytes=" << stats.exactColumnBatchShadowD2HBytes << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_score_mismatches=" << stats.exactColumnBatchShadowScoreMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_endpoint_mismatches=" << stats.exactColumnBatchShadowEndpointMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_scoreinfo_mismatches=" << stats.exactColumnBatchShadowScoreInfoMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_total_mismatches=" << stats.exactColumnBatchShadowTotalMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_first_mismatch_request=" << stats.exactColumnBatchShadowFirstMismatchRequest << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_est_seconds_saved=" << fasim_profile_seconds(stats.exactColumnBatchShadowEstNanosecondsSaved) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_calls=" << stats.gpuDpColumnCalls << endl;
     cerr << "benchmark.fasim_gpu_dp_column_windows=" << stats.gpuDpColumnWindows << endl;
     cerr << "benchmark.fasim_gpu_dp_column_cells=" << stats.gpuDpColumnCells << endl;
@@ -1867,6 +1926,8 @@ int main(int argc, char* const* argv)
 		const bool gpuDpColumnCompactScoreInfo =
 			fasim_gpu_dp_column_compact_scoreinfo_enabled_runtime() ||
 			gpuDpColumnAutoEffective;
+		const bool exactColumnBatchShadowRequested =
+			fasim_exact_column_extend_batch_shadow_enabled_runtime();
 		if (profileEnabled)
 		{
 			profileStats.gpuDpColumnRequested = gpuDpColumnRequested ? 1 : 0;
@@ -1885,6 +1946,12 @@ int main(int argc, char* const* argv)
 				gpuDpColumnAutoDisabledReason;
 			profileStats.gpuDpColumnAutoSelectedPath =
 				gpuDpColumnAutoSelectedPath;
+			profileStats.exactColumnBatchShadowEnabled =
+				exactColumnBatchShadowRequested ? 1 : 0;
+			profileStats.exactColumnBatchShadowDisabledReason =
+				!exactColumnBatchShadowRequested ?
+				FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NOT_REQUESTED :
+				FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_GPU_COLUMN_INACTIVE;
 		}
 		const int gpuDpColumnDebugMaxWindows =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
@@ -1928,10 +1995,22 @@ int main(int argc, char* const* argv)
 			if (profileEnabled && gpuDpColumnRequested && useCudaBatch)
 			{
 				profileStats.gpuDpColumnActive = 1;
+				if (exactColumnBatchShadowRequested)
+				{
+					profileStats.exactColumnBatchShadowSupported = 1;
+					profileStats.exactColumnBatchShadowDisabledReason =
+						FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NONE;
+				}
 				if (gpuDpColumnCompactScoreInfo)
 				{
 					profileStats.gpuDpColumnCompactScoreInfoActive = 1;
 				}
+			}
+			else if (profileEnabled && exactColumnBatchShadowRequested)
+			{
+				profileStats.exactColumnBatchShadowSupported = 0;
+				profileStats.exactColumnBatchShadowDisabledReason =
+					FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_GPU_COLUMN_INACTIVE;
 			}
 			if (profileEnabled && gpuDpColumnAutoEffective)
 			{
@@ -1989,6 +2068,7 @@ int main(int argc, char* const* argv)
 		StripedSmithWaterman::Alignment alignment;
 		std::vector<struct StripedSmithWaterman::scoreInfo> finalScoreInfo;
 		finalScoreInfo.reserve(static_cast<size_t>(topK));
+		std::mutex exactColumnBatchShadowMutex;
 
 		std::vector<triplex> taskTriplexes;
 		taskTriplexes.reserve(64);
@@ -2164,6 +2244,130 @@ int main(int argc, char* const* argv)
 			}
 		};
 
+		auto build_scoreinfo_from_column_scores_shadow = [&](
+			const std::vector<int> &columnScores,
+			int minScore,
+			std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
+		{
+			std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
+			candidates.reserve(columnScores.size());
+			for (size_t i = 0; i < columnScores.size(); ++i)
+			{
+				if (columnScores[i] > minScore)
+				{
+					candidates.push_back(StripedSmithWaterman::scoreInfo(columnScores[i],
+					                                                      static_cast<int>(i)));
+				}
+			}
+			build_scoreinfo_from_candidates(candidates, outScoreInfo);
+		};
+
+		auto record_exact_column_batch_shadow = [&](
+			int targetLength,
+			int cpuMaxScore,
+			int cpuEndpoint,
+			const std::vector<int> &columnScores,
+			int scoreInfoMinScore,
+			const std::vector<struct StripedSmithWaterman::scoreInfo> &cpuScoreInfo,
+			uint64_t cpuReferenceNanoseconds)
+		{
+			if (!profileEnabled || !exactColumnBatchShadowRequested || !gpuDpColumnRequested)
+			{
+				return;
+			}
+			const uint64_t cells =
+				static_cast<uint64_t>(lncSeq.size()) *
+				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0);
+			const uint64_t h2dBytes =
+				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0) *
+				static_cast<uint64_t>(sizeof(uint8_t));
+			const uint64_t d2hBytes =
+				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0) *
+				static_cast<uint64_t>(sizeof(int));
+
+			const uint64_t shadowStart = fasim_profile_now_nanoseconds();
+			int shadowMaxScore = 0;
+			int shadowEndpoint = -1;
+			for (size_t i = 0; i < columnScores.size(); ++i)
+			{
+				if (columnScores[i] > shadowMaxScore)
+				{
+					shadowMaxScore = columnScores[i];
+					shadowEndpoint = static_cast<int>(i);
+				}
+			}
+			std::vector<struct StripedSmithWaterman::scoreInfo> shadowScoreInfo;
+			build_scoreinfo_from_column_scores_shadow(columnScores,
+			                                          scoreInfoMinScore,
+			                                          shadowScoreInfo);
+			const uint64_t shadowElapsed =
+				fasim_profile_now_nanoseconds() - shadowStart;
+
+			bool mismatch = false;
+			if (shadowMaxScore != cpuMaxScore)
+			{
+				mismatch = true;
+			}
+			if (shadowEndpoint != cpuEndpoint)
+			{
+				mismatch = true;
+			}
+			bool scoreInfoEqual = cpuScoreInfo.size() == shadowScoreInfo.size();
+			if (scoreInfoEqual)
+			{
+				for (size_t i = 0; i < cpuScoreInfo.size(); ++i)
+				{
+					if (cpuScoreInfo[i].score != shadowScoreInfo[i].score ||
+					    cpuScoreInfo[i].position != shadowScoreInfo[i].position)
+					{
+						scoreInfoEqual = false;
+						break;
+					}
+				}
+			}
+			if (!scoreInfoEqual)
+			{
+				mismatch = true;
+			}
+
+			lock_guard<std::mutex> lock(exactColumnBatchShadowMutex);
+			const uint64_t requestIndex = profileStats.exactColumnBatchShadowRequestsTotal;
+			++profileStats.exactColumnBatchShadowRequestsTotal;
+			++profileStats.exactColumnBatchShadowRequestsCompared;
+			profileStats.exactColumnBatchShadowCells += cells;
+			profileStats.exactColumnBatchShadowH2DBytes += h2dBytes;
+			profileStats.exactColumnBatchShadowD2HBytes += d2hBytes;
+			profileStats.exactColumnBatchShadowCpuReferenceNanoseconds +=
+				cpuReferenceNanoseconds;
+			profileStats.exactColumnBatchShadowShadowTotalNanoseconds += shadowElapsed;
+			if (cpuReferenceNanoseconds > shadowElapsed)
+			{
+				profileStats.exactColumnBatchShadowEstNanosecondsSaved +=
+					cpuReferenceNanoseconds - shadowElapsed;
+			}
+			if (shadowMaxScore != cpuMaxScore)
+			{
+				++profileStats.exactColumnBatchShadowScoreMismatches;
+			}
+			if (shadowEndpoint != cpuEndpoint)
+			{
+				++profileStats.exactColumnBatchShadowEndpointMismatches;
+			}
+			if (!scoreInfoEqual)
+			{
+				++profileStats.exactColumnBatchShadowScoreInfoMismatches;
+			}
+			if (mismatch)
+			{
+				++profileStats.exactColumnBatchShadowTotalMismatches;
+				if (profileStats.exactColumnBatchShadowFirstMismatchRequest < 0)
+				{
+					profileStats.exactColumnBatchShadowFirstMismatchRequest =
+						static_cast<long long>(requestIndex);
+				}
+			}
+		};
+
 			auto build_scoreinfo_from_gpu_exact_columns = [&](
 				const PreAlignCudaQueryHandle &query,
 				const uint8_t *encodedTarget,
@@ -2200,25 +2404,35 @@ int main(int argc, char* const* argv)
 				}
 				return false;
 			}
+			const uint64_t exactColumnElapsed =
+				(profileEnabled && gpuDpColumnRequested) ?
+				(fasim_profile_now_nanoseconds() - exactColumnStart) : 0;
 			if (profileEnabled && gpuDpColumnRequested)
 			{
-				fasim_profile_add_elapsed(profileStats.gpuDpColumnExactColumnExtendNanoseconds,
-				                          exactColumnStart);
-				fasim_fastsim_profile_add_elapsed(profileStats.fastSimExtendProfile.exactColumnNanoseconds,
-				                                  exactColumnStart);
+				profileStats.gpuDpColumnExactColumnExtendNanoseconds += exactColumnElapsed;
+				profileStats.fastSimExtendProfile.exactColumnNanoseconds += exactColumnElapsed;
 			}
 
 			int maxScore = 0;
+			int maxEndpoint = -1;
 			for (size_t i = 0; i < columnScores.size(); ++i)
 			{
 				if (columnScores[i] > maxScore)
 				{
 					maxScore = columnScores[i];
+					maxEndpoint = static_cast<int>(i);
 				}
 			}
 			const int scoreInfoMinScore =
 				minScore >= 0 ? minScore : static_cast<int>(static_cast<double>(maxScore) * 0.8);
 			build_scoreinfo_from_column_scores(columnScores, scoreInfoMinScore, outScoreInfo);
+			record_exact_column_batch_shadow(targetLength,
+			                                 maxScore,
+			                                 maxEndpoint,
+			                                 columnScores,
+			                                 scoreInfoMinScore,
+			                                 outScoreInfo,
+			                                 exactColumnElapsed);
 			if (maxScoreOut != NULL)
 			{
 				*maxScoreOut = maxScore;
