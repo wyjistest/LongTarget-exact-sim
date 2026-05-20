@@ -706,6 +706,13 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_ssw_profile_context_cigar_mismatches=" << stats.fastSimExtendProfile.alignerAlignCpuInternals.sswProfileContextCigarMismatches << endl;
     cerr << "benchmark.fasim_ssw_profile_context_digest_mismatches=" << stats.fastSimExtendProfile.alignerAlignCpuInternals.sswProfileContextDigestMismatches << endl;
     cerr << "benchmark.fasim_ssw_profile_context_fallbacks=" << stats.fastSimExtendProfile.alignerAlignCpuInternals.sswProfileContextFallbacks << endl;
+    cerr << "benchmark.fasim_ssw_avx2_requested=" << ssw_avx2_requested() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_compiled=" << ssw_avx2_compiled() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_active=" << ssw_avx2_active() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_calls=" << ssw_avx2_calls() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_byte_calls=" << ssw_avx2_byte_calls() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_word_calls=" << ssw_avx2_word_calls() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_fallback_calls=" << ssw_avx2_fallback_calls() << endl;
     cerr << "benchmark.fasim_aligner_align_calls=" << stats.fastSimExtendProfile.alignerAlignCalls << endl;
     cerr << "benchmark.fasim_aligner_align_total_cells=" << stats.fastSimExtendProfile.alignerAlignTotalCells << endl;
     cerr << "benchmark.fasim_aligner_align_total_query_bases=" << stats.fastSimExtendProfile.alignerAlignTotalQueryBases << endl;

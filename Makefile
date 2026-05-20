@@ -542,6 +542,19 @@ check-fasim-ssw-align-internal-hg38-characterization:
 	fi
 	python3 ./scripts/check_fasim_ssw_align_internal_hg38_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
 
+check-fasim-ssw-avx2:
+	$(MAKE) build-ssw-avx2-direct-test
+	FASIM_SSW_AVX2=1 ./tests/test_ssw_avx2_direct
+	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_check
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_check/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_avx2.py --cuda-bin $(CURDIR)/.tmp/fasim_ssw_avx2_check/fasim_longtarget_cuda_avx2
+
+benchmark-fasim-ssw-avx2:
+	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_benchmark
+	$(MAKE) FASIM_SIMD_FLAGS=-msse2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_sse2 build-fasim-cuda
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_avx2.py --sse2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_sse2 --avx2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_avx2 --synthetic-entries "$${FASIM_SSW_AVX2_SYNTHETIC_ENTRIES:-1,32}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_AVX2_REPEAT:-1}" --require-profile --check
+
 check-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
 	python3 ./scripts/check_fasim_pre_align_filter_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
@@ -705,6 +718,9 @@ benchmark-fasim-gpu-dp-column-auto-hg38-validation-taxonomy:
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
+SSW_AVX2_DIRECT_TEST_TARGET ?= tests/test_ssw_avx2_direct
+SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp
+
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
 
@@ -788,6 +804,8 @@ EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_SOURCES := tests/test_exact_sim_two_stage_thr
 
 build-fasim-cigar-test: $(FASIM_CIGAR_TEST_TARGET)
 
+build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
+
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
 
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
@@ -844,6 +862,9 @@ build-exact-sim-two-stage-threshold-test: $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_T
 
 $(FASIM_CIGAR_TEST_TARGET): $(FASIM_CIGAR_TEST_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_CIGAR_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SSW_AVX2_DIRECT_TEST_TARGET): $(SSW_AVX2_DIRECT_TEST_SOURCES) fasim/ssw.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) -mavx2 $(SSW_AVX2_DIRECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(PREALIGN_SHARED_TEST_TARGET): $(PREALIGN_SHARED_TEST_SOURCES) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_SHARED_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@

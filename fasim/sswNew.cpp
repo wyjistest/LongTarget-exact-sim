@@ -85,6 +85,9 @@
 
  //#include <nmmintrin.h>
 #include <emmintrin.h>
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -129,12 +132,41 @@ typedef struct {
 struct _profile {
 	__m128i* profile_byte;	// 0: none
 	__m128i* profile_word;	// 0: none
+#if defined(__AVX2__)
+	__m256i* profile_byte_avx2;	// 0: none
+	__m256i* profile_word_avx2;	// 0: none
+#endif
 	const int8_t* read;
 	const int8_t* mat;
 	int32_t readLen;
 	int32_t n;
 	uint8_t bias;
 };
+
+static uint64_t g_ssw_avx2_active = 0;
+static uint64_t g_ssw_avx2_calls = 0;
+static uint64_t g_ssw_avx2_byte_calls = 0;
+static uint64_t g_ssw_avx2_word_calls = 0;
+static uint64_t g_ssw_avx2_fallback_calls = 0;
+
+static bool ssw_env_flag_enabled(const char* name) {
+	const char* env = getenv(name);
+	if (env == NULL || env[0] == '\0') return false;
+	return env[0] != '0';
+}
+
+static bool ssw_avx2_requested_runtime() {
+	static const bool enabled = ssw_env_flag_enabled("FASIM_SSW_AVX2");
+	return enabled;
+}
+
+static void* ssw_aligned_calloc(size_t count, size_t size, size_t alignment) {
+	void* ptr = NULL;
+	if (count == 0 || size == 0) return NULL;
+	if (posix_memalign(&ptr, alignment, count * size) != 0) return NULL;
+	memset(ptr, 0, count * size);
+	return ptr;
+}
 
 /* array index is an ASCII character value from a CIGAR,
    element value is the corresponding integer opcode between 0 and 8 */
@@ -228,6 +260,68 @@ static __m128i* qP_byte(const int8_t* read_num,
 	}
 	return vProfile;
 }
+
+#if defined(__AVX2__)
+static __m256i* qP_byte_avx2(const int8_t* read_num,
+	const int8_t* mat,
+	const int32_t readLen,
+	const int32_t n,
+	uint8_t bias) {
+
+	int32_t segLen = (readLen + 31) / 32;
+	__m256i* vProfile = (__m256i*)ssw_aligned_calloc(
+		static_cast<size_t>(n) * static_cast<size_t>(segLen),
+		sizeof(__m256i),
+		32);
+	if (vProfile == NULL) return NULL;
+	int8_t* t = (int8_t*)vProfile;
+	int32_t nt, i, j, segNum;
+
+	for (nt = 0; LIKELY(nt < n); nt++) {
+		for (i = 0; i < segLen; i++) {
+			j = i;
+			for (segNum = 0; LIKELY(segNum < 32); segNum++) {
+				*t++ = j >= readLen ? bias : mat[nt * n + read_num[j]] + bias;
+				j += segLen;
+			}
+		}
+	}
+	return vProfile;
+}
+
+static inline __m256i ssw_shift_left_1_byte_avx2(__m256i value) {
+	const __m256i shifted = _mm256_slli_si256(value, 1);
+	const __m256i carry =
+		_mm256_srli_si256(_mm256_permute2x128_si256(value, value, 0x08), 15);
+	return _mm256_or_si256(shifted, carry);
+}
+
+static inline __m256i ssw_shift_left_2_bytes_avx2(__m256i value) {
+	const __m256i shifted = _mm256_slli_si256(value, 2);
+	const __m256i carry =
+		_mm256_srli_si256(_mm256_permute2x128_si256(value, value, 0x08), 14);
+	return _mm256_or_si256(shifted, carry);
+}
+
+static inline uint8_t ssw_hmax_epu8_avx2(__m256i value) {
+	__m128i reduced =
+		_mm_max_epu8(_mm256_castsi256_si128(value), _mm256_extracti128_si256(value, 1));
+	reduced = _mm_max_epu8(reduced, _mm_srli_si128(reduced, 8));
+	reduced = _mm_max_epu8(reduced, _mm_srli_si128(reduced, 4));
+	reduced = _mm_max_epu8(reduced, _mm_srli_si128(reduced, 2));
+	reduced = _mm_max_epu8(reduced, _mm_srli_si128(reduced, 1));
+	return static_cast<uint8_t>(_mm_extract_epi16(reduced, 0) & 0x00ff);
+}
+
+static inline uint16_t ssw_hmax_epi16_avx2(__m256i value) {
+	__m128i reduced =
+		_mm_max_epi16(_mm256_castsi256_si128(value), _mm256_extracti128_si256(value, 1));
+	reduced = _mm_max_epi16(reduced, _mm_srli_si128(reduced, 8));
+	reduced = _mm_max_epi16(reduced, _mm_srli_si128(reduced, 4));
+	reduced = _mm_max_epi16(reduced, _mm_srli_si128(reduced, 2));
+	return static_cast<uint16_t>(_mm_extract_epi16(reduced, 0));
+}
+#endif
 
 // ***** begin of sw_sse2_byte_once *****//
 
@@ -700,6 +794,168 @@ static alignment_end* sw_sse2_byte(const int8_t* ref,
 	return bests;
 }
 
+#if defined(__AVX2__)
+static alignment_end* sw_avx2_byte(const int8_t* ref,
+	int8_t ref_dir,
+	int32_t refLen,
+	int32_t readLen,
+	const uint8_t weight_gapO,
+	const uint8_t weight_gapE,
+	const __m256i* vProfile,
+	uint8_t terminate,
+	uint8_t bias,
+	int32_t maskLen) {
+
+	uint8_t max = 0;
+	int32_t end_read = readLen - 1;
+	int32_t end_ref = -1;
+	int32_t segLen = (readLen + 31) / 32;
+
+	uint8_t* maxColumn = (uint8_t*)calloc(refLen, 1);
+	int32_t* end_read_column = (int32_t*)calloc(refLen, sizeof(int32_t));
+
+	__m256i vZero = _mm256_setzero_si256();
+	__m256i* pvHStore = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	__m256i* pvHLoad = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	__m256i* pvE = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	__m256i* pvHmax = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	if (maxColumn == NULL || end_read_column == NULL ||
+	    pvHStore == NULL || pvHLoad == NULL || pvE == NULL || pvHmax == NULL) {
+		free(maxColumn);
+		free(end_read_column);
+		free(pvHStore);
+		free(pvHLoad);
+		free(pvE);
+		free(pvHmax);
+		fprintf(stderr, "Failed to allocate AVX2 SSW byte workspace.\n");
+		exit(1);
+	}
+
+	int32_t i, j, k;
+	__m256i vGapO = _mm256_set1_epi8(weight_gapO);
+	__m256i vGapE = _mm256_set1_epi8(weight_gapE);
+	__m256i vBias = _mm256_set1_epi8(bias);
+	__m256i vMaxScore = vZero;
+	__m256i vMaxMark = vZero;
+	__m256i vTemp;
+	int32_t edge, begin = 0, end = refLen, step = 1;
+
+	if (ref_dir == 1) {
+		begin = refLen - 1;
+		end = -1;
+		step = -1;
+	}
+	for (i = begin; LIKELY(i != end); i += step) {
+		int32_t cmp;
+		__m256i e, vF = vZero, vMaxColumn = vZero;
+
+		__m256i vH = pvHStore[segLen - 1];
+		vH = ssw_shift_left_1_byte_avx2(vH);
+		const __m256i* vP = vProfile + ref[i] * segLen;
+
+		__m256i* pv = pvHLoad;
+		pvHLoad = pvHStore;
+		pvHStore = pv;
+
+		for (j = 0; LIKELY(j < segLen); ++j) {
+			vH = _mm256_adds_epu8(vH, _mm256_load_si256(vP + j));
+			vH = _mm256_subs_epu8(vH, vBias);
+
+			e = _mm256_load_si256(pvE + j);
+			vH = _mm256_max_epu8(vH, e);
+			vH = _mm256_max_epu8(vH, vF);
+			vMaxColumn = _mm256_max_epu8(vMaxColumn, vH);
+			_mm256_store_si256(pvHStore + j, vH);
+
+			vH = _mm256_subs_epu8(vH, vGapO);
+			e = _mm256_subs_epu8(e, vGapE);
+			e = _mm256_max_epu8(e, vH);
+			_mm256_store_si256(pvE + j, e);
+
+			vF = _mm256_subs_epu8(vF, vGapE);
+			vF = _mm256_max_epu8(vF, vH);
+
+			vH = _mm256_load_si256(pvHLoad + j);
+		}
+
+		for (k = 0; LIKELY(k < 32); ++k) {
+			vF = ssw_shift_left_1_byte_avx2(vF);
+			for (j = 0; LIKELY(j < segLen); ++j) {
+				vH = _mm256_load_si256(pvHStore + j);
+				vH = _mm256_max_epu8(vH, vF);
+				vMaxColumn = _mm256_max_epu8(vMaxColumn, vH);
+				_mm256_store_si256(pvHStore + j, vH);
+				vH = _mm256_subs_epu8(vH, vGapO);
+				vF = _mm256_subs_epu8(vF, vGapE);
+				if (UNLIKELY(!_mm256_movemask_epi8(_mm256_cmpgt_epi8(vF, vH)))) goto end;
+			}
+		}
+
+	end:
+		vMaxScore = _mm256_max_epu8(vMaxScore, vMaxColumn);
+		vTemp = _mm256_cmpeq_epi8(vMaxMark, vMaxScore);
+		cmp = _mm256_movemask_epi8(vTemp);
+		if (cmp != -1) {
+			uint8_t temp;
+			vMaxMark = vMaxScore;
+			temp = ssw_hmax_epu8_avx2(vMaxScore);
+			vMaxScore = vMaxMark;
+
+			if (LIKELY(temp > max)) {
+				max = temp;
+				if (max + bias >= 255) break;
+				end_ref = i;
+				for (j = 0; LIKELY(j < segLen); ++j) pvHmax[j] = pvHStore[j];
+			}
+		}
+
+		maxColumn[i] = ssw_hmax_epu8_avx2(vMaxColumn);
+		if (maxColumn[i] == terminate) break;
+	}
+
+	uint8_t *t = (uint8_t*)pvHmax;
+	int32_t column_len = segLen * 32;
+	for (i = 0; LIKELY(i < column_len); ++i, ++t) {
+		int32_t temp;
+		if (*t == max) {
+			temp = i / 32 + i % 32 * segLen;
+			if (temp < end_read) end_read = temp;
+		}
+	}
+
+	free(pvHmax);
+	free(pvE);
+	free(pvHLoad);
+	free(pvHStore);
+
+	alignment_end* bests = (alignment_end*)calloc(2, sizeof(alignment_end));
+	bests[0].score = max + bias >= 255 ? 255 : max;
+	bests[0].ref = end_ref;
+	bests[0].read = end_read;
+
+	bests[1].score = 0;
+	bests[1].ref = 0;
+	bests[1].read = 0;
+	edge = (end_ref - maskLen) > 0 ? (end_ref - maskLen) : 0;
+	for (i = 0; i < edge; i++) {
+		if (maxColumn[i] > bests[1].score) {
+			bests[1].score = maxColumn[i];
+			bests[1].ref = i;
+		}
+	}
+	edge = (end_ref + maskLen) > refLen ? refLen : (end_ref + maskLen);
+	for (i = edge + 1; i < refLen; i++) {
+		if (maxColumn[i] > bests[1].score) {
+			bests[1].score = maxColumn[i];
+			bests[1].ref = i;
+		}
+	}
+	free(maxColumn);
+	free(end_read_column);
+	return bests;
+}
+#endif
+
 static __m128i* qP_word(const int8_t* read_num,
 	const int8_t* mat,
 	const int32_t readLen,
@@ -723,6 +979,35 @@ static __m128i* qP_word(const int8_t* read_num,
 	}
 	return vProfile;
 }
+
+#if defined(__AVX2__)
+static __m256i* qP_word_avx2(const int8_t* read_num,
+	const int8_t* mat,
+	const int32_t readLen,
+	const int32_t n) {
+
+	int32_t segLen = (readLen + 15) / 16;
+	__m256i* vProfile = (__m256i*)ssw_aligned_calloc(
+		static_cast<size_t>(n) * static_cast<size_t>(segLen),
+		sizeof(__m256i),
+		32);
+	if (vProfile == NULL) return NULL;
+	int16_t* t = (int16_t*)vProfile;
+	int32_t nt, i, j;
+	int32_t segNum;
+
+	for (nt = 0; LIKELY(nt < n); nt++) {
+		for (i = 0; i < segLen; i++) {
+			j = i;
+			for (segNum = 0; LIKELY(segNum < 16); segNum++) {
+				*t++ = j >= readLen ? 0 : mat[nt * n + read_num[j]];
+				j += segLen;
+			}
+		}
+	}
+	return vProfile;
+}
+#endif
 
 uint16_t * sw_sse2_word_once(const int8_t* ref,
 	int8_t ref_dir,	// 0: forward ref; 1: reverse ref
@@ -1097,6 +1382,166 @@ static alignment_end* sw_sse2_word(const int8_t* ref,
 	return bests;
 }
 
+#if defined(__AVX2__)
+static alignment_end* sw_avx2_word(const int8_t* ref,
+	int8_t ref_dir,
+	int32_t refLen,
+	int32_t readLen,
+	const uint8_t weight_gapO,
+	const uint8_t weight_gapE,
+	const __m256i* vProfile,
+	uint16_t terminate,
+	int32_t maskLen) {
+
+	uint16_t max = 0;
+	int32_t end_read = readLen - 1;
+	int32_t end_ref = 0;
+	int32_t segLen = (readLen + 15) / 16;
+
+	uint16_t* maxColumn = (uint16_t*)calloc(refLen, 2);
+	int32_t* end_read_column = (int32_t*)calloc(refLen, sizeof(int32_t));
+
+	__m256i vZero = _mm256_setzero_si256();
+	__m256i* pvHStore = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	__m256i* pvHLoad = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	__m256i* pvE = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	__m256i* pvHmax = (__m256i*)ssw_aligned_calloc(segLen, sizeof(__m256i), 32);
+	if (maxColumn == NULL || end_read_column == NULL ||
+	    pvHStore == NULL || pvHLoad == NULL || pvE == NULL || pvHmax == NULL) {
+		free(maxColumn);
+		free(end_read_column);
+		free(pvHStore);
+		free(pvHLoad);
+		free(pvE);
+		free(pvHmax);
+		fprintf(stderr, "Failed to allocate AVX2 SSW word workspace.\n");
+		exit(1);
+	}
+
+	int32_t i, j, k;
+	__m256i vGapO = _mm256_set1_epi16(weight_gapO);
+	__m256i vGapE = _mm256_set1_epi16(weight_gapE);
+	__m256i vMaxScore = vZero;
+	__m256i vMaxMark = vZero;
+	__m256i vTemp;
+	int32_t edge, begin = 0, end = refLen, step = 1;
+
+	if (ref_dir == 1) {
+		begin = refLen - 1;
+		end = -1;
+		step = -1;
+	}
+	for (i = begin; LIKELY(i != end); i += step) {
+		int32_t cmp;
+		__m256i e, vF = vZero;
+		__m256i vH = pvHStore[segLen - 1];
+		vH = ssw_shift_left_2_bytes_avx2(vH);
+
+		__m256i* pv = pvHLoad;
+		__m256i vMaxColumn = vZero;
+		const __m256i* vP = vProfile + ref[i] * segLen;
+		pvHLoad = pvHStore;
+		pvHStore = pv;
+
+		for (j = 0; LIKELY(j < segLen); j++) {
+			vH = _mm256_adds_epi16(vH, _mm256_load_si256(vP + j));
+
+			e = _mm256_load_si256(pvE + j);
+			vH = _mm256_max_epi16(vH, e);
+			vH = _mm256_max_epi16(vH, vF);
+			vMaxColumn = _mm256_max_epi16(vMaxColumn, vH);
+			_mm256_store_si256(pvHStore + j, vH);
+
+			vH = _mm256_subs_epu16(vH, vGapO);
+			e = _mm256_subs_epu16(e, vGapE);
+			e = _mm256_max_epi16(e, vH);
+			_mm256_store_si256(pvE + j, e);
+
+			vF = _mm256_subs_epu16(vF, vGapE);
+			vF = _mm256_max_epi16(vF, vH);
+
+			vH = _mm256_load_si256(pvHLoad + j);
+		}
+
+		for (k = 0; LIKELY(k < 16); ++k) {
+			vF = ssw_shift_left_2_bytes_avx2(vF);
+			for (j = 0; LIKELY(j < segLen); ++j) {
+				vH = _mm256_load_si256(pvHStore + j);
+				vH = _mm256_max_epi16(vH, vF);
+				vMaxColumn = _mm256_max_epi16(vMaxColumn, vH);
+				_mm256_store_si256(pvHStore + j, vH);
+				vH = _mm256_subs_epu16(vH, vGapO);
+				vF = _mm256_subs_epu16(vF, vGapE);
+				if (UNLIKELY(!_mm256_movemask_epi8(_mm256_cmpgt_epi16(vF, vH)))) goto end;
+			}
+		}
+
+	end:
+		vMaxScore = _mm256_max_epi16(vMaxScore, vMaxColumn);
+		vTemp = _mm256_cmpeq_epi16(vMaxMark, vMaxScore);
+		cmp = _mm256_movemask_epi8(vTemp);
+		if (cmp != -1) {
+			uint16_t temp;
+			vMaxMark = vMaxScore;
+			temp = ssw_hmax_epi16_avx2(vMaxScore);
+			vMaxScore = vMaxMark;
+
+			if (LIKELY(temp > max)) {
+				max = temp;
+				end_ref = i;
+				for (j = 0; LIKELY(j < segLen); ++j) pvHmax[j] = pvHStore[j];
+			}
+		}
+
+		maxColumn[i] = ssw_hmax_epi16_avx2(vMaxColumn);
+		if (maxColumn[i] == terminate) break;
+	}
+
+	uint16_t *t = (uint16_t*)pvHmax;
+	int32_t column_len = segLen * 16;
+	for (i = 0; LIKELY(i < column_len); ++i, ++t) {
+		int32_t temp;
+		if (*t == max) {
+			temp = i / 16 + i % 16 * segLen;
+			if (temp < end_read) end_read = temp;
+		}
+	}
+
+	free(pvHmax);
+	free(pvE);
+	free(pvHLoad);
+	free(pvHStore);
+
+	alignment_end* bests = (alignment_end*)calloc(2, sizeof(alignment_end));
+	bests[0].score = max;
+	bests[0].ref = end_ref;
+	bests[0].read = end_read;
+
+	bests[1].score = 0;
+	bests[1].ref = 0;
+	bests[1].read = 0;
+
+	edge = (end_ref - maskLen) > 0 ? (end_ref - maskLen) : 0;
+	for (i = 0; i < edge; i++) {
+		if (maxColumn[i] > bests[1].score) {
+			bests[1].score = maxColumn[i];
+			bests[1].ref = i;
+		}
+	}
+	edge = (end_ref + maskLen) > refLen ? refLen : (end_ref + maskLen);
+	for (i = edge; i < refLen; i++) {
+		if (maxColumn[i] > bests[1].score) {
+			bests[1].score = maxColumn[i];
+			bests[1].ref = i;
+		}
+	}
+
+	free(maxColumn);
+	free(end_read_column);
+	return bests;
+}
+#endif
+
 static cigar* banded_sw(const int8_t* ref,
 	const int8_t* read,
 	int32_t refLen,
@@ -1304,6 +1749,10 @@ s_profile* ssw_init(const int8_t* read, const int32_t readLen, const int8_t* mat
 	s_profile* p = (s_profile*)calloc(1, sizeof(struct _profile));
 	p->profile_byte = 0;
 	p->profile_word = 0;
+#if defined(__AVX2__)
+	p->profile_byte_avx2 = 0;
+	p->profile_word_avx2 = 0;
+#endif
 	p->bias = 0;
 
 	if (score_size == 0 || score_size == 2) {
@@ -1314,8 +1763,20 @@ s_profile* ssw_init(const int8_t* read, const int32_t readLen, const int8_t* mat
 
 		p->bias = bias;
 		p->profile_byte = qP_byte(read, mat, readLen, n, bias);
+#if defined(__AVX2__)
+		if (ssw_avx2_requested_runtime()) {
+			p->profile_byte_avx2 = qP_byte_avx2(read, mat, readLen, n, bias);
+		}
+#endif
 	}
-	if (score_size == 1 || score_size == 2) p->profile_word = qP_word(read, mat, readLen, n);
+	if (score_size == 1 || score_size == 2) {
+		p->profile_word = qP_word(read, mat, readLen, n);
+#if defined(__AVX2__)
+		if (ssw_avx2_requested_runtime()) {
+			p->profile_word_avx2 = qP_word_avx2(read, mat, readLen, n);
+		}
+#endif
+	}
 	p->read = read;
 	p->mat = mat;
 	p->readLen = readLen;
@@ -1326,6 +1787,10 @@ s_profile* ssw_init(const int8_t* read, const int32_t readLen, const int8_t* mat
 void init_destroy(s_profile* p) {
 	free(p->profile_byte);
 	free(p->profile_word);
+#if defined(__AVX2__)
+	free(p->profile_byte_avx2);
+	free(p->profile_word_avx2);
+#endif
 	free(p);
 }
 
@@ -1501,6 +1966,14 @@ s_align* ssw_align(const s_profile* prof,
 		fprintf(stderr, "When maskLen < 15, the function ssw_align doesn't return 2nd best alignment information.\n");
 	}
 
+#if defined(__AVX2__)
+	const bool useAvx2 = ssw_avx2_requested_runtime();
+#else
+	if (ssw_avx2_requested_runtime()) {
+		++g_ssw_avx2_fallback_calls;
+	}
+#endif
+
 	// Find the alignment scores and ending positions
 	if (collect_internal_stats) {
 		++g_ssw_align_internal_stats.forward_calls;
@@ -1508,7 +1981,18 @@ s_align* ssw_align(const s_profile* prof,
 	const uint64_t forward_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	if (prof->profile_byte) {
 		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-		bests = sw_sse2_byte(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte, -1, prof->bias, maskLen);
+#if defined(__AVX2__)
+		if (useAvx2 && prof->profile_byte_avx2 != NULL) {
+			++g_ssw_avx2_calls;
+			++g_ssw_avx2_byte_calls;
+			g_ssw_avx2_active = 1;
+			bests = sw_avx2_byte(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte_avx2, -1, prof->bias, maskLen);
+		}
+		else
+#endif
+		{
+			bests = sw_sse2_byte(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte, -1, prof->bias, maskLen);
+		}
 		ssw_add_elapsed(&g_ssw_align_internal_stats.byte_path_nanoseconds, byte_start);
 		if (prof->profile_word && bests[0].score == 255) {
 			if (collect_internal_stats) {
@@ -1516,7 +2000,18 @@ s_align* ssw_align(const s_profile* prof,
 			}
 			free(bests);
 			const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-			bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+#if defined(__AVX2__)
+			if (useAvx2 && prof->profile_word_avx2 != NULL) {
+				++g_ssw_avx2_calls;
+				++g_ssw_avx2_word_calls;
+				g_ssw_avx2_active = 1;
+				bests = sw_avx2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word_avx2, -1, maskLen);
+			}
+			else
+#endif
+			{
+				bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+			}
 			ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds, word_start);
 			word = 1;
 		}
@@ -1529,7 +2024,18 @@ s_align* ssw_align(const s_profile* prof,
 	}
 	else if (prof->profile_word) {
 		const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-		bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+#if defined(__AVX2__)
+		if (useAvx2 && prof->profile_word_avx2 != NULL) {
+			++g_ssw_avx2_calls;
+			++g_ssw_avx2_word_calls;
+			g_ssw_avx2_active = 1;
+			bests = sw_avx2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word_avx2, -1, maskLen);
+		}
+		else
+#endif
+		{
+			bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+		}
 		ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds, word_start);
 		word = 1;
 	}
@@ -1563,15 +2069,59 @@ s_align* ssw_align(const s_profile* prof,
 	reverse_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	read_reverse = seq_reverse(prof->read, r->read_end1);
 	if (word == 0) {
+#if defined(__AVX2__)
+		__m256i* vPAvx2 = NULL;
+#endif
 		vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
 		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-		bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, prof->bias, maskLen);
+#if defined(__AVX2__)
+		if (useAvx2) {
+			vPAvx2 = qP_byte_avx2(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
+			if (vPAvx2 != NULL) {
+				++g_ssw_avx2_calls;
+				++g_ssw_avx2_byte_calls;
+				g_ssw_avx2_active = 1;
+				bests_reverse = sw_avx2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vPAvx2, r->score1, prof->bias, maskLen);
+			}
+			else {
+				++g_ssw_avx2_fallback_calls;
+				bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, prof->bias, maskLen);
+			}
+			free(vPAvx2);
+		}
+		else
+#endif
+		{
+			bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, prof->bias, maskLen);
+		}
 		ssw_add_elapsed(&g_ssw_align_internal_stats.byte_path_nanoseconds, byte_start);
 	}
 	else {
+#if defined(__AVX2__)
+		__m256i* vPAvx2 = NULL;
+#endif
 		vP = qP_word(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
 		const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-		bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, maskLen);
+#if defined(__AVX2__)
+		if (useAvx2) {
+			vPAvx2 = qP_word_avx2(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
+			if (vPAvx2 != NULL) {
+				++g_ssw_avx2_calls;
+				++g_ssw_avx2_word_calls;
+				g_ssw_avx2_active = 1;
+				bests_reverse = sw_avx2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vPAvx2, r->score1, maskLen);
+			}
+			else {
+				++g_ssw_avx2_fallback_calls;
+				bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, maskLen);
+			}
+			free(vPAvx2);
+		}
+		else
+#endif
+		{
+			bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vP, r->score1, maskLen);
+		}
 		ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds, word_start);
 	}
 //	cout<<bests_reverse[0].score<<"\t"<<bests[0].score<<"\n";
@@ -1619,6 +2169,38 @@ end:
 void align_destroy(s_align* a) {
 	free(a->cigar);
 	free(a);
+}
+
+uint64_t ssw_avx2_requested(void) {
+	return ssw_avx2_requested_runtime() ? 1 : 0;
+}
+
+uint64_t ssw_avx2_compiled(void) {
+#if defined(__AVX2__)
+	return 1;
+#else
+	return 0;
+#endif
+}
+
+uint64_t ssw_avx2_active(void) {
+	return g_ssw_avx2_active;
+}
+
+uint64_t ssw_avx2_calls(void) {
+	return g_ssw_avx2_calls;
+}
+
+uint64_t ssw_avx2_byte_calls(void) {
+	return g_ssw_avx2_byte_calls;
+}
+
+uint64_t ssw_avx2_word_calls(void) {
+	return g_ssw_avx2_word_calls;
+}
+
+uint64_t ssw_avx2_fallback_calls(void) {
+	return g_ssw_avx2_fallback_calls;
 }
 
 uint32_t* add_cigar(uint32_t* new_cigar, int32_t* p, int32_t* s, uint32_t length, char op) {

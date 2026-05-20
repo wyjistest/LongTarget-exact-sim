@@ -15,6 +15,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <emmintrin.h>
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -158,6 +161,14 @@ extern "C" {
 		@param	a	pointer to the alignment result structure
 	*/
 	void align_destroy(s_align* a);
+
+	uint64_t ssw_avx2_requested(void);
+	uint64_t ssw_avx2_compiled(void);
+	uint64_t ssw_avx2_active(void);
+	uint64_t ssw_avx2_calls(void);
+	uint64_t ssw_avx2_byte_calls(void);
+	uint64_t ssw_avx2_word_calls(void);
+	uint64_t ssw_avx2_fallback_calls(void);
 
 	/*! @function:
 		 1. Calculate the number of mismatches.
