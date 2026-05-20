@@ -26,9 +26,11 @@ struct PreAlignCudaPeak
 
 struct PreAlignCudaBatchResult
 {
-  PreAlignCudaBatchResult():gpuSeconds(0.0),usedCuda(false) {}
+  PreAlignCudaBatchResult():gpuSeconds(0.0),h2dSeconds(0.0),d2hSeconds(0.0),usedCuda(false) {}
 
   double gpuSeconds;
+  double h2dSeconds;
+  double d2hSeconds;
   bool usedCuda;
 };
 
@@ -55,6 +57,14 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
 
 bool prealign_cuda_find_column_maxima_debug(const PreAlignCudaQueryHandle &handle,
                                             const uint8_t *encodedTargetHost,
+                                            int targetLength,
+                                            std::vector<int> *outColumnMaxima,
+                                            PreAlignCudaBatchResult *batchResult,
+                                            std::string *errorOut);
+
+bool prealign_cuda_find_column_maxima_batch(const PreAlignCudaQueryHandle &handle,
+                                            const uint8_t *encodedTargetsHost,
+                                            int taskCount,
                                             int targetLength,
                                             std::vector<int> *outColumnMaxima,
                                             PreAlignCudaBatchResult *batchResult,

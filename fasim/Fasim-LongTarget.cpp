@@ -138,6 +138,16 @@ static inline bool fasim_exact_column_extend_batch_shadow_enabled_runtime()
     return fasim_env_flag_enabled("FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW");
 }
 
+static inline bool fasim_exact_column_extend_batch_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_EXACT_COLUMN_EXTEND_BATCH");
+}
+
+static inline bool fasim_exact_column_extend_batch_validate_enabled_runtime()
+{
+    return fasim_env_flag_enabled("FASIM_EXACT_COLUMN_EXTEND_BATCH_VALIDATE");
+}
+
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_CELLS = 1500000000ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DEFAULT_MIN_WINDOWS = 128ULL;
 static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_DISABLED_NONE = 0ULL;
@@ -151,6 +161,10 @@ static const uint64_t FASIM_GPU_DP_COLUMN_AUTO_PATH_MANUAL_GPU = 2ULL;
 static const uint64_t FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NONE = 0ULL;
 static const uint64_t FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NOT_REQUESTED = 1ULL;
 static const uint64_t FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_GPU_COLUMN_INACTIVE = 2ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_DISABLED_NONE = 0ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_DISABLED_NOT_REQUESTED = 1ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_DISABLED_GPU_COLUMN_INACTIVE = 2ULL;
+static const uint64_t FASIM_EXACT_COLUMN_BATCH_DISABLED_UNSUPPORTED_TOPOLOGY = 3ULL;
 
 static inline bool fasim_gpu_dp_column_auto_requested_runtime()
 {
@@ -370,7 +384,29 @@ struct FasimProfileStats
         exactColumnBatchShadowTotalMismatches(0),
         exactColumnBatchShadowFirstMismatchRequest(-1),
         exactColumnBatchShadowEstNanosecondsSaved(0),
-        exactColumnBatchShadowNetNanosecondsSaved(0)
+        exactColumnBatchShadowNetNanosecondsSaved(0),
+        exactColumnBatchRequested(0),
+        exactColumnBatchActive(0),
+        exactColumnBatchSupported(0),
+        exactColumnBatchDisabledReason(FASIM_EXACT_COLUMN_BATCH_DISABLED_NOT_REQUESTED),
+        exactColumnBatchValidateEnabled(0),
+        exactColumnBatchRequests(0),
+        exactColumnBatchCells(0),
+        exactColumnBatchMaxCellsPerRequest(0),
+        exactColumnBatchPackNanoseconds(0),
+        exactColumnBatchH2DNanoseconds(0),
+        exactColumnBatchKernelNanoseconds(0),
+        exactColumnBatchD2HNanoseconds(0),
+        exactColumnBatchUnpackNanoseconds(0),
+        exactColumnBatchApplyNanoseconds(0),
+        exactColumnBatchTotalNanoseconds(0),
+        exactColumnBatchCpuFallbackNanoseconds(0),
+        exactColumnBatchValidateNanoseconds(0),
+        exactColumnBatchScoreMismatches(0),
+        exactColumnBatchEndpointMismatches(0),
+        exactColumnBatchScoreInfoMismatches(0),
+        exactColumnBatchDigestMismatches(0),
+        exactColumnBatchFallbacks(0)
     {
     }
 
@@ -524,6 +560,28 @@ struct FasimProfileStats
     long long exactColumnBatchShadowFirstMismatchRequest;
     uint64_t exactColumnBatchShadowEstNanosecondsSaved;
     uint64_t exactColumnBatchShadowNetNanosecondsSaved;
+    uint64_t exactColumnBatchRequested;
+    uint64_t exactColumnBatchActive;
+    uint64_t exactColumnBatchSupported;
+    uint64_t exactColumnBatchDisabledReason;
+    uint64_t exactColumnBatchValidateEnabled;
+    uint64_t exactColumnBatchRequests;
+    uint64_t exactColumnBatchCells;
+    uint64_t exactColumnBatchMaxCellsPerRequest;
+    uint64_t exactColumnBatchPackNanoseconds;
+    uint64_t exactColumnBatchH2DNanoseconds;
+    uint64_t exactColumnBatchKernelNanoseconds;
+    uint64_t exactColumnBatchD2HNanoseconds;
+    uint64_t exactColumnBatchUnpackNanoseconds;
+    uint64_t exactColumnBatchApplyNanoseconds;
+    uint64_t exactColumnBatchTotalNanoseconds;
+    uint64_t exactColumnBatchCpuFallbackNanoseconds;
+    uint64_t exactColumnBatchValidateNanoseconds;
+    uint64_t exactColumnBatchScoreMismatches;
+    uint64_t exactColumnBatchEndpointMismatches;
+    uint64_t exactColumnBatchScoreInfoMismatches;
+    uint64_t exactColumnBatchDigestMismatches;
+    uint64_t exactColumnBatchFallbacks;
     FasimTransferStringProfileStats transferStringProfile;
     FasimFastSimExtendProfileStats fastSimExtendProfile;
 };
@@ -1044,6 +1102,28 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_exact_column_batch_shadow_first_mismatch_request=" << stats.exactColumnBatchShadowFirstMismatchRequest << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_est_seconds_saved=" << fasim_profile_seconds(stats.exactColumnBatchShadowEstNanosecondsSaved) << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_net_saved_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowNetNanosecondsSaved) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_requested=" << stats.exactColumnBatchRequested << endl;
+    cerr << "benchmark.fasim_exact_column_batch_active=" << stats.exactColumnBatchActive << endl;
+    cerr << "benchmark.fasim_exact_column_batch_supported=" << stats.exactColumnBatchSupported << endl;
+    cerr << "benchmark.fasim_exact_column_batch_disabled_reason=" << stats.exactColumnBatchDisabledReason << endl;
+    cerr << "benchmark.fasim_exact_column_batch_validate_enabled=" << stats.exactColumnBatchValidateEnabled << endl;
+    cerr << "benchmark.fasim_exact_column_batch_requests=" << stats.exactColumnBatchRequests << endl;
+    cerr << "benchmark.fasim_exact_column_batch_cells=" << stats.exactColumnBatchCells << endl;
+    cerr << "benchmark.fasim_exact_column_batch_max_cells_per_request=" << stats.exactColumnBatchMaxCellsPerRequest << endl;
+    cerr << "benchmark.fasim_exact_column_batch_pack_seconds=" << fasim_profile_seconds(stats.exactColumnBatchPackNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_h2d_seconds=" << fasim_profile_seconds(stats.exactColumnBatchH2DNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_kernel_seconds=" << fasim_profile_seconds(stats.exactColumnBatchKernelNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_d2h_seconds=" << fasim_profile_seconds(stats.exactColumnBatchD2HNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_unpack_seconds=" << fasim_profile_seconds(stats.exactColumnBatchUnpackNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_apply_seconds=" << fasim_profile_seconds(stats.exactColumnBatchApplyNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_total_seconds=" << fasim_profile_seconds(stats.exactColumnBatchTotalNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_cpu_fallback_seconds=" << fasim_profile_seconds(stats.exactColumnBatchCpuFallbackNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_validate_seconds=" << fasim_profile_seconds(stats.exactColumnBatchValidateNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_score_mismatches=" << stats.exactColumnBatchScoreMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_endpoint_mismatches=" << stats.exactColumnBatchEndpointMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_scoreinfo_mismatches=" << stats.exactColumnBatchScoreInfoMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_digest_mismatches=" << stats.exactColumnBatchDigestMismatches << endl;
+    cerr << "benchmark.fasim_exact_column_batch_fallbacks=" << stats.exactColumnBatchFallbacks << endl;
     cerr << "benchmark.fasim_gpu_dp_column_calls=" << stats.gpuDpColumnCalls << endl;
     cerr << "benchmark.fasim_gpu_dp_column_windows=" << stats.gpuDpColumnWindows << endl;
     cerr << "benchmark.fasim_gpu_dp_column_cells=" << stats.gpuDpColumnCells << endl;
@@ -1946,6 +2026,10 @@ int main(int argc, char* const* argv)
 			gpuDpColumnAutoEffective;
 		const bool exactColumnBatchShadowRequested =
 			fasim_exact_column_extend_batch_shadow_enabled_runtime();
+		const bool exactColumnBatchRequested =
+			fasim_exact_column_extend_batch_enabled_runtime();
+		const bool exactColumnBatchValidate =
+			fasim_exact_column_extend_batch_validate_enabled_runtime();
 		if (profileEnabled)
 		{
 			profileStats.gpuDpColumnRequested = gpuDpColumnRequested ? 1 : 0;
@@ -1970,6 +2054,14 @@ int main(int argc, char* const* argv)
 				!exactColumnBatchShadowRequested ?
 				FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NOT_REQUESTED :
 				FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_GPU_COLUMN_INACTIVE;
+			profileStats.exactColumnBatchRequested =
+				exactColumnBatchRequested ? 1 : 0;
+			profileStats.exactColumnBatchValidateEnabled =
+				exactColumnBatchValidate ? 1 : 0;
+			profileStats.exactColumnBatchDisabledReason =
+				!exactColumnBatchRequested ?
+				FASIM_EXACT_COLUMN_BATCH_DISABLED_NOT_REQUESTED :
+				FASIM_EXACT_COLUMN_BATCH_DISABLED_GPU_COLUMN_INACTIVE;
 		}
 		const int gpuDpColumnDebugMaxWindows =
 			fasim_env_int_or_default_allow_zero("FASIM_GPU_DP_COLUMN_DEBUG_MAX_WINDOWS", 1);
@@ -2019,6 +2111,15 @@ int main(int argc, char* const* argv)
 					profileStats.exactColumnBatchShadowDisabledReason =
 						FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_NONE;
 				}
+				if (exactColumnBatchRequested)
+				{
+					profileStats.exactColumnBatchSupported =
+						cudaQueries.size() == 1 ? 1 : 0;
+					profileStats.exactColumnBatchDisabledReason =
+						cudaQueries.size() == 1 ?
+						FASIM_EXACT_COLUMN_BATCH_DISABLED_NONE :
+						FASIM_EXACT_COLUMN_BATCH_DISABLED_UNSUPPORTED_TOPOLOGY;
+				}
 				if (gpuDpColumnCompactScoreInfo)
 				{
 					profileStats.gpuDpColumnCompactScoreInfoActive = 1;
@@ -2029,6 +2130,12 @@ int main(int argc, char* const* argv)
 				profileStats.exactColumnBatchShadowSupported = 0;
 				profileStats.exactColumnBatchShadowDisabledReason =
 					FASIM_EXACT_COLUMN_BATCH_SHADOW_DISABLED_GPU_COLUMN_INACTIVE;
+			}
+			if (profileEnabled && exactColumnBatchRequested && useCudaBatch && cudaQueries.size() != 1)
+			{
+				profileStats.exactColumnBatchSupported = 0;
+				profileStats.exactColumnBatchDisabledReason =
+					FASIM_EXACT_COLUMN_BATCH_DISABLED_UNSUPPORTED_TOPOLOGY;
 			}
 			if (profileEnabled && gpuDpColumnAutoEffective)
 			{
@@ -3586,22 +3693,234 @@ int main(int argc, char* const* argv)
 						}
 						else if (gpuDpColumnRequested || extendThreadCount <= 1 || tasks.size() <= 1)
 						{
+							const bool exactBatchCanRun =
+								exactColumnBatchRequested &&
+								gpuDpColumnRequested &&
+								cudaQueries.size() == 1;
+							std::vector<int> exactBatchMaxScores;
+							std::vector<int> exactBatchMinScores;
+							std::vector<unsigned char> exactBatchOverflow;
+							std::vector<unsigned char> exactBatchReady;
+							std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> > exactBatchScoreInfos;
+							bool exactBatchPrepared = false;
+							bool exactBatchAttempted = false;
+							if (exactBatchCanRun)
+							{
+								exactBatchPrepared = true;
+								exactBatchMaxScores.assign(tasks.size(), 0);
+								exactBatchMinScores.assign(tasks.size(), 0);
+								exactBatchOverflow.assign(tasks.size(), 0);
+								exactBatchReady.assign(tasks.size(), 0);
+								exactBatchScoreInfos.resize(tasks.size());
+								std::vector<size_t> exactBatchIndices;
+								exactBatchIndices.reserve(tasks.size());
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									const StreamTask &task = tasks[t];
+									const size_t base = t * static_cast<size_t>(topK);
+									const int maxScore = fasim_gpu_dp_column_threshold_max_score(lncSeq,
+									                                                              task.seq2,
+									                                                              task.dnaStartPos,
+									                                                              task.rule,
+									                                                              peaks.data() + base,
+									                                                              topK,
+									                                                              profileEnabled ? &profileStats : NULL);
+									const int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
+									const bool compactTopKOverflow =
+										gpuDpColumnCompactScoreInfo &&
+										gpu_peaks_have_topk_overflow(peaks.data() + base, minScore);
+									exactBatchMaxScores[t] = maxScore;
+									exactBatchMinScores[t] = minScore;
+									exactBatchOverflow[t] = compactTopKOverflow ? 1 : 0;
+									if (!gpuDpColumnCompactScoreInfo || compactTopKOverflow)
+									{
+										exactBatchIndices.push_back(t);
+									}
+								}
+
+								if (!exactBatchIndices.empty())
+								{
+									exactBatchAttempted = true;
+									std::vector<int> batchColumnScores;
+									PreAlignCudaBatchResult exactBatchResult;
+									string exactBatchError;
+									const uint64_t batchTotalStart =
+										profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+									const uint64_t batchPackStart =
+										profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+									std::vector<uint8_t> exactBatchTargets(
+										exactBatchIndices.size() * static_cast<size_t>(currentTargetLength));
+									for (size_t i = 0; i < exactBatchIndices.size(); ++i)
+									{
+										const size_t taskIndex = exactBatchIndices[i];
+										const uint8_t *src =
+											encodedTargets.data() + taskIndex * static_cast<size_t>(currentTargetLength);
+										uint8_t *dst =
+											exactBatchTargets.data() + i * static_cast<size_t>(currentTargetLength);
+										std::copy(src, src + currentTargetLength, dst);
+									}
+									const uint64_t batchPackElapsed =
+										profileEnabled ? (fasim_profile_now_nanoseconds() - batchPackStart) : 0;
+									const bool exactBatchOk = prealign_cuda_find_column_maxima_batch(cudaQueries[0],
+									                                                                 exactBatchTargets.data(),
+									                                                                 static_cast<int>(exactBatchIndices.size()),
+									                                                                 currentTargetLength,
+									                                                                 &batchColumnScores,
+									                                                                 &exactBatchResult,
+									                                                                 &exactBatchError);
+									const uint64_t batchTotalElapsed =
+										profileEnabled ? (fasim_profile_now_nanoseconds() - batchTotalStart) : 0;
+									if (profileEnabled)
+									{
+										profileStats.exactColumnBatchActive = 1;
+										profileStats.exactColumnBatchRequests +=
+											static_cast<uint64_t>(exactBatchIndices.size());
+										profileStats.exactColumnBatchPackNanoseconds += batchPackElapsed;
+										profileStats.exactColumnBatchH2DNanoseconds +=
+											static_cast<uint64_t>(exactBatchResult.h2dSeconds * 1.0e9);
+										profileStats.exactColumnBatchKernelNanoseconds +=
+											static_cast<uint64_t>(exactBatchResult.gpuSeconds * 1.0e9);
+										profileStats.exactColumnBatchD2HNanoseconds +=
+											static_cast<uint64_t>(exactBatchResult.d2hSeconds * 1.0e9);
+										profileStats.exactColumnBatchTotalNanoseconds += batchTotalElapsed;
+										profileStats.gpuDpColumnExactColumnExtendNanoseconds += batchTotalElapsed;
+										profileStats.fastSimExtendProfile.exactColumnNanoseconds += batchTotalElapsed;
+										const uint64_t cellsPerRequest =
+											static_cast<uint64_t>(currentTargetLength > 0 ? currentTargetLength : 0) *
+											static_cast<uint64_t>(lncSeq.size());
+										profileStats.exactColumnBatchCells +=
+											cellsPerRequest * static_cast<uint64_t>(exactBatchIndices.size());
+										if (cellsPerRequest > profileStats.exactColumnBatchMaxCellsPerRequest)
+										{
+											profileStats.exactColumnBatchMaxCellsPerRequest = cellsPerRequest;
+										}
+									}
+
+									if (!exactBatchOk)
+									{
+										if (debugCuda)
+										{
+											cerr << "[fasim.cuda.exact_batch] error"
+											     << " requests=" << exactBatchIndices.size()
+											     << " error=" << exactBatchError
+											     << endl;
+										}
+									}
+									else
+									{
+										for (size_t i = 0; i < exactBatchIndices.size(); ++i)
+										{
+											const size_t t = exactBatchIndices[i];
+											const int minScore = exactBatchMinScores[t];
+											const uint64_t unpackStart =
+												profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+											const int *rowBegin =
+												batchColumnScores.data() + i * static_cast<size_t>(currentTargetLength);
+											std::vector<int> rowScores(rowBegin, rowBegin + currentTargetLength);
+											int batchMaxScore = 0;
+											int batchEndpoint = -1;
+											for (size_t c = 0; c < rowScores.size(); ++c)
+											{
+												if (rowScores[c] > batchMaxScore)
+												{
+													batchMaxScore = rowScores[c];
+													batchEndpoint = static_cast<int>(c);
+												}
+											}
+											build_scoreinfo_from_column_scores(rowScores,
+											                                    minScore,
+											                                    exactBatchScoreInfos[t]);
+											if (profileEnabled)
+											{
+												fasim_profile_add_elapsed(profileStats.exactColumnBatchUnpackNanoseconds,
+												                          unpackStart);
+											}
+
+											bool mismatch = false;
+											if (exactColumnBatchValidate)
+											{
+												const uint64_t validateStart =
+													profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+												std::vector<struct StripedSmithWaterman::scoreInfo> referenceScoreInfo;
+												std::vector<int> referenceColumnScores;
+												int referenceMaxScore = 0;
+												const uint8_t *exactTarget =
+													encodedTargets.data() + t * static_cast<size_t>(currentTargetLength);
+												const bool referenceOk =
+													build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
+													                                       exactTarget,
+													                                       currentTargetLength,
+													                                       minScore,
+													                                       &referenceMaxScore,
+													                                       referenceScoreInfo,
+													                                       &referenceColumnScores,
+													                                       "exact_batch_validate");
+												int referenceEndpoint = -1;
+												int referenceEndpointScore = 0;
+												if (referenceOk)
+												{
+													for (size_t c = 0; c < referenceColumnScores.size(); ++c)
+													{
+														if (referenceColumnScores[c] > referenceEndpointScore)
+														{
+															referenceEndpointScore = referenceColumnScores[c];
+															referenceEndpoint = static_cast<int>(c);
+														}
+													}
+												}
+												if (!referenceOk || batchMaxScore != referenceMaxScore)
+												{
+													++profileStats.exactColumnBatchScoreMismatches;
+													mismatch = true;
+												}
+												if (!referenceOk || batchEndpoint != referenceEndpoint)
+												{
+													++profileStats.exactColumnBatchEndpointMismatches;
+													mismatch = true;
+												}
+												if (!referenceOk || !scoreinfo_equal(exactBatchScoreInfos[t], referenceScoreInfo))
+												{
+													++profileStats.exactColumnBatchScoreInfoMismatches;
+													mismatch = true;
+												}
+												if (profileEnabled)
+												{
+													fasim_profile_add_elapsed(profileStats.exactColumnBatchValidateNanoseconds,
+													                          validateStart);
+												}
+											}
+											if (!mismatch)
+											{
+												exactBatchReady[t] = 1;
+											}
+										}
+									}
+								}
+							}
+
 							for (size_t t = 0; t < tasks.size(); ++t)
 							{
 								const StreamTask &task = tasks[t];
 								const size_t base = t * static_cast<size_t>(topK);
-									int maxScore = fasim_gpu_dp_column_threshold_max_score(lncSeq,
-									                                                      task.seq2,
-									                                                      task.dnaStartPos,
-									                                                      task.rule,
-									                                                      peaks.data() + base,
-									                                                      topK,
-									                                                      profileEnabled ? &profileStats : NULL);
+									int maxScore = exactBatchPrepared ?
+										exactBatchMaxScores[t] :
+										fasim_gpu_dp_column_threshold_max_score(lncSeq,
+										                                        task.seq2,
+										                                        task.dnaStartPos,
+										                                        task.rule,
+										                                        peaks.data() + base,
+										                                        topK,
+										                                        profileEnabled ? &profileStats : NULL);
 								int minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
-								const bool compactTopKOverflow =
-									gpuDpColumnRequested &&
-									gpuDpColumnCompactScoreInfo &&
-									gpu_peaks_have_topk_overflow(peaks.data() + base, minScore);
+								if (exactBatchPrepared)
+								{
+									minScore = exactBatchMinScores[t];
+								}
+								const bool compactTopKOverflow = exactBatchPrepared ?
+									(exactBatchOverflow[t] != 0) :
+									(gpuDpColumnRequested &&
+									 gpuDpColumnCompactScoreInfo &&
+									 gpu_peaks_have_topk_overflow(peaks.data() + base, minScore));
 								if (profileEnabled && gpuDpColumnRequested && compactTopKOverflow)
 								{
 									++profileStats.gpuDpColumnOverflowWindows;
@@ -3615,16 +3934,45 @@ int main(int argc, char* const* argv)
 									{
 										++profileStats.gpuDpColumnCompactScoreInfoFallbacks;
 									}
-										if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
-										                                            exactTarget,
-										                                            currentTargetLength,
-										                                            minScore,
-										                                            NULL,
-										                                            finalScoreInfo,
-										                                            NULL,
-										                                            "extend"))
+									if (exactBatchPrepared && exactBatchReady[t])
 									{
-										gpuValidationOk = false;
+										const uint64_t applyStart =
+											profileEnabled ? fasim_profile_now_nanoseconds() : 0;
+										finalScoreInfo = exactBatchScoreInfos[t];
+										if (profileEnabled)
+										{
+											fasim_profile_add_elapsed(profileStats.exactColumnBatchApplyNanoseconds,
+											                          applyStart);
+										}
+									}
+									else
+									{
+										if (profileEnabled && exactBatchAttempted)
+										{
+											++profileStats.exactColumnBatchFallbacks;
+										}
+										const uint64_t fallbackStart =
+											(profileEnabled && exactBatchAttempted) ? fasim_profile_now_nanoseconds() : 0;
+											if (!build_scoreinfo_from_gpu_exact_columns(cudaQueries[0],
+											                                            exactTarget,
+											                                            currentTargetLength,
+											                                            minScore,
+											                                            NULL,
+											                                            finalScoreInfo,
+											                                            NULL,
+											                                            "extend"))
+										{
+											gpuValidationOk = false;
+											break;
+										}
+										if (profileEnabled && exactBatchAttempted)
+										{
+											fasim_profile_add_elapsed(profileStats.exactColumnBatchCpuFallbackNanoseconds,
+											                          fallbackStart);
+										}
+									}
+									if (!gpuValidationOk)
+									{
 										break;
 									}
 									minScore = static_cast<int>(static_cast<double>(maxScore) * 0.8);
