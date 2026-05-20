@@ -220,6 +220,7 @@ struct FasimFastSimExtendProfileStats
 		parasailShadowScoreMismatches(0),
 		parasailShadowEndpointMismatches(0),
 		parasailShadowCigarMismatches(0),
+		parasailShadowCigarNormalizedMismatches(0),
 		parasailShadowDigestMismatches(0),
 		parasailShadowTotalMismatches(0),
 		parasailShadowFallbacks(0),
@@ -477,6 +478,7 @@ struct FasimFastSimExtendProfileStats
 	uint64_t parasailShadowScoreMismatches;
 	uint64_t parasailShadowEndpointMismatches;
 	uint64_t parasailShadowCigarMismatches;
+	uint64_t parasailShadowCigarNormalizedMismatches;
 	uint64_t parasailShadowDigestMismatches;
 	uint64_t parasailShadowTotalMismatches;
 	uint64_t parasailShadowFallbacks;
@@ -2495,6 +2497,18 @@ inline void fasim_aligner_parasail_shadow_finalize(
 	profileStats->parasailShadowSecondaryScoreSupported =
 		batchResult.secondaryScoreSupported ? 1 : 0;
 
+	const auto normalizeParasailShadowCigar = [](const string &cigar) -> string {
+		string normalized = cigar;
+		for (size_t pos = 0; pos < normalized.size(); ++pos)
+		{
+			if (normalized[pos] == '=' || normalized[pos] == 'X')
+			{
+				normalized[pos] = 'M';
+			}
+		}
+		return normalized;
+	};
+
 	for (size_t i = 0; i < requests.size(); ++i)
 	{
 		const FasimAlignBatchShadowRequest &request = requests[i];
@@ -2524,6 +2538,11 @@ inline void fasim_aligner_parasail_shadow_finalize(
 			++profileStats->parasailShadowCigarMismatches;
 			++profileStats->parasailShadowTotalMismatches;
 			requestMismatch = true;
+			if (normalizeParasailShadowCigar(result.cigarString) !=
+			    normalizeParasailShadowCigar(request.cpuCigarString))
+			{
+				++profileStats->parasailShadowCigarNormalizedMismatches;
+			}
 		}
 		if (requestMismatch)
 		{

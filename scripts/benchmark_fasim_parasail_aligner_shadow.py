@@ -40,11 +40,18 @@ def render_report(
     output_path: Path,
 ) -> str:
     require_metrics(shadow.metrics, REQUIRED_KEYS)
+    supported = metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_supported")
+    cigar_mismatches = metric_int(
+        shadow.metrics, "fasim_aligner_parasail_shadow_cigar_mismatches"
+    )
+    normalized_cigar_mismatches = metric_int(
+        shadow.metrics, "fasim_aligner_parasail_shadow_cigar_normalized_mismatches"
+    )
 
     lines: List[str] = []
     lines.append("# Fasim Parasail Aligner Shadow")
     lines.append("")
-    lines.append("This PR adds a default-off Parasail aligner shadow gate.")
+    lines.append("This PR evaluates a default-off Parasail aligner shadow.")
     lines.append("It does not replace `aligner.Align` and does not use Parasail output for production output.")
     lines.append("")
     lines.append("## Local Dependency State")
@@ -73,7 +80,10 @@ def render_report(
     )
     lines.append("")
     lines.append("`disabled_reason=1` means Parasail support was not built into this binary.")
-    lines.append("That is the expected default in this local environment because `parasail.h`/`libparasail` are not installed.")
+    if supported:
+        lines.append("This run used a binary built with optional Parasail headers/libs.")
+    else:
+        lines.append("That is the expected default when `parasail.h`/`libparasail` are not installed.")
     lines.append("")
     lines.append("## Correctness Guard")
     lines.append("")
@@ -90,6 +100,7 @@ def render_report(
                 str(metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_endpoint_mismatches")),
             ],
             ["CIGAR mismatches", str(metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_cigar_mismatches"))],
+            ["normalized CIGAR mismatches", str(normalized_cigar_mismatches)],
             [
                 "digest mismatches",
                 str(metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_digest_mismatches")),
@@ -130,11 +141,14 @@ def render_report(
     lines.append("")
     lines.append("- Default build links the Parasail stub, so no new dependency is required.")
     lines.append("- `FASIM_ALIGNER_PARASAIL_SHADOW=1` only records sampled side-path telemetry.")
-    lines.append("- Real Parasail comparison requires an explicit `FASIM_PARASAIL_ENABLE=1` build with include/lib flags.")
+    lines.append("- Real Parasail comparison requires an explicit `FASIM_PARASAIL_ENABLE=1` build with include/lib flags or `FASIM_PARASAIL_DIR`.")
     lines.append("- Parasail shadow is not a real-path candidate until score, endpoint, CIGAR, and digest are exact-clean.")
     lines.append("- Secondary score is not supported by the current Parasail SSW shadow contract.")
-    lines.append("")
-    text = "\n".join(lines) + "\n"
+    if supported and cigar_mismatches:
+        lines.append("- Current real Parasail shadow is not CIGAR-clean, so it is not a real-path candidate.")
+    if supported and normalized_cigar_mismatches:
+        lines.append("- Normalizing `=`/`X` to `M` does not remove the CIGAR mismatch, so this is not only an operator spelling difference.")
+    text = "\n".join(lines).rstrip() + "\n"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(text, encoding="utf-8")
     return text
@@ -153,6 +167,11 @@ def main() -> int:
     )
     parser.add_argument("--require-profile", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--allow-mismatches",
+        action="store_true",
+        help="Render a feasibility report even when Parasail mismatch counters are non-zero.",
+    )
     args = parser.parse_args()
 
     cuda_bin = Path(args.cuda_bin)
@@ -211,14 +230,15 @@ def main() -> int:
             raise RuntimeError(f"digest mismatch: {table.digest} vs {shadow.digest}")
         if table.records != shadow.records:
             raise RuntimeError(f"record mismatch: {table.records} vs {shadow.records}")
-        for key in [
-            "fasim_aligner_parasail_shadow_score_mismatches",
-            "fasim_aligner_parasail_shadow_endpoint_mismatches",
-            "fasim_aligner_parasail_shadow_cigar_mismatches",
-            "fasim_aligner_parasail_shadow_digest_mismatches",
-        ]:
-            if metric_int(shadow.metrics, key) != 0:
-                raise RuntimeError(f"non-zero {key}")
+        if not args.allow_mismatches:
+            for key in [
+                "fasim_aligner_parasail_shadow_score_mismatches",
+                "fasim_aligner_parasail_shadow_endpoint_mismatches",
+                "fasim_aligner_parasail_shadow_cigar_mismatches",
+                "fasim_aligner_parasail_shadow_digest_mismatches",
+            ]:
+                if metric_int(shadow.metrics, key) != 0:
+                    raise RuntimeError(f"non-zero {key}")
 
     text = render_report(table=table, shadow=shadow, output_path=Path(args.output))
     print(text)

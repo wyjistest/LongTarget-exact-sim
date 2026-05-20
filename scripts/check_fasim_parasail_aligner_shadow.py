@@ -43,6 +43,7 @@ REQUIRED_KEYS = [
     "fasim_aligner_parasail_shadow_score_mismatches",
     "fasim_aligner_parasail_shadow_endpoint_mismatches",
     "fasim_aligner_parasail_shadow_cigar_mismatches",
+    "fasim_aligner_parasail_shadow_cigar_normalized_mismatches",
     "fasim_aligner_parasail_shadow_digest_mismatches",
     "fasim_aligner_parasail_shadow_total_mismatches",
     "fasim_aligner_parasail_shadow_fallbacks",
@@ -88,6 +89,11 @@ def main() -> int:
     parser.add_argument(
         "--work-dir",
         default=str(ROOT / ".tmp" / "fasim_parasail_aligner_shadow"),
+    )
+    parser.add_argument(
+        "--expect-supported",
+        action="store_true",
+        help="Require a real Parasail-enabled binary instead of the default stub gate.",
     )
     args = parser.parse_args()
 
@@ -147,21 +153,31 @@ def main() -> int:
 
     if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_enabled") != 1:
         raise RuntimeError("Parasail shadow was not enabled")
-    if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_supported") != 0:
-        raise RuntimeError("default build must report Parasail unsupported")
-    if (
-        metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_disabled_reason")
-        != PARASAIL_NOT_BUILT_DISABLED_REASON
-    ):
-        raise RuntimeError("Parasail shadow did not report not-built disabled reason")
+    supported = metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_supported")
+    disabled_reason = metric_int(
+        shadow.metrics, "fasim_aligner_parasail_shadow_disabled_reason"
+    )
+    fallbacks = metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_fallbacks")
+    if args.expect_supported:
+        if supported != 1:
+            raise RuntimeError("real Parasail build did not report supported=1")
+        if disabled_reason != 0:
+            raise RuntimeError("real Parasail build reported a disabled reason")
+        if fallbacks != 0:
+            raise RuntimeError("real Parasail build reported fallback requests")
+    else:
+        if supported != 0:
+            raise RuntimeError("default build must report Parasail unsupported")
+        if disabled_reason != PARASAIL_NOT_BUILT_DISABLED_REASON:
+            raise RuntimeError("Parasail shadow did not report not-built disabled reason")
+        if fallbacks <= 0:
+            raise RuntimeError("Parasail shadow did not report fallback requests")
     if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_uses_runtime_output") != 0:
         raise RuntimeError("Parasail shadow must not feed runtime output")
     if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_requests_total") <= 0:
         raise RuntimeError("Parasail shadow did not observe any aligner requests")
     if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_requests_compared") <= 0:
         raise RuntimeError("Parasail shadow did not sample any aligner requests")
-    if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_fallbacks") <= 0:
-        raise RuntimeError("Parasail shadow did not report fallback requests")
     for key in [
         "fasim_aligner_parasail_shadow_score_mismatches",
         "fasim_aligner_parasail_shadow_endpoint_mismatches",
@@ -170,7 +186,7 @@ def main() -> int:
         "fasim_aligner_parasail_shadow_total_mismatches",
     ]:
         if metric_int(shadow.metrics, key) != 0:
-            raise RuntimeError(f"default Parasail stub reported non-zero {key}")
+            raise RuntimeError(f"Parasail shadow reported non-zero {key}")
     if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_has_score_contract") != 1:
         raise RuntimeError("Parasail shadow should declare score comparison intent")
     if metric_int(shadow.metrics, "fasim_aligner_parasail_shadow_has_endpoint_contract") != 1:

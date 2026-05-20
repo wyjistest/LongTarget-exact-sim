@@ -811,6 +811,7 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_aligner_parasail_shadow_score_mismatches=" << stats.fastSimExtendProfile.parasailShadowScoreMismatches << endl;
     cerr << "benchmark.fasim_aligner_parasail_shadow_endpoint_mismatches=" << stats.fastSimExtendProfile.parasailShadowEndpointMismatches << endl;
     cerr << "benchmark.fasim_aligner_parasail_shadow_cigar_mismatches=" << stats.fastSimExtendProfile.parasailShadowCigarMismatches << endl;
+    cerr << "benchmark.fasim_aligner_parasail_shadow_cigar_normalized_mismatches=" << stats.fastSimExtendProfile.parasailShadowCigarNormalizedMismatches << endl;
     cerr << "benchmark.fasim_aligner_parasail_shadow_digest_mismatches=" << stats.fastSimExtendProfile.parasailShadowDigestMismatches << endl;
     cerr << "benchmark.fasim_aligner_parasail_shadow_total_mismatches=" << stats.fastSimExtendProfile.parasailShadowTotalMismatches << endl;
     cerr << "benchmark.fasim_aligner_parasail_shadow_fallbacks=" << stats.fastSimExtendProfile.parasailShadowFallbacks << endl;
