@@ -354,9 +354,14 @@ struct FasimProfileStats
         exactColumnBatchShadowRequestsTotal(0),
         exactColumnBatchShadowRequestsCompared(0),
         exactColumnBatchShadowCells(0),
+        exactColumnBatchShadowMaxCellsPerRequest(0),
         exactColumnBatchShadowCpuReferenceNanoseconds(0),
         exactColumnBatchShadowShadowTotalNanoseconds(0),
         exactColumnBatchShadowKernelNanoseconds(0),
+        exactColumnBatchShadowH2DNanoseconds(0),
+        exactColumnBatchShadowD2HNanoseconds(0),
+        exactColumnBatchShadowPackNanoseconds(0),
+        exactColumnBatchShadowUnpackNanoseconds(0),
         exactColumnBatchShadowH2DBytes(0),
         exactColumnBatchShadowD2HBytes(0),
         exactColumnBatchShadowScoreMismatches(0),
@@ -364,7 +369,8 @@ struct FasimProfileStats
         exactColumnBatchShadowScoreInfoMismatches(0),
         exactColumnBatchShadowTotalMismatches(0),
         exactColumnBatchShadowFirstMismatchRequest(-1),
-        exactColumnBatchShadowEstNanosecondsSaved(0)
+        exactColumnBatchShadowEstNanosecondsSaved(0),
+        exactColumnBatchShadowNetNanosecondsSaved(0)
     {
     }
 
@@ -501,9 +507,14 @@ struct FasimProfileStats
     uint64_t exactColumnBatchShadowRequestsTotal;
     uint64_t exactColumnBatchShadowRequestsCompared;
     uint64_t exactColumnBatchShadowCells;
+    uint64_t exactColumnBatchShadowMaxCellsPerRequest;
     uint64_t exactColumnBatchShadowCpuReferenceNanoseconds;
     uint64_t exactColumnBatchShadowShadowTotalNanoseconds;
     uint64_t exactColumnBatchShadowKernelNanoseconds;
+    uint64_t exactColumnBatchShadowH2DNanoseconds;
+    uint64_t exactColumnBatchShadowD2HNanoseconds;
+    uint64_t exactColumnBatchShadowPackNanoseconds;
+    uint64_t exactColumnBatchShadowUnpackNanoseconds;
     uint64_t exactColumnBatchShadowH2DBytes;
     uint64_t exactColumnBatchShadowD2HBytes;
     uint64_t exactColumnBatchShadowScoreMismatches;
@@ -512,6 +523,7 @@ struct FasimProfileStats
     uint64_t exactColumnBatchShadowTotalMismatches;
     long long exactColumnBatchShadowFirstMismatchRequest;
     uint64_t exactColumnBatchShadowEstNanosecondsSaved;
+    uint64_t exactColumnBatchShadowNetNanosecondsSaved;
     FasimTransferStringProfileStats transferStringProfile;
     FasimFastSimExtendProfileStats fastSimExtendProfile;
 };
@@ -1015,9 +1027,14 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_exact_column_batch_shadow_requests_total=" << stats.exactColumnBatchShadowRequestsTotal << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_requests_compared=" << stats.exactColumnBatchShadowRequestsCompared << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_cells=" << stats.exactColumnBatchShadowCells << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_max_cells_per_request=" << stats.exactColumnBatchShadowMaxCellsPerRequest << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_cpu_reference_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowCpuReferenceNanoseconds) << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_shadow_total_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowShadowTotalNanoseconds) << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_kernel_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowKernelNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_h2d_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowH2DNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_d2h_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowD2HNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_pack_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowPackNanoseconds) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_unpack_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowUnpackNanoseconds) << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_h2d_bytes=" << stats.exactColumnBatchShadowH2DBytes << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_d2h_bytes=" << stats.exactColumnBatchShadowD2HBytes << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_score_mismatches=" << stats.exactColumnBatchShadowScoreMismatches << endl;
@@ -1026,6 +1043,7 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_exact_column_batch_shadow_total_mismatches=" << stats.exactColumnBatchShadowTotalMismatches << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_first_mismatch_request=" << stats.exactColumnBatchShadowFirstMismatchRequest << endl;
     cerr << "benchmark.fasim_exact_column_batch_shadow_est_seconds_saved=" << fasim_profile_seconds(stats.exactColumnBatchShadowEstNanosecondsSaved) << endl;
+    cerr << "benchmark.fasim_exact_column_batch_shadow_net_saved_seconds=" << fasim_profile_seconds(stats.exactColumnBatchShadowNetNanosecondsSaved) << endl;
     cerr << "benchmark.fasim_gpu_dp_column_calls=" << stats.gpuDpColumnCalls << endl;
     cerr << "benchmark.fasim_gpu_dp_column_windows=" << stats.gpuDpColumnWindows << endl;
     cerr << "benchmark.fasim_gpu_dp_column_cells=" << stats.gpuDpColumnCells << endl;
@@ -2275,6 +2293,8 @@ int main(int argc, char* const* argv)
 			{
 				return;
 			}
+			const uint64_t shadowStart = fasim_profile_now_nanoseconds();
+			const uint64_t packStart = fasim_profile_now_nanoseconds();
 			const uint64_t cells =
 				static_cast<uint64_t>(lncSeq.size()) *
 				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0);
@@ -2284,10 +2304,10 @@ int main(int argc, char* const* argv)
 			const uint64_t d2hBytes =
 				static_cast<uint64_t>(targetLength > 0 ? targetLength : 0) *
 				static_cast<uint64_t>(sizeof(int));
-
-			const uint64_t shadowStart = fasim_profile_now_nanoseconds();
+			const uint64_t packNanoseconds = fasim_profile_now_nanoseconds() - packStart;
 			int shadowMaxScore = 0;
 			int shadowEndpoint = -1;
+			const uint64_t unpackStart = fasim_profile_now_nanoseconds();
 			for (size_t i = 0; i < columnScores.size(); ++i)
 			{
 				if (columnScores[i] > shadowMaxScore)
@@ -2300,8 +2320,6 @@ int main(int argc, char* const* argv)
 			build_scoreinfo_from_column_scores_shadow(columnScores,
 			                                          scoreInfoMinScore,
 			                                          shadowScoreInfo);
-			const uint64_t shadowElapsed =
-				fasim_profile_now_nanoseconds() - shadowStart;
 
 			bool mismatch = false;
 			if (shadowMaxScore != cpuMaxScore)
@@ -2329,21 +2347,41 @@ int main(int argc, char* const* argv)
 			{
 				mismatch = true;
 			}
+			const uint64_t unpackNanoseconds = fasim_profile_now_nanoseconds() - unpackStart;
+			const uint64_t shadowElapsed =
+				fasim_profile_now_nanoseconds() - shadowStart;
+			const uint64_t h2dNanoseconds = 0;
+			const uint64_t d2hNanoseconds = 0;
+			const uint64_t netShadowNanoseconds =
+				shadowElapsed + h2dNanoseconds + d2hNanoseconds;
 
 			lock_guard<std::mutex> lock(exactColumnBatchShadowMutex);
 			const uint64_t requestIndex = profileStats.exactColumnBatchShadowRequestsTotal;
 			++profileStats.exactColumnBatchShadowRequestsTotal;
 			++profileStats.exactColumnBatchShadowRequestsCompared;
 			profileStats.exactColumnBatchShadowCells += cells;
+			if (cells > profileStats.exactColumnBatchShadowMaxCellsPerRequest)
+			{
+				profileStats.exactColumnBatchShadowMaxCellsPerRequest = cells;
+			}
 			profileStats.exactColumnBatchShadowH2DBytes += h2dBytes;
 			profileStats.exactColumnBatchShadowD2HBytes += d2hBytes;
 			profileStats.exactColumnBatchShadowCpuReferenceNanoseconds +=
 				cpuReferenceNanoseconds;
 			profileStats.exactColumnBatchShadowShadowTotalNanoseconds += shadowElapsed;
+			profileStats.exactColumnBatchShadowH2DNanoseconds += h2dNanoseconds;
+			profileStats.exactColumnBatchShadowD2HNanoseconds += d2hNanoseconds;
+			profileStats.exactColumnBatchShadowPackNanoseconds += packNanoseconds;
+			profileStats.exactColumnBatchShadowUnpackNanoseconds += unpackNanoseconds;
 			if (cpuReferenceNanoseconds > shadowElapsed)
 			{
 				profileStats.exactColumnBatchShadowEstNanosecondsSaved +=
 					cpuReferenceNanoseconds - shadowElapsed;
+			}
+			if (cpuReferenceNanoseconds > netShadowNanoseconds)
+			{
+				profileStats.exactColumnBatchShadowNetNanosecondsSaved +=
+					cpuReferenceNanoseconds - netShadowNanoseconds;
 			}
 			if (shadowMaxScore != cpuMaxScore)
 			{

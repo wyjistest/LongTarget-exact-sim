@@ -32,9 +32,14 @@ SHADOW_KEYS = [
     "fasim_exact_column_batch_shadow_requests_total",
     "fasim_exact_column_batch_shadow_requests_compared",
     "fasim_exact_column_batch_shadow_cells",
+    "fasim_exact_column_batch_shadow_max_cells_per_request",
     "fasim_exact_column_batch_shadow_cpu_reference_seconds",
     "fasim_exact_column_batch_shadow_shadow_total_seconds",
     "fasim_exact_column_batch_shadow_kernel_seconds",
+    "fasim_exact_column_batch_shadow_h2d_seconds",
+    "fasim_exact_column_batch_shadow_d2h_seconds",
+    "fasim_exact_column_batch_shadow_pack_seconds",
+    "fasim_exact_column_batch_shadow_unpack_seconds",
     "fasim_exact_column_batch_shadow_h2d_bytes",
     "fasim_exact_column_batch_shadow_d2h_bytes",
     "fasim_exact_column_batch_shadow_score_mismatches",
@@ -43,6 +48,7 @@ SHADOW_KEYS = [
     "fasim_exact_column_batch_shadow_total_mismatches",
     "fasim_exact_column_batch_shadow_first_mismatch_request",
     "fasim_exact_column_batch_shadow_est_seconds_saved",
+    "fasim_exact_column_batch_shadow_net_saved_seconds",
 ]
 
 
@@ -154,7 +160,13 @@ def main() -> int:
         [
             "fasim_exact_column_batch_shadow_requests_total",
             "fasim_exact_column_batch_shadow_requests_compared",
+            "fasim_exact_column_batch_shadow_max_cells_per_request",
+            "fasim_exact_column_batch_shadow_h2d_seconds",
+            "fasim_exact_column_batch_shadow_d2h_seconds",
+            "fasim_exact_column_batch_shadow_pack_seconds",
+            "fasim_exact_column_batch_shadow_unpack_seconds",
             "fasim_exact_column_batch_shadow_total_mismatches",
+            "fasim_exact_column_batch_shadow_net_saved_seconds",
         ],
         "shadow_off",
     )
@@ -169,6 +181,12 @@ def main() -> int:
         raise RuntimeError("shadow did not compare exact-column extend requests")
     if metric_int(shadow_on.metrics, "fasim_exact_column_batch_shadow_cells") <= 0:
         raise RuntimeError("shadow did not count exact-column cells")
+    if metric_int(shadow_on.metrics, "fasim_exact_column_batch_shadow_max_cells_per_request") <= 0:
+        raise RuntimeError("shadow did not count max cells per request")
+    if metric_float(shadow_on.metrics, "fasim_exact_column_batch_shadow_shadow_total_seconds") <= 0.0:
+        raise RuntimeError("shadow did not report positive diagnostic shadow time")
+    if metric_float(shadow_on.metrics, "fasim_exact_column_batch_shadow_net_saved_seconds") < 0.0:
+        raise RuntimeError("shadow reported negative net saved seconds")
     require_zero(
         shadow_on.metrics,
         [

@@ -12,6 +12,10 @@ SCRIPTS_DIR = ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+from benchmark_fasim_exact_column_extend_batch_shadow import (  # noqa: E402
+    FINAL_STACK_ENV,
+    SHADOW_KEYS,
+)
 from benchmark_fasim_gpu_dp_column_characterization import (  # noqa: E402
     ModeSpec,
     RunResult,
@@ -27,48 +31,12 @@ from benchmark_fasim_gpu_dp_column_characterization import (  # noqa: E402
 )
 
 
-FINAL_STACK_ENV = {
-    "FASIM_TRANSFERSTRING_TABLE": "1",
-    "FASIM_GPU_DP_COLUMN_AUTO": "1",
-    "FASIM_SSW_PROFILE_CACHE": "1",
-    "FASIM_SSW_AVX2": "1",
-    "FASIM_SSW_PROFILE_CONTEXT": "1",
-}
-
-SHADOW_KEYS = [
-    "fasim_exact_column_batch_shadow_enabled",
-    "fasim_exact_column_batch_shadow_supported",
-    "fasim_exact_column_batch_shadow_disabled_reason",
-    "fasim_exact_column_batch_shadow_requests_total",
-    "fasim_exact_column_batch_shadow_requests_compared",
-    "fasim_exact_column_batch_shadow_cells",
-    "fasim_exact_column_batch_shadow_max_cells_per_request",
-    "fasim_exact_column_batch_shadow_cpu_reference_seconds",
-    "fasim_exact_column_batch_shadow_shadow_total_seconds",
-    "fasim_exact_column_batch_shadow_kernel_seconds",
-    "fasim_exact_column_batch_shadow_h2d_seconds",
-    "fasim_exact_column_batch_shadow_d2h_seconds",
-    "fasim_exact_column_batch_shadow_pack_seconds",
-    "fasim_exact_column_batch_shadow_unpack_seconds",
-    "fasim_exact_column_batch_shadow_h2d_bytes",
-    "fasim_exact_column_batch_shadow_d2h_bytes",
-    "fasim_exact_column_batch_shadow_score_mismatches",
-    "fasim_exact_column_batch_shadow_endpoint_mismatches",
-    "fasim_exact_column_batch_shadow_scoreinfo_mismatches",
-    "fasim_exact_column_batch_shadow_total_mismatches",
-    "fasim_exact_column_batch_shadow_first_mismatch_request",
-    "fasim_exact_column_batch_shadow_est_seconds_saved",
-    "fasim_exact_column_batch_shadow_net_saved_seconds",
-]
-
-EXACT_COLUMN_KEYS = [
+PERFORMANCE_KEYS = [
     "fasim_total_seconds",
-    "fasim_gpu_dp_column_auto_active",
-    "fasim_gpu_dp_column_active",
     "fasim_gpu_dp_column_exact_column_extend_seconds",
     "fasim_gpu_dp_column_exact_extend_windows",
     "fasim_gpu_dp_column_fallbacks",
-]
+] + SHADOW_KEYS
 
 
 def make_modes(force_auto: bool) -> List[ModeSpec]:
@@ -102,7 +70,7 @@ def percent(numerator: float, denominator: float) -> str:
 
 def require_metrics(results: Dict[str, List[RunResult]]) -> None:
     for mode in ["final_stack", "final_stack_shadow"]:
-        for key in EXACT_COLUMN_KEYS + SHADOW_KEYS:
+        for key in PERFORMANCE_KEYS:
             mode_metric(results, mode, key)
 
 
@@ -128,6 +96,8 @@ def check_shadow(results: Dict[str, List[RunResult]]) -> None:
         raise RuntimeError("shadow did not report supported=1")
     if mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_requests_compared") <= 0:
         raise RuntimeError("shadow compared no requests")
+    if mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_cells") <= 0:
+        raise RuntimeError("shadow counted no cells")
     require_zero(
         results,
         "final_stack_shadow",
@@ -136,10 +106,9 @@ def check_shadow(results: Dict[str, List[RunResult]]) -> None:
             "fasim_exact_column_batch_shadow_endpoint_mismatches",
             "fasim_exact_column_batch_shadow_scoreinfo_mismatches",
             "fasim_exact_column_batch_shadow_total_mismatches",
+            "fasim_gpu_dp_column_fallbacks",
         ],
     )
-    if mode_count(results, "final_stack_shadow", "fasim_gpu_dp_column_fallbacks") != 0:
-        raise RuntimeError("GPU DP column fallbacks appeared")
 
 
 def render_report(
@@ -151,21 +120,47 @@ def render_report(
 ) -> str:
     final_total = mode_metric(results, "final_stack", "fasim_total_seconds")
     shadow_total = mode_metric(results, "final_stack_shadow", "fasim_total_seconds")
+    exact_column_seconds = mode_metric(
+        results, "final_stack", "fasim_gpu_dp_column_exact_column_extend_seconds"
+    )
     shadow_cpu = mode_metric(
         results, "final_stack_shadow", "fasim_exact_column_batch_shadow_cpu_reference_seconds"
     )
-    shadow_total_seconds = mode_metric(
+    shadow_diag_total = mode_metric(
         results, "final_stack_shadow", "fasim_exact_column_batch_shadow_shadow_total_seconds"
     )
+    shadow_kernel = mode_metric(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_kernel_seconds"
+    )
+    h2d_seconds = mode_metric(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_h2d_seconds"
+    )
+    d2h_seconds = mode_metric(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_d2h_seconds"
+    )
+    pack_seconds = mode_metric(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_pack_seconds"
+    )
+    unpack_seconds = mode_metric(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_unpack_seconds"
+    )
+    net_saved = mode_metric(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_net_saved_seconds"
+    )
+    requests = mode_count(
+        results, "final_stack_shadow", "fasim_exact_column_batch_shadow_requests_total"
+    )
+    cells = mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_cells")
+    avg_cells = int(round(cells / requests)) if requests > 0 else 0
 
     lines: List[str] = []
-    lines.append("# Fasim Exact-Column Extend Batch Shadow")
+    lines.append("# Fasim Exact-Column Extend Batch Shadow Performance")
     lines.append("")
     lines.append(
-        "This PR adds a default-off diagnostic shadow for the exact-column "
-        "extend step identified by the final speed stack decomposition. CPU "
-        "exact-column extend remains authoritative; shadow output is never fed "
-        "into fastSIM emit or final output."
+        "This characterization measures the default-off exact-column extend batch "
+        "shadow added after the final speed stack decomposition. CPU exact-column "
+        "extend remains authoritative, and shadow output is never used by "
+        "`fastSIM_extend_from_scoreinfo` or final output."
     )
     lines.append("")
     lines.append("Final stack under test:")
@@ -173,13 +168,12 @@ def render_report(
     lines.append("```bash")
     for key, value in FINAL_STACK_ENV.items():
         lines.append(f"{key}={value}")
-    lines.append("# shadow mode adds:")
     lines.append("FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW=1")
     lines.append("```")
     lines.append("")
     lines.append(f"Workload: `{workload.label}`. Each mode uses {repeat} run(s); tables report medians.")
     lines.append("")
-    lines.append("## Performance")
+    lines.append("## Summary")
     lines.append("")
     append_table(
         lines,
@@ -202,20 +196,31 @@ def render_report(
         ],
     )
     lines.append("")
+    lines.append(
+        "`final_stack_shadow` includes extra diagnostic work. Its total runtime is "
+        "not a proposed real-path speedup."
+    )
+    lines.append("")
     lines.append("## Request Shape")
     lines.append("")
-    requests = mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_requests_total")
-    cells = mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_cells")
-    avg_cells = int(round(cells / requests)) if requests > 0 else 0
     append_table(
         lines,
-        ["Requests", "Compared", "Cells", "Avg cells/request", "H2D bytes", "D2H bytes"],
+        [
+            "Requests",
+            "Compared",
+            "Cells",
+            "Avg cells/request",
+            "Max cells/request",
+            "H2D bytes",
+            "D2H bytes",
+        ],
         [
             [
                 fmt_int(requests),
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_requests_compared")),
                 fmt_int(cells),
                 fmt_int(avg_cells),
+                fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_max_cells_per_request")),
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_h2d_bytes")),
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_d2h_bytes")),
             ]
@@ -232,7 +237,7 @@ def render_report(
                 "score",
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_score_mismatches")),
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_first_mismatch_request")),
-                "max column score contract",
+                "max column score",
             ],
             [
                 "endpoint",
@@ -244,7 +249,7 @@ def render_report(
                 "scoreInfo",
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_scoreinfo_mismatches")),
                 fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_first_mismatch_request")),
-                "score/position records consumed by fastSIM emit",
+                "score/position records consumed downstream",
             ],
             [
                 "total",
@@ -259,41 +264,71 @@ def render_report(
     lines.append("")
     append_table(
         lines,
-        ["CPU reference", "Shadow total", "Kernel", "Transfer", "Estimated saved"],
+        [
+            "CPU reference",
+            "Shadow total",
+            "Kernel",
+            "H2D",
+            "D2H",
+            "Pack",
+            "Unpack",
+            "Net saved",
+        ],
         [
             [
                 fmt_seconds(shadow_cpu),
-                fmt_seconds(shadow_total_seconds),
-                fmt_seconds(mode_metric(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_kernel_seconds")),
-                (
-                    "h2d="
-                    + fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_h2d_bytes"))
-                    + ", d2h="
-                    + fmt_int(mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_d2h_bytes"))
-                ),
-                fmt_seconds(
-                    mode_metric(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_est_seconds_saved")
-                ),
+                fmt_seconds(shadow_diag_total),
+                fmt_seconds(shadow_kernel),
+                fmt_seconds(h2d_seconds),
+                fmt_seconds(d2h_seconds),
+                fmt_seconds(pack_seconds),
+                fmt_seconds(unpack_seconds),
+                fmt_seconds(net_saved),
             ]
         ],
     )
     lines.append("")
+    append_table(
+        lines,
+        ["Reference", "Seconds", "Percent of final stack"],
+        [
+            [
+                "final-stack exact-column extend",
+                fmt_seconds(exact_column_seconds),
+                percent(exact_column_seconds, final_total),
+            ],
+            [
+                "shadow CPU reference",
+                fmt_seconds(shadow_cpu),
+                percent(shadow_cpu, final_total),
+            ],
+            [
+                "shadow diagnostic total",
+                fmt_seconds(shadow_diag_total),
+                percent(shadow_diag_total, final_total),
+            ],
+        ],
+    )
+    lines.append("")
     lines.append(
-        "The current shadow is a CPU-side diagnostic contract check. "
-        "`kernel_seconds=0` means this PR does not add a new CUDA kernel; a later "
-        "real batched GPU opt-in would need to replace the diagnostic shadow "
-        "with a packed request/output implementation and validate the same fields."
+        "The current shadow is CPU-side diagnostic instrumentation. "
+        "`kernel_seconds`, `h2d_seconds`, and `d2h_seconds` remain zero because "
+        "this PR does not add a packed CUDA batch implementation. "
+        "`pack_seconds` and `unpack_seconds` characterize the diagnostic request "
+        "preparation and score/endpoint/scoreInfo reconstruction work."
     )
     lines.append(
-        "`estimated saved` is an upper-bound diagnostic for the exact-column "
-        "contract only. It is not a measured wall-clock speedup from this PR."
+        "`net_saved_seconds` is therefore a diagnostic upper-bound estimate against "
+        "the observed CPU exact-column reference, not a measured real-path wall-clock "
+        "saving. A real opt-in would need packed request/output buffers, transfer "
+        "timing, kernel timing, CPU validation, and fallback."
     )
     lines.append("")
     lines.append("## Boundaries")
     lines.append("")
     lines.append("```text")
     lines.append("real output changed: no")
-    lines.append("shadow output used by emit: no")
+    lines.append("shadow output used by fastSIM emit: no")
     lines.append("default enablement: no")
     lines.append("scoring/threshold/non-overlap change: no")
     lines.append("GPU AUTO policy change: no")
@@ -304,11 +339,12 @@ def render_report(
     lines.append("")
     if mode_count(results, "final_stack_shadow", "fasim_exact_column_batch_shadow_total_mismatches") == 0:
         lines.append(
-            "Decision: contract shadow is clean. A real batched GPU exact-column "
-            "extend remains a separate opt-in PR and should keep CPU validation/fallback."
+            "Decision: the performance shadow remains contract-clean. Real batched "
+            "exact-column extend should still be a separate default-off PR with "
+            "validate/fallback and measured transfer/kernel overhead."
         )
     else:
-        lines.append("Decision: mismatches appeared; debug the exact-column contract before performance work.")
+        lines.append("Decision: mismatches appeared; stop and debug the exact-column contract first.")
 
     report = "\n".join(lines)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -326,11 +362,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force-auto", action="store_true")
     parser.add_argument(
         "--work-dir",
-        default=str(ROOT / ".tmp" / "fasim_exact_column_extend_batch_shadow_benchmark"),
+        default=str(ROOT / ".tmp" / "fasim_exact_column_extend_batch_shadow_performance"),
     )
     parser.add_argument(
         "--output",
-        default=str(ROOT / "docs" / "fasim_exact_column_extend_batch_shadow.md"),
+        default=str(ROOT / "docs" / "fasim_exact_column_extend_batch_shadow_performance.md"),
     )
     parser.add_argument("--require-profile", action="store_true")
     parser.add_argument("--check", action="store_true")
