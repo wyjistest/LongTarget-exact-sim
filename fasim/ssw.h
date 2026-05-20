@@ -165,7 +165,10 @@ extern "C" {
 	uint64_t ssw_avx2_requested(void);
 	uint64_t ssw_avx2_compiled(void);
 	uint64_t ssw_avx2_active(void);
+	uint64_t ssw_avx2_mode(void);
 	uint64_t ssw_avx2_calls(void);
+	uint64_t ssw_avx2_forward_calls(void);
+	uint64_t ssw_avx2_reverse_calls(void);
 	uint64_t ssw_avx2_byte_calls(void);
 	uint64_t ssw_avx2_word_calls(void);
 	uint64_t ssw_avx2_fallback_calls(void);

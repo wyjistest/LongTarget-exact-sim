@@ -29,7 +29,10 @@ REQUIRED_KEYS = [
     "fasim_ssw_avx2_requested",
     "fasim_ssw_avx2_compiled",
     "fasim_ssw_avx2_active",
+    "fasim_ssw_avx2_mode",
     "fasim_ssw_avx2_calls",
+    "fasim_ssw_avx2_forward_calls",
+    "fasim_ssw_avx2_reverse_calls",
     "fasim_ssw_avx2_byte_calls",
     "fasim_ssw_avx2_word_calls",
     "fasim_ssw_avx2_fallback_calls",
@@ -71,6 +74,12 @@ def require_avx2_active(run: RunResult) -> None:
         raise RuntimeError("SSW AVX2 path was not active")
     if metric_int(run.metrics, "fasim_ssw_avx2_calls") <= 0:
         raise RuntimeError("SSW AVX2 path did not observe calls")
+    if metric_int(run.metrics, "fasim_ssw_avx2_mode") != 2:
+        raise RuntimeError("SSW AVX2 default mode was not forward_only")
+    if metric_int(run.metrics, "fasim_ssw_avx2_forward_calls") <= 0:
+        raise RuntimeError("SSW AVX2 forward path did not observe calls")
+    if metric_int(run.metrics, "fasim_ssw_avx2_reverse_calls") != 0:
+        raise RuntimeError("SSW AVX2 default mode unexpectedly used reverse calls")
     if metric_int(run.metrics, "fasim_ssw_avx2_byte_calls") <= 0:
         raise RuntimeError("SSW AVX2 byte path did not observe calls")
     if metric_int(run.metrics, "fasim_ssw_avx2_fallback_calls") != 0:

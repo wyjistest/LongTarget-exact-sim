@@ -33,7 +33,10 @@ AVX2_KEYS = [
     "fasim_ssw_avx2_requested",
     "fasim_ssw_avx2_compiled",
     "fasim_ssw_avx2_active",
+    "fasim_ssw_avx2_mode",
     "fasim_ssw_avx2_calls",
+    "fasim_ssw_avx2_forward_calls",
+    "fasim_ssw_avx2_reverse_calls",
     "fasim_ssw_avx2_byte_calls",
     "fasim_ssw_avx2_word_calls",
     "fasim_ssw_avx2_fallback_calls",
@@ -153,6 +156,7 @@ def make_modes() -> List[ModeSpec]:
     return [
         ModeSpec("sse2_auto_cache", "sse2", base_env),
         ModeSpec("avx2_compiled_auto_cache", "avx2", base_env),
+        ModeSpec("avx2_default_auto_cache", "avx2", dict(base_env, FASIM_SSW_AVX2="1")),
         ModeSpec(
             "avx2_all_auto_cache",
             "avx2",
@@ -220,6 +224,16 @@ def check_requested_mode(
             raise RuntimeError(f"{workload}/{mode}: AVX2 unexpectedly active")
         if calls != 0:
             raise RuntimeError(f"{workload}/{mode}: AVX2 unexpectedly saw calls")
+    if mode == "avx2_default_auto_cache" and mode_count(results, mode, "fasim_ssw_avx2_mode") != 2:
+        raise RuntimeError(f"{workload}/{mode}: AVX2 default mode was not forward_only")
+    if mode == "avx2_all_auto_cache" and mode_count(results, mode, "fasim_ssw_avx2_mode") != 1:
+        raise RuntimeError(f"{workload}/{mode}: AVX2 mode was not all")
+    if mode == "avx2_forward_only_auto_cache" and mode_count(results, mode, "fasim_ssw_avx2_mode") != 2:
+        raise RuntimeError(f"{workload}/{mode}: AVX2 mode was not forward_only")
+    if mode == "avx2_reverse_only_auto_cache" and mode_count(results, mode, "fasim_ssw_avx2_mode") != 3:
+        raise RuntimeError(f"{workload}/{mode}: AVX2 mode was not reverse_only")
+    if mode == "avx2_off_auto_cache" and mode_count(results, mode, "fasim_ssw_avx2_mode") != 4:
+        raise RuntimeError(f"{workload}/{mode}: AVX2 mode was not off")
 
 
 def check_results(all_results: Dict[str, Dict[str, List[RunResult]]]) -> None:
@@ -234,16 +248,26 @@ def check_results(all_results: Dict[str, Dict[str, List[RunResult]]]) -> None:
 
         if mode_count(results, "sse2_auto_cache", "fasim_ssw_avx2_compiled") != 0:
             raise RuntimeError(f"{workload}/sse2_auto_cache: AVX2 unexpectedly compiled")
+        if mode_count(results, "sse2_auto_cache", "fasim_ssw_avx2_mode") != 0:
+            raise RuntimeError(f"{workload}/sse2_auto_cache: AVX2 mode unexpectedly active")
         if mode_count(results, "avx2_compiled_auto_cache", "fasim_ssw_avx2_compiled") != 1:
             raise RuntimeError(f"{workload}/avx2_compiled_auto_cache: AVX2 not compiled")
         if mode_count(results, "avx2_compiled_auto_cache", "fasim_ssw_avx2_requested") != 0:
             raise RuntimeError(f"{workload}/avx2_compiled_auto_cache: AVX2 unexpectedly requested")
         if mode_count(results, "avx2_compiled_auto_cache", "fasim_ssw_avx2_active") != 0:
             raise RuntimeError(f"{workload}/avx2_compiled_auto_cache: AVX2 unexpectedly active")
+        if mode_count(results, "avx2_compiled_auto_cache", "fasim_ssw_avx2_mode") != 0:
+            raise RuntimeError(f"{workload}/avx2_compiled_auto_cache: AVX2 mode unexpectedly active")
 
         if mode_count(results, "avx2_all_auto_cache", "fasim_aligner_align_cpu_calls") <= 0:
             continue
         active_workloads += 1
+        check_requested_mode(
+            workload=workload,
+            results=results,
+            mode="avx2_default_auto_cache",
+            expect_active=True,
+        )
         check_requested_mode(
             workload=workload,
             results=results,
@@ -276,7 +300,8 @@ def display_mode(mode: str) -> str:
     return {
         "sse2_auto_cache": "SSE2 baseline",
         "avx2_compiled_auto_cache": "AVX2 compiled/off",
-        "avx2_all_auto_cache": "AVX2 all",
+        "avx2_default_auto_cache": "AVX2 default forward_only",
+        "avx2_all_auto_cache": "AVX2 explicit all",
         "avx2_forward_only_auto_cache": "AVX2 forward_only",
         "avx2_reverse_only_auto_cache": "AVX2 reverse_only",
         "avx2_off_auto_cache": "AVX2 mode=off",
@@ -287,6 +312,7 @@ def characterized_modes() -> List[str]:
     return [
         "sse2_auto_cache",
         "avx2_compiled_auto_cache",
+        "avx2_default_auto_cache",
         "avx2_all_auto_cache",
         "avx2_forward_only_auto_cache",
         "avx2_reverse_only_auto_cache",
@@ -312,8 +338,9 @@ def render_report(
     lines.append("")
     lines.append(
         "This report compares default SSE2, full AVX2, and hybrid AVX2 SSW "
-        "modes. `FASIM_SSW_AVX2_MODE=forward_only` uses AVX2 for the forward "
-        "score/end pass while keeping reverse-start and CIGAR on the legacy SSE2 path."
+        "modes. When `FASIM_SSW_AVX2=1` is requested without an explicit mode, "
+        "the default AVX2 submode is `forward_only`: AVX2 is used for the forward "
+        "score/end pass while reverse-start and CIGAR stay on the legacy SSE2 path."
     )
     lines.append("")
     lines.append(f"Each workload uses {repeat} run(s); tables report medians.")
@@ -369,8 +396,11 @@ def render_report(
                 "Mode",
                 "AVX2 requested",
                 "AVX2 compiled",
+                "AVX2 mode",
                 "AVX2 active",
                 "AVX2 calls",
+                "Forward calls",
+                "Reverse calls",
                 "Byte calls",
                 "Word calls",
                 "Fallbacks",
@@ -383,8 +413,11 @@ def render_report(
                     display_mode(mode),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_requested")),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_compiled")),
+                    fmt_int(mode_count(results, mode, "fasim_ssw_avx2_mode")),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_active")),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_calls")),
+                    fmt_int(mode_count(results, mode, "fasim_ssw_avx2_forward_calls")),
+                    fmt_int(mode_count(results, mode, "fasim_ssw_avx2_reverse_calls")),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_byte_calls")),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_word_calls")),
                     fmt_int(mode_count(results, mode, "fasim_ssw_avx2_fallback_calls")),
@@ -411,14 +444,16 @@ def render_report(
         if "hg38_chr21_H19" in all_results:
             hg38 = all_results["hg38_chr21_H19"]
             sse2_total = mode_metric(hg38, "sse2_auto_cache", "fasim_total_seconds")
+            default_total = mode_metric(hg38, "avx2_default_auto_cache", "fasim_total_seconds")
             all_total = mode_metric(hg38, "avx2_all_auto_cache", "fasim_total_seconds")
             forward_total = mode_metric(hg38, "avx2_forward_only_auto_cache", "fasim_total_seconds")
             reverse_total = mode_metric(hg38, "avx2_reverse_only_auto_cache", "fasim_total_seconds")
             lines.append(
                 "All characterized AVX2 modes are digest-clean with zero fallbacks. "
-                "`FASIM_SSW_AVX2_MODE=forward_only` is the fastest hg38 mode in this run: "
-                f"{fmt_seconds(forward_total)} vs {fmt_seconds(all_total)} for full AVX2 "
-                f"and {fmt_seconds(sse2_total)} for SSE2. "
+                "`FASIM_SSW_AVX2=1` now defaults to `forward_only`; explicit "
+                f"`forward_only` is {fmt_seconds(forward_total)} and the unset default is "
+                f"{fmt_seconds(default_total)} on hg38, versus {fmt_seconds(all_total)} "
+                f"for explicit full AVX2 and {fmt_seconds(sse2_total)} for SSE2. "
                 f"`reverse_only` regresses to {fmt_seconds(reverse_total)}, so reverse-start remains SSE2-preferred."
             )
         else:
@@ -431,6 +466,7 @@ def render_report(
     lines.append("")
     lines.append("```text")
     lines.append("default enabled: no")
+    lines.append("FASIM_SSW_AVX2=1 default submode: forward_only")
     lines.append("output semantic change: no")
     lines.append("scoring/threshold/non-overlap change: no")
     lines.append("GPU AUTO policy change: no")

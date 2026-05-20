@@ -131,7 +131,7 @@ std::string avx2_mode()
     const char *env = std::getenv("FASIM_SSW_AVX2_MODE");
     if (env == NULL || env[0] == '\0')
     {
-        return "all";
+        return "forward_only";
     }
     return env;
 }
@@ -172,6 +172,10 @@ int main()
         mode == "all" ? 3 : mode == "forward_only" ? 2 : mode == "reverse_only" ? 1 : 0;
     const uint64_t expected_word_calls =
         mode == "all" ? 2 : mode == "forward_only" ? 1 : mode == "reverse_only" ? 1 : 0;
+    const uint64_t expected_forward_calls =
+        mode == "all" ? 3 : mode == "forward_only" ? 3 : 0;
+    const uint64_t expected_reverse_calls =
+        mode == "all" ? 2 : mode == "reverse_only" ? 2 : 0;
 
     if (ssw_avx2_active() != (expect_active ? 1 : 0))
     {
@@ -190,6 +194,16 @@ int main()
                   << " expected_calls=" << (expected_byte_calls + expected_word_calls)
                   << " expected_byte=" << expected_byte_calls
                   << " expected_word=" << expected_word_calls << "\n";
+        std::exit(1);
+    }
+    if (ssw_avx2_forward_calls() != expected_forward_calls ||
+        ssw_avx2_reverse_calls() != expected_reverse_calls)
+    {
+        std::cerr << "AVX2 forward/reverse distribution mismatch for mode " << mode
+                  << ": forward=" << ssw_avx2_forward_calls()
+                  << " reverse=" << ssw_avx2_reverse_calls()
+                  << " expected_forward=" << expected_forward_calls
+                  << " expected_reverse=" << expected_reverse_calls << "\n";
         std::exit(1);
     }
     if (ssw_avx2_fallback_calls() != 0)

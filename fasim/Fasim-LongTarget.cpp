@@ -709,7 +709,10 @@ static inline void fasim_print_profile_stats(const FasimProfileStats &stats)
     cerr << "benchmark.fasim_ssw_avx2_requested=" << ssw_avx2_requested() << endl;
     cerr << "benchmark.fasim_ssw_avx2_compiled=" << ssw_avx2_compiled() << endl;
     cerr << "benchmark.fasim_ssw_avx2_active=" << ssw_avx2_active() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_mode=" << ssw_avx2_mode() << endl;
     cerr << "benchmark.fasim_ssw_avx2_calls=" << ssw_avx2_calls() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_forward_calls=" << ssw_avx2_forward_calls() << endl;
+    cerr << "benchmark.fasim_ssw_avx2_reverse_calls=" << ssw_avx2_reverse_calls() << endl;
     cerr << "benchmark.fasim_ssw_avx2_byte_calls=" << ssw_avx2_byte_calls() << endl;
     cerr << "benchmark.fasim_ssw_avx2_word_calls=" << ssw_avx2_word_calls() << endl;
     cerr << "benchmark.fasim_ssw_avx2_fallback_calls=" << ssw_avx2_fallback_calls() << endl;

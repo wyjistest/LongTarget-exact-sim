@@ -2,6 +2,8 @@
 
 This report compares default SSE2, full AVX2, and hybrid AVX2 SSW modes. `FASIM_SSW_AVX2_MODE=forward_only` uses AVX2 for the forward score/end pass while keeping reverse-start and CIGAR on the legacy SSE2 path.
 
+Policy follow-up: `FASIM_SSW_AVX2=1` remains default-off globally. When it is explicitly requested and `FASIM_SSW_AVX2_MODE` is unset, the AVX2 submode now defaults to `forward_only`. Explicit `FASIM_SSW_AVX2_MODE=all`, `reverse_only`, and `off` remain available for characterization.
+
 Each workload uses 3 run(s); tables report medians.
 
 ## tiny
@@ -74,10 +76,13 @@ Records: `6,546`
 
 All characterized AVX2 modes are digest-clean with zero fallbacks. `FASIM_SSW_AVX2_MODE=forward_only` is the fastest hg38 mode in this run: 52.588800 vs 54.014100 for full AVX2 and 57.808100 for SSE2. `reverse_only` regresses to 60.653700, so reverse-start remains SSE2-preferred.
 
+`FASIM_SSW_AVX2=1` now uses `forward_only` when no explicit mode is provided. AVX2 remains an optional add-on, not part of the core recommended speed stack.
+
 ## Boundaries
 
 ```text
 default enabled: no
+FASIM_SSW_AVX2=1 default submode: forward_only
 output semantic change: no
 scoring/threshold/non-overlap change: no
 GPU AUTO policy change: no

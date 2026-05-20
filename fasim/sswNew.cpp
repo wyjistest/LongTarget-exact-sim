@@ -145,6 +145,8 @@ struct _profile {
 
 static uint64_t g_ssw_avx2_active = 0;
 static uint64_t g_ssw_avx2_calls = 0;
+static uint64_t g_ssw_avx2_forward_calls = 0;
+static uint64_t g_ssw_avx2_reverse_calls = 0;
 static uint64_t g_ssw_avx2_byte_calls = 0;
 static uint64_t g_ssw_avx2_word_calls = 0;
 static uint64_t g_ssw_avx2_fallback_calls = 0;
@@ -165,6 +167,18 @@ static bool ssw_env_equals(const char* name, const char* expected) {
 	return env != NULL && strcmp(env, expected) == 0;
 }
 
+static bool ssw_avx2_mode_all_runtime() {
+	return ssw_env_equals("FASIM_SSW_AVX2_MODE", "all");
+}
+
+static uint64_t ssw_avx2_mode_runtime() {
+	if (!ssw_avx2_requested_runtime()) return 0;
+	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "all")) return 1;
+	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "reverse_only")) return 3;
+	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "off")) return 4;
+	return 2;
+}
+
 static bool ssw_avx2_forward_enabled_runtime() {
 	if (!ssw_avx2_requested_runtime()) return false;
 	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "off")) return false;
@@ -174,7 +188,7 @@ static bool ssw_avx2_forward_enabled_runtime() {
 static bool ssw_avx2_reverse_enabled_runtime() {
 	if (!ssw_avx2_requested_runtime()) return false;
 	if (ssw_env_equals("FASIM_SSW_AVX2_MODE", "off")) return false;
-	return !ssw_env_equals("FASIM_SSW_AVX2_MODE", "forward_only");
+	return ssw_avx2_mode_all_runtime() || ssw_env_equals("FASIM_SSW_AVX2_MODE", "reverse_only");
 }
 
 static void* ssw_aligned_calloc(size_t count, size_t size, size_t alignment) {
@@ -2002,6 +2016,7 @@ s_align* ssw_align(const s_profile* prof,
 #if defined(__AVX2__)
 		if (useAvx2Forward && prof->profile_byte_avx2 != NULL) {
 			++g_ssw_avx2_calls;
+			++g_ssw_avx2_forward_calls;
 			++g_ssw_avx2_byte_calls;
 			g_ssw_avx2_active = 1;
 			bests = sw_avx2_byte(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte_avx2, -1, prof->bias, maskLen);
@@ -2021,6 +2036,7 @@ s_align* ssw_align(const s_profile* prof,
 #if defined(__AVX2__)
 			if (useAvx2Forward && prof->profile_word_avx2 != NULL) {
 				++g_ssw_avx2_calls;
+				++g_ssw_avx2_forward_calls;
 				++g_ssw_avx2_word_calls;
 				g_ssw_avx2_active = 1;
 				bests = sw_avx2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word_avx2, -1, maskLen);
@@ -2045,6 +2061,7 @@ s_align* ssw_align(const s_profile* prof,
 #if defined(__AVX2__)
 		if (useAvx2Forward && prof->profile_word_avx2 != NULL) {
 			++g_ssw_avx2_calls;
+			++g_ssw_avx2_forward_calls;
 			++g_ssw_avx2_word_calls;
 			g_ssw_avx2_active = 1;
 			bests = sw_avx2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word_avx2, -1, maskLen);
@@ -2097,6 +2114,7 @@ s_align* ssw_align(const s_profile* prof,
 			vPAvx2 = qP_byte_avx2(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
 			if (vPAvx2 != NULL) {
 				++g_ssw_avx2_calls;
+				++g_ssw_avx2_reverse_calls;
 				++g_ssw_avx2_byte_calls;
 				g_ssw_avx2_active = 1;
 				bests_reverse = sw_avx2_byte(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vPAvx2, r->score1, prof->bias, maskLen);
@@ -2125,6 +2143,7 @@ s_align* ssw_align(const s_profile* prof,
 			vPAvx2 = qP_word_avx2(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
 			if (vPAvx2 != NULL) {
 				++g_ssw_avx2_calls;
+				++g_ssw_avx2_reverse_calls;
 				++g_ssw_avx2_word_calls;
 				g_ssw_avx2_active = 1;
 				bests_reverse = sw_avx2_word(ref, 1, r->ref_end1 + 1, r->read_end1 + 1, weight_gapO, weight_gapE, vPAvx2, r->score1, maskLen);
@@ -2205,8 +2224,20 @@ uint64_t ssw_avx2_active(void) {
 	return g_ssw_avx2_active;
 }
 
+uint64_t ssw_avx2_mode(void) {
+	return ssw_avx2_mode_runtime();
+}
+
 uint64_t ssw_avx2_calls(void) {
 	return g_ssw_avx2_calls;
+}
+
+uint64_t ssw_avx2_forward_calls(void) {
+	return g_ssw_avx2_forward_calls;
+}
+
+uint64_t ssw_avx2_reverse_calls(void) {
+	return g_ssw_avx2_reverse_calls;
 }
 
 uint64_t ssw_avx2_byte_calls(void) {

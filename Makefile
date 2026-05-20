@@ -559,7 +559,7 @@ benchmark-fasim-ssw-avx2-hybrid-modes:
 	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes
 	$(MAKE) FASIM_SIMD_FLAGS=-msse2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_sse2 build-fasim-cuda
 	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_avx2 build-fasim-cuda
-	python3 ./scripts/benchmark_fasim_ssw_avx2_hybrid_modes.py --sse2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_sse2 --avx2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_avx2 --synthetic-entries "$${FASIM_SSW_AVX2_SYNTHETIC_ENTRIES:-1,32}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_AVX2_REPEAT:-1}" --require-profile --check
+	python3 ./scripts/benchmark_fasim_ssw_avx2_hybrid_modes.py --sse2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_sse2 --avx2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_avx2 --synthetic-entries "$${FASIM_SSW_AVX2_SYNTHETIC_ENTRIES:-1,32}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_AVX2_REPEAT:-1}" --output "$${FASIM_SSW_AVX2_OUTPUT:-$(CURDIR)/docs/fasim_ssw_avx2_hybrid_modes.md}" --require-profile --check
 
 check-fasim-pre-align-filter-shadow:
 	$(MAKE) build-fasim-cuda
