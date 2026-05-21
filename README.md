@@ -135,6 +135,8 @@ advanced runtime notes.
   notes moved out of this README.
 - [Fasim Sharded Runner](docs/fasim_sharded_runner.md): contig-level
   process sharding, deterministic merge, and digest validation.
+- [Fasim Sharded Worker Scheduler](docs/fasim_sharded_worker_scheduler.md):
+  process-level worker assignment with optional GPU and CPU binding.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.

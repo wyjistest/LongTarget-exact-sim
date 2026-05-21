@@ -71,9 +71,31 @@ Optional add-ons can also be passed explicitly:
 --env FASIM_SSW_PROFILE_CONTEXT=1
 ```
 
-For later process-level GPU scheduling, the same runner can be launched under
-`CUDA_VISIBLE_DEVICES=<id>` and `taskset -c <cores>`. Scheduler logic is not part
-of this first PR.
+For process-level worker scheduling, pass explicit worker options. The runner
+still launches ordinary Fasim subprocesses; it does not add an in-process
+multi-GPU runtime.
+
+```bash
+python3 ./scripts/fasim_sharded_runner.py \
+  --fasim-bin ./fasim_longtarget_cuda \
+  --target targets.fa \
+  --rna H19.fa \
+  --rule 1 \
+  --work-dir .tmp/fasim_sharded \
+  --output-mode lite \
+  --workers 2 \
+  --gpu-ids 0,1 \
+  --cpu-core-ranges 0-7,8-15 \
+  --env FASIM_TRANSFERSTRING_TABLE=1 \
+  --env FASIM_GPU_DP_COLUMN_AUTO=1 \
+  --env FASIM_SSW_PROFILE_CACHE=1 \
+  --env FASIM_EXACT_COLUMN_EXTEND_BATCH=1
+```
+
+`--gpu-ids` values are assigned to workers as `CUDA_VISIBLE_DEVICES`. CPU core
+ranges are optional and use `taskset`; provide one range per worker when used.
+When estimated DP cells are unavailable, shard assignment falls back to target
+sequence length.
 
 ## Merge Semantics
 
@@ -93,11 +115,16 @@ Run the local check:
 
 ```bash
 make check-fasim-sharded-runner
+make check-fasim-sharded-scheduler
 ```
 
 The check builds `fasim_longtarget_x86`, creates a deterministic two-contig
 fixture from `testDNA.fa`, runs Fasim once on the multi-contig target, runs Fasim
 once per contig shard, merges shard output, and verifies digest equality.
+
+The scheduler check runs both the baseline sharded mode and a two-worker
+scheduled mode, then verifies that both merged outputs have the same canonical
+digest and record counts.
 
 Expected report fields include:
 
@@ -107,6 +134,12 @@ shard_ids
 per_shard[*].target_name
 per_shard[*].records
 per_shard[*].digest
+worker_count
+gpu_ids
+cpu_core_ranges
+per_worker[*].worker_id
+per_worker[*].gpu_id
+per_worker[*].shard_ids
 sharded_records
 merged_records
 duplicate_records_removed
@@ -129,10 +162,9 @@ normalization before adding any scheduler or multi-GPU work.
 ## Next Step
 
 After digest equality is stable on representative multi-contig fixtures, the
-next PR should add a process-level worker scheduler:
+next PR should characterize process-level scaling:
 
-- Assign shards by estimated work, preferably observed or estimated DP cells.
-- Launch one Fasim process per worker.
-- Set `CUDA_VISIBLE_DEVICES` per worker.
-- Optionally pin CPU cores with `taskset`.
+- Compare one, two, and four workers where hardware is available.
+- Record per-worker wall time, CPU/GPU assignment, records, digests, and
+  fallbacks.
 - Keep merged digest validation as the release gate.
