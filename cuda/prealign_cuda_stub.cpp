@@ -100,3 +100,30 @@ bool prealign_cuda_find_column_maxima_debug(const PreAlignCudaQueryHandle &handl
   }
   return false;
 }
+
+bool prealign_cuda_find_column_maxima_batch(const PreAlignCudaQueryHandle &handle,
+                                            const uint8_t *encodedTargetsHost,
+                                            int taskCount,
+                                            int targetLength,
+                                            vector<int> *outColumnMaxima,
+                                            PreAlignCudaBatchResult *batchResult,
+                                            string *errorOut)
+{
+  (void)handle;
+  (void)encodedTargetsHost;
+  (void)taskCount;
+  (void)targetLength;
+  if(outColumnMaxima != NULL)
+  {
+    outColumnMaxima->clear();
+  }
+  if(batchResult != NULL)
+  {
+    *batchResult = PreAlignCudaBatchResult();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
