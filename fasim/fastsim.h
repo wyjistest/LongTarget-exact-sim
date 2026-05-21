@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <map>
+#include <mutex>
 #include "ssw_cpp.h"
 #include "ssw.h"
 #include "sim.h"
@@ -57,6 +58,18 @@ struct FasimFastSimExtendProfileStats
 		alignerAlignBypassShadowScoreMismatches(0),
 		alignerAlignBypassShadowCoordinateMismatches(0),
 		alignerAlignBypassShadowCigarMissingRecords(0),
+		alignerResultCacheShadowEnabled(0),
+		alignerResultCacheCalls(0),
+		alignerResultCacheUniqueKeys(0),
+		alignerResultCacheDuplicateCalls(0),
+		alignerResultCacheDuplicateCells(0),
+		alignerResultCacheEstSavedNanoseconds(0),
+		alignerResultCacheMemoryBytesEst(0),
+		alignerResultCacheScoreMismatches(0),
+		alignerResultCacheEndpointMismatches(0),
+		alignerResultCacheCigarMismatches(0),
+		alignerResultCacheDigestMismatches(0),
+		alignerResultCacheFirstMismatchKey(0),
 		alignBatchShadowEnabled(0),
 		alignBatchShadowSupported(0),
 		alignBatchShadowDisabledReason(0),
@@ -201,6 +214,30 @@ struct FasimFastSimExtendProfileStats
 		fastSIMAlignPrecomputeFullReplayEnabled(0),
 		fastSIMAlignPrecomputeReplayRequests(0),
 		fastSIMAlignPrecomputeMemoryBytes(0),
+		fastSIMAlignPipelineShadowEnabled(0),
+		fastSIMAlignPipelineLegacyRequests(0),
+		fastSIMAlignPipelineSegments(0),
+		fastSIMAlignPipelineBarriers(0),
+		fastSIMAlignPipelineSegmentP50(0),
+		fastSIMAlignPipelineSegmentP90(0),
+		fastSIMAlignPipelineSegmentP99(0),
+		fastSIMAlignPipelineSegmentMax(0),
+		fastSIMAlignPipelineSegmentLen1(0),
+		fastSIMAlignPipelineSegmentLen2(0),
+		fastSIMAlignPipelineSegmentLen3(0),
+		fastSIMAlignPipelineSegmentLen4(0),
+		fastSIMAlignPipelineSegmentLen5Plus(0),
+		fastSIMAlignPipelineRequestsBatchable2(0),
+		fastSIMAlignPipelineRequestsBatchable4(0),
+		fastSIMAlignPipelineRequestsBatchable8(0),
+		fastSIMAlignPipelineRequestsBatchable16(0),
+		fastSIMAlignPipelineEstParallel2Nanoseconds(0),
+		fastSIMAlignPipelineEstParallel4Nanoseconds(0),
+		fastSIMAlignPipelineEstParallel8Nanoseconds(0),
+		fastSIMAlignPipelineCandidateStateMismatches(0),
+		fastSIMAlignPipelineEmittedRecordMismatches(0),
+		fastSIMAlignPipelineCigarMismatches(0),
+		fastSIMAlignPipelineDigestMismatches(0),
 		accelignEndpointEnvelopeShadowEnabled(0),
 		accelignEndpointEnvelopeRequests(0),
 		accelignEndpointEnvelopeRequestsCompared(0),
@@ -337,6 +374,18 @@ struct FasimFastSimExtendProfileStats
 	uint64_t alignerAlignBypassShadowScoreMismatches;
 	uint64_t alignerAlignBypassShadowCoordinateMismatches;
 	uint64_t alignerAlignBypassShadowCigarMissingRecords;
+	uint64_t alignerResultCacheShadowEnabled;
+	uint64_t alignerResultCacheCalls;
+	uint64_t alignerResultCacheUniqueKeys;
+	uint64_t alignerResultCacheDuplicateCalls;
+	uint64_t alignerResultCacheDuplicateCells;
+	uint64_t alignerResultCacheEstSavedNanoseconds;
+	uint64_t alignerResultCacheMemoryBytesEst;
+	uint64_t alignerResultCacheScoreMismatches;
+	uint64_t alignerResultCacheEndpointMismatches;
+	uint64_t alignerResultCacheCigarMismatches;
+	uint64_t alignerResultCacheDigestMismatches;
+	uint64_t alignerResultCacheFirstMismatchKey;
 	uint64_t alignBatchShadowEnabled;
 	uint64_t alignBatchShadowSupported;
 	uint64_t alignBatchShadowDisabledReason;
@@ -481,6 +530,30 @@ struct FasimFastSimExtendProfileStats
 	uint64_t fastSIMAlignPrecomputeFullReplayEnabled;
 	uint64_t fastSIMAlignPrecomputeReplayRequests;
 	uint64_t fastSIMAlignPrecomputeMemoryBytes;
+	uint64_t fastSIMAlignPipelineShadowEnabled;
+	uint64_t fastSIMAlignPipelineLegacyRequests;
+	uint64_t fastSIMAlignPipelineSegments;
+	uint64_t fastSIMAlignPipelineBarriers;
+	uint64_t fastSIMAlignPipelineSegmentP50;
+	uint64_t fastSIMAlignPipelineSegmentP90;
+	uint64_t fastSIMAlignPipelineSegmentP99;
+	uint64_t fastSIMAlignPipelineSegmentMax;
+	uint64_t fastSIMAlignPipelineSegmentLen1;
+	uint64_t fastSIMAlignPipelineSegmentLen2;
+	uint64_t fastSIMAlignPipelineSegmentLen3;
+	uint64_t fastSIMAlignPipelineSegmentLen4;
+	uint64_t fastSIMAlignPipelineSegmentLen5Plus;
+	uint64_t fastSIMAlignPipelineRequestsBatchable2;
+	uint64_t fastSIMAlignPipelineRequestsBatchable4;
+	uint64_t fastSIMAlignPipelineRequestsBatchable8;
+	uint64_t fastSIMAlignPipelineRequestsBatchable16;
+	uint64_t fastSIMAlignPipelineEstParallel2Nanoseconds;
+	uint64_t fastSIMAlignPipelineEstParallel4Nanoseconds;
+	uint64_t fastSIMAlignPipelineEstParallel8Nanoseconds;
+	uint64_t fastSIMAlignPipelineCandidateStateMismatches;
+	uint64_t fastSIMAlignPipelineEmittedRecordMismatches;
+	uint64_t fastSIMAlignPipelineCigarMismatches;
+	uint64_t fastSIMAlignPipelineDigestMismatches;
 	uint64_t accelignEndpointEnvelopeShadowEnabled;
 	uint64_t accelignEndpointEnvelopeRequests;
 	uint64_t accelignEndpointEnvelopeRequestsCompared;
@@ -780,6 +853,34 @@ inline bool fasim_fastSIM_align_precompute_independence_enabled_runtime()
 	static const bool enabled = []()
 	{
 		const char* env = getenv("FASIM_FASTSIM_ALIGN_PRECOMPUTE_INDEPENDENCE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_fastSIM_align_pipeline_shadow_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_FASTSIM_ALIGN_PIPELINE_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_aligner_result_cache_shadow_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_ALIGNER_RESULT_CACHE_SHADOW");
 		if (env == NULL || env[0] == '\0')
 		{
 			return false;
@@ -1368,6 +1469,29 @@ struct FasimAlignBatchShadowRequest
 	int scoreInfoPosition;
 	uint8_t cpuScorePass;
 	uint8_t cpuBestEligible;
+	uint64_t cpuNanoseconds;
+};
+
+struct FasimAlignerResultCacheShadowValue
+{
+	FasimAlignerResultCacheShadowValue() :
+		score(0),
+		refBegin(0),
+		refEnd(0),
+		queryBegin(0),
+		queryEnd(0),
+		cells(0),
+		cpuNanoseconds(0)
+	{
+	}
+
+	int score;
+	int refBegin;
+	int refEnd;
+	int queryBegin;
+	int queryEnd;
+	string cigarString;
+	uint64_t cells;
 	uint64_t cpuNanoseconds;
 };
 
@@ -2208,6 +2332,183 @@ inline void fasim_accelign_score_precheck_shadow_record_request(
 	requests.push_back(request);
 }
 
+inline uint64_t fasim_aligner_result_cache_hash_bytes(const char* data, size_t size)
+{
+	uint64_t hash = 1469598103934665603ULL;
+	for (size_t i = 0; i < size; ++i)
+	{
+		hash ^= static_cast<uint8_t>(data[i]);
+		hash *= 1099511628211ULL;
+	}
+	return hash;
+}
+
+inline void fasim_aligner_result_cache_hash_append_uint64(uint64_t &hash,
+                                                          uint64_t value)
+{
+	for (int i = 0; i < 8; ++i)
+	{
+		hash ^= static_cast<uint8_t>((value >> (i * 8)) & 0xff);
+		hash *= 1099511628211ULL;
+	}
+}
+
+inline uint64_t fasim_aligner_result_cache_request_hash(
+	const string &query,
+	const string &target,
+	const StripedSmithWaterman::Filter &filter,
+	const StripedSmithWaterman::Aligner &aligner,
+	int32_t maskLen)
+{
+	uint64_t hash =
+		fasim_aligner_result_cache_hash_bytes(query.data(), query.size());
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		static_cast<uint64_t>(query.size()));
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		static_cast<uint64_t>(target.size()));
+	for (size_t i = 0; i < target.size(); ++i)
+	{
+		hash ^= static_cast<uint8_t>(target[i]);
+		hash *= 1099511628211ULL;
+	}
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		filter.report_begin_position ? 1ULL : 0ULL);
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		filter.report_cigar ? 1ULL : 0ULL);
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		static_cast<uint64_t>(filter.score_filter));
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		static_cast<uint64_t>(filter.distance_filter));
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		static_cast<uint64_t>(maskLen));
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		aligner.ScoringHashForCacheKey());
+	fasim_aligner_result_cache_hash_append_uint64(hash,
+		static_cast<uint64_t>(ssw_avx2_mode()));
+	return hash;
+}
+
+inline string fasim_aligner_result_cache_make_key(
+	const string &query,
+	const string &target,
+	const StripedSmithWaterman::Filter &filter,
+	const StripedSmithWaterman::Aligner &aligner,
+	int32_t maskLen)
+{
+	const uint64_t queryHash =
+		fasim_aligner_result_cache_hash_bytes(query.data(), query.size());
+	const uint64_t targetHash =
+		fasim_aligner_result_cache_hash_bytes(target.data(), target.size());
+	std::ostringstream key;
+	key << "q_len=" << query.size()
+	    << "|q_hash=" << queryHash
+	    << "|t_len=" << target.size()
+	    << "|t_hash=" << targetHash
+	    << "|pos=" << (filter.report_begin_position ? 1 : 0)
+	    << "|cigar=" << (filter.report_cigar ? 1 : 0)
+	    << "|score=" << filter.score_filter
+	    << "|dist=" << filter.distance_filter
+	    << "|mask=" << maskLen
+	    << "|gapO=" << static_cast<int>(aligner.GapOpeningPenaltyForCacheKey())
+	    << "|gapE=" << static_cast<int>(aligner.GapExtendingPenaltyForCacheKey())
+	    << "|scoring_hash=" << aligner.ScoringHashForCacheKey()
+	    << "|avx2_mode=" << ssw_avx2_mode();
+	return key.str();
+}
+
+inline std::map<string, FasimAlignerResultCacheShadowValue>&
+fasim_aligner_result_cache_shadow_cache()
+{
+	static std::map<string, FasimAlignerResultCacheShadowValue> cache;
+	return cache;
+}
+
+inline std::mutex& fasim_aligner_result_cache_shadow_mutex()
+{
+	static std::mutex cacheMutex;
+	return cacheMutex;
+}
+
+inline void fasim_aligner_result_cache_shadow_record(
+	std::map<string, FasimAlignerResultCacheShadowValue> &cache,
+	std::mutex &cacheMutex,
+	FasimFastSimExtendProfileStats *profileStats,
+	const string &query,
+	const string &target,
+	const StripedSmithWaterman::Filter &filter,
+	const StripedSmithWaterman::Aligner &aligner,
+	int32_t maskLen,
+	const StripedSmithWaterman::Alignment &cpuAlignment,
+	uint64_t cpuNanoseconds)
+{
+	if (profileStats == NULL)
+	{
+		return;
+	}
+
+	const uint64_t cells =
+		static_cast<uint64_t>(query.size()) * static_cast<uint64_t>(target.size());
+	const uint64_t keyHash =
+		fasim_aligner_result_cache_request_hash(query, target, filter, aligner, maskLen);
+	const string key =
+		fasim_aligner_result_cache_make_key(query, target, filter, aligner, maskLen);
+
+	std::lock_guard<std::mutex> lock(cacheMutex);
+	profileStats->alignerResultCacheShadowEnabled = 1;
+	++profileStats->alignerResultCacheCalls;
+
+	std::map<string, FasimAlignerResultCacheShadowValue>::const_iterator found =
+		cache.find(key);
+	if (found == cache.end())
+	{
+		FasimAlignerResultCacheShadowValue value;
+		value.score = static_cast<int>(cpuAlignment.sw_score);
+		value.refBegin = cpuAlignment.ref_begin;
+		value.refEnd = cpuAlignment.ref_end;
+		value.queryBegin = cpuAlignment.query_begin;
+		value.queryEnd = cpuAlignment.query_end;
+		value.cigarString = cpuAlignment.cigar_string;
+		value.cells = cells;
+		value.cpuNanoseconds = cpuNanoseconds;
+		cache.insert(std::make_pair(key, value));
+		++profileStats->alignerResultCacheUniqueKeys;
+		profileStats->alignerResultCacheMemoryBytesEst +=
+			static_cast<uint64_t>(sizeof(FasimAlignerResultCacheShadowValue)) +
+			static_cast<uint64_t>(key.capacity()) +
+			static_cast<uint64_t>(value.cigarString.capacity());
+		return;
+	}
+
+	++profileStats->alignerResultCacheDuplicateCalls;
+	profileStats->alignerResultCacheDuplicateCells += cells;
+	profileStats->alignerResultCacheEstSavedNanoseconds += cpuNanoseconds;
+
+	const FasimAlignerResultCacheShadowValue &first = found->second;
+	bool mismatch = false;
+	if (first.score != static_cast<int>(cpuAlignment.sw_score))
+	{
+		++profileStats->alignerResultCacheScoreMismatches;
+		mismatch = true;
+	}
+	if (first.refBegin != cpuAlignment.ref_begin ||
+	    first.refEnd != cpuAlignment.ref_end ||
+	    first.queryBegin != cpuAlignment.query_begin ||
+	    first.queryEnd != cpuAlignment.query_end)
+	{
+		++profileStats->alignerResultCacheEndpointMismatches;
+		mismatch = true;
+	}
+	if (first.cigarString != cpuAlignment.cigar_string)
+	{
+		++profileStats->alignerResultCacheCigarMismatches;
+		mismatch = true;
+	}
+	if (mismatch && profileStats->alignerResultCacheFirstMismatchKey == 0)
+	{
+		profileStats->alignerResultCacheFirstMismatchKey = keyHash;
+	}
+}
+
 inline bool fasim_fastSIM_precompute_alignment_same(
 	const FasimAlignBatchShadowRequest &request,
 	const StripedSmithWaterman::Alignment &sideAlignment)
@@ -2245,6 +2546,189 @@ inline uint64_t fasim_fastSIM_precompute_request_memory_bytes(
 		bytes += static_cast<uint64_t>(requests[i].cpuCigarString.capacity());
 	}
 	return bytes;
+}
+
+inline void fasim_fastSIM_pipeline_record_segment_length(
+	FasimFastSimExtendProfileStats *profileStats,
+	uint64_t segmentLength)
+{
+	if (segmentLength <= 1)
+	{
+		++profileStats->fastSIMAlignPipelineSegmentLen1;
+	}
+	else if (segmentLength == 2)
+	{
+		++profileStats->fastSIMAlignPipelineSegmentLen2;
+	}
+	else if (segmentLength == 3)
+	{
+		++profileStats->fastSIMAlignPipelineSegmentLen3;
+	}
+	else if (segmentLength == 4)
+	{
+		++profileStats->fastSIMAlignPipelineSegmentLen4;
+	}
+	else
+	{
+		++profileStats->fastSIMAlignPipelineSegmentLen5Plus;
+	}
+}
+
+inline uint64_t fasim_fastSIM_pipeline_percentile_from_histogram(
+	uint64_t totalSegments,
+	uint64_t len1,
+	uint64_t len2,
+	uint64_t len3,
+	uint64_t len4,
+	uint64_t len5Plus,
+	uint64_t percentile)
+{
+	if (totalSegments == 0)
+	{
+		return 0;
+	}
+	uint64_t target = (totalSegments * percentile + 99) / 100;
+	if (target == 0)
+	{
+		target = 1;
+	}
+	if (target <= len1)
+	{
+		return 1;
+	}
+	target -= len1;
+	if (target <= len2)
+	{
+		return 2;
+	}
+	target -= len2;
+	if (target <= len3)
+	{
+		return 3;
+	}
+	target -= len3;
+	if (target <= len4)
+	{
+		return 4;
+	}
+	(void)len5Plus;
+	return 5;
+}
+
+inline void fasim_fastSIM_pipeline_add_batchable_request_count(
+	uint64_t segmentLength,
+	uint64_t threshold,
+	uint64_t &slot)
+{
+	if (segmentLength >= threshold)
+	{
+		slot += segmentLength;
+	}
+}
+
+inline uint64_t fasim_fastSIM_pipeline_estimate_parallel_nanoseconds(
+	const std::vector<uint64_t> &segmentNanoseconds,
+	uint64_t threads)
+{
+	uint64_t total = 0;
+	for (size_t i = 0; i < segmentNanoseconds.size(); ++i)
+	{
+		total += (segmentNanoseconds[i] + threads - 1) / threads;
+	}
+	return total;
+}
+
+inline void fasim_fastSIM_align_pipeline_shadow_finalize(
+	const std::vector<FasimAlignBatchShadowRequest> &requests,
+	const std::vector<FasimFastSIMAlignPrecomputeCandidateRecord> &candidateRecords,
+	FasimFastSimExtendProfileStats *profileStats)
+{
+	if (profileStats == NULL || !fasim_fastSIM_align_pipeline_shadow_enabled_runtime())
+	{
+		return;
+	}
+	profileStats->fastSIMAlignPipelineShadowEnabled = 1;
+	profileStats->fastSIMAlignPipelineLegacyRequests +=
+		static_cast<uint64_t>(requests.size());
+	if (requests.empty())
+	{
+		return;
+	}
+
+	std::vector<uint64_t> segmentNanoseconds;
+	segmentNanoseconds.assign(candidateRecords.size(), 0);
+	for (size_t requestIndex = 0; requestIndex < requests.size(); ++requestIndex)
+	{
+		const uint64_t candidateId = requests[requestIndex].candidateId;
+		if (candidateId == 0 ||
+		    candidateId > static_cast<uint64_t>(candidateRecords.size()))
+		{
+			continue;
+		}
+		segmentNanoseconds[static_cast<size_t>(candidateId - 1)] +=
+			requests[requestIndex].cpuNanoseconds;
+	}
+	for (size_t i = 0; i < candidateRecords.size(); ++i)
+	{
+		const FasimFastSIMAlignPrecomputeCandidateRecord &record = candidateRecords[i];
+		if (record.totalAlignCalls == 0)
+		{
+			continue;
+		}
+		++profileStats->fastSIMAlignPipelineSegments;
+		++profileStats->fastSIMAlignPipelineBarriers;
+		fasim_fastSIM_pipeline_record_segment_length(profileStats, record.totalAlignCalls);
+		if (record.totalAlignCalls > profileStats->fastSIMAlignPipelineSegmentMax)
+		{
+			profileStats->fastSIMAlignPipelineSegmentMax = record.totalAlignCalls;
+		}
+		fasim_fastSIM_pipeline_add_batchable_request_count(
+			record.totalAlignCalls, 2, profileStats->fastSIMAlignPipelineRequestsBatchable2);
+		fasim_fastSIM_pipeline_add_batchable_request_count(
+			record.totalAlignCalls, 4, profileStats->fastSIMAlignPipelineRequestsBatchable4);
+		fasim_fastSIM_pipeline_add_batchable_request_count(
+			record.totalAlignCalls, 8, profileStats->fastSIMAlignPipelineRequestsBatchable8);
+		fasim_fastSIM_pipeline_add_batchable_request_count(
+			record.totalAlignCalls, 16, profileStats->fastSIMAlignPipelineRequestsBatchable16);
+	}
+	if (profileStats->fastSIMAlignPipelineSegments == 0)
+	{
+		return;
+	}
+
+	profileStats->fastSIMAlignPipelineSegmentP50 =
+		fasim_fastSIM_pipeline_percentile_from_histogram(
+			profileStats->fastSIMAlignPipelineSegments,
+			profileStats->fastSIMAlignPipelineSegmentLen1,
+			profileStats->fastSIMAlignPipelineSegmentLen2,
+			profileStats->fastSIMAlignPipelineSegmentLen3,
+			profileStats->fastSIMAlignPipelineSegmentLen4,
+			profileStats->fastSIMAlignPipelineSegmentLen5Plus,
+			50);
+	profileStats->fastSIMAlignPipelineSegmentP90 =
+		fasim_fastSIM_pipeline_percentile_from_histogram(
+			profileStats->fastSIMAlignPipelineSegments,
+			profileStats->fastSIMAlignPipelineSegmentLen1,
+			profileStats->fastSIMAlignPipelineSegmentLen2,
+			profileStats->fastSIMAlignPipelineSegmentLen3,
+			profileStats->fastSIMAlignPipelineSegmentLen4,
+			profileStats->fastSIMAlignPipelineSegmentLen5Plus,
+			90);
+	profileStats->fastSIMAlignPipelineSegmentP99 =
+		fasim_fastSIM_pipeline_percentile_from_histogram(
+			profileStats->fastSIMAlignPipelineSegments,
+			profileStats->fastSIMAlignPipelineSegmentLen1,
+			profileStats->fastSIMAlignPipelineSegmentLen2,
+			profileStats->fastSIMAlignPipelineSegmentLen3,
+			profileStats->fastSIMAlignPipelineSegmentLen4,
+			profileStats->fastSIMAlignPipelineSegmentLen5Plus,
+			99);
+	profileStats->fastSIMAlignPipelineEstParallel2Nanoseconds +=
+		fasim_fastSIM_pipeline_estimate_parallel_nanoseconds(segmentNanoseconds, 2);
+	profileStats->fastSIMAlignPipelineEstParallel4Nanoseconds +=
+		fasim_fastSIM_pipeline_estimate_parallel_nanoseconds(segmentNanoseconds, 4);
+	profileStats->fastSIMAlignPipelineEstParallel8Nanoseconds +=
+		fasim_fastSIM_pipeline_estimate_parallel_nanoseconds(segmentNanoseconds, 8);
 }
 
 inline void fasim_fastSIM_align_precompute_derive_requests_from_scoreinfo(
@@ -2315,12 +2799,15 @@ inline void fasim_fastSIM_align_precompute_shadow_record_request(
 	const uint64_t requestIndex = profileStats->fastSIMAlignPrecomputeRequests - 1;
 	const bool independenceEnabled =
 		fasim_fastSIM_align_precompute_independence_enabled_runtime();
-	if (!independenceEnabled &&
+	const bool pipelineShadowEnabled =
+		fasim_fastSIM_align_pipeline_shadow_enabled_runtime();
+	const bool fullStreamRequired = independenceEnabled || pipelineShadowEnabled;
+	if (!fullStreamRequired &&
 	    stride > 1 && (requestIndex % static_cast<uint64_t>(stride)) != 0)
 	{
 		return;
 	}
-	if (!independenceEnabled &&
+	if (!fullStreamRequired &&
 	    static_cast<uint64_t>(requests.size()) >= static_cast<uint64_t>(maxRequests))
 	{
 		return;
@@ -4078,6 +4565,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		fastSIMAlignPrecomputeCandidateRecords;
 	const bool preAlignShadowEnabled =
 		profileStats != NULL && fasim_pre_align_filter_shadow_enabled_runtime();
+	const bool alignerResultCacheShadowEnabled =
+		profileStats != NULL && fasim_aligner_result_cache_shadow_enabled_runtime();
 	const bool alignBatchShadowEnabled =
 		profileStats != NULL && fasim_align_batch_shadow_enabled_runtime();
 	const bool accelignShadowEnabled =
@@ -4096,10 +4585,13 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		accelignScorePrecheckShadowEnabled || accelignScorePrecheckContractShadowEnabled;
 	const bool fastSIMAlignPrecomputeIndependenceEnabled =
 		profileStats != NULL && fasim_fastSIM_align_precompute_independence_enabled_runtime();
+	const bool fastSIMAlignPipelineShadowEnabled =
+		profileStats != NULL && fasim_fastSIM_align_pipeline_shadow_enabled_runtime();
 	const bool fastSIMAlignPrecomputeShadowEnabled =
 		profileStats != NULL &&
 		(fasim_fastSIM_align_precompute_shadow_enabled_runtime() ||
-		 fastSIMAlignPrecomputeIndependenceEnabled);
+		 fastSIMAlignPrecomputeIndependenceEnabled ||
+		 fastSIMAlignPipelineShadowEnabled);
 	const bool alignerCpuInternalsEnabled =
 		profileStats != NULL && fasim_aligner_align_cpu_internals_enabled_runtime();
 	if (profileStats != NULL)
@@ -4115,6 +4607,10 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		{
 			profileStats->preAlignFilterShadowEnabled = 1;
 			preAlignShadowRecords.reserve(finalScoreInfo.size());
+		}
+		if (alignerResultCacheShadowEnabled)
+		{
+			profileStats->alignerResultCacheShadowEnabled = 1;
 		}
 		if (alignBatchShadowEnabled)
 		{
@@ -4172,6 +4668,11 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			fastSIMAlignPrecomputeShadowRequests.reserve(
 				static_cast<size_t>(fasim_fastSIM_align_precompute_shadow_max_requests_runtime()));
 			fastSIMAlignPrecomputeCandidateRecords.reserve(finalScoreInfo.size());
+			if (fastSIMAlignPipelineShadowEnabled)
+			{
+				profileStats->fastSIMAlignPipelineShadowEnabled = 1;
+				fastSIMAlignPrecomputeShadowRequests.reserve(finalScoreInfo.size() * 5);
+			}
 			if (fastSIMAlignPrecomputeIndependenceEnabled)
 			{
 				profileStats->fastSIMAlignPrecomputeIndependenceEnabled = 1;
@@ -4327,6 +4828,20 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					}
 					fasim_fastsim_profile_add_elapsed(profileStats->alignmentReconstructNanoseconds,
 					                                  alignStart);
+					if (alignerResultCacheShadowEnabled)
+					{
+						fasim_aligner_result_cache_shadow_record(
+							fasim_aligner_result_cache_shadow_cache(),
+							fasim_aligner_result_cache_shadow_mutex(),
+							profileStats,
+							strA,
+							smallSeq,
+							filter,
+							aligner,
+							maskLen,
+							alignment,
+							alignElapsed);
+					}
 					if (alignBatchShadowEnabled)
 					{
 						fasim_align_batch_shadow_record_request(alignBatchShadowRequests,
@@ -4916,6 +5431,13 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		}
 		if (fastSIMAlignPrecomputeShadowEnabled)
 		{
+			if (fastSIMAlignPipelineShadowEnabled)
+			{
+				fasim_fastSIM_align_pipeline_shadow_finalize(
+					fastSIMAlignPrecomputeShadowRequests,
+					fastSIMAlignPrecomputeCandidateRecords,
+					profileStats);
+			}
 			fasim_fastSIM_align_precompute_shadow_finalize(
 				aligner,
 				filter,
