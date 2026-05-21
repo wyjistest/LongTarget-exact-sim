@@ -104,16 +104,56 @@ FASIM_TARGET ?= fasim_longtarget_x86
 FASIM_CUDA_TARGET ?= fasim_longtarget_cuda
 FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
+FASIM_ACCELIGN_ENABLE ?= 0
+FASIM_ACCELIGN_DIR ?=
+FASIM_ACCELIGN_CUDA_ARCH ?= $(CUDA_ARCH)
+FASIM_ACCELIGN_NVCCFLAGS ?= -O3 -std=c++17 --extended-lambda -DNDEBUG -Xcompiler "--signed-char" --generate-code=arch=compute_$(FASIM_ACCELIGN_CUDA_ARCH),code=sm_$(FASIM_ACCELIGN_CUDA_ARCH) -DFASIM_ACCELIGN_CUDA_ARCH=$(shell expr $(FASIM_ACCELIGN_CUDA_ARCH) \* 10)
+FASIM_PARASAIL_ENABLE ?= 0
+FASIM_PARASAIL_DIR ?=
+FASIM_PARASAIL_CPPFLAGS ?=
+FASIM_PARASAIL_LDFLAGS ?= -lparasail
+ifeq ($(FASIM_ACCELIGN_ENABLE),1)
+  ifeq ($(strip $(FASIM_ACCELIGN_DIR)),)
+    $(error FASIM_ACCELIGN_ENABLE=1 requires FASIM_ACCELIGN_DIR=/path/to/Accelign)
+  endif
+  FASIM_ACCELIGN_OBJ := cuda/accelign_shadow.o
+  FASIM_ACCELIGN_LDFLAGS := $(CUDA_LDFLAGS)
+else
+  FASIM_ACCELIGN_OBJ := cuda/accelign_shadow_stub.o
+  FASIM_ACCELIGN_LDFLAGS :=
+endif
+ifeq ($(FASIM_PARASAIL_ENABLE),1)
+  ifneq ($(strip $(FASIM_PARASAIL_DIR)),)
+    FASIM_PARASAIL_CPPFLAGS += -I$(FASIM_PARASAIL_DIR)/include -I$(FASIM_PARASAIL_DIR)
+    FASIM_PARASAIL_LDFLAGS := -L$(FASIM_PARASAIL_DIR)/lib -Wl,-rpath,$(FASIM_PARASAIL_DIR)/lib $(FASIM_PARASAIL_LDFLAGS)
+  endif
+  FASIM_PARASAIL_OBJ := cpu/parasail_shadow.o
+else
+  FASIM_PARASAIL_OBJ := cpu/parasail_shadow_stub.o
+  FASIM_PARASAIL_LDFLAGS :=
+endif
 
 build-fasim: $(FASIM_TARGET)
 
-$(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
-	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+cuda/accelign_shadow.o: cuda/accelign_shadow.cu cuda/accelign_shadow.h
+	$(NVCC) $(FASIM_ACCELIGN_NVCCFLAGS) -I$(FASIM_ACCELIGN_DIR)/include -c $< -o $@
+
+cuda/accelign_shadow_stub.o: cuda/accelign_shadow_stub.cpp cuda/accelign_shadow.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) -c $< -o $@
+
+cpu/parasail_shadow.o: cpu/parasail_shadow.cpp cpu/parasail_shadow.h
+	$(CXX) $(CPPFLAGS) $(FASIM_PARASAIL_CPPFLAGS) $(FASIM_CXXFLAGS) -c $< -o $@
+
+cpu/parasail_shadow_stub.o: cpu/parasail_shadow_stub.cpp cpu/parasail_shadow.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) -c $< -o $@
+
+$(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h cuda/accelign_shadow.h cpu/parasail_shadow.h $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda_stub.cpp $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ) $(LDFLAGS) $(LDLIBS) $(FASIM_ACCELIGN_LDFLAGS) $(FASIM_PARASAIL_LDFLAGS) -o $@
 
 build-fasim-cuda: $(FASIM_CUDA_TARGET)
 
-$(FASIM_CUDA_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.o cuda/prealign_cuda.h
-	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda.o $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+$(FASIM_CUDA_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.o cuda/prealign_cuda.h cuda/accelign_shadow.h cpu/parasail_shadow.h $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) cuda/prealign_cuda.o $(FASIM_ACCELIGN_OBJ) $(FASIM_PARASAIL_OBJ) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) $(FASIM_PARASAIL_LDFLAGS) -o $@
 
 oracle-sample: $(TARGET)
 	./scripts/run_sample_exactness.sh --generate-oracle
@@ -361,8 +401,434 @@ benchmark-fasim-throughput-sweep:
 	$(MAKE) build-cuda build-fasim-cuda
 	TARGET=$(CURDIR)/$(CUDA_TARGET) python3 ./scripts/benchmark_fasim_throughput_sweep.py --longtarget $(CURDIR)/$(CUDA_TARGET) --fasim-local-cuda $(CURDIR)/fasim_longtarget_cuda
 
+benchmark-fasim-profile:
+	$(MAKE) build-fasim
+	python3 ./scripts/benchmark_fasim_profile.py --mode profile --bin $(CURDIR)/$(FASIM_TARGET) --require-profile
+
+benchmark-fasim-representative-profile:
+	$(MAKE) build-fasim
+	python3 ./scripts/benchmark_fasim_representative_profile.py --bin $(CURDIR)/$(FASIM_TARGET) --profile-set representative --require-profile
+
+benchmark-fasim-real-corpus-profile:
+	$(MAKE) build-fasim
+	@if [ -z "$${FASIM_REAL_CORPUS_DNA:-}" ] || [ -z "$${FASIM_REAL_CORPUS_RNA:-}" ]; then \
+		echo "set FASIM_REAL_CORPUS_DNA and FASIM_REAL_CORPUS_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_real_corpus_profile.py --bin $(CURDIR)/$(FASIM_TARGET) --dna "$${FASIM_REAL_CORPUS_DNA}" --rna "$${FASIM_REAL_CORPUS_RNA}" --label "$${FASIM_REAL_CORPUS_LABEL:-real_corpus}" --repeat "$${FASIM_REAL_CORPUS_REPEAT:-1}" --require-profile
+
+benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_topk_scoreinfo_repair.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --caps "$${FASIM_GPU_DP_COLUMN_TOPK_SWEEP_CAPS:-current,8,16,32,64,128,256}" --repeat "$${FASIM_GPU_DP_COLUMN_TOPK_SWEEP_REPEAT:-1}" --require-human --require-profile
+
+benchmark-fasim-gpu-dp-column-full-scoreinfo-debug:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_full_scoreinfo_debug.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-17kb-debug-window-index "$${FASIM_HUMAN_17KB_DEBUG_WINDOW_INDEX:-3}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --human-508kb-debug-window-index "$${FASIM_HUMAN_508KB_DEBUG_WINDOW_INDEX:-5}" --repeat "$${FASIM_GPU_DP_COLUMN_FULL_SCOREINFO_DEBUG_REPEAT:-1}" --debug-max-records "$${FASIM_GPU_DP_COLUMN_DEBUG_MAX_RECORDS:-8}" --require-human --require-profile
+
+benchmark-fasim-gpu-dp-column-post-topk-pack-shadow:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_post_topk_pack_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-17kb-debug-window-index "$${FASIM_HUMAN_17KB_DEBUG_WINDOW_INDEX:-3}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --human-508kb-debug-window-index "$${FASIM_HUMAN_508KB_DEBUG_WINDOW_INDEX:-5}" --repeat "$${FASIM_GPU_DP_COLUMN_POST_TOPK_PACK_SHADOW_REPEAT:-1}" --debug-max-records "$${FASIM_GPU_DP_COLUMN_DEBUG_MAX_RECORDS:-8}" --require-human --require-profile
+
+benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization:
+	$(MAKE) build-fasim build-fasim-cuda
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_compact_scoreinfo_characterization.py --x86-bin $(CURDIR)/$(FASIM_TARGET) --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --repeat "$${FASIM_GPU_DP_COLUMN_COMPACT_SCOREINFO_CHARACTERIZATION_REPEAT:-3}" --require-human --require-profile
+
+benchmark-fasim-gpu-dp-column-compact-threshold:
+	$(MAKE) build-fasim build-fasim-cuda
+	@if [ -z "$${FASIM_HUMAN_17KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_17KB_RNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_DNA:-}" ] || [ -z "$${FASIM_HUMAN_508KB_RNA:-}" ]; then \
+		echo "set FASIM_HUMAN_17KB_DNA, FASIM_HUMAN_17KB_RNA, FASIM_HUMAN_508KB_DNA, and FASIM_HUMAN_508KB_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_compact_threshold.py --x86-bin $(CURDIR)/$(FASIM_TARGET) --cuda-bin $(CURDIR)/fasim_longtarget_cuda --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --repeat "$${FASIM_GPU_DP_COLUMN_COMPACT_THRESHOLD_REPEAT:-3}" --require-human --require-profile
+
+check-fasim-gpu-dp-column-compact-scoreinfo-packing:
+	$(MAKE) build-fasim-cuda
+	bash ./scripts/check_fasim_gpu_dp_column_compact_scoreinfo_packing.sh
+
+check-fasim-gpu-dp-column-compact-scoreinfo-characterization:
+	bash ./scripts/check_fasim_gpu_dp_column_compact_scoreinfo_characterization.sh
+
+check-fasim-gpu-dp-column-compact-threshold:
+	bash ./scripts/check_fasim_gpu_dp_column_compact_threshold.sh
+
+check-fasim-gpu-dp-column-auto-policy:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_gpu_dp_column_auto_policy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+benchmark-fasim-gpu-dp-column-auto-large-workload-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_large_workload_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_SYNTHETIC_ENTRIES:-1,32,64,128}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA}" --large-real-dna "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REAL_DNA}" --large-real-rna "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REAL_RNA}" --large-real-label "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REAL_LABEL:-large_real_corpus_target}" --whole-genome-dna "$${FASIM_GPU_DP_COLUMN_AUTO_WHOLE_GENOME_DNA}" --whole-genome-rna "$${FASIM_GPU_DP_COLUMN_AUTO_WHOLE_GENOME_RNA}" --whole-genome-label "$${FASIM_GPU_DP_COLUMN_AUTO_WHOLE_GENOME_LABEL:-whole_genome_style_sample}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_REPEAT:-3}" --require-profile
+
+check-fasim-gpu-dp-column-auto-large-workload-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_large_workload_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_CHECK_SYNTHETIC_ENTRIES:-1,32}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_LARGE_CHECK_REPEAT:-1}" --work-dir $(CURDIR)/.tmp/fasim_gpu_dp_column_auto_large_workload_characterization_check --output $(CURDIR)/.tmp/fasim_gpu_dp_column_auto_large_workload_characterization_check.md --require-profile --check
+
+check-fasim-gpu-dp-column-hg38-score-mismatch-fix:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_gpu_dp_column_hg38_score_mismatch_fix.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-lowercase-softmask-transform:
+	python3 ./scripts/check_fasim_lowercase_softmask_transform.py
+
+check-fasim-gpu-auto-threshold-topk-telemetry:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_gpu_auto_threshold_topk_telemetry.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-gpu-emit-scoreinfo-decomposition:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_gpu_emit_scoreinfo_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-fastSIM-extend-emit-decomposition:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_fastSIM_extend_emit_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-aligner-align-decomposition:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_aligner_align_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-aligner-align-cpu-internals:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_aligner_align_cpu_internals.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-profile-reuse-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_reuse_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-profile-cache:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_cache.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-profile-context-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_context_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-profile-context:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_context.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-profile-cache-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_cache_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-profile-context-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_profile_context_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-align-internal-decomposition:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_align_internal_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-align-internal-hg38-characterization:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/check_fasim_ssw_align_internal_hg38_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-ssw-avx2:
+	$(MAKE) build-ssw-avx2-direct-test
+	FASIM_SSW_AVX2=1 ./tests/test_ssw_avx2_direct
+	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_check
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_check/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/check_fasim_ssw_avx2.py --cuda-bin $(CURDIR)/.tmp/fasim_ssw_avx2_check/fasim_longtarget_cuda_avx2
+
+benchmark-fasim-ssw-avx2:
+	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_benchmark
+	$(MAKE) FASIM_SIMD_FLAGS=-msse2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_sse2 build-fasim-cuda
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_avx2.py --sse2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_sse2 --avx2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_benchmark/fasim_longtarget_cuda_avx2 --synthetic-entries "$${FASIM_SSW_AVX2_SYNTHETIC_ENTRIES:-1,32}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_AVX2_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-avx2-hybrid-modes:
+	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes
+	$(MAKE) FASIM_SIMD_FLAGS=-msse2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_sse2 build-fasim-cuda
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_avx2_hybrid_modes.py --sse2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_sse2 --avx2-bin $(CURDIR)/.tmp/fasim_ssw_avx2_hybrid_modes/fasim_longtarget_cuda_avx2 --synthetic-entries "$${FASIM_SSW_AVX2_SYNTHETIC_ENTRIES:-1,32}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_AVX2_REPEAT:-1}" --output "$${FASIM_SSW_AVX2_OUTPUT:-$(CURDIR)/docs/fasim_ssw_avx2_hybrid_modes.md}" --require-profile --check
+
+benchmark-fasim-final-speed-addons:
+	mkdir -p $(CURDIR)/.tmp/fasim_final_speed_addons
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_final_speed_addons/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_final_speed_addons.py --cuda-bin $(CURDIR)/.tmp/fasim_final_speed_addons/fasim_longtarget_cuda_avx2 --synthetic-entries "$${FASIM_FINAL_SPEED_ADDONS_SYNTHETIC_ENTRIES:-1,32}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_FINAL_SPEED_ADDONS_REPEAT:-1}" --output "$${FASIM_FINAL_SPEED_ADDONS_OUTPUT:-$(CURDIR)/docs/fasim_final_speed_addons_characterization.md}" --require-profile --check
+
+benchmark-fasim-final-speed-stack-decomposition:
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 1; \
+	fi
+	mkdir -p $(CURDIR)/.tmp/fasim_final_speed_stack_decomposition
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_final_speed_stack_decomposition/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_final_speed_stack_decomposition.py --cuda-bin $(CURDIR)/.tmp/fasim_final_speed_stack_decomposition/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_FINAL_SPEED_STACK_DECOMPOSITION_REPEAT:-1}" --output "$${FASIM_FINAL_SPEED_STACK_DECOMPOSITION_OUTPUT:-$(CURDIR)/docs/fasim_final_speed_stack_decomposition.md}" --require-profile --check
+
+benchmark-fasim-post-batch-final-stack-decomposition:
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 1; \
+	fi
+	mkdir -p $(CURDIR)/.tmp/fasim_post_batch_final_stack_decomposition
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_post_batch_final_stack_decomposition/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_post_batch_final_stack_decomposition.py --cuda-bin $(CURDIR)/.tmp/fasim_post_batch_final_stack_decomposition/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_POST_BATCH_FINAL_STACK_DECOMPOSITION_REPEAT:-1}" --output "$${FASIM_POST_BATCH_FINAL_STACK_DECOMPOSITION_OUTPUT:-$(CURDIR)/docs/fasim_post_batch_final_stack_decomposition.md}" --require-profile --check
+
+check-fasim-exact-column-extend-batch-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_exact_column_extend_batch_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+benchmark-fasim-exact-column-extend-batch-shadow:
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 1; \
+	fi
+	mkdir -p $(CURDIR)/.tmp/fasim_exact_column_extend_batch_shadow
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_exact_column_extend_batch_shadow/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_exact_column_extend_batch_shadow.py --cuda-bin $(CURDIR)/.tmp/fasim_exact_column_extend_batch_shadow/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW_REPEAT:-1}" --output "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW_OUTPUT:-$(CURDIR)/docs/fasim_exact_column_extend_batch_shadow.md}" --require-profile --check
+
+benchmark-fasim-exact-column-extend-batch-shadow-performance:
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 1; \
+	fi
+	mkdir -p $(CURDIR)/.tmp/fasim_exact_column_extend_batch_shadow_performance
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_exact_column_extend_batch_shadow_performance/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_exact_column_extend_batch_shadow_performance.py --cuda-bin $(CURDIR)/.tmp/fasim_exact_column_extend_batch_shadow_performance/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW_PERFORMANCE_REPEAT:-1}" --output "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_SHADOW_PERFORMANCE_OUTPUT:-$(CURDIR)/docs/fasim_exact_column_extend_batch_shadow_performance.md}" --require-profile --check
+
+check-fasim-exact-column-extend-batch:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_exact_column_extend_batch.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-fastSIM-align-precompute-shadow:
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 build-fasim-cuda
+	python3 ./scripts/check_fasim_fastSIM_align_precompute_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-fastSIM-align-precompute-independence:
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 build-fasim-cuda
+	python3 ./scripts/check_fasim_fastSIM_align_precompute_independence.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-fastSIM-align-pipeline-shadow:
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 build-fasim-cuda
+	python3 ./scripts/check_fasim_fastSIM_align_pipeline_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-aligner-result-cache-shadow:
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 build-fasim-cuda
+	python3 ./scripts/check_fasim_aligner_result_cache_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+benchmark-fasim-fastSIM-align-precompute-shadow:
+	mkdir -p $(CURDIR)/.tmp/fasim_fastSIM_align_precompute_shadow_report
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_fastSIM_align_precompute_shadow_report/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_fastSIM_align_precompute_shadow.py --cuda-bin $(CURDIR)/.tmp/fasim_fastSIM_align_precompute_shadow_report/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_SHADOW_REPEAT:-1}" --max-requests "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_SHADOW_MAX_REQUESTS:-10000}" --request-stride "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_SHADOW_REQUEST_STRIDE:-1}" --output "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_SHADOW_OUTPUT:-$(CURDIR)/docs/fasim_fastSIM_align_precompute_shadow.md}" --require-profile --check
+
+benchmark-fasim-fastSIM-align-precompute-independence:
+	mkdir -p $(CURDIR)/.tmp/fasim_fastSIM_align_precompute_independence_report
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_fastSIM_align_precompute_independence_report/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_fastSIM_align_precompute_independence.py --cuda-bin $(CURDIR)/.tmp/fasim_fastSIM_align_precompute_independence_report/fasim_longtarget_cuda_avx2 --dna "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_INDEPENDENCE_DNA:-}" --rna "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_INDEPENDENCE_RNA:-}" --label "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_INDEPENDENCE_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_INDEPENDENCE_REPEAT:-1}" --output "$${FASIM_FASTSIM_ALIGN_PRECOMPUTE_INDEPENDENCE_OUTPUT:-$(CURDIR)/docs/fasim_fastSIM_align_precompute_independence.md}" --require-profile --check
+
+benchmark-fasim-fastSIM-align-pipeline-shadow:
+	mkdir -p $(CURDIR)/.tmp/fasim_fastSIM_align_pipeline_shadow_report
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_fastSIM_align_pipeline_shadow_report/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_fastSIM_align_pipeline_shadow.py --cuda-bin $(CURDIR)/.tmp/fasim_fastSIM_align_pipeline_shadow_report/fasim_longtarget_cuda_avx2 --dna "$${FASIM_FASTSIM_ALIGN_PIPELINE_SHADOW_DNA:-}" --rna "$${FASIM_FASTSIM_ALIGN_PIPELINE_SHADOW_RNA:-}" --label "$${FASIM_FASTSIM_ALIGN_PIPELINE_SHADOW_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_FASTSIM_ALIGN_PIPELINE_SHADOW_REPEAT:-1}" --output "$${FASIM_FASTSIM_ALIGN_PIPELINE_SHADOW_OUTPUT:-$(CURDIR)/docs/fasim_fastSIM_align_pipeline_shadow.md}" --require-profile --check
+
+benchmark-fasim-aligner-result-cache-shadow:
+	mkdir -p $(CURDIR)/.tmp/fasim_aligner_result_cache_shadow_report
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_aligner_result_cache_shadow_report/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_aligner_result_cache_shadow.py --cuda-bin $(CURDIR)/.tmp/fasim_aligner_result_cache_shadow_report/fasim_longtarget_cuda_avx2 --dna "$${FASIM_ALIGNER_RESULT_CACHE_SHADOW_DNA:-}" --rna "$${FASIM_ALIGNER_RESULT_CACHE_SHADOW_RNA:-}" --label "$${FASIM_ALIGNER_RESULT_CACHE_SHADOW_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_ALIGNER_RESULT_CACHE_SHADOW_REPEAT:-1}" --output "$${FASIM_ALIGNER_RESULT_CACHE_SHADOW_OUTPUT:-$(CURDIR)/docs/fasim_aligner_result_cache_shadow.md}" --require-profile --check
+
+benchmark-fasim-exact-column-extend-batch:
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 1; \
+	fi
+	mkdir -p $(CURDIR)/.tmp/fasim_exact_column_extend_batch
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_exact_column_extend_batch/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_exact_column_extend_batch.py --cuda-bin $(CURDIR)/.tmp/fasim_exact_column_extend_batch/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_REPEAT:-1}" --output "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_OUTPUT:-$(CURDIR)/docs/fasim_exact_column_extend_batch_optin.md}" --require-profile --check
+
+benchmark-fasim-exact-column-extend-batch-characterization:
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 1; \
+	fi
+	mkdir -p $(CURDIR)/.tmp/fasim_exact_column_extend_batch_characterization
+	$(MAKE) FASIM_SIMD_FLAGS=-mavx2 FASIM_CUDA_TARGET=.tmp/fasim_exact_column_extend_batch_characterization/fasim_longtarget_cuda_avx2 build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_exact_column_extend_batch_characterization.py --cuda-bin $(CURDIR)/.tmp/fasim_exact_column_extend_batch_characterization/fasim_longtarget_cuda_avx2 --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_CHARACTERIZATION_REPEAT:-3}" --output "$${FASIM_EXACT_COLUMN_EXTEND_BATCH_CHARACTERIZATION_OUTPUT:-$(CURDIR)/docs/fasim_exact_column_extend_batch_characterization.md}" --require-profile --check
+
+check-fasim-pre-align-filter-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_pre_align_filter_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-pre-align-rejection-feature-taxonomy:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_pre_align_rejection_feature_taxonomy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-aligner-align-batch-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_aligner_align_batch_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+check-fasim-aligner-accelign-shadow:
+	$(MAKE) build-fasim-cuda FASIM_ACCELIGN_ENABLE=1
+	python3 ./scripts/check_fasim_aligner_accelign_shadow.py --cuda-bin $(CURDIR)/$(FASIM_CUDA_TARGET)
+
+check-fasim-parasail-aligner-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/check_fasim_parasail_aligner_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+benchmark-fasim-fastSIM-extend-emit-decomposition:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_fastSIM_extend_emit_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-aligner-align-decomposition:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_aligner_align_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-aligner-align-cpu-internals:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_aligner_align_cpu_internals.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-cache:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_ssw_profile_cache.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-cache-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_profile_cache_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_SSW_PROFILE_CACHE_CHARACTERIZATION_SYNTHETIC_ENTRIES:-1,8,32}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA:-}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA:-}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA:-}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA:-}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_PROFILE_CACHE_CHARACTERIZATION_REPEAT:-3}" --require-profile --check
+
+benchmark-fasim-ssw-align-internal-decomposition:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_ssw_align_internal_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-align-internal-hg38-characterization:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/check_fasim_ssw_align_internal_hg38_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda
+
+benchmark-fasim-ssw-profile-context-shadow:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_ssw_profile_context_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-context:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_ssw_profile_context.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-ssw-profile-context-characterization:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_ssw_profile_context_characterization.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --synthetic-entries "$${FASIM_SSW_PROFILE_CONTEXT_CHARACTERIZATION_SYNTHETIC_ENTRIES:-1,8,32}" --human-17kb-dna "$${FASIM_HUMAN_17KB_DNA:-}" --human-17kb-rna "$${FASIM_HUMAN_17KB_RNA:-}" --human-508kb-dna "$${FASIM_HUMAN_508KB_DNA:-}" --human-508kb-rna "$${FASIM_HUMAN_508KB_RNA:-}" --hg38-dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" --hg38-rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" --hg38-label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_SSW_PROFILE_CONTEXT_CHARACTERIZATION_REPEAT:-3}" --force-auto-small --require-profile --check
+
+benchmark-fasim-parasail-aligner-shadow:
+	$(MAKE) build-fasim-cuda
+	python3 ./scripts/benchmark_fasim_parasail_aligner_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --output docs/fasim_parasail_aligner_shadow.md --require-profile --check
+
+benchmark-fasim-pre-align-filter-shadow:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_pre_align_filter_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-pre-align-rejection-feature-taxonomy:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_pre_align_rejection_feature_taxonomy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-aligner-align-batch-shadow:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_aligner_align_batch_shadow.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --max-requests "$${FASIM_ALIGNER_ALIGN_BATCH_SHADOW_MAX_REQUESTS:-10000}" --request-stride "$${FASIM_ALIGNER_ALIGN_BATCH_SHADOW_REQUEST_STRIDE:-1}" --require-profile --check
+
+benchmark-fasim-aligner-align-batch-shadow-scaling:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_aligner_align_batch_shadow_scaling.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --sample-sizes "$${FASIM_ALIGNER_ALIGN_BATCH_SHADOW_SCALING_SIZES:-1000,10000,50000}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-aligner-accelign-shadow-scaling:
+	$(MAKE) build-fasim-cuda FASIM_ACCELIGN_ENABLE=1
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_aligner_accelign_shadow_scaling.py --cuda-bin $(CURDIR)/$(FASIM_CUDA_TARGET) --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --sample-sizes "$${FASIM_ALIGNER_ACCELIGN_SHADOW_SCALING_SIZES:-1000,10000,50000}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-accelign-endpoint-envelope-shadow:
+	$(MAKE) build-fasim-cuda FASIM_ACCELIGN_ENABLE=1
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_accelign_endpoint_envelope_shadow.py --cuda-bin $(CURDIR)/$(FASIM_CUDA_TARGET) --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --sample-sizes "$${FASIM_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW_SIZES:-1000}" --flanks "$${FASIM_ACCELIGN_ENDPOINT_ENVELOPE_SHADOW_FLANKS:-32,64,128}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-gpu-emit-scoreinfo-decomposition:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_emit_scoreinfo_decomposition.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
+benchmark-fasim-gpu-dp-column-auto-hg38-validation-taxonomy:
+	$(MAKE) build-fasim-cuda
+	@if [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA:-}" ] || [ -z "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA:-}" ]; then \
+		echo "set FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA and FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA to run this target" >&2; \
+		exit 2; \
+	fi
+	python3 ./scripts/benchmark_fasim_gpu_dp_column_auto_hg38_validation_taxonomy.py --cuda-bin $(CURDIR)/fasim_longtarget_cuda --dna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_DNA}" --rna "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_RNA}" --label "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_LABEL:-hg38_chr21_H19}" --repeat "$${FASIM_GPU_DP_COLUMN_AUTO_HG38_REPEAT:-1}" --require-profile --check
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
+
+SSW_AVX2_DIRECT_TEST_TARGET ?= tests/test_ssw_avx2_direct
+SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp
 
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
@@ -447,6 +913,8 @@ EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_SOURCES := tests/test_exact_sim_two_stage_thr
 
 build-fasim-cigar-test: $(FASIM_CIGAR_TEST_TARGET)
 
+build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
+
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
 
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
@@ -503,6 +971,9 @@ build-exact-sim-two-stage-threshold-test: $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_T
 
 $(FASIM_CIGAR_TEST_TARGET): $(FASIM_CIGAR_TEST_SOURCES) $(FASIM_HEADERS) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_CIGAR_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SSW_AVX2_DIRECT_TEST_TARGET): $(SSW_AVX2_DIRECT_TEST_SOURCES) fasim/ssw.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) -mavx2 $(SSW_AVX2_DIRECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(PREALIGN_SHARED_TEST_TARGET): $(PREALIGN_SHARED_TEST_SOURCES) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_SHARED_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -587,6 +1058,18 @@ $(EXACT_SIM_TWO_STAGE_THRESHOLD_TEST_TARGET): $(EXACT_SIM_TWO_STAGE_THRESHOLD_TE
 
 check-fasim-cigar: $(FASIM_CIGAR_TEST_TARGET)
 	./$(FASIM_CIGAR_TEST_TARGET)
+
+check-fasim-exactness: build-fasim
+	bash ./scripts/check_fasim_exactness.sh
+
+check-fasim-profile-telemetry: build-fasim
+	bash ./scripts/check_fasim_profile_telemetry.sh
+
+check-fasim-representative-profile: build-fasim
+	bash ./scripts/check_fasim_representative_profile.sh
+
+check-fasim-real-corpus-profile: build-fasim
+	bash ./scripts/check_fasim_real_corpus_profile.sh
 
 check-prealign-shared: $(PREALIGN_SHARED_TEST_TARGET)
 	./$(PREALIGN_SHARED_TEST_TARGET)
@@ -817,7 +1300,9 @@ check-longtarget-lite-output:
 		check-matrix-openmp-par benchmark-sample benchmark-smoke benchmark-sample-cuda benchmark-smoke-cuda \
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
-		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep \
+		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-profile benchmark-fasim-representative-profile benchmark-fasim-real-corpus-profile benchmark-fasim-gpu-dp-column-topk-scoreinfo-repair benchmark-fasim-gpu-dp-column-full-scoreinfo-debug benchmark-fasim-gpu-dp-column-post-topk-pack-shadow benchmark-fasim-gpu-dp-column-compact-scoreinfo-characterization benchmark-fasim-gpu-dp-column-compact-threshold benchmark-fasim-ssw-avx2 benchmark-fasim-ssw-avx2-hybrid-modes benchmark-fasim-final-speed-addons benchmark-fasim-final-speed-stack-decomposition benchmark-fasim-post-batch-final-stack-decomposition benchmark-fasim-exact-column-extend-batch-shadow benchmark-fasim-exact-column-extend-batch-shadow-performance benchmark-fasim-exact-column-extend-batch benchmark-fasim-exact-column-extend-batch-characterization \
+		check-fasim-exact-column-extend-batch-shadow check-fasim-exact-column-extend-batch check-fasim-fastSIM-align-precompute-shadow benchmark-fasim-fastSIM-align-precompute-shadow check-fasim-fastSIM-align-precompute-independence benchmark-fasim-fastSIM-align-precompute-independence check-fasim-fastSIM-align-pipeline-shadow benchmark-fasim-fastSIM-align-pipeline-shadow check-fasim-aligner-result-cache-shadow benchmark-fasim-aligner-result-cache-shadow \
+		check-fasim-gpu-dp-column-compact-scoreinfo-packing check-fasim-gpu-dp-column-compact-scoreinfo-characterization check-fasim-gpu-dp-column-compact-threshold check-fasim-gpu-dp-column-auto-policy benchmark-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-auto-large-workload-characterization check-fasim-gpu-dp-column-hg38-score-mismatch-fix check-fasim-lowercase-softmask-transform check-fasim-gpu-auto-threshold-topk-telemetry check-fasim-gpu-emit-scoreinfo-decomposition check-fasim-fastSIM-extend-emit-decomposition check-fasim-aligner-align-decomposition check-fasim-aligner-align-cpu-internals check-fasim-ssw-align-internal-decomposition check-fasim-ssw-align-internal-hg38-characterization check-fasim-ssw-profile-context-shadow check-fasim-ssw-profile-context check-fasim-ssw-profile-context-characterization check-fasim-pre-align-filter-shadow check-fasim-pre-align-rejection-feature-taxonomy check-fasim-aligner-align-batch-shadow check-fasim-aligner-accelign-shadow check-fasim-parasail-aligner-shadow benchmark-fasim-gpu-emit-scoreinfo-decomposition benchmark-fasim-fastSIM-extend-emit-decomposition benchmark-fasim-aligner-align-decomposition benchmark-fasim-aligner-align-cpu-internals benchmark-fasim-ssw-align-internal-decomposition benchmark-fasim-ssw-align-internal-hg38-characterization benchmark-fasim-ssw-profile-context-shadow benchmark-fasim-ssw-profile-context benchmark-fasim-ssw-profile-context-characterization benchmark-fasim-parasail-aligner-shadow benchmark-fasim-pre-align-filter-shadow benchmark-fasim-pre-align-rejection-feature-taxonomy benchmark-fasim-aligner-align-batch-shadow benchmark-fasim-aligner-align-batch-shadow-scaling benchmark-fasim-aligner-accelign-shadow-scaling \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
@@ -827,7 +1312,7 @@ check-longtarget-lite-output:
 		check-sample-cuda-sim-traceback-strict check-smoke-cuda-sim-traceback-strict \
 		check-smoke-cuda-sim-full \
 		check-smoke-cuda-avx2 check-matrix-cuda check-matrix-cuda-avx2 \
-		build-fasim-cigar-test check-fasim-cigar \
+		build-fasim-cigar-test check-fasim-cigar check-fasim-exactness check-fasim-profile-telemetry check-fasim-representative-profile check-fasim-real-corpus-profile \
 		build-prealign-shared-test check-prealign-shared \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \

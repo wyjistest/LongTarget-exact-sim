@@ -1,6 +1,7 @@
 #include<iostream>
 #include<stdio.h>
 #include<string>
+#include<chrono>
 #include<stdlib.h>
 #include<vector>
 #define PARARULE1     "ATGCNTGGTN"
@@ -56,13 +57,31 @@ using namespace std;
 string transferString(string seq1, int strand, int Para, int rule);
 void reverseSeq(string &seq);
 void complement(string &seq);
+static inline char fasim_ascii_upper_softmask_base(char base)
+{
+	if (base >= 'a' && base <= 'z')
+	{
+		return static_cast<char>(base - 'a' + 'A');
+	}
+	return base;
+}
+
+static inline char fasim_ascii_lower_softmask_base(char base)
+{
+	if (base >= 'A' && base <= 'Z')
+	{
+		return static_cast<char>(base - 'A' + 'a');
+	}
+	return base;
+}
+
 void complement(string &seq)
 {
 	string compSeq;
 	int i = 0;
 	for (i = 0; i < seq.size(); i++)
 	{
-		switch (seq[i])
+		switch (fasim_ascii_upper_softmask_base(seq[i]))
 		{
 		case 'A':
 			compSeq += 'T';
@@ -91,6 +110,356 @@ void reverseSeq(string &seq)
 	string revSeq;
 	reverse(seq.begin(), seq.end());
 }
+
+struct FasimTransferStringProfileStats
+{
+	FasimTransferStringProfileStats() :
+		totalNanoseconds(0),
+		ruleSelectNanoseconds(0),
+		ruleMaterializeNanoseconds(0),
+		convertNanoseconds(0),
+		validateNanoseconds(0),
+		residualNanoseconds(0),
+		tableShadowNanoseconds(0),
+		tableNanoseconds(0),
+		tableLegacyValidateNanoseconds(0),
+		calls(0),
+		inputBases(0),
+		outputBases(0),
+		tableShadowCalls(0),
+		tableShadowComparedCalls(0),
+		tableShadowMismatches(0),
+		tableShadowFallbacks(0),
+		tableShadowInputBases(0),
+		tableCalls(0),
+		tableComparedCalls(0),
+		tableMismatches(0),
+		tableFallbacks(0),
+		tableBasesConverted(0)
+	{
+		for (int i = 0; i < 4; ++i)
+		{
+			modeCalls[i] = 0;
+			modeNanoseconds[i] = 0;
+		}
+		for (int i = 0; i < 19; ++i)
+		{
+			ruleCalls[i] = 0;
+			ruleNanoseconds[i] = 0;
+		}
+	}
+
+	unsigned long long totalNanoseconds;
+	unsigned long long ruleSelectNanoseconds;
+	unsigned long long ruleMaterializeNanoseconds;
+	unsigned long long convertNanoseconds;
+	unsigned long long validateNanoseconds;
+	unsigned long long residualNanoseconds;
+	unsigned long long tableShadowNanoseconds;
+	unsigned long long tableNanoseconds;
+	unsigned long long tableLegacyValidateNanoseconds;
+	unsigned long long calls;
+	unsigned long long inputBases;
+	unsigned long long outputBases;
+	unsigned long long tableShadowCalls;
+	unsigned long long tableShadowComparedCalls;
+	unsigned long long tableShadowMismatches;
+	unsigned long long tableShadowFallbacks;
+	unsigned long long tableShadowInputBases;
+	unsigned long long tableCalls;
+	unsigned long long tableComparedCalls;
+	unsigned long long tableMismatches;
+	unsigned long long tableFallbacks;
+	unsigned long long tableBasesConverted;
+	unsigned long long modeCalls[4];
+	unsigned long long modeNanoseconds[4];
+	unsigned long long ruleCalls[19];
+	unsigned long long ruleNanoseconds[19];
+};
+
+static inline unsigned long long fasim_transfer_profile_now_nanoseconds()
+{
+	return static_cast<unsigned long long>(
+		std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+static inline void fasim_transfer_profile_add_elapsed(unsigned long long &slot,
+                                                      unsigned long long startNanoseconds)
+{
+	slot += fasim_transfer_profile_now_nanoseconds() - startNanoseconds;
+}
+
+static inline int fasim_transfer_mode_index(int strand, int Para)
+{
+	if (Para >= 0)
+	{
+		return strand == 0 ? 0 : 1;
+	}
+	return strand == 1 ? 2 : 3;
+}
+
+static inline const char *fasim_transfer_select_rule(int strand, int Para, int rule)
+{
+	if (Para >= 0)
+	{
+		if (strand == 0)
+		{
+			switch (rule)
+			{
+			case 1: return PARARULE1;
+			case 2: return PARARULE2;
+			case 3: return PARARULE3;
+			case 4: return PARARULE4;
+			case 5: return PARARULE5;
+			case 6: return PARARULE6;
+			default: return NULL;
+			}
+		}
+		switch (rule)
+		{
+		case 1: return PARARULE1REV;
+		case 2: return PARARULE2REV;
+		case 3: return PARARULE3REV;
+		case 4: return PARARULE4REV;
+		case 5: return PARARULE5REV;
+		case 6: return PARARULE6REV;
+		default: return NULL;
+		}
+	}
+	if (strand == 1)
+	{
+		switch (rule)
+		{
+		case 1: return ANTIRULE1;
+		case 2: return ANTIRULE2;
+		case 3: return ANTIRULE3;
+		case 4: return ANTIRULE4;
+		case 5: return ANTIRULE5;
+		case 6: return ANTIRULE6;
+		case 7: return ANTIRULE7;
+		case 8: return ANTIRULE8;
+		case 9: return ANTIRULE9;
+		case 10: return ANTIRULE10;
+		case 11: return ANTIRULE11;
+		case 12: return ANTIRULE12;
+		case 13: return ANTIRULE13;
+		case 14: return ANTIRULE14;
+		case 15: return ANTIRULE15;
+		case 16: return ANTIRULE16;
+		case 17: return ANTIRULE17;
+		case 18: return ANTIRULE18;
+		default: return NULL;
+		}
+	}
+	switch (rule)
+	{
+	case 1: return ANTIRULE1REV;
+	case 2: return ANTIRULE2REV;
+	case 3: return ANTIRULE3REV;
+	case 4: return ANTIRULE4REV;
+	case 5: return ANTIRULE5REV;
+	case 6: return ANTIRULE6REV;
+	case 7: return ANTIRULE7REV;
+	case 8: return ANTIRULE8REV;
+	case 9: return ANTIRULE9REV;
+	case 10: return ANTIRULE10REV;
+	case 11: return ANTIRULE11REV;
+	case 12: return ANTIRULE12REV;
+	case 13: return ANTIRULE13REV;
+	case 14: return ANTIRULE14REV;
+	case 15: return ANTIRULE15REV;
+	case 16: return ANTIRULE16REV;
+	case 17: return ANTIRULE17REV;
+	case 18: return ANTIRULE18REV;
+	default: return NULL;
+	}
+}
+
+static inline unsigned long long fasim_transfer_profile_inner_nanoseconds(const FasimTransferStringProfileStats &stats)
+{
+	return stats.ruleSelectNanoseconds
+		+ stats.ruleMaterializeNanoseconds
+		+ stats.convertNanoseconds
+		+ stats.validateNanoseconds;
+}
+
+static inline bool fasim_transfer_string_table_shadow_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_TRANSFERSTRING_TABLE_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline bool fasim_transfer_string_table_requested_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_TRANSFERSTRING_TABLE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline bool fasim_transfer_string_table_validate_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_TRANSFERSTRING_TABLE_VALIDATE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline void fasim_transfer_build_lookup_table(const char *ruleSeq, char table[256])
+{
+	for (int i = 0; i < 256; ++i)
+	{
+		table[i] = 'N';
+	}
+	table[static_cast<unsigned char>(ruleSeq[0])] = ruleSeq[5];
+	table[static_cast<unsigned char>(ruleSeq[1])] = ruleSeq[6];
+	table[static_cast<unsigned char>(ruleSeq[2])] = ruleSeq[7];
+	table[static_cast<unsigned char>(ruleSeq[3])] = ruleSeq[8];
+	table[static_cast<unsigned char>(ruleSeq[4])] = ruleSeq[9];
+	table[static_cast<unsigned char>(fasim_ascii_lower_softmask_base(ruleSeq[0]))] = ruleSeq[5];
+	table[static_cast<unsigned char>(fasim_ascii_lower_softmask_base(ruleSeq[1]))] = ruleSeq[6];
+	table[static_cast<unsigned char>(fasim_ascii_lower_softmask_base(ruleSeq[2]))] = ruleSeq[7];
+	table[static_cast<unsigned char>(fasim_ascii_lower_softmask_base(ruleSeq[3]))] = ruleSeq[8];
+	table[static_cast<unsigned char>(fasim_ascii_lower_softmask_base(ruleSeq[4]))] = ruleSeq[9];
+}
+
+string transferStringTableDriven(string seq1, int strand, int Para, int rule)
+{
+	const char *ruleSeq = fasim_transfer_select_rule(strand, Para, rule);
+	if (ruleSeq == NULL)
+	{
+		exit(1);
+	}
+
+	char table[256];
+	fasim_transfer_build_lookup_table(ruleSeq, table);
+
+	string out;
+	out.reserve(seq1.size());
+	for (int i = 0; i < seq1.size(); ++i)
+	{
+		out += table[static_cast<unsigned char>(seq1[i])];
+	}
+	if (out.size() != seq1.size())
+	{
+		exit(1);
+	}
+	return out;
+}
+
+string transferStringTableOptIn(string seq1, int strand, int Para, int rule)
+{
+	if (!fasim_transfer_string_table_requested_runtime())
+	{
+		return transferString(seq1, strand, Para, rule);
+	}
+
+	string tableSeq = transferStringTableDriven(seq1, strand, Para, rule);
+	if (fasim_transfer_string_table_validate_enabled_runtime())
+	{
+		string legacySeq = transferString(seq1, strand, Para, rule);
+		if (tableSeq != legacySeq)
+		{
+			return legacySeq;
+		}
+	}
+	return tableSeq;
+}
+
+string transferStringProfiled(string seq1,
+                              int strand,
+                              int Para,
+                              int rule,
+                              FasimTransferStringProfileStats *profileStats)
+{
+	unsigned long long profileStart = profileStats ? fasim_transfer_profile_now_nanoseconds() : 0;
+	const char *tmp = fasim_transfer_select_rule(strand, Para, rule);
+	if (profileStats)
+	{
+		fasim_transfer_profile_add_elapsed(profileStats->ruleSelectNanoseconds, profileStart);
+	}
+	if (tmp == NULL)
+	{
+		exit(1);
+	}
+
+	profileStart = profileStats ? fasim_transfer_profile_now_nanoseconds() : 0;
+	string ruleSeq(tmp);
+	if (profileStats)
+	{
+		fasim_transfer_profile_add_elapsed(profileStats->ruleMaterializeNanoseconds, profileStart);
+	}
+
+	string tmpSeq;
+	profileStart = profileStats ? fasim_transfer_profile_now_nanoseconds() : 0;
+	for (int i = 0; i < seq1.size(); i++)
+	{
+		if (seq1[i] == ruleSeq[0])
+		{
+			tmpSeq = tmpSeq + ruleSeq[5];
+		}
+		else if (seq1[i] == ruleSeq[1])
+		{
+			tmpSeq = tmpSeq + ruleSeq[6];
+		}
+		else if (seq1[i] == ruleSeq[2])
+		{
+			tmpSeq = tmpSeq + ruleSeq[7];
+		}
+		else if (seq1[i] == ruleSeq[3])
+		{
+			tmpSeq = tmpSeq + ruleSeq[8];
+		}
+		else if (seq1[i] == ruleSeq[4])
+		{
+			tmpSeq = tmpSeq + ruleSeq[9];
+		}
+		else
+		{
+			tmpSeq = tmpSeq + 'N';
+		}
+	}
+	if (profileStats)
+	{
+		fasim_transfer_profile_add_elapsed(profileStats->convertNanoseconds, profileStart);
+	}
+
+	profileStart = profileStats ? fasim_transfer_profile_now_nanoseconds() : 0;
+	if (tmpSeq.size() != seq1.size())
+	{
+		exit(1);
+	}
+	if (profileStats)
+	{
+		fasim_transfer_profile_add_elapsed(profileStats->validateNanoseconds, profileStart);
+		++profileStats->calls;
+		profileStats->inputBases += static_cast<unsigned long long>(seq1.size());
+		profileStats->outputBases += static_cast<unsigned long long>(tmpSeq.size());
+	}
+	return tmpSeq;
+}
+
 string transferString(string seq1, int strand, int Para, int rule)
 {
 	const char *tmp = NULL;
@@ -285,23 +654,24 @@ string transferString(string seq1, int strand, int Para, int rule)
 	string ruleSeq(tmp);
 	for (i = 0; i < seq1.size(); i++)
 	{
-		if (seq1[i] == ruleSeq[0])
+		const char base = fasim_ascii_upper_softmask_base(seq1[i]);
+		if (base == ruleSeq[0])
 		{
 			tmpSeq = tmpSeq + ruleSeq[5];
 		}
-		else if (seq1[i] == ruleSeq[1])
+		else if (base == ruleSeq[1])
 		{
 			tmpSeq = tmpSeq + ruleSeq[6];
 		}
-		else if (seq1[i] == ruleSeq[2])
+		else if (base == ruleSeq[2])
 		{
 			tmpSeq = tmpSeq + ruleSeq[7];
 		}
-		else if (seq1[i] == ruleSeq[3])
+		else if (base == ruleSeq[3])
 		{
 			tmpSeq = tmpSeq + ruleSeq[8];
 		}
-		else if (seq1[i] == ruleSeq[4])
+		else if (base == ruleSeq[4])
 		{
 			tmpSeq = tmpSeq + ruleSeq[9];
 		}
@@ -316,4 +686,3 @@ string transferString(string seq1, int strand, int Para, int rule)
 	}
 	return tmpSeq;
 }
-
