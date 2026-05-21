@@ -139,6 +139,8 @@ advanced runtime notes.
   process-level worker assignment with optional GPU and CPU binding.
 - [Fasim Sharded Worker Scaling](docs/fasim_sharded_worker_scaling.md):
   1/2/4 worker characterization wrapper and digest gate.
+- [Fasim Sharded Workload Matrix](docs/fasim_sharded_worker_workload_matrix.md):
+  multi-contig workload matrix wrapper for worker scaling reports.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
