@@ -133,6 +133,8 @@ advanced runtime notes.
 - [Advanced Runtime Details](docs/longtarget_advanced_runtime_details.md):
   CUDA/SIM/Fasim/two-stage knobs, benchmark telemetry, and longer workflow
   notes moved out of this README.
+- [Fasim Sharded Runner](docs/fasim_sharded_runner.md): contig-level
+  process sharding, deterministic merge, and digest validation.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
