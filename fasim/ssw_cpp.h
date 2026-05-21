@@ -293,6 +293,35 @@ namespace StripedSmithWaterman {
 			gap_extending_penalty_ = extending;
 		};
 
+		uint8_t GapOpeningPenaltyForCacheKey(void) const {
+			return gap_opening_penalty_;
+		};
+
+		uint8_t GapExtendingPenaltyForCacheKey(void) const {
+			return gap_extending_penalty_;
+		};
+
+		uint64_t ScoringHashForCacheKey(void) const {
+			uint64_t hash = 1469598103934665603ULL;
+			const int matrix_cells = score_matrix_size_ * score_matrix_size_;
+			if (score_matrix_ != NULL) {
+				for (int i = 0; i < matrix_cells; ++i) {
+					hash ^= static_cast<uint8_t>(score_matrix_[i]);
+					hash *= 1099511628211ULL;
+				}
+			} else {
+				hash ^= 0xffU;
+				hash *= 1099511628211ULL;
+			}
+			hash ^= static_cast<uint8_t>(score_matrix_size_);
+			hash *= 1099511628211ULL;
+			hash ^= static_cast<uint8_t>(gap_opening_penalty_);
+			hash *= 1099511628211ULL;
+			hash ^= static_cast<uint8_t>(gap_extending_penalty_);
+			hash *= 1099511628211ULL;
+			return hash;
+		};
+
 		// =========
 		// @function Align the query againt the reference that is set by
 		//             SetReferenceSequence.
