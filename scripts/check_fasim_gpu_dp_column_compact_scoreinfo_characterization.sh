@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNNER="$ROOT/scripts/benchmark_fasim_gpu_dp_column_compact_scoreinfo_characterization.py"
+DOC="$ROOT/docs/fasim_gpu_dp_column_compact_scoreinfo_characterization.md"
+
+test -x "$RUNNER"
+test -f "$DOC"
+
+python3 "$RUNNER" --help >/dev/null
+
+grep -qi "compact scoreInfo" "$DOC"
+grep -qi "full-column exact" "$DOC"
+grep -q "FASIM_GPU_DP_COLUMN_COMPACT_SCOREINFO=1" "$DOC"

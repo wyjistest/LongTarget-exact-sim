@@ -11,10 +11,151 @@ import sys
 from typing import Dict, Iterable, List, Tuple
 
 
+TRANSFER_STRING_REQUIRED_FIELDS = [
+    "fasim_transfer_string_seconds",
+    "fasim_transfer_string_calls",
+    "fasim_transfer_string_input_bases",
+    "fasim_transfer_string_output_bases",
+    "fasim_transfer_string_rule_select_seconds",
+    "fasim_transfer_string_rule_materialize_seconds",
+    "fasim_transfer_string_convert_seconds",
+    "fasim_transfer_string_validate_seconds",
+    "fasim_transfer_string_residual_seconds",
+    "fasim_transfer_string_para_forward_calls",
+    "fasim_transfer_string_para_forward_seconds",
+    "fasim_transfer_string_para_reverse_calls",
+    "fasim_transfer_string_para_reverse_seconds",
+    "fasim_transfer_string_anti_forward_calls",
+    "fasim_transfer_string_anti_forward_seconds",
+    "fasim_transfer_string_anti_reverse_calls",
+    "fasim_transfer_string_anti_reverse_seconds",
+    "fasim_transfer_string_table_shadow_enabled",
+    "fasim_transfer_string_table_shadow_calls",
+    "fasim_transfer_string_table_shadow_compared_calls",
+    "fasim_transfer_string_table_shadow_mismatches",
+    "fasim_transfer_string_table_shadow_fallbacks",
+    "fasim_transfer_string_table_shadow_seconds",
+    "fasim_transfer_string_table_shadow_input_bases",
+    "fasim_transfer_string_table_requested",
+    "fasim_transfer_string_table_active",
+    "fasim_transfer_string_table_validate_enabled",
+    "fasim_transfer_string_table_calls",
+    "fasim_transfer_string_table_seconds",
+    "fasim_transfer_string_table_legacy_validate_seconds",
+    "fasim_transfer_string_table_compared",
+    "fasim_transfer_string_table_mismatches",
+    "fasim_transfer_string_table_fallbacks",
+    "fasim_transfer_string_table_bases_converted",
+] + [
+    f"fasim_transfer_string_rule_{rule}_calls"
+    for rule in range(1, 19)
+] + [
+    f"fasim_transfer_string_rule_{rule}_seconds"
+    for rule in range(1, 19)
+]
+
+
+GPU_DP_COLUMN_REQUIRED_FIELDS = [
+    "fasim_gpu_dp_column_requested",
+    "fasim_gpu_dp_column_active",
+    "fasim_gpu_dp_column_validate_enabled",
+    "fasim_gpu_dp_column_calls",
+    "fasim_gpu_dp_column_windows",
+    "fasim_gpu_dp_column_cells",
+    "fasim_gpu_dp_column_h2d_bytes",
+    "fasim_gpu_dp_column_d2h_bytes",
+    "fasim_gpu_dp_column_kernel_seconds",
+    "fasim_gpu_dp_column_total_seconds",
+    "fasim_gpu_dp_column_validate_seconds",
+    "fasim_gpu_dp_column_topk_cap",
+    "fasim_gpu_dp_column_score_mismatches",
+    "fasim_gpu_dp_column_column_max_mismatches",
+    "fasim_gpu_dp_column_fallbacks",
+    "fasim_gpu_dp_column_debug_enabled",
+    "fasim_gpu_dp_column_first_mismatch_window",
+    "fasim_gpu_dp_column_first_mismatch_column",
+    "fasim_gpu_dp_column_first_mismatch_cpu_score",
+    "fasim_gpu_dp_column_first_mismatch_gpu_score",
+    "fasim_gpu_dp_column_first_mismatch_cpu_position",
+    "fasim_gpu_dp_column_first_mismatch_gpu_position",
+    "fasim_gpu_dp_column_first_mismatch_cpu_count",
+    "fasim_gpu_dp_column_first_mismatch_gpu_count",
+    "fasim_gpu_dp_column_first_mismatch_tie",
+    "fasim_gpu_dp_column_cpu_scoreinfo_score",
+    "fasim_gpu_dp_column_gpu_scoreinfo_score",
+    "fasim_gpu_dp_column_cpu_scoreinfo_position",
+    "fasim_gpu_dp_column_gpu_scoreinfo_position",
+    "fasim_gpu_dp_column_scoreinfo_field_mismatch_mask",
+    "fasim_gpu_dp_column_score_delta_max",
+    "fasim_gpu_dp_column_scoreinfo_mismatches",
+    "fasim_gpu_dp_column_tie_mismatches",
+    "fasim_gpu_dp_column_position_mismatches",
+    "fasim_gpu_dp_column_topk_truncated_windows",
+    "fasim_gpu_dp_column_topk_overflow_windows",
+    "fasim_gpu_dp_column_pre_topk_mismatches",
+    "fasim_gpu_dp_column_post_topk_mismatches",
+    "fasim_gpu_dp_column_debug_windows_examined",
+    "fasim_gpu_dp_column_full_debug_enabled",
+    "fasim_gpu_dp_column_full_debug_window_index",
+    "fasim_gpu_dp_column_full_debug_cpu_records",
+    "fasim_gpu_dp_column_full_debug_gpu_pre_topk_records",
+    "fasim_gpu_dp_column_full_debug_gpu_post_topk_records",
+    "fasim_gpu_dp_column_full_debug_cpu_record_missing_pre_topk",
+    "fasim_gpu_dp_column_full_debug_cpu_record_missing_post_topk",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_rank",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_score_delta",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_position_delta",
+    "fasim_gpu_dp_column_full_debug_first_mismatch_count_delta",
+    "fasim_gpu_dp_column_full_debug_scoreinfo_set_mismatches",
+    "fasim_gpu_dp_column_full_debug_scoreinfo_field_mismatches",
+    "fasim_gpu_dp_column_full_debug_column_mismatches",
+    "fasim_gpu_dp_column_full_debug_column_score_delta_max",
+    "fasim_gpu_dp_column_post_topk_pack_shadow_enabled",
+    "fasim_gpu_dp_column_post_topk_cpu_records",
+    "fasim_gpu_dp_column_post_topk_gpu_pre_records",
+    "fasim_gpu_dp_column_post_topk_gpu_post_records",
+    "fasim_gpu_dp_column_post_topk_cpu_pack_mismatches",
+    "fasim_gpu_dp_column_post_topk_gpu_pack_mismatches",
+    "fasim_gpu_dp_column_post_topk_missing_records",
+    "fasim_gpu_dp_column_post_topk_extra_records",
+    "fasim_gpu_dp_column_post_topk_rank_mismatches",
+    "fasim_gpu_dp_column_post_topk_field_mismatch_mask",
+    "fasim_gpu_dp_column_post_topk_count_mismatches",
+    "fasim_gpu_dp_column_post_topk_position_mismatches",
+    "fasim_gpu_dp_column_post_topk_score_mismatches",
+    "fasim_gpu_dp_column_compact_scoreinfo_requested",
+    "fasim_gpu_dp_column_compact_scoreinfo_active",
+    "fasim_gpu_dp_column_compact_scoreinfo_records",
+    "fasim_gpu_dp_column_compact_scoreinfo_d2h_bytes",
+    "fasim_gpu_dp_column_compact_scoreinfo_mismatches",
+    "fasim_gpu_dp_column_compact_scoreinfo_fallbacks",
+    "fasim_gpu_dp_column_exact_scoreinfo_extend_calls",
+    "fasim_gpu_dp_column_exact_scoreinfo_extend_d2h_bytes",
+]
+
+GPU_DP_COLUMN_AUTO_REQUIRED_FIELDS = [
+    "fasim_gpu_dp_column_auto_requested",
+    "fasim_gpu_dp_column_auto_active",
+    "fasim_gpu_dp_column_auto_min_cells",
+    "fasim_gpu_dp_column_auto_min_windows",
+    "fasim_gpu_dp_column_auto_observed_cells",
+    "fasim_gpu_dp_column_auto_observed_windows",
+    "fasim_gpu_dp_column_auto_disabled_reason",
+    "fasim_gpu_dp_column_auto_selected_path",
+    "fasim_gpu_dp_column_auto_threshold_matched",
+]
+
+
 REQUIRED_PROFILE_FIELDS = [
     "fasim_total_seconds",
     "fasim_io_seconds",
     "fasim_window_generation_seconds",
+    "fasim_window_generation_cut_sequence_seconds",
+    "fasim_window_generation_transfer_seconds",
+    "fasim_window_generation_reverse_seconds",
+    "fasim_window_generation_source_transform_seconds",
+    "fasim_window_generation_encode_seconds",
+    "fasim_window_generation_flush_seconds",
     "fasim_dp_scoring_seconds",
     "fasim_column_max_seconds",
     "fasim_local_max_seconds",
@@ -27,6 +168,33 @@ REQUIRED_PROFILE_FIELDS = [
     "fasim_num_candidates",
     "fasim_num_validated_candidates",
     "fasim_num_final_hits",
+] + TRANSFER_STRING_REQUIRED_FIELDS + GPU_DP_COLUMN_REQUIRED_FIELDS + GPU_DP_COLUMN_AUTO_REQUIRED_FIELDS
+
+
+WINDOW_GENERATION_DETAIL_KEYS = [
+    ("cutSequence", "fasim_window_generation_cut_sequence_seconds"),
+    ("transferString", "fasim_window_generation_transfer_seconds"),
+    ("reverse/complement", "fasim_window_generation_reverse_seconds"),
+    ("source transform", "fasim_window_generation_source_transform_seconds"),
+    ("encoded target build", "fasim_window_generation_encode_seconds"),
+    ("flush_batch call wall", "fasim_window_generation_flush_seconds"),
+]
+
+
+TRANSFER_STRING_STEP_KEYS = [
+    ("rule select", "fasim_transfer_string_rule_select_seconds"),
+    ("rule materialize", "fasim_transfer_string_rule_materialize_seconds"),
+    ("per-base convert", "fasim_transfer_string_convert_seconds"),
+    ("validate", "fasim_transfer_string_validate_seconds"),
+    ("copy/return residual", "fasim_transfer_string_residual_seconds"),
+]
+
+
+TRANSFER_STRING_MODE_KEYS = [
+    ("para forward", "fasim_transfer_string_para_forward_calls", "fasim_transfer_string_para_forward_seconds"),
+    ("para reverse", "fasim_transfer_string_para_reverse_calls", "fasim_transfer_string_para_reverse_seconds"),
+    ("anti forward", "fasim_transfer_string_anti_forward_calls", "fasim_transfer_string_anti_forward_seconds"),
+    ("anti reverse", "fasim_transfer_string_anti_reverse_calls", "fasim_transfer_string_anti_reverse_seconds"),
 ]
 
 
@@ -135,6 +303,110 @@ def metric_float(metrics: Dict[str, str], key: str) -> float:
         return 0.0
 
 
+def print_window_generation_detail_table(metrics: Dict[str, str]) -> None:
+    total = metric_float(metrics, "fasim_total_seconds")
+    print("Window generation detail:")
+    print("")
+    print("| Detail | Seconds | Percent of total |")
+    print("| --- | ---: | ---: |")
+    for label, key in WINDOW_GENERATION_DETAIL_KEYS:
+        seconds = metric_float(metrics, key)
+        percent = (seconds / total * 100.0) if total > 0 else 0.0
+        print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
+    print("")
+    print(
+        "Note: flush_batch call wall is diagnostic overlap with scoring/output; "
+        "it is not included in fasim_window_generation_seconds."
+    )
+
+
+def print_transfer_string_detail_table(metrics: Dict[str, str]) -> None:
+    transfer_total = metric_float(metrics, "fasim_transfer_string_seconds")
+    calls = metrics.get("fasim_transfer_string_calls", "0")
+    bases = metrics.get("fasim_transfer_string_input_bases", "0")
+
+    print("transferString detail:")
+    print("")
+    print(f"calls: {calls}")
+    print(f"input bases: {bases}")
+    print("")
+    print("| Step | Seconds | Percent of transferString |")
+    print("| --- | ---: | ---: |")
+    for label, key in TRANSFER_STRING_STEP_KEYS:
+        seconds = metric_float(metrics, key)
+        percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
+        print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
+    print("")
+    print("| Mode | Calls | Seconds | Percent of transferString |")
+    print("| --- | ---: | ---: | ---: |")
+    for label, calls_key, seconds_key in TRANSFER_STRING_MODE_KEYS:
+        mode_calls = metrics.get(calls_key, "0")
+        seconds = metric_float(metrics, seconds_key)
+        percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
+        print(f"| {label} | {mode_calls} | {seconds:.6f} | {percent:.2f}% |")
+
+    rule_rows = []
+    for rule in range(1, 19):
+        calls_value = metrics.get(f"fasim_transfer_string_rule_{rule}_calls", "0")
+        seconds = metric_float(metrics, f"fasim_transfer_string_rule_{rule}_seconds")
+        try:
+            calls_int = int(calls_value)
+        except ValueError:
+            calls_int = 0
+        if calls_int > 0 or seconds > 0:
+            rule_rows.append((rule, calls_value, seconds))
+    if rule_rows:
+        print("")
+        print("| Rule | Calls | Seconds | Percent of transferString |")
+        print("| ---: | ---: | ---: | ---: |")
+        for rule, calls_value, seconds in rule_rows:
+            percent = (seconds / transfer_total * 100.0) if transfer_total > 0 else 0.0
+            print(f"| {rule} | {calls_value} | {seconds:.6f} | {percent:.2f}% |")
+
+    print("")
+    print("transferString table shadow:")
+    print("")
+    print("| Metric | Value |")
+    print("| --- | ---: |")
+    for key in [
+        "fasim_transfer_string_table_shadow_enabled",
+        "fasim_transfer_string_table_shadow_calls",
+        "fasim_transfer_string_table_shadow_compared_calls",
+        "fasim_transfer_string_table_shadow_mismatches",
+        "fasim_transfer_string_table_shadow_fallbacks",
+        "fasim_transfer_string_table_shadow_seconds",
+        "fasim_transfer_string_table_shadow_input_bases",
+    ]:
+        print(f"| {key} | {metrics.get(key, '0')} |")
+
+    print("")
+    print("transferString table opt-in:")
+    print("")
+    print("| Metric | Value |")
+    print("| --- | ---: |")
+    for key in [
+        "fasim_transfer_string_table_requested",
+        "fasim_transfer_string_table_active",
+        "fasim_transfer_string_table_validate_enabled",
+        "fasim_transfer_string_table_calls",
+        "fasim_transfer_string_table_seconds",
+        "fasim_transfer_string_table_legacy_validate_seconds",
+        "fasim_transfer_string_table_compared",
+        "fasim_transfer_string_table_mismatches",
+        "fasim_transfer_string_table_fallbacks",
+        "fasim_transfer_string_table_bases_converted",
+    ]:
+        print(f"| {key} | {metrics.get(key, '0')} |")
+
+    print("")
+    print("GPU DP+column prototype:")
+    print("")
+    print("| Metric | Value |")
+    print("| --- | ---: |")
+    for key in GPU_DP_COLUMN_REQUIRED_FIELDS + GPU_DP_COLUMN_AUTO_REQUIRED_FIELDS:
+        print(f"| {key} | {metrics.get(key, '0')} |")
+
+
 def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> None:
     total = metric_float(metrics, "fasim_total_seconds")
     dp = metric_float(metrics, "fasim_dp_scoring_seconds")
@@ -162,6 +434,10 @@ def print_report(metrics: Dict[str, str], digest: str, record_count: int) -> Non
         seconds = metric_float(metrics, key)
         percent = (seconds / total * 100.0) if total > 0 else 0.0
         print(f"| {label} | {seconds:.6f} | {percent:.2f}% |")
+    print("")
+    print_window_generation_detail_table(metrics)
+    print("")
+    print_transfer_string_detail_table(metrics)
     print("")
     print(f"DP/scoring percentage: {dp_pct:.2f}%")
     print(f"GPU-candidate percentage (DP + column + local): {gpu_candidate_pct:.2f}%")

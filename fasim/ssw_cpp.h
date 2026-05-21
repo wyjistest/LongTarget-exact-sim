@@ -11,6 +11,167 @@
 
 namespace StripedSmithWaterman {
 
+	struct AlignerCpuInternalsProfileStats {
+		AlignerCpuInternalsProfileStats()
+			: enabled(0)
+			, strlenNanoseconds(0)
+			, setupNanoseconds(0)
+			, queryAllocNanoseconds(0)
+			, queryTranslateNanoseconds(0)
+			, refAllocNanoseconds(0)
+			, refTranslateNanoseconds(0)
+			, profileCacheLookupNanoseconds(0)
+			, profileCacheHitNanoseconds(0)
+			, profileCacheMissNanoseconds(0)
+			, profileBuildNanoseconds(0)
+			, sswAlignNanoseconds(0)
+			, sswForwardScoreEndNanoseconds(0)
+			, sswReverseStartNanoseconds(0)
+			, sswBandedSwNanoseconds(0)
+			, sswCigarNanoseconds(0)
+			, sswEndpointBookkeepingNanoseconds(0)
+			, sswBytePathNanoseconds(0)
+			, sswWordPathNanoseconds(0)
+			, sswFallbackCalls(0)
+			, sswForwardCalls(0)
+			, sswReverseCalls(0)
+			, sswBandedSwCalls(0)
+			, convertNanoseconds(0)
+			, destroyNanoseconds(0)
+			, calls(0)
+			, nullResults(0)
+			, sswProfileReuseShadowEnabled(0)
+			, sswProfileBuildCalls(0)
+			, sswProfileUniqueKeys(0)
+			, sswProfileReusedPossibleCalls(0)
+			, sswProfileBuildNanoseconds(0)
+			, sswProfileEstReuseSavedNanoseconds(0)
+			, sswProfileKeyQueryLength(0)
+			, sswProfileKeyScoringHash(0)
+			, sswProfileKeyOrientation(0)
+			, sswProfileShadowCompared(0)
+			, sswProfileShadowScoreMismatches(0)
+			, sswProfileShadowEndpointMismatches(0)
+			, sswProfileShadowCigarMismatches(0)
+			, sswProfileShadowOutputDigestMismatches(0)
+			, sswProfileCacheRequested(0)
+			, sswProfileCacheActive(0)
+			, sswProfileCacheValidateEnabled(0)
+			, sswProfileCacheCalls(0)
+			, sswProfileCacheHits(0)
+			, sswProfileCacheMisses(0)
+			, sswProfileCacheUniqueKeys(0)
+			, sswProfileCacheBuildNanoseconds(0)
+			, sswProfileCacheSavedBuildNanoseconds(0)
+			, sswProfileCacheValidateNanoseconds(0)
+			, sswProfileCacheScoreMismatches(0)
+			, sswProfileCacheEndpointMismatches(0)
+			, sswProfileCacheCigarMismatches(0)
+			, sswProfileCacheDigestMismatches(0)
+			, sswProfileCacheFallbacks(0)
+			, sswProfileContextRequested(0)
+			, sswProfileContextActive(0)
+			, sswProfileContextDisabledReason(0)
+			, sswProfileContextValidateEnabled(0)
+			, sswProfileContextShadowEnabled(0)
+			, sswProfileContextUniqueKeys(0)
+			, sswProfileContextCalls(0)
+			, sswProfileContextReusableCalls(0)
+			, sswProfileContextHits(0)
+			, sswProfileContextMisses(0)
+			, sswProfileContextQueryTranslateSavedNanoseconds(0)
+			, sswProfileContextLookupSavedNanoseconds(0)
+			, sswProfileContextBuildNanoseconds(0)
+			, sswProfileContextValidateNanoseconds(0)
+			, sswProfileContextShadowCompared(0)
+			, sswProfileContextScoreMismatches(0)
+			, sswProfileContextEndpointMismatches(0)
+			, sswProfileContextCigarMismatches(0)
+			, sswProfileContextDigestMismatches(0)
+			, sswProfileContextFallbacks(0)
+		{};
+
+		uint64_t enabled;
+		uint64_t strlenNanoseconds;
+		uint64_t setupNanoseconds;
+		uint64_t queryAllocNanoseconds;
+		uint64_t queryTranslateNanoseconds;
+		uint64_t refAllocNanoseconds;
+		uint64_t refTranslateNanoseconds;
+		uint64_t profileCacheLookupNanoseconds;
+		uint64_t profileCacheHitNanoseconds;
+		uint64_t profileCacheMissNanoseconds;
+		uint64_t profileBuildNanoseconds;
+		uint64_t sswAlignNanoseconds;
+		uint64_t sswForwardScoreEndNanoseconds;
+		uint64_t sswReverseStartNanoseconds;
+		uint64_t sswBandedSwNanoseconds;
+		uint64_t sswCigarNanoseconds;
+		uint64_t sswEndpointBookkeepingNanoseconds;
+		uint64_t sswBytePathNanoseconds;
+		uint64_t sswWordPathNanoseconds;
+		uint64_t sswFallbackCalls;
+		uint64_t sswForwardCalls;
+		uint64_t sswReverseCalls;
+		uint64_t sswBandedSwCalls;
+		uint64_t convertNanoseconds;
+		uint64_t destroyNanoseconds;
+		uint64_t calls;
+		uint64_t nullResults;
+		uint64_t sswProfileReuseShadowEnabled;
+		uint64_t sswProfileBuildCalls;
+		uint64_t sswProfileUniqueKeys;
+		uint64_t sswProfileReusedPossibleCalls;
+		uint64_t sswProfileBuildNanoseconds;
+		uint64_t sswProfileEstReuseSavedNanoseconds;
+		uint64_t sswProfileKeyQueryLength;
+		uint64_t sswProfileKeyScoringHash;
+		uint64_t sswProfileKeyOrientation;
+		uint64_t sswProfileShadowCompared;
+		uint64_t sswProfileShadowScoreMismatches;
+		uint64_t sswProfileShadowEndpointMismatches;
+		uint64_t sswProfileShadowCigarMismatches;
+		uint64_t sswProfileShadowOutputDigestMismatches;
+		uint64_t sswProfileCacheRequested;
+		uint64_t sswProfileCacheActive;
+		uint64_t sswProfileCacheValidateEnabled;
+		uint64_t sswProfileCacheCalls;
+		uint64_t sswProfileCacheHits;
+		uint64_t sswProfileCacheMisses;
+		uint64_t sswProfileCacheUniqueKeys;
+		uint64_t sswProfileCacheBuildNanoseconds;
+		uint64_t sswProfileCacheSavedBuildNanoseconds;
+		uint64_t sswProfileCacheValidateNanoseconds;
+		uint64_t sswProfileCacheScoreMismatches;
+		uint64_t sswProfileCacheEndpointMismatches;
+		uint64_t sswProfileCacheCigarMismatches;
+		uint64_t sswProfileCacheDigestMismatches;
+		uint64_t sswProfileCacheFallbacks;
+		uint64_t sswProfileContextRequested;
+		uint64_t sswProfileContextActive;
+		uint64_t sswProfileContextDisabledReason;
+		uint64_t sswProfileContextValidateEnabled;
+		uint64_t sswProfileContextShadowEnabled;
+		uint64_t sswProfileContextUniqueKeys;
+		uint64_t sswProfileContextCalls;
+		uint64_t sswProfileContextReusableCalls;
+		uint64_t sswProfileContextHits;
+		uint64_t sswProfileContextMisses;
+		uint64_t sswProfileContextQueryTranslateSavedNanoseconds;
+		uint64_t sswProfileContextLookupSavedNanoseconds;
+		uint64_t sswProfileContextBuildNanoseconds;
+		uint64_t sswProfileContextValidateNanoseconds;
+		uint64_t sswProfileContextShadowCompared;
+		uint64_t sswProfileContextScoreMismatches;
+		uint64_t sswProfileContextEndpointMismatches;
+		uint64_t sswProfileContextCigarMismatches;
+		uint64_t sswProfileContextDigestMismatches;
+		uint64_t sswProfileContextFallbacks;
+	};
+
+	AlignerCpuInternalsProfileStats* SetAlignerCpuInternalsProfileStats(
+		AlignerCpuInternalsProfileStats* stats);
+
 	struct Alignment {
 		uint16_t sw_score;           // The best alignment score
 		uint16_t sw_score_next_best; // The next best alignment score
@@ -132,6 +293,35 @@ namespace StripedSmithWaterman {
 			gap_extending_penalty_ = extending;
 		};
 
+		uint8_t GapOpeningPenaltyForCacheKey(void) const {
+			return gap_opening_penalty_;
+		};
+
+		uint8_t GapExtendingPenaltyForCacheKey(void) const {
+			return gap_extending_penalty_;
+		};
+
+		uint64_t ScoringHashForCacheKey(void) const {
+			uint64_t hash = 1469598103934665603ULL;
+			const int matrix_cells = score_matrix_size_ * score_matrix_size_;
+			if (score_matrix_ != NULL) {
+				for (int i = 0; i < matrix_cells; ++i) {
+					hash ^= static_cast<uint8_t>(score_matrix_[i]);
+					hash *= 1099511628211ULL;
+				}
+			} else {
+				hash ^= 0xffU;
+				hash *= 1099511628211ULL;
+			}
+			hash ^= static_cast<uint8_t>(score_matrix_size_);
+			hash *= 1099511628211ULL;
+			hash ^= static_cast<uint8_t>(gap_opening_penalty_);
+			hash *= 1099511628211ULL;
+			hash ^= static_cast<uint8_t>(gap_extending_penalty_);
+			hash *= 1099511628211ULL;
+			return hash;
+		};
+
 		// =========
 		// @function Align the query againt the reference that is set by
 		//             SetReferenceSequence.
@@ -165,9 +355,10 @@ namespace StripedSmithWaterman {
 		// @function use this function to get all sub-optimal alignments whose 
 		// score is larger than threshold. Highly similar with Align, but just gather
 		// scoreMatrix, no alignments.
-		bool  preAlign(const char* query, const char* ref, const int& ref_len,
-			const Filter& filter, Alignment* alignment, const int32_t maskLen,
-			int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch) const;
+			bool  preAlign(const char* query, const char* ref, const int& ref_len,
+				const Filter& filter, Alignment* alignment, const int32_t maskLen,
+				int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch,
+				std::vector<int> *scoreVectorOut = NULL) const;
 
 		// @function Clear up all containers and thus the aligner is disabled.
 		//             To rebuild the aligner please use Build functions.
@@ -240,4 +431,3 @@ namespace StripedSmithWaterman {
 } // namespace StripedSmithWaterman
 
 #endif // COMPLETE_STRIPED_SMITH_WATERMAN_CPP_H_
-

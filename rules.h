@@ -56,13 +56,21 @@ using namespace std;
 string transferString(string seq1,int strand,int Para,int rule);
 void reverseSeq(string &seq);
 void complement(string &seq);
+static inline char fasim_ascii_upper_softmask_base(char base)
+{
+  if(base>='a'&&base<='z')
+  {
+    return static_cast<char>(base-'a'+'A');
+  }
+  return base;
+}
 void complement(string &seq)
 {
   string compSeq;
   int i=0;
   for(i=0;i<seq.size();i++)
   {
-    switch (seq[i])
+    switch (fasim_ascii_upper_softmask_base(seq[i]))
     {
       case 'A':
         compSeq+='T';
@@ -285,23 +293,24 @@ string transferString(string seq1,int strand,int Para,int rule)
   string ruleSeq(tmp);
   for(i=0;i<seq1.size();i++)
   {
-    if(seq1[i]==ruleSeq[0])
+    const char base=fasim_ascii_upper_softmask_base(seq1[i]);
+    if(base==ruleSeq[0])
     {
       tmpSeq=tmpSeq+ruleSeq[5];
     }
-    else if(seq1[i]==ruleSeq[1])
+    else if(base==ruleSeq[1])
     {
       tmpSeq=tmpSeq+ruleSeq[6];
     }
-    else if(seq1[i]==ruleSeq[2])
+    else if(base==ruleSeq[2])
     {
       tmpSeq=tmpSeq+ruleSeq[7];
     }
-    else if(seq1[i]==ruleSeq[3])
+    else if(base==ruleSeq[3])
     {
       tmpSeq=tmpSeq+ruleSeq[8];
     }
-    else if(seq1[i]==ruleSeq[4])
+    else if(base==ruleSeq[4])
     {
       tmpSeq=tmpSeq+ruleSeq[9];
     }
