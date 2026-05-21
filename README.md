@@ -143,6 +143,8 @@ advanced runtime notes.
   multi-contig workload matrix wrapper for worker scaling reports.
 - [Fasim Sharded Real Workload Matrix](docs/fasim_sharded_worker_real_workload_matrix.md):
   real chr21+chr22 digest-equal 1/2 worker characterization.
+- [Fasim Sharded 4-Contig 2-GPU Characterization](docs/fasim_sharded_worker_4contig_2gpu_characterization.md):
+  local 2-GPU 4-contig run with 4-worker oversubscription stress.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
