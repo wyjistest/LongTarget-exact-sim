@@ -584,6 +584,10 @@ benchmark-fasim-sharded-worker-scaling:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_worker_scaling.sh
 
+benchmark-fasim-sharded-worker-workload-matrix:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_worker_workload_matrix.sh
+
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
 FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp cuda/prealign_cuda_stub.cpp
 
@@ -1070,7 +1074,7 @@ check-fasim-sharded-scheduler:
 		check-matrix-openmp-par benchmark-sample benchmark-smoke benchmark-sample-cuda benchmark-smoke-cuda \
 		benchmark-sample-cuda-avx2 benchmark-smoke-cuda-avx2 benchmark-sample-cuda-fast benchmark-smoke-cuda-fast \
 		benchmark-sample-cuda-traceback benchmark-smoke-cuda-traceback benchmark-sample-cuda-sim-full benchmark-smoke-cuda-sim-full \
-		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-sharded-worker-scaling \
+		benchmark-sample-cuda-window-pipeline benchmark-sample-cuda-vs-fasim benchmark-sample-cuda-throughput-compare benchmark-sample-cuda-vs-fasim-two-stage benchmark-fasim-batch benchmark-fasim-throughput-sweep benchmark-fasim-sharded-worker-scaling benchmark-fasim-sharded-worker-workload-matrix \
 		benchmark-two-stage-threshold-modes benchmark-two-stage-threshold-heavy-microanchors \
 		benchmark-sample-cuda-vs-fasim-two-stage-prealign \
 		check-sample-cuda check-smoke-cuda \
