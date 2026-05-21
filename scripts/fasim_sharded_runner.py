@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import concurrent.futures
 import dataclasses
 import hashlib
 import json
@@ -53,6 +54,34 @@ class RunResult:
     stderr_path: Path
     output_dir: Path
     output_path: Path
+
+
+@dataclasses.dataclass
+class WorkerAssignment:
+    worker_id: int
+    gpu_id: str | None
+    cpu_core_range: str | None
+    shards: list[Shard]
+
+
+@dataclasses.dataclass(frozen=True)
+class ScheduledShardResult:
+    shard_id: str
+    output_path: Path
+    raw_records: int
+    unique_records: int
+    report: dict[str, object]
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkerResult:
+    worker_id: int
+    gpu_id: str | None
+    cpu_core_range: str | None
+    estimated_length: int
+    estimated_cells: int | None
+    wall_seconds: float
+    shard_results: list[ScheduledShardResult]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -168,6 +197,59 @@ def _parse_env_overrides(items: list[str]) -> dict[str, str]:
     return env
 
 
+def _parse_csv_list(value: str | None, *, name: str) -> list[str]:
+    if value is None or not value.strip():
+        return []
+    items = [item.strip() for item in value.split(",")]
+    if any(not item for item in items):
+        raise ValueError(f"{name} must be a comma-separated list without empty items")
+    return items
+
+
+def _shard_work(shard: Shard) -> int:
+    return int(shard.estimated_cells or shard.estimated_length)
+
+
+def _sum_estimated_cells(shards: list[Shard]) -> int | None:
+    if any(shard.estimated_cells is None for shard in shards):
+        return None
+    return sum(int(shard.estimated_cells or 0) for shard in shards)
+
+
+def _assign_shards_to_workers(
+    shards: list[Shard],
+    *,
+    worker_count: int,
+    gpu_ids: list[str],
+    cpu_core_ranges: list[str],
+) -> list[WorkerAssignment]:
+    if worker_count < 1:
+        raise ValueError("--workers must be >= 1")
+    if cpu_core_ranges and len(cpu_core_ranges) != worker_count:
+        raise ValueError("--cpu-core-ranges must have one range per worker")
+
+    assignments = [
+        WorkerAssignment(
+            worker_id=idx,
+            gpu_id=gpu_ids[idx % len(gpu_ids)] if gpu_ids else None,
+            cpu_core_range=cpu_core_ranges[idx] if cpu_core_ranges else None,
+            shards=[],
+        )
+        for idx in range(worker_count)
+    ]
+    loads = [0 for _ in range(worker_count)]
+
+    for shard in sorted(shards, key=lambda s: (-_shard_work(s), s.shard_id)):
+        worker_idx = min(range(worker_count), key=lambda idx: (loads[idx], idx))
+        assignments[worker_idx].shards.append(shard)
+        loads[worker_idx] += _shard_work(shard)
+
+    for assignment in assignments:
+        assignment.shards.sort(key=lambda shard: shard.shard_id)
+
+    return assignments
+
+
 def _run_fasim(
     *,
     label: str,
@@ -180,6 +262,7 @@ def _run_fasim(
     log_dir: Path,
     env_overrides: dict[str, str],
     fasim_args: list[str],
+    cpu_core_range: str | None = None,
 ) -> RunResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -196,6 +279,10 @@ def _run_fasim(
         str(output_dir),
     ]
     cmd.extend(fasim_args)
+    if cpu_core_range:
+        if shutil.which("taskset") is None:
+            raise RuntimeError("--cpu-core-ranges requires taskset on PATH")
+        cmd = ["taskset", "-c", cpu_core_range, *cmd]
 
     env = os.environ.copy()
     env.update(env_overrides)
@@ -235,6 +322,117 @@ def _run_fasim(
         output_dir=output_dir,
         output_path=output_path,
     )
+
+
+def _run_worker(
+    *,
+    assignment: WorkerAssignment,
+    fasim_bin: Path,
+    rna: Path,
+    rule: str,
+    output_mode: str,
+    work_dir: Path,
+    env_overrides: dict[str, str],
+    fasim_args: list[str],
+) -> WorkerResult:
+    worker_env = dict(env_overrides)
+    if assignment.gpu_id is not None:
+        worker_env["CUDA_VISIBLE_DEVICES"] = assignment.gpu_id
+
+    shard_results: list[ScheduledShardResult] = []
+    t0 = time.perf_counter()
+    for shard in assignment.shards:
+        output_dir = work_dir / "shard_outputs" / shard.shard_id
+        run = _run_fasim(
+            label=shard.shard_id,
+            fasim_bin=fasim_bin,
+            target=shard.shard_fasta_path,
+            rna=rna,
+            rule=rule,
+            output_mode=output_mode,
+            output_dir=output_dir,
+            log_dir=work_dir / "logs",
+            env_overrides=worker_env,
+            fasim_args=fasim_args,
+            cpu_core_range=assignment.cpu_core_range,
+        )
+        canonical = _canonicalize_file(run.output_path, output_mode)
+        shard_results.append(
+            ScheduledShardResult(
+                shard_id=shard.shard_id,
+                output_path=run.output_path,
+                raw_records=canonical.raw_records,
+                unique_records=len(canonical.rows),
+                report={
+                    **_shard_to_json(shard),
+                    "worker_id": assignment.worker_id,
+                    "gpu_id": assignment.gpu_id,
+                    "cpu_core_range": assignment.cpu_core_range,
+                    "records": len(canonical.rows),
+                    "raw_records": canonical.raw_records,
+                    "digest": canonical.digest,
+                    "run": _run_to_json(run),
+                },
+            )
+        )
+    t1 = time.perf_counter()
+
+    return WorkerResult(
+        worker_id=assignment.worker_id,
+        gpu_id=assignment.gpu_id,
+        cpu_core_range=assignment.cpu_core_range,
+        estimated_length=sum(shard.estimated_length for shard in assignment.shards),
+        estimated_cells=_sum_estimated_cells(assignment.shards),
+        wall_seconds=t1 - t0,
+        shard_results=shard_results,
+    )
+
+
+def _run_scheduled_shards(
+    *,
+    assignments: list[WorkerAssignment],
+    fasim_bin: Path,
+    rna: Path,
+    rule: str,
+    output_mode: str,
+    work_dir: Path,
+    env_overrides: dict[str, str],
+    fasim_args: list[str],
+) -> list[WorkerResult]:
+    if len(assignments) == 1:
+        return [
+            _run_worker(
+                assignment=assignments[0],
+                fasim_bin=fasim_bin,
+                rna=rna,
+                rule=rule,
+                output_mode=output_mode,
+                work_dir=work_dir,
+                env_overrides=env_overrides,
+                fasim_args=fasim_args,
+            )
+        ]
+
+    results: list[WorkerResult] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(assignments)) as executor:
+        futures = [
+            executor.submit(
+                _run_worker,
+                assignment=assignment,
+                fasim_bin=fasim_bin,
+                rna=rna,
+                rule=rule,
+                output_mode=output_mode,
+                work_dir=work_dir,
+                env_overrides=env_overrides,
+                fasim_args=fasim_args,
+            )
+            for assignment in assignments
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+
+    return sorted(results, key=lambda result: result.worker_id)
 
 
 def _find_output_file(output_dir: Path, output_mode: str) -> Path:
@@ -374,7 +572,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run Fasim once per target FASTA contig and deterministically merge "
-            "record output. PR A intentionally supports contig-level shards only."
+            "record output. Shards remain contig-level; workers are independent "
+            "Fasim subprocesses."
         )
     )
     parser.add_argument("--fasim-bin", required=True, type=Path)
@@ -406,6 +605,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Extra single argument appended to each Fasim invocation. Repeatable.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of process-level shard workers to run in parallel.",
+    )
+    parser.add_argument(
+        "--gpu-ids",
+        default=None,
+        help="Comma-separated CUDA_VISIBLE_DEVICES values assigned to workers.",
+    )
+    parser.add_argument(
+        "--cpu-core-ranges",
+        default=None,
+        help="Comma-separated taskset CPU ranges, one per worker.",
+    )
     return parser
 
 
@@ -433,7 +648,15 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(f"no FASTA records found in {target}")
 
     env_overrides = _parse_env_overrides(args.env)
+    gpu_ids = _parse_csv_list(args.gpu_ids, name="--gpu-ids")
+    cpu_core_ranges = _parse_csv_list(args.cpu_core_ranges, name="--cpu-core-ranges")
     shards = _write_shard_fastas(records, work_dir / "shards")
+    assignments = _assign_shards_to_workers(
+        shards,
+        worker_count=args.workers,
+        gpu_ids=gpu_ids,
+        cpu_core_ranges=cpu_core_ranges,
+    )
     shard_plan_path = work_dir / "shard_plan.json"
     shard_plan_path.write_text(
         json.dumps([_shard_to_json(shard) for shard in shards], indent=2) + "\n",
@@ -444,34 +667,49 @@ def main(argv: list[str] | None = None) -> int:
     shard_output_paths: list[Path] = []
     sharded_raw_records = 0
     sharded_unique_records = 0
+    worker_results = _run_scheduled_shards(
+        assignments=assignments,
+        fasim_bin=fasim_bin,
+        rna=rna,
+        rule=str(args.rule),
+        output_mode=args.output_mode,
+        work_dir=work_dir,
+        env_overrides=env_overrides,
+        fasim_args=args.fasim_arg,
+    )
 
-    for shard in shards:
-        output_dir = work_dir / "shard_outputs" / shard.shard_id
-        run = _run_fasim(
-            label=shard.shard_id,
-            fasim_bin=fasim_bin,
-            target=shard.shard_fasta_path,
-            rna=rna,
-            rule=str(args.rule),
-            output_mode=args.output_mode,
-            output_dir=output_dir,
-            log_dir=work_dir / "logs",
-            env_overrides=env_overrides,
-            fasim_args=args.fasim_arg,
-        )
-        canonical = _canonicalize_file(run.output_path, args.output_mode)
-        sharded_raw_records += canonical.raw_records
-        sharded_unique_records += len(canonical.rows)
-        shard_output_paths.append(run.output_path)
-        per_shard.append(
-            {
-                **_shard_to_json(shard),
-                "records": len(canonical.rows),
-                "raw_records": canonical.raw_records,
-                "digest": canonical.digest,
-                "run": _run_to_json(run),
-            }
-        )
+    shard_order = {shard.shard_id: idx for idx, shard in enumerate(shards)}
+    scheduled_results = [
+        shard_result
+        for worker_result in worker_results
+        for shard_result in worker_result.shard_results
+    ]
+    scheduled_results.sort(key=lambda result: shard_order[result.shard_id])
+
+    for shard_result in scheduled_results:
+        sharded_raw_records += shard_result.raw_records
+        sharded_unique_records += shard_result.unique_records
+        shard_output_paths.append(shard_result.output_path)
+        per_shard.append(shard_result.report)
+
+    per_worker = [
+        {
+            "worker_id": result.worker_id,
+            "gpu_id": result.gpu_id,
+            "cpu_core_range": result.cpu_core_range,
+            "shard_ids": [shard_result.shard_id for shard_result in result.shard_results],
+            "estimated_length": result.estimated_length,
+            "estimated_cells": result.estimated_cells,
+            "wall_seconds": result.wall_seconds,
+            "records": sum(
+                shard_result.unique_records for shard_result in result.shard_results
+            ),
+            "raw_records": sum(
+                shard_result.raw_records for shard_result in result.shard_results
+            ),
+        }
+        for result in worker_results
+    ]
 
     merged_name = "merged-TFOsorted.lite" if args.output_mode == "lite" else "merged-TFOsorted"
     merged_output_path = work_dir / "merged" / merged_name
@@ -512,9 +750,13 @@ def main(argv: list[str] | None = None) -> int:
         "rule": str(args.rule),
         "output_mode": args.output_mode,
         "env_overrides": env_overrides,
+        "worker_count": args.workers,
+        "gpu_ids": gpu_ids,
+        "cpu_core_ranges": cpu_core_ranges,
         "shard_plan": str(shard_plan_path),
         "shard_count": len(shards),
         "shard_ids": [shard.shard_id for shard in shards],
+        "per_worker": per_worker,
         "per_shard": per_shard,
         "sharded_records": sharded_raw_records,
         "sharded_unique_records": sharded_unique_records,
