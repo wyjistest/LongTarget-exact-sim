@@ -97,6 +97,10 @@ ranges are optional and use `taskset`; provide one range per worker when used.
 When estimated DP cells are unavailable, shard assignment falls back to target
 sequence length.
 
+Use `--workers-per-gpu N` with `--gpu-ids` to derive the worker count as
+`len(gpu_ids) * N`. This is a default-off convenience option and is mutually
+exclusive with `--workers`; it does not change scheduler defaults.
+
 ## Merge Semantics
 
 The merge step supports `lite` and `tfosorted` record outputs. It:
