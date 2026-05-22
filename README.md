@@ -150,6 +150,8 @@ advanced runtime notes.
   local 2-GPU worker-density characterization across 1/2/3/4/6/8 workers.
 - [Fasim Sharded Worker Density on 2 GPUs: Repeated Runs](docs/fasim_sharded_worker_density_2gpu_repeated.md):
   repeated local density runs confirming 6 workers as the best 2-GPU candidate.
+- [Fasim Sharded Worker Whole-Genome Readiness](docs/fasim_sharded_worker_whole_genome_readiness.md):
+  manifest-backed 2-GPU multi-contig readiness matrix with CPU affinity.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.

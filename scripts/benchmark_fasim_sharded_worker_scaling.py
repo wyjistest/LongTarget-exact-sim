@@ -76,6 +76,8 @@ def _run_sharded_mode(
         "--workers",
         str(worker_count),
     ]
+    if args.manifest:
+        cmd.extend(["--manifest", str(run_dir / "run_manifest.json")])
 
     if gpu_ids:
         cmd.extend(["--gpu-ids", ",".join(gpu_ids)])
@@ -85,6 +87,12 @@ def _run_sharded_mode(
                 "--cpu-core-ranges must include at least as many ranges as the largest worker count"
             )
         cmd.extend(["--cpu-core-ranges", ",".join(cpu_core_ranges[:worker_count])])
+    if args.auto_cpu_core_ranges:
+        cmd.append("--auto-cpu-core-ranges")
+        if args.cpu_pool:
+            cmd.extend(["--cpu-pool", args.cpu_pool])
+        if args.cpu_cores_per_worker is not None:
+            cmd.extend(["--cpu-cores-per-worker", str(args.cpu_cores_per_worker)])
     for item in args.env:
         cmd.extend(["--env", item])
     for item in args.fasim_arg:
@@ -182,6 +190,10 @@ def _summarize_run(
         "speedup_vs_single": single_seconds / wall_seconds if wall_seconds else None,
         "speedup_vs_1_worker": one_worker_seconds / wall_seconds if wall_seconds else None,
         "report_path": str(report_path),
+        "run_status": report.get("run_status"),
+        "run_manifest_path": report.get("manifest"),
+        "resumed_shards": report.get("resumed_shards"),
+        "failed_shards": report.get("failed_shards"),
         "shard_count": report.get("shard_count"),
         "worker_count_reported": report.get("worker_count"),
         "gpu_ids": report.get("gpu_ids"),
@@ -189,6 +201,10 @@ def _summarize_run(
         "workers_derived_from_gpu_ids": report.get("workers_derived_from_gpu_ids"),
         "gpu_sharing_mode": report.get("gpu_sharing_mode"),
         "cpu_core_ranges": report.get("cpu_core_ranges"),
+        "cpu_pool": report.get("cpu_pool"),
+        "cpu_cores_per_worker": report.get("cpu_cores_per_worker"),
+        "auto_cpu_core_ranges": report.get("auto_cpu_core_ranges"),
+        "taskset_enabled": report.get("taskset_enabled"),
         "per_worker": report.get("per_worker"),
         "per_shard": report.get("per_shard"),
         "merged_records": report.get("merged_records"),
@@ -232,6 +248,14 @@ def main() -> int:
         default=None,
         help="optional comma-separated CPU ranges; sliced per worker count",
     )
+    parser.add_argument(
+        "--manifest",
+        action="store_true",
+        help="write one run_manifest.json per worker-count run",
+    )
+    parser.add_argument("--cpu-pool", default=None)
+    parser.add_argument("--cpu-cores-per-worker", type=int, default=None)
+    parser.add_argument("--auto-cpu-core-ranges", action="store_true")
     parser.add_argument(
         "--env",
         action="append",
@@ -326,6 +350,10 @@ def main() -> int:
         "worker_counts": worker_counts,
         "gpu_ids": gpu_ids,
         "cpu_core_ranges": cpu_core_ranges,
+        "manifest": bool(args.manifest),
+        "cpu_pool": args.cpu_pool,
+        "cpu_cores_per_worker": args.cpu_cores_per_worker,
+        "auto_cpu_core_ranges": bool(args.auto_cpu_core_ranges),
         "baseline": {
             "worker_count": 1,
             "report_path": str(report_paths[1]),
