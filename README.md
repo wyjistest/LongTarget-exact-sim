@@ -145,6 +145,8 @@ advanced runtime notes.
   real chr21+chr22 digest-equal 1/2 worker characterization.
 - [Fasim Sharded 4-Contig 2-GPU Characterization](docs/fasim_sharded_worker_4contig_2gpu_characterization.md):
   local 2-GPU 4-contig run with 4-worker oversubscription stress.
+- [Fasim Sharded Worker Density on 2 GPUs](docs/fasim_sharded_worker_density_2gpu.md):
+  local 2-GPU worker-density characterization across 1/2/3/4/6/8 workers.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
