@@ -275,6 +275,81 @@ def _parse_csv_list(value: str | None, *, name: str) -> list[str]:
     return items
 
 
+def _parse_cpu_pool(value: str) -> list[int]:
+    cores: list[int] = []
+    seen: set[int] = set()
+    for raw in value.split(","):
+        item = raw.strip()
+        if not item:
+            raise ValueError("--cpu-pool must not include empty entries")
+        if "-" in item:
+            start_text, end_text = item.split("-", 1)
+            start = int(start_text)
+            end = int(end_text)
+            if end < start:
+                raise ValueError(f"invalid --cpu-pool range: {item}")
+            values = range(start, end + 1)
+        else:
+            values = [int(item)]
+        for core in values:
+            if core < 0:
+                raise ValueError("--cpu-pool cores must be >= 0")
+            if core not in seen:
+                cores.append(core)
+                seen.add(core)
+    if not cores:
+        raise ValueError("--cpu-pool must not be empty")
+    return cores
+
+
+def _format_cpu_range(cores: list[int]) -> str:
+    if not cores:
+        raise ValueError("empty CPU core range")
+    ranges: list[str] = []
+    start = cores[0]
+    prev = cores[0]
+    for core in cores[1:]:
+        if core == prev + 1:
+            prev = core
+            continue
+        ranges.append(str(start) if start == prev else f"{start}-{prev}")
+        start = prev = core
+    ranges.append(str(start) if start == prev else f"{start}-{prev}")
+    return ",".join(ranges)
+
+
+def _resolve_cpu_core_ranges(
+    *,
+    explicit_cpu_core_ranges: list[str],
+    auto_cpu_core_ranges: bool,
+    cpu_pool: str | None,
+    cpu_cores_per_worker: int | None,
+    worker_count: int,
+) -> list[str]:
+    if explicit_cpu_core_ranges and auto_cpu_core_ranges:
+        raise ValueError("--cpu-core-ranges and --auto-cpu-core-ranges cannot be used together")
+    if not auto_cpu_core_ranges:
+        return explicit_cpu_core_ranges
+    if not cpu_pool:
+        raise ValueError("--auto-cpu-core-ranges requires --cpu-pool")
+    if cpu_cores_per_worker is None:
+        raise ValueError("--auto-cpu-core-ranges requires --cpu-cores-per-worker")
+    if cpu_cores_per_worker < 1:
+        raise ValueError("--cpu-cores-per-worker must be >= 1")
+    cores = _parse_cpu_pool(cpu_pool)
+    required = worker_count * cpu_cores_per_worker
+    if len(cores) < required:
+        raise ValueError(
+            f"insufficient --cpu-pool cores: need {required}, have {len(cores)}"
+        )
+    ranges: list[str] = []
+    for idx in range(worker_count):
+        start = idx * cpu_cores_per_worker
+        end = start + cpu_cores_per_worker
+        ranges.append(_format_cpu_range(cores[start:end]))
+    return ranges
+
+
 def _shard_work(shard: Shard) -> int:
     return int(shard.estimated_cells or shard.estimated_length)
 
@@ -396,6 +471,10 @@ class RunManifest:
                 gpu_ids=gpu_ids,
             ),
             "cpu_core_ranges": cpu_core_ranges,
+            "cpu_pool": args.cpu_pool,
+            "cpu_cores_per_worker": args.cpu_cores_per_worker,
+            "auto_cpu_core_ranges": bool(args.auto_cpu_core_ranges),
+            "taskset_enabled": bool(cpu_core_ranges),
             "env_snapshot": env_overrides,
             "output_mode": args.output_mode,
             "rule": str(args.rule),
@@ -635,6 +714,10 @@ def _build_run_config_digest(
         "workers_derived_from_gpu_ids": workers_derived_from_gpu_ids,
         "gpu_ids": gpu_ids,
         "cpu_core_ranges": cpu_core_ranges,
+        "cpu_pool": args.cpu_pool,
+        "cpu_cores_per_worker": args.cpu_cores_per_worker,
+        "auto_cpu_core_ranges": bool(args.auto_cpu_core_ranges),
+        "taskset_enabled": bool(cpu_core_ranges),
         "shard_plan": shard_plan,
         "shard_plan_digest": shard_plan_digest,
         "merge_config": {
@@ -1180,6 +1263,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated taskset CPU ranges, one per worker.",
     )
     parser.add_argument(
+        "--cpu-pool",
+        default=None,
+        help="CPU core pool used with --auto-cpu-core-ranges, e.g. 0-23.",
+    )
+    parser.add_argument(
+        "--cpu-cores-per-worker",
+        type=int,
+        default=None,
+        help="Number of CPU cores assigned to each worker in auto CPU binding mode.",
+    )
+    parser.add_argument(
+        "--auto-cpu-core-ranges",
+        action="store_true",
+        help="Derive one taskset CPU range per worker from --cpu-pool.",
+    )
+    parser.add_argument(
         "--manifest",
         type=Path,
         default=None,
@@ -1246,11 +1345,21 @@ def main(argv: list[str] | None = None) -> int:
 
     env_overrides = _parse_env_overrides(args.env)
     gpu_ids = _parse_csv_list(args.gpu_ids, name="--gpu-ids")
-    cpu_core_ranges = _parse_csv_list(args.cpu_core_ranges, name="--cpu-core-ranges")
+    explicit_cpu_core_ranges = _parse_csv_list(
+        args.cpu_core_ranges,
+        name="--cpu-core-ranges",
+    )
     worker_count, workers_derived_from_gpu_ids = _resolve_worker_count(
         workers=args.workers,
         workers_per_gpu=args.workers_per_gpu,
         gpu_ids=gpu_ids,
+    )
+    cpu_core_ranges = _resolve_cpu_core_ranges(
+        explicit_cpu_core_ranges=explicit_cpu_core_ranges,
+        auto_cpu_core_ranges=bool(args.auto_cpu_core_ranges),
+        cpu_pool=args.cpu_pool,
+        cpu_cores_per_worker=args.cpu_cores_per_worker,
+        worker_count=worker_count,
     )
     shards = _write_shard_fastas(records, work_dir / "shards")
     shard_plan = [_shard_to_json(shard) for shard in shards]
@@ -1479,6 +1588,10 @@ def main(argv: list[str] | None = None) -> int:
             gpu_ids=gpu_ids,
         ),
         "cpu_core_ranges": cpu_core_ranges,
+        "cpu_pool": args.cpu_pool,
+        "cpu_cores_per_worker": args.cpu_cores_per_worker,
+        "auto_cpu_core_ranges": bool(args.auto_cpu_core_ranges),
+        "taskset_enabled": bool(cpu_core_ranges),
         "shard_plan": str(shard_plan_path),
         "shard_plan_digest": shard_plan_digest,
         "shard_count": len(shards),

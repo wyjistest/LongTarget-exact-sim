@@ -101,6 +101,11 @@ Use `--workers-per-gpu N` with `--gpu-ids` to derive the worker count as
 `len(gpu_ids) * N`. This is a default-off convenience option and is mutually
 exclusive with `--workers`; it does not change scheduler defaults.
 
+Use `--auto-cpu-core-ranges` with `--cpu-pool` and
+`--cpu-cores-per-worker` to derive one `taskset` range per worker. Explicit
+`--cpu-core-ranges` still works and remains mutually exclusive with auto CPU
+range derivation. Without these CPU options, worker CPU binding remains off.
+
 ## Manifest and Resume
 
 Long sharded runs can write an auditable manifest:
