@@ -73,6 +73,39 @@ hardware and workload. That result is not evidence for 4-GPU scaling.
 separated range per worker, and each Fasim subprocess is launched through
 `taskset -c <range>`.
 
+CPU ranges can also be derived explicitly:
+
+```bash
+python3 ./scripts/fasim_sharded_runner.py \
+  --fasim-bin ./fasim_longtarget_cuda \
+  --target targets.fa \
+  --rna H19.fa \
+  --rule 1 \
+  --work-dir .tmp/fasim_sharded \
+  --output-mode lite \
+  --gpu-ids 0,1 \
+  --workers-per-gpu 3 \
+  --auto-cpu-core-ranges \
+  --cpu-pool 0-23 \
+  --cpu-cores-per-worker 4
+```
+
+This derives one range per worker:
+
+```text
+worker 0: 0-3
+worker 1: 4-7
+worker 2: 8-11
+worker 3: 12-15
+worker 4: 16-19
+worker 5: 20-23
+```
+
+`--auto-cpu-core-ranges` is mutually exclusive with explicit
+`--cpu-core-ranges`. It requires both `--cpu-pool` and
+`--cpu-cores-per-worker`, and errors if the pool does not contain enough cores.
+No CPU binding is enabled unless explicit or auto CPU ranges are configured.
+
 ## Report Fields
 
 `report.json` extends the sharded runner report with:
@@ -84,6 +117,10 @@ workers_per_gpu
 workers_derived_from_gpu_ids
 gpu_sharing_mode
 cpu_core_ranges
+cpu_pool
+cpu_cores_per_worker
+auto_cpu_core_ranges
+taskset_enabled
 per_worker[*].worker_id
 per_worker[*].gpu_id
 per_worker[*].cpu_core_range
@@ -123,6 +160,7 @@ Run:
 ```bash
 make check-fasim-sharded-scheduler
 make check-fasim-sharded-runner-resume
+make check-fasim-sharded-cpu-affinity
 ```
 
 The check creates the same deterministic two-contig fixture used by the base
@@ -133,6 +171,10 @@ baseline and optional single-run digest.
 The resume check covers fresh manifest creation, strict resume skipping,
 missing-output rerun, `--force`, default existing-work-dir protection, and
 `--keep-going` incomplete-run reporting.
+
+The CPU affinity check covers explicit CPU ranges, auto-derived ranges,
+conflicting CPU options, insufficient CPU pools, manifest CPU binding fields,
+and resume incompatibility when CPU binding changes.
 
 ## Next Step
 
