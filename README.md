@@ -147,6 +147,8 @@ advanced runtime notes.
   local 2-GPU 4-contig run with 4-worker oversubscription stress.
 - [Fasim Sharded Worker Density on 2 GPUs](docs/fasim_sharded_worker_density_2gpu.md):
   local 2-GPU worker-density characterization across 1/2/3/4/6/8 workers.
+- [Fasim Sharded Worker Density on 2 GPUs: Repeated Runs](docs/fasim_sharded_worker_density_2gpu_repeated.md):
+  repeated local density runs confirming 6 workers as the best 2-GPU candidate.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
