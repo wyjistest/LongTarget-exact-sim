@@ -154,6 +154,8 @@ advanced runtime notes.
   manifest-backed 2-GPU multi-contig readiness matrix with CPU affinity.
 - [Fasim Whole-Genome Shard Balance](docs/fasim_whole_genome_shard_balance.md):
   plan-only contig assignment and straggler analysis before expensive runs.
+- [Fasim Sharded Worker Primary-Contig Matrix](docs/fasim_sharded_worker_primary_contig_matrix.md):
+  manifest-backed hg38 chr21+chr22 primary-contig subset matrix.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
