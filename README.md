@@ -156,6 +156,9 @@ advanced runtime notes.
   plan-only contig assignment and straggler analysis before expensive runs.
 - [Fasim Sharded Worker Primary-Contig Matrix](docs/fasim_sharded_worker_primary_contig_matrix.md):
   manifest-backed hg38 chr21+chr22 primary-contig subset matrix.
+- [Fasim Sharded Worker hg38 Primary Genome Matrix](docs/fasim_sharded_worker_hg38_primary_genome_matrix.md):
+  manifest-backed full hg38 primary-chromosome sharded matrix on the local
+  2-GPU machine.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
