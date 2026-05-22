@@ -101,6 +101,35 @@ Use `--workers-per-gpu N` with `--gpu-ids` to derive the worker count as
 `len(gpu_ids) * N`. This is a default-off convenience option and is mutually
 exclusive with `--workers`; it does not change scheduler defaults.
 
+## Manifest and Resume
+
+Long sharded runs can write an auditable manifest:
+
+```bash
+python3 ./scripts/fasim_sharded_runner.py \
+  --fasim-bin ./fasim_longtarget_cuda \
+  --target targets.fa \
+  --rna H19.fa \
+  --rule 1 \
+  --work-dir .tmp/fasim_sharded \
+  --manifest .tmp/fasim_sharded/run_manifest.json \
+  --output-mode lite \
+  --workers-per-gpu 3 \
+  --gpu-ids 0,1
+```
+
+When `--manifest` is used, an existing run directory with a manifest requires
+either `--resume` or `--force`. `--resume` only skips a shard when the previous
+manifest entry is compatible with the current run config, the shard input digest
+matches, the output file exists, and the recorded output digest still matches.
+Otherwise the shard is rerun. `--force` clears the old work directory and starts
+a new run id.
+
+`--keep-going` records failed shards and continues other workers. A run with any
+failed shard is marked `run_status=incomplete`; it writes only
+`partial_merged_digest`, leaving the final `merged_digest` unset so partial
+outputs cannot be mistaken for a complete whole-target result.
+
 ## Merge Semantics
 
 The merge step supports `lite` and `tfosorted` record outputs. It:

@@ -2,6 +2,7 @@
 import argparse
 import concurrent.futures
 import dataclasses
+import datetime
 import hashlib
 import json
 import os
@@ -9,7 +10,9 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
+import uuid
 from pathlib import Path
 
 
@@ -24,6 +27,8 @@ TFOSORTED_HEADER = (
     "StartInGenome\tEndInGenome\tMeanStability\tMeanIdentity(%)\tStrand\t"
     "Rule\tScore\tNt(bp)\tClass\tMidPoint\tCenter\tTFO sequence\tTTS sequence"
 )
+
+RUNNER_VERSION = "fasim_sharded_runner_manifest_v1"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -53,7 +58,14 @@ class RunResult:
     stdout_path: Path
     stderr_path: Path
     output_dir: Path
-    output_path: Path
+    output_path: Path | None
+    exit_code: int
+
+
+class FasimRunError(RuntimeError):
+    def __init__(self, message: str, run: RunResult) -> None:
+        super().__init__(message)
+        self.run = run
 
 
 @dataclasses.dataclass
@@ -67,9 +79,10 @@ class WorkerAssignment:
 @dataclasses.dataclass(frozen=True)
 class ScheduledShardResult:
     shard_id: str
-    output_path: Path
+    output_path: Path | None
     raw_records: int
     unique_records: int
+    status: str
     report: dict[str, object]
 
 
@@ -95,6 +108,62 @@ class CanonicalOutput:
 
 def _eprint(message: str) -> None:
     print(message, file=sys.stderr)
+
+
+def _utc_now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _json_digest(payload: object) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return _sha256_text(encoded)
+
+
+def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+    try:
+        dir_fd = os.open(str(path.parent), os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
+def _git_commit() -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
 
 
 def _read_fasta(path: Path) -> list[FastaRecord]:
@@ -275,6 +344,337 @@ def _gpu_sharing_mode(*, worker_count: int, gpu_ids: list[str]) -> str | None:
     return "shared" if worker_count > len(gpu_ids) else "exclusive"
 
 
+class RunManifest:
+    def __init__(self, path: Path, payload: dict[str, object]) -> None:
+        self.path = path
+        self.payload = payload
+        self._lock = threading.Lock()
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        path: Path,
+        args: argparse.Namespace,
+        target: Path,
+        target_digest: str,
+        rna: Path,
+        rna_digest: str,
+        shards: list[Shard],
+        shard_plan_digest: str,
+        worker_count: int,
+        workers_derived_from_gpu_ids: bool,
+        gpu_ids: list[str],
+        cpu_core_ranges: list[str],
+        env_overrides: dict[str, str],
+        run_config_digest: str,
+        git_commit: str | None,
+    ) -> "RunManifest":
+        now = _utc_now()
+        payload: dict[str, object] = {
+            "schema_version": 1,
+            "run_id": str(uuid.uuid4()),
+            "run_status": "running",
+            "created_at": now,
+            "updated_at": now,
+            "git_commit": git_commit,
+            "runner_version": RUNNER_VERSION,
+            "command_line": sys.argv,
+            "run_config_digest": run_config_digest,
+            "target_fasta": str(target),
+            "target_fasta_digest": target_digest,
+            "rna_fasta": str(rna),
+            "rna_fasta_digest": rna_digest,
+            "shard_plan_digest": shard_plan_digest,
+            "shard_count": len(shards),
+            "worker_count": worker_count,
+            "gpu_ids": gpu_ids,
+            "workers_per_gpu": args.workers_per_gpu,
+            "workers_derived_from_gpu_ids": workers_derived_from_gpu_ids,
+            "gpu_sharing_mode": _gpu_sharing_mode(
+                worker_count=worker_count,
+                gpu_ids=gpu_ids,
+            ),
+            "cpu_core_ranges": cpu_core_ranges,
+            "env_snapshot": env_overrides,
+            "output_mode": args.output_mode,
+            "rule": str(args.rule),
+            "per_shard": [
+                {
+                    **_shard_to_json(shard),
+                    "run_config_digest": run_config_digest,
+                    "shard_input_digest": _sha256_file(shard.shard_fasta_path),
+                    "status": "planned",
+                    "start_time": None,
+                    "end_time": None,
+                    "wall_seconds": None,
+                    "output_path": None,
+                    "output_digest": None,
+                    "records": None,
+                    "stdout_path": None,
+                    "stderr_path": None,
+                    "exit_code": None,
+                    "skipped_by_resume": False,
+                }
+                for shard in shards
+            ],
+            "merged_records": None,
+            "duplicate_removed": None,
+            "merged_digest": None,
+            "partial_merged_digest": None,
+            "failed_shards": [],
+            "resumed_shards": [],
+        }
+        manifest = cls(path, payload)
+        manifest.write()
+        return manifest
+
+    @classmethod
+    def load(cls, path: Path) -> "RunManifest":
+        return cls(path, json.loads(path.read_text(encoding="utf-8")))
+
+    def write(self) -> None:
+        with self._lock:
+            self.payload["updated_at"] = _utc_now()
+            _atomic_write_json(self.path, self.payload)
+
+    def shard_entry(self, shard_id: str) -> dict[str, object]:
+        for entry in self.payload.get("per_shard", []):
+            if isinstance(entry, dict) and entry.get("shard_id") == shard_id:
+                return entry
+        raise KeyError(f"manifest missing shard: {shard_id}")
+
+    def mark_running(
+        self,
+        shard: Shard,
+        *,
+        run: RunResult | None = None,
+        worker_id: int | None = None,
+        gpu_id: str | None = None,
+        cpu_core_range: str | None = None,
+    ) -> None:
+        entry = self.shard_entry(shard.shard_id)
+        entry.update(
+            {
+                "status": "running",
+                "start_time": _utc_now(),
+                "end_time": None,
+                "wall_seconds": None,
+                "worker_id": worker_id,
+                "gpu_id": gpu_id,
+                "cpu_core_range": cpu_core_range,
+                "output_path": str(run.output_path) if run and run.output_path else None,
+                "stdout_path": str(run.stdout_path) if run else None,
+                "stderr_path": str(run.stderr_path) if run else None,
+                "exit_code": None,
+                "skipped_by_resume": False,
+            }
+        )
+        self.write()
+
+    def mark_completed(
+        self,
+        shard: Shard,
+        *,
+        run: RunResult,
+        canonical: CanonicalOutput,
+        worker_id: int,
+        gpu_id: str | None,
+        cpu_core_range: str | None,
+        skipped_by_resume: bool = False,
+    ) -> None:
+        if run.output_path is None:
+            raise RuntimeError(f"cannot complete {shard.shard_id} without output")
+        entry = self.shard_entry(shard.shard_id)
+        entry.update(
+            {
+                "status": "skipped_by_resume" if skipped_by_resume else "completed",
+                "end_time": _utc_now(),
+                "wall_seconds": run.wall_seconds,
+                "worker_id": worker_id,
+                "gpu_id": gpu_id,
+                "cpu_core_range": cpu_core_range,
+                "output_path": str(run.output_path),
+                "output_digest": canonical.digest,
+                "records": len(canonical.rows),
+                "raw_records": canonical.raw_records,
+                "stdout_path": str(run.stdout_path),
+                "stderr_path": str(run.stderr_path),
+                "exit_code": run.exit_code,
+                "skipped_by_resume": skipped_by_resume,
+            }
+        )
+        self.write()
+
+    def mark_failed(
+        self,
+        shard: Shard,
+        *,
+        run: RunResult | None,
+        worker_id: int,
+        gpu_id: str | None,
+        cpu_core_range: str | None,
+    ) -> None:
+        entry = self.shard_entry(shard.shard_id)
+        entry.update(
+            {
+                "status": "failed",
+                "end_time": _utc_now(),
+                "wall_seconds": run.wall_seconds if run else None,
+                "worker_id": worker_id,
+                "gpu_id": gpu_id,
+                "cpu_core_range": cpu_core_range,
+                "output_path": str(run.output_path) if run and run.output_path else None,
+                "stdout_path": str(run.stdout_path) if run else None,
+                "stderr_path": str(run.stderr_path) if run else None,
+                "exit_code": run.exit_code if run else 1,
+                "skipped_by_resume": False,
+            }
+        )
+        failed = list(self.payload.get("failed_shards", []))
+        if shard.shard_id not in failed:
+            failed.append(shard.shard_id)
+        self.payload["failed_shards"] = failed
+        self.write()
+
+    def finalize(
+        self,
+        *,
+        run_status: str,
+        merged_records: int | None,
+        duplicate_removed: int | None,
+        merged_digest: str | None,
+        partial_merged_digest: str | None,
+        failed_shards: list[str],
+        resumed_shards: list[str],
+    ) -> None:
+        self.payload.update(
+            {
+                "run_status": run_status,
+                "merged_records": merged_records,
+                "duplicate_removed": duplicate_removed,
+                "merged_digest": merged_digest,
+                "partial_merged_digest": partial_merged_digest,
+                "failed_shards": failed_shards,
+                "resumed_shards": resumed_shards,
+            }
+        )
+        self.write()
+
+
+def _manifest_by_shard(manifest: RunManifest | None) -> dict[str, dict[str, object]]:
+    if manifest is None:
+        return {}
+    return {
+        str(entry["shard_id"]): entry
+        for entry in manifest.payload.get("per_shard", [])
+        if isinstance(entry, dict) and entry.get("shard_id")
+    }
+
+
+def _resume_entry_valid(
+    *,
+    entry: dict[str, object] | None,
+    shard: Shard,
+    output_mode: str,
+    run_config_digest: str,
+) -> tuple[bool, CanonicalOutput | None, Path | None]:
+    if not entry:
+        return False, None, None
+    if entry.get("status") not in {"completed", "skipped_by_resume"}:
+        return False, None, None
+    if entry.get("run_config_digest") != run_config_digest:
+        return False, None, None
+    if entry.get("shard_input_digest") != _sha256_file(shard.shard_fasta_path):
+        return False, None, None
+    output_text = entry.get("output_path")
+    digest_text = entry.get("output_digest")
+    if not output_text or not digest_text:
+        return False, None, None
+    output_path = Path(str(output_text))
+    if not output_path.exists():
+        return False, None, None
+    canonical = _canonicalize_file(output_path, output_mode)
+    if canonical.digest != digest_text:
+        return False, None, None
+    return True, canonical, output_path
+
+
+def _build_run_config_digest(
+    *,
+    args: argparse.Namespace,
+    target: Path,
+    target_digest: str,
+    rna: Path,
+    rna_digest: str,
+    fasim_bin: Path,
+    env_overrides: dict[str, str],
+    worker_count: int,
+    workers_derived_from_gpu_ids: bool,
+    gpu_ids: list[str],
+    cpu_core_ranges: list[str],
+    shard_plan: list[dict[str, object]],
+    shard_plan_digest: str,
+    git_commit: str | None,
+) -> str:
+    payload = {
+        "runner_version": RUNNER_VERSION,
+        "git_commit": git_commit,
+        "fasim_bin": str(fasim_bin),
+        "target": str(target),
+        "target_digest": target_digest,
+        "rna": str(rna),
+        "rna_digest": rna_digest,
+        "rule": str(args.rule),
+        "output_mode": args.output_mode,
+        "validate_single": bool(args.validate_single),
+        "env_overrides": env_overrides,
+        "fasim_args": args.fasim_arg,
+        "worker_count": worker_count,
+        "workers_per_gpu": args.workers_per_gpu,
+        "workers_derived_from_gpu_ids": workers_derived_from_gpu_ids,
+        "gpu_ids": gpu_ids,
+        "cpu_core_ranges": cpu_core_ranges,
+        "shard_plan": shard_plan,
+        "shard_plan_digest": shard_plan_digest,
+        "merge_config": {
+            "canonical_sort": True,
+            "exact_dedup": True,
+            "output_mode": args.output_mode,
+        },
+    }
+    return _json_digest(payload)
+
+
+def _build_fasim_cmd(
+    *,
+    fasim_bin: Path,
+    target: Path,
+    rna: Path,
+    rule: str,
+    output_dir: Path,
+    fasim_args: list[str],
+    cpu_core_range: str | None = None,
+) -> list[str]:
+    cmd = [
+        str(fasim_bin),
+        "-f1",
+        str(target),
+        "-f2",
+        str(rna),
+        "-r",
+        str(rule),
+        "-O",
+        str(output_dir),
+    ]
+    cmd.extend(fasim_args)
+    if cpu_core_range:
+        if shutil.which("taskset") is None:
+            raise RuntimeError("--cpu-core-ranges requires taskset on PATH")
+        cmd = ["taskset", "-c", cpu_core_range, *cmd]
+    return cmd
+
+
 def _run_fasim(
     *,
     label: str,
@@ -292,22 +692,15 @@ def _run_fasim(
     output_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        str(fasim_bin),
-        "-f1",
-        str(target),
-        "-f2",
-        str(rna),
-        "-r",
-        str(rule),
-        "-O",
-        str(output_dir),
-    ]
-    cmd.extend(fasim_args)
-    if cpu_core_range:
-        if shutil.which("taskset") is None:
-            raise RuntimeError("--cpu-core-ranges requires taskset on PATH")
-        cmd = ["taskset", "-c", cpu_core_range, *cmd]
+    cmd = _build_fasim_cmd(
+        fasim_bin=fasim_bin,
+        target=target,
+        rna=rna,
+        rule=rule,
+        output_dir=output_dir,
+        fasim_args=fasim_args,
+        cpu_core_range=cpu_core_range,
+    )
 
     env = os.environ.copy()
     env.update(env_overrides)
@@ -331,13 +724,8 @@ def _run_fasim(
     stdout_path.write_text(proc.stdout, encoding="utf-8")
     stderr_path.write_text(proc.stderr, encoding="utf-8")
 
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"{label} failed with exit {proc.returncode}; see {stderr_path}"
-        )
-
-    output_path = _find_output_file(output_dir, output_mode)
-    return RunResult(
+    output_path = _find_output_file(output_dir, output_mode) if proc.returncode == 0 else None
+    run = RunResult(
         label=label,
         cmd=cmd,
         env_overrides=env_overrides,
@@ -346,7 +734,15 @@ def _run_fasim(
         stderr_path=stderr_path,
         output_dir=output_dir,
         output_path=output_path,
+        exit_code=proc.returncode,
     )
+
+    if proc.returncode != 0:
+        raise FasimRunError(
+            f"{label} failed with exit {proc.returncode}; see {stderr_path}",
+            run,
+        )
+    return run
 
 
 def _run_worker(
@@ -359,6 +755,11 @@ def _run_worker(
     work_dir: Path,
     env_overrides: dict[str, str],
     fasim_args: list[str],
+    resume_entries: dict[str, dict[str, object]],
+    run_config_digest: str,
+    manifest: RunManifest | None = None,
+    resume: bool = False,
+    keep_going: bool = False,
 ) -> WorkerResult:
     worker_env = dict(env_overrides)
     if assignment.gpu_id is not None:
@@ -367,27 +768,132 @@ def _run_worker(
     shard_results: list[ScheduledShardResult] = []
     t0 = time.perf_counter()
     for shard in assignment.shards:
+        if resume:
+            valid, canonical, output_path = _resume_entry_valid(
+                entry=resume_entries.get(shard.shard_id),
+                shard=shard,
+                output_mode=output_mode,
+                run_config_digest=run_config_digest,
+            )
+            if valid and canonical is not None and output_path is not None:
+                pseudo_run = RunResult(
+                    label=shard.shard_id,
+                    cmd=[],
+                    env_overrides=worker_env,
+                    wall_seconds=0.0,
+                    stdout_path=Path(str(resume_entries[shard.shard_id].get("stdout_path") or "")),
+                    stderr_path=Path(str(resume_entries[shard.shard_id].get("stderr_path") or "")),
+                    output_dir=output_path.parent,
+                    output_path=output_path,
+                    exit_code=0,
+                )
+                if manifest is not None:
+                    manifest.mark_completed(
+                        shard,
+                        run=pseudo_run,
+                        canonical=canonical,
+                        worker_id=assignment.worker_id,
+                        gpu_id=assignment.gpu_id,
+                        cpu_core_range=assignment.cpu_core_range,
+                        skipped_by_resume=True,
+                    )
+                shard_results.append(
+                    ScheduledShardResult(
+                        shard_id=shard.shard_id,
+                        output_path=output_path,
+                        raw_records=canonical.raw_records,
+                        unique_records=len(canonical.rows),
+                        status="skipped_by_resume",
+                        report={
+                            **_shard_to_json(shard),
+                            "worker_id": assignment.worker_id,
+                            "gpu_id": assignment.gpu_id,
+                            "cpu_core_range": assignment.cpu_core_range,
+                            "records": len(canonical.rows),
+                            "raw_records": canonical.raw_records,
+                            "digest": canonical.digest,
+                            "status": "skipped_by_resume",
+                            "skipped_by_resume": True,
+                            "run": _run_to_json(pseudo_run),
+                        },
+                    )
+                )
+                continue
+
         output_dir = work_dir / "shard_outputs" / shard.shard_id
-        run = _run_fasim(
-            label=shard.shard_id,
-            fasim_bin=fasim_bin,
-            target=shard.shard_fasta_path,
-            rna=rna,
-            rule=rule,
-            output_mode=output_mode,
-            output_dir=output_dir,
-            log_dir=work_dir / "logs",
-            env_overrides=worker_env,
-            fasim_args=fasim_args,
-            cpu_core_range=assignment.cpu_core_range,
-        )
-        canonical = _canonicalize_file(run.output_path, output_mode)
+        if manifest is not None:
+            manifest.mark_running(
+                shard,
+                worker_id=assignment.worker_id,
+                gpu_id=assignment.gpu_id,
+                cpu_core_range=assignment.cpu_core_range,
+            )
+        try:
+            run = _run_fasim(
+                label=shard.shard_id,
+                fasim_bin=fasim_bin,
+                target=shard.shard_fasta_path,
+                rna=rna,
+                rule=rule,
+                output_mode=output_mode,
+                output_dir=output_dir,
+                log_dir=work_dir / "logs",
+                env_overrides=worker_env,
+                fasim_args=fasim_args,
+                cpu_core_range=assignment.cpu_core_range,
+            )
+            if run.output_path is None:
+                raise RuntimeError(f"{shard.shard_id} completed without output path")
+            canonical = _canonicalize_file(run.output_path, output_mode)
+            if manifest is not None:
+                manifest.mark_completed(
+                    shard,
+                    run=run,
+                    canonical=canonical,
+                    worker_id=assignment.worker_id,
+                    gpu_id=assignment.gpu_id,
+                    cpu_core_range=assignment.cpu_core_range,
+                )
+        except FasimRunError as e:
+            if manifest is not None:
+                manifest.mark_failed(
+                    shard,
+                    run=e.run,
+                    worker_id=assignment.worker_id,
+                    gpu_id=assignment.gpu_id,
+                    cpu_core_range=assignment.cpu_core_range,
+                )
+            if not keep_going:
+                raise
+            shard_results.append(
+                ScheduledShardResult(
+                    shard_id=shard.shard_id,
+                    output_path=None,
+                    raw_records=0,
+                    unique_records=0,
+                    status="failed",
+                    report={
+                        **_shard_to_json(shard),
+                        "worker_id": assignment.worker_id,
+                        "gpu_id": assignment.gpu_id,
+                        "cpu_core_range": assignment.cpu_core_range,
+                        "records": None,
+                        "raw_records": None,
+                        "digest": None,
+                        "status": "failed",
+                        "skipped_by_resume": False,
+                        "run": _run_to_json(e.run),
+                    },
+                )
+            )
+            continue
         shard_results.append(
             ScheduledShardResult(
                 shard_id=shard.shard_id,
                 output_path=run.output_path,
                 raw_records=canonical.raw_records,
                 unique_records=len(canonical.rows),
+                status="completed",
                 report={
                     **_shard_to_json(shard),
                     "worker_id": assignment.worker_id,
@@ -396,6 +902,8 @@ def _run_worker(
                     "records": len(canonical.rows),
                     "raw_records": canonical.raw_records,
                     "digest": canonical.digest,
+                    "status": "completed",
+                    "skipped_by_resume": False,
                     "run": _run_to_json(run),
                 },
             )
@@ -423,6 +931,11 @@ def _run_scheduled_shards(
     work_dir: Path,
     env_overrides: dict[str, str],
     fasim_args: list[str],
+    resume_entries: dict[str, dict[str, object]],
+    run_config_digest: str,
+    manifest: RunManifest | None = None,
+    resume: bool = False,
+    keep_going: bool = False,
 ) -> list[WorkerResult]:
     if len(assignments) == 1:
         return [
@@ -435,6 +948,11 @@ def _run_scheduled_shards(
                 work_dir=work_dir,
                 env_overrides=env_overrides,
                 fasim_args=fasim_args,
+                resume_entries=resume_entries,
+                run_config_digest=run_config_digest,
+                manifest=manifest,
+                resume=resume,
+                keep_going=keep_going,
             )
         ]
 
@@ -451,6 +969,11 @@ def _run_scheduled_shards(
                 work_dir=work_dir,
                 env_overrides=env_overrides,
                 fasim_args=fasim_args,
+                resume_entries=resume_entries,
+                run_config_digest=run_config_digest,
+                manifest=manifest,
+                resume=resume,
+                keep_going=keep_going,
             )
             for assignment in assignments
         ]
@@ -589,7 +1112,8 @@ def _run_to_json(run: RunResult) -> dict[str, object]:
         "stdout_path": str(run.stdout_path),
         "stderr_path": str(run.stderr_path),
         "output_dir": str(run.output_dir),
-        "output_path": str(run.output_path),
+        "output_path": str(run.output_path) if run.output_path else None,
+        "exit_code": run.exit_code,
     }
 
 
@@ -655,6 +1179,33 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Comma-separated taskset CPU ranges, one per worker.",
     )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Path to run_manifest.json for resumable audited sharded runs.",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse manifest-compatible completed shard outputs.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Clear the work directory and rerun all shards.",
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop on the first failed shard. This is the default.",
+    )
+    group.add_argument(
+        "--keep-going",
+        action="store_true",
+        help="Record failed shards and continue other workers; final run is incomplete.",
+    )
     return parser
 
 
@@ -664,6 +1215,8 @@ def main(argv: list[str] | None = None) -> int:
     target = args.target.resolve()
     rna = args.rna.resolve()
     work_dir = args.work_dir.resolve()
+    manifest_path = args.manifest.resolve() if args.manifest else work_dir / "run_manifest.json"
+    manifest_enabled = args.manifest is not None
 
     if not fasim_bin.exists():
         raise RuntimeError(f"missing Fasim binary: {fasim_bin}")
@@ -671,11 +1224,21 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(f"missing target FASTA: {target}")
     if not rna.exists():
         raise RuntimeError(f"missing RNA FASTA: {rna}")
+    if args.resume and args.force:
+        raise RuntimeError("--resume and --force cannot be used together")
+    if args.keep_going and args.validate_single:
+        raise RuntimeError("--keep-going cannot be combined with --validate-single")
 
-    if work_dir.exists():
+    if manifest_enabled and work_dir.exists() and manifest_path.exists() and not args.resume and not args.force:
+        raise RuntimeError(
+            "existing manifest/work-dir found; use --resume or --force to continue safely"
+        )
+    if args.force and work_dir.exists():
         shutil.rmtree(work_dir)
-    (work_dir / "shards").mkdir(parents=True)
-    (work_dir / "logs").mkdir(parents=True)
+    elif not manifest_enabled and work_dir.exists():
+        shutil.rmtree(work_dir)
+    (work_dir / "shards").mkdir(parents=True, exist_ok=True)
+    (work_dir / "logs").mkdir(parents=True, exist_ok=True)
 
     records = _read_fasta(target)
     if not records:
@@ -690,6 +1253,27 @@ def main(argv: list[str] | None = None) -> int:
         gpu_ids=gpu_ids,
     )
     shards = _write_shard_fastas(records, work_dir / "shards")
+    shard_plan = [_shard_to_json(shard) for shard in shards]
+    shard_plan_digest = _json_digest(shard_plan)
+    target_digest = _sha256_file(target)
+    rna_digest = _sha256_file(rna)
+    git_commit = _git_commit()
+    run_config_digest = _build_run_config_digest(
+        args=args,
+        target=target,
+        target_digest=target_digest,
+        rna=rna,
+        rna_digest=rna_digest,
+        fasim_bin=fasim_bin,
+        env_overrides=env_overrides,
+        worker_count=worker_count,
+        workers_derived_from_gpu_ids=workers_derived_from_gpu_ids,
+        gpu_ids=gpu_ids,
+        cpu_core_ranges=cpu_core_ranges,
+        shard_plan=shard_plan,
+        shard_plan_digest=shard_plan_digest,
+        git_commit=git_commit,
+    )
     assignments = _assign_shards_to_workers(
         shards,
         worker_count=worker_count,
@@ -698,9 +1282,44 @@ def main(argv: list[str] | None = None) -> int:
     )
     shard_plan_path = work_dir / "shard_plan.json"
     shard_plan_path.write_text(
-        json.dumps([_shard_to_json(shard) for shard in shards], indent=2) + "\n",
+        json.dumps(shard_plan, indent=2) + "\n",
         encoding="utf-8",
     )
+    manifest: RunManifest | None = None
+    if manifest_enabled:
+        if args.resume:
+            if not manifest_path.exists():
+                raise RuntimeError(f"--resume requires existing manifest: {manifest_path}")
+            old_manifest = RunManifest.load(manifest_path)
+            if old_manifest.payload.get("run_config_digest") != run_config_digest:
+                _eprint("resume manifest run_config_digest differs; incompatible shards will rerun")
+            old_by_shard = _manifest_by_shard(old_manifest)
+        else:
+            old_by_shard = {}
+        manifest = RunManifest.create(
+            path=manifest_path,
+            args=args,
+            target=target,
+            target_digest=target_digest,
+            rna=rna,
+            rna_digest=rna_digest,
+            shards=shards,
+            shard_plan_digest=shard_plan_digest,
+            worker_count=worker_count,
+            workers_derived_from_gpu_ids=workers_derived_from_gpu_ids,
+            gpu_ids=gpu_ids,
+            cpu_core_ranges=cpu_core_ranges,
+            env_overrides=env_overrides,
+            run_config_digest=run_config_digest,
+            git_commit=git_commit,
+        )
+        for entry in manifest.payload.get("per_shard", []):
+            if isinstance(entry, dict):
+                entry["run_config_digest"] = run_config_digest
+        manifest.write()
+        resume_entries = old_by_shard if args.resume else {}
+    else:
+        resume_entries = {}
 
     per_shard: list[dict[str, object]] = []
     shard_output_paths: list[Path] = []
@@ -715,6 +1334,11 @@ def main(argv: list[str] | None = None) -> int:
         work_dir=work_dir,
         env_overrides=env_overrides,
         fasim_args=args.fasim_arg,
+        resume_entries=resume_entries,
+        run_config_digest=run_config_digest,
+        manifest=manifest,
+        resume=args.resume,
+        keep_going=args.keep_going,
     )
 
     shard_order = {shard.shard_id: idx for idx, shard in enumerate(shards)}
@@ -726,10 +1350,25 @@ def main(argv: list[str] | None = None) -> int:
     scheduled_results.sort(key=lambda result: shard_order[result.shard_id])
 
     for shard_result in scheduled_results:
+        if shard_result.status == "failed":
+            per_shard.append(shard_result.report)
+            continue
         sharded_raw_records += shard_result.raw_records
         sharded_unique_records += shard_result.unique_records
-        shard_output_paths.append(shard_result.output_path)
+        if shard_result.output_path is not None:
+            shard_output_paths.append(shard_result.output_path)
         per_shard.append(shard_result.report)
+
+    failed_shards = [
+        shard_result.shard_id
+        for shard_result in scheduled_results
+        if shard_result.status == "failed"
+    ]
+    resumed_shards = [
+        shard_result.shard_id
+        for shard_result in scheduled_results
+        if shard_result.status == "skipped_by_resume"
+    ]
 
     per_worker = [
         {
@@ -742,17 +1381,30 @@ def main(argv: list[str] | None = None) -> int:
             "wall_seconds": result.wall_seconds,
             "records": sum(
                 shard_result.unique_records for shard_result in result.shard_results
+                if shard_result.status != "failed"
             ),
             "raw_records": sum(
                 shard_result.raw_records for shard_result in result.shard_results
+                if shard_result.status != "failed"
             ),
         }
         for result in worker_results
     ]
 
     merged_name = "merged-TFOsorted.lite" if args.output_mode == "lite" else "merged-TFOsorted"
+    complete_run = not failed_shards
     merged_output_path = work_dir / "merged" / merged_name
-    merged = _merge_outputs(shard_output_paths, args.output_mode, merged_output_path)
+    partial_merged_output_path = work_dir / "merged" / ("partial-" + merged_name)
+    if complete_run:
+        merged = _merge_outputs(shard_output_paths, args.output_mode, merged_output_path)
+        partial_merged = None
+    else:
+        merged = None
+        partial_merged = _merge_outputs(
+            shard_output_paths,
+            args.output_mode,
+            partial_merged_output_path,
+        )
 
     single_digest = None
     single_records = None
@@ -760,7 +1412,7 @@ def main(argv: list[str] | None = None) -> int:
     single_run_json = None
     digest_match = None
     single_output_path = None
-    if args.validate_single:
+    if args.validate_single and complete_run:
         single_run = _run_fasim(
             label="single",
             fasim_bin=fasim_bin,
@@ -781,11 +1433,40 @@ def main(argv: list[str] | None = None) -> int:
         single_output_path = str(single_run.output_path)
         digest_match = single.digest == merged.digest
 
+    merged_records = len(merged.rows) if merged is not None else None
+    merged_raw_records = merged.raw_records if merged is not None else None
+    merged_digest = merged.digest if merged is not None else None
+    partial_merged_digest = partial_merged.digest if partial_merged is not None else None
+    duplicate_records_removed = (
+        sharded_raw_records - len(merged.rows)
+        if merged is not None
+        else None
+    )
+    run_status = "completed" if complete_run else "incomplete"
+    if manifest is not None:
+        manifest.finalize(
+            run_status=run_status,
+            merged_records=merged_records,
+            duplicate_removed=duplicate_records_removed,
+            merged_digest=merged_digest,
+            partial_merged_digest=partial_merged_digest,
+            failed_shards=failed_shards,
+            resumed_shards=resumed_shards,
+        )
+
     report = {
         "schema_version": 1,
         "mode": "contig_shards",
+        "run_status": run_status,
+        "run_id": manifest.payload.get("run_id") if manifest else None,
+        "manifest": str(manifest_path) if manifest_enabled else None,
+        "run_config_digest": run_config_digest,
+        "git_commit": git_commit,
+        "runner_version": RUNNER_VERSION,
         "target": str(target),
+        "target_fasta_digest": target_digest,
         "rna": str(rna),
+        "rna_fasta_digest": rna_digest,
         "rule": str(args.rule),
         "output_mode": args.output_mode,
         "env_overrides": env_overrides,
@@ -799,17 +1480,24 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "cpu_core_ranges": cpu_core_ranges,
         "shard_plan": str(shard_plan_path),
+        "shard_plan_digest": shard_plan_digest,
         "shard_count": len(shards),
         "shard_ids": [shard.shard_id for shard in shards],
         "per_worker": per_worker,
         "per_shard": per_shard,
         "sharded_records": sharded_raw_records,
         "sharded_unique_records": sharded_unique_records,
-        "merged_records": len(merged.rows),
-        "merged_raw_records": merged.raw_records,
-        "merged_digest": merged.digest,
-        "merged_output": str(merged_output_path),
-        "duplicate_records_removed": sharded_raw_records - len(merged.rows),
+        "merged_records": merged_records,
+        "merged_raw_records": merged_raw_records,
+        "merged_digest": merged_digest,
+        "merged_output": str(merged_output_path) if merged is not None else None,
+        "partial_merged_digest": partial_merged_digest,
+        "partial_merged_output": (
+            str(partial_merged_output_path) if partial_merged is not None else None
+        ),
+        "duplicate_records_removed": duplicate_records_removed,
+        "failed_shards": failed_shards,
+        "resumed_shards": resumed_shards,
         "single_records": single_records,
         "single_raw_records": single_raw_records,
         "single_digest": single_digest,
@@ -821,6 +1509,8 @@ def main(argv: list[str] | None = None) -> int:
     report_path = work_dir / "report.json"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
+    if failed_shards:
+        raise RuntimeError(f"sharded run incomplete; failed shards: {','.join(failed_shards)}")
     return 0
 
 
