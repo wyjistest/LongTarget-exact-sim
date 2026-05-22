@@ -152,6 +152,8 @@ advanced runtime notes.
   repeated local density runs confirming 6 workers as the best 2-GPU candidate.
 - [Fasim Sharded Worker Whole-Genome Readiness](docs/fasim_sharded_worker_whole_genome_readiness.md):
   manifest-backed 2-GPU multi-contig readiness matrix with CPU affinity.
+- [Fasim Whole-Genome Shard Balance](docs/fasim_whole_genome_shard_balance.md):
+  plan-only contig assignment and straggler analysis before expensive runs.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
