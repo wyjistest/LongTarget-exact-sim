@@ -159,6 +159,9 @@ advanced runtime notes.
 - [Fasim Sharded Worker hg38 Primary Genome Matrix](docs/fasim_sharded_worker_hg38_primary_genome_matrix.md):
   manifest-backed full hg38 primary-chromosome sharded matrix on the local
   2-GPU machine.
+- [Fasim hg38 Primary Sharded Straggler Analysis](docs/fasim_hg38_primary_sharded_straggler_analysis.md):
+  post-run per-shard and per-worker analysis explaining 4-worker versus
+  6-worker behavior on hg38 primary chromosomes.
 - [Exact SIM Progress](EXACT_SIM_PROGRESS.md): development history and exact-SIM
   implementation notes.
 - [Plans](docs/plans/): design and investigation notes for specific work items.
