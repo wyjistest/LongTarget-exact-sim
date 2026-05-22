@@ -109,6 +109,14 @@ def _run_scaling_for_workload(
         cmd.extend(["--gpu-ids", ",".join(gpu_ids)])
     if cpu_core_ranges:
         cmd.extend(["--cpu-core-ranges", ",".join(cpu_core_ranges)])
+    if args.manifest:
+        cmd.append("--manifest")
+    if args.auto_cpu_core_ranges:
+        cmd.append("--auto-cpu-core-ranges")
+        if args.cpu_pool:
+            cmd.extend(["--cpu-pool", args.cpu_pool])
+        if args.cpu_cores_per_worker is not None:
+            cmd.extend(["--cpu-cores-per-worker", str(args.cpu_cores_per_worker)])
     for item in args.env:
         cmd.extend(["--env", item])
     for item in args.fasim_arg:
@@ -159,9 +167,22 @@ def _summarize_workload(
 
     normalized_runs = []
     for run in runs:
+        gpu_ids = run.get("gpu_ids")
+        gpu_count = len(gpu_ids) if isinstance(gpu_ids, list) else 0
+        worker_count = run.get("worker_count")
+        effective_workers_per_gpu = (
+            float(worker_count) / float(gpu_count)
+            if isinstance(worker_count, int) and gpu_count
+            else None
+        )
         normalized_runs.append(
             {
-                "worker_count": run.get("worker_count"),
+                "worker_count": worker_count,
+                "effective_workers_per_gpu": effective_workers_per_gpu,
+                "run_status": run.get("run_status"),
+                "run_manifest_path": run.get("run_manifest_path"),
+                "resumed_shards": run.get("resumed_shards"),
+                "failed_shards": run.get("failed_shards"),
                 "shard_count": run.get("shard_count"),
                 "gpu_ids": run.get("gpu_ids"),
                 "workers_per_gpu": run.get("workers_per_gpu"),
@@ -170,6 +191,10 @@ def _summarize_workload(
                 ),
                 "gpu_sharing_mode": run.get("gpu_sharing_mode"),
                 "cpu_core_ranges": run.get("cpu_core_ranges"),
+                "cpu_pool": run.get("cpu_pool"),
+                "cpu_cores_per_worker": run.get("cpu_cores_per_worker"),
+                "auto_cpu_core_ranges": run.get("auto_cpu_core_ranges"),
+                "taskset_enabled": run.get("taskset_enabled"),
                 "per_worker_seconds": [
                     worker.get("wall_seconds") for worker in run.get("per_worker", [])
                 ],
@@ -214,6 +239,8 @@ def _summarize_workload(
         "report_path": str(report_path),
         "shard_count": shard_count,
         "all_digest_match": all_digest_match,
+        "readiness_mode": bool(report.get("manifest"))
+        or any(bool(run.get("run_manifest_path")) for run in normalized_runs),
         "baseline": baseline,
         "runs": normalized_runs,
         "best_worker_count": best.get("worker_count"),
@@ -248,6 +275,10 @@ def main() -> int:
     )
     parser.add_argument("--gpu-ids", default=None)
     parser.add_argument("--cpu-core-ranges", default=None)
+    parser.add_argument("--manifest", action="store_true")
+    parser.add_argument("--cpu-pool", default=None)
+    parser.add_argument("--cpu-cores-per-worker", type=int, default=None)
+    parser.add_argument("--auto-cpu-core-ranges", action="store_true")
     parser.add_argument(
         "--env",
         action="append",
@@ -308,6 +339,10 @@ def main() -> int:
         "worker_counts": worker_counts,
         "gpu_ids": gpu_ids,
         "cpu_core_ranges": cpu_core_ranges,
+        "manifest": bool(args.manifest),
+        "cpu_pool": args.cpu_pool,
+        "cpu_cores_per_worker": args.cpu_cores_per_worker,
+        "auto_cpu_core_ranges": bool(args.auto_cpu_core_ranges),
         "env_overrides": args.env,
         "workloads": workload_reports,
         "summary": {
