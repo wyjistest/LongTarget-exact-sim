@@ -1063,6 +1063,10 @@ check-fasim-sharded-scheduler:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_scheduler.sh
 
+check-fasim-sharded-runner-resume:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_runner_resume.sh
+
 .PHONY: build build-avx2 build-openmp build-openmp-avx2 \
 		build-cuda build-cuda-avx2 build-cuda-native-ada check-cuda-native-ada-fatbin \
 		build-fasim build-fasim-cuda \
@@ -1115,7 +1119,7 @@ check-fasim-sharded-scheduler:
 				check-calc-score-cuda-v2-shadow check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
-		check-sim-cuda-region-docs check-longtarget-lite-output check-fasim-sharded-runner check-fasim-sharded-scheduler check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
+		check-sim-cuda-region-docs check-longtarget-lite-output check-fasim-sharded-runner check-fasim-sharded-scheduler check-fasim-sharded-runner-resume check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
 		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \

@@ -101,12 +101,20 @@ per_shard[*].cpu_core_range
 The existing merged output and digest fields remain the correctness gate:
 
 ```text
+run_status
 merged_records
 merged_digest
+partial_merged_digest
 single_digest
 single_vs_sharded_digest_match
 duplicate_records_removed
+failed_shards
+resumed_shards
 ```
+
+When `--manifest` is provided, `run_manifest.json` also records run config and
+input digests, per-shard status, per-shard stdout/stderr paths, output digests,
+and whether a shard was skipped by `--resume`.
 
 ## Validation
 
@@ -114,12 +122,17 @@ Run:
 
 ```bash
 make check-fasim-sharded-scheduler
+make check-fasim-sharded-runner-resume
 ```
 
 The check creates the same deterministic two-contig fixture used by the base
 sharded runner check. It runs baseline sharded mode and a two-worker scheduled
 mode, then verifies that the scheduled merged digest and record counts match the
 baseline and optional single-run digest.
+
+The resume check covers fresh manifest creation, strict resume skipping,
+missing-output rerun, `--force`, default existing-work-dir protection, and
+`--keep-going` incomplete-run reporting.
 
 ## Next Step
 

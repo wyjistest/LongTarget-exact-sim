@@ -134,7 +134,8 @@ advanced runtime notes.
   CUDA/SIM/Fasim/two-stage knobs, benchmark telemetry, and longer workflow
   notes moved out of this README.
 - [Fasim Sharded Runner](docs/fasim_sharded_runner.md): contig-level
-  process sharding, deterministic merge, and digest validation.
+  process sharding, deterministic merge, digest validation, and resumable
+  run manifests.
 - [Fasim Sharded Worker Scheduler](docs/fasim_sharded_worker_scheduler.md):
   process-level worker assignment with optional GPU and CPU binding.
 - [Fasim Sharded Worker Scaling](docs/fasim_sharded_worker_scaling.md):
