@@ -250,6 +250,31 @@ def _assign_shards_to_workers(
     return assignments
 
 
+def _resolve_worker_count(
+    *,
+    workers: int | None,
+    workers_per_gpu: int | None,
+    gpu_ids: list[str],
+) -> tuple[int, bool]:
+    if workers is not None and workers_per_gpu is not None:
+        raise ValueError("--workers and --workers-per-gpu cannot be used together")
+    if workers_per_gpu is not None:
+        if workers_per_gpu < 1:
+            raise ValueError("--workers-per-gpu must be >= 1")
+        if not gpu_ids:
+            raise ValueError("--workers-per-gpu requires --gpu-ids")
+        return len(gpu_ids) * workers_per_gpu, True
+    if workers is None:
+        return 1, False
+    return workers, False
+
+
+def _gpu_sharing_mode(*, worker_count: int, gpu_ids: list[str]) -> str | None:
+    if not gpu_ids:
+        return None
+    return "shared" if worker_count > len(gpu_ids) else "exclusive"
+
+
 def _run_fasim(
     *,
     label: str,
@@ -608,8 +633,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--workers",
         type=int,
-        default=1,
+        default=None,
         help="Number of process-level shard workers to run in parallel.",
+    )
+    parser.add_argument(
+        "--workers-per-gpu",
+        type=int,
+        default=None,
+        help=(
+            "Derive worker count as len(--gpu-ids) * N. This is mutually "
+            "exclusive with --workers and does not change the default policy."
+        ),
     )
     parser.add_argument(
         "--gpu-ids",
@@ -650,10 +684,15 @@ def main(argv: list[str] | None = None) -> int:
     env_overrides = _parse_env_overrides(args.env)
     gpu_ids = _parse_csv_list(args.gpu_ids, name="--gpu-ids")
     cpu_core_ranges = _parse_csv_list(args.cpu_core_ranges, name="--cpu-core-ranges")
+    worker_count, workers_derived_from_gpu_ids = _resolve_worker_count(
+        workers=args.workers,
+        workers_per_gpu=args.workers_per_gpu,
+        gpu_ids=gpu_ids,
+    )
     shards = _write_shard_fastas(records, work_dir / "shards")
     assignments = _assign_shards_to_workers(
         shards,
-        worker_count=args.workers,
+        worker_count=worker_count,
         gpu_ids=gpu_ids,
         cpu_core_ranges=cpu_core_ranges,
     )
@@ -750,8 +789,14 @@ def main(argv: list[str] | None = None) -> int:
         "rule": str(args.rule),
         "output_mode": args.output_mode,
         "env_overrides": env_overrides,
-        "worker_count": args.workers,
+        "worker_count": worker_count,
         "gpu_ids": gpu_ids,
+        "workers_per_gpu": args.workers_per_gpu,
+        "workers_derived_from_gpu_ids": workers_derived_from_gpu_ids,
+        "gpu_sharing_mode": _gpu_sharing_mode(
+            worker_count=worker_count,
+            gpu_ids=gpu_ids,
+        ),
         "cpu_core_ranges": cpu_core_ranges,
         "shard_plan": str(shard_plan_path),
         "shard_count": len(shards),

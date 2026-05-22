@@ -164,6 +164,11 @@ def _summarize_workload(
                 "worker_count": run.get("worker_count"),
                 "shard_count": run.get("shard_count"),
                 "gpu_ids": run.get("gpu_ids"),
+                "workers_per_gpu": run.get("workers_per_gpu"),
+                "workers_derived_from_gpu_ids": run.get(
+                    "workers_derived_from_gpu_ids"
+                ),
+                "gpu_sharing_mode": run.get("gpu_sharing_mode"),
                 "cpu_core_ranges": run.get("cpu_core_ranges"),
                 "per_worker_seconds": [
                     worker.get("wall_seconds") for worker in run.get("per_worker", [])

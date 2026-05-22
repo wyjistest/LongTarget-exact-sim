@@ -52,6 +52,23 @@ behavior to Fasim internals.
 `--gpu-ids` is a comma-separated list. Values are assigned to workers as
 `CUDA_VISIBLE_DEVICES`, wrapping when there are more workers than GPU ids.
 
+`--workers-per-gpu N` is a convenience option. When it is provided with
+`--gpu-ids`, the runner derives:
+
+```text
+worker_count = len(gpu_ids) * N
+```
+
+For example, `--gpu-ids 0,1 --workers-per-gpu 3` launches six workers and
+assigns GPU ids round-robin. This option is mutually exclusive with
+`--workers`; passing both is an error. Passing `--workers-per-gpu` without
+`--gpu-ids` is also an error.
+
+This is not a default policy. Local repeated 2-GPU characterization found
+`workers_per_gpu=3` to be the best candidate for the
+`rheMac10_nonchrom_top8_H19` workload, but users should tune the value per
+hardware and workload. That result is not evidence for 4-GPU scaling.
+
 `--cpu-core-ranges` is optional. When provided, it must include one comma-
 separated range per worker, and each Fasim subprocess is launched through
 `taskset -c <range>`.
@@ -63,6 +80,9 @@ separated range per worker, and each Fasim subprocess is launched through
 ```text
 worker_count
 gpu_ids
+workers_per_gpu
+workers_derived_from_gpu_ids
+gpu_sharing_mode
 cpu_core_ranges
 per_worker[*].worker_id
 per_worker[*].gpu_id
