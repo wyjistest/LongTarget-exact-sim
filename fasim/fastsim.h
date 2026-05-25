@@ -3,6 +3,7 @@
 #include <sstream>
 #include <fstream>
 #include <cstdlib>
+#include <chrono>
 #include "ssw_cpp.h"
 #include "ssw.h"
 #include "sim.h"
@@ -13,6 +14,64 @@ using std::string;
 using std::cout;
 using std::endl;
 using std::ifstream;
+
+struct FasimExtendTelemetryDelta
+{
+	FasimExtendTelemetryDelta() :
+		candidates(0),
+		cutlengthAttempts(0),
+		alignCalls(0),
+		alignCells(0),
+		alignSeconds(0.0),
+		convertCalls(0),
+		convertSeconds(0.0),
+		sortUniqueSeconds(0.0),
+		recordsBeforeFilter(0),
+		recordsEmitted(0),
+		emptyScoreInfo(0)
+	{
+	}
+
+	long long candidates;
+	long long cutlengthAttempts;
+	long long alignCalls;
+	long long alignCells;
+	double alignSeconds;
+	long long convertCalls;
+	double convertSeconds;
+	double sortUniqueSeconds;
+	long long recordsBeforeFilter;
+	long long recordsEmitted;
+	long long emptyScoreInfo;
+};
+
+typedef void (*FasimExtendTelemetryCallback)(const FasimExtendTelemetryDelta&);
+
+inline FasimExtendTelemetryCallback& fasim_extend_telemetry_callback_ref()
+{
+	static FasimExtendTelemetryCallback callback = NULL;
+	return callback;
+}
+
+inline void fasim_set_extend_telemetry_callback(FasimExtendTelemetryCallback callback)
+{
+	fasim_extend_telemetry_callback_ref() = callback;
+}
+
+inline void fasim_report_extend_telemetry(const FasimExtendTelemetryDelta &delta)
+{
+	FasimExtendTelemetryCallback callback = fasim_extend_telemetry_callback_ref();
+	if (callback != NULL)
+	{
+		callback(delta);
+	}
+}
+
+inline double fasim_extend_telemetry_elapsed(std::chrono::steady_clock::time_point start,
+                                             std::chrono::steady_clock::time_point end)
+{
+	return std::chrono::duration<double>(end - start).count();
+}
 
 inline bool fasim_prealign_cuda_enabled_runtime()
 {
@@ -406,6 +465,12 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
                                          bool materializeAlignmentStrings)
 {
 	vector<struct triplex> myTriplexList;
+	FasimExtendTelemetryDelta telemetry;
+	telemetry.candidates += static_cast<long long>(finalScoreInfo.size());
+	if (finalScoreInfo.empty())
+	{
+		telemetry.emptyScoreInfo += 1;
+	}
 
 	const int8_t nt_table[128] = {
 	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
@@ -431,7 +496,12 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			cutlength = (int)(finalScoreInfo[i].score + 24) / (9 * Iden - 4) + 1;
 			cutlength = finalScoreInfo[i].position - cutlength + 1 > 0 ? cutlength : finalScoreInfo[i].position + 1;
 			smallSeq = strB.substr(finalScoreInfo[i].position - cutlength + 1, cutlength);
+			telemetry.cutlengthAttempts += 1;
+			telemetry.alignCalls += 1;
+			telemetry.alignCells += static_cast<long long>(strA.size()) * static_cast<long long>(smallSeq.size());
+			const std::chrono::steady_clock::time_point alignStart = std::chrono::steady_clock::now();
 			aligner.Align(strA.c_str(), smallSeq.c_str(), smallSeq.size(), filter, &alignment, maskLen);
+			telemetry.alignSeconds += fasim_extend_telemetry_elapsed(alignStart, std::chrono::steady_clock::now());
 			if (alignment.sw_score >= finalScoreInfo[i].score)
 			{
 				myflag = 1;
@@ -473,6 +543,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		{
 			alignment.ref_begin = alignment.ref_begin + finalScoreInfo[i].position - cutlength + 1;
 			alignment.ref_end = alignment.ref_end + finalScoreInfo[i].position - cutlength + 1;
+			telemetry.convertCalls += 1;
+			const std::chrono::steady_clock::time_point convertStart = std::chrono::steady_clock::now();
 			convertMyTriplex(alignment,
 			                 myTriplexList,
 			                 strA,
@@ -488,21 +560,27 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			                 ntMin,
 			                 ntMax,
 			                 materializeAlignmentStrings);
+			telemetry.convertSeconds += fasim_extend_telemetry_elapsed(convertStart, std::chrono::steady_clock::now());
 		}
 	}
+	const std::chrono::steady_clock::time_point sortStart = std::chrono::steady_clock::now();
 	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
 	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
 	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
 	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
 	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	telemetry.sortUniqueSeconds += fasim_extend_telemetry_elapsed(sortStart, std::chrono::steady_clock::now());
+	telemetry.recordsBeforeFilter += static_cast<long long>(myTriplexList.size());
 	for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 	{
 		triplex atr = myTriplexList[i];
 		if (atr.identity >= paraList.minIdentity && atr.tri_score >= paraList.minStability && atr.nt >= ntMin)
 		{
 			triplex_list.push_back(atr);
+			telemetry.recordsEmitted += 1;
 		}
 	}
+	fasim_report_extend_telemetry(telemetry);
 }
 
 inline void fasim_calc_identity_and_triscore_from_cigar(const StripedSmithWaterman::Alignment &alignment,

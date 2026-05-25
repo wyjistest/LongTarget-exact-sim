@@ -59,12 +59,26 @@ required = {
     "fasim_prealign_cuda_total_seconds",
     "fasim_extend_threads",
     "fasim_extend_seconds",
+    "fasim_extend_candidates",
+    "fasim_extend_cutlength_attempts",
+    "fasim_extend_align_calls",
+    "fasim_extend_align_cells",
+    "fasim_extend_align_seconds",
+    "fasim_extend_convert_calls",
+    "fasim_extend_convert_seconds",
+    "fasim_extend_sort_unique_seconds",
+    "fasim_extend_records_before_filter",
+    "fasim_extend_records_emitted",
+    "fasim_extend_empty_scoreinfo",
     "fasim_output_seconds",
 }
 
 assert report["single_vs_sharded_digest_match"] is True, report
 assert report["sharded_telemetry"]["fasim_prealign_cuda_requested"] == 1, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_prealign_cuda_tasks"] > 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_extend_candidates"] >= 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_extend_align_calls"] >= 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_extend_align_cells"] >= 0, report["sharded_telemetry"]
 assert report["single_run"]["telemetry"]["fasim_prealign_cuda_requested"] == 1, report["single_run"]
 
 for shard in report["per_shard"]:

@@ -99,6 +99,17 @@ struct FasimRuntimeTelemetry
         prealignCudaTotalSeconds(0.0),
         extendThreads(0),
         extendSeconds(0.0),
+        extendCandidates(0),
+        extendCutlengthAttempts(0),
+        extendAlignCalls(0),
+        extendAlignCells(0),
+        extendAlignSeconds(0.0),
+        extendConvertCalls(0),
+        extendConvertSeconds(0.0),
+        extendSortUniqueSeconds(0.0),
+        extendRecordsBeforeFilter(0),
+        extendRecordsEmitted(0),
+        extendEmptyScoreInfo(0),
         outputSeconds(0.0),
         prealignCudaFallbacks(0)
     {
@@ -119,6 +130,17 @@ struct FasimRuntimeTelemetry
     double prealignCudaTotalSeconds;
     int extendThreads;
     double extendSeconds;
+    long long extendCandidates;
+    long long extendCutlengthAttempts;
+    long long extendAlignCalls;
+    long long extendAlignCells;
+    double extendAlignSeconds;
+    long long extendConvertCalls;
+    double extendConvertSeconds;
+    double extendSortUniqueSeconds;
+    long long extendRecordsBeforeFilter;
+    long long extendRecordsEmitted;
+    long long extendEmptyScoreInfo;
     double outputSeconds;
     long long prealignCudaFallbacks;
 };
@@ -166,6 +188,22 @@ static inline void fasim_telemetry_add_extend_seconds(double seconds)
     g_fasimTelemetry.extendSeconds += seconds;
 }
 
+static void fasim_telemetry_add_extend_delta(const FasimExtendTelemetryDelta &delta)
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.extendCandidates += delta.candidates;
+    g_fasimTelemetry.extendCutlengthAttempts += delta.cutlengthAttempts;
+    g_fasimTelemetry.extendAlignCalls += delta.alignCalls;
+    g_fasimTelemetry.extendAlignCells += delta.alignCells;
+    g_fasimTelemetry.extendAlignSeconds += delta.alignSeconds;
+    g_fasimTelemetry.extendConvertCalls += delta.convertCalls;
+    g_fasimTelemetry.extendConvertSeconds += delta.convertSeconds;
+    g_fasimTelemetry.extendSortUniqueSeconds += delta.sortUniqueSeconds;
+    g_fasimTelemetry.extendRecordsBeforeFilter += delta.recordsBeforeFilter;
+    g_fasimTelemetry.extendRecordsEmitted += delta.recordsEmitted;
+    g_fasimTelemetry.extendEmptyScoreInfo += delta.emptyScoreInfo;
+}
+
 static inline void fasim_telemetry_add_output_seconds(double seconds)
 {
     lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
@@ -203,6 +241,17 @@ static void fasim_emit_runtime_telemetry()
     cerr << "benchmark.fasim_prealign_cuda_total_seconds=" << snapshot.prealignCudaTotalSeconds << endl;
     cerr << "benchmark.fasim_extend_threads=" << snapshot.extendThreads << endl;
     cerr << "benchmark.fasim_extend_seconds=" << snapshot.extendSeconds << endl;
+    cerr << "benchmark.fasim_extend_candidates=" << snapshot.extendCandidates << endl;
+    cerr << "benchmark.fasim_extend_cutlength_attempts=" << snapshot.extendCutlengthAttempts << endl;
+    cerr << "benchmark.fasim_extend_align_calls=" << snapshot.extendAlignCalls << endl;
+    cerr << "benchmark.fasim_extend_align_cells=" << snapshot.extendAlignCells << endl;
+    cerr << "benchmark.fasim_extend_align_seconds=" << snapshot.extendAlignSeconds << endl;
+    cerr << "benchmark.fasim_extend_convert_calls=" << snapshot.extendConvertCalls << endl;
+    cerr << "benchmark.fasim_extend_convert_seconds=" << snapshot.extendConvertSeconds << endl;
+    cerr << "benchmark.fasim_extend_sort_unique_seconds=" << snapshot.extendSortUniqueSeconds << endl;
+    cerr << "benchmark.fasim_extend_records_before_filter=" << snapshot.extendRecordsBeforeFilter << endl;
+    cerr << "benchmark.fasim_extend_records_emitted=" << snapshot.extendRecordsEmitted << endl;
+    cerr << "benchmark.fasim_extend_empty_scoreinfo=" << snapshot.extendEmptyScoreInfo << endl;
     cerr << "benchmark.fasim_output_seconds=" << snapshot.outputSeconds << endl;
     cerr << "benchmark.fasim_prealign_cuda_fallbacks=" << snapshot.prealignCudaFallbacks << endl;
     cerr.flags(oldFlags);
@@ -652,6 +701,7 @@ int main(int argc, char* const* argv)
 	resultDir = paraList.outpath;
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
+	fasim_set_extend_telemetry_callback(fasim_telemetry_add_extend_delta);
 	fasim_telemetry_set_requested(paraList.doFastSim && fasim_prealign_cuda_enabled_runtime() && prealign_cuda_is_built());
 	std::vector<int> exactColumnGuardCudaDevices;
 	fasim_cuda_devices_runtime(exactColumnGuardCudaDevices);
