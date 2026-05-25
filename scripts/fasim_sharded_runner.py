@@ -515,8 +515,11 @@ class RunManifest:
 
     def write(self) -> None:
         with self._lock:
-            self.payload["updated_at"] = _utc_now()
-            _atomic_write_json(self.path, self.payload)
+            self._write_locked()
+
+    def _write_locked(self) -> None:
+        self.payload["updated_at"] = _utc_now()
+        _atomic_write_json(self.path, self.payload)
 
     def shard_entry(self, shard_id: str) -> dict[str, object]:
         for entry in self.payload.get("per_shard", []):
@@ -533,24 +536,25 @@ class RunManifest:
         gpu_id: str | None = None,
         cpu_core_range: str | None = None,
     ) -> None:
-        entry = self.shard_entry(shard.shard_id)
-        entry.update(
-            {
-                "status": "running",
-                "start_time": _utc_now(),
-                "end_time": None,
-                "wall_seconds": None,
-                "worker_id": worker_id,
-                "gpu_id": gpu_id,
-                "cpu_core_range": cpu_core_range,
-                "output_path": str(run.output_path) if run and run.output_path else None,
-                "stdout_path": str(run.stdout_path) if run else None,
-                "stderr_path": str(run.stderr_path) if run else None,
-                "exit_code": None,
-                "skipped_by_resume": False,
-            }
-        )
-        self.write()
+        with self._lock:
+            entry = self.shard_entry(shard.shard_id)
+            entry.update(
+                {
+                    "status": "running",
+                    "start_time": _utc_now(),
+                    "end_time": None,
+                    "wall_seconds": None,
+                    "worker_id": worker_id,
+                    "gpu_id": gpu_id,
+                    "cpu_core_range": cpu_core_range,
+                    "output_path": str(run.output_path) if run and run.output_path else None,
+                    "stdout_path": str(run.stdout_path) if run else None,
+                    "stderr_path": str(run.stderr_path) if run else None,
+                    "exit_code": None,
+                    "skipped_by_resume": False,
+                }
+            )
+            self._write_locked()
 
     def mark_completed(
         self,
@@ -565,27 +569,28 @@ class RunManifest:
     ) -> None:
         if run.output_path is None:
             raise RuntimeError(f"cannot complete {shard.shard_id} without output")
-        entry = self.shard_entry(shard.shard_id)
-        entry.update(
-            {
-                "status": "skipped_by_resume" if skipped_by_resume else "completed",
-                "end_time": _utc_now(),
-                "wall_seconds": run.wall_seconds,
-                "worker_id": worker_id,
-                "gpu_id": gpu_id,
-                "cpu_core_range": cpu_core_range,
-                "output_path": str(run.output_path),
-                "output_digest": canonical.digest,
-                "records": len(canonical.rows),
-                "raw_records": canonical.raw_records,
-                "stdout_path": str(run.stdout_path),
-                "stderr_path": str(run.stderr_path),
-                "exit_code": run.exit_code,
-                "env_overrides": run.env_overrides,
-                "skipped_by_resume": skipped_by_resume,
-            }
-        )
-        self.write()
+        with self._lock:
+            entry = self.shard_entry(shard.shard_id)
+            entry.update(
+                {
+                    "status": "skipped_by_resume" if skipped_by_resume else "completed",
+                    "end_time": _utc_now(),
+                    "wall_seconds": run.wall_seconds,
+                    "worker_id": worker_id,
+                    "gpu_id": gpu_id,
+                    "cpu_core_range": cpu_core_range,
+                    "output_path": str(run.output_path),
+                    "output_digest": canonical.digest,
+                    "records": len(canonical.rows),
+                    "raw_records": canonical.raw_records,
+                    "stdout_path": str(run.stdout_path),
+                    "stderr_path": str(run.stderr_path),
+                    "exit_code": run.exit_code,
+                    "env_overrides": run.env_overrides,
+                    "skipped_by_resume": skipped_by_resume,
+                }
+            )
+            self._write_locked()
 
     def mark_failed(
         self,
@@ -596,28 +601,29 @@ class RunManifest:
         gpu_id: str | None,
         cpu_core_range: str | None,
     ) -> None:
-        entry = self.shard_entry(shard.shard_id)
-        entry.update(
-            {
-                "status": "failed",
-                "end_time": _utc_now(),
-                "wall_seconds": run.wall_seconds if run else None,
-                "worker_id": worker_id,
-                "gpu_id": gpu_id,
-                "cpu_core_range": cpu_core_range,
-                "output_path": str(run.output_path) if run and run.output_path else None,
-                "stdout_path": str(run.stdout_path) if run else None,
-                "stderr_path": str(run.stderr_path) if run else None,
-                "exit_code": run.exit_code if run else 1,
-                "env_overrides": run.env_overrides if run else None,
-                "skipped_by_resume": False,
-            }
-        )
-        failed = list(self.payload.get("failed_shards", []))
-        if shard.shard_id not in failed:
-            failed.append(shard.shard_id)
-        self.payload["failed_shards"] = failed
-        self.write()
+        with self._lock:
+            entry = self.shard_entry(shard.shard_id)
+            entry.update(
+                {
+                    "status": "failed",
+                    "end_time": _utc_now(),
+                    "wall_seconds": run.wall_seconds if run else None,
+                    "worker_id": worker_id,
+                    "gpu_id": gpu_id,
+                    "cpu_core_range": cpu_core_range,
+                    "output_path": str(run.output_path) if run and run.output_path else None,
+                    "stdout_path": str(run.stdout_path) if run else None,
+                    "stderr_path": str(run.stderr_path) if run else None,
+                    "exit_code": run.exit_code if run else 1,
+                    "env_overrides": run.env_overrides if run else None,
+                    "skipped_by_resume": False,
+                }
+            )
+            failed = list(self.payload.get("failed_shards", []))
+            if shard.shard_id not in failed:
+                failed.append(shard.shard_id)
+            self.payload["failed_shards"] = failed
+            self._write_locked()
 
     def finalize(
         self,
@@ -630,18 +636,19 @@ class RunManifest:
         failed_shards: list[str],
         resumed_shards: list[str],
     ) -> None:
-        self.payload.update(
-            {
-                "run_status": run_status,
-                "merged_records": merged_records,
-                "duplicate_removed": duplicate_removed,
-                "merged_digest": merged_digest,
-                "partial_merged_digest": partial_merged_digest,
-                "failed_shards": failed_shards,
-                "resumed_shards": resumed_shards,
-            }
-        )
-        self.write()
+        with self._lock:
+            self.payload.update(
+                {
+                    "run_status": run_status,
+                    "merged_records": merged_records,
+                    "duplicate_removed": duplicate_removed,
+                    "merged_digest": merged_digest,
+                    "partial_merged_digest": partial_merged_digest,
+                    "failed_shards": failed_shards,
+                    "resumed_shards": resumed_shards,
+                }
+            )
+            self._write_locked()
 
 
 def _manifest_by_shard(manifest: RunManifest | None) -> dict[str, dict[str, object]]:
