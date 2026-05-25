@@ -60,6 +60,7 @@ class RunResult:
     output_dir: Path
     output_path: Path | None
     exit_code: int
+    telemetry: dict[str, object]
 
 
 class FasimRunError(RuntimeError):
@@ -264,6 +265,87 @@ def _parse_env_overrides(items: list[str]) -> dict[str, str]:
             raise ValueError(f"--env has empty key: {item}")
         env[key] = value
     return env
+
+
+def _parse_fasim_telemetry_value(raw: str) -> object:
+    value = raw.strip()
+    if re.fullmatch(r"[-+]?\d+", value):
+        return int(value)
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def _parse_fasim_telemetry_text(text: str) -> dict[str, object]:
+    telemetry: dict[str, object] = {}
+    for line in text.splitlines():
+        match = re.match(r"^benchmark\.(fasim_[A-Za-z0-9_]+)=(.*)$", line.strip())
+        if not match:
+            continue
+        key, raw_value = match.groups()
+        telemetry[key] = _parse_fasim_telemetry_value(raw_value)
+    return telemetry
+
+
+def _parse_fasim_telemetry_file(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    return _parse_fasim_telemetry_text(path.read_text(encoding="utf-8", errors="replace"))
+
+
+def _stable_common_value(values: list[object]) -> object | None:
+    if not values:
+        return None
+    first = values[0]
+    if all(value == first for value in values):
+        return first
+    unique = sorted({str(value) for value in values})
+    return unique
+
+
+def _sum_fasim_telemetry(items: list[dict[str, object]]) -> dict[str, object]:
+    non_empty = [item for item in items if item]
+    if not non_empty:
+        return {}
+
+    count_sum_keys = {
+        "fasim_prealign_cuda_tasks",
+        "fasim_prealign_cuda_batches",
+        "fasim_prealign_cuda_fallbacks",
+    }
+    flag_keys = {
+        "fasim_prealign_cuda_requested",
+        "fasim_prealign_cuda_active",
+    }
+
+    keys = sorted({key for item in non_empty for key in item})
+    aggregate: dict[str, object] = {}
+    for key in keys:
+        values = [item[key] for item in non_empty if key in item]
+        if key.endswith("_seconds"):
+            aggregate[key] = sum(float(value) for value in values)
+        elif key in count_sum_keys:
+            aggregate[key] = sum(int(value) for value in values)
+        elif key in flag_keys:
+            aggregate[key] = max(int(value) for value in values)
+        else:
+            common = _stable_common_value(values)
+            if common is not None:
+                aggregate[key] = common
+    return aggregate
+
+
+def _worker_telemetry_from_shards(shard_reports: list[dict[str, object]]) -> dict[str, object]:
+    telemetry_items: list[dict[str, object]] = []
+    for shard in shard_reports:
+        run = shard.get("run")
+        if not isinstance(run, dict):
+            continue
+        telemetry = run.get("telemetry")
+        if isinstance(telemetry, dict):
+            telemetry_items.append(telemetry)
+    return _sum_fasim_telemetry(telemetry_items)
 
 
 def _parse_csv_list(value: str | None, *, name: str) -> list[str]:
@@ -494,6 +576,7 @@ class RunManifest:
                     "stderr_path": None,
                     "exit_code": None,
                     "env_overrides": None,
+                    "telemetry": {},
                     "skipped_by_resume": False,
                 }
                 for shard in shards
@@ -587,6 +670,7 @@ class RunManifest:
                     "stderr_path": str(run.stderr_path),
                     "exit_code": run.exit_code,
                     "env_overrides": run.env_overrides,
+                    "telemetry": run.telemetry,
                     "skipped_by_resume": skipped_by_resume,
                 }
             )
@@ -616,6 +700,7 @@ class RunManifest:
                     "stderr_path": str(run.stderr_path) if run else None,
                     "exit_code": run.exit_code if run else 1,
                     "env_overrides": run.env_overrides if run else None,
+                    "telemetry": run.telemetry if run else {},
                     "skipped_by_resume": False,
                 }
             )
@@ -818,6 +903,7 @@ def _run_fasim(
 
     stdout_path.write_text(proc.stdout, encoding="utf-8")
     stderr_path.write_text(proc.stderr, encoding="utf-8")
+    telemetry = _parse_fasim_telemetry_file(stderr_path)
 
     output_path = _find_output_file(output_dir, output_mode) if proc.returncode == 0 else None
     run = RunResult(
@@ -830,6 +916,7 @@ def _run_fasim(
         output_dir=output_dir,
         output_path=output_path,
         exit_code=proc.returncode,
+        telemetry=telemetry,
     )
 
     if proc.returncode != 0:
@@ -883,6 +970,7 @@ def _run_worker(
                     output_dir=output_path.parent,
                     output_path=output_path,
                     exit_code=0,
+                    telemetry={},
                 )
                 if manifest is not None:
                     manifest.mark_completed(
@@ -1211,6 +1299,7 @@ def _run_to_json(run: RunResult) -> dict[str, object]:
         "output_dir": str(run.output_dir),
         "output_path": str(run.output_path) if run.output_path else None,
         "exit_code": run.exit_code,
+        "telemetry": run.telemetry,
     }
 
 
@@ -1510,9 +1599,22 @@ def main(argv: list[str] | None = None) -> int:
                 shard_result.raw_records for shard_result in result.shard_results
                 if shard_result.status != "failed"
             ),
+            "telemetry": _worker_telemetry_from_shards(
+                [shard_result.report for shard_result in result.shard_results]
+            ),
         }
         for result in worker_results
     ]
+    sharded_telemetry = _sum_fasim_telemetry(
+        [
+            telemetry
+            for shard_report in per_shard
+            for run in [shard_report.get("run")]
+            if isinstance(run, dict)
+            for telemetry in [run.get("telemetry")]
+            if isinstance(telemetry, dict)
+        ]
+    )
 
     merged_name = "merged-TFOsorted.lite" if args.output_mode == "lite" else "merged-TFOsorted"
     complete_run = not failed_shards
@@ -1612,6 +1714,7 @@ def main(argv: list[str] | None = None) -> int:
         "shard_ids": [shard.shard_id for shard in shards],
         "per_worker": per_worker,
         "per_shard": per_shard,
+        "sharded_telemetry": sharded_telemetry,
         "sharded_records": sharded_raw_records,
         "sharded_unique_records": sharded_unique_records,
         "merged_records": merged_records,

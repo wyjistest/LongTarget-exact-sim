@@ -2,10 +2,12 @@
 
 #include <cuda_runtime.h>
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 
 using namespace std;
+using Clock = std::chrono::steady_clock;
 
 namespace
 {
@@ -249,6 +251,11 @@ static inline string cuda_error_string(cudaError_t error)
     return "unknown CUDA error";
   }
   return string(message);
+}
+
+static inline double elapsed_seconds(Clock::time_point start,Clock::time_point end)
+{
+  return std::chrono::duration<double>(end - start).count();
 }
 
 struct PreAlignCudaContext
@@ -675,6 +682,7 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
 
   const size_t targetsBytes = static_cast<size_t>(taskCount) * static_cast<size_t>(targetLength) * sizeof(uint8_t);
   const size_t peaksBytes = static_cast<size_t>(taskCount) * static_cast<size_t>(topK) * sizeof(PreAlignCudaPeak);
+  const Clock::time_point totalStart = Clock::now();
 
   PreAlignCudaContext *context = NULL;
   mutex *contextMutex = NULL;
@@ -693,10 +701,12 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
     return false;
   }
 
+  const Clock::time_point h2dStart = Clock::now();
   cudaError_t status = cudaMemcpy(context->targetsDevice,
                                   encodedTargetsHost,
                                   targetsBytes,
                                   cudaMemcpyHostToDevice);
+  const Clock::time_point h2dEnd = Clock::now();
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -749,7 +759,9 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   }
 
   vector<PreAlignCudaPeak> peaks(static_cast<size_t>(taskCount) * static_cast<size_t>(topK));
+  const Clock::time_point d2hStart = Clock::now();
   status = cudaMemcpy(peaks.data(), context->peaksDevice, peaksBytes, cudaMemcpyDeviceToHost);
+  const Clock::time_point d2hEnd = Clock::now();
   if(status != cudaSuccess)
   {
     if(errorOut != NULL)
@@ -764,6 +776,10 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   {
     batchResult->usedCuda = true;
     batchResult->gpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
+    batchResult->kernelSeconds = batchResult->gpuSeconds;
+    batchResult->h2dSeconds = elapsed_seconds(h2dStart,h2dEnd);
+    batchResult->d2hSeconds = elapsed_seconds(d2hStart,d2hEnd);
+    batchResult->totalSeconds = elapsed_seconds(totalStart,Clock::now());
   }
   return true;
 }

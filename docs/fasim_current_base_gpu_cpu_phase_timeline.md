@@ -256,6 +256,10 @@ runs.
 
 ## Telemetry Gaps
 
+Update: #144 adds current-base preAlign CUDA and CPU extension telemetry for the
+fields below. See `docs/fasim_current_base_prealign_cuda_decomposition.md` for
+the emitted `benchmark.fasim_*` lines and sharded-runner JSON locations.
+
 The current sharded report exposes:
 
 ```text
