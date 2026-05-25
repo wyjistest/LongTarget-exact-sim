@@ -493,6 +493,7 @@ class RunManifest:
                     "stdout_path": None,
                     "stderr_path": None,
                     "exit_code": None,
+                    "env_overrides": None,
                     "skipped_by_resume": False,
                 }
                 for shard in shards
@@ -580,6 +581,7 @@ class RunManifest:
                 "stdout_path": str(run.stdout_path),
                 "stderr_path": str(run.stderr_path),
                 "exit_code": run.exit_code,
+                "env_overrides": run.env_overrides,
                 "skipped_by_resume": skipped_by_resume,
             }
         )
@@ -607,6 +609,7 @@ class RunManifest:
                 "stdout_path": str(run.stdout_path) if run else None,
                 "stderr_path": str(run.stderr_path) if run else None,
                 "exit_code": run.exit_code if run else 1,
+                "env_overrides": run.env_overrides if run else None,
                 "skipped_by_resume": False,
             }
         )
@@ -786,6 +789,8 @@ def _run_fasim(
     )
 
     env = os.environ.copy()
+    if "CUDA_VISIBLE_DEVICES" in env_overrides and "FASIM_CUDA_DEVICES" not in env_overrides:
+        env.pop("FASIM_CUDA_DEVICES", None)
     env.update(env_overrides)
     env["FASIM_OUTPUT_MODE"] = output_mode
     env.setdefault("FASIM_VERBOSE", "0")
@@ -847,6 +852,8 @@ def _run_worker(
     worker_env = dict(env_overrides)
     if assignment.gpu_id is not None:
         worker_env["CUDA_VISIBLE_DEVICES"] = assignment.gpu_id
+        worker_env["FASIM_CUDA_DEVICE"] = "0"
+        worker_env.pop("FASIM_CUDA_DEVICES", None)
 
     shard_results: list[ScheduledShardResult] = []
     t0 = time.perf_counter()

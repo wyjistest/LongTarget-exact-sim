@@ -1081,6 +1081,12 @@ check-fasim-shard-balance:
 check-fasim-sharded-straggler-analysis:
 	bash ./scripts/check_fasim_sharded_straggler_analysis.sh
 
+check-fasim-exact-column-multigpu-guard:
+	BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_fasim_exact_column_multigpu_guard.sh
+
+check-fasim-sharded-worker-gpu-env-hygiene:
+	bash ./scripts/check_fasim_sharded_worker_gpu_env_hygiene.sh
+
 .PHONY: build build-avx2 build-openmp build-openmp-avx2 \
 		build-cuda build-cuda-avx2 build-cuda-native-ada check-cuda-native-ada-fatbin \
 		build-fasim build-fasim-cuda \

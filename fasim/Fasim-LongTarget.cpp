@@ -97,6 +97,16 @@ static inline bool fasim_write_tfosorted_lite_enabled_runtime()
     return env[0] != '0';
 }
 
+static inline bool fasim_exact_column_extend_batch_enabled_runtime()
+{
+    const char *env = getenv("FASIM_EXACT_COLUMN_EXTEND_BATCH");
+    if (env == NULL || env[0] == '\0')
+    {
+        return false;
+    }
+    return env[0] != '0';
+}
+
 static inline FasimOutputMode fasim_output_mode_runtime()
 {
     static const FasimOutputMode mode = []()
@@ -218,6 +228,20 @@ static inline void fasim_cuda_devices_runtime(std::vector<int> &devicesOut)
         }
         devicesOut.push_back(device);
     }
+}
+
+static inline bool fasim_exact_column_multigpu_guard_failed(const std::vector<int> &devices)
+{
+    if (!fasim_exact_column_extend_batch_enabled_runtime() || devices.size() <= 1)
+    {
+        return false;
+    }
+
+    cerr << "error: exact-column batch requires a single visible CUDA device per Fasim process. "
+         << "Single-process multi-GPU FASIM_CUDA_DEVICES is unsupported because it can bypass "
+         << "exact-column batch and produce digest-incorrect topK-only output. "
+         << "Use process-level sharding with CUDA_VISIBLE_DEVICES per worker." << endl;
+    return true;
 }
 
 static inline void fasim_apply_src_transform(const std::string &seq1, FasimSrcTransform transform, std::string &out)
@@ -496,6 +520,12 @@ int main(int argc, char* const* argv)
 	resultDir = paraList.outpath;
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
+	std::vector<int> exactColumnGuardCudaDevices;
+	fasim_cuda_devices_runtime(exactColumnGuardCudaDevices);
+	if (fasim_exact_column_multigpu_guard_failed(exactColumnGuardCudaDevices))
+	{
+		return 2;
+	}
 	if (outputMode == FASIM_OUTPUT_TFOSORTED || outputMode == FASIM_OUTPUT_LITE)
 	{
 		const bool verbose = fasim_verbose_enabled_runtime();
