@@ -34,12 +34,16 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <chrono>
+#include <iomanip>
 
 #include "fastsim.h"
 using namespace std;
 
 namespace
 {
+
+typedef std::chrono::steady_clock FasimTelemetryClock;
 
 enum FasimSrcTransform
 {
@@ -76,6 +80,134 @@ struct FasimPrealignCudaTask
     int rule;
     FasimSrcTransform srcTransform;
 };
+
+struct FasimRuntimeTelemetry
+{
+    FasimRuntimeTelemetry() :
+        prealignCudaRequested(false),
+        prealignCudaActive(false),
+        prealignCudaDevice(-1),
+        prealignCudaDevices(0),
+        prealignCudaTasks(0),
+        prealignCudaBatches(0),
+        prealignCudaTopK(0),
+        prealignCudaMaxTasks(0),
+        prealignCudaPeakSuppressBp(0),
+        prealignCudaH2DSeconds(0.0),
+        prealignCudaKernelSeconds(0.0),
+        prealignCudaD2HSeconds(0.0),
+        prealignCudaTotalSeconds(0.0),
+        extendThreads(0),
+        extendSeconds(0.0),
+        outputSeconds(0.0),
+        prealignCudaFallbacks(0)
+    {
+    }
+
+    bool prealignCudaRequested;
+    bool prealignCudaActive;
+    int prealignCudaDevice;
+    int prealignCudaDevices;
+    long long prealignCudaTasks;
+    long long prealignCudaBatches;
+    int prealignCudaTopK;
+    int prealignCudaMaxTasks;
+    int prealignCudaPeakSuppressBp;
+    double prealignCudaH2DSeconds;
+    double prealignCudaKernelSeconds;
+    double prealignCudaD2HSeconds;
+    double prealignCudaTotalSeconds;
+    int extendThreads;
+    double extendSeconds;
+    double outputSeconds;
+    long long prealignCudaFallbacks;
+};
+
+static FasimRuntimeTelemetry g_fasimTelemetry;
+static std::mutex g_fasimTelemetryMutex;
+
+static inline double fasim_elapsed_seconds(FasimTelemetryClock::time_point start,FasimTelemetryClock::time_point end)
+{
+    return std::chrono::duration<double>(end - start).count();
+}
+
+static inline void fasim_telemetry_set_requested(bool requested)
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.prealignCudaRequested = g_fasimTelemetry.prealignCudaRequested || requested;
+}
+
+static inline void fasim_telemetry_config(int device,int devices,int topK,int maxTasks,int suppressBp,int extendThreads)
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.prealignCudaDevice = device;
+    g_fasimTelemetry.prealignCudaDevices = devices;
+    g_fasimTelemetry.prealignCudaTopK = topK;
+    g_fasimTelemetry.prealignCudaMaxTasks = maxTasks;
+    g_fasimTelemetry.prealignCudaPeakSuppressBp = suppressBp;
+    g_fasimTelemetry.extendThreads = extendThreads;
+}
+
+static inline void fasim_telemetry_add_cuda_batch(int tasks,const PreAlignCudaBatchResult &batchResult)
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.prealignCudaActive = g_fasimTelemetry.prealignCudaActive || batchResult.usedCuda;
+    g_fasimTelemetry.prealignCudaTasks += tasks;
+    g_fasimTelemetry.prealignCudaBatches += 1;
+    g_fasimTelemetry.prealignCudaH2DSeconds += batchResult.h2dSeconds;
+    g_fasimTelemetry.prealignCudaKernelSeconds += batchResult.kernelSeconds;
+    g_fasimTelemetry.prealignCudaD2HSeconds += batchResult.d2hSeconds;
+    g_fasimTelemetry.prealignCudaTotalSeconds += batchResult.totalSeconds;
+}
+
+static inline void fasim_telemetry_add_extend_seconds(double seconds)
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.extendSeconds += seconds;
+}
+
+static inline void fasim_telemetry_add_output_seconds(double seconds)
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.outputSeconds += seconds;
+}
+
+static inline void fasim_telemetry_add_cuda_fallback()
+{
+    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.prealignCudaFallbacks += 1;
+}
+
+static void fasim_emit_runtime_telemetry()
+{
+    FasimRuntimeTelemetry snapshot;
+    {
+        lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+        snapshot = g_fasimTelemetry;
+    }
+    ios::fmtflags oldFlags = cerr.flags();
+    std::streamsize oldPrecision = cerr.precision();
+    cerr << std::fixed << std::setprecision(9);
+    cerr << "benchmark.fasim_prealign_cuda_requested=" << (snapshot.prealignCudaRequested ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_prealign_cuda_active=" << (snapshot.prealignCudaActive ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_prealign_cuda_device=" << snapshot.prealignCudaDevice << endl;
+    cerr << "benchmark.fasim_prealign_cuda_devices=" << snapshot.prealignCudaDevices << endl;
+    cerr << "benchmark.fasim_prealign_cuda_tasks=" << snapshot.prealignCudaTasks << endl;
+    cerr << "benchmark.fasim_prealign_cuda_batches=" << snapshot.prealignCudaBatches << endl;
+    cerr << "benchmark.fasim_prealign_cuda_topk=" << snapshot.prealignCudaTopK << endl;
+    cerr << "benchmark.fasim_prealign_cuda_max_tasks=" << snapshot.prealignCudaMaxTasks << endl;
+    cerr << "benchmark.fasim_prealign_cuda_peak_suppress_bp=" << snapshot.prealignCudaPeakSuppressBp << endl;
+    cerr << "benchmark.fasim_prealign_cuda_h2d_seconds=" << snapshot.prealignCudaH2DSeconds << endl;
+    cerr << "benchmark.fasim_prealign_cuda_kernel_seconds=" << snapshot.prealignCudaKernelSeconds << endl;
+    cerr << "benchmark.fasim_prealign_cuda_d2h_seconds=" << snapshot.prealignCudaD2HSeconds << endl;
+    cerr << "benchmark.fasim_prealign_cuda_total_seconds=" << snapshot.prealignCudaTotalSeconds << endl;
+    cerr << "benchmark.fasim_extend_threads=" << snapshot.extendThreads << endl;
+    cerr << "benchmark.fasim_extend_seconds=" << snapshot.extendSeconds << endl;
+    cerr << "benchmark.fasim_output_seconds=" << snapshot.outputSeconds << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallbacks=" << snapshot.prealignCudaFallbacks << endl;
+    cerr.flags(oldFlags);
+    cerr.precision(oldPrecision);
+}
 
 static inline bool fasim_verbose_enabled_runtime()
 {
@@ -520,10 +652,12 @@ int main(int argc, char* const* argv)
 	resultDir = paraList.outpath;
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
+	fasim_telemetry_set_requested(paraList.doFastSim && fasim_prealign_cuda_enabled_runtime() && prealign_cuda_is_built());
 	std::vector<int> exactColumnGuardCudaDevices;
 	fasim_cuda_devices_runtime(exactColumnGuardCudaDevices);
 	if (fasim_exact_column_multigpu_guard_failed(exactColumnGuardCudaDevices))
 	{
+		fasim_emit_runtime_telemetry();
 		return 2;
 	}
 	if (outputMode == FASIM_OUTPUT_TFOSORTED || outputMode == FASIM_OUTPUT_LITE)
@@ -637,14 +771,20 @@ int main(int argc, char* const* argv)
 				{
 					topK = 256;
 				}
-				if (topK <= 0)
-				{
-					topK = 64;
-				}
+					if (topK <= 0)
+					{
+						topK = 64;
+					}
+			fasim_telemetry_config(cudaDevices.empty() ? fasim_cuda_device_runtime() : cudaDevices[0],
+			                       static_cast<int>(cudaDevices.size()),
+			                       topK,
+			                       maxTasksPerGpu,
+			                       fasim_prealign_peak_suppress_bp_runtime(),
+			                       extendThreadCount);
 
-		const bool debugCuda = getenv("FASIM_DEBUG_CUDA_PREALIGN") != NULL &&
-		                       getenv("FASIM_DEBUG_CUDA_PREALIGN")[0] != '\0' &&
-		                       getenv("FASIM_DEBUG_CUDA_PREALIGN")[0] != '0';
+			const bool debugCuda = getenv("FASIM_DEBUG_CUDA_PREALIGN") != NULL &&
+			                       getenv("FASIM_DEBUG_CUDA_PREALIGN")[0] != '\0' &&
+			                       getenv("FASIM_DEBUG_CUDA_PREALIGN")[0] != '0';
 
 		StripedSmithWaterman::Aligner aligner;
 		StripedSmithWaterman::Filter filter;
@@ -659,10 +799,11 @@ int main(int argc, char* const* argv)
 		std::vector<uint8_t> encodedTargets;
 		int currentTargetLength = -1;
 
-		auto write_task_triplexes = [&](const StreamTask &task)
-		{
-			for (size_t i = 0; i < taskTriplexes.size(); ++i)
+			auto write_task_triplexes = [&](const StreamTask &task)
 			{
+				const FasimTelemetryClock::time_point outputStart = FasimTelemetryClock::now();
+				for (size_t i = 0; i < taskTriplexes.size(); ++i)
+				{
 				triplex atr = taskTriplexes[i];
 				if (atr.chr.empty())
 				{
@@ -728,9 +869,10 @@ int main(int argc, char* const* argv)
 						        << atr.stri_align << "\t" << atr.strj_align << "\n";
 					}
 				}
-			}
-			taskTriplexes.clear();
-		};
+				}
+				fasim_telemetry_add_output_seconds(fasim_elapsed_seconds(outputStart,FasimTelemetryClock::now()));
+				taskTriplexes.clear();
+			};
 
 		auto flush_batch = [&]()
 		{
@@ -760,15 +902,17 @@ int main(int argc, char* const* argv)
 					                                                    &peaks,
 					                                                    &batchResult,
 					                                                    &cudaError);
-					if (!ok)
-					{
-						useCudaBatch = false;
-						maxTasksTotal = 1;
-					}
-					else
-					{
-						if (extendThreadCount <= 1 || tasks.size() <= 1)
+						if (!ok)
 						{
+							fasim_telemetry_add_cuda_fallback();
+							useCudaBatch = false;
+							maxTasksTotal = 1;
+						}
+						else
+						{
+							fasim_telemetry_add_cuda_batch(static_cast<int>(tasks.size()),batchResult);
+							if (extendThreadCount <= 1 || tasks.size() <= 1)
+							{
 							for (size_t t = 0; t < tasks.size(); ++t)
 							{
 								const StreamTask &task = tasks[t];
@@ -820,6 +964,7 @@ int main(int argc, char* const* argv)
 								}
 
 								taskTriplexes.clear();
+								const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 								fastSIM_extend_from_scoreinfo(aligner,
 								                              filter,
 								                              alignment,
@@ -839,6 +984,7 @@ int main(int argc, char* const* argv)
 								                              paraList.penaltyC,
 								                              paraList,
 								                              writeFull);
+								fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 								write_task_triplexes(task);
 							}
 						}
@@ -923,6 +1069,7 @@ int main(int argc, char* const* argv)
 										}
 
 										taskTriplexesLocal.clear();
+										const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 										fastSIM_extend_from_scoreinfo(alignerLocal,
 										                              filterLocal,
 										                              alignmentLocal,
@@ -942,6 +1089,7 @@ int main(int argc, char* const* argv)
 										                              paraList.penaltyC,
 									                              paraList,
 									                              writeFull);
+										fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 										if (taskTriplexesLocal.empty())
 										{
 											continue;
@@ -1019,15 +1167,19 @@ int main(int argc, char* const* argv)
 											continue;
 										}
 
-										lock_guard<std::mutex> lock(outMutex);
-										if (writeLite && !liteText.empty())
+										const FasimTelemetryClock::time_point outputStart = FasimTelemetryClock::now();
 										{
-											outLiteFile << liteText;
+											lock_guard<std::mutex> lock(outMutex);
+											if (writeLite && !liteText.empty())
+											{
+												outLiteFile << liteText;
+											}
+											if (!outText.empty())
+											{
+												outFile << outText;
+											}
 										}
-										if (!outText.empty())
-										{
-											outFile << outText;
-										}
+										fasim_telemetry_add_output_seconds(fasim_elapsed_seconds(outputStart,FasimTelemetryClock::now()));
 									}
 								}));
 							}
@@ -1094,6 +1246,7 @@ int main(int argc, char* const* argv)
 							cudaErrors[d] = cudaError;
 							if (okLocal)
 							{
+								fasim_telemetry_add_cuda_batch(static_cast<int>(localCount),batchResult);
 								peaksByDevice[d].swap(peaks);
 							}
 						}));
@@ -1114,6 +1267,7 @@ int main(int argc, char* const* argv)
 					}
 					if (!allOk)
 					{
+						fasim_telemetry_add_cuda_fallback();
 						useCudaBatch = false;
 						maxTasksTotal = 1;
 					}
@@ -1222,6 +1376,7 @@ int main(int argc, char* const* argv)
 									}
 
 									taskTriplexesLocal.clear();
+									const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 									fastSIM_extend_from_scoreinfo(alignerLocal,
 									                              filterLocal,
 									                              alignmentLocal,
@@ -1241,6 +1396,7 @@ int main(int argc, char* const* argv)
 									                              paraList.penaltyC,
 									                              paraList,
 									                              writeFull);
+									fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 									if (taskTriplexesLocal.empty())
 									{
 										continue;
@@ -1318,18 +1474,22 @@ int main(int argc, char* const* argv)
 										continue;
 									}
 
-									lock_guard<std::mutex> lock(outMutex);
-									if (writeLite && !liteText.empty())
+									const FasimTelemetryClock::time_point outputStart = FasimTelemetryClock::now();
 									{
-										outLiteFile << liteText;
-									}
-									if (!outText.empty())
-									{
-										if (writeFull)
+										lock_guard<std::mutex> lock(outMutex);
+										if (writeLite && !liteText.empty())
 										{
-											outFile << outText;
+											outLiteFile << liteText;
+										}
+										if (!outText.empty())
+										{
+											if (writeFull)
+											{
+												outFile << outText;
+											}
 										}
 									}
+									fasim_telemetry_add_output_seconds(fasim_elapsed_seconds(outputStart,FasimTelemetryClock::now()));
 								}
 							}));
 						}
@@ -1539,6 +1699,7 @@ int main(int argc, char* const* argv)
 		cout << "finished normally" << endl;
 		cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
 		cout<<"Running time is "<<cpu_time<<endl;
+		fasim_emit_runtime_telemetry();
 		return 0;
 	}
 
@@ -1587,6 +1748,7 @@ int main(int argc, char* const* argv)
 	cout << "finished normally" << endl;
 	cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
 	cout<<"Running time is "<<cpu_time<<endl;
+	fasim_emit_runtime_telemetry();
 	return 0;
 }
 
@@ -1810,12 +1972,18 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 			{
 				topK = 256;
 			}
-			if (topK <= 0)
-			{
-				topK = 64;
-			}
+				if (topK <= 0)
+				{
+					topK = 64;
+				}
+				fasim_telemetry_config(cudaQuery.device,
+				                       1,
+				                       topK,
+				                       maxTasks,
+				                       fasim_prealign_peak_suppress_bp_runtime(),
+				                       1);
 
-			std::vector<FasimPrealignCudaTask> tasks;
+				std::vector<FasimPrealignCudaTask> tasks;
 			std::vector<uint8_t> encodedTargets;
 			int currentTargetLength = -1;
 
@@ -1838,11 +2006,12 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				                                                    &peaks,
 				                                                    &batchResult,
 				                                                    &cudaError);
-				if (!ok)
-				{
-					// Fallback to CPU fastSIM for this batch, then keep using CPU.
-					useCudaBatch = false;
-					for (size_t t = 0; t < tasks.size(); ++t)
+					if (!ok)
+					{
+						// Fallback to CPU fastSIM for this batch, then keep using CPU.
+						fasim_telemetry_add_cuda_fallback();
+						useCudaBatch = false;
+						for (size_t t = 0; t < tasks.size(); ++t)
 					{
 						FasimPrealignCudaTask &task = tasks[t];
 						string srcSeq;
@@ -1870,10 +2039,11 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 					tasks.clear();
 					encodedTargets.clear();
 					currentTargetLength = -1;
-					return;
-				}
+						return;
+					}
+					fasim_telemetry_add_cuda_batch(static_cast<int>(tasks.size()),batchResult);
 
-				StripedSmithWaterman::Aligner aligner;
+					StripedSmithWaterman::Aligner aligner;
 				StripedSmithWaterman::Filter filter;
 				StripedSmithWaterman::Alignment alignment;
 
@@ -1937,9 +2107,10 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 						continue;
 					}
 
-					string srcSeq;
-					fasim_apply_src_transform(*task.seq1, task.srcTransform, srcSeq);
-					fastSIM_extend_from_scoreinfo(aligner,
+						string srcSeq;
+						fasim_apply_src_transform(*task.seq1, task.srcTransform, srcSeq);
+						const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
+						fastSIM_extend_from_scoreinfo(aligner,
 					                              filter,
 					                              alignment,
 					                              15,
@@ -1954,10 +2125,11 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 					                              task.rule,
 					                              paraList.ntMin,
 					                              paraList.ntMax,
-					                              paraList.penaltyT,
-					                              paraList.penaltyC,
-					                              paraList);
-				}
+						                              paraList.penaltyT,
+						                              paraList.penaltyC,
+						                              paraList);
+						fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
+					}
 
 				tasks.clear();
 				encodedTargets.clear();
