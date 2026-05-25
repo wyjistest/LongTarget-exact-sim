@@ -303,7 +303,7 @@ FASIM_OUTPUT_MODE=tfosorted FASIM_ENABLE_PREALIGN_CUDA=1 FASIM_VERBOSE=0 ./fasim
 
 Tuning knobs:
 - `FASIM_CUDA_DEVICE`: CUDA device index (falls back to `LONGTARGET_CUDA_DEVICE`, else 0)
-- `FASIM_CUDA_DEVICES`: comma-separated CUDA devices for multi-GPU (e.g. `0,1`). When set, batches are split across devices.
+- `FASIM_CUDA_DEVICES`: comma-separated CUDA devices for the in-process multi-GPU preAlign/topK path (e.g. `0,1`). Do not combine multi-device `FASIM_CUDA_DEVICES` with `FASIM_EXACT_COLUMN_EXTEND_BATCH=1`; exact-column batch currently requires one visible CUDA device per Fasim process, and the binary fails closed for that unsupported combination.
 - `FASIM_EXTEND_THREADS`: CPU worker threads for the extend+output stage (default: `--cn` / `-C`, else 1)
 - `FASIM_PREALIGN_CUDA_MAX_TASKS`: max tasks per GPU batch call (default 4096)
 - `FASIM_PREALIGN_CUDA_TOPK`: peaks per task (default 64; current max is 256)
@@ -332,7 +332,7 @@ make benchmark-sample-cuda-throughput-compare
 - Default throughput preset values: `FASIM_ENABLE_PREALIGN_CUDA=1`, `FASIM_PREALIGN_CUDA_TOPK=64`, `FASIM_PREALIGN_PEAK_SUPPRESS_BP=5`, `FASIM_VERBOSE=0`, `FASIM_OUTPUT_MODE=lite`.
 - The sample throughput comparator always compares the same repo revision, the same inputs, and the same output schema (`lite` or `tfosorted`). In throughput mode the default comparison schema is `.lite`.
 - `report.json` now includes both aggregate comparison metrics and `per_output_comparisons`, so shard- or output-level drops are visible without losing the aggregate summary.
-- The throughput lane does not implicitly enable two GPUs. Pass `FASIM_CUDA_DEVICES=0,1` (or use the sweep script below) only after checking whether the second device really improves wall time.
+- The throughput lane does not implicitly enable two GPUs. Use process-level sharding for the exact-column batch multi-GPU path. Do not combine `FASIM_CUDA_DEVICES=0,1` with `FASIM_EXACT_COLUMN_EXTEND_BATCH=1`.
 
 Throughput sweep helper (one exact baseline reused across a throughput matrix; by default it sweeps device set × `FASIM_EXTEND_THREADS`, and it can also sweep `TOPK` / `suppress_bp` when you want a small-shard quality frontier):
 

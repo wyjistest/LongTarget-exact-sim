@@ -92,10 +92,19 @@ python3 ./scripts/fasim_sharded_runner.py \
   --env FASIM_EXACT_COLUMN_EXTEND_BATCH=1
 ```
 
-`--gpu-ids` values are assigned to workers as `CUDA_VISIBLE_DEVICES`. CPU core
-ranges are optional and use `taskset`; provide one range per worker when used.
-When estimated DP cells are unavailable, shard assignment falls back to target
-sequence length.
+With `--gpu-ids`, each worker is intentionally made a single-visible-GPU
+process: the runner sets `CUDA_VISIBLE_DEVICES=<assigned physical GPU>`, sets
+`FASIM_CUDA_DEVICE=0`, and strips inherited `FASIM_CUDA_DEVICES` from the
+worker environment. This keeps the exact-column batch path on the supported
+single-process/single-GPU contract while using multiple GPUs through
+process-level sharding. CPU core ranges are optional and use `taskset`; provide
+one range per worker when used. When estimated DP cells are unavailable, shard
+assignment falls back to target sequence length.
+
+Do not use `FASIM_CUDA_DEVICES=0,1` as the final-stack multi-GPU mode with
+`FASIM_EXACT_COLUMN_EXTEND_BATCH=1`. The in-process multi-GPU topK path does
+not have a paired exact-column batch contract, so the Fasim binary fails closed
+for that combination.
 
 Use `--workers-per-gpu N` with `--gpu-ids` to derive the worker count as
 `len(gpu_ids) * N`. This is a default-off convenience option and is mutually
