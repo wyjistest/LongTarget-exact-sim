@@ -258,7 +258,7 @@ git diff --check
 
 Expected: all commands exit 0.
 
-- [ ] **Step 2: Commit and PR**
+- [x] **Step 2: Commit and PR**
 
 Run:
 
