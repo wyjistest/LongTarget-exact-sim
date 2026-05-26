@@ -88,6 +88,15 @@ On this small smoke, extension time is mostly `aligner.Align()` time. That is a
 useful sanity check, not a replacement for the larger current-base workload
 matrix.
 
+## Aligner Internal Follow-Up
+
+`aligner.Align()` now has its own current-base internal decomposition in
+`docs/fasim_current_base_aligner_internal_decomposition.md`. Use the
+`benchmark.fasim_align_*` fields to split alignment work into wrapper
+translation/profile setup, forward score/end SSW, reverse-start recovery,
+traceback/CIGAR, conversion, and cleanup. The `fasim_extend_align_seconds`
+bucket remains the outer extension timing around `aligner.Align()` calls.
+
 ## Decision Use
 
 Use this telemetry as the gate before attempting score-only GPU alignment:

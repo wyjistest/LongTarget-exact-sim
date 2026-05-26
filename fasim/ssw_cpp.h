@@ -45,6 +45,45 @@ namespace StripedSmithWaterman {
 		int position;
 	};
 
+	struct AlignerTelemetryDelta {
+		AlignerTelemetryDelta()
+			: alignCalls(0)
+			, queryTranslateSeconds(0.0)
+			, refTranslateSeconds(0.0)
+			, profileSeconds(0.0)
+			, sswTotalSeconds(0.0)
+			, forwardScoreEndSeconds(0.0)
+			, reverseStartSeconds(0.0)
+			, tracebackSeconds(0.0)
+			, convertSeconds(0.0)
+			, cleanupSeconds(0.0)
+			, byteForwardCalls(0)
+			, wordForwardCalls(0)
+			, reverseCalls(0)
+			, tracebackCalls(0)
+			, nullResults(0)
+		{};
+
+		long long alignCalls;
+		double queryTranslateSeconds;
+		double refTranslateSeconds;
+		double profileSeconds;
+		double sswTotalSeconds;
+		double forwardScoreEndSeconds;
+		double reverseStartSeconds;
+		double tracebackSeconds;
+		double convertSeconds;
+		double cleanupSeconds;
+		long long byteForwardCalls;
+		long long wordForwardCalls;
+		long long reverseCalls;
+		long long tracebackCalls;
+		long long nullResults;
+	};
+
+	void ResetAlignerTelemetry();
+	AlignerTelemetryDelta SnapshotAlignerTelemetry();
+
 	struct Filter {
 		// NOTE: No matter the filter, those five fields of Alignment will be given anyway.
 		//       sw_score; sw_score_next_best; ref_end; query_end; ref_end_next_best.
@@ -240,4 +279,3 @@ namespace StripedSmithWaterman {
 } // namespace StripedSmithWaterman
 
 #endif // COMPLETE_STRIPED_SMITH_WATERMAN_CPP_H_
-

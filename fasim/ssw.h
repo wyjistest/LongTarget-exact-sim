@@ -125,6 +125,19 @@ extern "C" {
 		const int32_t filterd,
 		const int32_t maskLen);
 
+	typedef struct {
+		double forward_score_end_seconds;
+		double reverse_start_seconds;
+		double traceback_seconds;
+		long long byte_forward_calls;
+		long long word_forward_calls;
+		long long reverse_calls;
+		long long traceback_calls;
+	} ssw_telemetry_delta;
+
+	void ssw_reset_telemetry(void);
+	ssw_telemetry_delta ssw_snapshot_telemetry(void);
+
 	int * ssw_pre_align(const s_profile* prof,
 		const int8_t* ref,
 		int32_t refLen,
