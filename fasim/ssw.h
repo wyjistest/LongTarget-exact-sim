@@ -129,10 +129,23 @@ extern "C" {
 		double forward_score_end_seconds;
 		double reverse_start_seconds;
 		double traceback_seconds;
+		double forward_score_gpu_cpu_seconds;
+		double forward_score_gpu_pack_seconds;
+		double forward_score_gpu_h2d_seconds;
+		double forward_score_gpu_kernel_seconds;
+		double forward_score_gpu_d2h_seconds;
+		double forward_score_gpu_unpack_seconds;
+		double forward_score_gpu_total_seconds;
 		long long byte_forward_calls;
 		long long word_forward_calls;
 		long long reverse_calls;
 		long long traceback_calls;
+		long long forward_score_gpu_shadow_enabled;
+		long long forward_score_gpu_requests;
+		long long forward_score_gpu_cells;
+		long long forward_score_gpu_score_mismatches;
+		long long forward_score_gpu_endpoint_mismatches;
+		long long forward_score_gpu_unsupported_requests;
 	} ssw_telemetry_delta;
 
 	void ssw_reset_telemetry(void);

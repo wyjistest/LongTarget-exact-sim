@@ -34,6 +34,7 @@ workflow:
 | `FASIM_ALIGN_PROFILE_REUSE_SHADOW` | Default-off telemetry-only profile reuse opportunity shadow. |
 | `FASIM_ALIGN_PROFILE_CACHE` | Default-off current-base opt-in cache for repeated `ssw_init()` profiles. |
 | `FASIM_ALIGN_PROFILE_CACHE_VALIDATE` | Default-off correctness audit mode for the profile cache; not a performance mode. |
+| `FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW` | Default-off diagnostic score/end GPU shadow; not a performance mode or output authority. |
 | `FASIM_CUDA_DEVICE` | Selects the logical CUDA device inside a worker. With sharding this is normally `0`. |
 | `FASIM_CUDA_DEVICES` | In-process CUDA device list for preAlign/topK paths. Do not use it as the recommended multi-GPU mode for current sharded runs. |
 | `FASIM_PREALIGN_CUDA_TOPK` | PreAlign CUDA top-K peak count per task. |
@@ -156,7 +157,8 @@ broader workload and hardware coverage exists.
 
 After enabling the profile cache, re-measure the remaining aligner internals
 before choosing the next optimization target. If forward score/end remains the
-dominant remaining cost, a separate score-only GPU shadow may be worth testing.
+dominant remaining cost, use `FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW=1` only as a
+score/end diagnostic probe. CPU `aligner.Align()` remains the output authority.
 
 Do not use the current profile-cache result to justify:
 

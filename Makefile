@@ -1102,6 +1102,9 @@ check-fasim-align-profile-reuse-shadow:
 check-fasim-align-profile-cache:
 	BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_fasim_align_profile_cache.sh
 
+check-fasim-forward-score-gpu-shadow:
+	BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_fasim_forward_score_gpu_shadow.sh
+
 check-fasim-sharded-runner-telemetry:
 	BIN=$(CURDIR)/fasim_longtarget_cuda bash ./scripts/check_fasim_sharded_runner_telemetry.sh
 
@@ -1157,7 +1160,7 @@ check-fasim-sharded-runner-telemetry:
 				check-calc-score-cuda-v2-shadow check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
-		check-sim-cuda-region-docs check-longtarget-lite-output check-fasim-sharded-runner check-fasim-sharded-scheduler check-fasim-sharded-runner-resume check-fasim-sharded-cpu-affinity check-fasim-sharded-worker-readiness-matrix check-fasim-shard-balance check-fasim-sharded-straggler-analysis check-fasim-sharded-manifest-threadsafe check-fasim-sharded-runner-telemetry-parser check-fasim-current-base-prealign-telemetry check-fasim-align-profile-reuse-shadow check-fasim-align-profile-cache check-fasim-sharded-runner-telemetry check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
+		check-sim-cuda-region-docs check-longtarget-lite-output check-fasim-sharded-runner check-fasim-sharded-scheduler check-fasim-sharded-runner-resume check-fasim-sharded-cpu-affinity check-fasim-sharded-worker-readiness-matrix check-fasim-shard-balance check-fasim-sharded-straggler-analysis check-fasim-sharded-manifest-threadsafe check-fasim-sharded-runner-telemetry-parser check-fasim-current-base-prealign-telemetry check-fasim-align-profile-reuse-shadow check-fasim-align-profile-cache check-fasim-forward-score-gpu-shadow check-fasim-sharded-runner-telemetry check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
 		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \

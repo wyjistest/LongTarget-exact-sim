@@ -594,6 +594,23 @@ namespace StripedSmithWaterman {
 		snapshot.forwardScoreEndSeconds = sswSnapshot.forward_score_end_seconds;
 		snapshot.reverseStartSeconds = sswSnapshot.reverse_start_seconds;
 		snapshot.tracebackSeconds = sswSnapshot.traceback_seconds;
+		snapshot.forwardScoreGpuShadowEnabled =
+			sswSnapshot.forward_score_gpu_shadow_enabled != 0;
+		snapshot.forwardScoreGpuRequests = sswSnapshot.forward_score_gpu_requests;
+		snapshot.forwardScoreGpuCells = sswSnapshot.forward_score_gpu_cells;
+		snapshot.forwardScoreGpuCpuSeconds = sswSnapshot.forward_score_gpu_cpu_seconds;
+		snapshot.forwardScoreGpuPackSeconds = sswSnapshot.forward_score_gpu_pack_seconds;
+		snapshot.forwardScoreGpuH2DSeconds = sswSnapshot.forward_score_gpu_h2d_seconds;
+		snapshot.forwardScoreGpuKernelSeconds = sswSnapshot.forward_score_gpu_kernel_seconds;
+		snapshot.forwardScoreGpuD2HSeconds = sswSnapshot.forward_score_gpu_d2h_seconds;
+		snapshot.forwardScoreGpuUnpackSeconds = sswSnapshot.forward_score_gpu_unpack_seconds;
+		snapshot.forwardScoreGpuTotalSeconds = sswSnapshot.forward_score_gpu_total_seconds;
+		snapshot.forwardScoreGpuScoreMismatches =
+			sswSnapshot.forward_score_gpu_score_mismatches;
+		snapshot.forwardScoreGpuEndpointMismatches =
+			sswSnapshot.forward_score_gpu_endpoint_mismatches;
+		snapshot.forwardScoreGpuUnsupportedRequests =
+			sswSnapshot.forward_score_gpu_unsupported_requests;
 		snapshot.byteForwardCalls = sswSnapshot.byte_forward_calls;
 		snapshot.wordForwardCalls = sswSnapshot.word_forward_calls;
 		snapshot.reverseCalls = sswSnapshot.reverse_calls;

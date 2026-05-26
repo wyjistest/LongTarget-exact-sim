@@ -77,6 +77,19 @@ required = {
     "fasim_align_forward_score_end_seconds",
     "fasim_align_reverse_start_seconds",
     "fasim_align_traceback_seconds",
+    "fasim_align_forward_score_gpu_shadow_enabled",
+    "fasim_align_forward_score_gpu_requests",
+    "fasim_align_forward_score_gpu_cells",
+    "fasim_align_forward_score_gpu_cpu_seconds",
+    "fasim_align_forward_score_gpu_pack_seconds",
+    "fasim_align_forward_score_gpu_h2d_seconds",
+    "fasim_align_forward_score_gpu_kernel_seconds",
+    "fasim_align_forward_score_gpu_d2h_seconds",
+    "fasim_align_forward_score_gpu_unpack_seconds",
+    "fasim_align_forward_score_gpu_total_seconds",
+    "fasim_align_forward_score_gpu_score_mismatches",
+    "fasim_align_forward_score_gpu_endpoint_mismatches",
+    "fasim_align_forward_score_gpu_unsupported_requests",
     "fasim_align_convert_seconds",
     "fasim_align_cleanup_seconds",
     "fasim_align_calls",
@@ -119,12 +132,19 @@ assert report["sharded_telemetry"]["fasim_extend_align_calls"] >= 0, report["sha
 assert report["sharded_telemetry"]["fasim_extend_align_cells"] >= 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_calls"] >= 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_forward_score_end_seconds"] >= 0.0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_gpu_shadow_enabled"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_gpu_requests"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_gpu_cells"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_gpu_score_mismatches"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_gpu_endpoint_mismatches"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_gpu_unsupported_requests"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_build_calls"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_cache_requested"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_cache_active"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_cache_calls"] == 0, report["sharded_telemetry"]
 assert report["single_run"]["telemetry"]["fasim_prealign_cuda_requested"] == 1, report["single_run"]
+assert report["single_run"]["telemetry"]["fasim_align_forward_score_gpu_shadow_enabled"] == 0, report["single_run"]
 assert report["single_run"]["telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["single_run"]
 assert report["single_run"]["telemetry"]["fasim_align_profile_cache_requested"] == 0, report["single_run"]
 
@@ -132,6 +152,8 @@ for shard in report["per_shard"]:
     telemetry = shard["run"]["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_prealign_cuda_requested"] == 1, telemetry
+    assert telemetry["fasim_align_forward_score_gpu_shadow_enabled"] == 0, telemetry
+    assert telemetry["fasim_align_forward_score_gpu_requests"] == 0, telemetry
     assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
     assert telemetry["fasim_align_profile_cache_requested"] == 0, telemetry
 
@@ -139,12 +161,16 @@ for worker in report["per_worker"]:
     telemetry = worker["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_prealign_cuda_requested"] == 1, telemetry
+    assert telemetry["fasim_align_forward_score_gpu_shadow_enabled"] == 0, telemetry
+    assert telemetry["fasim_align_forward_score_gpu_requests"] == 0, telemetry
     assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
     assert telemetry["fasim_align_profile_cache_requested"] == 0, telemetry
 
 for entry in manifest["per_shard"]:
     telemetry = entry["telemetry"]
     assert required.issubset(telemetry), telemetry
+    assert telemetry["fasim_align_forward_score_gpu_shadow_enabled"] == 0, telemetry
+    assert telemetry["fasim_align_forward_score_gpu_requests"] == 0, telemetry
     assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
     assert telemetry["fasim_align_profile_cache_requested"] == 0, telemetry
 PY
