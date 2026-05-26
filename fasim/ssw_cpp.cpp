@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -268,8 +269,68 @@ namespace StripedSmithWaterman {
 			std::set<std::string> queryKeys;
 		};
 
+		struct ProfileCacheState {
+			ProfileCacheState()
+				: requested(false)
+				, active(false)
+				, validate(false)
+				, calls(0)
+				, hits(0)
+				, misses(0)
+				, buildSeconds(0.0)
+				, savedSeconds(0.0)
+				, validateSeconds(0.0)
+				, scoreMismatches(0)
+				, endpointMismatches(0)
+				, cigarMismatches(0)
+				, digestMismatches(0)
+				, fallbacks(0)
+			{}
+
+			bool requested;
+			bool active;
+			bool validate;
+			long long calls;
+			long long hits;
+			long long misses;
+			double buildSeconds;
+			double savedSeconds;
+			double validateSeconds;
+			long long scoreMismatches;
+			long long endpointMismatches;
+			long long cigarMismatches;
+			long long digestMismatches;
+			long long fallbacks;
+			std::set<std::string> uniqueKeys;
+		};
+
+		struct CachedProfileEntry {
+			CachedProfileEntry()
+				: queryLen(0)
+				, scoreSize(0)
+				, profile(NULL)
+				, profileBuildSeconds(0.0)
+			{}
+
+			~CachedProfileEntry() {
+				if (profile != NULL) {
+					init_destroy(profile);
+				}
+			}
+
+			int queryLen;
+			int8_t scoreSize;
+			std::vector<int8_t> query;
+			std::vector<int8_t> scoreMatrix;
+			s_profile* profile;
+			double profileBuildSeconds;
+		};
+
 		ProfileReuseShadowState g_profileReuseShadow;
 		std::mutex g_profileReuseShadowMutex;
+		ProfileCacheState g_profileCacheState;
+		std::mutex g_profileCacheMutex;
+		thread_local std::unordered_map<std::string, std::shared_ptr<CachedProfileEntry> > t_profileCache;
 
 		inline double elapsed_seconds(AlignerTelemetryClock::time_point start,
 		                              AlignerTelemetryClock::time_point end) {
@@ -291,6 +352,22 @@ namespace StripedSmithWaterman {
 		bool ProfileReuseShadowEnabledRuntime() {
 			static const bool enabled = []() {
 				const char* env = std::getenv("FASIM_ALIGN_PROFILE_REUSE_SHADOW");
+				return env != NULL && env[0] != '\0' && env[0] != '0';
+			}();
+			return enabled;
+		}
+
+		bool ProfileCacheEnabledRuntime() {
+			static const bool enabled = []() {
+				const char* env = std::getenv("FASIM_ALIGN_PROFILE_CACHE");
+				return env != NULL && env[0] != '\0' && env[0] != '0';
+			}();
+			return enabled;
+		}
+
+		bool ProfileCacheValidateRuntime() {
+			static const bool enabled = []() {
+				const char* env = std::getenv("FASIM_ALIGN_PROFILE_CACHE_VALIDATE");
 				return env != NULL && env[0] != '\0' && env[0] != '0';
 			}();
 			return enabled;
@@ -362,6 +439,127 @@ namespace StripedSmithWaterman {
 				g_profileReuseShadow.queryReusableCalls += 1;
 			}
 		}
+
+		s_profile* BuildSswProfile(const int8_t* translatedQuery,
+		                           int queryLen,
+		                           const int8_t* scoreMatrix,
+		                           int scoreMatrixSize,
+		                           int8_t scoreSize,
+		                           double* buildSeconds) {
+			AlignerTelemetryClock::time_point start = AlignerTelemetryClock::now();
+			s_profile* profile = ssw_init(translatedQuery,
+			                              queryLen,
+			                              scoreMatrix,
+			                              scoreMatrixSize,
+			                              scoreSize);
+			*buildSeconds = elapsed_seconds(start, AlignerTelemetryClock::now());
+			return profile;
+		}
+
+		std::shared_ptr<CachedProfileEntry> GetCachedProfile(
+			const std::string& profileKey,
+			const int8_t* translatedQuery,
+			int queryLen,
+			const int8_t* scoreMatrix,
+			int scoreMatrixSize,
+			int8_t scoreSize,
+			bool* cacheHit,
+			double* buildSeconds,
+			double* savedSeconds) {
+			std::unordered_map<std::string, std::shared_ptr<CachedProfileEntry> >::iterator it =
+				t_profileCache.find(profileKey);
+			if (it != t_profileCache.end()) {
+				*cacheHit = true;
+				*buildSeconds = 0.0;
+				*savedSeconds = it->second->profileBuildSeconds;
+				return it->second;
+			}
+
+			*cacheHit = false;
+			*savedSeconds = 0.0;
+			std::shared_ptr<CachedProfileEntry> entry(new CachedProfileEntry());
+			entry->queryLen = queryLen;
+			entry->scoreSize = scoreSize;
+			entry->query.assign(translatedQuery, translatedQuery + queryLen);
+			entry->scoreMatrix.assign(
+				scoreMatrix,
+				scoreMatrix +
+					static_cast<size_t>(scoreMatrixSize) *
+					static_cast<size_t>(scoreMatrixSize));
+			entry->profile = BuildSswProfile(entry->query.data(),
+			                                 queryLen,
+			                                 entry->scoreMatrix.data(),
+			                                 scoreMatrixSize,
+			                                 scoreSize,
+			                                 buildSeconds);
+			entry->profileBuildSeconds = *buildSeconds;
+			t_profileCache[profileKey] = entry;
+			return entry;
+		}
+
+		bool AlignmentSameScore(const Alignment& a, const Alignment& b) {
+			return a.sw_score == b.sw_score &&
+			       a.sw_score_next_best == b.sw_score_next_best;
+		}
+
+		bool AlignmentSameEndpoint(const Alignment& a, const Alignment& b) {
+			return a.ref_begin == b.ref_begin &&
+			       a.ref_end == b.ref_end &&
+			       a.query_begin == b.query_begin &&
+			       a.query_end == b.query_end &&
+			       a.ref_end_next_best == b.ref_end_next_best;
+		}
+
+		bool AlignmentSameCigar(const Alignment& a, const Alignment& b) {
+			return a.cigar_string == b.cigar_string && a.cigar == b.cigar;
+		}
+
+		bool AlignmentSameDigest(const Alignment& a, const Alignment& b) {
+			return AlignmentSameScore(a, b) &&
+			       AlignmentSameEndpoint(a, b) &&
+			       AlignmentSameCigar(a, b) &&
+			       a.mismatches == b.mismatches;
+		}
+
+		void RecordProfileCacheCall(bool hit,
+		                            const std::string& profileKey,
+		                            double buildSeconds,
+		                            double savedSeconds) {
+			std::lock_guard<std::mutex> lock(g_profileCacheMutex);
+			g_profileCacheState.requested = ProfileCacheEnabledRuntime();
+			g_profileCacheState.active = g_profileCacheState.active || ProfileCacheEnabledRuntime();
+			g_profileCacheState.validate =
+				g_profileCacheState.validate ||
+				(ProfileCacheEnabledRuntime() && ProfileCacheValidateRuntime());
+			g_profileCacheState.calls += 1;
+			if (hit) {
+				g_profileCacheState.hits += 1;
+				g_profileCacheState.savedSeconds += savedSeconds;
+			}
+			else {
+				g_profileCacheState.misses += 1;
+				g_profileCacheState.buildSeconds += buildSeconds;
+			}
+			g_profileCacheState.uniqueKeys.insert(profileKey);
+		}
+
+		void RecordProfileCacheValidate(double seconds,
+		                                bool scoreMismatch,
+		                                bool endpointMismatch,
+		                                bool cigarMismatch,
+		                                bool digestMismatch,
+		                                bool fallback) {
+			std::lock_guard<std::mutex> lock(g_profileCacheMutex);
+			g_profileCacheState.validate =
+				g_profileCacheState.validate ||
+				(ProfileCacheEnabledRuntime() && ProfileCacheValidateRuntime());
+			g_profileCacheState.validateSeconds += seconds;
+			g_profileCacheState.scoreMismatches += scoreMismatch ? 1 : 0;
+			g_profileCacheState.endpointMismatches += endpointMismatch ? 1 : 0;
+			g_profileCacheState.cigarMismatches += cigarMismatch ? 1 : 0;
+			g_profileCacheState.digestMismatches += digestMismatch ? 1 : 0;
+			g_profileCacheState.fallbacks += fallback ? 1 : 0;
+		}
 	}
 
 	void ResetAlignerTelemetry() {
@@ -374,6 +572,15 @@ namespace StripedSmithWaterman {
 			g_profileReuseShadow = ProfileReuseShadowState();
 			g_profileReuseShadow.enabled = ProfileReuseShadowEnabledRuntime();
 		}
+		{
+			std::lock_guard<std::mutex> lock(g_profileCacheMutex);
+			g_profileCacheState = ProfileCacheState();
+			g_profileCacheState.requested = ProfileCacheEnabledRuntime();
+			g_profileCacheState.active = ProfileCacheEnabledRuntime();
+			g_profileCacheState.validate =
+				ProfileCacheEnabledRuntime() && ProfileCacheValidateRuntime();
+		}
+		t_profileCache.clear();
 		ssw_reset_telemetry();
 	}
 
@@ -403,6 +610,25 @@ namespace StripedSmithWaterman {
 			snapshot.queryUniqueKeys =
 				static_cast<long long>(g_profileReuseShadow.queryKeys.size());
 			snapshot.queryReusableCalls = g_profileReuseShadow.queryReusableCalls;
+		}
+		{
+			std::lock_guard<std::mutex> lock(g_profileCacheMutex);
+			snapshot.profileCacheRequested = g_profileCacheState.requested;
+			snapshot.profileCacheActive = g_profileCacheState.active;
+			snapshot.profileCacheValidate = g_profileCacheState.validate;
+			snapshot.profileCacheCalls = g_profileCacheState.calls;
+			snapshot.profileCacheHits = g_profileCacheState.hits;
+			snapshot.profileCacheMisses = g_profileCacheState.misses;
+			snapshot.profileCacheUniqueKeys =
+				static_cast<long long>(g_profileCacheState.uniqueKeys.size());
+			snapshot.profileCacheBuildSeconds = g_profileCacheState.buildSeconds;
+			snapshot.profileCacheSavedSeconds = g_profileCacheState.savedSeconds;
+			snapshot.profileCacheValidateSeconds = g_profileCacheState.validateSeconds;
+			snapshot.profileCacheScoreMismatches = g_profileCacheState.scoreMismatches;
+			snapshot.profileCacheEndpointMismatches = g_profileCacheState.endpointMismatches;
+			snapshot.profileCacheCigarMismatches = g_profileCacheState.cigarMismatches;
+			snapshot.profileCacheDigestMismatches = g_profileCacheState.digestMismatches;
+			snapshot.profileCacheFallbacks = g_profileCacheState.fallbacks;
 		}
 		return snapshot;
 	}
@@ -523,23 +749,47 @@ namespace StripedSmithWaterman {
 		telemetry.queryTranslateSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		const int8_t score_size = 2;
-		stageStart = AlignerTelemetryClock::now();
-		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
-			score_matrix_size_, score_size);
-		const double profileBuildSeconds =
-			elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		const std::string profileKey =
+			BuildProfileReuseKey(translated_query,
+			                     query_len,
+			                     score_matrix_,
+			                     score_matrix_size_,
+			                     gap_opening_penalty_,
+			                     gap_extending_penalty_,
+			                     score_size);
+		const std::string queryKey = BuildQueryReuseKey(translated_query, query_len);
+		s_profile* profile = NULL;
+		s_profile* legacyProfileForValidate = NULL;
+		std::shared_ptr<CachedProfileEntry> cachedProfile;
+		bool cacheHit = false;
+		double profileBuildSeconds = 0.0;
+		double profileSavedSeconds = 0.0;
+		const bool profileCacheEnabled = ProfileCacheEnabledRuntime();
+		const bool profileCacheValidate = profileCacheEnabled && ProfileCacheValidateRuntime();
+		if (profileCacheEnabled) {
+			cachedProfile = GetCachedProfile(profileKey,
+			                                translated_query,
+			                                query_len,
+			                                score_matrix_,
+			                                score_matrix_size_,
+			                                score_size,
+			                                &cacheHit,
+			                                &profileBuildSeconds,
+			                                &profileSavedSeconds);
+			profile = cachedProfile->profile;
+			RecordProfileCacheCall(cacheHit, profileKey, profileBuildSeconds, profileSavedSeconds);
+		}
+		else {
+			profile = BuildSswProfile(translated_query,
+			                          query_len,
+			                          score_matrix_,
+			                          score_matrix_size_,
+			                          score_size,
+			                          &profileBuildSeconds);
+		}
 		telemetry.profileSeconds += profileBuildSeconds;
 		if (ProfileReuseShadowEnabledRuntime()) {
-			RecordProfileReuseShadow(
-				BuildProfileReuseKey(translated_query,
-				                     query_len,
-				                     score_matrix_,
-				                     score_matrix_size_,
-				                     gap_opening_penalty_,
-				                     gap_extending_penalty_,
-				                     score_size),
-				BuildQueryReuseKey(translated_query, query_len),
-				profileBuildSeconds);
+			RecordProfileReuseShadow(profileKey, queryKey, profileBuildSeconds);
 		}
 
 		uint8_t flag = 0;
@@ -552,6 +802,9 @@ namespace StripedSmithWaterman {
 		telemetry.sswTotalSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		alignment->Clear();
+		Alignment legacyAlignment;
+		s_align* legacySAl = NULL;
+		bool useLegacyFallback = false;
 		if (s_al != NULL) {
 			stageStart = AlignerTelemetryClock::now();
 			ConvertAlignment(*s_al, query_len, alignment);
@@ -563,12 +816,62 @@ namespace StripedSmithWaterman {
 			alignment->sw_score = 0;
 		}
 
+		if (profileCacheValidate) {
+			AlignerTelemetryClock::time_point validateStart = AlignerTelemetryClock::now();
+			double legacyBuildSeconds = 0.0;
+			legacyProfileForValidate = BuildSswProfile(translated_query,
+			                                           query_len,
+			                                           score_matrix_,
+			                                           score_matrix_size_,
+			                                           score_size,
+			                                           &legacyBuildSeconds);
+			legacySAl = ssw_align(legacyProfileForValidate,
+			                      translated_reference_,
+			                      reference_length_,
+			                      static_cast<int>(gap_opening_penalty_),
+			                      static_cast<int>(gap_extending_penalty_),
+			                      flag,
+			                      filter.score_filter,
+			                      filter.distance_filter,
+			                      maskLen);
+			legacyAlignment.Clear();
+			if (legacySAl != NULL) {
+				ConvertAlignment(*legacySAl, query_len, &legacyAlignment);
+				legacyAlignment.mismatches =
+					CalculateNumberMismatch(&legacyAlignment,
+					                        translated_reference_,
+					                        translated_query,
+					                        query_len);
+			}
+			else {
+				legacyAlignment.sw_score = 0;
+			}
+			const bool scoreMismatch = !AlignmentSameScore(*alignment, legacyAlignment);
+			const bool endpointMismatch = !AlignmentSameEndpoint(*alignment, legacyAlignment);
+			const bool cigarMismatch = !AlignmentSameCigar(*alignment, legacyAlignment);
+			const bool digestMismatch = !AlignmentSameDigest(*alignment, legacyAlignment);
+			useLegacyFallback =
+				scoreMismatch || endpointMismatch || cigarMismatch || digestMismatch;
+			if (useLegacyFallback) {
+				*alignment = legacyAlignment;
+			}
+			RecordProfileCacheValidate(
+				elapsed_seconds(validateStart, AlignerTelemetryClock::now()),
+				scoreMismatch,
+				endpointMismatch,
+				cigarMismatch,
+				digestMismatch,
+				useLegacyFallback);
+		}
+
 
 		// Free memory
 		stageStart = AlignerTelemetryClock::now();
 		delete[] translated_query;
 		if (s_al != NULL) align_destroy(s_al);
-		init_destroy(profile);
+		if (legacySAl != NULL) align_destroy(legacySAl);
+		if (legacyProfileForValidate != NULL) init_destroy(legacyProfileForValidate);
+		if (!profileCacheEnabled) init_destroy(profile);
 		telemetry.cleanupSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 		AddAlignerTelemetry(telemetry);
 
@@ -824,23 +1127,47 @@ namespace StripedSmithWaterman {
 
 
 		const int8_t score_size = 2;
-		stageStart = AlignerTelemetryClock::now();
-		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
-			score_matrix_size_, score_size);
-		const double profileBuildSeconds =
-			elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		const std::string profileKey =
+			BuildProfileReuseKey(translated_query,
+			                     query_len,
+			                     score_matrix_,
+			                     score_matrix_size_,
+			                     gap_opening_penalty_,
+			                     gap_extending_penalty_,
+			                     score_size);
+		const std::string queryKey = BuildQueryReuseKey(translated_query, query_len);
+		s_profile* profile = NULL;
+		s_profile* legacyProfileForValidate = NULL;
+		std::shared_ptr<CachedProfileEntry> cachedProfile;
+		bool cacheHit = false;
+		double profileBuildSeconds = 0.0;
+		double profileSavedSeconds = 0.0;
+		const bool profileCacheEnabled = ProfileCacheEnabledRuntime();
+		const bool profileCacheValidate = profileCacheEnabled && ProfileCacheValidateRuntime();
+		if (profileCacheEnabled) {
+			cachedProfile = GetCachedProfile(profileKey,
+			                                translated_query,
+			                                query_len,
+			                                score_matrix_,
+			                                score_matrix_size_,
+			                                score_size,
+			                                &cacheHit,
+			                                &profileBuildSeconds,
+			                                &profileSavedSeconds);
+			profile = cachedProfile->profile;
+			RecordProfileCacheCall(cacheHit, profileKey, profileBuildSeconds, profileSavedSeconds);
+		}
+		else {
+			profile = BuildSswProfile(translated_query,
+			                          query_len,
+			                          score_matrix_,
+			                          score_matrix_size_,
+			                          score_size,
+			                          &profileBuildSeconds);
+		}
 		telemetry.profileSeconds += profileBuildSeconds;
 		if (ProfileReuseShadowEnabledRuntime()) {
-			RecordProfileReuseShadow(
-				BuildProfileReuseKey(translated_query,
-				                     query_len,
-				                     score_matrix_,
-				                     score_matrix_size_,
-				                     gap_opening_penalty_,
-				                     gap_extending_penalty_,
-				                     score_size),
-				BuildQueryReuseKey(translated_query, query_len),
-				profileBuildSeconds);
+			RecordProfileReuseShadow(profileKey, queryKey, profileBuildSeconds);
 		}
 
 		uint8_t flag = 0;
@@ -853,13 +1180,13 @@ namespace StripedSmithWaterman {
 		telemetry.sswTotalSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		alignment->Clear();
-				if(s_al!=NULL){
+		Alignment legacyAlignment;
+		s_align* legacySAl = NULL;
+		bool useLegacyFallback = false;
+		if(s_al!=NULL){
 			stageStart = AlignerTelemetryClock::now();
 		    ConvertAlignment(*s_al, query_len, alignment);
 			telemetry.convertSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
-			stageStart = AlignerTelemetryClock::now();
-		    align_destroy(s_al);
-			telemetry.cleanupSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 		}
 		else{
 			telemetry.nullResults += 1;
@@ -868,11 +1195,57 @@ namespace StripedSmithWaterman {
 		//2021-09-16 22:38:00: to get original cigar string.
 		//alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_ref, translated_query, query_len);
 
+		if (profileCacheValidate) {
+			AlignerTelemetryClock::time_point validateStart = AlignerTelemetryClock::now();
+			double legacyBuildSeconds = 0.0;
+			legacyProfileForValidate = BuildSswProfile(translated_query,
+			                                           query_len,
+			                                           score_matrix_,
+			                                           score_matrix_size_,
+			                                           score_size,
+			                                           &legacyBuildSeconds);
+			legacySAl = ssw_align(legacyProfileForValidate,
+			                      translated_ref,
+			                      valid_ref_len,
+			                      static_cast<int>(gap_opening_penalty_),
+			                      static_cast<int>(gap_extending_penalty_),
+			                      flag,
+			                      filter.score_filter,
+			                      filter.distance_filter,
+			                      maskLen);
+			legacyAlignment.Clear();
+			if (legacySAl != NULL) {
+				ConvertAlignment(*legacySAl, query_len, &legacyAlignment);
+			}
+			else {
+				legacyAlignment.sw_score = 0;
+			}
+			const bool scoreMismatch = !AlignmentSameScore(*alignment, legacyAlignment);
+			const bool endpointMismatch = !AlignmentSameEndpoint(*alignment, legacyAlignment);
+			const bool cigarMismatch = !AlignmentSameCigar(*alignment, legacyAlignment);
+			const bool digestMismatch = !AlignmentSameDigest(*alignment, legacyAlignment);
+			useLegacyFallback =
+				scoreMismatch || endpointMismatch || cigarMismatch || digestMismatch;
+			if (useLegacyFallback) {
+				*alignment = legacyAlignment;
+			}
+			RecordProfileCacheValidate(
+				elapsed_seconds(validateStart, AlignerTelemetryClock::now()),
+				scoreMismatch,
+				endpointMismatch,
+				cigarMismatch,
+				digestMismatch,
+				useLegacyFallback);
+		}
+
 		// Free memory
 		stageStart = AlignerTelemetryClock::now();
 		delete[] translated_query;
 		delete[] translated_ref;
-		init_destroy(profile);
+		if (s_al != NULL) align_destroy(s_al);
+		if (legacySAl != NULL) align_destroy(legacySAl);
+		if (legacyProfileForValidate != NULL) init_destroy(legacyProfileForValidate);
+		if (!profileCacheEnabled) init_destroy(profile);
 		telemetry.cleanupSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 		AddAlignerTelemetry(telemetry);
 

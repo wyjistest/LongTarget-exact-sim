@@ -93,6 +93,21 @@ required = {
     "fasim_align_profile_est_saved_seconds",
     "fasim_align_query_unique_keys",
     "fasim_align_query_reusable_calls",
+    "fasim_align_profile_cache_requested",
+    "fasim_align_profile_cache_active",
+    "fasim_align_profile_cache_validate",
+    "fasim_align_profile_cache_calls",
+    "fasim_align_profile_cache_hits",
+    "fasim_align_profile_cache_misses",
+    "fasim_align_profile_cache_unique_keys",
+    "fasim_align_profile_cache_build_seconds",
+    "fasim_align_profile_cache_saved_seconds",
+    "fasim_align_profile_cache_validate_seconds",
+    "fasim_align_profile_cache_score_mismatches",
+    "fasim_align_profile_cache_endpoint_mismatches",
+    "fasim_align_profile_cache_cigar_mismatches",
+    "fasim_align_profile_cache_digest_mismatches",
+    "fasim_align_profile_cache_fallbacks",
     "fasim_output_seconds",
 }
 
@@ -106,25 +121,32 @@ assert report["sharded_telemetry"]["fasim_align_calls"] >= 0, report["sharded_te
 assert report["sharded_telemetry"]["fasim_align_forward_score_end_seconds"] >= 0.0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_build_calls"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_profile_cache_requested"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_profile_cache_active"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_profile_cache_calls"] == 0, report["sharded_telemetry"]
 assert report["single_run"]["telemetry"]["fasim_prealign_cuda_requested"] == 1, report["single_run"]
 assert report["single_run"]["telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["single_run"]
+assert report["single_run"]["telemetry"]["fasim_align_profile_cache_requested"] == 0, report["single_run"]
 
 for shard in report["per_shard"]:
     telemetry = shard["run"]["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_prealign_cuda_requested"] == 1, telemetry
     assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
+    assert telemetry["fasim_align_profile_cache_requested"] == 0, telemetry
 
 for worker in report["per_worker"]:
     telemetry = worker["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_prealign_cuda_requested"] == 1, telemetry
     assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
+    assert telemetry["fasim_align_profile_cache_requested"] == 0, telemetry
 
 for entry in manifest["per_shard"]:
     telemetry = entry["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
+    assert telemetry["fasim_align_profile_cache_requested"] == 0, telemetry
 PY
 
 echo "ok"

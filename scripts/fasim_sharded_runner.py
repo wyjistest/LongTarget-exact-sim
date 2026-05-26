@@ -332,11 +332,23 @@ def _sum_fasim_telemetry(items: list[dict[str, object]]) -> dict[str, object]:
         "fasim_align_profile_reusable_calls",
         "fasim_align_query_unique_keys",
         "fasim_align_query_reusable_calls",
+        "fasim_align_profile_cache_calls",
+        "fasim_align_profile_cache_hits",
+        "fasim_align_profile_cache_misses",
+        "fasim_align_profile_cache_unique_keys",
+        "fasim_align_profile_cache_score_mismatches",
+        "fasim_align_profile_cache_endpoint_mismatches",
+        "fasim_align_profile_cache_cigar_mismatches",
+        "fasim_align_profile_cache_digest_mismatches",
+        "fasim_align_profile_cache_fallbacks",
     }
     flag_keys = {
         "fasim_prealign_cuda_requested",
         "fasim_prealign_cuda_active",
         "fasim_align_profile_reuse_shadow_enabled",
+        "fasim_align_profile_cache_requested",
+        "fasim_align_profile_cache_active",
+        "fasim_align_profile_cache_validate",
     }
 
     keys = sorted({key for item in non_empty for key in item})

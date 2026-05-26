@@ -65,6 +65,21 @@ namespace StripedSmithWaterman {
 			, profileEstSavedSeconds(0.0)
 			, queryUniqueKeys(0)
 			, queryReusableCalls(0)
+			, profileCacheRequested(false)
+			, profileCacheActive(false)
+			, profileCacheValidate(false)
+			, profileCacheCalls(0)
+			, profileCacheHits(0)
+			, profileCacheMisses(0)
+			, profileCacheUniqueKeys(0)
+			, profileCacheBuildSeconds(0.0)
+			, profileCacheSavedSeconds(0.0)
+			, profileCacheValidateSeconds(0.0)
+			, profileCacheScoreMismatches(0)
+			, profileCacheEndpointMismatches(0)
+			, profileCacheCigarMismatches(0)
+			, profileCacheDigestMismatches(0)
+			, profileCacheFallbacks(0)
 			, byteForwardCalls(0)
 			, wordForwardCalls(0)
 			, reverseCalls(0)
@@ -90,6 +105,21 @@ namespace StripedSmithWaterman {
 		double profileEstSavedSeconds;
 		long long queryUniqueKeys;
 		long long queryReusableCalls;
+		bool profileCacheRequested;
+		bool profileCacheActive;
+		bool profileCacheValidate;
+		long long profileCacheCalls;
+		long long profileCacheHits;
+		long long profileCacheMisses;
+		long long profileCacheUniqueKeys;
+		double profileCacheBuildSeconds;
+		double profileCacheSavedSeconds;
+		double profileCacheValidateSeconds;
+		long long profileCacheScoreMismatches;
+		long long profileCacheEndpointMismatches;
+		long long profileCacheCigarMismatches;
+		long long profileCacheDigestMismatches;
+		long long profileCacheFallbacks;
 		long long byteForwardCalls;
 		long long wordForwardCalls;
 		long long reverseCalls;
