@@ -85,6 +85,14 @@ required = {
     "fasim_align_reverse_calls",
     "fasim_align_traceback_calls",
     "fasim_align_null_results",
+    "fasim_align_profile_reuse_shadow_enabled",
+    "fasim_align_profile_build_calls",
+    "fasim_align_profile_unique_keys",
+    "fasim_align_profile_reusable_calls",
+    "fasim_align_profile_build_seconds",
+    "fasim_align_profile_est_saved_seconds",
+    "fasim_align_query_unique_keys",
+    "fasim_align_query_reusable_calls",
     "fasim_output_seconds",
 }
 
@@ -96,21 +104,27 @@ assert report["sharded_telemetry"]["fasim_extend_align_calls"] >= 0, report["sha
 assert report["sharded_telemetry"]["fasim_extend_align_cells"] >= 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_calls"] >= 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_forward_score_end_seconds"] >= 0.0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_profile_build_calls"] == 0, report["sharded_telemetry"]
 assert report["single_run"]["telemetry"]["fasim_prealign_cuda_requested"] == 1, report["single_run"]
+assert report["single_run"]["telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["single_run"]
 
 for shard in report["per_shard"]:
     telemetry = shard["run"]["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_prealign_cuda_requested"] == 1, telemetry
+    assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
 
 for worker in report["per_worker"]:
     telemetry = worker["telemetry"]
     assert required.issubset(telemetry), telemetry
     assert telemetry["fasim_prealign_cuda_requested"] == 1, telemetry
+    assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
 
 for entry in manifest["per_shard"]:
     telemetry = entry["telemetry"]
     assert required.issubset(telemetry), telemetry
+    assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 0, telemetry
 PY
 
 echo "ok"

@@ -6,9 +6,14 @@
 #include "ssw.h"
 #include<algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <mutex>
+#include <set>
 #include <sstream>
+#include <string>
+#include <unordered_map>
 
 namespace {
 
@@ -243,6 +248,29 @@ namespace StripedSmithWaterman {
 		AlignerTelemetryDelta g_alignerTelemetry;
 		std::mutex g_alignerTelemetryMutex;
 
+		struct ProfileReuseShadowState {
+			ProfileReuseShadowState()
+				: enabled(false)
+				, buildCalls(0)
+				, reusableCalls(0)
+				, buildSeconds(0.0)
+				, estSavedSeconds(0.0)
+				, queryReusableCalls(0)
+			{}
+
+			bool enabled;
+			long long buildCalls;
+			long long reusableCalls;
+			double buildSeconds;
+			double estSavedSeconds;
+			long long queryReusableCalls;
+			std::unordered_map<std::string, double> profileFirstBuildSeconds;
+			std::set<std::string> queryKeys;
+		};
+
+		ProfileReuseShadowState g_profileReuseShadow;
+		std::mutex g_profileReuseShadowMutex;
+
 		inline double elapsed_seconds(AlignerTelemetryClock::time_point start,
 		                              AlignerTelemetryClock::time_point end) {
 			return std::chrono::duration<double>(end - start).count();
@@ -259,12 +287,92 @@ namespace StripedSmithWaterman {
 			g_alignerTelemetry.cleanupSeconds += delta.cleanupSeconds;
 			g_alignerTelemetry.nullResults += delta.nullResults;
 		}
+
+		bool ProfileReuseShadowEnabledRuntime() {
+			static const bool enabled = []() {
+				const char* env = std::getenv("FASIM_ALIGN_PROFILE_REUSE_SHADOW");
+				return env != NULL && env[0] != '\0' && env[0] != '0';
+			}();
+			return enabled;
+		}
+
+		uint64_t Fnv1a64(const void* data, size_t size) {
+			const unsigned char* bytes = static_cast<const unsigned char*>(data);
+			uint64_t hash = 1469598103934665603ULL;
+			for (size_t i = 0; i < size; ++i) {
+				hash ^= static_cast<uint64_t>(bytes[i]);
+				hash *= 1099511628211ULL;
+			}
+			return hash;
+		}
+
+		void AppendKeyPart(std::ostringstream& key, const char* name, uint64_t value) {
+			key << name << '=' << value << ';';
+		}
+
+		std::string BuildQueryReuseKey(const int8_t* translatedQuery, int queryLen) {
+			std::ostringstream key;
+			AppendKeyPart(key, "query_len", static_cast<uint64_t>(queryLen));
+			AppendKeyPart(key, "query_hash",
+			              Fnv1a64(translatedQuery, static_cast<size_t>(queryLen)));
+			return key.str();
+		}
+
+		std::string BuildProfileReuseKey(const int8_t* translatedQuery,
+		                                 int queryLen,
+		                                 const int8_t* scoreMatrix,
+		                                 int scoreMatrixSize,
+		                                 uint8_t gapOpeningPenalty,
+		                                 uint8_t gapExtendingPenalty,
+		                                 int8_t scoreSize) {
+			std::ostringstream key;
+			key << BuildQueryReuseKey(translatedQuery, queryLen);
+			AppendKeyPart(key, "matrix_size", static_cast<uint64_t>(scoreMatrixSize));
+			AppendKeyPart(key, "matrix_hash",
+			              Fnv1a64(scoreMatrix,
+			                     static_cast<size_t>(scoreMatrixSize) *
+			                         static_cast<size_t>(scoreMatrixSize) *
+			                         sizeof(int8_t)));
+			AppendKeyPart(key, "gap_open", static_cast<uint64_t>(gapOpeningPenalty));
+			AppendKeyPart(key, "gap_extend", static_cast<uint64_t>(gapExtendingPenalty));
+			AppendKeyPart(key, "score_size", static_cast<uint64_t>(scoreSize));
+			return key.str();
+		}
+
+		void RecordProfileReuseShadow(const std::string& profileKey,
+		                              const std::string& queryKey,
+		                              double buildSeconds) {
+			std::lock_guard<std::mutex> lock(g_profileReuseShadowMutex);
+			g_profileReuseShadow.enabled = true;
+			g_profileReuseShadow.buildCalls += 1;
+			g_profileReuseShadow.buildSeconds += buildSeconds;
+			std::unordered_map<std::string, double>::iterator existing =
+				g_profileReuseShadow.profileFirstBuildSeconds.find(profileKey);
+			if (existing == g_profileReuseShadow.profileFirstBuildSeconds.end()) {
+				g_profileReuseShadow.profileFirstBuildSeconds[profileKey] = buildSeconds;
+			}
+			else {
+				g_profileReuseShadow.reusableCalls += 1;
+				g_profileReuseShadow.estSavedSeconds += buildSeconds;
+			}
+
+			std::pair<std::set<std::string>::iterator, bool> inserted =
+				g_profileReuseShadow.queryKeys.insert(queryKey);
+			if (!inserted.second) {
+				g_profileReuseShadow.queryReusableCalls += 1;
+			}
+		}
 	}
 
 	void ResetAlignerTelemetry() {
 		{
 			std::lock_guard<std::mutex> lock(g_alignerTelemetryMutex);
 			g_alignerTelemetry = AlignerTelemetryDelta();
+		}
+		{
+			std::lock_guard<std::mutex> lock(g_profileReuseShadowMutex);
+			g_profileReuseShadow = ProfileReuseShadowState();
+			g_profileReuseShadow.enabled = ProfileReuseShadowEnabledRuntime();
 		}
 		ssw_reset_telemetry();
 	}
@@ -283,6 +391,19 @@ namespace StripedSmithWaterman {
 		snapshot.wordForwardCalls = sswSnapshot.word_forward_calls;
 		snapshot.reverseCalls = sswSnapshot.reverse_calls;
 		snapshot.tracebackCalls = sswSnapshot.traceback_calls;
+		{
+			std::lock_guard<std::mutex> lock(g_profileReuseShadowMutex);
+			snapshot.profileReuseShadowEnabled = g_profileReuseShadow.enabled;
+			snapshot.profileBuildCalls = g_profileReuseShadow.buildCalls;
+			snapshot.profileUniqueKeys =
+				static_cast<long long>(g_profileReuseShadow.profileFirstBuildSeconds.size());
+			snapshot.profileReusableCalls = g_profileReuseShadow.reusableCalls;
+			snapshot.profileBuildSeconds = g_profileReuseShadow.buildSeconds;
+			snapshot.profileEstSavedSeconds = g_profileReuseShadow.estSavedSeconds;
+			snapshot.queryUniqueKeys =
+				static_cast<long long>(g_profileReuseShadow.queryKeys.size());
+			snapshot.queryReusableCalls = g_profileReuseShadow.queryReusableCalls;
+		}
 		return snapshot;
 	}
 
@@ -405,7 +526,21 @@ namespace StripedSmithWaterman {
 		stageStart = AlignerTelemetryClock::now();
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
-		telemetry.profileSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		const double profileBuildSeconds =
+			elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		telemetry.profileSeconds += profileBuildSeconds;
+		if (ProfileReuseShadowEnabledRuntime()) {
+			RecordProfileReuseShadow(
+				BuildProfileReuseKey(translated_query,
+				                     query_len,
+				                     score_matrix_,
+				                     score_matrix_size_,
+				                     gap_opening_penalty_,
+				                     gap_extending_penalty_,
+				                     score_size),
+				BuildQueryReuseKey(translated_query, query_len),
+				profileBuildSeconds);
+		}
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
@@ -692,7 +827,21 @@ namespace StripedSmithWaterman {
 		stageStart = AlignerTelemetryClock::now();
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
-		telemetry.profileSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		const double profileBuildSeconds =
+			elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		telemetry.profileSeconds += profileBuildSeconds;
+		if (ProfileReuseShadowEnabledRuntime()) {
+			RecordProfileReuseShadow(
+				BuildProfileReuseKey(translated_query,
+				                     query_len,
+				                     score_matrix_,
+				                     score_matrix_size_,
+				                     gap_opening_penalty_,
+				                     gap_extending_penalty_,
+				                     score_size),
+				BuildQueryReuseKey(translated_query, query_len),
+				profileBuildSeconds);
+		}
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);

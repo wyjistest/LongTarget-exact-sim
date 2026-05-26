@@ -327,10 +327,16 @@ def _sum_fasim_telemetry(items: list[dict[str, object]]) -> dict[str, object]:
         "fasim_align_reverse_calls",
         "fasim_align_traceback_calls",
         "fasim_align_null_results",
+        "fasim_align_profile_build_calls",
+        "fasim_align_profile_unique_keys",
+        "fasim_align_profile_reusable_calls",
+        "fasim_align_query_unique_keys",
+        "fasim_align_query_reusable_calls",
     }
     flag_keys = {
         "fasim_prealign_cuda_requested",
         "fasim_prealign_cuda_active",
+        "fasim_align_profile_reuse_shadow_enabled",
     }
 
     keys = sorted({key for item in non_empty for key in item})
