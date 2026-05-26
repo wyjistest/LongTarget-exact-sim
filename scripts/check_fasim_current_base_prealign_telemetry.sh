@@ -91,6 +91,78 @@ grep -Eq '^benchmark\.fasim_align_profile_build_seconds=0(\.0+)?([eE][-+]?[0-9]+
 grep -Eq '^benchmark\.fasim_align_profile_est_saved_seconds=0(\.0+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_align_query_unique_keys=0$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_align_query_reusable_calls=0$' "$WORK/on/stderr.log"
+python3 - "$WORK/on/stderr.log" <<'PY'
+import os
+import re
+import sys
+from pathlib import Path
+
+telemetry = {}
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^benchmark\.(fasim_[A-Za-z0-9_]+)=(.*)$", line.strip())
+    if match:
+        telemetry[match.group(1)] = match.group(2)
+
+required = [
+    "fasim_align_profile_cache_requested",
+    "fasim_align_profile_cache_active",
+    "fasim_align_profile_cache_validate",
+    "fasim_align_profile_cache_calls",
+    "fasim_align_profile_cache_hits",
+    "fasim_align_profile_cache_misses",
+    "fasim_align_profile_cache_unique_keys",
+    "fasim_align_profile_cache_build_seconds",
+    "fasim_align_profile_cache_saved_seconds",
+    "fasim_align_profile_cache_validate_seconds",
+    "fasim_align_profile_cache_score_mismatches",
+    "fasim_align_profile_cache_endpoint_mismatches",
+    "fasim_align_profile_cache_cigar_mismatches",
+    "fasim_align_profile_cache_digest_mismatches",
+    "fasim_align_profile_cache_fallbacks",
+]
+missing = [key for key in required if key not in telemetry]
+assert not missing, missing
+
+cache_enabled = os.environ.get("FASIM_ALIGN_PROFILE_CACHE", "") not in ("", "0")
+validate_enabled = os.environ.get("FASIM_ALIGN_PROFILE_CACHE_VALIDATE", "") not in ("", "0")
+
+if not cache_enabled:
+    assert telemetry["fasim_align_profile_cache_requested"] == "0", telemetry
+    assert telemetry["fasim_align_profile_cache_active"] == "0", telemetry
+    assert telemetry["fasim_align_profile_cache_validate"] == "0", telemetry
+    assert int(telemetry["fasim_align_profile_cache_calls"]) == 0, telemetry
+    assert int(telemetry["fasim_align_profile_cache_hits"]) == 0, telemetry
+    assert int(telemetry["fasim_align_profile_cache_misses"]) == 0, telemetry
+    assert int(telemetry["fasim_align_profile_cache_unique_keys"]) == 0, telemetry
+    assert float(telemetry["fasim_align_profile_cache_build_seconds"]) == 0.0, telemetry
+    assert float(telemetry["fasim_align_profile_cache_saved_seconds"]) == 0.0, telemetry
+    assert float(telemetry["fasim_align_profile_cache_validate_seconds"]) == 0.0, telemetry
+else:
+    calls = int(telemetry["fasim_align_profile_cache_calls"])
+    hits = int(telemetry["fasim_align_profile_cache_hits"])
+    misses = int(telemetry["fasim_align_profile_cache_misses"])
+    unique_keys = int(telemetry["fasim_align_profile_cache_unique_keys"])
+    assert telemetry["fasim_align_profile_cache_requested"] == "1", telemetry
+    assert telemetry["fasim_align_profile_cache_active"] == "1", telemetry
+    assert telemetry["fasim_align_profile_cache_validate"] == ("1" if validate_enabled else "0"), telemetry
+    assert calls > 0, telemetry
+    assert hits > 0, telemetry
+    assert misses > 0, telemetry
+    assert calls == hits + misses, telemetry
+    assert 0 < unique_keys <= misses, telemetry
+    assert float(telemetry["fasim_align_profile_cache_build_seconds"]) > 0.0, telemetry
+    assert float(telemetry["fasim_align_profile_cache_saved_seconds"]) >= 0.0, telemetry
+    if validate_enabled:
+        assert float(telemetry["fasim_align_profile_cache_validate_seconds"]) > 0.0, telemetry
+    else:
+        assert float(telemetry["fasim_align_profile_cache_validate_seconds"]) == 0.0, telemetry
+
+assert int(telemetry["fasim_align_profile_cache_score_mismatches"]) == 0, telemetry
+assert int(telemetry["fasim_align_profile_cache_endpoint_mismatches"]) == 0, telemetry
+assert int(telemetry["fasim_align_profile_cache_cigar_mismatches"]) == 0, telemetry
+assert int(telemetry["fasim_align_profile_cache_digest_mismatches"]) == 0, telemetry
+assert int(telemetry["fasim_align_profile_cache_fallbacks"]) == 0, telemetry
+PY
 grep -Eq '^benchmark\.fasim_output_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_prealign_cuda_fallbacks=[0-9]+$' "$WORK/on/stderr.log"
 
