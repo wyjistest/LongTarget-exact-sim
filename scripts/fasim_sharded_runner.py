@@ -313,6 +313,14 @@ def _sum_fasim_telemetry(items: list[dict[str, object]]) -> dict[str, object]:
         "fasim_prealign_cuda_tasks",
         "fasim_prealign_cuda_batches",
         "fasim_prealign_cuda_fallbacks",
+        "fasim_extend_candidates",
+        "fasim_extend_cutlength_attempts",
+        "fasim_extend_align_calls",
+        "fasim_extend_align_cells",
+        "fasim_extend_convert_calls",
+        "fasim_extend_records_before_filter",
+        "fasim_extend_records_emitted",
+        "fasim_extend_empty_scoreinfo",
     }
     flag_keys = {
         "fasim_prealign_cuda_requested",
