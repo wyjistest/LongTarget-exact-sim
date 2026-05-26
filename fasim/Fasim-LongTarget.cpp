@@ -182,15 +182,10 @@ static inline void fasim_telemetry_add_cuda_batch(int tasks,const PreAlignCudaBa
     g_fasimTelemetry.prealignCudaTotalSeconds += batchResult.totalSeconds;
 }
 
-static inline void fasim_telemetry_add_extend_seconds(double seconds)
-{
-    lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
-    g_fasimTelemetry.extendSeconds += seconds;
-}
-
 static void fasim_telemetry_add_extend_delta(const FasimExtendTelemetryDelta &delta)
 {
     lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
+    g_fasimTelemetry.extendSeconds += delta.totalSeconds;
     g_fasimTelemetry.extendCandidates += delta.candidates;
     g_fasimTelemetry.extendCutlengthAttempts += delta.cutlengthAttempts;
     g_fasimTelemetry.extendAlignCalls += delta.alignCalls;
@@ -1014,7 +1009,6 @@ int main(int argc, char* const* argv)
 								}
 
 								taskTriplexes.clear();
-								const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 								fastSIM_extend_from_scoreinfo(aligner,
 								                              filter,
 								                              alignment,
@@ -1034,7 +1028,6 @@ int main(int argc, char* const* argv)
 								                              paraList.penaltyC,
 								                              paraList,
 								                              writeFull);
-								fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 								write_task_triplexes(task);
 							}
 						}
@@ -1119,7 +1112,6 @@ int main(int argc, char* const* argv)
 										}
 
 										taskTriplexesLocal.clear();
-										const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 										fastSIM_extend_from_scoreinfo(alignerLocal,
 										                              filterLocal,
 										                              alignmentLocal,
@@ -1139,7 +1131,6 @@ int main(int argc, char* const* argv)
 										                              paraList.penaltyC,
 									                              paraList,
 									                              writeFull);
-										fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 										if (taskTriplexesLocal.empty())
 										{
 											continue;
@@ -1426,7 +1417,6 @@ int main(int argc, char* const* argv)
 									}
 
 									taskTriplexesLocal.clear();
-									const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 									fastSIM_extend_from_scoreinfo(alignerLocal,
 									                              filterLocal,
 									                              alignmentLocal,
@@ -1446,7 +1436,6 @@ int main(int argc, char* const* argv)
 									                              paraList.penaltyC,
 									                              paraList,
 									                              writeFull);
-									fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 									if (taskTriplexesLocal.empty())
 									{
 										continue;
@@ -2159,7 +2148,6 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 
 						string srcSeq;
 						fasim_apply_src_transform(*task.seq1, task.srcTransform, srcSeq);
-						const FasimTelemetryClock::time_point extendStart = FasimTelemetryClock::now();
 						fastSIM_extend_from_scoreinfo(aligner,
 					                              filter,
 					                              alignment,
@@ -2178,7 +2166,6 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 						                              paraList.penaltyT,
 						                              paraList.penaltyC,
 						                              paraList);
-						fasim_telemetry_add_extend_seconds(fasim_elapsed_seconds(extendStart,FasimTelemetryClock::now()));
 					}
 
 				tasks.clear();

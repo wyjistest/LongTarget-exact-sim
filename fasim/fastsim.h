@@ -26,6 +26,7 @@ struct FasimExtendTelemetryDelta
 		convertCalls(0),
 		convertSeconds(0.0),
 		sortUniqueSeconds(0.0),
+		totalSeconds(0.0),
 		recordsBeforeFilter(0),
 		recordsEmitted(0),
 		emptyScoreInfo(0)
@@ -40,6 +41,7 @@ struct FasimExtendTelemetryDelta
 	long long convertCalls;
 	double convertSeconds;
 	double sortUniqueSeconds;
+	double totalSeconds;
 	long long recordsBeforeFilter;
 	long long recordsEmitted;
 	long long emptyScoreInfo;
@@ -464,6 +466,7 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
                                          const struct para &paraList,
                                          bool materializeAlignmentStrings)
 {
+	const std::chrono::steady_clock::time_point extendTelemetryStart = std::chrono::steady_clock::now();
 	vector<struct triplex> myTriplexList;
 	FasimExtendTelemetryDelta telemetry;
 	telemetry.candidates += static_cast<long long>(finalScoreInfo.size());
@@ -580,6 +583,7 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			telemetry.recordsEmitted += 1;
 		}
 	}
+	telemetry.totalSeconds += fasim_extend_telemetry_elapsed(extendTelemetryStart, std::chrono::steady_clock::now());
 	fasim_report_extend_telemetry(telemetry);
 }
 

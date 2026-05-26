@@ -43,7 +43,7 @@ Each Fasim process now emits stable stderr lines named
 | `benchmark.fasim_prealign_cuda_d2h_seconds` | Device-to-host copy wall seconds inside successful preAlign batch calls. |
 | `benchmark.fasim_prealign_cuda_total_seconds` | Wall seconds for successful preAlign batch calls after input validation. |
 | `benchmark.fasim_extend_threads` | Effective CPU extension thread count in the current process. |
-| `benchmark.fasim_extend_seconds` | Wall seconds spent inside CUDA-path `fastSIM_extend_from_scoreinfo()` calls. |
+| `benchmark.fasim_extend_seconds` | Wall seconds spent inside `fastSIM_extend_from_scoreinfo()` calls. |
 | `benchmark.fasim_extend_candidates` | Total `scoreInfo` candidates entering `fastSIM_extend_from_scoreinfo()`. |
 | `benchmark.fasim_extend_cutlength_attempts` | Total identity/cutlength loop attempts inside extension. |
 | `benchmark.fasim_extend_align_calls` | CPU `aligner.Align()` calls made during extension. |

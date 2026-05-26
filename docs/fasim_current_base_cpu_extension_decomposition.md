@@ -39,10 +39,11 @@ Each Fasim process emits these additional `benchmark.fasim_*` fields:
 | `benchmark.fasim_extend_records_emitted` | Records pushed from extension into the caller triplex list. |
 | `benchmark.fasim_extend_empty_scoreinfo` | Extension calls that received no scoreInfo candidates. |
 
-The existing `benchmark.fasim_extend_seconds` remains the outer wall seconds
-around `fastSIM_extend_from_scoreinfo()` calls. The new sub-stage seconds are
-process-local sums. In sharded reports, summed seconds can exceed wall time
-because workers and extension threads run concurrently.
+The existing `benchmark.fasim_extend_seconds` is now accumulated from the same
+`fastSIM_extend_from_scoreinfo()` telemetry callback as the sub-stage counters,
+so CPU fallback and CUDA-batch extension calls use one timing source. The
+sub-stage seconds are process-local sums. In sharded reports, summed seconds can
+exceed wall time because workers and extension threads run concurrently.
 
 ## Runner JSON
 
