@@ -67,7 +67,7 @@ python3 -m py_compile scripts/fasim_sharded_runner.py
 git diff --check
 ```
 
-- [ ] Commit:
+- [x] Commit:
 
 ```text
 fasim: characterize current-base extension on real workloads
