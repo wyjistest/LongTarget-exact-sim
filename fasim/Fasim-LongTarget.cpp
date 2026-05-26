@@ -264,6 +264,14 @@ static void fasim_emit_runtime_telemetry()
     cerr << "benchmark.fasim_align_reverse_calls=" << alignerSnapshot.reverseCalls << endl;
     cerr << "benchmark.fasim_align_traceback_calls=" << alignerSnapshot.tracebackCalls << endl;
     cerr << "benchmark.fasim_align_null_results=" << alignerSnapshot.nullResults << endl;
+    cerr << "benchmark.fasim_align_profile_reuse_shadow_enabled=" << (alignerSnapshot.profileReuseShadowEnabled ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_align_profile_build_calls=" << alignerSnapshot.profileBuildCalls << endl;
+    cerr << "benchmark.fasim_align_profile_unique_keys=" << alignerSnapshot.profileUniqueKeys << endl;
+    cerr << "benchmark.fasim_align_profile_reusable_calls=" << alignerSnapshot.profileReusableCalls << endl;
+    cerr << "benchmark.fasim_align_profile_build_seconds=" << alignerSnapshot.profileBuildSeconds << endl;
+    cerr << "benchmark.fasim_align_profile_est_saved_seconds=" << alignerSnapshot.profileEstSavedSeconds << endl;
+    cerr << "benchmark.fasim_align_query_unique_keys=" << alignerSnapshot.queryUniqueKeys << endl;
+    cerr << "benchmark.fasim_align_query_reusable_calls=" << alignerSnapshot.queryReusableCalls << endl;
     cerr << "benchmark.fasim_output_seconds=" << snapshot.outputSeconds << endl;
     cerr << "benchmark.fasim_prealign_cuda_fallbacks=" << snapshot.prealignCudaFallbacks << endl;
     cerr.flags(oldFlags);

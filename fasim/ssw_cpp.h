@@ -57,6 +57,14 @@ namespace StripedSmithWaterman {
 			, tracebackSeconds(0.0)
 			, convertSeconds(0.0)
 			, cleanupSeconds(0.0)
+			, profileReuseShadowEnabled(false)
+			, profileBuildCalls(0)
+			, profileUniqueKeys(0)
+			, profileReusableCalls(0)
+			, profileBuildSeconds(0.0)
+			, profileEstSavedSeconds(0.0)
+			, queryUniqueKeys(0)
+			, queryReusableCalls(0)
 			, byteForwardCalls(0)
 			, wordForwardCalls(0)
 			, reverseCalls(0)
@@ -74,6 +82,14 @@ namespace StripedSmithWaterman {
 		double tracebackSeconds;
 		double convertSeconds;
 		double cleanupSeconds;
+		bool profileReuseShadowEnabled;
+		long long profileBuildCalls;
+		long long profileUniqueKeys;
+		long long profileReusableCalls;
+		double profileBuildSeconds;
+		double profileEstSavedSeconds;
+		long long queryUniqueKeys;
+		long long queryReusableCalls;
 		long long byteForwardCalls;
 		long long wordForwardCalls;
 		long long reverseCalls;

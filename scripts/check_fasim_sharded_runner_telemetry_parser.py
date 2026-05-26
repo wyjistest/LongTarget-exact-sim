@@ -50,6 +50,14 @@ def main() -> int:
             "benchmark.fasim_align_reverse_calls=7",
             "benchmark.fasim_align_traceback_calls=7",
             "benchmark.fasim_align_null_results=0",
+            "benchmark.fasim_align_profile_reuse_shadow_enabled=1",
+            "benchmark.fasim_align_profile_build_calls=7",
+            "benchmark.fasim_align_profile_unique_keys=1",
+            "benchmark.fasim_align_profile_reusable_calls=6",
+            "benchmark.fasim_align_profile_build_seconds=0.030000",
+            "benchmark.fasim_align_profile_est_saved_seconds=0.025000",
+            "benchmark.fasim_align_query_unique_keys=1",
+            "benchmark.fasim_align_query_reusable_calls=6",
             "benchmark.fasim_output_seconds=0.020000",
             "benchmark.fasim_prealign_cuda_fallbacks=0",
             "",
@@ -79,6 +87,14 @@ def main() -> int:
         assert telemetry["fasim_align_calls"] == 7, telemetry
         assert telemetry["fasim_align_byte_forward_calls"] == 5, telemetry
         assert telemetry["fasim_align_word_forward_calls"] == 2, telemetry
+        assert telemetry["fasim_align_profile_reuse_shadow_enabled"] == 1, telemetry
+        assert telemetry["fasim_align_profile_build_calls"] == 7, telemetry
+        assert telemetry["fasim_align_profile_unique_keys"] == 1, telemetry
+        assert telemetry["fasim_align_profile_reusable_calls"] == 6, telemetry
+        assert telemetry["fasim_align_profile_build_seconds"] == 0.03, telemetry
+        assert telemetry["fasim_align_profile_est_saved_seconds"] == 0.025, telemetry
+        assert telemetry["fasim_align_query_unique_keys"] == 1, telemetry
+        assert telemetry["fasim_align_query_reusable_calls"] == 6, telemetry
 
         summed = runner._sum_fasim_telemetry([telemetry, telemetry])
         assert summed["fasim_prealign_cuda_requested"] == 1, summed
@@ -106,6 +122,14 @@ def main() -> int:
         assert summed["fasim_align_word_forward_calls"] == 4, summed
         assert summed["fasim_align_reverse_calls"] == 14, summed
         assert summed["fasim_align_traceback_calls"] == 14, summed
+        assert summed["fasim_align_profile_reuse_shadow_enabled"] == 1, summed
+        assert summed["fasim_align_profile_build_calls"] == 14, summed
+        assert summed["fasim_align_profile_unique_keys"] == 2, summed
+        assert summed["fasim_align_profile_reusable_calls"] == 12, summed
+        assert summed["fasim_align_profile_build_seconds"] == 0.06, summed
+        assert summed["fasim_align_profile_est_saved_seconds"] == 0.05, summed
+        assert summed["fasim_align_query_unique_keys"] == 2, summed
+        assert summed["fasim_align_query_reusable_calls"] == 12, summed
         assert summed["fasim_prealign_cuda_topk"] == 64, summed
 
         run = runner.RunResult(
@@ -122,17 +146,31 @@ def main() -> int:
         )
         run_json = runner._run_to_json(run)
         assert run_json["telemetry"]["fasim_prealign_cuda_tasks"] == 12, run_json
+        assert run_json["telemetry"]["fasim_align_profile_reusable_calls"] == 6, run_json
 
         worker = runner._worker_telemetry_from_shards(
             [
                 {"run": run_json},
-                {"run": {**run_json, "telemetry": {"fasim_prealign_cuda_tasks": 4, "fasim_extend_align_calls": 2}}},
+                {"run": {**run_json, "telemetry": {
+                    "fasim_prealign_cuda_tasks": 4,
+                    "fasim_extend_align_calls": 2,
+                    "fasim_align_profile_build_calls": 2,
+                    "fasim_align_profile_unique_keys": 1,
+                    "fasim_align_profile_reusable_calls": 1,
+                    "fasim_align_query_unique_keys": 1,
+                    "fasim_align_query_reusable_calls": 1,
+                }}},
                 {"status": "skipped_by_resume", "run": {"telemetry": {}}},
             ]
         )
         assert worker["fasim_prealign_cuda_tasks"] == 16, worker
         assert worker["fasim_extend_align_calls"] == 9, worker
         assert worker["fasim_align_calls"] == 7, worker
+        assert worker["fasim_align_profile_build_calls"] == 9, worker
+        assert worker["fasim_align_profile_unique_keys"] == 2, worker
+        assert worker["fasim_align_profile_reusable_calls"] == 7, worker
+        assert worker["fasim_align_query_unique_keys"] == 2, worker
+        assert worker["fasim_align_query_reusable_calls"] == 7, worker
         assert worker["fasim_prealign_cuda_requested"] == 1, worker
 
     print("ok")
