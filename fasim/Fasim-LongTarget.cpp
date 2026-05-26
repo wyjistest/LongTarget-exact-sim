@@ -214,6 +214,8 @@ static inline void fasim_telemetry_add_cuda_fallback()
 static void fasim_emit_runtime_telemetry()
 {
     FasimRuntimeTelemetry snapshot;
+    const StripedSmithWaterman::AlignerTelemetryDelta alignerSnapshot =
+        StripedSmithWaterman::SnapshotAlignerTelemetry();
     {
         lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
         snapshot = g_fasimTelemetry;
@@ -247,6 +249,21 @@ static void fasim_emit_runtime_telemetry()
     cerr << "benchmark.fasim_extend_records_before_filter=" << snapshot.extendRecordsBeforeFilter << endl;
     cerr << "benchmark.fasim_extend_records_emitted=" << snapshot.extendRecordsEmitted << endl;
     cerr << "benchmark.fasim_extend_empty_scoreinfo=" << snapshot.extendEmptyScoreInfo << endl;
+    cerr << "benchmark.fasim_align_query_translate_seconds=" << alignerSnapshot.queryTranslateSeconds << endl;
+    cerr << "benchmark.fasim_align_ref_translate_seconds=" << alignerSnapshot.refTranslateSeconds << endl;
+    cerr << "benchmark.fasim_align_profile_seconds=" << alignerSnapshot.profileSeconds << endl;
+    cerr << "benchmark.fasim_align_ssw_total_seconds=" << alignerSnapshot.sswTotalSeconds << endl;
+    cerr << "benchmark.fasim_align_forward_score_end_seconds=" << alignerSnapshot.forwardScoreEndSeconds << endl;
+    cerr << "benchmark.fasim_align_reverse_start_seconds=" << alignerSnapshot.reverseStartSeconds << endl;
+    cerr << "benchmark.fasim_align_traceback_seconds=" << alignerSnapshot.tracebackSeconds << endl;
+    cerr << "benchmark.fasim_align_convert_seconds=" << alignerSnapshot.convertSeconds << endl;
+    cerr << "benchmark.fasim_align_cleanup_seconds=" << alignerSnapshot.cleanupSeconds << endl;
+    cerr << "benchmark.fasim_align_calls=" << alignerSnapshot.alignCalls << endl;
+    cerr << "benchmark.fasim_align_byte_forward_calls=" << alignerSnapshot.byteForwardCalls << endl;
+    cerr << "benchmark.fasim_align_word_forward_calls=" << alignerSnapshot.wordForwardCalls << endl;
+    cerr << "benchmark.fasim_align_reverse_calls=" << alignerSnapshot.reverseCalls << endl;
+    cerr << "benchmark.fasim_align_traceback_calls=" << alignerSnapshot.tracebackCalls << endl;
+    cerr << "benchmark.fasim_align_null_results=" << alignerSnapshot.nullResults << endl;
     cerr << "benchmark.fasim_output_seconds=" << snapshot.outputSeconds << endl;
     cerr << "benchmark.fasim_prealign_cuda_fallbacks=" << snapshot.prealignCudaFallbacks << endl;
     cerr.flags(oldFlags);
@@ -697,6 +714,7 @@ int main(int argc, char* const* argv)
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
 	fasim_set_extend_telemetry_callback(fasim_telemetry_add_extend_delta);
+	StripedSmithWaterman::ResetAlignerTelemetry();
 	fasim_telemetry_set_requested(paraList.doFastSim && fasim_prealign_cuda_enabled_runtime() && prealign_cuda_is_built());
 	std::vector<int> exactColumnGuardCudaDevices;
 	fasim_cuda_devices_runtime(exactColumnGuardCudaDevices);

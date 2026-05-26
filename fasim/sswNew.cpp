@@ -83,7 +83,8 @@
 
  */
 
- //#include <nmmintrin.h>
+//#include <nmmintrin.h>
+#include <chrono>
 #include <emmintrin.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -92,6 +93,7 @@
 #include <math.h>
 #include "ssw.h"
 #include <iostream>
+#include <mutex>
 using std::cout;
 #ifdef __GNUC__
 #define LIKELY(x) __builtin_expect((x),1)
@@ -134,6 +136,37 @@ struct _profile {
 	int32_t n;
 	uint8_t bias;
 };
+
+typedef std::chrono::steady_clock SswTelemetryClock;
+
+static ssw_telemetry_delta g_sswTelemetry = {0.0, 0.0, 0.0, 0, 0, 0, 0};
+static std::mutex g_sswTelemetryMutex;
+
+static inline double ssw_elapsed_seconds(SswTelemetryClock::time_point start,
+	SswTelemetryClock::time_point end) {
+	return std::chrono::duration<double>(end - start).count();
+}
+
+static inline void ssw_add_telemetry_delta(const ssw_telemetry_delta* delta) {
+	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
+	g_sswTelemetry.forward_score_end_seconds += delta->forward_score_end_seconds;
+	g_sswTelemetry.reverse_start_seconds += delta->reverse_start_seconds;
+	g_sswTelemetry.traceback_seconds += delta->traceback_seconds;
+	g_sswTelemetry.byte_forward_calls += delta->byte_forward_calls;
+	g_sswTelemetry.word_forward_calls += delta->word_forward_calls;
+	g_sswTelemetry.reverse_calls += delta->reverse_calls;
+	g_sswTelemetry.traceback_calls += delta->traceback_calls;
+}
+
+void ssw_reset_telemetry(void) {
+	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
+	g_sswTelemetry = ssw_telemetry_delta();
+}
+
+ssw_telemetry_delta ssw_snapshot_telemetry(void) {
+	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
+	return g_sswTelemetry;
+}
 
 /* array index is an ASCII character value from a CIGAR,
    element value is the corresponding integer opcode between 0 and 8 */
@@ -1458,6 +1491,8 @@ s_align* ssw_align(const s_profile* prof,
 	int32_t word = 0, band_width = 0, readLen = prof->readLen;
 	int8_t* read_reverse = 0;
 	cigar* path;
+	ssw_telemetry_delta telemetry = ssw_telemetry_delta();
+	SswTelemetryClock::time_point stageStart;
 	s_align* r = (s_align*)calloc(1, sizeof(s_align));
 	r->ref_begin1 = -1;
 	r->read_begin1 = -1;
@@ -1469,25 +1504,36 @@ s_align* ssw_align(const s_profile* prof,
 
 	// Find the alignment scores and ending positions
 	if (prof->profile_byte) {
+		stageStart = SswTelemetryClock::now();
 		bests = sw_sse2_byte(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte, -1, prof->bias, maskLen);
+		telemetry.forward_score_end_seconds += ssw_elapsed_seconds(stageStart, SswTelemetryClock::now());
+		telemetry.byte_forward_calls += 1;
 		if (prof->profile_word && bests[0].score == 255) {
 			free(bests);
+			stageStart = SswTelemetryClock::now();
 			bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+			telemetry.forward_score_end_seconds += ssw_elapsed_seconds(stageStart, SswTelemetryClock::now());
+			telemetry.word_forward_calls += 1;
 			word = 1;
 		}
 		else if (bests[0].score == 255) {
 			fprintf(stderr, "Please set 2 to the score_size parameter of the function ssw_init, otherwise the alignment results will be incorrect.\n");
 			free(r);
+			ssw_add_telemetry_delta(&telemetry);
 			return NULL;
 		}
 	}
 	else if (prof->profile_word) {
+		stageStart = SswTelemetryClock::now();
 		bests = sw_sse2_word(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+		telemetry.forward_score_end_seconds += ssw_elapsed_seconds(stageStart, SswTelemetryClock::now());
+		telemetry.word_forward_calls += 1;
 		word = 1;
 	}
 	else {
 		fprintf(stderr, "Please call the function ssw_init before ssw_align.\n");
 		free(r);
+		ssw_add_telemetry_delta(&telemetry);
 		return NULL;
 	}
 	r->score1 = bests[0].score;
@@ -1505,6 +1551,7 @@ s_align* ssw_align(const s_profile* prof,
 	if (flag == 0 || (flag == 2 && r->score1 < filters)) goto end;
 
 	// Find the beginning position of the best alignment.
+	stageStart = SswTelemetryClock::now();
 	read_reverse = seq_reverse(prof->read, r->read_end1);
 	if (word == 0) {
 		vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1, prof->n, prof->bias);
@@ -1521,6 +1568,8 @@ s_align* ssw_align(const s_profile* prof,
 	free(bests_reverse);
 	free(vP);
 	free(read_reverse);
+	telemetry.reverse_start_seconds += ssw_elapsed_seconds(stageStart, SswTelemetryClock::now());
+	telemetry.reverse_calls += 1;
 	free(bests);
 	if ((7 & flag) == 0 || ((2 & flag) != 0 && r->score1 < filters) || ((4 & flag) != 0 && (r->ref_end1 - r->ref_begin1 > filterd || r->read_end1 - r->read_begin1 > filterd))) goto end;
 
@@ -1531,7 +1580,10 @@ s_align* ssw_align(const s_profile* prof,
 
 //	cout<<r->score1<<"\tref_begin1\t"<<r->ref_begin1<<"\tref_end1\t"<<r->ref_end1<<"\tread_begin1\t"<<r->read_begin1<<"\tread_end1\t"<<r->read_end1<<"\t"<<band_width<<"\n";
 
+	stageStart = SswTelemetryClock::now();
 	path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	telemetry.traceback_seconds += ssw_elapsed_seconds(stageStart, SswTelemetryClock::now());
+	telemetry.traceback_calls += 1;
 	if (path == 0) {
 		free(r);
 		r = NULL;
@@ -1543,6 +1595,7 @@ s_align* ssw_align(const s_profile* prof,
 	}
 
 end:
+	ssw_add_telemetry_delta(&telemetry);
 	return r;
 }
 
@@ -1646,4 +1699,3 @@ int32_t mark_mismatch(int32_t ref_begin1,
 	(*cigar) = new_cigar;
 	return mismatch_length;
 }
-

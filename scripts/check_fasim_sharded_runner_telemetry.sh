@@ -70,6 +70,21 @@ required = {
     "fasim_extend_records_before_filter",
     "fasim_extend_records_emitted",
     "fasim_extend_empty_scoreinfo",
+    "fasim_align_query_translate_seconds",
+    "fasim_align_ref_translate_seconds",
+    "fasim_align_profile_seconds",
+    "fasim_align_ssw_total_seconds",
+    "fasim_align_forward_score_end_seconds",
+    "fasim_align_reverse_start_seconds",
+    "fasim_align_traceback_seconds",
+    "fasim_align_convert_seconds",
+    "fasim_align_cleanup_seconds",
+    "fasim_align_calls",
+    "fasim_align_byte_forward_calls",
+    "fasim_align_word_forward_calls",
+    "fasim_align_reverse_calls",
+    "fasim_align_traceback_calls",
+    "fasim_align_null_results",
     "fasim_output_seconds",
 }
 
@@ -79,6 +94,8 @@ assert report["sharded_telemetry"]["fasim_prealign_cuda_tasks"] > 0, report["sha
 assert report["sharded_telemetry"]["fasim_extend_candidates"] >= 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_extend_align_calls"] >= 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_extend_align_cells"] >= 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_calls"] >= 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_align_forward_score_end_seconds"] >= 0.0, report["sharded_telemetry"]
 assert report["single_run"]["telemetry"]["fasim_prealign_cuda_requested"] == 1, report["single_run"]
 
 for shard in report["per_shard"]:

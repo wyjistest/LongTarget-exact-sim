@@ -5,7 +5,9 @@
 #include "ssw_cpp.h"
 #include "ssw.h"
 #include<algorithm>
+#include <chrono>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 
 namespace {
@@ -235,6 +237,55 @@ namespace {
 
 namespace StripedSmithWaterman {
 
+	namespace {
+		typedef std::chrono::steady_clock AlignerTelemetryClock;
+
+		AlignerTelemetryDelta g_alignerTelemetry;
+		std::mutex g_alignerTelemetryMutex;
+
+		inline double elapsed_seconds(AlignerTelemetryClock::time_point start,
+		                              AlignerTelemetryClock::time_point end) {
+			return std::chrono::duration<double>(end - start).count();
+		}
+
+		void AddAlignerTelemetry(const AlignerTelemetryDelta& delta) {
+			std::lock_guard<std::mutex> lock(g_alignerTelemetryMutex);
+			g_alignerTelemetry.alignCalls += delta.alignCalls;
+			g_alignerTelemetry.queryTranslateSeconds += delta.queryTranslateSeconds;
+			g_alignerTelemetry.refTranslateSeconds += delta.refTranslateSeconds;
+			g_alignerTelemetry.profileSeconds += delta.profileSeconds;
+			g_alignerTelemetry.sswTotalSeconds += delta.sswTotalSeconds;
+			g_alignerTelemetry.convertSeconds += delta.convertSeconds;
+			g_alignerTelemetry.cleanupSeconds += delta.cleanupSeconds;
+			g_alignerTelemetry.nullResults += delta.nullResults;
+		}
+	}
+
+	void ResetAlignerTelemetry() {
+		{
+			std::lock_guard<std::mutex> lock(g_alignerTelemetryMutex);
+			g_alignerTelemetry = AlignerTelemetryDelta();
+		}
+		ssw_reset_telemetry();
+	}
+
+	AlignerTelemetryDelta SnapshotAlignerTelemetry() {
+		AlignerTelemetryDelta snapshot;
+		{
+			std::lock_guard<std::mutex> lock(g_alignerTelemetryMutex);
+			snapshot = g_alignerTelemetry;
+		}
+		const ssw_telemetry_delta sswSnapshot = ssw_snapshot_telemetry();
+		snapshot.forwardScoreEndSeconds = sswSnapshot.forward_score_end_seconds;
+		snapshot.reverseStartSeconds = sswSnapshot.reverse_start_seconds;
+		snapshot.tracebackSeconds = sswSnapshot.traceback_seconds;
+		snapshot.byteForwardCalls = sswSnapshot.byte_forward_calls;
+		snapshot.wordForwardCalls = sswSnapshot.word_forward_calls;
+		snapshot.reverseCalls = sswSnapshot.reverse_calls;
+		snapshot.tracebackCalls = sswSnapshot.traceback_calls;
+		return snapshot;
+	}
+
 	Aligner::Aligner(void)
 		: score_matrix_(NULL)
 		, score_matrix_size_(5)
@@ -343,29 +394,48 @@ namespace StripedSmithWaterman {
 
 		int query_len = strlen(query);
 		if (query_len == 0) return false;
+		AlignerTelemetryDelta telemetry;
+		telemetry.alignCalls += 1;
 		int8_t* translated_query = new int8_t[query_len];
+		AlignerTelemetryClock::time_point stageStart = AlignerTelemetryClock::now();
 		TranslateBase(query, query_len, translated_query);
+		telemetry.queryTranslateSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		const int8_t score_size = 2;
+		stageStart = AlignerTelemetryClock::now();
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
+		telemetry.profileSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
+		stageStart = AlignerTelemetryClock::now();
 		s_align* s_al = ssw_align(profile, translated_reference_, reference_length_,
 			static_cast<int>(gap_opening_penalty_),
 			static_cast<int>(gap_extending_penalty_),
 			flag, filter.score_filter, filter.distance_filter, maskLen);
+		telemetry.sswTotalSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		alignment->Clear();
-		ConvertAlignment(*s_al, query_len, alignment);
-		alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_reference_, translated_query, query_len);
+		if (s_al != NULL) {
+			stageStart = AlignerTelemetryClock::now();
+			ConvertAlignment(*s_al, query_len, alignment);
+			alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_reference_, translated_query, query_len);
+			telemetry.convertSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		}
+		else {
+			telemetry.nullResults += 1;
+			alignment->sw_score = 0;
+		}
 
 
 		// Free memory
+		stageStart = AlignerTelemetryClock::now();
 		delete[] translated_query;
-		align_destroy(s_al);
+		if (s_al != NULL) align_destroy(s_al);
 		init_destroy(profile);
+		telemetry.cleanupSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		AddAlignerTelemetry(telemetry);
 
 		return true;
 	}
@@ -603,41 +673,59 @@ namespace StripedSmithWaterman {
 
 		int query_len = strlen(query);
 		if (query_len == 0) return false;
+		AlignerTelemetryDelta telemetry;
+		telemetry.alignCalls += 1;
 		int8_t* translated_query = new int8_t[query_len];
+		AlignerTelemetryClock::time_point stageStart = AlignerTelemetryClock::now();
 		TranslateBase(query, query_len, translated_query);
+		telemetry.queryTranslateSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		// calculate the valid length
 		int valid_ref_len = ref_len;
 		int8_t* translated_ref = new int8_t[valid_ref_len];
+		stageStart = AlignerTelemetryClock::now();
 		TranslateBase(ref, valid_ref_len, translated_ref);
+		telemetry.refTranslateSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 
 		const int8_t score_size = 2;
+		stageStart = AlignerTelemetryClock::now();
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
+		telemetry.profileSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
+		stageStart = AlignerTelemetryClock::now();
 		s_align* s_al = ssw_align(profile, translated_ref, valid_ref_len,
 			static_cast<int>(gap_opening_penalty_),
 			static_cast<int>(gap_extending_penalty_),
 			flag, filter.score_filter, filter.distance_filter, maskLen);
+		telemetry.sswTotalSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 
 		alignment->Clear();
 				if(s_al!=NULL){
+			stageStart = AlignerTelemetryClock::now();
 		    ConvertAlignment(*s_al, query_len, alignment);
+			telemetry.convertSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+			stageStart = AlignerTelemetryClock::now();
 		    align_destroy(s_al);
+			telemetry.cleanupSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
 		}
 		else{
+			telemetry.nullResults += 1;
 		    alignment->sw_score = 0;
 		}
 		//2021-09-16 22:38:00: to get original cigar string.
 		//alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_ref, translated_query, query_len);
 
 		// Free memory
+		stageStart = AlignerTelemetryClock::now();
 		delete[] translated_query;
 		delete[] translated_ref;
 		init_destroy(profile);
+		telemetry.cleanupSeconds += elapsed_seconds(stageStart, AlignerTelemetryClock::now());
+		AddAlignerTelemetry(telemetry);
 
 		return true;
 	}
@@ -715,5 +803,3 @@ namespace StripedSmithWaterman {
 		translation_matrix_ = NULL;
 	}
 } // namespace StripedSmithWaterman
-
-

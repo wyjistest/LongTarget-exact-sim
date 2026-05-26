@@ -35,6 +35,21 @@ def main() -> int:
             "benchmark.fasim_extend_records_before_filter=5",
             "benchmark.fasim_extend_records_emitted=2",
             "benchmark.fasim_extend_empty_scoreinfo=1",
+            "benchmark.fasim_align_query_translate_seconds=0.010000",
+            "benchmark.fasim_align_ref_translate_seconds=0.020000",
+            "benchmark.fasim_align_profile_seconds=0.030000",
+            "benchmark.fasim_align_ssw_total_seconds=0.200000",
+            "benchmark.fasim_align_forward_score_end_seconds=0.110000",
+            "benchmark.fasim_align_reverse_start_seconds=0.040000",
+            "benchmark.fasim_align_traceback_seconds=0.050000",
+            "benchmark.fasim_align_convert_seconds=0.060000",
+            "benchmark.fasim_align_cleanup_seconds=0.005000",
+            "benchmark.fasim_align_calls=7",
+            "benchmark.fasim_align_byte_forward_calls=5",
+            "benchmark.fasim_align_word_forward_calls=2",
+            "benchmark.fasim_align_reverse_calls=7",
+            "benchmark.fasim_align_traceback_calls=7",
+            "benchmark.fasim_align_null_results=0",
             "benchmark.fasim_output_seconds=0.020000",
             "benchmark.fasim_prealign_cuda_fallbacks=0",
             "",
@@ -58,6 +73,12 @@ def main() -> int:
         assert telemetry["fasim_extend_align_seconds"] == 0.3, telemetry
         assert telemetry["fasim_extend_convert_seconds"] == 0.04, telemetry
         assert telemetry["fasim_extend_records_emitted"] == 2, telemetry
+        assert telemetry["fasim_align_forward_score_end_seconds"] == 0.11, telemetry
+        assert telemetry["fasim_align_reverse_start_seconds"] == 0.04, telemetry
+        assert telemetry["fasim_align_traceback_seconds"] == 0.05, telemetry
+        assert telemetry["fasim_align_calls"] == 7, telemetry
+        assert telemetry["fasim_align_byte_forward_calls"] == 5, telemetry
+        assert telemetry["fasim_align_word_forward_calls"] == 2, telemetry
 
         summed = runner._sum_fasim_telemetry([telemetry, telemetry])
         assert summed["fasim_prealign_cuda_requested"] == 1, summed
@@ -77,6 +98,14 @@ def main() -> int:
         assert summed["fasim_extend_records_before_filter"] == 10, summed
         assert summed["fasim_extend_records_emitted"] == 4, summed
         assert summed["fasim_extend_empty_scoreinfo"] == 2, summed
+        assert summed["fasim_align_forward_score_end_seconds"] == 0.22, summed
+        assert summed["fasim_align_reverse_start_seconds"] == 0.08, summed
+        assert summed["fasim_align_traceback_seconds"] == 0.1, summed
+        assert summed["fasim_align_calls"] == 14, summed
+        assert summed["fasim_align_byte_forward_calls"] == 10, summed
+        assert summed["fasim_align_word_forward_calls"] == 4, summed
+        assert summed["fasim_align_reverse_calls"] == 14, summed
+        assert summed["fasim_align_traceback_calls"] == 14, summed
         assert summed["fasim_prealign_cuda_topk"] == 64, summed
 
         run = runner.RunResult(
@@ -103,6 +132,7 @@ def main() -> int:
         )
         assert worker["fasim_prealign_cuda_tasks"] == 16, worker
         assert worker["fasim_extend_align_calls"] == 9, worker
+        assert worker["fasim_align_calls"] == 7, worker
         assert worker["fasim_prealign_cuda_requested"] == 1, worker
 
     print("ok")
