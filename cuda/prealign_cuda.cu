@@ -347,6 +347,126 @@ __global__ void prealign_cuda_forward_score_end_kernel(const int8_t *query,
   outResult->readEnd = bestReadEnd;
 }
 
+__global__ void prealign_cuda_forward_score_end_batch_kernel(const int8_t *queries,
+                                                             const int *queryOffsets,
+                                                             const int *queryLengths,
+                                                             const int8_t *refs,
+                                                             const int *refOffsets,
+                                                             const int *refLengths,
+                                                             int requestCount,
+                                                             const int8_t *scoreMatrix,
+                                                             int scoreMatrixSize,
+                                                             int gapOpen,
+                                                             int gapExtend,
+                                                             int maxQueryLength,
+                                                             PreAlignCudaForwardScoreEndResult *outResults)
+{
+  if(threadIdx.x != 0)
+  {
+    return;
+  }
+  const int requestIndex = static_cast<int>(blockIdx.x);
+  if(requestIndex >= requestCount)
+  {
+    return;
+  }
+
+  extern __shared__ int forwardScoreBatchShared[];
+  int *prev = forwardScoreBatchShared;
+  int *curr = prev + maxQueryLength + 1;
+  int *gapRef = curr + maxQueryLength + 1;
+
+  const int queryLength = queryLengths[requestIndex];
+  const int refLength = refLengths[requestIndex];
+  const int queryOffset = queryOffsets[requestIndex];
+  const int refOffset = refOffsets[requestIndex];
+  const int8_t *query = queries + queryOffset;
+  const int8_t *ref = refs + refOffset;
+
+  for(int j = 0; j <= queryLength; ++j)
+  {
+    prev[j] = 0;
+    curr[j] = 0;
+    gapRef[j] = 0;
+  }
+
+  int bestScore = 0;
+  int bestRefEnd = -1;
+  int bestReadEnd = queryLength > 0 ? queryLength - 1 : -1;
+
+  for(int i = 1; i <= refLength; ++i)
+  {
+    int gapQuery = 0;
+    curr[0] = 0;
+    const int refBase = static_cast<int>(ref[i - 1]);
+
+    for(int j = 1; j <= queryLength; ++j)
+    {
+      const int queryBase = static_cast<int>(query[j - 1]);
+      int subst = -32768;
+      if(refBase >= 0 && refBase < scoreMatrixSize && queryBase >= 0 && queryBase < scoreMatrixSize)
+      {
+        subst = static_cast<int>(scoreMatrix[refBase * scoreMatrixSize + queryBase]);
+      }
+
+      int diag = prev[j - 1] + subst;
+      int up = gapRef[j] - gapExtend;
+      const int upOpen = prev[j] - gapOpen;
+      if(upOpen > up)
+      {
+        up = upOpen;
+      }
+      if(up < 0)
+      {
+        up = 0;
+      }
+      gapRef[j] = up;
+
+      int left = gapQuery - gapExtend;
+      const int leftOpen = curr[j - 1] - gapOpen;
+      if(leftOpen > left)
+      {
+        left = leftOpen;
+      }
+      if(left < 0)
+      {
+        left = 0;
+      }
+      gapQuery = left;
+
+      int value = diag;
+      if(up > value)
+      {
+        value = up;
+      }
+      if(left > value)
+      {
+        value = left;
+      }
+      if(value < 0)
+      {
+        value = 0;
+      }
+      curr[j] = value;
+
+      if(value > bestScore)
+      {
+        bestScore = value;
+        bestRefEnd = i - 1;
+        bestReadEnd = j - 1;
+      }
+    }
+
+    int *tmp = prev;
+    prev = curr;
+    curr = tmp;
+  }
+
+  outResults[requestIndex].score = bestScore;
+  outResults[requestIndex].refEnd = bestRefEnd;
+  outResults[requestIndex].readEnd = bestReadEnd;
+}
+
 static inline string cuda_error_string(cudaError_t error)
 {
   const char *message = cudaGetErrorString(error);
@@ -1121,6 +1241,284 @@ bool prealign_cuda_forward_score_end(int device,
     return false;
   }
 
+  if(batchResult != NULL)
+  {
+    batchResult->usedCuda = true;
+    batchResult->gpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
+    batchResult->kernelSeconds = batchResult->gpuSeconds;
+    batchResult->h2dSeconds = elapsed_seconds(h2dStart,h2dEnd);
+    batchResult->d2hSeconds = elapsed_seconds(d2hStart,d2hEnd);
+    batchResult->totalSeconds = elapsed_seconds(totalStart,Clock::now());
+  }
+  return true;
+}
+
+bool prealign_cuda_forward_score_end_batch(int device,
+                                           const int8_t *queriesHost,
+                                           const int *queryOffsetsHost,
+                                           const int *queryLengthsHost,
+                                           const int8_t *refsHost,
+                                           const int *refOffsetsHost,
+                                           const int *refLengthsHost,
+                                           int requestCount,
+                                           const int8_t *scoreMatrixHost,
+                                           int scoreMatrixSize,
+                                           uint8_t gapOpen,
+                                           uint8_t gapExtend,
+                                           vector<PreAlignCudaForwardScoreEndResult> *outResults,
+                                           PreAlignCudaBatchResult *batchResult,
+                                           string *errorOut)
+{
+  if(outResults != NULL)
+  {
+    outResults->clear();
+  }
+  if(batchResult != NULL)
+  {
+    *batchResult = PreAlignCudaBatchResult();
+  }
+  if(outResults == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing batch forward score output";
+    }
+    return false;
+  }
+  if(queriesHost == NULL || queryOffsetsHost == NULL || queryLengthsHost == NULL ||
+     refsHost == NULL || refOffsetsHost == NULL || refLengthsHost == NULL ||
+     scoreMatrixHost == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing batch forward score input";
+    }
+    return false;
+  }
+  if(requestCount <= 0 || scoreMatrixSize <= 0)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "invalid batch forward score dimensions";
+    }
+    return false;
+  }
+
+  int totalQueryLength = 0;
+  int totalRefLength = 0;
+  int maxQueryLength = 0;
+  for(int i = 0; i < requestCount; ++i)
+  {
+    if(queryLengthsHost[i] <= 0 || refLengthsHost[i] <= 0 ||
+       queryOffsetsHost[i] < 0 || refOffsetsHost[i] < 0)
+    {
+      if(errorOut != NULL)
+      {
+        *errorOut = "invalid batch request dimensions";
+      }
+      return false;
+    }
+    totalQueryLength = max(totalQueryLength, queryOffsetsHost[i] + queryLengthsHost[i]);
+    totalRefLength = max(totalRefLength, refOffsetsHost[i] + refLengthsHost[i]);
+    maxQueryLength = max(maxQueryLength, queryLengthsHost[i]);
+  }
+
+  const int maxShadowQueryLength = 8192;
+  if(maxQueryLength > maxShadowQueryLength)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "query too long for batch forward score shadow";
+    }
+    return false;
+  }
+
+  int deviceCount = 0;
+  cudaError_t status = cudaGetDeviceCount(&deviceCount);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(deviceCount <= 0)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "no CUDA devices available";
+    }
+    return false;
+  }
+  if(device < 0)
+  {
+    device = 0;
+  }
+  if(device >= deviceCount)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "requested CUDA device index is out of range";
+    }
+    return false;
+  }
+
+  status = cudaSetDevice(device);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const Clock::time_point totalStart = Clock::now();
+  const size_t queriesBytes = static_cast<size_t>(totalQueryLength) * sizeof(int8_t);
+  const size_t refsBytes = static_cast<size_t>(totalRefLength) * sizeof(int8_t);
+  const size_t offsetsBytes = static_cast<size_t>(requestCount) * sizeof(int);
+  const size_t matrixBytes =
+    static_cast<size_t>(scoreMatrixSize) * static_cast<size_t>(scoreMatrixSize) * sizeof(int8_t);
+  const size_t resultsBytes =
+    static_cast<size_t>(requestCount) * sizeof(PreAlignCudaForwardScoreEndResult);
+
+  int8_t *queriesDevice = NULL;
+  int8_t *refsDevice = NULL;
+  int8_t *matrixDevice = NULL;
+  int *queryOffsetsDevice = NULL;
+  int *queryLengthsDevice = NULL;
+  int *refOffsetsDevice = NULL;
+  int *refLengthsDevice = NULL;
+  PreAlignCudaForwardScoreEndResult *resultsDevice = NULL;
+  cudaEvent_t startEvent = NULL;
+  cudaEvent_t stopEvent = NULL;
+
+  status = cudaMalloc(reinterpret_cast<void **>(&queriesDevice), queriesBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&refsDevice), refsBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&matrixDevice), matrixBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&queryOffsetsDevice), offsetsBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&queryLengthsDevice), offsetsBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&refOffsetsDevice), offsetsBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&refLengthsDevice), offsetsBytes);
+  if(status == cudaSuccess) status = cudaMalloc(reinterpret_cast<void **>(&resultsDevice), resultsBytes);
+  if(status == cudaSuccess) status = cudaEventCreate(&startEvent);
+  if(status == cudaSuccess) status = cudaEventCreate(&stopEvent);
+  if(status != cudaSuccess)
+  {
+    if(queriesDevice != NULL) cudaFree(queriesDevice);
+    if(refsDevice != NULL) cudaFree(refsDevice);
+    if(matrixDevice != NULL) cudaFree(matrixDevice);
+    if(queryOffsetsDevice != NULL) cudaFree(queryOffsetsDevice);
+    if(queryLengthsDevice != NULL) cudaFree(queryLengthsDevice);
+    if(refOffsetsDevice != NULL) cudaFree(refOffsetsDevice);
+    if(refLengthsDevice != NULL) cudaFree(refLengthsDevice);
+    if(resultsDevice != NULL) cudaFree(resultsDevice);
+    if(startEvent != NULL) cudaEventDestroy(startEvent);
+    if(stopEvent != NULL) cudaEventDestroy(stopEvent);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const Clock::time_point h2dStart = Clock::now();
+  status = cudaMemcpy(queriesDevice, queriesHost, queriesBytes, cudaMemcpyHostToDevice);
+  if(status == cudaSuccess) status = cudaMemcpy(refsDevice, refsHost, refsBytes, cudaMemcpyHostToDevice);
+  if(status == cudaSuccess) status = cudaMemcpy(matrixDevice, scoreMatrixHost, matrixBytes, cudaMemcpyHostToDevice);
+  if(status == cudaSuccess) status = cudaMemcpy(queryOffsetsDevice, queryOffsetsHost, offsetsBytes, cudaMemcpyHostToDevice);
+  if(status == cudaSuccess) status = cudaMemcpy(queryLengthsDevice, queryLengthsHost, offsetsBytes, cudaMemcpyHostToDevice);
+  if(status == cudaSuccess) status = cudaMemcpy(refOffsetsDevice, refOffsetsHost, offsetsBytes, cudaMemcpyHostToDevice);
+  if(status == cudaSuccess) status = cudaMemcpy(refLengthsDevice, refLengthsHost, offsetsBytes, cudaMemcpyHostToDevice);
+  const Clock::time_point h2dEnd = Clock::now();
+  if(status != cudaSuccess)
+  {
+    cudaFree(queriesDevice);
+    cudaFree(refsDevice);
+    cudaFree(matrixDevice);
+    cudaFree(queryOffsetsDevice);
+    cudaFree(queryLengthsDevice);
+    cudaFree(refOffsetsDevice);
+    cudaFree(refLengthsDevice);
+    cudaFree(resultsDevice);
+    cudaEventDestroy(startEvent);
+    cudaEventDestroy(stopEvent);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const size_t sharedBytes = static_cast<size_t>(3) * static_cast<size_t>(maxQueryLength + 1) * sizeof(int);
+  status = cudaEventRecord(startEvent);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_forward_score_end_batch_kernel<<<requestCount, 1, sharedBytes>>>(queriesDevice,
+                                                                                  queryOffsetsDevice,
+                                                                                  queryLengthsDevice,
+                                                                                  refsDevice,
+                                                                                  refOffsetsDevice,
+                                                                                  refLengthsDevice,
+                                                                                  requestCount,
+                                                                                  matrixDevice,
+                                                                                  scoreMatrixSize,
+                                                                                  static_cast<int>(gapOpen),
+                                                                                  static_cast<int>(gapExtend),
+                                                                                  maxQueryLength,
+                                                                                  resultsDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(stopEvent);
+  if(status == cudaSuccess) status = cudaEventSynchronize(stopEvent);
+  float elapsedMs = 0.0f;
+  if(status == cudaSuccess) status = cudaEventElapsedTime(&elapsedMs, startEvent, stopEvent);
+  if(status != cudaSuccess)
+  {
+    cudaFree(queriesDevice);
+    cudaFree(refsDevice);
+    cudaFree(matrixDevice);
+    cudaFree(queryOffsetsDevice);
+    cudaFree(queryLengthsDevice);
+    cudaFree(refOffsetsDevice);
+    cudaFree(refLengthsDevice);
+    cudaFree(resultsDevice);
+    cudaEventDestroy(startEvent);
+    cudaEventDestroy(stopEvent);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  vector<PreAlignCudaForwardScoreEndResult> results(static_cast<size_t>(requestCount));
+  const Clock::time_point d2hStart = Clock::now();
+  status = cudaMemcpy(results.data(), resultsDevice, resultsBytes, cudaMemcpyDeviceToHost);
+  const Clock::time_point d2hEnd = Clock::now();
+
+  cudaFree(queriesDevice);
+  cudaFree(refsDevice);
+  cudaFree(matrixDevice);
+  cudaFree(queryOffsetsDevice);
+  cudaFree(queryLengthsDevice);
+  cudaFree(refOffsetsDevice);
+  cudaFree(refLengthsDevice);
+  cudaFree(resultsDevice);
+  cudaEventDestroy(startEvent);
+  cudaEventDestroy(stopEvent);
+
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  outResults->swap(results);
   if(batchResult != NULL)
   {
     batchResult->usedCuda = true;

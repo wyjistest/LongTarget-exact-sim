@@ -85,4 +85,20 @@ bool prealign_cuda_forward_score_end(int device,
                                      PreAlignCudaBatchResult *batchResult,
                                      std::string *errorOut);
 
+bool prealign_cuda_forward_score_end_batch(int device,
+                                           const int8_t *queriesHost,
+                                           const int *queryOffsetsHost,
+                                           const int *queryLengthsHost,
+                                           const int8_t *refsHost,
+                                           const int *refOffsetsHost,
+                                           const int *refLengthsHost,
+                                           int requestCount,
+                                           const int8_t *scoreMatrixHost,
+                                           int scoreMatrixSize,
+                                           uint8_t gapOpen,
+                                           uint8_t gapExtend,
+                                           std::vector<PreAlignCudaForwardScoreEndResult> *outResults,
+                                           PreAlignCudaBatchResult *batchResult,
+                                           std::string *errorOut);
+
 #endif

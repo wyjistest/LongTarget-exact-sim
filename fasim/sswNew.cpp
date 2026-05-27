@@ -93,9 +93,12 @@
 #include <math.h>
 #include "ssw.h"
 #include "../cuda/prealign_cuda.h"
+#include <algorithm>
+#include <vector>
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <utility>
 using std::cout;
 #ifdef __GNUC__
 #define LIKELY(x) __builtin_expect((x),1)
@@ -144,6 +147,31 @@ typedef std::chrono::steady_clock SswTelemetryClock;
 static ssw_telemetry_delta g_sswTelemetry = ssw_telemetry_delta();
 static std::mutex g_sswTelemetryMutex;
 
+struct ForwardScoreBatchShadowRequest {
+	std::vector<int8_t> query;
+	std::vector<int8_t> ref;
+	std::vector<int8_t> scoreMatrix;
+	int scoreMatrixSize;
+	uint8_t gapOpen;
+	uint8_t gapExtend;
+	uint16_t cpuScore;
+	int32_t cpuRefEnd;
+	int32_t cpuReadEnd;
+	double cpuSeconds;
+};
+
+struct ForwardScoreBatchShadowState {
+	ForwardScoreBatchShadowState() : enabled(false), flushed(false), reservedRequests(0) {}
+
+	bool enabled;
+	bool flushed;
+	size_t reservedRequests;
+	std::vector<ForwardScoreBatchShadowRequest> requests;
+};
+
+static ForwardScoreBatchShadowState g_forwardScoreBatchShadow;
+static std::mutex g_forwardScoreBatchShadowMutex;
+
 static inline double ssw_elapsed_seconds(SswTelemetryClock::time_point start,
 	SswTelemetryClock::time_point end) {
 	return std::chrono::duration<double>(end - start).count();
@@ -161,6 +189,14 @@ static inline void ssw_add_telemetry_delta(const ssw_telemetry_delta* delta) {
 	g_sswTelemetry.forward_score_gpu_d2h_seconds += delta->forward_score_gpu_d2h_seconds;
 	g_sswTelemetry.forward_score_gpu_unpack_seconds += delta->forward_score_gpu_unpack_seconds;
 	g_sswTelemetry.forward_score_gpu_total_seconds += delta->forward_score_gpu_total_seconds;
+	g_sswTelemetry.forward_score_batch_pack_seconds += delta->forward_score_batch_pack_seconds;
+	g_sswTelemetry.forward_score_batch_h2d_seconds += delta->forward_score_batch_h2d_seconds;
+	g_sswTelemetry.forward_score_batch_kernel_seconds += delta->forward_score_batch_kernel_seconds;
+	g_sswTelemetry.forward_score_batch_d2h_seconds += delta->forward_score_batch_d2h_seconds;
+	g_sswTelemetry.forward_score_batch_unpack_seconds += delta->forward_score_batch_unpack_seconds;
+	g_sswTelemetry.forward_score_batch_total_seconds += delta->forward_score_batch_total_seconds;
+	g_sswTelemetry.forward_score_batch_cpu_reference_seconds +=
+		delta->forward_score_batch_cpu_reference_seconds;
 	g_sswTelemetry.byte_forward_calls += delta->byte_forward_calls;
 	g_sswTelemetry.word_forward_calls += delta->word_forward_calls;
 	g_sswTelemetry.reverse_calls += delta->reverse_calls;
@@ -172,16 +208,27 @@ static inline void ssw_add_telemetry_delta(const ssw_telemetry_delta* delta) {
 	g_sswTelemetry.forward_score_gpu_score_mismatches += delta->forward_score_gpu_score_mismatches;
 	g_sswTelemetry.forward_score_gpu_endpoint_mismatches += delta->forward_score_gpu_endpoint_mismatches;
 	g_sswTelemetry.forward_score_gpu_unsupported_requests += delta->forward_score_gpu_unsupported_requests;
+	g_sswTelemetry.forward_score_batch_shadow_enabled =
+		g_sswTelemetry.forward_score_batch_shadow_enabled || delta->forward_score_batch_shadow_enabled;
+	g_sswTelemetry.forward_score_batch_requests += delta->forward_score_batch_requests;
+	g_sswTelemetry.forward_score_batch_cells += delta->forward_score_batch_cells;
+	g_sswTelemetry.forward_score_batch_score_mismatches +=
+		delta->forward_score_batch_score_mismatches;
+	g_sswTelemetry.forward_score_batch_endpoint_mismatches +=
+		delta->forward_score_batch_endpoint_mismatches;
+	g_sswTelemetry.forward_score_batch_unsupported_requests +=
+		delta->forward_score_batch_unsupported_requests;
 }
 
 void ssw_reset_telemetry(void) {
-	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
-	g_sswTelemetry = ssw_telemetry_delta();
-}
-
-ssw_telemetry_delta ssw_snapshot_telemetry(void) {
-	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
-	return g_sswTelemetry;
+	{
+		std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
+		g_sswTelemetry = ssw_telemetry_delta();
+	}
+	{
+		std::lock_guard<std::mutex> lock(g_forwardScoreBatchShadowMutex);
+		g_forwardScoreBatchShadow = ForwardScoreBatchShadowState();
+	}
 }
 
 static inline bool ssw_forward_score_gpu_shadow_enabled_runtime() {
@@ -190,6 +237,30 @@ static inline bool ssw_forward_score_gpu_shadow_enabled_runtime() {
 		return env != NULL && env[0] != '\0' && env[0] != '0';
 	}();
 	return enabled;
+}
+
+static inline bool ssw_forward_score_gpu_batch_shadow_enabled_runtime() {
+	static const bool enabled = []() {
+		const char* env = getenv("FASIM_ALIGN_FORWARD_SCORE_GPU_BATCH_SHADOW");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline size_t ssw_forward_score_gpu_batch_shadow_max_requests_runtime() {
+	static const size_t maxRequests = []() {
+		const char* env = getenv("FASIM_ALIGN_FORWARD_SCORE_GPU_BATCH_SHADOW_MAX_REQUESTS");
+		if (env == NULL || env[0] == '\0') {
+			return static_cast<size_t>(100000);
+		}
+		char* end = NULL;
+		const long long value = strtoll(env, &end, 10);
+		if (end == env || value < 0) {
+			return static_cast<size_t>(100000);
+		}
+		return static_cast<size_t>(value);
+	}();
+	return maxRequests;
 }
 
 static inline int ssw_forward_score_gpu_shadow_device_runtime() {
@@ -272,6 +343,195 @@ static inline void ssw_forward_score_gpu_shadow_record(
 	telemetry->forward_score_gpu_total_seconds += batchResult.totalSeconds;
 	telemetry->forward_score_gpu_score_mismatches += scoreMismatch ? 1 : 0;
 	telemetry->forward_score_gpu_endpoint_mismatches += endpointMismatch ? 1 : 0;
+}
+
+static inline void ssw_forward_score_gpu_batch_shadow_record(
+	const s_profile* prof,
+	const int8_t* ref,
+	int32_t refLen,
+	uint8_t weight_gapO,
+	uint8_t weight_gapE,
+	const alignment_end* cpuBest,
+	double cpuSeconds,
+	ssw_telemetry_delta* telemetry) {
+	if (telemetry == NULL || !ssw_forward_score_gpu_batch_shadow_enabled_runtime()) {
+		return;
+	}
+	telemetry->forward_score_batch_shadow_enabled = 1;
+	if (prof == NULL || ref == NULL || cpuBest == NULL || prof->read == NULL ||
+	    prof->mat == NULL || prof->readLen <= 0 || refLen <= 0 || prof->n <= 0) {
+		telemetry->forward_score_batch_unsupported_requests += 1;
+		return;
+	}
+
+	telemetry->forward_score_batch_requests += 1;
+	telemetry->forward_score_batch_cells +=
+		static_cast<long long>(prof->readLen) * static_cast<long long>(refLen);
+	telemetry->forward_score_batch_cpu_reference_seconds += cpuSeconds;
+
+	{
+		std::lock_guard<std::mutex> lock(g_forwardScoreBatchShadowMutex);
+		g_forwardScoreBatchShadow.enabled = true;
+		const size_t maxRequests = ssw_forward_score_gpu_batch_shadow_max_requests_runtime();
+		if (g_forwardScoreBatchShadow.flushed ||
+		    (maxRequests != 0 && g_forwardScoreBatchShadow.reservedRequests >= maxRequests)) {
+			telemetry->forward_score_batch_unsupported_requests += 1;
+			return;
+		}
+		g_forwardScoreBatchShadow.reservedRequests += 1;
+	}
+
+	const SswTelemetryClock::time_point packStart = SswTelemetryClock::now();
+	ForwardScoreBatchShadowRequest request;
+	request.query.assign(prof->read, prof->read + prof->readLen);
+	request.ref.assign(ref, ref + refLen);
+	request.scoreMatrix.assign(prof->mat, prof->mat + (prof->n * prof->n));
+	request.scoreMatrixSize = prof->n;
+	request.gapOpen = weight_gapO;
+	request.gapExtend = weight_gapE;
+	request.cpuScore = cpuBest[0].score;
+	request.cpuRefEnd = cpuBest[0].ref;
+	request.cpuReadEnd = cpuBest[0].read;
+	request.cpuSeconds = cpuSeconds;
+	const SswTelemetryClock::time_point packEnd = SswTelemetryClock::now();
+	telemetry->forward_score_batch_pack_seconds += ssw_elapsed_seconds(packStart, packEnd);
+
+	std::lock_guard<std::mutex> lock(g_forwardScoreBatchShadowMutex);
+	if (g_forwardScoreBatchShadow.flushed) {
+		telemetry->forward_score_batch_unsupported_requests += 1;
+		return;
+	}
+	g_forwardScoreBatchShadow.requests.push_back(std::move(request));
+}
+
+static inline bool ssw_forward_score_gpu_batch_same_config(
+	const ForwardScoreBatchShadowRequest& a,
+	const ForwardScoreBatchShadowRequest& b) {
+	return a.scoreMatrixSize == b.scoreMatrixSize &&
+		a.gapOpen == b.gapOpen &&
+		a.gapExtend == b.gapExtend &&
+		a.scoreMatrix == b.scoreMatrix;
+}
+
+static void ssw_forward_score_gpu_batch_shadow_flush() {
+	std::vector<ForwardScoreBatchShadowRequest> requests;
+	{
+		std::lock_guard<std::mutex> lock(g_forwardScoreBatchShadowMutex);
+		if (g_forwardScoreBatchShadow.flushed) {
+			return;
+		}
+		const bool enabled = g_forwardScoreBatchShadow.enabled ||
+			ssw_forward_score_gpu_batch_shadow_enabled_runtime();
+		if (!enabled) {
+			return;
+		}
+		g_forwardScoreBatchShadow.enabled = enabled;
+		g_forwardScoreBatchShadow.flushed = true;
+		requests.swap(g_forwardScoreBatchShadow.requests);
+	}
+
+	ssw_telemetry_delta telemetry = ssw_telemetry_delta();
+	telemetry.forward_score_batch_shadow_enabled = 1;
+	if (requests.empty()) {
+		ssw_add_telemetry_delta(&telemetry);
+		return;
+	}
+
+	std::vector<std::vector<size_t> > groups;
+	for (size_t i = 0; i < requests.size(); ++i) {
+		bool added = false;
+		for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex) {
+			if (ssw_forward_score_gpu_batch_same_config(requests[groups[groupIndex][0]], requests[i])) {
+				groups[groupIndex].push_back(i);
+				added = true;
+				break;
+			}
+		}
+		if (!added) {
+			groups.push_back(std::vector<size_t>(1, i));
+		}
+	}
+
+	for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex) {
+		const std::vector<size_t>& group = groups[groupIndex];
+		const ForwardScoreBatchShadowRequest& first = requests[group[0]];
+		std::vector<int8_t> queries;
+		std::vector<int8_t> refs;
+		std::vector<int> queryOffsets;
+		std::vector<int> queryLengths;
+		std::vector<int> refOffsets;
+		std::vector<int> refLengths;
+		queries.reserve(first.query.size() * group.size());
+		queryOffsets.reserve(group.size());
+		queryLengths.reserve(group.size());
+		refOffsets.reserve(group.size());
+		refLengths.reserve(group.size());
+
+		const SswTelemetryClock::time_point packStart = SswTelemetryClock::now();
+		for (size_t item = 0; item < group.size(); ++item) {
+			const ForwardScoreBatchShadowRequest& request = requests[group[item]];
+			queryOffsets.push_back(static_cast<int>(queries.size()));
+			queryLengths.push_back(static_cast<int>(request.query.size()));
+			queries.insert(queries.end(), request.query.begin(), request.query.end());
+			refOffsets.push_back(static_cast<int>(refs.size()));
+			refLengths.push_back(static_cast<int>(request.ref.size()));
+			refs.insert(refs.end(), request.ref.begin(), request.ref.end());
+		}
+		const SswTelemetryClock::time_point packEnd = SswTelemetryClock::now();
+		telemetry.forward_score_batch_pack_seconds += ssw_elapsed_seconds(packStart, packEnd);
+
+		std::vector<PreAlignCudaForwardScoreEndResult> gpuResults;
+		PreAlignCudaBatchResult batchResult;
+		std::string cudaError;
+		const bool ok = prealign_cuda_forward_score_end_batch(
+			ssw_forward_score_gpu_shadow_device_runtime(),
+			queries.data(),
+			queryOffsets.data(),
+			queryLengths.data(),
+			refs.data(),
+			refOffsets.data(),
+			refLengths.data(),
+			static_cast<int>(group.size()),
+			first.scoreMatrix.data(),
+			first.scoreMatrixSize,
+			first.gapOpen,
+			first.gapExtend,
+			&gpuResults,
+			&batchResult,
+			&cudaError);
+		if (!ok || gpuResults.size() != group.size()) {
+			telemetry.forward_score_batch_unsupported_requests +=
+				static_cast<long long>(group.size());
+			continue;
+		}
+
+		const SswTelemetryClock::time_point unpackStart = SswTelemetryClock::now();
+		for (size_t item = 0; item < group.size(); ++item) {
+			const ForwardScoreBatchShadowRequest& request = requests[group[item]];
+			const PreAlignCudaForwardScoreEndResult& gpuResult = gpuResults[item];
+			const bool scoreMismatch = gpuResult.score != static_cast<int>(request.cpuScore);
+			const bool endpointMismatch =
+				gpuResult.refEnd != request.cpuRefEnd || gpuResult.readEnd != request.cpuReadEnd;
+			telemetry.forward_score_batch_score_mismatches += scoreMismatch ? 1 : 0;
+			telemetry.forward_score_batch_endpoint_mismatches += endpointMismatch ? 1 : 0;
+		}
+		const SswTelemetryClock::time_point unpackEnd = SswTelemetryClock::now();
+
+		telemetry.forward_score_batch_h2d_seconds += batchResult.h2dSeconds;
+		telemetry.forward_score_batch_kernel_seconds += batchResult.kernelSeconds;
+		telemetry.forward_score_batch_d2h_seconds += batchResult.d2hSeconds;
+		telemetry.forward_score_batch_unpack_seconds +=
+			ssw_elapsed_seconds(unpackStart, unpackEnd);
+		telemetry.forward_score_batch_total_seconds += batchResult.totalSeconds;
+	}
+
+	ssw_add_telemetry_delta(&telemetry);
+}
+
+ssw_telemetry_delta ssw_snapshot_telemetry(void) {
+	ssw_forward_score_gpu_batch_shadow_flush();
+	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
+	return g_sswTelemetry;
 }
 
 /* array index is an ASCII character value from a CIGAR,
@@ -1655,6 +1915,14 @@ s_align* ssw_align(const s_profile* prof,
 	                                    bests,
 	                                    forwardCpuSeconds,
 	                                    &telemetry);
+	ssw_forward_score_gpu_batch_shadow_record(prof,
+	                                          ref,
+	                                          refLen,
+	                                          weight_gapO,
+	                                          weight_gapE,
+	                                          bests,
+	                                          forwardCpuSeconds,
+	                                          &telemetry);
 	r->score1 = bests[0].score;
 	r->ref_end1 = bests[0].ref;
 	r->read_end1 = bests[0].read;
