@@ -55,6 +55,19 @@ namespace StripedSmithWaterman {
 			, forwardScoreEndSeconds(0.0)
 			, reverseStartSeconds(0.0)
 			, tracebackSeconds(0.0)
+			, forwardScoreGpuShadowEnabled(false)
+			, forwardScoreGpuRequests(0)
+			, forwardScoreGpuCells(0)
+			, forwardScoreGpuCpuSeconds(0.0)
+			, forwardScoreGpuPackSeconds(0.0)
+			, forwardScoreGpuH2DSeconds(0.0)
+			, forwardScoreGpuKernelSeconds(0.0)
+			, forwardScoreGpuD2HSeconds(0.0)
+			, forwardScoreGpuUnpackSeconds(0.0)
+			, forwardScoreGpuTotalSeconds(0.0)
+			, forwardScoreGpuScoreMismatches(0)
+			, forwardScoreGpuEndpointMismatches(0)
+			, forwardScoreGpuUnsupportedRequests(0)
 			, convertSeconds(0.0)
 			, cleanupSeconds(0.0)
 			, profileReuseShadowEnabled(false)
@@ -95,6 +108,19 @@ namespace StripedSmithWaterman {
 		double forwardScoreEndSeconds;
 		double reverseStartSeconds;
 		double tracebackSeconds;
+		bool forwardScoreGpuShadowEnabled;
+		long long forwardScoreGpuRequests;
+		long long forwardScoreGpuCells;
+		double forwardScoreGpuCpuSeconds;
+		double forwardScoreGpuPackSeconds;
+		double forwardScoreGpuH2DSeconds;
+		double forwardScoreGpuKernelSeconds;
+		double forwardScoreGpuD2HSeconds;
+		double forwardScoreGpuUnpackSeconds;
+		double forwardScoreGpuTotalSeconds;
+		long long forwardScoreGpuScoreMismatches;
+		long long forwardScoreGpuEndpointMismatches;
+		long long forwardScoreGpuUnsupportedRequests;
 		double convertSeconds;
 		double cleanupSeconds;
 		bool profileReuseShadowEnabled;

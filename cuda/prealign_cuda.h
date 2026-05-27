@@ -42,6 +42,15 @@ struct PreAlignCudaBatchResult
   bool usedCuda;
 };
 
+struct PreAlignCudaForwardScoreEndResult
+{
+  PreAlignCudaForwardScoreEndResult():score(0),refEnd(-1),readEnd(-1) {}
+
+  int score;
+  int refEnd;
+  int readEnd;
+};
+
 bool prealign_cuda_is_built();
 bool prealign_cuda_init(int device,std::string *errorOut);
 
@@ -62,5 +71,18 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
                                            std::vector<PreAlignCudaPeak> *outPeaks,
                                            PreAlignCudaBatchResult *batchResult,
                                            std::string *errorOut);
+
+bool prealign_cuda_forward_score_end(int device,
+                                     const int8_t *queryHost,
+                                     int queryLength,
+                                     const int8_t *refHost,
+                                     int refLength,
+                                     const int8_t *scoreMatrixHost,
+                                     int scoreMatrixSize,
+                                     uint8_t gapOpen,
+                                     uint8_t gapExtend,
+                                     PreAlignCudaForwardScoreEndResult *outResult,
+                                     PreAlignCudaBatchResult *batchResult,
+                                     std::string *errorOut);
 
 #endif

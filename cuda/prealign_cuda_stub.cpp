@@ -76,3 +76,39 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   return false;
 }
 
+bool prealign_cuda_forward_score_end(int device,
+                                     const int8_t *queryHost,
+                                     int queryLength,
+                                     const int8_t *refHost,
+                                     int refLength,
+                                     const int8_t *scoreMatrixHost,
+                                     int scoreMatrixSize,
+                                     uint8_t gapOpen,
+                                     uint8_t gapExtend,
+                                     PreAlignCudaForwardScoreEndResult *outResult,
+                                     PreAlignCudaBatchResult *batchResult,
+                                     string *errorOut)
+{
+  (void)device;
+  (void)queryHost;
+  (void)queryLength;
+  (void)refHost;
+  (void)refLength;
+  (void)scoreMatrixHost;
+  (void)scoreMatrixSize;
+  (void)gapOpen;
+  (void)gapExtend;
+  if(outResult != NULL)
+  {
+    *outResult = PreAlignCudaForwardScoreEndResult();
+  }
+  if(batchResult != NULL)
+  {
+    *batchResult = PreAlignCudaBatchResult();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}
