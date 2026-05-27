@@ -103,6 +103,24 @@ required = {
     "fasim_forward_score_batch_score_mismatches",
     "fasim_forward_score_batch_endpoint_mismatches",
     "fasim_forward_score_batch_unsupported_requests",
+    "fasim_score_bridge_shadow_enabled",
+    "fasim_score_bridge_requests",
+    "fasim_score_bridge_cells",
+    "fasim_score_bridge_groups",
+    "fasim_score_bridge_descriptor_count",
+    "fasim_score_bridge_descriptor_bytes",
+    "fasim_score_bridge_query_buffer_bytes",
+    "fasim_score_bridge_target_buffer_bytes",
+    "fasim_score_bridge_pack_seconds",
+    "fasim_score_bridge_h2d_seconds",
+    "fasim_score_bridge_kernel_seconds",
+    "fasim_score_bridge_d2h_seconds",
+    "fasim_score_bridge_unpack_seconds",
+    "fasim_score_bridge_total_seconds",
+    "fasim_score_bridge_cpu_reference_seconds",
+    "fasim_score_bridge_score_mismatches",
+    "fasim_score_bridge_endpoint_mismatches",
+    "fasim_score_bridge_unsupported_requests",
     "fasim_align_convert_seconds",
     "fasim_align_cleanup_seconds",
     "fasim_align_calls",
@@ -157,6 +175,17 @@ assert report["sharded_telemetry"]["fasim_forward_score_batch_cells"] == 0, repo
 assert report["sharded_telemetry"]["fasim_forward_score_batch_score_mismatches"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_forward_score_batch_endpoint_mismatches"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_forward_score_batch_unsupported_requests"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_shadow_enabled"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_requests"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_cells"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_groups"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_descriptor_count"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_descriptor_bytes"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_query_buffer_bytes"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_target_buffer_bytes"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_score_mismatches"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_endpoint_mismatches"] == 0, report["sharded_telemetry"]
+assert report["sharded_telemetry"]["fasim_score_bridge_unsupported_requests"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_reuse_shadow_enabled"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_build_calls"] == 0, report["sharded_telemetry"]
 assert report["sharded_telemetry"]["fasim_align_profile_cache_requested"] == 0, report["sharded_telemetry"]

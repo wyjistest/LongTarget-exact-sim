@@ -172,6 +172,43 @@ struct ForwardScoreBatchShadowState {
 static ForwardScoreBatchShadowState g_forwardScoreBatchShadow;
 static std::mutex g_forwardScoreBatchShadowMutex;
 
+struct ScoreBridgeGroupKey {
+	std::vector<int8_t> query;
+	std::vector<int8_t> scoreMatrix;
+	int scoreMatrixSize;
+	uint8_t gapOpen;
+	uint8_t gapExtend;
+};
+
+struct ScoreBridgeDescriptor {
+	int groupIndex;
+	int targetOffset;
+	int targetLength;
+	uint16_t cpuScore;
+	int32_t cpuRefEnd;
+	int32_t cpuReadEnd;
+	double cpuSeconds;
+};
+
+struct ScoreBridgeGroup {
+	ScoreBridgeGroupKey key;
+	std::vector<size_t> descriptorIndexes;
+};
+
+struct ScoreBridgeShadowState {
+	ScoreBridgeShadowState() : enabled(false), flushed(false), reservedRequests(0) {}
+
+	bool enabled;
+	bool flushed;
+	size_t reservedRequests;
+	std::vector<ScoreBridgeGroup> groups;
+	std::vector<ScoreBridgeDescriptor> descriptors;
+	std::vector<int8_t> targetBuffer;
+};
+
+static ScoreBridgeShadowState g_scoreBridgeShadow;
+static std::mutex g_scoreBridgeShadowMutex;
+
 static inline double ssw_elapsed_seconds(SswTelemetryClock::time_point start,
 	SswTelemetryClock::time_point end) {
 	return std::chrono::duration<double>(end - start).count();
@@ -197,6 +234,14 @@ static inline void ssw_add_telemetry_delta(const ssw_telemetry_delta* delta) {
 	g_sswTelemetry.forward_score_batch_total_seconds += delta->forward_score_batch_total_seconds;
 	g_sswTelemetry.forward_score_batch_cpu_reference_seconds +=
 		delta->forward_score_batch_cpu_reference_seconds;
+	g_sswTelemetry.score_bridge_pack_seconds += delta->score_bridge_pack_seconds;
+	g_sswTelemetry.score_bridge_h2d_seconds += delta->score_bridge_h2d_seconds;
+	g_sswTelemetry.score_bridge_kernel_seconds += delta->score_bridge_kernel_seconds;
+	g_sswTelemetry.score_bridge_d2h_seconds += delta->score_bridge_d2h_seconds;
+	g_sswTelemetry.score_bridge_unpack_seconds += delta->score_bridge_unpack_seconds;
+	g_sswTelemetry.score_bridge_total_seconds += delta->score_bridge_total_seconds;
+	g_sswTelemetry.score_bridge_cpu_reference_seconds +=
+		delta->score_bridge_cpu_reference_seconds;
 	g_sswTelemetry.byte_forward_calls += delta->byte_forward_calls;
 	g_sswTelemetry.word_forward_calls += delta->word_forward_calls;
 	g_sswTelemetry.reverse_calls += delta->reverse_calls;
@@ -218,6 +263,19 @@ static inline void ssw_add_telemetry_delta(const ssw_telemetry_delta* delta) {
 		delta->forward_score_batch_endpoint_mismatches;
 	g_sswTelemetry.forward_score_batch_unsupported_requests +=
 		delta->forward_score_batch_unsupported_requests;
+	g_sswTelemetry.score_bridge_shadow_enabled =
+		g_sswTelemetry.score_bridge_shadow_enabled || delta->score_bridge_shadow_enabled;
+	g_sswTelemetry.score_bridge_requests += delta->score_bridge_requests;
+	g_sswTelemetry.score_bridge_cells += delta->score_bridge_cells;
+	g_sswTelemetry.score_bridge_groups += delta->score_bridge_groups;
+	g_sswTelemetry.score_bridge_descriptor_count += delta->score_bridge_descriptor_count;
+	g_sswTelemetry.score_bridge_descriptor_bytes += delta->score_bridge_descriptor_bytes;
+	g_sswTelemetry.score_bridge_query_buffer_bytes += delta->score_bridge_query_buffer_bytes;
+	g_sswTelemetry.score_bridge_target_buffer_bytes += delta->score_bridge_target_buffer_bytes;
+	g_sswTelemetry.score_bridge_score_mismatches += delta->score_bridge_score_mismatches;
+	g_sswTelemetry.score_bridge_endpoint_mismatches += delta->score_bridge_endpoint_mismatches;
+	g_sswTelemetry.score_bridge_unsupported_requests +=
+		delta->score_bridge_unsupported_requests;
 }
 
 void ssw_reset_telemetry(void) {
@@ -228,6 +286,10 @@ void ssw_reset_telemetry(void) {
 	{
 		std::lock_guard<std::mutex> lock(g_forwardScoreBatchShadowMutex);
 		g_forwardScoreBatchShadow = ForwardScoreBatchShadowState();
+	}
+	{
+		std::lock_guard<std::mutex> lock(g_scoreBridgeShadowMutex);
+		g_scoreBridgeShadow = ScoreBridgeShadowState();
 	}
 }
 
@@ -250,6 +312,30 @@ static inline bool ssw_forward_score_gpu_batch_shadow_enabled_runtime() {
 static inline size_t ssw_forward_score_gpu_batch_shadow_max_requests_runtime() {
 	static const size_t maxRequests = []() {
 		const char* env = getenv("FASIM_ALIGN_FORWARD_SCORE_GPU_BATCH_SHADOW_MAX_REQUESTS");
+		if (env == NULL || env[0] == '\0') {
+			return static_cast<size_t>(100000);
+		}
+		char* end = NULL;
+		const long long value = strtoll(env, &end, 10);
+		if (end == env || value < 0) {
+			return static_cast<size_t>(100000);
+		}
+		return static_cast<size_t>(value);
+	}();
+	return maxRequests;
+}
+
+static inline bool ssw_score_bridge_gpu_shadow_enabled_runtime() {
+	static const bool enabled = []() {
+		const char* env = getenv("FASIM_ALIGN_SCORE_BRIDGE_GPU_SHADOW");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
+static inline size_t ssw_score_bridge_gpu_shadow_max_requests_runtime() {
+	static const size_t maxRequests = []() {
+		const char* env = getenv("FASIM_ALIGN_SCORE_BRIDGE_GPU_SHADOW_MAX_REQUESTS");
 		if (env == NULL || env[0] == '\0') {
 			return static_cast<size_t>(100000);
 		}
@@ -413,6 +499,16 @@ static inline bool ssw_forward_score_gpu_batch_same_config(
 		a.scoreMatrix == b.scoreMatrix;
 }
 
+static inline bool ssw_score_bridge_same_group_key(
+	const ScoreBridgeGroupKey& a,
+	const ScoreBridgeGroupKey& b) {
+	return a.scoreMatrixSize == b.scoreMatrixSize &&
+		a.gapOpen == b.gapOpen &&
+		a.gapExtend == b.gapExtend &&
+		a.query == b.query &&
+		a.scoreMatrix == b.scoreMatrix;
+}
+
 static void ssw_forward_score_gpu_batch_shadow_flush() {
 	std::vector<ForwardScoreBatchShadowRequest> requests;
 	{
@@ -528,8 +624,207 @@ static void ssw_forward_score_gpu_batch_shadow_flush() {
 	ssw_add_telemetry_delta(&telemetry);
 }
 
+static inline void ssw_score_bridge_gpu_shadow_record(
+	const s_profile* prof,
+	const int8_t* ref,
+	int32_t refLen,
+	uint8_t weight_gapO,
+	uint8_t weight_gapE,
+	const alignment_end* cpuBest,
+	double cpuSeconds,
+	ssw_telemetry_delta* telemetry) {
+	if (telemetry == NULL || !ssw_score_bridge_gpu_shadow_enabled_runtime()) {
+		return;
+	}
+	telemetry->score_bridge_shadow_enabled = 1;
+	if (prof == NULL || ref == NULL || cpuBest == NULL || prof->read == NULL ||
+	    prof->mat == NULL || prof->readLen <= 0 || refLen <= 0 || prof->n <= 0) {
+		telemetry->score_bridge_unsupported_requests += 1;
+		return;
+	}
+
+	telemetry->score_bridge_requests += 1;
+	telemetry->score_bridge_cells +=
+		static_cast<long long>(prof->readLen) * static_cast<long long>(refLen);
+	telemetry->score_bridge_cpu_reference_seconds += cpuSeconds;
+
+	{
+		std::lock_guard<std::mutex> lock(g_scoreBridgeShadowMutex);
+		g_scoreBridgeShadow.enabled = true;
+		const size_t maxRequests = ssw_score_bridge_gpu_shadow_max_requests_runtime();
+		if (g_scoreBridgeShadow.flushed ||
+		    (maxRequests != 0 && g_scoreBridgeShadow.reservedRequests >= maxRequests)) {
+			telemetry->score_bridge_unsupported_requests += 1;
+			return;
+		}
+		g_scoreBridgeShadow.reservedRequests += 1;
+	}
+
+	const SswTelemetryClock::time_point packStart = SswTelemetryClock::now();
+	ScoreBridgeGroupKey key;
+	key.query.assign(prof->read, prof->read + prof->readLen);
+	key.scoreMatrix.assign(prof->mat, prof->mat + (prof->n * prof->n));
+	key.scoreMatrixSize = prof->n;
+	key.gapOpen = weight_gapO;
+	key.gapExtend = weight_gapE;
+
+	std::lock_guard<std::mutex> lock(g_scoreBridgeShadowMutex);
+	if (g_scoreBridgeShadow.flushed) {
+		telemetry->score_bridge_unsupported_requests += 1;
+		return;
+	}
+	int groupIndex = -1;
+	for (size_t i = 0; i < g_scoreBridgeShadow.groups.size(); ++i) {
+		if (ssw_score_bridge_same_group_key(g_scoreBridgeShadow.groups[i].key, key)) {
+			groupIndex = static_cast<int>(i);
+			break;
+		}
+	}
+	if (groupIndex < 0) {
+		groupIndex = static_cast<int>(g_scoreBridgeShadow.groups.size());
+		ScoreBridgeGroup group;
+		group.key = std::move(key);
+		g_scoreBridgeShadow.groups.push_back(std::move(group));
+	}
+
+	ScoreBridgeDescriptor descriptor;
+	descriptor.groupIndex = groupIndex;
+	descriptor.targetOffset = static_cast<int>(g_scoreBridgeShadow.targetBuffer.size());
+	descriptor.targetLength = refLen;
+	descriptor.cpuScore = cpuBest[0].score;
+	descriptor.cpuRefEnd = cpuBest[0].ref;
+	descriptor.cpuReadEnd = cpuBest[0].read;
+	descriptor.cpuSeconds = cpuSeconds;
+	const size_t descriptorIndex = g_scoreBridgeShadow.descriptors.size();
+	g_scoreBridgeShadow.descriptors.push_back(descriptor);
+	g_scoreBridgeShadow.groups[static_cast<size_t>(groupIndex)].descriptorIndexes.push_back(descriptorIndex);
+	g_scoreBridgeShadow.targetBuffer.insert(g_scoreBridgeShadow.targetBuffer.end(), ref, ref + refLen);
+	const SswTelemetryClock::time_point packEnd = SswTelemetryClock::now();
+	telemetry->score_bridge_pack_seconds += ssw_elapsed_seconds(packStart, packEnd);
+}
+
+static void ssw_score_bridge_gpu_shadow_flush() {
+	ScoreBridgeShadowState state;
+	{
+		std::lock_guard<std::mutex> lock(g_scoreBridgeShadowMutex);
+		if (g_scoreBridgeShadow.flushed) {
+			return;
+		}
+		const bool enabled = g_scoreBridgeShadow.enabled ||
+			ssw_score_bridge_gpu_shadow_enabled_runtime();
+		if (!enabled) {
+			return;
+		}
+		g_scoreBridgeShadow.enabled = enabled;
+		g_scoreBridgeShadow.flushed = true;
+		state.groups.swap(g_scoreBridgeShadow.groups);
+		state.descriptors.swap(g_scoreBridgeShadow.descriptors);
+		state.targetBuffer.swap(g_scoreBridgeShadow.targetBuffer);
+		state.reservedRequests = g_scoreBridgeShadow.reservedRequests;
+	}
+
+	ssw_telemetry_delta telemetry = ssw_telemetry_delta();
+	telemetry.score_bridge_shadow_enabled = 1;
+	telemetry.score_bridge_groups = static_cast<long long>(state.groups.size());
+	telemetry.score_bridge_descriptor_count =
+		static_cast<long long>(state.descriptors.size());
+	telemetry.score_bridge_descriptor_bytes =
+		static_cast<long long>(state.descriptors.size() * sizeof(ScoreBridgeDescriptor));
+	telemetry.score_bridge_target_buffer_bytes =
+		static_cast<long long>(state.targetBuffer.size() * sizeof(int8_t));
+	for (size_t groupIndex = 0; groupIndex < state.groups.size(); ++groupIndex) {
+		telemetry.score_bridge_query_buffer_bytes +=
+			static_cast<long long>(state.groups[groupIndex].key.query.size() * sizeof(int8_t));
+	}
+	if (state.descriptors.empty()) {
+		ssw_add_telemetry_delta(&telemetry);
+		return;
+	}
+
+	for (size_t groupIndex = 0; groupIndex < state.groups.size(); ++groupIndex) {
+		const ScoreBridgeGroup& group = state.groups[groupIndex];
+		const size_t requestCount = group.descriptorIndexes.size();
+		if (requestCount == 0) {
+			continue;
+		}
+
+		std::vector<int8_t> queries;
+		std::vector<int> queryOffsets;
+		std::vector<int> queryLengths;
+		std::vector<int> refOffsets;
+		std::vector<int> refLengths;
+		queries.reserve(group.key.query.size());
+		queryOffsets.reserve(requestCount);
+		queryLengths.reserve(requestCount);
+		refOffsets.reserve(requestCount);
+		refLengths.reserve(requestCount);
+
+		const SswTelemetryClock::time_point packStart = SswTelemetryClock::now();
+		queries.insert(queries.end(), group.key.query.begin(), group.key.query.end());
+		for (size_t item = 0; item < requestCount; ++item) {
+			const ScoreBridgeDescriptor& descriptor =
+				state.descriptors[group.descriptorIndexes[item]];
+			queryOffsets.push_back(0);
+			queryLengths.push_back(static_cast<int>(group.key.query.size()));
+			refOffsets.push_back(descriptor.targetOffset);
+			refLengths.push_back(descriptor.targetLength);
+		}
+		const SswTelemetryClock::time_point packEnd = SswTelemetryClock::now();
+		telemetry.score_bridge_pack_seconds += ssw_elapsed_seconds(packStart, packEnd);
+
+		std::vector<PreAlignCudaForwardScoreEndResult> gpuResults;
+		PreAlignCudaBatchResult batchResult;
+		std::string cudaError;
+		const bool ok = prealign_cuda_forward_score_end_batch(
+			ssw_forward_score_gpu_shadow_device_runtime(),
+			queries.data(),
+			queryOffsets.data(),
+			queryLengths.data(),
+			state.targetBuffer.data(),
+			refOffsets.data(),
+			refLengths.data(),
+			static_cast<int>(requestCount),
+			group.key.scoreMatrix.data(),
+			group.key.scoreMatrixSize,
+			group.key.gapOpen,
+			group.key.gapExtend,
+			&gpuResults,
+			&batchResult,
+			&cudaError);
+		if (!ok || gpuResults.size() != requestCount) {
+			telemetry.score_bridge_unsupported_requests +=
+				static_cast<long long>(requestCount);
+			continue;
+		}
+
+		const SswTelemetryClock::time_point unpackStart = SswTelemetryClock::now();
+		for (size_t item = 0; item < requestCount; ++item) {
+			const ScoreBridgeDescriptor& descriptor =
+				state.descriptors[group.descriptorIndexes[item]];
+			const PreAlignCudaForwardScoreEndResult& gpuResult = gpuResults[item];
+			const bool scoreMismatch = gpuResult.score != static_cast<int>(descriptor.cpuScore);
+			const bool endpointMismatch =
+				gpuResult.refEnd != descriptor.cpuRefEnd ||
+				gpuResult.readEnd != descriptor.cpuReadEnd;
+			telemetry.score_bridge_score_mismatches += scoreMismatch ? 1 : 0;
+			telemetry.score_bridge_endpoint_mismatches += endpointMismatch ? 1 : 0;
+		}
+		const SswTelemetryClock::time_point unpackEnd = SswTelemetryClock::now();
+
+		telemetry.score_bridge_h2d_seconds += batchResult.h2dSeconds;
+		telemetry.score_bridge_kernel_seconds += batchResult.kernelSeconds;
+		telemetry.score_bridge_d2h_seconds += batchResult.d2hSeconds;
+		telemetry.score_bridge_unpack_seconds +=
+			ssw_elapsed_seconds(unpackStart, unpackEnd);
+		telemetry.score_bridge_total_seconds += batchResult.totalSeconds;
+	}
+
+	ssw_add_telemetry_delta(&telemetry);
+}
+
 ssw_telemetry_delta ssw_snapshot_telemetry(void) {
 	ssw_forward_score_gpu_batch_shadow_flush();
+	ssw_score_bridge_gpu_shadow_flush();
 	std::lock_guard<std::mutex> lock(g_sswTelemetryMutex);
 	return g_sswTelemetry;
 }
@@ -1923,6 +2218,14 @@ s_align* ssw_align(const s_profile* prof,
 	                                          bests,
 	                                          forwardCpuSeconds,
 	                                          &telemetry);
+	ssw_score_bridge_gpu_shadow_record(prof,
+	                                   ref,
+	                                   refLen,
+	                                   weight_gapO,
+	                                   weight_gapE,
+	                                   bests,
+	                                   forwardCpuSeconds,
+	                                   &telemetry);
 	r->score1 = bests[0].score;
 	r->ref_end1 = bests[0].ref;
 	r->read_end1 = bests[0].read;
