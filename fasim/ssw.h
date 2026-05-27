@@ -143,6 +143,13 @@ extern "C" {
 		double forward_score_batch_unpack_seconds;
 		double forward_score_batch_total_seconds;
 		double forward_score_batch_cpu_reference_seconds;
+		double score_bridge_pack_seconds;
+		double score_bridge_h2d_seconds;
+		double score_bridge_kernel_seconds;
+		double score_bridge_d2h_seconds;
+		double score_bridge_unpack_seconds;
+		double score_bridge_total_seconds;
+		double score_bridge_cpu_reference_seconds;
 		long long byte_forward_calls;
 		long long word_forward_calls;
 		long long reverse_calls;
@@ -159,6 +166,17 @@ extern "C" {
 		long long forward_score_batch_score_mismatches;
 		long long forward_score_batch_endpoint_mismatches;
 		long long forward_score_batch_unsupported_requests;
+		long long score_bridge_shadow_enabled;
+		long long score_bridge_requests;
+		long long score_bridge_cells;
+		long long score_bridge_groups;
+		long long score_bridge_descriptor_count;
+		long long score_bridge_descriptor_bytes;
+		long long score_bridge_query_buffer_bytes;
+		long long score_bridge_target_buffer_bytes;
+		long long score_bridge_score_mismatches;
+		long long score_bridge_endpoint_mismatches;
+		long long score_bridge_unsupported_requests;
 	} ssw_telemetry_delta;
 
 	void ssw_reset_telemetry(void);

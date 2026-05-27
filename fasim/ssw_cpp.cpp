@@ -635,6 +635,28 @@ namespace StripedSmithWaterman {
 			sswSnapshot.forward_score_batch_endpoint_mismatches;
 		snapshot.forwardScoreBatchUnsupportedRequests =
 			sswSnapshot.forward_score_batch_unsupported_requests;
+		snapshot.scoreBridgeShadowEnabled =
+			sswSnapshot.score_bridge_shadow_enabled != 0;
+		snapshot.scoreBridgeRequests = sswSnapshot.score_bridge_requests;
+		snapshot.scoreBridgeCells = sswSnapshot.score_bridge_cells;
+		snapshot.scoreBridgeGroups = sswSnapshot.score_bridge_groups;
+		snapshot.scoreBridgeDescriptorCount = sswSnapshot.score_bridge_descriptor_count;
+		snapshot.scoreBridgeDescriptorBytes = sswSnapshot.score_bridge_descriptor_bytes;
+		snapshot.scoreBridgeQueryBufferBytes = sswSnapshot.score_bridge_query_buffer_bytes;
+		snapshot.scoreBridgeTargetBufferBytes = sswSnapshot.score_bridge_target_buffer_bytes;
+		snapshot.scoreBridgePackSeconds = sswSnapshot.score_bridge_pack_seconds;
+		snapshot.scoreBridgeH2DSeconds = sswSnapshot.score_bridge_h2d_seconds;
+		snapshot.scoreBridgeKernelSeconds = sswSnapshot.score_bridge_kernel_seconds;
+		snapshot.scoreBridgeD2HSeconds = sswSnapshot.score_bridge_d2h_seconds;
+		snapshot.scoreBridgeUnpackSeconds = sswSnapshot.score_bridge_unpack_seconds;
+		snapshot.scoreBridgeTotalSeconds = sswSnapshot.score_bridge_total_seconds;
+		snapshot.scoreBridgeCpuReferenceSeconds =
+			sswSnapshot.score_bridge_cpu_reference_seconds;
+		snapshot.scoreBridgeScoreMismatches = sswSnapshot.score_bridge_score_mismatches;
+		snapshot.scoreBridgeEndpointMismatches =
+			sswSnapshot.score_bridge_endpoint_mismatches;
+		snapshot.scoreBridgeUnsupportedRequests =
+			sswSnapshot.score_bridge_unsupported_requests;
 		snapshot.byteForwardCalls = sswSnapshot.byte_forward_calls;
 		snapshot.wordForwardCalls = sswSnapshot.word_forward_calls;
 		snapshot.reverseCalls = sswSnapshot.reverse_calls;

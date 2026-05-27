@@ -81,6 +81,24 @@ namespace StripedSmithWaterman {
 			, forwardScoreBatchScoreMismatches(0)
 			, forwardScoreBatchEndpointMismatches(0)
 			, forwardScoreBatchUnsupportedRequests(0)
+			, scoreBridgeShadowEnabled(false)
+			, scoreBridgeRequests(0)
+			, scoreBridgeCells(0)
+			, scoreBridgeGroups(0)
+			, scoreBridgeDescriptorCount(0)
+			, scoreBridgeDescriptorBytes(0)
+			, scoreBridgeQueryBufferBytes(0)
+			, scoreBridgeTargetBufferBytes(0)
+			, scoreBridgePackSeconds(0.0)
+			, scoreBridgeH2DSeconds(0.0)
+			, scoreBridgeKernelSeconds(0.0)
+			, scoreBridgeD2HSeconds(0.0)
+			, scoreBridgeUnpackSeconds(0.0)
+			, scoreBridgeTotalSeconds(0.0)
+			, scoreBridgeCpuReferenceSeconds(0.0)
+			, scoreBridgeScoreMismatches(0)
+			, scoreBridgeEndpointMismatches(0)
+			, scoreBridgeUnsupportedRequests(0)
 			, convertSeconds(0.0)
 			, cleanupSeconds(0.0)
 			, profileReuseShadowEnabled(false)
@@ -147,6 +165,24 @@ namespace StripedSmithWaterman {
 		long long forwardScoreBatchScoreMismatches;
 		long long forwardScoreBatchEndpointMismatches;
 		long long forwardScoreBatchUnsupportedRequests;
+		bool scoreBridgeShadowEnabled;
+		long long scoreBridgeRequests;
+		long long scoreBridgeCells;
+		long long scoreBridgeGroups;
+		long long scoreBridgeDescriptorCount;
+		long long scoreBridgeDescriptorBytes;
+		long long scoreBridgeQueryBufferBytes;
+		long long scoreBridgeTargetBufferBytes;
+		double scoreBridgePackSeconds;
+		double scoreBridgeH2DSeconds;
+		double scoreBridgeKernelSeconds;
+		double scoreBridgeD2HSeconds;
+		double scoreBridgeUnpackSeconds;
+		double scoreBridgeTotalSeconds;
+		double scoreBridgeCpuReferenceSeconds;
+		long long scoreBridgeScoreMismatches;
+		long long scoreBridgeEndpointMismatches;
+		long long scoreBridgeUnsupportedRequests;
 		double convertSeconds;
 		double cleanupSeconds;
 		bool profileReuseShadowEnabled;

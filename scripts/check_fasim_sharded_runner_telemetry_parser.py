@@ -68,6 +68,24 @@ def main() -> int:
             "benchmark.fasim_forward_score_batch_score_mismatches=0",
             "benchmark.fasim_forward_score_batch_endpoint_mismatches=1",
             "benchmark.fasim_forward_score_batch_unsupported_requests=2",
+            "benchmark.fasim_score_bridge_shadow_enabled=1",
+            "benchmark.fasim_score_bridge_requests=7",
+            "benchmark.fasim_score_bridge_cells=7000",
+            "benchmark.fasim_score_bridge_groups=1",
+            "benchmark.fasim_score_bridge_descriptor_count=7",
+            "benchmark.fasim_score_bridge_descriptor_bytes=336",
+            "benchmark.fasim_score_bridge_query_buffer_bytes=42",
+            "benchmark.fasim_score_bridge_target_buffer_bytes=700",
+            "benchmark.fasim_score_bridge_pack_seconds=0.005000",
+            "benchmark.fasim_score_bridge_h2d_seconds=0.022000",
+            "benchmark.fasim_score_bridge_kernel_seconds=0.032000",
+            "benchmark.fasim_score_bridge_d2h_seconds=0.042000",
+            "benchmark.fasim_score_bridge_unpack_seconds=0.006000",
+            "benchmark.fasim_score_bridge_total_seconds=0.107000",
+            "benchmark.fasim_score_bridge_cpu_reference_seconds=0.110000",
+            "benchmark.fasim_score_bridge_score_mismatches=0",
+            "benchmark.fasim_score_bridge_endpoint_mismatches=1",
+            "benchmark.fasim_score_bridge_unsupported_requests=2",
             "benchmark.fasim_align_convert_seconds=0.060000",
             "benchmark.fasim_align_cleanup_seconds=0.005000",
             "benchmark.fasim_align_calls=7",
@@ -142,6 +160,20 @@ def main() -> int:
         assert telemetry["fasim_forward_score_batch_score_mismatches"] == 0, telemetry
         assert telemetry["fasim_forward_score_batch_endpoint_mismatches"] == 1, telemetry
         assert telemetry["fasim_forward_score_batch_unsupported_requests"] == 2, telemetry
+        assert telemetry["fasim_score_bridge_shadow_enabled"] == 1, telemetry
+        assert telemetry["fasim_score_bridge_requests"] == 7, telemetry
+        assert telemetry["fasim_score_bridge_cells"] == 7000, telemetry
+        assert telemetry["fasim_score_bridge_groups"] == 1, telemetry
+        assert telemetry["fasim_score_bridge_descriptor_count"] == 7, telemetry
+        assert telemetry["fasim_score_bridge_descriptor_bytes"] == 336, telemetry
+        assert telemetry["fasim_score_bridge_query_buffer_bytes"] == 42, telemetry
+        assert telemetry["fasim_score_bridge_target_buffer_bytes"] == 700, telemetry
+        assert telemetry["fasim_score_bridge_pack_seconds"] == 0.005, telemetry
+        assert telemetry["fasim_score_bridge_total_seconds"] == 0.107, telemetry
+        assert telemetry["fasim_score_bridge_cpu_reference_seconds"] == 0.11, telemetry
+        assert telemetry["fasim_score_bridge_score_mismatches"] == 0, telemetry
+        assert telemetry["fasim_score_bridge_endpoint_mismatches"] == 1, telemetry
+        assert telemetry["fasim_score_bridge_unsupported_requests"] == 2, telemetry
         assert telemetry["fasim_align_calls"] == 7, telemetry
         assert telemetry["fasim_align_byte_forward_calls"] == 5, telemetry
         assert telemetry["fasim_align_word_forward_calls"] == 2, telemetry
@@ -216,6 +248,24 @@ def main() -> int:
         assert summed["fasim_forward_score_batch_score_mismatches"] == 0, summed
         assert summed["fasim_forward_score_batch_endpoint_mismatches"] == 2, summed
         assert summed["fasim_forward_score_batch_unsupported_requests"] == 4, summed
+        assert summed["fasim_score_bridge_shadow_enabled"] == 1, summed
+        assert summed["fasim_score_bridge_requests"] == 14, summed
+        assert summed["fasim_score_bridge_cells"] == 14000, summed
+        assert summed["fasim_score_bridge_groups"] == 2, summed
+        assert summed["fasim_score_bridge_descriptor_count"] == 14, summed
+        assert summed["fasim_score_bridge_descriptor_bytes"] == 672, summed
+        assert summed["fasim_score_bridge_query_buffer_bytes"] == 84, summed
+        assert summed["fasim_score_bridge_target_buffer_bytes"] == 1400, summed
+        assert summed["fasim_score_bridge_pack_seconds"] == 0.01, summed
+        assert summed["fasim_score_bridge_h2d_seconds"] == 0.044, summed
+        assert summed["fasim_score_bridge_kernel_seconds"] == 0.064, summed
+        assert summed["fasim_score_bridge_d2h_seconds"] == 0.084, summed
+        assert summed["fasim_score_bridge_unpack_seconds"] == 0.012, summed
+        assert summed["fasim_score_bridge_total_seconds"] == 0.214, summed
+        assert summed["fasim_score_bridge_cpu_reference_seconds"] == 0.22, summed
+        assert summed["fasim_score_bridge_score_mismatches"] == 0, summed
+        assert summed["fasim_score_bridge_endpoint_mismatches"] == 2, summed
+        assert summed["fasim_score_bridge_unsupported_requests"] == 4, summed
         assert summed["fasim_align_calls"] == 14, summed
         assert summed["fasim_align_byte_forward_calls"] == 10, summed
         assert summed["fasim_align_word_forward_calls"] == 4, summed
@@ -262,6 +312,7 @@ def main() -> int:
         assert run_json["telemetry"]["fasim_prealign_cuda_tasks"] == 12, run_json
         assert run_json["telemetry"]["fasim_align_forward_score_gpu_requests"] == 7, run_json
         assert run_json["telemetry"]["fasim_forward_score_batch_requests"] == 7, run_json
+        assert run_json["telemetry"]["fasim_score_bridge_requests"] == 7, run_json
         assert run_json["telemetry"]["fasim_align_profile_reusable_calls"] == 6, run_json
         assert run_json["telemetry"]["fasim_align_profile_cache_hits"] == 6, run_json
 
@@ -281,6 +332,16 @@ def main() -> int:
                     "fasim_forward_score_batch_score_mismatches": 0,
                     "fasim_forward_score_batch_endpoint_mismatches": 1,
                     "fasim_forward_score_batch_unsupported_requests": 1,
+                    "fasim_score_bridge_requests": 3,
+                    "fasim_score_bridge_cells": 3000,
+                    "fasim_score_bridge_groups": 1,
+                    "fasim_score_bridge_descriptor_count": 3,
+                    "fasim_score_bridge_descriptor_bytes": 144,
+                    "fasim_score_bridge_query_buffer_bytes": 42,
+                    "fasim_score_bridge_target_buffer_bytes": 300,
+                    "fasim_score_bridge_score_mismatches": 0,
+                    "fasim_score_bridge_endpoint_mismatches": 1,
+                    "fasim_score_bridge_unsupported_requests": 1,
                     "fasim_align_profile_build_calls": 2,
                     "fasim_align_profile_unique_keys": 1,
                     "fasim_align_profile_reusable_calls": 1,
@@ -309,6 +370,17 @@ def main() -> int:
         assert worker["fasim_forward_score_batch_score_mismatches"] == 0, worker
         assert worker["fasim_forward_score_batch_endpoint_mismatches"] == 2, worker
         assert worker["fasim_forward_score_batch_unsupported_requests"] == 3, worker
+        assert worker["fasim_score_bridge_shadow_enabled"] == 1, worker
+        assert worker["fasim_score_bridge_requests"] == 10, worker
+        assert worker["fasim_score_bridge_cells"] == 10000, worker
+        assert worker["fasim_score_bridge_groups"] == 2, worker
+        assert worker["fasim_score_bridge_descriptor_count"] == 10, worker
+        assert worker["fasim_score_bridge_descriptor_bytes"] == 480, worker
+        assert worker["fasim_score_bridge_query_buffer_bytes"] == 84, worker
+        assert worker["fasim_score_bridge_target_buffer_bytes"] == 1000, worker
+        assert worker["fasim_score_bridge_score_mismatches"] == 0, worker
+        assert worker["fasim_score_bridge_endpoint_mismatches"] == 2, worker
+        assert worker["fasim_score_bridge_unsupported_requests"] == 3, worker
         assert worker["fasim_align_profile_build_calls"] == 9, worker
         assert worker["fasim_align_profile_unique_keys"] == 2, worker
         assert worker["fasim_align_profile_reusable_calls"] == 7, worker
