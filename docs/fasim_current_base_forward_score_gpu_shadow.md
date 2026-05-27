@@ -29,6 +29,14 @@ This is not a real optimization path and it is not a replacement for
 CUDA probe per forward-score request so the report can expose staging, launch,
 kernel, and D2H costs before any batched bridge is considered.
 
+The performance conclusion for this implementation is deliberately hard:
+
+```text
+FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW=1:
+  correctness smoke: clean
+  performance smoke: no-go for the current per-request implementation
+```
+
 ## Telemetry
 
 The Fasim process emits these fields on stderr:
@@ -72,30 +80,49 @@ CPU forward score/end seconds: ~0.005s
 GPU shadow total seconds: ~3.1s
 ```
 
-This result is expected for the first probe. It shows the score/end CUDA shadow
-can match the CPU authority on the small fixture, but the per-request GPU path
-is far slower after allocation, H2D, launch, kernel, and D2H overhead. It should
-not be used as a performance mode.
+This result proves two separate facts:
+
+```text
+score/end contract:
+  initially alignable
+
+current per-request GPU shadow:
+  no performance value
+```
+
+The current implementation is slower by orders of magnitude on the smoke
+fixture. Running this same per-request shadow on larger real workloads would
+mostly measure the same launch, staging, synchronization, and copy overhead at a
+larger scale. It should not be used as a performance candidate or real opt-in.
 
 ## Decision Use
 
-Use this telemetry to decide whether a future batched score-only bridge is worth
-designing.
+Use this telemetry only as a contract and shape probe. It is not useful to
+advance the same per-request implementation into full-workload performance
+characterization.
 
-Continue only if real-workload characterization shows:
+The only GPU-score follow-up with new information is a batched, contiguous,
+query-reuse shadow that answers:
+
+```text
+many forward score/end requests -> one or few GPU kernels
+```
+
+Continue the GPU-score line only if a future batched shadow shows:
 
 ```text
 score_mismatches = 0
 digest unchanged
 unsupported_requests = 0 or explainable
-projected batched GPU total < CPU forward score/end time
+batched GPU total < CPU forward score/end time
 ```
 
 Stop or redesign if:
 
 ```text
 score mismatches appear
-GPU total remains slower after batching/staging costs
+batched GPU total remains slower after pack/H2D/kernel/D2H/unpack costs
+pack/H2D/D2H dominates and no device-resident request layout is available
 endpoint mismatches are needed for any proposed real output path
 ```
 
@@ -110,4 +137,3 @@ Accelign or Parasail real output authority
 single-process multi-GPU policy
 historical final speed-stack env claims
 ```
-

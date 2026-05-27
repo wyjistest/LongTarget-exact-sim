@@ -159,6 +159,8 @@ After enabling the profile cache, re-measure the remaining aligner internals
 before choosing the next optimization target. If forward score/end remains the
 dominant remaining cost, use `FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW=1` only as a
 score/end diagnostic probe. CPU `aligner.Align()` remains the output authority.
+The current per-request shadow implementation is a performance no-go; any
+future GPU score work must first prove a batched, contiguous request shape.
 
 Do not use the current profile-cache result to justify:
 
