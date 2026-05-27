@@ -55,6 +55,19 @@ def main() -> int:
             "benchmark.fasim_align_forward_score_gpu_score_mismatches=0",
             "benchmark.fasim_align_forward_score_gpu_endpoint_mismatches=1",
             "benchmark.fasim_align_forward_score_gpu_unsupported_requests=2",
+            "benchmark.fasim_forward_score_batch_shadow_enabled=1",
+            "benchmark.fasim_forward_score_batch_requests=7",
+            "benchmark.fasim_forward_score_batch_cells=7000",
+            "benchmark.fasim_forward_score_batch_pack_seconds=0.003000",
+            "benchmark.fasim_forward_score_batch_h2d_seconds=0.021000",
+            "benchmark.fasim_forward_score_batch_kernel_seconds=0.031000",
+            "benchmark.fasim_forward_score_batch_d2h_seconds=0.041000",
+            "benchmark.fasim_forward_score_batch_unpack_seconds=0.004000",
+            "benchmark.fasim_forward_score_batch_total_seconds=0.096000",
+            "benchmark.fasim_forward_score_batch_cpu_reference_seconds=0.110000",
+            "benchmark.fasim_forward_score_batch_score_mismatches=0",
+            "benchmark.fasim_forward_score_batch_endpoint_mismatches=1",
+            "benchmark.fasim_forward_score_batch_unsupported_requests=2",
             "benchmark.fasim_align_convert_seconds=0.060000",
             "benchmark.fasim_align_cleanup_seconds=0.005000",
             "benchmark.fasim_align_calls=7",
@@ -120,6 +133,15 @@ def main() -> int:
         assert telemetry["fasim_align_forward_score_gpu_score_mismatches"] == 0, telemetry
         assert telemetry["fasim_align_forward_score_gpu_endpoint_mismatches"] == 1, telemetry
         assert telemetry["fasim_align_forward_score_gpu_unsupported_requests"] == 2, telemetry
+        assert telemetry["fasim_forward_score_batch_shadow_enabled"] == 1, telemetry
+        assert telemetry["fasim_forward_score_batch_requests"] == 7, telemetry
+        assert telemetry["fasim_forward_score_batch_cells"] == 7000, telemetry
+        assert telemetry["fasim_forward_score_batch_pack_seconds"] == 0.003, telemetry
+        assert telemetry["fasim_forward_score_batch_total_seconds"] == 0.096, telemetry
+        assert telemetry["fasim_forward_score_batch_cpu_reference_seconds"] == 0.11, telemetry
+        assert telemetry["fasim_forward_score_batch_score_mismatches"] == 0, telemetry
+        assert telemetry["fasim_forward_score_batch_endpoint_mismatches"] == 1, telemetry
+        assert telemetry["fasim_forward_score_batch_unsupported_requests"] == 2, telemetry
         assert telemetry["fasim_align_calls"] == 7, telemetry
         assert telemetry["fasim_align_byte_forward_calls"] == 5, telemetry
         assert telemetry["fasim_align_word_forward_calls"] == 2, telemetry
@@ -181,6 +203,19 @@ def main() -> int:
         assert summed["fasim_align_forward_score_gpu_score_mismatches"] == 0, summed
         assert summed["fasim_align_forward_score_gpu_endpoint_mismatches"] == 2, summed
         assert summed["fasim_align_forward_score_gpu_unsupported_requests"] == 4, summed
+        assert summed["fasim_forward_score_batch_shadow_enabled"] == 1, summed
+        assert summed["fasim_forward_score_batch_requests"] == 14, summed
+        assert summed["fasim_forward_score_batch_cells"] == 14000, summed
+        assert summed["fasim_forward_score_batch_pack_seconds"] == 0.006, summed
+        assert summed["fasim_forward_score_batch_h2d_seconds"] == 0.042, summed
+        assert summed["fasim_forward_score_batch_kernel_seconds"] == 0.062, summed
+        assert summed["fasim_forward_score_batch_d2h_seconds"] == 0.082, summed
+        assert summed["fasim_forward_score_batch_unpack_seconds"] == 0.008, summed
+        assert summed["fasim_forward_score_batch_total_seconds"] == 0.192, summed
+        assert summed["fasim_forward_score_batch_cpu_reference_seconds"] == 0.22, summed
+        assert summed["fasim_forward_score_batch_score_mismatches"] == 0, summed
+        assert summed["fasim_forward_score_batch_endpoint_mismatches"] == 2, summed
+        assert summed["fasim_forward_score_batch_unsupported_requests"] == 4, summed
         assert summed["fasim_align_calls"] == 14, summed
         assert summed["fasim_align_byte_forward_calls"] == 10, summed
         assert summed["fasim_align_word_forward_calls"] == 4, summed
@@ -226,6 +261,7 @@ def main() -> int:
         run_json = runner._run_to_json(run)
         assert run_json["telemetry"]["fasim_prealign_cuda_tasks"] == 12, run_json
         assert run_json["telemetry"]["fasim_align_forward_score_gpu_requests"] == 7, run_json
+        assert run_json["telemetry"]["fasim_forward_score_batch_requests"] == 7, run_json
         assert run_json["telemetry"]["fasim_align_profile_reusable_calls"] == 6, run_json
         assert run_json["telemetry"]["fasim_align_profile_cache_hits"] == 6, run_json
 
@@ -240,6 +276,11 @@ def main() -> int:
                     "fasim_align_forward_score_gpu_score_mismatches": 0,
                     "fasim_align_forward_score_gpu_endpoint_mismatches": 1,
                     "fasim_align_forward_score_gpu_unsupported_requests": 1,
+                    "fasim_forward_score_batch_requests": 3,
+                    "fasim_forward_score_batch_cells": 3000,
+                    "fasim_forward_score_batch_score_mismatches": 0,
+                    "fasim_forward_score_batch_endpoint_mismatches": 1,
+                    "fasim_forward_score_batch_unsupported_requests": 1,
                     "fasim_align_profile_build_calls": 2,
                     "fasim_align_profile_unique_keys": 1,
                     "fasim_align_profile_reusable_calls": 1,
@@ -262,6 +303,12 @@ def main() -> int:
         assert worker["fasim_align_forward_score_gpu_score_mismatches"] == 0, worker
         assert worker["fasim_align_forward_score_gpu_endpoint_mismatches"] == 2, worker
         assert worker["fasim_align_forward_score_gpu_unsupported_requests"] == 3, worker
+        assert worker["fasim_forward_score_batch_shadow_enabled"] == 1, worker
+        assert worker["fasim_forward_score_batch_requests"] == 10, worker
+        assert worker["fasim_forward_score_batch_cells"] == 10000, worker
+        assert worker["fasim_forward_score_batch_score_mismatches"] == 0, worker
+        assert worker["fasim_forward_score_batch_endpoint_mismatches"] == 2, worker
+        assert worker["fasim_forward_score_batch_unsupported_requests"] == 3, worker
         assert worker["fasim_align_profile_build_calls"] == 9, worker
         assert worker["fasim_align_profile_unique_keys"] == 2, worker
         assert worker["fasim_align_profile_reusable_calls"] == 7, worker

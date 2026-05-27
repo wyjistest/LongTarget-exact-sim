@@ -68,6 +68,19 @@ namespace StripedSmithWaterman {
 			, forwardScoreGpuScoreMismatches(0)
 			, forwardScoreGpuEndpointMismatches(0)
 			, forwardScoreGpuUnsupportedRequests(0)
+			, forwardScoreBatchShadowEnabled(false)
+			, forwardScoreBatchRequests(0)
+			, forwardScoreBatchCells(0)
+			, forwardScoreBatchPackSeconds(0.0)
+			, forwardScoreBatchH2DSeconds(0.0)
+			, forwardScoreBatchKernelSeconds(0.0)
+			, forwardScoreBatchD2HSeconds(0.0)
+			, forwardScoreBatchUnpackSeconds(0.0)
+			, forwardScoreBatchTotalSeconds(0.0)
+			, forwardScoreBatchCpuReferenceSeconds(0.0)
+			, forwardScoreBatchScoreMismatches(0)
+			, forwardScoreBatchEndpointMismatches(0)
+			, forwardScoreBatchUnsupportedRequests(0)
 			, convertSeconds(0.0)
 			, cleanupSeconds(0.0)
 			, profileReuseShadowEnabled(false)
@@ -121,6 +134,19 @@ namespace StripedSmithWaterman {
 		long long forwardScoreGpuScoreMismatches;
 		long long forwardScoreGpuEndpointMismatches;
 		long long forwardScoreGpuUnsupportedRequests;
+		bool forwardScoreBatchShadowEnabled;
+		long long forwardScoreBatchRequests;
+		long long forwardScoreBatchCells;
+		double forwardScoreBatchPackSeconds;
+		double forwardScoreBatchH2DSeconds;
+		double forwardScoreBatchKernelSeconds;
+		double forwardScoreBatchD2HSeconds;
+		double forwardScoreBatchUnpackSeconds;
+		double forwardScoreBatchTotalSeconds;
+		double forwardScoreBatchCpuReferenceSeconds;
+		long long forwardScoreBatchScoreMismatches;
+		long long forwardScoreBatchEndpointMismatches;
+		long long forwardScoreBatchUnsupportedRequests;
 		double convertSeconds;
 		double cleanupSeconds;
 		bool profileReuseShadowEnabled;

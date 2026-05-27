@@ -112,3 +112,46 @@ bool prealign_cuda_forward_score_end(int device,
   }
   return false;
 }
+
+bool prealign_cuda_forward_score_end_batch(int device,
+                                           const int8_t *queriesHost,
+                                           const int *queryOffsetsHost,
+                                           const int *queryLengthsHost,
+                                           const int8_t *refsHost,
+                                           const int *refOffsetsHost,
+                                           const int *refLengthsHost,
+                                           int requestCount,
+                                           const int8_t *scoreMatrixHost,
+                                           int scoreMatrixSize,
+                                           uint8_t gapOpen,
+                                           uint8_t gapExtend,
+                                           vector<PreAlignCudaForwardScoreEndResult> *outResults,
+                                           PreAlignCudaBatchResult *batchResult,
+                                           string *errorOut)
+{
+  (void)device;
+  (void)queriesHost;
+  (void)queryOffsetsHost;
+  (void)queryLengthsHost;
+  (void)refsHost;
+  (void)refOffsetsHost;
+  (void)refLengthsHost;
+  (void)requestCount;
+  (void)scoreMatrixHost;
+  (void)scoreMatrixSize;
+  (void)gapOpen;
+  (void)gapExtend;
+  if(outResults != NULL)
+  {
+    outResults->clear();
+  }
+  if(batchResult != NULL)
+  {
+    *batchResult = PreAlignCudaBatchResult();
+  }
+  if(errorOut != NULL)
+  {
+    *errorOut = "CUDA support not built";
+  }
+  return false;
+}

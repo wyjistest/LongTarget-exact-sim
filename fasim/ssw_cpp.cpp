@@ -611,6 +611,30 @@ namespace StripedSmithWaterman {
 			sswSnapshot.forward_score_gpu_endpoint_mismatches;
 		snapshot.forwardScoreGpuUnsupportedRequests =
 			sswSnapshot.forward_score_gpu_unsupported_requests;
+		snapshot.forwardScoreBatchShadowEnabled =
+			sswSnapshot.forward_score_batch_shadow_enabled != 0;
+		snapshot.forwardScoreBatchRequests = sswSnapshot.forward_score_batch_requests;
+		snapshot.forwardScoreBatchCells = sswSnapshot.forward_score_batch_cells;
+		snapshot.forwardScoreBatchPackSeconds =
+			sswSnapshot.forward_score_batch_pack_seconds;
+		snapshot.forwardScoreBatchH2DSeconds =
+			sswSnapshot.forward_score_batch_h2d_seconds;
+		snapshot.forwardScoreBatchKernelSeconds =
+			sswSnapshot.forward_score_batch_kernel_seconds;
+		snapshot.forwardScoreBatchD2HSeconds =
+			sswSnapshot.forward_score_batch_d2h_seconds;
+		snapshot.forwardScoreBatchUnpackSeconds =
+			sswSnapshot.forward_score_batch_unpack_seconds;
+		snapshot.forwardScoreBatchTotalSeconds =
+			sswSnapshot.forward_score_batch_total_seconds;
+		snapshot.forwardScoreBatchCpuReferenceSeconds =
+			sswSnapshot.forward_score_batch_cpu_reference_seconds;
+		snapshot.forwardScoreBatchScoreMismatches =
+			sswSnapshot.forward_score_batch_score_mismatches;
+		snapshot.forwardScoreBatchEndpointMismatches =
+			sswSnapshot.forward_score_batch_endpoint_mismatches;
+		snapshot.forwardScoreBatchUnsupportedRequests =
+			sswSnapshot.forward_score_batch_unsupported_requests;
 		snapshot.byteForwardCalls = sswSnapshot.byte_forward_calls;
 		snapshot.wordForwardCalls = sswSnapshot.word_forward_calls;
 		snapshot.reverseCalls = sswSnapshot.reverse_calls;
