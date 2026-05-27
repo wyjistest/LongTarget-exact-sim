@@ -35,6 +35,8 @@ workflow:
 | `FASIM_ALIGN_PROFILE_CACHE` | Default-off current-base opt-in cache for repeated `ssw_init()` profiles. |
 | `FASIM_ALIGN_PROFILE_CACHE_VALIDATE` | Default-off correctness audit mode for the profile cache; not a performance mode. |
 | `FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW` | Default-off diagnostic score/end GPU shadow; not a performance mode or output authority. |
+| `FASIM_ALIGN_FORWARD_SCORE_GPU_BATCH_SHADOW` | Default-off diagnostic batched score/end GPU shadow; current implementation is not a performance mode or output authority. |
+| `FASIM_ALIGN_SCORE_BRIDGE_GPU_SHADOW` | Default-off diagnostic low-copy score bridge shadow; current implementation is stopped as a performance path. |
 | `FASIM_CUDA_DEVICE` | Selects the logical CUDA device inside a worker. With sharding this is normally `0`. |
 | `FASIM_CUDA_DEVICES` | In-process CUDA device list for preAlign/topK paths. Do not use it as the recommended multi-GPU mode for current sharded runs. |
 | `FASIM_PREALIGN_CUDA_TOPK` | PreAlign CUDA top-K peak count per task. |
@@ -155,12 +157,42 @@ broader workload and hardware coverage exists.
 
 ## Next Performance Direction
 
-After enabling the profile cache, re-measure the remaining aligner internals
-before choosing the next optimization target. If forward score/end remains the
-dominant remaining cost, use `FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW=1` only as a
-score/end diagnostic probe. CPU `aligner.Align()` remains the output authority.
-The current per-request shadow implementation is a performance no-go; any
-future GPU score work must first prove a batched, contiguous request shape.
+After enabling the profile cache, the remaining aligner internals were
+re-measured and forward score/end remained the largest block. The GPU score
+line then passed through per-request, batched, and low-copy score bridge
+diagnostic shadows. The score/end contract stayed clean, but the current
+implementation did not beat CPU forward score/end on real-workload samples.
+
+Treat the current GPU score bridge line as stopped for performance work:
+
+```text
+FASIM_ALIGN_FORWARD_SCORE_GPU_SHADOW=1:
+  diagnostic only
+
+FASIM_ALIGN_FORWARD_SCORE_GPU_BATCH_SHADOW=1:
+  diagnostic only
+
+FASIM_ALIGN_SCORE_BRIDGE_GPU_SHADOW=1:
+  diagnostic/research only; current implementation is no-go for real opt-in
+```
+
+The current score bridge characterization found:
+
+```text
+digest clean: 12/12
+bridge score mismatches: 0
+bridge endpoint mismatches: 0
+
+rheMac10 top8 full processed rows:
+  2.06-3.07x CPU forward score/end
+
+hg38 chr21+chr22 capped processed-only estimate:
+  1.16-1.51x CPU forward score/end
+```
+
+Only restart GPU score work with a materially different DP execution design
+that is shadow-first, score-clean, and faster than CPU forward score/end on
+real workloads. CPU `aligner.Align()` remains the output authority.
 
 Do not use the current profile-cache result to justify:
 
