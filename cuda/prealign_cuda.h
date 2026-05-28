@@ -32,6 +32,11 @@ struct PreAlignCudaBatchResult
     kernelSeconds(0.0),
     d2hSeconds(0.0),
     totalSeconds(0.0),
+    dynamicSharedMemoryRequired(0),
+    dynamicSharedMemoryLimit(0),
+    deviceSharedMemoryLimit(0),
+    blockDim(0),
+    resourceFitSupported(false),
     usedCuda(false) {}
 
   double gpuSeconds;
@@ -39,6 +44,11 @@ struct PreAlignCudaBatchResult
   double kernelSeconds;
   double d2hSeconds;
   double totalSeconds;
+  size_t dynamicSharedMemoryRequired;
+  size_t dynamicSharedMemoryLimit;
+  size_t deviceSharedMemoryLimit;
+  int blockDim;
+  bool resourceFitSupported;
   bool usedCuda;
 };
 

@@ -957,12 +957,22 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
     }
     return false;
   }
+  if(batchResult != NULL)
+  {
+    batchResult->dynamicSharedMemoryRequired = sharedBytes;
+    batchResult->dynamicSharedMemoryLimit = maxSharedMemoryPerBlock > 0 ?
+      static_cast<size_t>(maxSharedMemoryPerBlock) : 0;
+    batchResult->deviceSharedMemoryLimit = batchResult->dynamicSharedMemoryLimit;
+    batchResult->blockDim = threadsPerBlock;
+    batchResult->resourceFitSupported =
+      maxSharedMemoryPerBlock <= 0 || sharedBytes <= static_cast<size_t>(maxSharedMemoryPerBlock);
+  }
   if(maxSharedMemoryPerBlock > 0 &&
      sharedBytes > static_cast<size_t>(maxSharedMemoryPerBlock))
   {
     if(errorOut != NULL)
     {
-      *errorOut = "query too long or unsupported: preAlign CUDA shared memory requirement exceeds device block limit";
+      *errorOut = "preAlign CUDA shared memory requirement exceeds device block limit";
     }
     return false;
   }
