@@ -209,5 +209,42 @@ assert int(telemetry["fasim_align_profile_cache_fallbacks"]) == 0, telemetry
 PY
 grep -Eq '^benchmark\.fasim_output_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_prealign_cuda_fallbacks=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_unsupported_rule=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_unsupported_sequence_alphabet=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_too_few_tasks=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_too_many_tasks=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_target_too_short=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_query_too_long_or_unsupported=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_cuda_allocation_or_launch=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_empty_candidate_set=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_fallback_unknown=[0-9]+$' "$WORK/on/stderr.log"
+python3 - "$WORK/on/stderr.log" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+telemetry = {}
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^benchmark\.(fasim_[A-Za-z0-9_]+)=(.*)$", line.strip())
+    if match:
+        telemetry[match.group(1)] = match.group(2)
+
+fallbacks = int(telemetry["fasim_prealign_cuda_fallbacks"])
+reason_total = sum(
+    int(telemetry[key])
+    for key in [
+        "fasim_prealign_cuda_fallback_unsupported_rule",
+        "fasim_prealign_cuda_fallback_unsupported_sequence_alphabet",
+        "fasim_prealign_cuda_fallback_too_few_tasks",
+        "fasim_prealign_cuda_fallback_too_many_tasks",
+        "fasim_prealign_cuda_fallback_target_too_short",
+        "fasim_prealign_cuda_fallback_query_too_long_or_unsupported",
+        "fasim_prealign_cuda_fallback_cuda_allocation_or_launch",
+        "fasim_prealign_cuda_fallback_empty_candidate_set",
+        "fasim_prealign_cuda_fallback_unknown",
+    ]
+)
+assert reason_total == fallbacks, telemetry
+PY
 
 echo "ok"
