@@ -36,9 +36,15 @@ def main() -> int:
                 "fasim_prealign_cuda_peak_suppress_bp": 5,
                 "fasim_prealign_cuda_dynamic_smem_required": 131584,
                 "fasim_prealign_cuda_dynamic_smem_limit": 49152,
+                "fasim_prealign_cuda_shared_mem_default_limit": 49152,
+                "fasim_prealign_cuda_shared_mem_optin_limit": 98304,
                 "fasim_prealign_cuda_device_shared_mem_limit": 49152,
                 "fasim_prealign_cuda_block_dim": 32,
                 "fasim_prealign_cuda_resource_fit_supported": 0,
+                "fasim_prealign_cuda_smem_optin_possible": 1,
+                "fasim_prealign_cuda_smem_optin_requested": 1,
+                "fasim_prealign_cuda_smem_optin_active": 0,
+                "fasim_prealign_cuda_smem_optin_fallback_reason": "attribute_set_failed",
                 "fasim_prealign_cuda_total_seconds": 0.0,
                 "fasim_prealign_cuda_kernel_seconds": 0.0,
                 "fasim_align_profile_cache_calls": 100,
@@ -81,9 +87,15 @@ def main() -> int:
         assert row["effective_max_tasks"] == 1024, row
         assert row["dynamic_smem_required"] == 131584, row
         assert row["dynamic_smem_limit"] == 49152, row
+        assert row["shared_mem_default_limit"] == 49152, row
+        assert row["shared_mem_optin_limit"] == 98304, row
         assert row["device_shared_mem_limit"] == 49152, row
         assert row["block_dim"] == 32, row
         assert row["resource_fit_supported"] == 0, row
+        assert row["smem_optin_possible"] == 1, row
+        assert row["smem_optin_requested"] == 1, row
+        assert row["smem_optin_active"] == 0, row
+        assert row["smem_optin_fallback_reason"] == "attribute_set_failed", row
         assert row["prealign_cuda_total_seconds"] == 0.0, row
         assert row["profile_cache_hit_rate"] == 0.99, row
 

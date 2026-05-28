@@ -422,8 +422,15 @@ def _sum_fasim_telemetry(items: list[dict[str, object]]) -> dict[str, object]:
     max_value_keys = {
         "fasim_prealign_cuda_dynamic_smem_required",
         "fasim_prealign_cuda_dynamic_smem_limit",
+        "fasim_prealign_cuda_shared_mem_default_limit",
+        "fasim_prealign_cuda_shared_mem_optin_limit",
         "fasim_prealign_cuda_device_shared_mem_limit",
         "fasim_prealign_cuda_block_dim",
+    }
+    optin_flag_keys = {
+        "fasim_prealign_cuda_smem_optin_possible",
+        "fasim_prealign_cuda_smem_optin_requested",
+        "fasim_prealign_cuda_smem_optin_active",
     }
     min_flag_keys = {
         "fasim_prealign_cuda_resource_fit_supported",
@@ -440,6 +447,8 @@ def _sum_fasim_telemetry(items: list[dict[str, object]]) -> dict[str, object]:
         elif key in flag_keys:
             aggregate[key] = max(int(value) for value in values)
         elif key in max_value_keys:
+            aggregate[key] = max(int(value) for value in values)
+        elif key in optin_flag_keys:
             aggregate[key] = max(int(value) for value in values)
         elif key in min_flag_keys:
             aggregate[key] = min(int(value) for value in values)

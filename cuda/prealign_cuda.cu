@@ -3,6 +3,7 @@
 #include <cuda_runtime.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 
@@ -11,6 +12,12 @@ using Clock = std::chrono::steady_clock;
 
 namespace
 {
+
+static bool prealign_cuda_smem_optin_requested_runtime()
+{
+  const char *env = std::getenv("FASIM_PREALIGN_CUDA_SMEM_OPTIN");
+  return env != NULL && env[0] != '\0' && env[0] != '0';
+}
 
 static __device__ __forceinline__ int cuda_max_int(int a,int b)
 {
@@ -957,18 +964,68 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
     }
     return false;
   }
+  int maxSharedMemoryPerBlockOptin = 0;
+  status = cudaDeviceGetAttribute(&maxSharedMemoryPerBlockOptin,
+                                  cudaDevAttrMaxSharedMemoryPerBlockOptin,
+                                  handle.device);
+  if(status != cudaSuccess)
+  {
+    maxSharedMemoryPerBlockOptin = maxSharedMemoryPerBlock;
+    status = cudaSuccess;
+  }
+  const size_t defaultLimit = maxSharedMemoryPerBlock > 0 ?
+    static_cast<size_t>(maxSharedMemoryPerBlock) : 0;
+  const size_t optinLimit = maxSharedMemoryPerBlockOptin > 0 ?
+    static_cast<size_t>(maxSharedMemoryPerBlockOptin) : defaultLimit;
+  const bool smemOptinRequested = prealign_cuda_smem_optin_requested_runtime();
+  const bool smemOptinPossible =
+    sharedBytes > defaultLimit && optinLimit > defaultLimit && sharedBytes <= optinLimit;
+  bool smemOptinActive = false;
+  string smemOptinFallbackReason = "none";
+  size_t effectiveLimit = defaultLimit;
+  if(smemOptinRequested && smemOptinPossible)
+  {
+    status = cudaFuncSetAttribute(prealign_cuda_topk_kernel,
+                                  cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                  static_cast<int>(sharedBytes));
+    if(status == cudaSuccess)
+    {
+      smemOptinActive = true;
+      effectiveLimit = optinLimit;
+    }
+    else
+    {
+      smemOptinFallbackReason = "attribute_set_failed";
+      status = cudaSuccess;
+    }
+  }
+  else if(smemOptinRequested && sharedBytes > optinLimit)
+  {
+    smemOptinFallbackReason = "required_exceeds_optin_limit";
+  }
+  else if(smemOptinRequested && sharedBytes > defaultLimit && optinLimit <= defaultLimit)
+  {
+    smemOptinFallbackReason = "optin_limit_unavailable";
+  }
+  else if(!smemOptinRequested && smemOptinPossible)
+  {
+    smemOptinFallbackReason = "optin_not_requested";
+  }
   if(batchResult != NULL)
   {
     batchResult->dynamicSharedMemoryRequired = sharedBytes;
-    batchResult->dynamicSharedMemoryLimit = maxSharedMemoryPerBlock > 0 ?
-      static_cast<size_t>(maxSharedMemoryPerBlock) : 0;
-    batchResult->deviceSharedMemoryLimit = batchResult->dynamicSharedMemoryLimit;
+    batchResult->dynamicSharedMemoryLimit = effectiveLimit;
+    batchResult->sharedMemoryDefaultLimit = defaultLimit;
+    batchResult->sharedMemoryOptinLimit = optinLimit;
+    batchResult->deviceSharedMemoryLimit = effectiveLimit;
     batchResult->blockDim = threadsPerBlock;
-    batchResult->resourceFitSupported =
-      maxSharedMemoryPerBlock <= 0 || sharedBytes <= static_cast<size_t>(maxSharedMemoryPerBlock);
+    batchResult->resourceFitSupported = effectiveLimit <= 0 || sharedBytes <= effectiveLimit;
+    batchResult->sharedMemoryOptinPossible = smemOptinPossible;
+    batchResult->sharedMemoryOptinRequested = smemOptinRequested;
+    batchResult->sharedMemoryOptinActive = smemOptinActive;
+    batchResult->sharedMemoryOptinFallbackReason = smemOptinFallbackReason;
   }
-  if(maxSharedMemoryPerBlock > 0 &&
-     sharedBytes > static_cast<size_t>(maxSharedMemoryPerBlock))
+  if(effectiveLimit > 0 && sharedBytes > effectiveLimit)
   {
     if(errorOut != NULL)
     {

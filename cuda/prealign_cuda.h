@@ -34,9 +34,15 @@ struct PreAlignCudaBatchResult
     totalSeconds(0.0),
     dynamicSharedMemoryRequired(0),
     dynamicSharedMemoryLimit(0),
+    sharedMemoryDefaultLimit(0),
+    sharedMemoryOptinLimit(0),
     deviceSharedMemoryLimit(0),
     blockDim(0),
     resourceFitSupported(false),
+    sharedMemoryOptinPossible(false),
+    sharedMemoryOptinRequested(false),
+    sharedMemoryOptinActive(false),
+    sharedMemoryOptinFallbackReason("none"),
     usedCuda(false) {}
 
   double gpuSeconds;
@@ -46,9 +52,15 @@ struct PreAlignCudaBatchResult
   double totalSeconds;
   size_t dynamicSharedMemoryRequired;
   size_t dynamicSharedMemoryLimit;
+  size_t sharedMemoryDefaultLimit;
+  size_t sharedMemoryOptinLimit;
   size_t deviceSharedMemoryLimit;
   int blockDim;
   bool resourceFitSupported;
+  bool sharedMemoryOptinPossible;
+  bool sharedMemoryOptinRequested;
+  bool sharedMemoryOptinActive;
+  std::string sharedMemoryOptinFallbackReason;
   bool usedCuda;
 };
 

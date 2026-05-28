@@ -60,9 +60,15 @@ RAW_FIELDS = [
     "suppress_bp",
     "dynamic_smem_required",
     "dynamic_smem_limit",
+    "shared_mem_default_limit",
+    "shared_mem_optin_limit",
     "device_shared_mem_limit",
     "block_dim",
     "resource_fit_supported",
+    "smem_optin_possible",
+    "smem_optin_requested",
+    "smem_optin_active",
+    "smem_optin_fallback_reason",
     "prealign_cuda_total_seconds",
     "prealign_cuda_kernel_seconds",
     "profile_cache_hit_rate",
@@ -314,12 +320,31 @@ def row_from_runner_report(
         "dynamic_smem_limit": _int(
             telemetry.get("fasim_prealign_cuda_dynamic_smem_limit")
         ),
+        "shared_mem_default_limit": _int(
+            telemetry.get("fasim_prealign_cuda_shared_mem_default_limit")
+        ),
+        "shared_mem_optin_limit": _int(
+            telemetry.get("fasim_prealign_cuda_shared_mem_optin_limit")
+        ),
         "device_shared_mem_limit": _int(
             telemetry.get("fasim_prealign_cuda_device_shared_mem_limit")
         ),
         "block_dim": _int(telemetry.get("fasim_prealign_cuda_block_dim")),
         "resource_fit_supported": _int(
             telemetry.get("fasim_prealign_cuda_resource_fit_supported")
+        ),
+        "smem_optin_possible": _int(
+            telemetry.get("fasim_prealign_cuda_smem_optin_possible")
+        ),
+        "smem_optin_requested": _int(
+            telemetry.get("fasim_prealign_cuda_smem_optin_requested")
+        ),
+        "smem_optin_active": _int(
+            telemetry.get("fasim_prealign_cuda_smem_optin_active")
+        ),
+        "smem_optin_fallback_reason": telemetry.get(
+            "fasim_prealign_cuda_smem_optin_fallback_reason",
+            "none",
         ),
         "prealign_cuda_total_seconds": _num(
             telemetry.get("fasim_prealign_cuda_total_seconds")
