@@ -22,6 +22,15 @@ def main() -> int:
             "benchmark.fasim_prealign_cuda_kernel_seconds=0.120000",
             "benchmark.fasim_prealign_cuda_d2h_seconds=0.020000",
             "benchmark.fasim_prealign_cuda_total_seconds=0.150000",
+            "benchmark.fasim_prealign_cuda_fallback_unsupported_rule=0",
+            "benchmark.fasim_prealign_cuda_fallback_unsupported_sequence_alphabet=0",
+            "benchmark.fasim_prealign_cuda_fallback_too_few_tasks=0",
+            "benchmark.fasim_prealign_cuda_fallback_too_many_tasks=0",
+            "benchmark.fasim_prealign_cuda_fallback_target_too_short=0",
+            "benchmark.fasim_prealign_cuda_fallback_query_too_long_or_unsupported=2",
+            "benchmark.fasim_prealign_cuda_fallback_cuda_allocation_or_launch=1",
+            "benchmark.fasim_prealign_cuda_fallback_empty_candidate_set=0",
+            "benchmark.fasim_prealign_cuda_fallback_unknown=0",
             "benchmark.fasim_extend_threads=2",
             "benchmark.fasim_extend_seconds=0.500000",
             "benchmark.fasim_extend_candidates=4",
@@ -133,6 +142,8 @@ def main() -> int:
         assert telemetry["fasim_prealign_cuda_tasks"] == 12, telemetry
         assert telemetry["fasim_prealign_cuda_batches"] == 3, telemetry
         assert telemetry["fasim_prealign_cuda_kernel_seconds"] == 0.12, telemetry
+        assert telemetry["fasim_prealign_cuda_fallback_query_too_long_or_unsupported"] == 2, telemetry
+        assert telemetry["fasim_prealign_cuda_fallback_cuda_allocation_or_launch"] == 1, telemetry
         assert telemetry["fasim_extend_seconds"] == 0.5, telemetry
         assert telemetry["fasim_extend_candidates"] == 4, telemetry
         assert telemetry["fasim_extend_align_calls"] == 7, telemetry
@@ -207,6 +218,8 @@ def main() -> int:
         assert summed["fasim_prealign_cuda_tasks"] == 24, summed
         assert summed["fasim_prealign_cuda_batches"] == 6, summed
         assert summed["fasim_prealign_cuda_kernel_seconds"] == 0.24, summed
+        assert summed["fasim_prealign_cuda_fallback_query_too_long_or_unsupported"] == 4, summed
+        assert summed["fasim_prealign_cuda_fallback_cuda_allocation_or_launch"] == 2, summed
         assert summed["fasim_extend_seconds"] == 1.0, summed
         assert summed["fasim_extend_candidates"] == 8, summed
         assert summed["fasim_extend_cutlength_attempts"] == 14, summed
@@ -321,6 +334,8 @@ def main() -> int:
                 {"run": run_json},
                 {"run": {**run_json, "telemetry": {
                     "fasim_prealign_cuda_tasks": 4,
+                    "fasim_prealign_cuda_fallback_query_too_long_or_unsupported": 1,
+                    "fasim_prealign_cuda_fallback_cuda_allocation_or_launch": 1,
                     "fasim_extend_align_calls": 2,
                     "fasim_align_forward_score_gpu_requests": 3,
                     "fasim_align_forward_score_gpu_cells": 3000,
@@ -356,6 +371,8 @@ def main() -> int:
             ]
         )
         assert worker["fasim_prealign_cuda_tasks"] == 16, worker
+        assert worker["fasim_prealign_cuda_fallback_query_too_long_or_unsupported"] == 3, worker
+        assert worker["fasim_prealign_cuda_fallback_cuda_allocation_or_launch"] == 2, worker
         assert worker["fasim_extend_align_calls"] == 9, worker
         assert worker["fasim_align_calls"] == 7, worker
         assert worker["fasim_align_forward_score_gpu_shadow_enabled"] == 1, worker

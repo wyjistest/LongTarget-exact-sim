@@ -111,7 +111,16 @@ struct FasimRuntimeTelemetry
         extendRecordsEmitted(0),
         extendEmptyScoreInfo(0),
         outputSeconds(0.0),
-        prealignCudaFallbacks(0)
+        prealignCudaFallbacks(0),
+        prealignCudaFallbackUnsupportedRule(0),
+        prealignCudaFallbackUnsupportedSequenceAlphabet(0),
+        prealignCudaFallbackTooFewTasks(0),
+        prealignCudaFallbackTooManyTasks(0),
+        prealignCudaFallbackTargetTooShort(0),
+        prealignCudaFallbackQueryTooLongOrUnsupported(0),
+        prealignCudaFallbackCudaAllocationOrLaunch(0),
+        prealignCudaFallbackEmptyCandidateSet(0),
+        prealignCudaFallbackUnknown(0)
     {
     }
 
@@ -143,6 +152,15 @@ struct FasimRuntimeTelemetry
     long long extendEmptyScoreInfo;
     double outputSeconds;
     long long prealignCudaFallbacks;
+    long long prealignCudaFallbackUnsupportedRule;
+    long long prealignCudaFallbackUnsupportedSequenceAlphabet;
+    long long prealignCudaFallbackTooFewTasks;
+    long long prealignCudaFallbackTooManyTasks;
+    long long prealignCudaFallbackTargetTooShort;
+    long long prealignCudaFallbackQueryTooLongOrUnsupported;
+    long long prealignCudaFallbackCudaAllocationOrLaunch;
+    long long prealignCudaFallbackEmptyCandidateSet;
+    long long prealignCudaFallbackUnknown;
 };
 
 static FasimRuntimeTelemetry g_fasimTelemetry;
@@ -205,10 +223,87 @@ static inline void fasim_telemetry_add_output_seconds(double seconds)
     g_fasimTelemetry.outputSeconds += seconds;
 }
 
-static inline void fasim_telemetry_add_cuda_fallback()
+enum FasimPrealignCudaFallbackReason
+{
+    FASIM_PREALIGN_CUDA_FALLBACK_UNSUPPORTED_RULE,
+    FASIM_PREALIGN_CUDA_FALLBACK_UNSUPPORTED_SEQUENCE_ALPHABET,
+    FASIM_PREALIGN_CUDA_FALLBACK_TOO_FEW_TASKS,
+    FASIM_PREALIGN_CUDA_FALLBACK_TOO_MANY_TASKS,
+    FASIM_PREALIGN_CUDA_FALLBACK_TARGET_TOO_SHORT,
+    FASIM_PREALIGN_CUDA_FALLBACK_QUERY_TOO_LONG_OR_UNSUPPORTED,
+    FASIM_PREALIGN_CUDA_FALLBACK_CUDA_ALLOCATION_OR_LAUNCH,
+    FASIM_PREALIGN_CUDA_FALLBACK_EMPTY_CANDIDATE_SET,
+    FASIM_PREALIGN_CUDA_FALLBACK_UNKNOWN
+};
+
+static inline void fasim_telemetry_add_cuda_fallback(FasimPrealignCudaFallbackReason reason)
 {
     lock_guard<std::mutex> lock(g_fasimTelemetryMutex);
     g_fasimTelemetry.prealignCudaFallbacks += 1;
+    switch (reason)
+    {
+        case FASIM_PREALIGN_CUDA_FALLBACK_UNSUPPORTED_RULE:
+            g_fasimTelemetry.prealignCudaFallbackUnsupportedRule += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_UNSUPPORTED_SEQUENCE_ALPHABET:
+            g_fasimTelemetry.prealignCudaFallbackUnsupportedSequenceAlphabet += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_TOO_FEW_TASKS:
+            g_fasimTelemetry.prealignCudaFallbackTooFewTasks += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_TOO_MANY_TASKS:
+            g_fasimTelemetry.prealignCudaFallbackTooManyTasks += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_TARGET_TOO_SHORT:
+            g_fasimTelemetry.prealignCudaFallbackTargetTooShort += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_QUERY_TOO_LONG_OR_UNSUPPORTED:
+            g_fasimTelemetry.prealignCudaFallbackQueryTooLongOrUnsupported += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_CUDA_ALLOCATION_OR_LAUNCH:
+            g_fasimTelemetry.prealignCudaFallbackCudaAllocationOrLaunch += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_EMPTY_CANDIDATE_SET:
+            g_fasimTelemetry.prealignCudaFallbackEmptyCandidateSet += 1;
+            break;
+        case FASIM_PREALIGN_CUDA_FALLBACK_UNKNOWN:
+        default:
+            g_fasimTelemetry.prealignCudaFallbackUnknown += 1;
+            break;
+    }
+}
+
+static FasimPrealignCudaFallbackReason fasim_prealign_cuda_reason_from_error(const string &error)
+{
+    string lower = error;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower.find("invalid query") != string::npos ||
+        lower.find("alphabet") != string::npos ||
+        lower.find("query handle") != string::npos ||
+        lower.find("missing profile") != string::npos)
+    {
+        return FASIM_PREALIGN_CUDA_FALLBACK_QUERY_TOO_LONG_OR_UNSUPPORTED;
+    }
+    if (lower.find("invalid target") != string::npos ||
+        lower.find("missing input targets") != string::npos)
+    {
+        return FASIM_PREALIGN_CUDA_FALLBACK_TARGET_TOO_SHORT;
+    }
+    if (lower.find("topk") != string::npos || lower.find("topk too large") != string::npos)
+    {
+        return FASIM_PREALIGN_CUDA_FALLBACK_TOO_MANY_TASKS;
+    }
+    if (lower.find("out of memory") != string::npos ||
+        lower.find("allocation") != string::npos ||
+        lower.find("launch") != string::npos ||
+        lower.find("cuda") != string::npos ||
+        lower.find("device") != string::npos ||
+        lower.find("driver") != string::npos)
+    {
+        return FASIM_PREALIGN_CUDA_FALLBACK_CUDA_ALLOCATION_OR_LAUNCH;
+    }
+    return FASIM_PREALIGN_CUDA_FALLBACK_UNKNOWN;
 }
 
 static void fasim_emit_runtime_telemetry()
@@ -333,6 +428,15 @@ static void fasim_emit_runtime_telemetry()
     cerr << "benchmark.fasim_align_profile_cache_fallbacks=" << alignerSnapshot.profileCacheFallbacks << endl;
     cerr << "benchmark.fasim_output_seconds=" << snapshot.outputSeconds << endl;
     cerr << "benchmark.fasim_prealign_cuda_fallbacks=" << snapshot.prealignCudaFallbacks << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_unsupported_rule=" << snapshot.prealignCudaFallbackUnsupportedRule << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_unsupported_sequence_alphabet=" << snapshot.prealignCudaFallbackUnsupportedSequenceAlphabet << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_too_few_tasks=" << snapshot.prealignCudaFallbackTooFewTasks << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_too_many_tasks=" << snapshot.prealignCudaFallbackTooManyTasks << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_target_too_short=" << snapshot.prealignCudaFallbackTargetTooShort << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_query_too_long_or_unsupported=" << snapshot.prealignCudaFallbackQueryTooLongOrUnsupported << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_cuda_allocation_or_launch=" << snapshot.prealignCudaFallbackCudaAllocationOrLaunch << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_empty_candidate_set=" << snapshot.prealignCudaFallbackEmptyCandidateSet << endl;
+    cerr << "benchmark.fasim_prealign_cuda_fallback_unknown=" << snapshot.prealignCudaFallbackUnknown << endl;
     cerr.flags(oldFlags);
     cerr.precision(oldPrecision);
 }
@@ -1034,7 +1138,7 @@ int main(int argc, char* const* argv)
 					                                                    &cudaError);
 						if (!ok)
 						{
-							fasim_telemetry_add_cuda_fallback();
+							fasim_telemetry_add_cuda_fallback(fasim_prealign_cuda_reason_from_error(cudaError));
 							useCudaBatch = false;
 							maxTasksTotal = 1;
 						}
@@ -1393,7 +1497,16 @@ int main(int argc, char* const* argv)
 					}
 					if (!allOk)
 					{
-						fasim_telemetry_add_cuda_fallback();
+						FasimPrealignCudaFallbackReason fallbackReason = FASIM_PREALIGN_CUDA_FALLBACK_UNKNOWN;
+						for (size_t d = 0; d < cudaDeviceCount; ++d)
+						{
+							if (chunkCount[d] != 0 && !ok[d])
+							{
+								fallbackReason = fasim_prealign_cuda_reason_from_error(cudaErrors[d]);
+								break;
+							}
+						}
+						fasim_telemetry_add_cuda_fallback(fallbackReason);
 						useCudaBatch = false;
 						maxTasksTotal = 1;
 					}
@@ -2133,7 +2246,7 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 					if (!ok)
 					{
 						// Fallback to CPU fastSIM for this batch, then keep using CPU.
-						fasim_telemetry_add_cuda_fallback();
+						fasim_telemetry_add_cuda_fallback(fasim_prealign_cuda_reason_from_error(cudaError));
 						useCudaBatch = false;
 						for (size_t t = 0; t < tasks.size(); ++t)
 					{

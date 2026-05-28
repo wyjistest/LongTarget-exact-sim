@@ -945,6 +945,27 @@ bool prealign_cuda_find_topk_column_maxima(const PreAlignCudaQueryHandle &handle
   size_t sharedBytes = static_cast<size_t>(3) * static_cast<size_t>(handle.segLen) * 32u * sizeof(int16_t);
   sharedBytes = (sharedBytes + sizeof(int) - 1) & ~(static_cast<size_t>(sizeof(int) - 1));
   sharedBytes += static_cast<size_t>(2) * static_cast<size_t>(topK) * sizeof(int);
+  int maxSharedMemoryPerBlock = 0;
+  status = cudaDeviceGetAttribute(&maxSharedMemoryPerBlock,
+                                  cudaDevAttrMaxSharedMemoryPerBlock,
+                                  handle.device);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(maxSharedMemoryPerBlock > 0 &&
+     sharedBytes > static_cast<size_t>(maxSharedMemoryPerBlock))
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "query too long or unsupported: preAlign CUDA shared memory requirement exceeds device block limit";
+    }
+    return false;
+  }
 
   status = cudaEventRecord(context->startEvent);
   if(status == cudaSuccess)
