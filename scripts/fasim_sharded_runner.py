@@ -47,6 +47,11 @@ class Shard:
     estimated_length: int
     estimated_windows: None
     estimated_cells: None
+    group_member_count: int = 1
+    group_member_headers: tuple[str, ...] = ()
+    group_member_names: tuple[str, ...] = ()
+    group_member_ranges: tuple[tuple[int, int], ...] = ()
+    group_member_input_digests: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -226,18 +231,45 @@ def _wrap_sequence(sequence: str, width: int = 80) -> str:
     return "\n".join(sequence[i : i + width] for i in range(0, len(sequence), width))
 
 
-def _write_shard_fastas(records: list[FastaRecord], shard_dir: Path) -> list[Shard]:
+def _record_digest(record: FastaRecord) -> str:
+    return _sha256_text(f"{record.header}\n{record.sequence}\n")
+
+
+def _group_target_name(names: list[str]) -> str:
+    if not names:
+        return "group"
+    if len(names) == 1:
+        return names[0]
+    return f"{names[0]}..{names[-1]}"
+
+
+def _write_shard_fastas(
+    records: list[FastaRecord],
+    shard_dir: Path,
+    *,
+    group_target_records: int | None = None,
+) -> list[Shard]:
     shard_dir.mkdir(parents=True, exist_ok=True)
     shards: list[Shard] = []
+    group_size = group_target_records or 1
+    if group_size < 1:
+        raise ValueError("--group-target-records must be >= 1")
 
-    for idx, record in enumerate(records):
-        target_name, start, end = _parse_target_header(record)
+    for idx, start_idx in enumerate(range(0, len(records), group_size)):
+        members = records[start_idx : start_idx + group_size]
+        parsed = [_parse_target_header(record) for record in members]
+        names = [item[0] for item in parsed]
+        ranges = [(item[1], item[2]) for item in parsed]
+        target_name = _group_target_name(names)
+        start = ranges[0][0]
+        end = ranges[-1][1]
         shard_id = f"shard_{idx:04d}_{_sanitize_for_path(target_name)}"
         shard_path = shard_dir / f"{shard_id}.fa"
-        shard_path.write_text(
-            f"{record.header}\n{_wrap_sequence(record.sequence)}\n",
-            encoding="utf-8",
+        shard_text = "".join(
+            f"{record.header}\n{_wrap_sequence(record.sequence)}\n"
+            for record in members
         )
+        shard_path.write_text(shard_text, encoding="utf-8")
         shards.append(
             Shard(
                 shard_id=shard_id,
@@ -245,9 +277,14 @@ def _write_shard_fastas(records: list[FastaRecord], shard_dir: Path) -> list[Sha
                 target_start=start,
                 target_end=end,
                 shard_fasta_path=shard_path,
-                estimated_length=len(record.sequence),
+                estimated_length=sum(len(record.sequence) for record in members),
                 estimated_windows=None,
                 estimated_cells=None,
+                group_member_count=len(members),
+                group_member_headers=tuple(record.header for record in members),
+                group_member_names=tuple(names),
+                group_member_ranges=tuple(ranges),
+                group_member_input_digests=tuple(_record_digest(record) for record in members),
             )
         )
 
@@ -615,6 +652,11 @@ class RunManifest:
             "env_snapshot": env_overrides,
             "output_mode": args.output_mode,
             "rule": str(args.rule),
+            "target_record_count": sum(
+                int(getattr(shard, "group_member_count", 1)) for shard in shards
+            ),
+            "group_target_records": args.group_target_records,
+            "grouped_shard_count": len(shards),
             "per_shard": [
                 {
                     **_shard_to_json(shard),
@@ -857,6 +899,14 @@ def _build_run_config_digest(
         "rule": str(args.rule),
         "output_mode": args.output_mode,
         "validate_single": bool(args.validate_single),
+        "grouping": {
+            "mode": "target_records" if args.group_target_records else "none",
+            "group_target_records": args.group_target_records,
+            "target_record_count": sum(
+                int(shard.get("group_member_count", 1)) for shard in shard_plan
+            ),
+            "grouped_shard_count": len(shard_plan),
+        },
         "env_overrides": env_overrides,
         "fasim_args": args.fasim_arg,
         "worker_count": worker_count,
@@ -1340,6 +1390,14 @@ def _shard_to_json(shard: Shard) -> dict[str, object]:
         "estimated_length": shard.estimated_length,
         "estimated_windows": shard.estimated_windows,
         "estimated_cells": shard.estimated_cells,
+        "group_member_count": shard.group_member_count,
+        "group_member_headers": list(shard.group_member_headers),
+        "group_member_names": list(shard.group_member_names),
+        "group_member_ranges": [
+            {"start": start, "end": end}
+            for start, end in shard.group_member_ranges
+        ],
+        "group_member_input_digests": list(shard.group_member_input_digests),
     }
 
 
@@ -1400,6 +1458,17 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Number of process-level shard workers to run in parallel.",
+    )
+    parser.add_argument(
+        "--group-target-records",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Default-off tiny-region workload option: group up to N complete "
+            "target FASTA records into each shard FASTA. This does not split "
+            "records, add overlap, or rewrite FASTA headers."
+        ),
     )
     parser.add_argument(
         "--workers-per-gpu",
@@ -1485,6 +1554,8 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("--resume and --force cannot be used together")
     if args.keep_going and args.validate_single:
         raise RuntimeError("--keep-going cannot be combined with --validate-single")
+    if args.group_target_records is not None and args.group_target_records < 1:
+        raise RuntimeError("--group-target-records must be >= 1")
 
     if manifest_enabled and work_dir.exists() and manifest_path.exists() and not args.resume and not args.force:
         raise RuntimeError(
@@ -1519,7 +1590,11 @@ def main(argv: list[str] | None = None) -> int:
         cpu_cores_per_worker=args.cpu_cores_per_worker,
         worker_count=worker_count,
     )
-    shards = _write_shard_fastas(records, work_dir / "shards")
+    shards = _write_shard_fastas(
+        records,
+        work_dir / "shards",
+        group_target_records=args.group_target_records,
+    )
     shard_plan = [_shard_to_json(shard) for shard in shards]
     shard_plan_digest = _json_digest(shard_plan)
     target_digest = _sha256_file(target)
@@ -1765,6 +1840,9 @@ def main(argv: list[str] | None = None) -> int:
         "taskset_enabled": bool(cpu_core_ranges),
         "shard_plan": str(shard_plan_path),
         "shard_plan_digest": shard_plan_digest,
+        "target_record_count": len(records),
+        "group_target_records": args.group_target_records,
+        "grouped_shard_count": len(shards),
         "shard_count": len(shards),
         "shard_ids": [shard.shard_id for shard in shards],
         "per_worker": per_worker,

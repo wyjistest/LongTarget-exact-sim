@@ -1067,6 +1067,10 @@ check-fasim-sharded-runner-resume:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_runner_resume.sh
 
+check-fasim-group-target-records:
+	$(MAKE) build-fasim
+	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_group_target_records.sh
+
 check-fasim-sharded-cpu-affinity:
 	$(MAKE) build-fasim
 	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_cpu_affinity.sh
@@ -1175,7 +1179,7 @@ check-fasim-sharded-runner-telemetry:
 				check-calc-score-cuda-v2-shadow check-benchmark-telemetry check-benchmark-worker-telemetry check-fasim-throughput-preset check-benchmark-throughput-comparator check-fasim-throughput-sweep \
 			check-make-anchor-shards check-summarize-throughput-frontier check-two-stage-frontier-sweep check-summarize-two-stage-frontier check-sim-cuda-initial-proposal-v2-exactness \
 		check-sim-cuda-window-pipeline check-sim-cuda-window-pipeline-overlap check-project-whole-genome-runtime \
-		check-sim-cuda-region-docs check-longtarget-lite-output check-fasim-sharded-runner check-fasim-sharded-scheduler check-fasim-sharded-runner-resume check-fasim-sharded-cpu-affinity check-fasim-sharded-worker-readiness-matrix check-fasim-shard-balance check-fasim-sharded-straggler-analysis check-fasim-sharded-manifest-threadsafe check-fasim-sharded-runner-telemetry-parser check-fasim-forward-score-batch-shadow-characterization-parser check-fasim-score-bridge-characterization-parser check-fasim-shard-coalescing-characterization-parser check-fasim-current-base-prealign-telemetry check-fasim-align-profile-reuse-shadow check-fasim-align-profile-cache check-fasim-forward-score-gpu-shadow check-fasim-forward-score-gpu-batch-shadow check-fasim-score-bridge-shadow check-fasim-sharded-runner-telemetry check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
+		check-sim-cuda-region-docs check-longtarget-lite-output check-fasim-sharded-runner check-fasim-sharded-scheduler check-fasim-sharded-runner-resume check-fasim-group-target-records check-fasim-sharded-cpu-affinity check-fasim-sharded-worker-readiness-matrix check-fasim-shard-balance check-fasim-sharded-straggler-analysis check-fasim-sharded-manifest-threadsafe check-fasim-sharded-runner-telemetry-parser check-fasim-forward-score-batch-shadow-characterization-parser check-fasim-score-bridge-characterization-parser check-fasim-shard-coalescing-characterization-parser check-fasim-current-base-prealign-telemetry check-fasim-align-profile-reuse-shadow check-fasim-align-profile-cache check-fasim-forward-score-gpu-shadow check-fasim-forward-score-gpu-batch-shadow check-fasim-score-bridge-shadow check-fasim-sharded-runner-telemetry check-two-stage-threshold-modes check-two-stage-threshold-heavy-microanchors \
 		check-compare-two-stage-panel-summaries check-summarize-two-stage-panel-decision \
 		check-rerun-two-stage-panel-with-candidate-env check-rerun-two-stage-panel-task-rerun-runtime check-analyze-two-stage-selector-candidate-classes \
 		check-replay-two-stage-non-empty-candidate-classes check-analyze-two-stage-task-ambiguity \

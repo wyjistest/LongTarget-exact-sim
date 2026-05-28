@@ -48,27 +48,30 @@ The runner writes:
 ## Environment
 
 The runner does not default-enable speed options. Pass worker environment
-explicitly:
+explicitly. For the current clean-base CUDA path, the usual local opt-in shape
+is preAlign CUDA plus CPU extension threads and the align profile cache:
 
 ```bash
+env -u FASIM_CUDA_DEVICES \
+FASIM_ENABLE_PREALIGN_CUDA=1 \
+FASIM_EXTEND_THREADS=6 \
+FASIM_ALIGN_PROFILE_CACHE=1 \
 python3 ./scripts/fasim_sharded_runner.py \
   --fasim-bin ./fasim_longtarget_cuda \
   --target targets.fa \
   --rna H19.fa \
   --rule 1 \
   --work-dir .tmp/fasim_sharded \
-  --output-mode lite \
-  --env FASIM_TRANSFERSTRING_TABLE=1 \
-  --env FASIM_GPU_DP_COLUMN_AUTO=1 \
-  --env FASIM_SSW_PROFILE_CACHE=1 \
-  --env FASIM_EXACT_COLUMN_EXTEND_BATCH=1
+  --output-mode lite
 ```
 
-Optional add-ons can also be passed explicitly:
+Equivalent per-worker env overrides can also be passed with repeated `--env`
+arguments:
 
 ```bash
---env FASIM_SSW_AVX2=1 \
---env FASIM_SSW_PROFILE_CONTEXT=1
+--env FASIM_ENABLE_PREALIGN_CUDA=1 \
+--env FASIM_EXTEND_THREADS=6 \
+--env FASIM_ALIGN_PROFILE_CACHE=1
 ```
 
 For process-level worker scheduling, pass explicit worker options. The runner
@@ -86,25 +89,23 @@ python3 ./scripts/fasim_sharded_runner.py \
   --workers 2 \
   --gpu-ids 0,1 \
   --cpu-core-ranges 0-7,8-15 \
-  --env FASIM_TRANSFERSTRING_TABLE=1 \
-  --env FASIM_GPU_DP_COLUMN_AUTO=1 \
-  --env FASIM_SSW_PROFILE_CACHE=1 \
-  --env FASIM_EXACT_COLUMN_EXTEND_BATCH=1
+  --env FASIM_ENABLE_PREALIGN_CUDA=1 \
+  --env FASIM_EXTEND_THREADS=6 \
+  --env FASIM_ALIGN_PROFILE_CACHE=1
 ```
 
 With `--gpu-ids`, each worker is intentionally made a single-visible-GPU
 process: the runner sets `CUDA_VISIBLE_DEVICES=<assigned physical GPU>`, sets
 `FASIM_CUDA_DEVICE=0`, and strips inherited `FASIM_CUDA_DEVICES` from the
-worker environment. This keeps the exact-column batch path on the supported
-single-process/single-GPU contract while using multiple GPUs through
-process-level sharding. CPU core ranges are optional and use `taskset`; provide
-one range per worker when used. When estimated DP cells are unavailable, shard
-assignment falls back to target sequence length.
+worker environment. This keeps multi-GPU use at the process-sharding layer:
+each worker sees one GPU, while the parent runner schedules independent shard
+processes. CPU core ranges are optional and use `taskset`; provide one range
+per worker when used. When estimated DP cells are unavailable, shard assignment
+falls back to target sequence length.
 
-Do not use `FASIM_CUDA_DEVICES=0,1` as the final-stack multi-GPU mode with
-`FASIM_EXACT_COLUMN_EXTEND_BATCH=1`. The in-process multi-GPU topK path does
-not have a paired exact-column batch contract, so the Fasim binary fails closed
-for that combination.
+Do not use parent-level `FASIM_CUDA_DEVICES=0,1` as the recommended current-base
+multi-GPU mode. The current runner policy is process-level sharding, one visible
+GPU per worker.
 
 Use `--workers-per-gpu N` with `--gpu-ids` to derive the worker count as
 `len(gpu_ids) * N`. This is a default-off convenience option and is mutually
@@ -114,6 +115,55 @@ Use `--auto-cpu-core-ranges` with `--cpu-pool` and
 `--cpu-cores-per-worker` to derive one `taskset` range per worker. Explicit
 `--cpu-core-ranges` still works and remains mutually exclusive with auto CPU
 range derivation. Without these CPU options, worker CPU binding remains off.
+
+## Grouped Target Records
+
+`--group-target-records N` is a default-off option for tiny-region workloads
+with many small FASTA records. It groups up to `N` complete target records into
+one worker shard FASTA, reducing subprocess, scheduling, and merge overhead:
+
+```bash
+python3 ./scripts/fasim_sharded_runner.py \
+  --fasim-bin ./fasim_longtarget_cuda \
+  --target tiny_regions.fa \
+  --rna H19.fa \
+  --rule 1 \
+  --work-dir .tmp/fasim_grouped \
+  --output-mode lite \
+  --workers 4 \
+  --gpu-ids 0,1 \
+  --group-target-records 16
+```
+
+This is record grouping, not chunking:
+
+```text
+does:     record1 + record2 + ... + recordN in one shard FASTA
+does not: split one target record, add overlap, or rewrite coordinates
+```
+
+Grouped shard file names may use a synthetic group label, but the FASTA records
+inside each grouped shard preserve the original headers and sequences. The
+canonical merge still sorts and de-duplicates exact output records, independent
+of worker completion order.
+
+Grouped runs report:
+
+```text
+target_record_count
+group_target_records
+grouped_shard_count
+per_shard[*].group_member_count
+per_shard[*].group_member_headers
+per_shard[*].group_member_names
+per_shard[*].group_member_ranges
+per_shard[*].group_member_input_digests
+```
+
+When manifests are enabled, the run config digest includes the grouping mode,
+group size, grouped shard count, shard plan, and group member metadata. Changing
+`--group-target-records` under `--resume` is treated as an incompatible run
+config and reruns the affected shards instead of reusing stale grouped outputs.
 
 ## Manifest and Resume
 
@@ -163,6 +213,7 @@ Run the local check:
 ```bash
 make check-fasim-sharded-runner
 make check-fasim-sharded-scheduler
+make check-fasim-group-target-records
 ```
 
 The check builds `fasim_longtarget_x86`, creates a deterministic two-contig
@@ -173,12 +224,23 @@ The scheduler check runs both the baseline sharded mode and a two-worker
 scheduled mode, then verifies that both merged outputs have the same canonical
 digest and record counts.
 
+The grouped target-record check creates a deterministic three-record target
+fixture, verifies default sharding still produces one shard per record, verifies
+`--group-target-records 2` preserves the single-run digest and original FASTA
+headers, verifies same-config resume reuses grouped shards, and verifies a
+changed group size is rejected by the manifest digest and rerun.
+
 Expected report fields include:
 
 ```text
 shard_count
+target_record_count
+group_target_records
+grouped_shard_count
 shard_ids
 per_shard[*].target_name
+per_shard[*].group_member_count
+per_shard[*].group_member_headers
 per_shard[*].records
 per_shard[*].digest
 worker_count
