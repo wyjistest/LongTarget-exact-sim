@@ -99,9 +99,15 @@ struct FasimRuntimeTelemetry
         prealignCudaTotalSeconds(0.0),
         prealignCudaDynamicSmemRequired(0),
         prealignCudaDynamicSmemLimit(0),
+        prealignCudaSharedMemDefaultLimit(0),
+        prealignCudaSharedMemOptinLimit(0),
         prealignCudaDeviceSharedMemLimit(0),
         prealignCudaBlockDim(0),
         prealignCudaResourceFitSupported(true),
+        prealignCudaSmemOptinPossible(false),
+        prealignCudaSmemOptinRequested(false),
+        prealignCudaSmemOptinActive(false),
+        prealignCudaSmemOptinFallbackReason("none"),
         extendThreads(0),
         extendSeconds(0.0),
         extendCandidates(0),
@@ -144,9 +150,15 @@ struct FasimRuntimeTelemetry
     double prealignCudaTotalSeconds;
     size_t prealignCudaDynamicSmemRequired;
     size_t prealignCudaDynamicSmemLimit;
+    size_t prealignCudaSharedMemDefaultLimit;
+    size_t prealignCudaSharedMemOptinLimit;
     size_t prealignCudaDeviceSharedMemLimit;
     int prealignCudaBlockDim;
     bool prealignCudaResourceFitSupported;
+    bool prealignCudaSmemOptinPossible;
+    bool prealignCudaSmemOptinRequested;
+    bool prealignCudaSmemOptinActive;
+    string prealignCudaSmemOptinFallbackReason;
     int extendThreads;
     double extendSeconds;
     long long extendCandidates;
@@ -208,12 +220,27 @@ static inline void fasim_telemetry_add_cuda_batch(int tasks,const PreAlignCudaBa
         max(g_fasimTelemetry.prealignCudaDynamicSmemRequired,batchResult.dynamicSharedMemoryRequired);
     g_fasimTelemetry.prealignCudaDynamicSmemLimit =
         max(g_fasimTelemetry.prealignCudaDynamicSmemLimit,batchResult.dynamicSharedMemoryLimit);
+    g_fasimTelemetry.prealignCudaSharedMemDefaultLimit =
+        max(g_fasimTelemetry.prealignCudaSharedMemDefaultLimit,batchResult.sharedMemoryDefaultLimit);
+    g_fasimTelemetry.prealignCudaSharedMemOptinLimit =
+        max(g_fasimTelemetry.prealignCudaSharedMemOptinLimit,batchResult.sharedMemoryOptinLimit);
     g_fasimTelemetry.prealignCudaDeviceSharedMemLimit =
         max(g_fasimTelemetry.prealignCudaDeviceSharedMemLimit,batchResult.deviceSharedMemoryLimit);
     g_fasimTelemetry.prealignCudaBlockDim =
         max(g_fasimTelemetry.prealignCudaBlockDim,batchResult.blockDim);
     g_fasimTelemetry.prealignCudaResourceFitSupported =
         g_fasimTelemetry.prealignCudaResourceFitSupported && batchResult.resourceFitSupported;
+    g_fasimTelemetry.prealignCudaSmemOptinPossible =
+        g_fasimTelemetry.prealignCudaSmemOptinPossible || batchResult.sharedMemoryOptinPossible;
+    g_fasimTelemetry.prealignCudaSmemOptinRequested =
+        g_fasimTelemetry.prealignCudaSmemOptinRequested || batchResult.sharedMemoryOptinRequested;
+    g_fasimTelemetry.prealignCudaSmemOptinActive =
+        g_fasimTelemetry.prealignCudaSmemOptinActive || batchResult.sharedMemoryOptinActive;
+    if (g_fasimTelemetry.prealignCudaSmemOptinFallbackReason == "none" &&
+        batchResult.sharedMemoryOptinFallbackReason != "none")
+    {
+        g_fasimTelemetry.prealignCudaSmemOptinFallbackReason = batchResult.sharedMemoryOptinFallbackReason;
+    }
     g_fasimTelemetry.prealignCudaH2DSeconds += batchResult.h2dSeconds;
     g_fasimTelemetry.prealignCudaKernelSeconds += batchResult.kernelSeconds;
     g_fasimTelemetry.prealignCudaD2HSeconds += batchResult.d2hSeconds;
@@ -227,12 +254,27 @@ static inline void fasim_telemetry_add_cuda_resource_probe(const PreAlignCudaBat
         max(g_fasimTelemetry.prealignCudaDynamicSmemRequired,batchResult.dynamicSharedMemoryRequired);
     g_fasimTelemetry.prealignCudaDynamicSmemLimit =
         max(g_fasimTelemetry.prealignCudaDynamicSmemLimit,batchResult.dynamicSharedMemoryLimit);
+    g_fasimTelemetry.prealignCudaSharedMemDefaultLimit =
+        max(g_fasimTelemetry.prealignCudaSharedMemDefaultLimit,batchResult.sharedMemoryDefaultLimit);
+    g_fasimTelemetry.prealignCudaSharedMemOptinLimit =
+        max(g_fasimTelemetry.prealignCudaSharedMemOptinLimit,batchResult.sharedMemoryOptinLimit);
     g_fasimTelemetry.prealignCudaDeviceSharedMemLimit =
         max(g_fasimTelemetry.prealignCudaDeviceSharedMemLimit,batchResult.deviceSharedMemoryLimit);
     g_fasimTelemetry.prealignCudaBlockDim =
         max(g_fasimTelemetry.prealignCudaBlockDim,batchResult.blockDim);
     g_fasimTelemetry.prealignCudaResourceFitSupported =
         g_fasimTelemetry.prealignCudaResourceFitSupported && batchResult.resourceFitSupported;
+    g_fasimTelemetry.prealignCudaSmemOptinPossible =
+        g_fasimTelemetry.prealignCudaSmemOptinPossible || batchResult.sharedMemoryOptinPossible;
+    g_fasimTelemetry.prealignCudaSmemOptinRequested =
+        g_fasimTelemetry.prealignCudaSmemOptinRequested || batchResult.sharedMemoryOptinRequested;
+    g_fasimTelemetry.prealignCudaSmemOptinActive =
+        g_fasimTelemetry.prealignCudaSmemOptinActive || batchResult.sharedMemoryOptinActive;
+    if (g_fasimTelemetry.prealignCudaSmemOptinFallbackReason == "none" &&
+        batchResult.sharedMemoryOptinFallbackReason != "none")
+    {
+        g_fasimTelemetry.prealignCudaSmemOptinFallbackReason = batchResult.sharedMemoryOptinFallbackReason;
+    }
 }
 
 static void fasim_telemetry_add_extend_delta(const FasimExtendTelemetryDelta &delta)
@@ -369,9 +411,15 @@ static void fasim_emit_runtime_telemetry()
     cerr << "benchmark.fasim_prealign_cuda_total_seconds=" << snapshot.prealignCudaTotalSeconds << endl;
     cerr << "benchmark.fasim_prealign_cuda_dynamic_smem_required=" << snapshot.prealignCudaDynamicSmemRequired << endl;
     cerr << "benchmark.fasim_prealign_cuda_dynamic_smem_limit=" << snapshot.prealignCudaDynamicSmemLimit << endl;
+    cerr << "benchmark.fasim_prealign_cuda_shared_mem_default_limit=" << snapshot.prealignCudaSharedMemDefaultLimit << endl;
+    cerr << "benchmark.fasim_prealign_cuda_shared_mem_optin_limit=" << snapshot.prealignCudaSharedMemOptinLimit << endl;
     cerr << "benchmark.fasim_prealign_cuda_device_shared_mem_limit=" << snapshot.prealignCudaDeviceSharedMemLimit << endl;
     cerr << "benchmark.fasim_prealign_cuda_block_dim=" << snapshot.prealignCudaBlockDim << endl;
     cerr << "benchmark.fasim_prealign_cuda_resource_fit_supported=" << (snapshot.prealignCudaResourceFitSupported ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_prealign_cuda_smem_optin_possible=" << (snapshot.prealignCudaSmemOptinPossible ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_prealign_cuda_smem_optin_requested=" << (snapshot.prealignCudaSmemOptinRequested ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_prealign_cuda_smem_optin_active=" << (snapshot.prealignCudaSmemOptinActive ? 1 : 0) << endl;
+    cerr << "benchmark.fasim_prealign_cuda_smem_optin_fallback_reason=" << snapshot.prealignCudaSmemOptinFallbackReason << endl;
     cerr << "benchmark.fasim_extend_threads=" << snapshot.extendThreads << endl;
     cerr << "benchmark.fasim_extend_seconds=" << snapshot.extendSeconds << endl;
     cerr << "benchmark.fasim_extend_candidates=" << snapshot.extendCandidates << endl;
