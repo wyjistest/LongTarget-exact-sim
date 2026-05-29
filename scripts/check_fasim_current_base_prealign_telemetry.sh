@@ -55,6 +55,17 @@ grep -Eq '^benchmark\.fasim_prealign_cuda_h2d_seconds=[0-9]+(\.[0-9]+)?([eE][-+]
 grep -Eq '^benchmark\.fasim_prealign_cuda_kernel_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_prealign_cuda_d2h_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_prealign_cuda_total_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_dynamic_smem_required=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_dynamic_smem_limit=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_shared_mem_default_limit=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_shared_mem_optin_limit=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_device_shared_mem_limit=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_block_dim=[0-9]+$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_resource_fit_supported=[01]$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_smem_optin_possible=[01]$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_smem_optin_requested=[01]$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_smem_optin_active=[01]$' "$WORK/on/stderr.log"
+grep -Eq '^benchmark\.fasim_prealign_cuda_smem_optin_fallback_reason=[a-z0-9_]+$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_extend_threads=2$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_extend_seconds=[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$' "$WORK/on/stderr.log"
 grep -Eq '^benchmark\.fasim_extend_candidates=[0-9]+$' "$WORK/on/stderr.log"
@@ -148,6 +159,17 @@ for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
         telemetry[match.group(1)] = match.group(2)
 
 required = [
+    "fasim_prealign_cuda_dynamic_smem_required",
+    "fasim_prealign_cuda_dynamic_smem_limit",
+    "fasim_prealign_cuda_shared_mem_default_limit",
+    "fasim_prealign_cuda_shared_mem_optin_limit",
+    "fasim_prealign_cuda_device_shared_mem_limit",
+    "fasim_prealign_cuda_block_dim",
+    "fasim_prealign_cuda_resource_fit_supported",
+    "fasim_prealign_cuda_smem_optin_possible",
+    "fasim_prealign_cuda_smem_optin_requested",
+    "fasim_prealign_cuda_smem_optin_active",
+    "fasim_prealign_cuda_smem_optin_fallback_reason",
     "fasim_align_profile_cache_requested",
     "fasim_align_profile_cache_active",
     "fasim_align_profile_cache_validate",
@@ -166,6 +188,23 @@ required = [
 ]
 missing = [key for key in required if key not in telemetry]
 assert not missing, missing
+
+assert int(telemetry["fasim_prealign_cuda_dynamic_smem_required"]) >= 0, telemetry
+assert int(telemetry["fasim_prealign_cuda_dynamic_smem_limit"]) >= 0, telemetry
+assert int(telemetry["fasim_prealign_cuda_shared_mem_default_limit"]) >= 0, telemetry
+assert int(telemetry["fasim_prealign_cuda_shared_mem_optin_limit"]) >= 0, telemetry
+assert int(telemetry["fasim_prealign_cuda_device_shared_mem_limit"]) >= 0, telemetry
+assert int(telemetry["fasim_prealign_cuda_block_dim"]) >= 0, telemetry
+assert int(telemetry["fasim_prealign_cuda_resource_fit_supported"]) in (0, 1), telemetry
+assert int(telemetry["fasim_prealign_cuda_smem_optin_possible"]) in (0, 1), telemetry
+assert int(telemetry["fasim_prealign_cuda_smem_optin_requested"]) in (0, 1), telemetry
+assert int(telemetry["fasim_prealign_cuda_smem_optin_active"]) in (0, 1), telemetry
+assert telemetry["fasim_prealign_cuda_smem_optin_fallback_reason"], telemetry
+if int(telemetry["fasim_prealign_cuda_dynamic_smem_limit"]) > 0:
+    assert (
+        int(telemetry["fasim_prealign_cuda_device_shared_mem_limit"])
+        >= int(telemetry["fasim_prealign_cuda_dynamic_smem_limit"])
+    ), telemetry
 
 cache_enabled = os.environ.get("FASIM_ALIGN_PROFILE_CACHE", "") not in ("", "0")
 validate_enabled = os.environ.get("FASIM_ALIGN_PROFILE_CACHE_VALIDATE", "") not in ("", "0")

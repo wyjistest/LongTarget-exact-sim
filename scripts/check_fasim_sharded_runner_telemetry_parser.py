@@ -22,6 +22,17 @@ def main() -> int:
             "benchmark.fasim_prealign_cuda_kernel_seconds=0.120000",
             "benchmark.fasim_prealign_cuda_d2h_seconds=0.020000",
             "benchmark.fasim_prealign_cuda_total_seconds=0.150000",
+            "benchmark.fasim_prealign_cuda_dynamic_smem_required=131584",
+            "benchmark.fasim_prealign_cuda_dynamic_smem_limit=49152",
+            "benchmark.fasim_prealign_cuda_shared_mem_default_limit=49152",
+            "benchmark.fasim_prealign_cuda_shared_mem_optin_limit=98304",
+            "benchmark.fasim_prealign_cuda_device_shared_mem_limit=49152",
+            "benchmark.fasim_prealign_cuda_block_dim=32",
+            "benchmark.fasim_prealign_cuda_resource_fit_supported=0",
+            "benchmark.fasim_prealign_cuda_smem_optin_possible=1",
+            "benchmark.fasim_prealign_cuda_smem_optin_requested=1",
+            "benchmark.fasim_prealign_cuda_smem_optin_active=0",
+            "benchmark.fasim_prealign_cuda_smem_optin_fallback_reason=attribute_set_failed",
             "benchmark.fasim_prealign_cuda_fallback_unsupported_rule=0",
             "benchmark.fasim_prealign_cuda_fallback_unsupported_sequence_alphabet=0",
             "benchmark.fasim_prealign_cuda_fallback_too_few_tasks=0",
@@ -142,6 +153,17 @@ def main() -> int:
         assert telemetry["fasim_prealign_cuda_tasks"] == 12, telemetry
         assert telemetry["fasim_prealign_cuda_batches"] == 3, telemetry
         assert telemetry["fasim_prealign_cuda_kernel_seconds"] == 0.12, telemetry
+        assert telemetry["fasim_prealign_cuda_dynamic_smem_required"] == 131584, telemetry
+        assert telemetry["fasim_prealign_cuda_dynamic_smem_limit"] == 49152, telemetry
+        assert telemetry["fasim_prealign_cuda_shared_mem_default_limit"] == 49152, telemetry
+        assert telemetry["fasim_prealign_cuda_shared_mem_optin_limit"] == 98304, telemetry
+        assert telemetry["fasim_prealign_cuda_device_shared_mem_limit"] == 49152, telemetry
+        assert telemetry["fasim_prealign_cuda_block_dim"] == 32, telemetry
+        assert telemetry["fasim_prealign_cuda_resource_fit_supported"] == 0, telemetry
+        assert telemetry["fasim_prealign_cuda_smem_optin_possible"] == 1, telemetry
+        assert telemetry["fasim_prealign_cuda_smem_optin_requested"] == 1, telemetry
+        assert telemetry["fasim_prealign_cuda_smem_optin_active"] == 0, telemetry
+        assert telemetry["fasim_prealign_cuda_smem_optin_fallback_reason"] == "attribute_set_failed", telemetry
         assert telemetry["fasim_prealign_cuda_fallback_query_too_long_or_unsupported"] == 2, telemetry
         assert telemetry["fasim_prealign_cuda_fallback_cuda_allocation_or_launch"] == 1, telemetry
         assert telemetry["fasim_extend_seconds"] == 0.5, telemetry
@@ -212,12 +234,36 @@ def main() -> int:
         assert telemetry["fasim_align_profile_cache_digest_mismatches"] == 0, telemetry
         assert telemetry["fasim_align_profile_cache_fallbacks"] == 0, telemetry
 
-        summed = runner._sum_fasim_telemetry([telemetry, telemetry])
+        second_telemetry = {
+            **telemetry,
+            "fasim_prealign_cuda_dynamic_smem_required": 262144,
+            "fasim_prealign_cuda_dynamic_smem_limit": 65536,
+            "fasim_prealign_cuda_shared_mem_default_limit": 65536,
+            "fasim_prealign_cuda_shared_mem_optin_limit": 163840,
+            "fasim_prealign_cuda_device_shared_mem_limit": 65536,
+            "fasim_prealign_cuda_block_dim": 64,
+            "fasim_prealign_cuda_resource_fit_supported": 1,
+            "fasim_prealign_cuda_smem_optin_possible": 0,
+            "fasim_prealign_cuda_smem_optin_requested": 0,
+            "fasim_prealign_cuda_smem_optin_active": 1,
+        }
+        summed = runner._sum_fasim_telemetry([telemetry, second_telemetry])
         assert summed["fasim_prealign_cuda_requested"] == 1, summed
         assert summed["fasim_prealign_cuda_active"] == 1, summed
         assert summed["fasim_prealign_cuda_tasks"] == 24, summed
         assert summed["fasim_prealign_cuda_batches"] == 6, summed
         assert summed["fasim_prealign_cuda_kernel_seconds"] == 0.24, summed
+        assert summed["fasim_prealign_cuda_dynamic_smem_required"] == 262144, summed
+        assert summed["fasim_prealign_cuda_dynamic_smem_limit"] == 65536, summed
+        assert summed["fasim_prealign_cuda_shared_mem_default_limit"] == 65536, summed
+        assert summed["fasim_prealign_cuda_shared_mem_optin_limit"] == 163840, summed
+        assert summed["fasim_prealign_cuda_device_shared_mem_limit"] == 65536, summed
+        assert summed["fasim_prealign_cuda_block_dim"] == 64, summed
+        assert summed["fasim_prealign_cuda_resource_fit_supported"] == 0, summed
+        assert summed["fasim_prealign_cuda_smem_optin_possible"] == 1, summed
+        assert summed["fasim_prealign_cuda_smem_optin_requested"] == 1, summed
+        assert summed["fasim_prealign_cuda_smem_optin_active"] == 1, summed
+        assert summed["fasim_prealign_cuda_smem_optin_fallback_reason"] == "attribute_set_failed", summed
         assert summed["fasim_prealign_cuda_fallback_query_too_long_or_unsupported"] == 4, summed
         assert summed["fasim_prealign_cuda_fallback_cuda_allocation_or_launch"] == 2, summed
         assert summed["fasim_extend_seconds"] == 1.0, summed
