@@ -301,15 +301,52 @@ Enable the CUDA preAlign path at runtime (useful when you have many regions to p
 FASIM_OUTPUT_MODE=tfosorted FASIM_ENABLE_PREALIGN_CUDA=1 FASIM_VERBOSE=0 ./fasim_longtarget_cuda -f1 testDNA.fa -f2 H19.fa -r 0 -O /tmp/out
 ```
 
+This Fasim CUDA path only accelerates the preAlign stage. It is separate from
+the LongTarget CUDA exact/SIM paths (`LONGTARGET_ENABLE_CUDA`,
+`LONGTARGET_ENABLE_SIM_CUDA`, etc.). On the local 2x RTX 4090 host, recent
+single-worker Fasim batch probes showed end-to-end `FASIM_ENABLE_PREALIGN_CUDA`
+speedups of about `1.44x` for 64 entries and `1.48x` for 256 entries; the
+Fasim process appeared in `nvidia-smi pmon`, but GPU SM utilization did not stay
+saturated. By contrast, LongTarget exact CUDA probes can drive the GPU to high
+SM utilization. Do not interpret Fasim preAlign CUDA as a general "Fasim GPU
+5x" path.
+
 Tuning knobs:
 - `FASIM_CUDA_DEVICE`: CUDA device index (falls back to `LONGTARGET_CUDA_DEVICE`, else 0)
-- `FASIM_CUDA_DEVICES`: comma-separated CUDA devices for multi-GPU (e.g. `0,1`). When set, batches are split across devices.
+- `FASIM_CUDA_DEVICES`: comma-separated devices for the older in-process multi-device preAlign/topK path. Do not use `FASIM_CUDA_DEVICES=0,1` with `FASIM_EXACT_COLUMN_EXTEND_BATCH=1`; exact-column batch is supported only for a single visible CUDA device per Fasim process, and the binary fails closed for that combination.
 - `FASIM_EXTEND_THREADS`: CPU worker threads for the extend+output stage (default: `--cn` / `-C`, else 1)
 - `FASIM_PREALIGN_CUDA_MAX_TASKS`: max tasks per GPU batch call (default 4096)
 - `FASIM_PREALIGN_CUDA_TOPK`: peaks per task (default 64; current max is 256)
 - `FASIM_PREALIGN_PEAK_SUPPRESS_BP`: peak suppression radius in bp when converting GPU peaks to `scoreInfo` (default 5). Decreasing (e.g. `1-2`) keeps more peaks and can improve recall at the cost of more CPU extend work; increasing does the opposite.
+- `FASIM_TRANSFERSTRING_TABLE=1`: enable the default-off CPU table-driven `transferString` path.
+- `FASIM_TRANSFERSTRING_TABLE_VALIDATE=1`: compare table-driven `transferString` against the legacy converter and fall back to legacy on mismatch.
+- `FASIM_SSW_PROFILE_CACHE=1`: enable the default-off CPU SSW query-profile cache.
+- `FASIM_SSW_PROFILE_CACHE_VALIDATE=1`: compare cached SSW profile output against a legacy rebuild and fall back to legacy output on mismatch.
+- `FASIM_GPU_DP_COLUMN_AUTO=1`: enable the default-off size-gated GPU DP column policy. `FASIM_GPU_DP_COLUMN_AUTO_MIN_CELLS` and `FASIM_GPU_DP_COLUMN_AUTO_MIN_WINDOWS` control when the CUDA path is selected.
+- `FASIM_EXACT_COLUMN_EXTEND_BATCH=1`: enable default-off exact-column batch handling on the GPU DP/AUTO path; `FASIM_EXACT_COLUMN_EXTEND_BATCH_VALIDATE=1` keeps a validation fallback.
+- `FASIM_SSW_PROFILE_CONTEXT=1`: enable the default-off ProfileContext layer; it requires `FASIM_SSW_PROFILE_CACHE=1`.
+- `FASIM_SSW_AVX2=1`: enable the default-off AVX2 SSW path when the binary was built with `FASIM_SIMD_FLAGS=-mavx2`. `FASIM_SSW_AVX2_MODE` defaults to `forward_only`.
 - `FASIM_VERBOSE=0`: disable per-segment progress printing (recommended for large batches)
 - `FASIM_OUTPUT_MODE=tfosorted`: only write `*-TFOsorted` and skip `TFOclass1/2` clustering output (recommended for large multi-region batches; also enables streaming + cross-record GPU batching)
+
+Current repo-local Fasim binaries can be audited with:
+
+```
+strings ./fasim_longtarget_cuda | rg 'FASIM_[A-Z0-9_]+' | sort -u
+```
+
+Current repo-local Fasim code reads the final-speed-stack env gates listed
+above. Keep the distinction between path availability and observed performance:
+`FASIM_GPU_DP_COLUMN_AUTO` is size-gated, `FASIM_EXACT_COLUMN_EXTEND_BATCH`
+is tied to the GPU DP/AUTO path, and `FASIM_SSW_AVX2` only becomes active in an
+AVX2-built binary. Do not claim sustained GPU saturation or a "Fasim GPU 5x"
+result from these env names alone.
+
+Current supported Fasim multi-GPU usage is process-level sharding: launch
+multiple Fasim workers and make each worker see one GPU with
+`CUDA_VISIBLE_DEVICES=<physical_gpu>` and logical `FASIM_CUDA_DEVICE=0`.
+Single-process `FASIM_CUDA_DEVICES=0,1` is not a supported final-stack
+performance mode because it can bypass exact-column batch.
 
 Optional: skip `TFOclass1/2` for LongTarget as well:
 - `LONGTARGET_OUTPUT_MODE=tfosorted`: only write `*-TFOsorted` (skip clustering/class outputs)
@@ -332,7 +369,10 @@ make benchmark-sample-cuda-throughput-compare
 - Default throughput preset values: `FASIM_ENABLE_PREALIGN_CUDA=1`, `FASIM_PREALIGN_CUDA_TOPK=64`, `FASIM_PREALIGN_PEAK_SUPPRESS_BP=5`, `FASIM_VERBOSE=0`, `FASIM_OUTPUT_MODE=lite`.
 - The sample throughput comparator always compares the same repo revision, the same inputs, and the same output schema (`lite` or `tfosorted`). In throughput mode the default comparison schema is `.lite`.
 - `report.json` now includes both aggregate comparison metrics and `per_output_comparisons`, so shard- or output-level drops are visible without losing the aggregate summary.
-- The throughput lane does not implicitly enable two GPUs. Pass `FASIM_CUDA_DEVICES=0,1` (or use the sweep script below) only after checking whether the second device really improves wall time.
+- The throughput lane does not implicitly enable two GPUs. Use process-level sharding for the final-speed-stack multi-GPU path. Do not combine `FASIM_CUDA_DEVICES=0,1` with `FASIM_EXACT_COLUMN_EXTEND_BATCH=1`.
+- Process-level sharding is an outer-parallel strategy for large multi-contig
+  workloads. Small many-entry probes can regress when process startup,
+  sharding, and merge overhead outweigh parallel work.
 
 Throughput sweep helper (one exact baseline reused across a throughput matrix; by default it sweeps device set × `FASIM_EXTEND_THREADS`, and it can also sweep `TOPK` / `suppress_bp` when you want a small-shard quality frontier):
 

@@ -268,4 +268,212 @@ assert manifest["merged_digest"] is None, manifest
 assert manifest["partial_merged_digest"] == report["partial_merged_digest"], manifest
 PY
 
+TOPK_DIR="$WORK/topk_lite_resume/run"
+TOPK_MANIFEST="$TOPK_DIR/run_manifest.json"
+
+python3 "$ROOT/scripts/fasim_sharded_runner.py" \
+  --fasim-bin "$BIN" \
+  --target "$WORK/inputs/testDNA_three_contigs.fa" \
+  --rna "$WORK/inputs/H19.fa" \
+  --rule 1 \
+  --work-dir "$TOPK_DIR" \
+  --manifest "$TOPK_MANIFEST" \
+  --output-mode lite \
+  --topk-summary 5 \
+  --topk-summary-only \
+  --shard-output-topk-lite 5 \
+  --workers 2 \
+  --gpu-ids 0,1 \
+  >"$WORK/logs/topk_lite_fresh.stdout.log" \
+  2>"$WORK/logs/topk_lite_fresh.stderr.log"
+
+python3 - "$TOPK_DIR/report.json" "$TOPK_MANIFEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+manifest = json.loads(Path(sys.argv[2]).read_text())
+
+assert report["run_status"] == "completed", report
+assert report["topk_summary_only"] is True, report
+assert report["shard_output_topk_lite"] == 5, report
+assert report["merged_digest"] is None, report
+assert report["topk_summary"], report
+assert manifest["run_status"] == "completed", manifest
+assert manifest["merged_digest"] is None, manifest
+assert all(shard["status"] == "completed" for shard in manifest["per_shard"]), manifest
+assert all(shard["raw_topk_only"] is True for shard in manifest["per_shard"]), manifest
+assert all(shard["output_digest"] for shard in manifest["per_shard"]), manifest
+assert all(shard["records"] is not None for shard in manifest["per_shard"]), manifest
+PY
+
+TOPK_FRESH_SUMMARY="$(python3 - "$TOPK_DIR/report.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+print(json.dumps(json.loads(Path(sys.argv[1]).read_text())["topk_summary"], sort_keys=True))
+PY
+)"
+TOPK_FRESH_DIGEST="$(python3 - "$TOPK_MANIFEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+print(json.loads(Path(sys.argv[1]).read_text())["run_config_digest"])
+PY
+)"
+
+python3 "$ROOT/scripts/fasim_sharded_runner.py" \
+  --fasim-bin "$BIN" \
+  --target "$WORK/inputs/testDNA_three_contigs.fa" \
+  --rna "$WORK/inputs/H19.fa" \
+  --rule 1 \
+  --work-dir "$TOPK_DIR" \
+  --manifest "$TOPK_MANIFEST" \
+  --output-mode lite \
+  --topk-summary 5 \
+  --topk-summary-only \
+  --shard-output-topk-lite 5 \
+  --resume \
+  --workers 2 \
+  --gpu-ids 0,1 \
+  >"$WORK/logs/topk_lite_resume.stdout.log" \
+  2>"$WORK/logs/topk_lite_resume.stderr.log"
+
+python3 - "$TOPK_DIR/report.json" "$TOPK_MANIFEST" "$TOPK_FRESH_SUMMARY" "$TOPK_FRESH_DIGEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+manifest = json.loads(Path(sys.argv[2]).read_text())
+fresh_summary = json.loads(sys.argv[3])
+fresh_digest = sys.argv[4]
+
+assert report["run_config_digest"] == fresh_digest, report
+assert report["topk_summary"] == fresh_summary, report
+assert len(report["resumed_shards"]) == report["shard_count"], report
+assert all(shard["status"] == "skipped_by_resume" for shard in manifest["per_shard"]), manifest
+assert all(shard["raw_topk_only"] is True for shard in manifest["per_shard"]), manifest
+assert all(shard["skipped_by_resume"] is True for shard in manifest["per_shard"]), manifest
+PY
+
+GROUP_DIR="$WORK/grouped_resume/run"
+GROUP_MANIFEST="$GROUP_DIR/run_manifest.json"
+
+python3 "$ROOT/scripts/fasim_sharded_runner.py" \
+  --fasim-bin "$BIN" \
+  --target "$WORK/inputs/testDNA_three_contigs.fa" \
+  --rna "$WORK/inputs/H19.fa" \
+  --rule 1 \
+  --work-dir "$GROUP_DIR" \
+  --manifest "$GROUP_MANIFEST" \
+  --output-mode lite \
+  --validate-single \
+  --group-target-records 2 \
+  --workers 2 \
+  --gpu-ids 0,1 \
+  >"$WORK/logs/grouped_fresh.stdout.log" \
+  2>"$WORK/logs/grouped_fresh.stderr.log"
+
+python3 - "$GROUP_DIR/report.json" "$GROUP_MANIFEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+manifest = json.loads(Path(sys.argv[2]).read_text())
+
+assert report["target_record_count"] == 3, report
+assert report["group_target_records"] == 2, report
+assert report["grouped_shard_count"] == 2, report
+assert report["shard_count"] == 2, report
+assert report["single_vs_sharded_digest_match"] is True, report
+assert manifest["target_record_count"] == 3, manifest
+assert manifest["group_target_records"] == 2, manifest
+assert manifest["grouped_shard_count"] == 2, manifest
+assert all(shard["group_member_count"] in (1, 2) for shard in manifest["per_shard"]), manifest
+PY
+
+GROUP_FRESH_DIGEST="$(python3 - "$GROUP_DIR/report.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+print(json.loads(Path(sys.argv[1]).read_text())["merged_digest"])
+PY
+)"
+GROUP_FRESH_CONFIG="$(python3 - "$GROUP_MANIFEST" <<'PY'
+import json
+import sys
+from pathlib import Path
+print(json.loads(Path(sys.argv[1]).read_text())["run_config_digest"])
+PY
+)"
+
+python3 "$ROOT/scripts/fasim_sharded_runner.py" \
+  --fasim-bin "$BIN" \
+  --target "$WORK/inputs/testDNA_three_contigs.fa" \
+  --rna "$WORK/inputs/H19.fa" \
+  --rule 1 \
+  --work-dir "$GROUP_DIR" \
+  --manifest "$GROUP_MANIFEST" \
+  --output-mode lite \
+  --validate-single \
+  --group-target-records 2 \
+  --resume \
+  --workers 2 \
+  --gpu-ids 0,1 \
+  >"$WORK/logs/grouped_resume_same.stdout.log" \
+  2>"$WORK/logs/grouped_resume_same.stderr.log"
+
+python3 - "$GROUP_DIR/report.json" "$GROUP_MANIFEST" "$GROUP_FRESH_DIGEST" "$GROUP_FRESH_CONFIG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+manifest = json.loads(Path(sys.argv[2]).read_text())
+fresh_digest = sys.argv[3]
+fresh_config = sys.argv[4]
+
+assert report["merged_digest"] == fresh_digest, report
+assert report["run_config_digest"] == fresh_config, report
+assert len(report["resumed_shards"]) == report["shard_count"], report
+assert all(shard["status"] == "skipped_by_resume" for shard in manifest["per_shard"]), manifest
+PY
+
+python3 "$ROOT/scripts/fasim_sharded_runner.py" \
+  --fasim-bin "$BIN" \
+  --target "$WORK/inputs/testDNA_three_contigs.fa" \
+  --rna "$WORK/inputs/H19.fa" \
+  --rule 1 \
+  --work-dir "$GROUP_DIR" \
+  --manifest "$GROUP_MANIFEST" \
+  --output-mode lite \
+  --validate-single \
+  --group-target-records 3 \
+  --resume \
+  --workers 2 \
+  --gpu-ids 0,1 \
+  >"$WORK/logs/grouped_resume_changed.stdout.log" \
+  2>"$WORK/logs/grouped_resume_changed.stderr.log"
+
+python3 - "$GROUP_DIR/report.json" "$GROUP_MANIFEST" "$GROUP_FRESH_DIGEST" "$GROUP_FRESH_CONFIG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text())
+manifest = json.loads(Path(sys.argv[2]).read_text())
+fresh_digest = sys.argv[3]
+fresh_config = sys.argv[4]
+
+assert report["merged_digest"] == fresh_digest, report
+assert report["run_config_digest"] != fresh_config, report
+assert report["group_target_records"] == 3, report
+assert report["grouped_shard_count"] == 1, report
+assert report["resumed_shards"] == [], report
+assert all(shard["status"] == "completed" for shard in manifest["per_shard"]), manifest
+PY
+
 echo "ok"

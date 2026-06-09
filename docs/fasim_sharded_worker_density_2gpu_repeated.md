@@ -51,6 +51,14 @@ timeout 1800s python3 scripts/benchmark_fasim_sharded_worker_workload_matrix.py 
 
 Optional SSW AVX2/ProfileContext add-ons were not enabled.
 
+
+Reconciliation note: this historical run recorded final-speed-stack environment
+labels. The current repo-local Fasim binary now reads
+`FASIM_TRANSFERSTRING_TABLE`, `FASIM_GPU_DP_COLUMN_AUTO`,
+`FASIM_SSW_PROFILE_CACHE`, and `FASIM_EXACT_COLUMN_EXTEND_BATCH` as default-off
+opt-ins, but this document was not rerun after that integration. Treat the
+timings as historical telemetry, not fresh evidence for the reconciled binary.
+
 ## Correctness
 
 All 3 runs were digest clean for every worker count:

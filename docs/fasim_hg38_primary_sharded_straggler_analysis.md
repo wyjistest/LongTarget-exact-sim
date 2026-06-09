@@ -45,12 +45,19 @@ GPUs: 0,1
 CPU pool: 0-17
 CPU cores per worker: 3
 output mode: lite
-speed env:
+legacy recorded env labels:
   FASIM_TRANSFERSTRING_TABLE=1
   FASIM_GPU_DP_COLUMN_AUTO=1
   FASIM_SSW_PROFILE_CACHE=1
   FASIM_EXACT_COLUMN_EXTEND_BATCH=1
 ```
+
+Reconciliation note: these are historical run-config labels. The current
+repo-local Fasim binary now reads `FASIM_TRANSFERSTRING_TABLE`,
+`FASIM_GPU_DP_COLUMN_AUTO`, `FASIM_SSW_PROFILE_CACHE`, and
+`FASIM_EXACT_COLUMN_EXTEND_BATCH` as default-off opt-ins, but this straggler
+analysis was not rerun after that integration. Treat the timings as historical
+telemetry, not fresh evidence for the reconciled binary.
 
 ## Analyzer Command
 

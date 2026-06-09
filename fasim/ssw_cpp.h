@@ -168,6 +168,9 @@ namespace StripedSmithWaterman {
 		bool  preAlign(const char* query, const char* ref, const int& ref_len,
 			const Filter& filter, Alignment* alignment, const int32_t maskLen,
 			int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch) const;
+		bool preAlignColumnScores(const char* query, const char* ref, const int& ref_len,
+			const Filter& filter, const int32_t maskLen, int threshold,
+			std::vector<int> &columnScores) const;
 
 		// @function Clear up all containers and thus the aligner is disabled.
 		//             To rebuild the aligner please use Build functions.
@@ -240,4 +243,3 @@ namespace StripedSmithWaterman {
 } // namespace StripedSmithWaterman
 
 #endif // COMPLETE_STRIPED_SMITH_WATERMAN_CPP_H_
-

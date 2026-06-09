@@ -29,18 +29,16 @@ python3 ./scripts/fasim_sharded_runner.py \
   --workers 4 \
   --gpu-ids 0,1,2,3 \
   --cpu-core-ranges 0-7,8-15,16-23,24-31 \
-  --env FASIM_TRANSFERSTRING_TABLE=1 \
-  --env FASIM_GPU_DP_COLUMN_AUTO=1 \
-  --env FASIM_SSW_PROFILE_CACHE=1 \
-  --env FASIM_EXACT_COLUMN_EXTEND_BATCH=1
+  --env FASIM_ENABLE_PREALIGN_CUDA=1 \
+  --env FASIM_PREALIGN_CUDA_TOPK=64 \
+  --env FASIM_VERBOSE=0
 ```
 
-Optional Fasim add-ons remain explicit:
-
-```bash
---env FASIM_SSW_AVX2=1 \
---env FASIM_SSW_PROFILE_CONTEXT=1
-```
+Pass runtime add-ons only when the binary was built for them and the run is
+intended to characterize them. The current repo-local Fasim code reads
+`FASIM_SSW_PROFILE_CONTEXT` and `FASIM_SSW_AVX2`; `FASIM_SSW_PROFILE_CONTEXT`
+requires `FASIM_SSW_PROFILE_CACHE=1`, and `FASIM_SSW_AVX2` only activates in
+binaries built with `FASIM_SIMD_FLAGS=-mavx2`.
 
 ## Scheduling
 

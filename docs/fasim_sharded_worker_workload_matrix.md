@@ -13,7 +13,7 @@ This PR is characterization only:
 - No overlap heuristic is added.
 - No in-process multi-GPU runtime is added.
 - No Fasim C++ runtime or output semantics are changed.
-- Speed environment variables remain explicit.
+- Fasim runtime environment variables remain explicit.
 - Validation mode is used for digest audit, not as a performance setting.
 
 Contig-level sharding only scales workloads with multiple FASTA records. A
@@ -48,18 +48,17 @@ python3 ./scripts/benchmark_fasim_sharded_worker_workload_matrix.py \
   --gpu-ids 0,1,2,3 \
   --cpu-core-ranges 0-7,8-15,16-23,24-31 \
   --workload hg38_chr11_chr21:hg38_chr11_chr21.fa:H19.fa:1 \
-  --env FASIM_TRANSFERSTRING_TABLE=1 \
-  --env FASIM_GPU_DP_COLUMN_AUTO=1 \
-  --env FASIM_SSW_PROFILE_CACHE=1 \
-  --env FASIM_EXACT_COLUMN_EXTEND_BATCH=1
+  --env FASIM_ENABLE_PREALIGN_CUDA=1 \
+  --env FASIM_PREALIGN_CUDA_TOPK=64 \
+  --env FASIM_VERBOSE=0
 ```
 
-Optional add-ons remain explicit:
-
-```bash
---env FASIM_SSW_AVX2=1 \
---env FASIM_SSW_PROFILE_CONTEXT=1
-```
+Pass runtime add-ons only when the binary was built for them and the run is
+intended to characterize them. The current repo-local Fasim code reads
+`FASIM_TRANSFERSTRING_TABLE`, `FASIM_SSW_PROFILE_CACHE`,
+`FASIM_GPU_DP_COLUMN_AUTO`, `FASIM_EXACT_COLUMN_EXTEND_BATCH`,
+`FASIM_SSW_PROFILE_CONTEXT`, and `FASIM_SSW_AVX2`; `FASIM_SSW_AVX2` only
+activates in binaries built with `FASIM_SIMD_FLAGS=-mavx2`.
 
 ## Report Fields
 

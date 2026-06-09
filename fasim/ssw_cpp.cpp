@@ -6,9 +6,33 @@
 #include "ssw.h"
 #include<algorithm>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <sstream>
+#include <vector>
 
 namespace {
+
+	struct SswProfileCacheEntry {
+		SswProfileCacheEntry()
+			: profile(NULL)
+		{
+		}
+
+		~SswProfileCacheEntry()
+		{
+			if (profile != NULL) {
+				init_destroy(profile);
+			}
+		}
+
+		std::vector<int8_t> query;
+		std::vector<int8_t> matrix;
+		s_profile* profile;
+	};
+
+	static thread_local std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >
+		g_ssw_profile_cache;
 
 	static const int8_t kBaseTranslation[128] = {
 		4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
@@ -220,6 +244,128 @@ namespace {
 	void SetFlag(const StripedSmithWaterman::Filter& filter, uint8_t* flag) {
 		if (filter.report_begin_position) *flag |= 0x08;
 		if (filter.report_cigar) *flag |= 0x0f;
+	}
+
+	bool SswProfileCacheEnabledRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CACHE");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	bool SswProfileCacheValidateRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CACHE_VALIDATE");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	bool SswProfileContextEnabledRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CONTEXT");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	bool SswProfileContextValidateRuntime() {
+		static const bool enabled = []() {
+			const char* env = getenv("FASIM_SSW_PROFILE_CONTEXT_VALIDATE");
+			if (env == NULL || env[0] == '\0') {
+				return false;
+			}
+			return env[0] != '0';
+		}();
+		return enabled;
+	}
+
+	uint64_t SswProfileCacheHashBytes(const int8_t* data, size_t size) {
+		uint64_t hash = 1469598103934665603ULL;
+		for (size_t i = 0; i < size; ++i) {
+			hash ^= static_cast<uint8_t>(data[i]);
+			hash *= 1099511628211ULL;
+		}
+		return hash;
+	}
+
+	void SswProfileCacheHashAppendUint64(uint64_t& hash, uint64_t value) {
+		for (int i = 0; i < 8; ++i) {
+			hash ^= static_cast<uint8_t>((value >> (i * 8)) & 0xff);
+			hash *= 1099511628211ULL;
+		}
+	}
+
+	std::string SswProfileCacheKey(const int8_t* query,
+		const int queryLen,
+		const int8_t* matrix,
+		const int matrixSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty,
+		const int8_t scoreSize) {
+		uint64_t matrixHash =
+			SswProfileCacheHashBytes(matrix, static_cast<size_t>(matrixSize) * static_cast<size_t>(matrixSize));
+		SswProfileCacheHashAppendUint64(matrixHash, static_cast<uint64_t>(matrixSize));
+		SswProfileCacheHashAppendUint64(matrixHash, static_cast<uint64_t>(gapOpeningPenalty));
+		SswProfileCacheHashAppendUint64(matrixHash, static_cast<uint64_t>(gapExtendingPenalty));
+		SswProfileCacheHashAppendUint64(matrixHash, static_cast<uint64_t>(scoreSize));
+
+		std::ostringstream key;
+		key << queryLen << ':'
+		    << static_cast<int>(scoreSize) << ':'
+		    << SswProfileCacheHashBytes(query, static_cast<size_t>(queryLen)) << ':'
+		    << matrixHash;
+		return key.str();
+	}
+
+	s_profile* SswProfileCacheGetOrBuild(const int8_t* translatedQuery,
+		const int queryLen,
+		const int8_t* scoreMatrix,
+		const int scoreMatrixSize,
+		const int8_t scoreSize,
+		const uint8_t gapOpeningPenalty,
+		const uint8_t gapExtendingPenalty) {
+		const std::string key = SswProfileCacheKey(translatedQuery, queryLen,
+			scoreMatrix, scoreMatrixSize, gapOpeningPenalty, gapExtendingPenalty,
+			scoreSize);
+		std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >::iterator it =
+			g_ssw_profile_cache.find(key);
+		if (it != g_ssw_profile_cache.end()) {
+			return it->second->profile;
+		}
+
+		std::unique_ptr<SswProfileCacheEntry> entry(new SswProfileCacheEntry());
+		entry->query.assign(translatedQuery, translatedQuery + queryLen);
+		entry->matrix.assign(scoreMatrix,
+			scoreMatrix + scoreMatrixSize * scoreMatrixSize);
+		entry->profile = ssw_init(entry->query.data(), queryLen,
+			entry->matrix.data(), scoreMatrixSize, scoreSize);
+		s_profile* profile = entry->profile;
+		g_ssw_profile_cache.insert(std::make_pair(key, std::move(entry)));
+		return profile;
+	}
+
+	bool SswProfileAlignmentEquals(const StripedSmithWaterman::Alignment& lhs,
+		const StripedSmithWaterman::Alignment& rhs) {
+		return lhs.sw_score == rhs.sw_score &&
+			lhs.sw_score_next_best == rhs.sw_score_next_best &&
+			lhs.ref_begin == rhs.ref_begin &&
+			lhs.ref_end == rhs.ref_end &&
+			lhs.query_begin == rhs.query_begin &&
+			lhs.query_end == rhs.query_end &&
+			lhs.ref_end_next_best == rhs.ref_end_next_best &&
+			lhs.cigar_string == rhs.cigar_string &&
+			lhs.cigar == rhs.cigar;
 	}
 
 	// http://www.cplusplus.com/faq/sequences/arrays/sizeof-array/#cpp
@@ -578,6 +724,45 @@ namespace StripedSmithWaterman {
 		return true;
 	}
 
+	bool Aligner::preAlignColumnScores(const char* query, const char* ref, const int& ref_len,
+		const Filter& filter, const int32_t maskLen, int threshold,
+		std::vector<int> &columnScores) const
+	{
+		columnScores.clear();
+		if (!translation_matrix_) return false;
+
+		int query_len = strlen(query);
+		if (query_len == 0) return false;
+
+		int8_t* translated_query = new int8_t[query_len];
+		TranslateBase(query, query_len, translated_query);
+
+		int valid_ref_len = ref_len;
+		int8_t* translated_ref = new int8_t[valid_ref_len];
+		TranslateBase(ref, valid_ref_len, translated_ref);
+
+		const int8_t score_size = 2;
+		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
+			score_matrix_size_, score_size);
+
+		uint8_t flag = 0;
+		SetFlag(filter, &flag);
+		int *scoreMatrix = ssw_pre_align(profile, translated_ref, valid_ref_len,
+			static_cast<int>(gap_opening_penalty_),
+			static_cast<int>(gap_extending_penalty_),
+			flag, filter.score_filter, filter.distance_filter, maskLen, threshold);
+
+		delete[] translated_query;
+		delete[] translated_ref;
+		init_destroy(profile);
+
+		if (scoreMatrix == NULL) return false;
+
+		columnScores.assign(scoreMatrix, scoreMatrix + ref_len);
+		free(scoreMatrix);
+		return true;
+	}
+
 	//int main()
 	//{
 	//    std::vector<int> v = { 7, 3, 6, 2, 6 };
@@ -613,8 +798,16 @@ namespace StripedSmithWaterman {
 
 
 		const int8_t score_size = 2;
-		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
-			score_matrix_size_, score_size);
+		const bool profileContextEnabled =
+			SswProfileContextEnabledRuntime() && SswProfileCacheEnabledRuntime();
+		const bool profileCacheEnabled =
+			SswProfileCacheEnabledRuntime() || profileContextEnabled;
+		s_profile* profile = profileCacheEnabled ?
+			SswProfileCacheGetOrBuild(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size, gap_opening_penalty_,
+				gap_extending_penalty_) :
+			ssw_init(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size);
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
@@ -631,13 +824,39 @@ namespace StripedSmithWaterman {
 		else{
 		    alignment->sw_score = 0;
 		}
+		if (profileCacheEnabled &&
+		    (SswProfileCacheValidateRuntime() ||
+		     (profileContextEnabled && SswProfileContextValidateRuntime())))
+		{
+			s_profile* legacyProfile = ssw_init(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size);
+			s_align* legacyAlign = ssw_align(legacyProfile, translated_ref, valid_ref_len,
+				static_cast<int>(gap_opening_penalty_),
+				static_cast<int>(gap_extending_penalty_),
+				flag, filter.score_filter, filter.distance_filter, maskLen);
+			Alignment legacyAlignment;
+			legacyAlignment.Clear();
+			if (legacyAlign != NULL) {
+				ConvertAlignment(*legacyAlign, query_len, &legacyAlignment);
+				align_destroy(legacyAlign);
+			}
+			else {
+				legacyAlignment.sw_score = 0;
+			}
+			init_destroy(legacyProfile);
+			if (!SswProfileAlignmentEquals(*alignment, legacyAlignment)) {
+				*alignment = legacyAlignment;
+			}
+		}
 		//2021-09-16 22:38:00: to get original cigar string.
 		//alignment->mismatches = CalculateNumberMismatch(&*alignment, translated_ref, translated_query, query_len);
 
 		// Free memory
 		delete[] translated_query;
 		delete[] translated_ref;
-		init_destroy(profile);
+		if (!profileCacheEnabled) {
+			init_destroy(profile);
+		}
 
 		return true;
 	}
@@ -715,5 +934,3 @@ namespace StripedSmithWaterman {
 		translation_matrix_ = NULL;
 	}
 } // namespace StripedSmithWaterman
-
-
