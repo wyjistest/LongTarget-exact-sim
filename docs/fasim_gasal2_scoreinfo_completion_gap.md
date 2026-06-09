@@ -727,3 +727,9 @@ NEAT1 first64:
 It proves a correctness-clean diagnostic scaffold for attempt-level replay, but
 does not reduce CPU `aligner.Align()` attempts and must not be promoted as a
 real path.
+
+The next broad attempt is an emission-only scoreInfo consumer shadow:
+FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1. It must use GASAL2 score/end to
+choose emitted attempts and CPU-align only those emitted attempts. It is a
+go only if NEAT1 first64 is triplex/digest clean and CPU align attempts are
+lower than the realpath reference.

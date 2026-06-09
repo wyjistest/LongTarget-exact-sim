@@ -3728,13 +3728,20 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_broad_replacement_consumer_shadow_runtime();
 			const bool attemptConsumerShadowEnabled =
 				fasim_gasal2_attempt_consumer_shadow_runtime();
+			const bool emissionOnlyConsumerShadowEnabled =
+				fasim_gasal2_emission_only_consumer_shadow_enabled_runtime();
 			std::vector<FasimLiteRow> topkLiteRows;
 			std::map<uint64_t, std::vector<triplex> > broadReplacementTriplexesByTask;
 			std::map<uint64_t, std::vector<triplex> > attemptConsumerTriplexesByTask;
+			std::map<uint64_t, std::vector<triplex> > emissionOnlyTriplexesByTask;
 			uint64_t attemptConsumerShadowTaskMismatches = 0;
 			uint64_t attemptConsumerShadowMissingTriplexes = 0;
 			uint64_t attemptConsumerShadowExtraTriplexes = 0;
 			std::string attemptConsumerShadowFirstMismatch = "none";
+			uint64_t emissionOnlyShadowTaskMismatches = 0;
+			uint64_t emissionOnlyShadowMissingTriplexes = 0;
+			uint64_t emissionOnlyShadowExtraTriplexes = 0;
+			std::string emissionOnlyShadowFirstMismatch = "none";
 
 			auto ensure_output_opened = [&](const string &speciesValue)
 			{
@@ -4740,6 +4747,84 @@ int main(int argc, char* const* argv)
 					attemptConsumerTriplexesByTask.erase(shadowIt);
 				}
 			}
+			if (emissionOnlyConsumerShadowEnabled)
+			{
+				std::map<uint64_t, std::vector<triplex> >::iterator shadowIt =
+					emissionOnlyTriplexesByTask.find(task.taskIndex);
+				if (shadowIt == emissionOnlyTriplexesByTask.end())
+				{
+					emissionOnlyShadowMissingTriplexes +=
+						static_cast<uint64_t>(taskTriplexes.size());
+					if (emissionOnlyShadowFirstMismatch == "none")
+					{
+						std::ostringstream first;
+						first << "task:" << task.taskIndex
+						      << ":missing_shadow"
+						      << ":legacy_count:" << taskTriplexes.size();
+						emissionOnlyShadowFirstMismatch = first.str();
+					}
+				}
+				else
+				{
+					bool equal = shadowIt->second.size() == taskTriplexes.size();
+					size_t diffIndex = 0;
+					const size_t minCount =
+						std::min(shadowIt->second.size(), taskTriplexes.size());
+					if (equal)
+					{
+						while (diffIndex < minCount)
+						{
+							if (broad_triplex_probe_key(shadowIt->second[diffIndex]) !=
+							    broad_triplex_probe_key(taskTriplexes[diffIndex]))
+							{
+								equal = false;
+								break;
+							}
+							++diffIndex;
+						}
+					}
+					if (!equal)
+					{
+						if (shadowIt->second.size() < taskTriplexes.size())
+						{
+							emissionOnlyShadowMissingTriplexes +=
+								static_cast<uint64_t>(
+									taskTriplexes.size() - shadowIt->second.size());
+						}
+						else if (shadowIt->second.size() > taskTriplexes.size())
+						{
+							emissionOnlyShadowExtraTriplexes +=
+								static_cast<uint64_t>(
+									shadowIt->second.size() - taskTriplexes.size());
+						}
+						if (diffIndex < minCount)
+						{
+							++emissionOnlyShadowTaskMismatches;
+						}
+						if (emissionOnlyShadowFirstMismatch == "none")
+						{
+							std::ostringstream first;
+							first << "task:" << task.taskIndex
+							      << ":index:" << diffIndex
+							      << ":shadow_count:" << shadowIt->second.size()
+							      << ":legacy_count:" << taskTriplexes.size();
+							if (diffIndex < shadowIt->second.size())
+							{
+								first << ":shadow:"
+								      << broad_triplex_probe_key(
+									      shadowIt->second[diffIndex]);
+							}
+							if (diffIndex < taskTriplexes.size())
+							{
+								first << ":legacy:"
+								      << broad_triplex_probe_key(taskTriplexes[diffIndex]);
+							}
+							emissionOnlyShadowFirstMismatch = first.str();
+						}
+					}
+					emissionOnlyTriplexesByTask.erase(shadowIt);
+				}
+			}
 			if (broadCpuTriplexOpened)
 			{
 				for (size_t i = 0; i < taskTriplexes.size(); ++i)
@@ -4941,6 +5026,49 @@ int main(int argc, char* const* argv)
 				attemptConsumerClean ?
 					"attempt_consumer_shadow_active" :
 					"attempt_consumer_shadow_no_go");
+		};
+
+		auto finalize_emission_only_consumer_shadow = [&]()
+		{
+			if (!emissionOnlyConsumerShadowEnabled)
+			{
+				return;
+			}
+			if (!emissionOnlyTriplexesByTask.empty())
+			{
+				for (std::map<uint64_t, std::vector<triplex> >::const_iterator it =
+				         emissionOnlyTriplexesByTask.begin();
+				     it != emissionOnlyTriplexesByTask.end();
+				     ++it)
+				{
+					emissionOnlyShadowExtraTriplexes +=
+						static_cast<uint64_t>(it->second.size());
+					if (emissionOnlyShadowFirstMismatch == "none")
+					{
+						std::ostringstream first;
+						first << "task:" << it->first
+						      << ":unconsumed_shadow"
+						      << ":shadow_count:" << it->second.size();
+						emissionOnlyShadowFirstMismatch = first.str();
+					}
+				}
+				emissionOnlyTriplexesByTask.clear();
+			}
+			const bool emissionOnlyClean =
+				emissionOnlyShadowTaskMismatches == 0 &&
+				emissionOnlyShadowMissingTriplexes == 0 &&
+				emissionOnlyShadowExtraTriplexes == 0 &&
+				emissionOnlyShadowFirstMismatch == "none";
+			fasim_gasal2_record_emission_only_consumer_shadow_comparison(
+				emissionOnlyShadowTaskMismatches,
+				emissionOnlyShadowMissingTriplexes,
+				emissionOnlyShadowExtraTriplexes,
+				emissionOnlyShadowFirstMismatch.c_str(),
+				emissionOnlyClean,
+				emissionOnlyClean,
+				emissionOnlyClean ?
+					"emission_only_consumer_shadow_active" :
+					"emission_only_consumer_shadow_mismatch_no_go");
 		};
 
 		auto triplex_probe_key = [](const triplex &atr) -> std::string
@@ -8472,6 +8600,7 @@ int main(int argc, char* const* argv)
 					write_task_triplexes(tasks[t]);
 				}
 				finalize_attempt_consumer_shadow();
+				finalize_emission_only_consumer_shadow();
 				tasks.clear();
 				encodedTargets.clear();
 				legacyEncodedTargets.clear();
@@ -8806,6 +8935,7 @@ int main(int argc, char* const* argv)
 						broadReplacementTriplexesByTask.clear();
 					}
 					finalize_attempt_consumer_shadow();
+					finalize_emission_only_consumer_shadow();
 					tasks.clear();
 					encodedTargets.clear();
 					legacyEncodedTargets.clear();
@@ -9120,6 +9250,7 @@ int main(int argc, char* const* argv)
 					}
 
 				finalize_attempt_consumer_shadow();
+				finalize_emission_only_consumer_shadow();
 				tasks.clear();
 				encodedTargets.clear();
 						legacyEncodedTargets.clear();
@@ -9380,6 +9511,7 @@ int main(int argc, char* const* argv)
 							write_task_triplexes(tasks[t]);
 						}
 						finalize_attempt_consumer_shadow();
+						finalize_emission_only_consumer_shadow();
 						tasks.clear();
 						encodedTargets.clear();
 						legacyEncodedTargets.clear();
@@ -12087,15 +12219,59 @@ int main(int argc, char* const* argv)
 														task.taskIndex] =
 														attemptConsumerTriplexes;
 												}
-												else if (attemptConsumerShadowFirstMismatch == "none")
+											else if (attemptConsumerShadowFirstMismatch == "none")
+											{
+												std::ostringstream first;
+												first << "task:" << task.taskIndex
+												      << ":shadow_error:"
+													      << (attemptConsumerError.empty() ?
+														      "unknown" :
+														      attemptConsumerError);
+												attemptConsumerShadowFirstMismatch =
+													first.str();
+											}
+										}
+											if (emissionOnlyConsumerShadowEnabled)
+											{
+												std::vector<triplex> emissionOnlyTriplexes;
+												std::string emissionOnlyError;
+												const bool emissionOnlyOk =
+													fasim_shadow_emission_only_consumer_from_scoreinfo(
+														aligner,
+														filter,
+														15,
+														lncSeq,
+														task.seq2,
+														*task.srcSeq,
+														task.dnaStartPos,
+														streamingRealpathScoreInfos[t],
+														extendTiming.align_attempts,
+														emissionOnlyTriplexes,
+														task.strand,
+														task.Para,
+														task.rule,
+														paraList.ntMin,
+														paraList.ntMax,
+														paraList.penaltyT,
+														paraList.penaltyC,
+														paraList,
+														writeFull,
+														&emissionOnlyError);
+												if (emissionOnlyOk)
+												{
+													emissionOnlyTriplexesByTask[
+														task.taskIndex] =
+														emissionOnlyTriplexes;
+												}
+												else if (emissionOnlyShadowFirstMismatch == "none")
 												{
 													std::ostringstream first;
 													first << "task:" << task.taskIndex
 													      << ":shadow_error:"
-													      << (attemptConsumerError.empty() ?
+													      << (emissionOnlyError.empty() ?
 														      "unknown" :
-														      attemptConsumerError);
-													attemptConsumerShadowFirstMismatch =
+														      emissionOnlyError);
+													emissionOnlyShadowFirstMismatch =
 														first.str();
 												}
 											}
@@ -12282,6 +12458,7 @@ int main(int argc, char* const* argv)
 				}
 
 			finalize_attempt_consumer_shadow();
+			finalize_emission_only_consumer_shadow();
 			tasks.clear();
 			encodedTargets.clear();
 			legacyEncodedTargets.clear();

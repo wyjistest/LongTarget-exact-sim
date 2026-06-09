@@ -82,6 +82,30 @@ struct FasimGasal2Stats
 		attempt_consumer_shadow_fallbacks(0),
 		attempt_consumer_shadow_digest_match(0),
 		attempt_consumer_shadow_full_rows_equal(0),
+		emission_only_consumer_shadow_requested(0),
+		emission_only_consumer_shadow_active(0),
+		emission_only_consumer_shadow_decision("not_requested"),
+		emission_only_consumer_shadow_tasks(0),
+		emission_only_consumer_shadow_scoreinfos(0),
+		emission_only_consumer_shadow_scored_attempts(0),
+		emission_only_consumer_shadow_threshold_emits(0),
+		emission_only_consumer_shadow_terminal_emits(0),
+		emission_only_consumer_shadow_empty_emits(0),
+		emission_only_consumer_shadow_cpu_align_attempts(0),
+		emission_only_consumer_shadow_realpath_reference_align_attempts(0),
+		emission_only_consumer_shadow_align_attempt_reduction(0),
+		emission_only_consumer_shadow_score_seconds(0.0),
+		emission_only_consumer_shadow_select_seconds(0.0),
+		emission_only_consumer_shadow_cpu_align_seconds(0.0),
+		emission_only_consumer_shadow_convert_seconds(0.0),
+		emission_only_consumer_shadow_total_seconds(0.0),
+		emission_only_consumer_shadow_triplex_mismatches(0),
+		emission_only_consumer_shadow_missing_triplexes(0),
+		emission_only_consumer_shadow_extra_triplexes(0),
+		emission_only_consumer_shadow_first_mismatch("none"),
+		emission_only_consumer_shadow_fallbacks(0),
+		emission_only_consumer_shadow_digest_match(0),
+		emission_only_consumer_shadow_full_rows_equal(0),
 		longtarget_task_batches(0),
 		longtarget_task_batch_tasks(0),
 			longtarget_task_batch_scoreinfos(0),
@@ -191,6 +215,30 @@ struct FasimGasal2Stats
 	uint64_t attempt_consumer_shadow_fallbacks;
 	uint64_t attempt_consumer_shadow_digest_match;
 	uint64_t attempt_consumer_shadow_full_rows_equal;
+	uint64_t emission_only_consumer_shadow_requested;
+	uint64_t emission_only_consumer_shadow_active;
+	std::string emission_only_consumer_shadow_decision;
+	uint64_t emission_only_consumer_shadow_tasks;
+	uint64_t emission_only_consumer_shadow_scoreinfos;
+	uint64_t emission_only_consumer_shadow_scored_attempts;
+	uint64_t emission_only_consumer_shadow_threshold_emits;
+	uint64_t emission_only_consumer_shadow_terminal_emits;
+	uint64_t emission_only_consumer_shadow_empty_emits;
+	uint64_t emission_only_consumer_shadow_cpu_align_attempts;
+	uint64_t emission_only_consumer_shadow_realpath_reference_align_attempts;
+	int64_t emission_only_consumer_shadow_align_attempt_reduction;
+	double emission_only_consumer_shadow_score_seconds;
+	double emission_only_consumer_shadow_select_seconds;
+	double emission_only_consumer_shadow_cpu_align_seconds;
+	double emission_only_consumer_shadow_convert_seconds;
+	double emission_only_consumer_shadow_total_seconds;
+	uint64_t emission_only_consumer_shadow_triplex_mismatches;
+	uint64_t emission_only_consumer_shadow_missing_triplexes;
+	uint64_t emission_only_consumer_shadow_extra_triplexes;
+	std::string emission_only_consumer_shadow_first_mismatch;
+	uint64_t emission_only_consumer_shadow_fallbacks;
+	uint64_t emission_only_consumer_shadow_digest_match;
+	uint64_t emission_only_consumer_shadow_full_rows_equal;
 	uint64_t longtarget_task_batches;
 	uint64_t longtarget_task_batch_tasks;
 	uint64_t longtarget_task_batch_scoreinfos;
@@ -357,6 +405,28 @@ struct FasimGasal2SelectedAlignment
 	bool score_prepass_fallback_candidate;
 	bool selected;
 	StripedSmithWaterman::Alignment alignment;
+};
+
+struct FasimGasal2ScoreOnlyAlignment
+{
+	FasimGasal2ScoreOnlyAlignment() :
+		scoreinfo_index(0),
+		cutlength(0),
+		start(0),
+		prealign_score(0),
+		score(0),
+		query_end(-1),
+		ref_end(-1)
+	{
+	}
+
+	int scoreinfo_index;
+	int cutlength;
+	int start;
+	int prealign_score;
+	int score;
+	int query_end;
+	int ref_end;
 };
 
 struct FasimGasal2LongQuerySegment
@@ -1078,6 +1148,12 @@ bool fasim_gasal2_select_attempt_indexes_from_scores(
 	std::vector<size_t> *selectedAttemptIndexes,
 	std::string *errorOut);
 
+bool fasim_gasal2_score_attempts(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2ScoreOnlyAlignment> *scores,
+	std::string *errorOut);
+
 void fasim_gasal2_record_attempt_consumer_shadow_request(
 	uint64_t tasks,
 	uint64_t scoreInfos,
@@ -1095,6 +1171,33 @@ void fasim_gasal2_record_attempt_consumer_shadow_comparison(
 	uint64_t mismatches,
 	uint64_t missing,
 	uint64_t extra,
+	const char *firstMismatch,
+	bool digestMatch,
+	bool fullRowsEqual,
+	const char *decision);
+
+void fasim_gasal2_record_emission_only_consumer_shadow_request(
+	uint64_t tasks,
+	uint64_t scoreInfos,
+	uint64_t scoredAttempts,
+	const char *decision);
+void fasim_gasal2_record_emission_only_consumer_shadow_result(
+	uint64_t thresholdEmits,
+	uint64_t terminalEmits,
+	uint64_t emptyEmits,
+	uint64_t cpuAlignAttempts,
+	uint64_t realpathReferenceAlignAttempts,
+	double scoreSeconds,
+	double selectSeconds,
+	double cpuAlignSeconds,
+	double convertSeconds,
+	double totalSeconds,
+	bool active,
+	const char *decision);
+void fasim_gasal2_record_emission_only_consumer_shadow_comparison(
+	uint64_t triplexMismatches,
+	uint64_t missingTriplexes,
+	uint64_t extraTriplexes,
 	const char *firstMismatch,
 	bool digestMatch,
 	bool fullRowsEqual,

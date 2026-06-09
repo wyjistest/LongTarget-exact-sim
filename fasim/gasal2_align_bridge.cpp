@@ -1426,6 +1426,30 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_attempt_consumer_shadow_fallbacks=" << stats.attempt_consumer_shadow_fallbacks << "\n";
 	std::cerr << "benchmark.fasim_gasal2_attempt_consumer_shadow_digest_match=" << stats.attempt_consumer_shadow_digest_match << "\n";
 	std::cerr << "benchmark.fasim_gasal2_attempt_consumer_shadow_full_rows_equal=" << stats.attempt_consumer_shadow_full_rows_equal << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_requested=" << stats.emission_only_consumer_shadow_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_active=" << stats.emission_only_consumer_shadow_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_decision=" << stats.emission_only_consumer_shadow_decision << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_tasks=" << stats.emission_only_consumer_shadow_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_scoreinfos=" << stats.emission_only_consumer_shadow_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_scored_attempts=" << stats.emission_only_consumer_shadow_scored_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_threshold_emits=" << stats.emission_only_consumer_shadow_threshold_emits << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_terminal_emits=" << stats.emission_only_consumer_shadow_terminal_emits << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_empty_emits=" << stats.emission_only_consumer_shadow_empty_emits << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_cpu_align_attempts=" << stats.emission_only_consumer_shadow_cpu_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_realpath_reference_align_attempts=" << stats.emission_only_consumer_shadow_realpath_reference_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_align_attempt_reduction=" << stats.emission_only_consumer_shadow_align_attempt_reduction << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_score_seconds=" << stats.emission_only_consumer_shadow_score_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_select_seconds=" << stats.emission_only_consumer_shadow_select_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_cpu_align_seconds=" << stats.emission_only_consumer_shadow_cpu_align_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_convert_seconds=" << stats.emission_only_consumer_shadow_convert_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_total_seconds=" << stats.emission_only_consumer_shadow_total_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_triplex_mismatches=" << stats.emission_only_consumer_shadow_triplex_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_missing_triplexes=" << stats.emission_only_consumer_shadow_missing_triplexes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_extra_triplexes=" << stats.emission_only_consumer_shadow_extra_triplexes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_first_mismatch=" << stats.emission_only_consumer_shadow_first_mismatch << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_fallbacks=" << stats.emission_only_consumer_shadow_fallbacks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_digest_match=" << stats.emission_only_consumer_shadow_digest_match << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_full_rows_equal=" << stats.emission_only_consumer_shadow_full_rows_equal << "\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batches=" << stats.longtarget_task_batches << "\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batch_tasks=" << stats.longtarget_task_batch_tasks << "\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batch_scoreinfos=" << stats.longtarget_task_batch_scoreinfos << "\n";
@@ -1645,6 +1669,78 @@ bool fasim_gasal2_select_attempt_indexes_from_scores(
 	return true;
 }
 
+bool fasim_gasal2_score_attempts(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2ScoreOnlyAlignment> *scores,
+	std::string *errorOut)
+{
+	if (scores != NULL)
+	{
+		scores->clear();
+	}
+	if (!fasim_gasal2_enabled())
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = "gasal2_disabled";
+		}
+		return false;
+	}
+	if (query.empty() || attempts.empty() || scores == NULL)
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = attempts.empty() ? "empty_attempts" : "invalid_input";
+		}
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	const int batchSize = gasal2_batch_size_default();
+	record_effective_batch_size(batchSize);
+	g_stats.score_prepass_enabled = true;
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		if (attempts[i].uses_target_view())
+		{
+			++g_stats.target_view_requests;
+		}
+	}
+
+	std::vector<ScoreOnlyResult> scoreResults;
+	const std::chrono::steady_clock::time_point scoreStart =
+		std::chrono::steady_clock::now();
+	if (!run_score_only(&g_score_state,
+	                    query,
+	                    attempts,
+	                    batchSize,
+	                    &scoreResults,
+	                    errorOut))
+	{
+		++g_stats.fallbacks;
+		++g_stats.emission_only_consumer_shadow_fallbacks;
+		return false;
+	}
+	(void)scoreStart;
+
+	scores->clear();
+	scores->reserve(attempts.size());
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		FasimGasal2ScoreOnlyAlignment out;
+		out.scoreinfo_index = attempts[i].scoreinfo_index;
+		out.cutlength = attempts[i].cutlength;
+		out.start = attempts[i].start;
+		out.prealign_score = attempts[i].prealign_score;
+		out.score = scoreResults[i].sw_score;
+		out.query_end = scoreResults[i].query_end;
+		out.ref_end = scoreResults[i].ref_end;
+		scores->push_back(out);
+	}
+	return true;
+}
+
 void fasim_gasal2_record_attempt_consumer_shadow_request(
 	uint64_t tasks,
 	uint64_t scoreInfos,
@@ -1717,6 +1813,95 @@ void fasim_gasal2_record_attempt_consumer_shadow_comparison(
 	if (decision != NULL && decision[0] != '\0')
 	{
 		g_stats.attempt_consumer_shadow_decision = decision;
+	}
+}
+
+void fasim_gasal2_record_emission_only_consumer_shadow_request(
+	uint64_t tasks,
+	uint64_t scoreInfos,
+	uint64_t scoredAttempts,
+	const char *decision)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.emission_only_consumer_shadow_requested = 1;
+	g_stats.emission_only_consumer_shadow_tasks += tasks;
+	g_stats.emission_only_consumer_shadow_scoreinfos += scoreInfos;
+	g_stats.emission_only_consumer_shadow_scored_attempts += scoredAttempts;
+	if (decision != NULL && decision[0] != '\0')
+	{
+		g_stats.emission_only_consumer_shadow_decision = decision;
+	}
+}
+
+void fasim_gasal2_record_emission_only_consumer_shadow_result(
+	uint64_t thresholdEmits,
+	uint64_t terminalEmits,
+	uint64_t emptyEmits,
+	uint64_t cpuAlignAttempts,
+	uint64_t realpathReferenceAlignAttempts,
+	double scoreSeconds,
+	double selectSeconds,
+	double cpuAlignSeconds,
+	double convertSeconds,
+	double totalSeconds,
+	bool active,
+	const char *decision)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (active)
+	{
+		g_stats.emission_only_consumer_shadow_active = 1;
+	}
+	g_stats.emission_only_consumer_shadow_threshold_emits += thresholdEmits;
+	g_stats.emission_only_consumer_shadow_terminal_emits += terminalEmits;
+	g_stats.emission_only_consumer_shadow_empty_emits += emptyEmits;
+	g_stats.emission_only_consumer_shadow_cpu_align_attempts += cpuAlignAttempts;
+	g_stats.emission_only_consumer_shadow_realpath_reference_align_attempts +=
+		realpathReferenceAlignAttempts;
+	g_stats.emission_only_consumer_shadow_align_attempt_reduction +=
+		static_cast<int64_t>(realpathReferenceAlignAttempts) -
+		static_cast<int64_t>(cpuAlignAttempts);
+	g_stats.emission_only_consumer_shadow_score_seconds += scoreSeconds;
+	g_stats.emission_only_consumer_shadow_select_seconds += selectSeconds;
+	g_stats.emission_only_consumer_shadow_cpu_align_seconds += cpuAlignSeconds;
+	g_stats.emission_only_consumer_shadow_convert_seconds += convertSeconds;
+	g_stats.emission_only_consumer_shadow_total_seconds += totalSeconds;
+	if (decision != NULL && decision[0] != '\0')
+	{
+		g_stats.emission_only_consumer_shadow_decision = decision;
+	}
+}
+
+void fasim_gasal2_record_emission_only_consumer_shadow_comparison(
+	uint64_t triplexMismatches,
+	uint64_t missingTriplexes,
+	uint64_t extraTriplexes,
+	const char *firstMismatch,
+	bool digestMatch,
+	bool fullRowsEqual,
+	const char *decision)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.emission_only_consumer_shadow_triplex_mismatches += triplexMismatches;
+	g_stats.emission_only_consumer_shadow_missing_triplexes += missingTriplexes;
+	g_stats.emission_only_consumer_shadow_extra_triplexes += extraTriplexes;
+	if (firstMismatch != NULL &&
+	    firstMismatch[0] != '\0' &&
+	    g_stats.emission_only_consumer_shadow_first_mismatch == "none")
+	{
+		g_stats.emission_only_consumer_shadow_first_mismatch = firstMismatch;
+	}
+	if (digestMatch)
+	{
+		g_stats.emission_only_consumer_shadow_digest_match = 1;
+	}
+	if (fullRowsEqual)
+	{
+		g_stats.emission_only_consumer_shadow_full_rows_equal = 1;
+	}
+	if (decision != NULL && decision[0] != '\0')
+	{
+		g_stats.emission_only_consumer_shadow_decision = decision;
 	}
 }
 

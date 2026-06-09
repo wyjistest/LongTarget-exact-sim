@@ -1915,3 +1915,9 @@ default-off opt-in, keep long-query fallback policy explicit, and keep the
 full objective open until broader requirements are proven. The top5 scoped
 completion candidate records the conditional scope only; the full objective
 remains open unless that narrowed product contract is explicitly accepted.
+
+The next broad attempt is an emission-only scoreInfo consumer shadow:
+FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1. It must use GASAL2 score/end to
+choose emitted attempts and CPU-align only those emitted attempts. It is a
+go only if NEAT1 first64 is triplex/digest clean and CPU align attempts are
+lower than the realpath reference.
