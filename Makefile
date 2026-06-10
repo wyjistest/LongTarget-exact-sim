@@ -1218,6 +1218,9 @@ check-fasim-gasal2-top5-lowercase-input:
 check-fasim-gasal2-formal-preset-examples:
 	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_formal_preset_examples.sh
 
+check-fasim-gasal2-short-query-top5-tfo-contract:
+	bash ./scripts/check_fasim_gasal2_short_query_top5_tfo_contract.sh
+
 check-fasim-gasal2-formal-makefile-gate:
 	bash ./scripts/check_fasim_gasal2_formal_makefile_gate.sh
 
