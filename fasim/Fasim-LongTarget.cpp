@@ -223,6 +223,9 @@ struct FasimTop5PhaseTimingStats
 			gasal2_extend_wall_seconds(0.0),
 			gasal2_direct_lite_archive_convert_requested(false),
 			gasal2_direct_lite_archive_convert_active(false),
+			gasal2_archive_first_output_requested(false),
+			gasal2_archive_first_output_active(false),
+			gasal2_archive_first_output_decision("not_requested"),
 			gasal2_convert_wall_seconds(0.0),
 		gasal2_convert_selected_scan_seconds(0.0),
 		gasal2_convert_span_check_seconds(0.0),
@@ -361,6 +364,9 @@ struct FasimTop5PhaseTimingStats
 	double gasal2_extend_wall_seconds;
 	bool gasal2_direct_lite_archive_convert_requested;
 	bool gasal2_direct_lite_archive_convert_active;
+	bool gasal2_archive_first_output_requested;
+	bool gasal2_archive_first_output_active;
+	std::string gasal2_archive_first_output_decision;
 	double gasal2_convert_wall_seconds;
 	double gasal2_convert_selected_scan_seconds;
 	double gasal2_convert_span_check_seconds;
@@ -758,6 +764,11 @@ static inline bool fasim_top5_gasal2_phase_timing_enabled_runtime()
 static inline bool fasim_gasal2_direct_lite_archive_convert_runtime()
 {
 	return fasim_env_flag_enabled("FASIM_GASAL2_DIRECT_LITE_ARCHIVE_CONVERT");
+}
+
+static inline bool fasim_gasal2_archive_first_output_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT");
 }
 
 static inline bool fasim_gasal2_long_query_segmented_shadow_requested_runtime()
@@ -2635,6 +2646,9 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_extend_wall_seconds=" << stats.gasal2_extend_wall_seconds << "\n";
 	std::cerr << "benchmark.fasim_gasal2_direct_lite_archive_convert_requested=" << (stats.gasal2_direct_lite_archive_convert_requested ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_gasal2_direct_lite_archive_convert_active=" << (stats.gasal2_direct_lite_archive_convert_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_archive_first_output_requested=" << (stats.gasal2_archive_first_output_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_archive_first_output_active=" << (stats.gasal2_archive_first_output_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_archive_first_output_decision=" << stats.gasal2_archive_first_output_decision << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_convert_wall_seconds=" << stats.gasal2_convert_wall_seconds << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_convert_selected_scan_seconds=" << stats.gasal2_convert_selected_scan_seconds << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_convert_span_check_seconds=" << stats.gasal2_convert_span_check_seconds << "\n";
@@ -4488,14 +4502,46 @@ int main(int argc, char* const* argv)
 		uint64_t broadCpuTriplexDigest = 1469598103934665603ULL;
 		uint64_t broadPlannerDescriptorDigest = 1469598103934665603ULL;
 		std::mutex outMutex;
-			const bool writeFull = outputMode == FASIM_OUTPUT_TFOSORTED;
-			const bool writeLite = (outputMode == FASIM_OUTPUT_LITE) || fasim_write_tfosorted_lite_enabled_runtime();
+		const bool archiveFirstOutputRequested =
+			fasim_gasal2_archive_first_output_runtime();
+		const bool archiveFirstOutputActive =
+			archiveFirstOutputRequested &&
+			outputMode == FASIM_OUTPUT_TFOSORTED &&
+			!fasim_write_tfosorted_lite_enabled_runtime() &&
+			!fasim_tfosorted_cigar_archive_probe_runtime() &&
+			!fasim_tfosorted_compact_archive_probe_runtime() &&
+			!fasim_tfosorted_column_archive_probe_runtime() &&
+			fasim_top5_gasal2_gpu_scoreinfo_enabled_runtime();
+		if (phaseTimingEnabled)
+		{
+			phaseTiming.gasal2_archive_first_output_requested =
+				archiveFirstOutputRequested;
+			phaseTiming.gasal2_archive_first_output_active =
+				archiveFirstOutputActive;
+			if (archiveFirstOutputActive)
+			{
+				phaseTiming.gasal2_archive_first_output_decision = "active";
+			}
+			else if (archiveFirstOutputRequested)
+			{
+				phaseTiming.gasal2_archive_first_output_decision =
+					"unsupported_shape";
+			}
+		}
+			const bool writeFull =
+				(outputMode == FASIM_OUTPUT_TFOSORTED) &&
+				!archiveFirstOutputActive;
+			const bool writeLite =
+				!archiveFirstOutputActive &&
+				((outputMode == FASIM_OUTPUT_LITE) ||
+				 fasim_write_tfosorted_lite_enabled_runtime());
 			const bool writeCigarArchiveProbe =
 				fasim_tfosorted_cigar_archive_probe_runtime();
 			const bool writeCompactArchiveProbe =
 				fasim_tfosorted_compact_archive_probe_runtime();
 			const bool writeColumnArchiveProbe =
-				fasim_tfosorted_column_archive_probe_runtime();
+				fasim_tfosorted_column_archive_probe_runtime() ||
+				archiveFirstOutputActive;
 		const int outputTopkLite = fasim_output_topk_lite_runtime();
 		const bool collectTopkLite = writeLite && outputTopkLite > 0;
 		const bool broadCpuTriplexExportEnabled =
@@ -4580,7 +4626,9 @@ int main(int argc, char* const* argv)
 				if (writeColumnArchiveProbe)
 				{
 					columnArchiveProbePath =
-						outFilePath + ".column-archive.tfoa";
+						archiveFirstOutputActive ?
+						(outFilePath + ".archive-first.tfoa") :
+						(outFilePath + ".column-archive.tfoa");
 					columnArchiveProbeWriter.open(columnArchiveProbePath);
 					columnArchiveProbeOpened = true;
 				}
@@ -6268,6 +6316,18 @@ int main(int argc, char* const* argv)
 					!attemptConsumerShadowEnabled &&
 					!emissionOnlyConsumerShadowEnabled &&
 					!broadCpuTriplexOpened;
+				const bool archiveFirstConvertActive =
+					archiveFirstOutputActive &&
+					writeColumnArchiveProbe &&
+					!writeFull &&
+					!writeLite &&
+					!writeCigarArchiveProbe &&
+					!writeCompactArchiveProbe &&
+					!collectTopkLite &&
+					!broadReplacementConsumerEnabled &&
+					!attemptConsumerShadowEnabled &&
+					!emissionOnlyConsumerShadowEnabled &&
+					!broadCpuTriplexOpened;
 				if (phaseTimingEnabled)
 				{
 					phaseTiming.gasal2_direct_lite_archive_convert_requested =
@@ -6276,6 +6336,15 @@ int main(int argc, char* const* argv)
 					phaseTiming.gasal2_direct_lite_archive_convert_active =
 						phaseTiming.gasal2_direct_lite_archive_convert_active ||
 						directConvertActive;
+					phaseTiming.gasal2_archive_first_output_active =
+						phaseTiming.gasal2_archive_first_output_active ||
+						archiveFirstConvertActive;
+					if (archiveFirstOutputRequested && !archiveFirstConvertActive &&
+					    phaseTiming.gasal2_archive_first_output_decision == "active")
+					{
+						phaseTiming.gasal2_archive_first_output_decision =
+							"unsupported_convert_shape";
+					}
 				}
 				if (phaseTimingEnabled && ntSumSpanPrune)
 				{
@@ -6944,7 +7013,7 @@ int main(int argc, char* const* argv)
 							emitRank33Plus.fetch_add(1, std::memory_order_relaxed);
 						}
 						};
-					if (directConvertActive)
+					if (directConvertActive || archiveFirstConvertActive)
 					{
 						std::vector< std::vector<FasimGasal2DirectLiteArchiveTriplex> >
 							directRowsByTask(tasks.size());
@@ -7283,10 +7352,13 @@ int main(int argc, char* const* argv)
 												.gasal2_nt_shadow_sum_span_false_negative;
 										}
 									}
-										emit_lite_row(fasim_make_lite_row(row.chr,
-										                                  row.genomestart,
-										                                  row.genomeend,
-										                                  row));
+										if (!archiveFirstConvertActive)
+										{
+											emit_lite_row(fasim_make_lite_row(row.chr,
+											                                  row.genomestart,
+											                                  row.genomeend,
+											                                  row));
+										}
 									columnArchiveProbeWriter.write_direct_row(
 										row.stari,
 										row.endi,

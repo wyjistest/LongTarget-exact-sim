@@ -1522,6 +1522,12 @@ check-fasim-gasal2-direct-lite-archive-convert:
 
 .PHONY: check-fasim-gasal2-direct-lite-archive-convert
 
+check-fasim-gasal2-archive-first-output:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_archive_first_output) bash ./scripts/check_fasim_gasal2_archive_first_output.sh
+
+.PHONY: check-fasim-gasal2-archive-first-output
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 

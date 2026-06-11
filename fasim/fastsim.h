@@ -92,11 +92,15 @@ inline bool fasim_tfosorted_column_archive_probe_enabled_runtime()
 	static const bool enabled = []()
 	{
 		const char* env = getenv("FASIM_TFOSORTED_COLUMN_ARCHIVE_PROBE");
-		if (env == NULL || env[0] == '\0')
+		const char* archiveFirstEnv = getenv("FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT");
+		if ((env == NULL || env[0] == '\0') &&
+		    (archiveFirstEnv == NULL || archiveFirstEnv[0] == '\0'))
 		{
 			return false;
 		}
-		return env[0] != '0';
+		return (env != NULL && env[0] != '\0' && env[0] != '0') ||
+		       (archiveFirstEnv != NULL && archiveFirstEnv[0] != '\0' &&
+		        archiveFirstEnv[0] != '0');
 	}();
 	return enabled;
 }
