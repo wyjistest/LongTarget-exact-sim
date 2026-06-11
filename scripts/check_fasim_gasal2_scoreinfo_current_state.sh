@@ -94,6 +94,12 @@ for path in \
   "$ROOT/scripts/check_fasim_gasal2_score_prepass_state_machine_trust.sh" \
   "$ROOT/scripts/check_fasim_gasal2_score_prepass_state_machine_trust_runtime_smoke.sh" \
   "$ROOT/scripts/check_fasim_gasal2_scoreinfo_scoped_milestone_rollup.sh" \
+  "$ROOT/docs/fasim_gasal2_emission_only_consumer_debug.md" \
+  "$ROOT/scripts/check_fasim_gasal2_emission_only_consumer_debug.sh" \
+  "$ROOT/docs/fasim_gasal2_scoring_parameter_matrix.md" \
+  "$ROOT/scripts/check_fasim_gasal2_scoring_parameter_matrix.sh" \
+  "$ROOT/docs/fasim_gasal2_cpu_authority_candidate_coverage_plan.md" \
+  "$ROOT/scripts/check_fasim_gasal2_cpu_authority_candidate_coverage_plan.sh" \
   "$ROOT/scripts/check_fasim_gasal2_full_goal_decision.sh"; do
   if [[ ! -s "$path" ]]; then
     echo "missing current-state dependency: $path" >&2
@@ -484,7 +490,7 @@ required_doc = [
     "gpu_scoreinfo_groups = 105,845",
     "replay align attempts = 281,588",
     "candidate/baseline speedup = 0.300675x",
-    "shared scoreInfo kernel fails with `invalid argument`",
+    "shared scoreInfo kernel fails with `legacy_byte_shared_smem_exceeds_optin_limit`",
     "`gpu_scoreinfo_groups=0`, `realpath_used=0`, and `realpath_fallbacks=4`",
     "rules out a broad long-query real path",
     "make check-fasim-long-query-streaming-scoreinfo-shadow-gpu-minscore-hot",
@@ -525,21 +531,26 @@ required_doc = [
     "schema = tfosorted",
     "candidate_vs_baseline = 0.990699x",
     "MALAT1 first64 no-probe:",
-    "candidate_vs_baseline = 1.030868x",
+    "digest = f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d",
+    "candidate_vs_baseline = 1.029812x",
     "tasks = 18,096",
     "MALAT1 first128 no-probe:",
     "rows = 22,531",
-    "candidate_vs_baseline = 1.043793x",
+    "digest = 91ea0b8191027916e3237fb5381c6271fc9acd03b46a5cf67826c253fe41edd1",
+    "candidate_vs_baseline = 1.041215x",
     "tasks = 40,128",
     "two_contract_used = 40,128",
     "realpath_used = 40,128",
     "gpu_scoreinfo_groups = 715,473",
     "MALAT1 first256 no-probe:",
     "rows = 42,504",
-    "candidate_vs_baseline = 1.042764x",
+    "digest = 7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e",
+    "candidate_vs_baseline = 1.040931x",
     "tasks = 80,640",
     "MALAT1 full no-probe:",
-    "candidate_vs_baseline = 1.037747x",
+    "baseline_wall_seconds = 2611.940621",
+    "candidate_wall_seconds = 2514.945686",
+    "candidate_vs_baseline = 1.038567x",
     "tasks = 200,400",
     "two_contract_used = 200,400",
     "realpath_used = 200,400",
@@ -547,7 +558,9 @@ required_doc = [
     "MALAT1 full TFOsorted no-probe:",
     "schema = tfosorted",
     "digest = ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc",
-    "candidate_vs_baseline = 1.037590x",
+    "baseline_wall_seconds = 2636.136998",
+    "candidate_wall_seconds = 2537.678266",
+    "candidate_vs_baseline = 1.038799x",
     "Full-MALAT1 Milestone Decision",
     "remaining bottleneck is CPU realpath extend/align",
     "realpath_extend_align_attempts = 8,526,477",
@@ -719,6 +732,40 @@ required_contract_doc = [
     "MEG3 grouped top5 wrapper",
     "full replacement goal remains open",
 ]
+for phrase in (
+    "make check-fasim-gasal2-emission-only-consumer-debug",
+    "make check-fasim-gasal2-scoring-parameter-matrix",
+    "task_key=49",
+    "GASAL2 score equals CPU score for attempt 26",
+    "CPU ref_end = 1574, terminal = 0",
+    "GASAL2 ref_end = 1575, terminal = 1",
+    "shadow threshold while legacy non-threshold = 35",
+    "task_key=117 scoreinfo_index=26 attempt_index=104",
+    "CPU score = 68",
+    "GASAL2 segmented score = 138",
+    "FASIM_ALIGN_GASAL2_GAP_OPEN=16",
+    "lowers the same GASAL2 score from `138` to `104`",
+    "triplex_mismatches=12",
+    "gap open `12` leaves that gate clean",
+    "diagnostic only",
+    "GASAL2 endpoint/terminal and current segmented max-score threshold must not become output authority or safe reject/accept authority",
+    "task49:",
+    "score matches, endpoint/terminal differs",
+    "task117:",
+    "gap_open=12 over-threshold segmented GASAL2 score = 138",
+    "gap_open=16 introduces triplex_mismatches=12",
+    "full-query-compatible score/end/tie policy or CPU-authority validation",
+    "make check-fasim-gasal2-cpu-authority-candidate-coverage-plan",
+    "GASAL2 may only propose candidate attempts",
+    "legacy selected attempt is present in the GASAL2 candidate set",
+    "false_negative_scoreinfos = 0",
+    "cpu_align_attempts < realpath_reference_align_attempts",
+    "total_seconds < realpath_reference_seconds",
+    "If candidate coverage is not exact, this reducer stops",
+):
+    if phrase not in doc:
+        raise SystemExit(f"current-state doc missing emission-only debug phrase: {phrase}")
+
 missing_contract_doc = [
     phrase for phrase in required_contract_doc if phrase not in output_contract_doc
 ]

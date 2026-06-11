@@ -115,6 +115,7 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_selected_attempts=0\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_align_calls=0\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_skipped_after_emit=0\n";
+	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_rank_cutoff_skipped=0\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_emit_threshold=0\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_emit_best_fallback=0\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_emit_last=0\n";
@@ -153,6 +154,7 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_scored_attempts=0\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_threshold_emits=0\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_terminal_emits=0\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_last_emits=0\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_empty_emits=0\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_cpu_align_attempts=0\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_realpath_reference_align_attempts=0\n";
@@ -329,6 +331,7 @@ void fasim_gasal2_record_emission_only_consumer_shadow_request(
 void fasim_gasal2_record_emission_only_consumer_shadow_result(
 	uint64_t thresholdEmits,
 	uint64_t terminalEmits,
+	uint64_t lastEmits,
 	uint64_t emptyEmits,
 	uint64_t cpuAlignAttempts,
 	uint64_t realpathReferenceAlignAttempts,
@@ -342,6 +345,7 @@ void fasim_gasal2_record_emission_only_consumer_shadow_result(
 {
 	(void)thresholdEmits;
 	(void)terminalEmits;
+	(void)lastEmits;
 	(void)emptyEmits;
 	(void)cpuAlignAttempts;
 	(void)realpathReferenceAlignAttempts;
@@ -380,10 +384,12 @@ void fasim_gasal2_record_cpu_traceback_replay(uint64_t replayAttempts,
 }
 
 void fasim_gasal2_record_cpu_traceback_aligns(uint64_t alignCalls,
-                                              uint64_t skippedAfterEmit)
+                                              uint64_t skippedAfterEmit,
+                                              uint64_t rankCutoffSkipped)
 {
 	(void)alignCalls;
 	(void)skippedAfterEmit;
+	(void)rankCutoffSkipped;
 }
 
 void fasim_gasal2_record_cpu_traceback_outcomes(uint64_t thresholdEmits,

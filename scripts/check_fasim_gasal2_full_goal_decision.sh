@@ -9,16 +9,19 @@ SCOPED_DOC="$ROOT/docs/fasim_gasal2_top5_scoped_completion_candidate.md"
 SCOREINFO_SCOPED_DOC="$ROOT/docs/fasim_gasal2_scoreinfo_scoped_milestone.md"
 REPLACEMENT_CONSUMER_DOC="$ROOT/docs/fasim_gasal2_replacement_consumer_shadow_requirements.md"
 BROAD_PATH_DOC="$ROOT/docs/fasim_gasal2_broad_path_architecture_gate.md"
+EMISSION_DEBUG_DOC="$ROOT/docs/fasim_gasal2_emission_only_consumer_debug.md"
+SCORING_MATRIX_DOC="$ROOT/docs/fasim_gasal2_scoring_parameter_matrix.md"
+CPU_AUTHORITY_COVERAGE_DOC="$ROOT/docs/fasim_gasal2_cpu_authority_candidate_coverage_plan.md"
 MAKEFILE="$ROOT/Makefile"
 
-for path in "$DOC" "$CURRENT_STATE_DOC" "$COMPLETION_GAP_DOC" "$SCOPED_DOC" "$SCOREINFO_SCOPED_DOC" "$REPLACEMENT_CONSUMER_DOC" "$BROAD_PATH_DOC" "$MAKEFILE"; do
+for path in "$DOC" "$CURRENT_STATE_DOC" "$COMPLETION_GAP_DOC" "$SCOPED_DOC" "$SCOREINFO_SCOPED_DOC" "$REPLACEMENT_CONSUMER_DOC" "$BROAD_PATH_DOC" "$EMISSION_DEBUG_DOC" "$SCORING_MATRIX_DOC" "$CPU_AUTHORITY_COVERAGE_DOC" "$MAKEFILE"; do
   if [[ ! -s "$path" ]]; then
     echo "missing GASAL2 full-goal decision dependency: $path" >&2
     exit 1
   fi
 done
 
-python3 - "$DOC" "$CURRENT_STATE_DOC" "$COMPLETION_GAP_DOC" "$SCOPED_DOC" "$SCOREINFO_SCOPED_DOC" "$REPLACEMENT_CONSUMER_DOC" "$BROAD_PATH_DOC" "$MAKEFILE" <<'PY'
+python3 - "$DOC" "$CURRENT_STATE_DOC" "$COMPLETION_GAP_DOC" "$SCOPED_DOC" "$SCOREINFO_SCOPED_DOC" "$REPLACEMENT_CONSUMER_DOC" "$BROAD_PATH_DOC" "$EMISSION_DEBUG_DOC" "$SCORING_MATRIX_DOC" "$CPU_AUTHORITY_COVERAGE_DOC" "$MAKEFILE" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -30,7 +33,10 @@ scoped = " ".join(Path(sys.argv[4]).read_text(encoding="utf-8").split())
 scoreinfo_scoped = " ".join(Path(sys.argv[5]).read_text(encoding="utf-8").split())
 replacement_consumer = " ".join(Path(sys.argv[6]).read_text(encoding="utf-8").split())
 broad_path = " ".join(Path(sys.argv[7]).read_text(encoding="utf-8").split())
-makefile = Path(sys.argv[8]).read_text(encoding="utf-8")
+emission_debug = " ".join(Path(sys.argv[8]).read_text(encoding="utf-8").split())
+scoring_matrix = " ".join(Path(sys.argv[9]).read_text(encoding="utf-8").split())
+cpu_authority_coverage = " ".join(Path(sys.argv[10]).read_text(encoding="utf-8").split())
+makefile = Path(sys.argv[11]).read_text(encoding="utf-8")
 
 required_doc = [
     "Full Goal Decision Audit",
@@ -71,7 +77,7 @@ required_doc = [
     "realpath_extend_seconds = 52.0682 (~42.7% candidate wall)",
     "unattributed_overhead_seconds ~= 19.9291 (~16.3% candidate wall)",
     "current selector/global-state long-query shape is architecture no-go for broad replacement",
-    "NEAT1 shared scoreInfo runner preset fails launch with invalid argument and does not enter scoreInfo realpath",
+    "NEAT1 shared scoreInfo runner preset fails launch with legacy_byte_shared_smem_exceeds_optin_limit and does not enter scoreInfo realpath",
     "replacement consumer shadow",
     "selected-only replay is not sufficient",
     "If NEAT1 remains slower than CPU fallback, do not promote",
@@ -200,23 +206,30 @@ required_doc = [
     "schema = tfosorted",
     "candidate_vs_baseline = 0.990699x",
     "MALAT1 first64 no-probe:",
-    "candidate_vs_baseline = 1.030868x",
+    "digest = f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d",
+    "candidate_vs_baseline = 1.029812x",
     "tasks = 18,096",
     "MALAT1 first128 no-probe:",
     "rows = 22,531",
-    "candidate_vs_baseline = 1.043793x",
+    "digest = 91ea0b8191027916e3237fb5381c6271fc9acd03b46a5cf67826c253fe41edd1",
+    "candidate_vs_baseline = 1.041215x",
     "tasks = 40,128",
     "MALAT1 first256 no-probe:",
     "rows = 42,504",
-    "candidate_vs_baseline = 1.042764x",
+    "digest = 7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e",
+    "candidate_vs_baseline = 1.040931x",
     "tasks = 80,640",
     "MALAT1 full no-probe:",
-    "candidate_vs_baseline = 1.037747x",
+    "baseline_wall_seconds = 2611.940621",
+    "candidate_wall_seconds = 2514.945686",
+    "candidate_vs_baseline = 1.038567x",
     "tasks = 200,400",
     "MALAT1 full TFOsorted no-probe:",
     "schema = tfosorted",
     "digest = ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc",
-    "candidate_vs_baseline = 1.037590x",
+    "baseline_wall_seconds = 2636.136998",
+    "candidate_wall_seconds = 2537.678266",
+    "candidate_vs_baseline = 1.038799x",
     "gpu_scoreinfo_groups = 3,561,123",
     "gpu_scoreinfo_groups = 715,473",
     "scoped milestone for the MALAT1-like grouped two-contract bridge",
@@ -239,6 +252,21 @@ required_doc = [
     "make check-fasim-gasal2-scoreinfo-scoped-release-smoke",
     "first8 no-probe lite and TFOsorted checks plus the scoped/full-goal static gates",
     "scoped MALAT1-like smoke, not a universal replacement smoke",
+    "make check-fasim-gasal2-emission-only-consumer-debug",
+    "task117 shows CPU score = 68 but GASAL2 segmented score = 138 for the same attempt",
+    "FASIM_ALIGN_GASAL2_GAP_OPEN=16 lowers that task117 shadow score to 104",
+    "gap-open 16 breaks the NEAT1 first1 emission-only clean gate",
+    "validated default fix",
+    "production authority or safe reject/accept authority",
+    "make check-fasim-gasal2-scoring-parameter-matrix",
+    "task49 is an endpoint/terminal mismatch even when score matches",
+    "task117 is a segmented score/threshold mismatch",
+    "NEAT1 first1 shows gap-open 16 creates new triplex mismatches",
+    "not a single scoring-parameter change",
+    "make check-fasim-gasal2-cpu-authority-candidate-coverage-plan",
+    "GASAL2 may propose threshold/fallback/last candidate attempts",
+    "legacy selected attempt must be present in the GASAL2 candidate set",
+    "`false_negative_scoreinfos` is nonzero, this reducer stops",
     "make check-fasim-gasal2-full-goal-decision",
     "make check-fasim-gasal2-long-query-current-stop",
     "make check-fasim-gasal2-long-query-next-architecture-decision",
@@ -255,12 +283,63 @@ for name, text in (
     ("scoreinfo-scoped", scoreinfo_scoped),
 ):
     for phrase in (
-        "make check-fasim-gasal2-full-goal-decision",
+    "make check-fasim-gasal2-full-goal-decision",
         "Full Goal Decision Audit",
         "GASAL2 / GPU scoreInfo scoped feasibility checkpoint",
     ):
         if phrase not in text:
             raise SystemExit(f"{name} doc missing full-goal decision phrase: {phrase}")
+
+for phrase in (
+    "make check-fasim-gasal2-emission-only-consumer-debug",
+    "make check-fasim-gasal2-scoring-parameter-matrix",
+    "make check-fasim-gasal2-cpu-authority-candidate-coverage-plan",
+    "task_key=49",
+    "GASAL2 score equals CPU score for attempt 26",
+    "task_key=117 scoreinfo_index=26 attempt_index=104",
+    "FASIM_ALIGN_GASAL2_GAP_OPEN=16",
+    "GASAL2 endpoint/terminal and current segmented max-score threshold must not become output authority or safe reject/accept authority",
+    "GASAL2 may only propose candidate attempts",
+    "false_negative_scoreinfos = 0",
+    "cpu_align_attempts < realpath_reference_align_attempts",
+):
+    if phrase not in current_state:
+        raise SystemExit(f"current-state doc missing emission-only debug phrase: {phrase}")
+
+for phrase in (
+    "Fasim GASAL2 Scoring Parameter Matrix",
+    "task_key=49 scoreinfo_index=6 attempt_index=26",
+    "CPU ref_end = 1574, terminal = 0",
+    "GASAL2 ref_end = 1575, terminal = 1",
+    "task_key=117 scoreinfo_index=26 attempt_index=104",
+    "gap_open=12",
+    "GASAL2 score = 138",
+    "gap_open=16",
+    "GASAL2 score = 104",
+    "NEAT1 first1",
+    "triplex_mismatches = 12",
+    "parameter change trades one failure mode for another",
+    "Do not promote GASAL2 endpoint, terminal, segmented max-score, or gap-open 16 as authority.",
+):
+    if phrase not in scoring_matrix:
+        raise SystemExit(f"scoring-parameter matrix doc missing phrase: {phrase}")
+
+for phrase in (
+    "Fasim GASAL2 CPU-Authority Candidate Coverage Plan",
+    "This is the next broad-path probe toward the active objective",
+    "CPU `aligner.Align()` remains the only authority",
+    "GASAL2 may only propose candidate attempts",
+    "legacy selected attempt is present in the GASAL2 candidate set",
+    "false_negative_scoreinfos = 0",
+    "triplex_mismatches = 0",
+    "cpu_align_attempts < realpath_reference_align_attempts",
+    "total_seconds < realpath_reference_seconds",
+    "score_margin sweep",
+    "Do not use GASAL2 endpoint as terminal authority",
+    "If false_negative_scoreinfos is nonzero, stop this candidate reducer",
+):
+    if phrase not in cpu_authority_coverage:
+        raise SystemExit(f"CPU-authority coverage doc missing phrase: {phrase}")
 
 for phrase in (
     "Fasim GASAL2 Replacement Consumer Shadow Requirements",
@@ -276,6 +355,18 @@ for phrase in (
 ):
     if phrase not in broad_path:
         raise SystemExit(f"broad-path doc missing phrase: {phrase}")
+
+for phrase in (
+    "Fasim GASAL2 Emission-Only Consumer Debug",
+    "task_key=49 scoreinfo_index=6 attempt_index=26",
+    "task_key=117 scoreinfo_index=26 attempt_index=104",
+    "FASIM_ALIGN_GASAL2_GAP_OPEN=16",
+    "GASAL2 endpoint as terminal authority",
+    "current segmented max-score threshold",
+    "real replacement path: no",
+):
+    if phrase not in emission_debug:
+        raise SystemExit(f"emission-only debug doc missing phrase: {phrase}")
 
 target = re.search(
     r"^check-fasim-gasal2-full-goal-decision:\n"
@@ -297,6 +388,12 @@ if "check-fasim-gasal2-full-goal-decision" not in current_target.group("deps").s
     raise SystemExit("current-state target missing full-goal decision dependency")
 if "check-fasim-gasal2-score-prepass-state-machine-stop" not in current_target.group("deps").split():
     raise SystemExit("current-state target missing score-prepass stop dependency")
+if "check-fasim-gasal2-emission-only-consumer-debug" not in current_target.group("deps").split():
+    raise SystemExit("current-state target missing emission-only consumer debug dependency")
+if "check-fasim-gasal2-scoring-parameter-matrix" not in current_target.group("deps").split():
+    raise SystemExit("current-state target missing scoring-parameter matrix dependency")
+if "check-fasim-gasal2-cpu-authority-candidate-coverage-plan" not in current_target.group("deps").split():
+    raise SystemExit("current-state target missing CPU-authority candidate coverage dependency")
 if "check-fasim-gasal2-scoreinfo-scoped-release-smoke" not in current_target.group("deps").split():
     raise SystemExit("current-state target missing scoped release-smoke dependency")
 if "check-fasim-gasal2-replacement-consumer-shadow-requirements" not in current_target.group("deps").split():

@@ -81,6 +81,11 @@ NEAT1 speed ceiling:
   ideal_zero_realpath_extend_speedup = 1.2312x
   next architecture must reduce both GPU scoreInfo work and CPU realpath extend/align work
   make check-fasim-gasal2-neat1-speed-ceiling
+NEAT1 shared-smem boundary:
+  required_smem = 136,608
+  optin_smem_limit = 101,376
+  error = legacy_byte_shared_smem_exceeds_optin_limit
+  shared scoreInfo launch is rejected before CUDA returns generic invalid argument
 NEAT1 next architecture requirements:
   kernel-only win is not sufficient
   If the prototype cannot reduce both GPU scoreInfo and realpath extend/align, stop the NEAT1 broad path
@@ -139,7 +144,7 @@ score-prepass state-machine consumer:
   make check-fasim-gasal2-score-prepass-state-machine-consumer
 NEAT1 runtime boundary: do not use audited replay wall time as real runtime speedup evidence
 NEAT1 trust runtime first64 candidate/baseline speedup = 0.705493x
-NEAT1 shared scoreInfo runner preset fails launch with invalid argument and does not enter scoreInfo realpath
+NEAT1 shared scoreInfo runner preset fails launch with legacy_byte_shared_smem_exceeds_optin_limit and does not enter scoreInfo realpath
 direct selected-only replay over-emits repeated scoreInfos
 selected-prefix replay clean but no CPU-align reduction
 score-prepass state-machine trust traceback boundary:
@@ -349,21 +354,24 @@ MALAT1 first8 TFOsorted no-probe:
 
 MALAT1 first64 no-probe:
   rows = 9,741
-  candidate_vs_baseline = 1.030868x
+  digest = f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d
+  candidate_vs_baseline = 1.029812x
   tasks = 18,096
   gpu_scoreinfo_groups = 319,280
   probe_positive_numeric_keys = 0
 
 MALAT1 first128 no-probe:
   rows = 22,531
-  candidate_vs_baseline = 1.043793x
+  digest = 91ea0b8191027916e3237fb5381c6271fc9acd03b46a5cf67826c253fe41edd1
+  candidate_vs_baseline = 1.041215x
   tasks = 40,128
   gpu_scoreinfo_groups = 715,473
   probe_positive_numeric_keys = 0
 
 MALAT1 first256 no-probe:
   rows = 42,504
-  candidate_vs_baseline = 1.042764x
+  digest = 7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e
+  candidate_vs_baseline = 1.040931x
   tasks = 80,640
   gpu_scoreinfo_groups = 1,434,844
   probe_positive_numeric_keys = 0
@@ -371,7 +379,9 @@ MALAT1 first256 no-probe:
 MALAT1 full no-probe:
   rows = 98,713
   digest = f080498ad8b9661100243e8eec89b6b54b566d7ed96fa5db7e268a8ce8513e0b
-  candidate_vs_baseline = 1.037747x
+  baseline_wall_seconds = 2611.940621
+  candidate_wall_seconds = 2514.945686
+  candidate_vs_baseline = 1.038567x
   tasks = 200,400
   two_contract_used = 200,400
   realpath_used = 200,400
@@ -382,7 +392,9 @@ MALAT1 full TFOsorted no-probe:
   schema = tfosorted
   rows = 98,713
   digest = ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc
-  candidate_vs_baseline = 1.037590x
+  baseline_wall_seconds = 2636.136998
+  candidate_wall_seconds = 2537.678266
+  candidate_vs_baseline = 1.038799x
   tasks = 200,400
   two_contract_used = 200,400
   realpath_used = 200,400
@@ -482,11 +494,80 @@ It reruns the first8 no-probe lite and TFOsorted checks plus the scoped/full-goa
 static gates. It is a scoped MALAT1-like smoke, not a universal replacement
 smoke, and it does not change the full-goal status.
 
-The next broad attempt is an emission-only scoreInfo consumer shadow:
-FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1. It must use GASAL2 score/end to
-choose emitted attempts and CPU-align only those emitted attempts. It is a
-go only if NEAT1 first64 is triplex/digest clean and CPU align attempts are
-lower than the realpath reference.
+The emission-only scoreInfo consumer shadow is now a no-go checkpoint, not the
+next real path:
+
+```text
+FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1
+decision = emission_only_consumer_shadow_correctness_no_go
+candidate_vs_baseline = 0.157653x
+cpu_align_attempts = 52,994
+realpath_reference_align_attempts = 140,087
+align_attempt_reduction = 87,093
+triplex_mismatches = 4,404
+missing_triplexes = 2,096
+extra_triplexes = 1,460
+```
+
+It reduces CPU align attempts, but it changes the emitted triplex stream and is
+too slow. Do not promote it as scoreInfo/preAlign replacement.
+
+The focused emission-only debug gate explains why this is not a small tuning
+issue:
+
+```text
+task_key=49:
+  GASAL2 score matches CPU score, but endpoint/terminal differs
+  CPU ref_end = 1574, terminal = 0
+  GASAL2 ref_end = 1575, terminal = 1
+
+sampled summary mismatches = 471
+terminal/last_nonzero selection mismatches dominate
+shadow threshold while legacy non-threshold = 35
+task117 shows CPU score = 68 but GASAL2 segmented score = 138 for the same attempt
+FASIM_ALIGN_GASAL2_GAP_OPEN=16 lowers that task117 shadow score to 104
+but gap-open 16 breaks the NEAT1 first1 emission-only clean gate
+```
+
+`NO_GPU_TERMINAL=1` is not equivalent, and `VERIFY_TERMINAL=1` is only a CPU
+authority semantic probe. The current selector cannot use GASAL2 endpoint or
+segmented max-score threshold as production authority or safe reject/accept
+authority. `FASIM_ALIGN_GASAL2_GAP_OPEN` is useful for diagnosis, but not a
+validated default fix.
+
+It is checked by:
+
+```bash
+make check-fasim-gasal2-emission-only-consumer-debug
+```
+
+The scoring-parameter matrix is checked by:
+
+```bash
+make check-fasim-gasal2-scoring-parameter-matrix
+```
+
+That matrix makes the continuation boundary explicit: task49 is an
+endpoint/terminal mismatch even when score matches, task117 is a segmented
+score/threshold mismatch where gap-open 16 fixes one false threshold hit, and
+NEAT1 first1 shows gap-open 16 creates new triplex mismatches. Therefore the
+next viable broad path must be a full-query-compatible score/end/tie-policy
+design or CPU-authority validation that still reduces enough total work, not a
+single scoring-parameter change.
+
+The CPU-authority candidate coverage plan is checked by:
+
+```bash
+make check-fasim-gasal2-cpu-authority-candidate-coverage-plan
+```
+
+That is the next broad-path probe. GASAL2 may propose threshold/fallback/last
+candidate attempts, but CPU `aligner.Align()` remains authority. The first
+question is candidate coverage, not speed: the legacy selected attempt must be
+present in the GASAL2 candidate set for every scoreInfo. If
+`false_negative_scoreinfos` is nonzero, this reducer stops. If coverage is
+clean but CPU align attempts or total time are not reduced, it remains
+diagnostic only.
 
 Allowed continuation:
 

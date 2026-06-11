@@ -498,9 +498,9 @@ make check-fasim-gasal2-malat1-no-probe-two-contract-runtime-full
 schema = lite
 rows = 98,713
 digest = f080498ad8b9661100243e8eec89b6b54b566d7ed96fa5db7e268a8ce8513e0b
-baseline_wall_seconds = 2616.446186
-candidate_wall_seconds = 2521.276554
-candidate_vs_baseline = 1.037747x
+baseline_wall_seconds = 2611.940621
+candidate_wall_seconds = 2514.945686
+candidate_vs_baseline = 1.038567x
 tasks = 200,400
 two_contract_used = 200,400
 realpath_used = 200,400

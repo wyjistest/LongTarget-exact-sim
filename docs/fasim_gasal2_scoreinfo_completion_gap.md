@@ -242,7 +242,7 @@ NEAT1 non-shared audited replay first128:
   candidate/baseline speedup = 0.300675x
 
 NEAT1 shared runner trust preset:
-  shared scoreInfo kernel error = invalid argument
+  shared scoreInfo kernel error = legacy_byte_shared_smem_exceeds_optin_limit
   gpu_scoreinfo_groups = 0
   realpath_used = 0
   realpath_fallbacks = 4 on first4
@@ -458,7 +458,8 @@ the current machine:
 ```text
 schema=lite
 rows=9741
-candidate_vs_baseline=1.030868x
+digest=f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d
+candidate_vs_baseline=1.029812x
 tasks=18,096
 two_contract_used=18,096
 realpath_used=18,096
@@ -474,7 +475,8 @@ The optional first128 form is also full lite-row/digest clean:
 ```text
 schema=lite
 rows=22531
-candidate_vs_baseline=1.043793x
+digest=91ea0b8191027916e3237fb5381c6271fc9acd03b46a5cf67826c253fe41edd1
+candidate_vs_baseline=1.041215x
 tasks=40,128
 two_contract_used=40,128
 realpath_used=40,128
@@ -483,7 +485,8 @@ probe_positive_numeric_keys=0
 
 first256:
   rows=42504
-  candidate_vs_baseline=1.042764x
+  digest=7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e
+  candidate_vs_baseline=1.040931x
   tasks=80,640
   two_contract_used=80,640
   realpath_used=80,640
@@ -493,35 +496,31 @@ first256:
 full MALAT1:
   rows=98713
   digest=f080498ad8b9661100243e8eec89b6b54b566d7ed96fa5db7e268a8ce8513e0b
-  baseline_wall_seconds=2616.446186
-  candidate_wall_seconds=2521.276554
-  candidate_vs_baseline=1.037747x
+  baseline_wall_seconds=2611.940621
+  candidate_wall_seconds=2514.945686
+  candidate_vs_baseline=1.038567x
   tasks=200,400
   two_contract_used=200,400
   realpath_used=200,400
   gpu_minscore_used=200,400
   gpu_scoreinfo_groups=3,561,123
-  two_contract_total_seconds=486.853900
-  gpu_minscore_wall_seconds=159.007290
-  realpath_extend_seconds=1143.153600
-  realpath_extend_align_seconds=1137.801300
 
 full MALAT1 TFOsorted:
   schema=tfosorted
   rows=98713
   digest=ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc
-  baseline_wall_seconds=2640.948210
-  candidate_wall_seconds=2545.271840
-  candidate_vs_baseline=1.037590x
+  baseline_wall_seconds=2636.136998
+  candidate_wall_seconds=2537.678266
+  candidate_vs_baseline=1.038799x
   tasks=200,400
   two_contract_used=200,400
   realpath_used=200,400
   gpu_minscore_used=200,400
   gpu_scoreinfo_groups=3,561,123
-  two_contract_total_seconds=486.866600
-  gpu_minscore_wall_seconds=159.077360
-  realpath_extend_seconds=1165.680900
-  realpath_extend_align_seconds=1139.782800
+  two_contract_total_seconds=481.568400
+  gpu_minscore_wall_seconds=157.575680
+  realpath_extend_seconds=1165.840400
+  realpath_extend_align_seconds=1139.782900
   probe_positive_numeric_keys=0
 ```
 
@@ -728,8 +727,20 @@ It proves a correctness-clean diagnostic scaffold for attempt-level replay, but
 does not reduce CPU `aligner.Align()` attempts and must not be promoted as a
 real path.
 
-The next broad attempt is an emission-only scoreInfo consumer shadow:
-FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1. It must use GASAL2 score/end to
-choose emitted attempts and CPU-align only those emitted attempts. It is a
-go only if NEAT1 first64 is triplex/digest clean and CPU align attempts are
-lower than the realpath reference.
+The emission-only scoreInfo consumer shadow has now been measured on NEAT1
+first64:
+
+```text
+decision=emission_only_consumer_shadow_correctness_no_go
+candidate_vs_baseline=0.157653x
+cpu_align_attempts=52,994
+realpath_reference_align_attempts=140,087
+align_attempt_reduction=87,093
+triplex_mismatches=4,404
+missing_triplexes=2,096
+extra_triplexes=1,460
+```
+
+It is useful evidence because it reduces CPU align attempts, but it fails the
+triplex equivalence gate and is slower. It does not complete the broad
+scoreInfo/preAlign objective.

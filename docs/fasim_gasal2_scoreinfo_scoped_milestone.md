@@ -387,18 +387,12 @@ Fresh optional first64 result:
 schema = lite
 rows = 9,741
 digest = f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d
-baseline_wall_seconds = 234.981992
-candidate_wall_seconds = 227.945703
-candidate_vs_baseline = 1.030868x
+candidate_vs_baseline = 1.029812x
 tasks = 18,096
 two_contract_used = 18,096
 realpath_used = 18,096
 gpu_minscore_used = 18,096
 gpu_scoreinfo_groups = 319,280
-two_contract_total_seconds = 45.133800
-gpu_minscore_wall_seconds = 14.666610
-realpath_extend_seconds = 102.495900
-realpath_extend_align_seconds = 102.015200
 probe_positive_numeric_keys = 0
 ```
 
@@ -413,13 +407,7 @@ two_contract_used = 40,128
 realpath_used = 40,128
 gpu_minscore_used = 40,128
 gpu_scoreinfo_groups = 715,473
-baseline_wall_seconds = 525.188215
-candidate_wall_seconds = 503.153404
-candidate_vs_baseline = 1.043793x
-two_contract_total_seconds = 94.842700
-gpu_minscore_wall_seconds = 31.285140
-realpath_extend_seconds = 229.344300
-realpath_extend_align_seconds = 228.267200
+candidate_vs_baseline = 1.041215x
 probe_positive_numeric_keys = 0
 ```
 
@@ -429,18 +417,12 @@ Fresh optional first256 result:
 schema = lite
 rows = 42,504
 digest = 7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e
-baseline_wall_seconds = 1056.005165
-candidate_wall_seconds = 1012.697865
-candidate_vs_baseline = 1.042764x
+candidate_vs_baseline = 1.040931x
 tasks = 80,640
 two_contract_used = 80,640
 realpath_used = 80,640
 gpu_minscore_used = 80,640
 gpu_scoreinfo_groups = 1,434,844
-two_contract_total_seconds = 191.051600
-gpu_minscore_wall_seconds = 62.517270
-realpath_extend_seconds = 461.650400
-realpath_extend_align_seconds = 459.494600
 probe_positive_numeric_keys = 0
 ```
 
@@ -450,18 +432,14 @@ Fresh full-MALAT1 no-probe result:
 schema = lite
 rows = 98,713
 digest = f080498ad8b9661100243e8eec89b6b54b566d7ed96fa5db7e268a8ce8513e0b
-baseline_wall_seconds = 2616.446186
-candidate_wall_seconds = 2521.276554
-candidate_vs_baseline = 1.037747x
+baseline_wall_seconds = 2611.940621
+candidate_wall_seconds = 2514.945686
+candidate_vs_baseline = 1.038567x
 tasks = 200,400
 two_contract_used = 200,400
 realpath_used = 200,400
 gpu_minscore_used = 200,400
 gpu_scoreinfo_groups = 3,561,123
-two_contract_total_seconds = 486.853900
-gpu_minscore_wall_seconds = 159.007290
-realpath_extend_seconds = 1143.153600
-realpath_extend_align_seconds = 1137.801300
 probe_positive_numeric_keys = 0
 ```
 
@@ -471,18 +449,18 @@ Fresh full-MALAT1 TFOsorted no-probe result:
 schema = tfosorted
 rows = 98,713
 digest = ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc
-baseline_wall_seconds = 2640.948210
-candidate_wall_seconds = 2545.271840
-candidate_vs_baseline = 1.037590x
+baseline_wall_seconds = 2636.136998
+candidate_wall_seconds = 2537.678266
+candidate_vs_baseline = 1.038799x
 tasks = 200,400
 two_contract_used = 200,400
 realpath_used = 200,400
 gpu_minscore_used = 200,400
 gpu_scoreinfo_groups = 3,561,123
-two_contract_total_seconds = 486.866600
-gpu_minscore_wall_seconds = 159.077360
-realpath_extend_seconds = 1165.680900
-realpath_extend_align_seconds = 1139.782800
+two_contract_total_seconds = 481.568400
+gpu_minscore_wall_seconds = 157.575680
+realpath_extend_seconds = 1165.840400
+realpath_extend_align_seconds = 1139.782900
 probe_positive_numeric_keys = 0
 ```
 
@@ -504,14 +482,14 @@ not broad scoreInfo/preAlign replacement:
   yes
 
 remaining bottleneck is CPU realpath extend/align:
-  realpath_extend_seconds = 1143.153600
-  realpath_extend_align_seconds = 1137.801300
+  realpath_extend_seconds = 1165.840400
+  realpath_extend_align_seconds = 1139.782900
   realpath_extend_align_attempts = 8,526,477
 
 GPU scoreInfo path:
-  two_contract_total_seconds = 486.853900
-  two_contract_kernel_seconds = 486.154600
-  gpu_minscore_wall_seconds = 159.007290
+  two_contract_total_seconds = 481.568400
+  two_contract_kernel_seconds = 480.874600
+  gpu_minscore_wall_seconds = 157.575680
 
 decision:
   MALAT1-like grouped two-contract scoreInfo runtime is a scoped milestone.
@@ -565,7 +543,8 @@ NEAT1 non-shared audited replay first128:
 This prevents generalizing the MALAT1 trust result into a broad long-query
 runtime path. The runner trust preset's shared-memory legacy-byte shape is also
 not a NEAT1 replacement path: on NEAT1 first4 it launches GPU minScore cleanly
-but the shared scoreInfo kernel fails with `invalid argument`, so
+but the shared scoreInfo kernel fails with
+`legacy_byte_shared_smem_exceeds_optin_limit`, so
 `gpu_scoreinfo_groups=0`, `realpath_used=0`, and `realpath_fallbacks=4`.
 NEAT1 needs either the non-shared path gated as a workload-specific diagnostic
 or a different execution shape, not more scaling of the shared global-state

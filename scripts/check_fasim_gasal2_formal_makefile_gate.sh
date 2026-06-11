@@ -31,6 +31,8 @@ formal_line = continued_line("check-fasim-gasal2-top5-formal-gate:")
 formal_deps = set(formal_line.split()[1:])
 required_deps = {
     "check-fasim-gasal2-formal-makefile-gate",
+    "check-fasim-gasal2-reproducible-setup",
+    "check-fasim-gasal2-short-query-top5-readiness",
     "check-fasim-gasal2-top5-formal-gate",
     "check-fasim-gasal2-top5-binary-guard",
     "check-fasim-gasal2-top5-output-contract",

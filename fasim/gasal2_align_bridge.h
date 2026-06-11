@@ -52,6 +52,7 @@ struct FasimGasal2Stats
 		cpu_traceback_selected_attempts(0),
 		cpu_traceback_align_calls(0),
 		cpu_traceback_skipped_after_emit(0),
+		cpu_traceback_rank_cutoff_skipped(0),
 		cpu_traceback_emit_threshold(0),
 		cpu_traceback_emit_best_fallback(0),
 		cpu_traceback_emit_last(0),
@@ -90,6 +91,7 @@ struct FasimGasal2Stats
 		emission_only_consumer_shadow_scored_attempts(0),
 		emission_only_consumer_shadow_threshold_emits(0),
 		emission_only_consumer_shadow_terminal_emits(0),
+		emission_only_consumer_shadow_last_emits(0),
 		emission_only_consumer_shadow_empty_emits(0),
 		emission_only_consumer_shadow_cpu_align_attempts(0),
 		emission_only_consumer_shadow_realpath_reference_align_attempts(0),
@@ -185,6 +187,7 @@ struct FasimGasal2Stats
 	uint64_t cpu_traceback_selected_attempts;
 	uint64_t cpu_traceback_align_calls;
 	uint64_t cpu_traceback_skipped_after_emit;
+	uint64_t cpu_traceback_rank_cutoff_skipped;
 	uint64_t cpu_traceback_emit_threshold;
 	uint64_t cpu_traceback_emit_best_fallback;
 	uint64_t cpu_traceback_emit_last;
@@ -223,6 +226,7 @@ struct FasimGasal2Stats
 	uint64_t emission_only_consumer_shadow_scored_attempts;
 	uint64_t emission_only_consumer_shadow_threshold_emits;
 	uint64_t emission_only_consumer_shadow_terminal_emits;
+	uint64_t emission_only_consumer_shadow_last_emits;
 	uint64_t emission_only_consumer_shadow_empty_emits;
 	uint64_t emission_only_consumer_shadow_cpu_align_attempts;
 	uint64_t emission_only_consumer_shadow_realpath_reference_align_attempts;
@@ -594,9 +598,12 @@ struct FasimLongQueryStreamingScoreInfoShadowStats
 		gpu_tasks(0),
 			overflow_batches(0),
 			fallback_batches(0),
-		boundary_state_bytes(0),
-		legacy_byte_shared(0),
-		gpu_minscore_requested(0),
+			boundary_state_bytes(0),
+			legacy_byte_shared(0),
+			legacy_byte_shared_required_smem_bytes(0),
+			legacy_byte_shared_default_smem_limit_bytes(0),
+			legacy_byte_shared_optin_smem_limit_bytes(0),
+			gpu_minscore_requested(0),
 		gpu_minscore_active(0),
 		gpu_minscore_hot(0),
 		gpu_minscore_used(0),
@@ -810,10 +817,23 @@ struct FasimLongQueryStreamingScoreInfoShadowStats
 			score_prepass_state_machine_shadow_expanded_segment_traceback_endpoint_mismatches(0),
 			score_prepass_state_machine_shadow_expanded_segment_traceback_cigar_mismatches(0),
 			score_prepass_state_machine_shadow_expanded_segment_traceback_required_max_len(0),
-			score_prepass_state_machine_shadow_expanded_segment_traceback_required_over_gasal2_limit(0),
-			score_prepass_state_machine_shadow_expanded_segment_traceback_seconds(0.0),
-			score_prepass_state_machine_shadow_triplex_mismatches(0),
-		score_prepass_state_machine_shadow_first_mismatch_task(-1),
+		score_prepass_state_machine_shadow_expanded_segment_traceback_required_over_gasal2_limit(0),
+		score_prepass_state_machine_shadow_expanded_segment_traceback_seconds(0.0),
+		score_prepass_state_machine_shadow_triplex_mismatches(0),
+			score_prepass_state_machine_shadow_candidate_coverage_requested(0),
+			score_prepass_state_machine_shadow_candidate_coverage_active(0),
+			score_prepass_state_machine_shadow_candidate_coverage_scoreinfos(0),
+			score_prepass_state_machine_shadow_candidate_coverage_attempts(0),
+			score_prepass_state_machine_shadow_candidate_coverage_candidate_attempts(0),
+			score_prepass_state_machine_shadow_candidate_coverage_selected(0),
+			score_prepass_state_machine_shadow_candidate_coverage_covered(0),
+			score_prepass_state_machine_shadow_candidate_coverage_false_negative_scoreinfos(0),
+			score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_task(-1),
+			score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_scoreinfo(-1),
+			score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_reason("none"),
+			score_prepass_state_machine_shadow_candidate_coverage_cpu_align_attempts(0),
+			score_prepass_state_machine_shadow_candidate_coverage_cpu_align_seconds(0.0),
+			score_prepass_state_machine_shadow_first_mismatch_task(-1),
 		score_prepass_state_machine_shadow_first_mismatch_source("none"),
 		score_prepass_state_machine_shadow_first_mismatch_kind("none"),
 		score_prepass_state_machine_shadow_score_seconds(0.0),
@@ -853,9 +873,12 @@ struct FasimLongQueryStreamingScoreInfoShadowStats
 	uint64_t gpu_tasks;
 		uint64_t overflow_batches;
 		uint64_t fallback_batches;
-		uint64_t boundary_state_bytes;
-		uint64_t legacy_byte_shared;
-		uint64_t gpu_minscore_requested;
+			uint64_t boundary_state_bytes;
+			uint64_t legacy_byte_shared;
+			uint64_t legacy_byte_shared_required_smem_bytes;
+			uint64_t legacy_byte_shared_default_smem_limit_bytes;
+			uint64_t legacy_byte_shared_optin_smem_limit_bytes;
+			uint64_t gpu_minscore_requested;
 		uint64_t gpu_minscore_active;
 		uint64_t gpu_minscore_hot;
 		uint64_t gpu_minscore_used;
@@ -1072,7 +1095,20 @@ struct FasimLongQueryStreamingScoreInfoShadowStats
 		uint64_t score_prepass_state_machine_shadow_expanded_segment_traceback_required_over_gasal2_limit;
 		double score_prepass_state_machine_shadow_expanded_segment_traceback_seconds;
 		uint64_t score_prepass_state_machine_shadow_triplex_mismatches;
-	int64_t score_prepass_state_machine_shadow_first_mismatch_task;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_requested;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_active;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_scoreinfos;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_attempts;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_candidate_attempts;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_selected;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_covered;
+			uint64_t score_prepass_state_machine_shadow_candidate_coverage_false_negative_scoreinfos;
+		int64_t score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_task;
+		int64_t score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_scoreinfo;
+		std::string score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_reason;
+		uint64_t score_prepass_state_machine_shadow_candidate_coverage_cpu_align_attempts;
+		double score_prepass_state_machine_shadow_candidate_coverage_cpu_align_seconds;
+		int64_t score_prepass_state_machine_shadow_first_mismatch_task;
 	std::string score_prepass_state_machine_shadow_first_mismatch_source;
 	std::string score_prepass_state_machine_shadow_first_mismatch_kind;
 	double score_prepass_state_machine_shadow_score_seconds;
@@ -1114,7 +1150,8 @@ void fasim_gasal2_record_longtarget_task_batch(uint64_t tasks,
 void fasim_gasal2_record_cpu_traceback_replay(uint64_t replayAttempts,
                                               uint64_t selectedAttempts);
 void fasim_gasal2_record_cpu_traceback_aligns(uint64_t alignCalls,
-                                              uint64_t skippedAfterEmit);
+                                              uint64_t skippedAfterEmit,
+                                              uint64_t rankCutoffSkipped);
 void fasim_gasal2_record_cpu_traceback_outcomes(uint64_t thresholdEmits,
                                                 uint64_t bestFallbackEmits,
                                                 uint64_t lastEmits,
@@ -1184,6 +1221,7 @@ void fasim_gasal2_record_emission_only_consumer_shadow_request(
 void fasim_gasal2_record_emission_only_consumer_shadow_result(
 	uint64_t thresholdEmits,
 	uint64_t terminalEmits,
+	uint64_t lastEmits,
 	uint64_t emptyEmits,
 	uint64_t cpuAlignAttempts,
 	uint64_t realpathReferenceAlignAttempts,

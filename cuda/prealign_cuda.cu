@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <mutex>
+#include <sstream>
 
 using namespace std;
 
@@ -1592,6 +1593,16 @@ static inline string cuda_error_string(cudaError_t error)
     return "unknown CUDA error";
   }
   return string(message);
+}
+
+static string prealign_cuda_shared_smem_exceeds_optin_error(size_t sharedBytes,
+                                                            int optinLimit)
+{
+  ostringstream oss;
+  oss << "legacy_byte_shared_smem_exceeds_optin_limit"
+      << ": required=" << sharedBytes
+      << " optin_limit=" << optinLimit;
+  return oss.str();
 }
 
 struct PreAlignCudaContext
@@ -3548,18 +3559,29 @@ bool prealign_cuda_find_streaming_scoreinfo_batch_pruned(const PreAlignCudaQuery
 	                                 cudaDevAttrMaxSharedMemoryPerBlockOptin,
 	                                 handle.device);
 	      }
-	      if(attrStatus == cudaSuccess &&
-	         sharedBytes > static_cast<size_t>(defaultLimit) &&
-	         sharedBytes <= static_cast<size_t>(optinLimit))
-	      {
-	        attrStatus =
-	          cudaFuncSetAttribute(prealign_cuda_column_max_legacy_byte_batch_kernel,
-	                               cudaFuncAttributeMaxDynamicSharedMemorySize,
-	                               static_cast<int>(sharedBytes));
-	      }
-	      if(attrStatus != cudaSuccess)
-	      {
-	        status = attrStatus;
+		      if(attrStatus == cudaSuccess &&
+		         sharedBytes > static_cast<size_t>(defaultLimit) &&
+		         sharedBytes <= static_cast<size_t>(optinLimit))
+		      {
+		        attrStatus =
+		          cudaFuncSetAttribute(prealign_cuda_column_max_legacy_byte_batch_kernel,
+		                               cudaFuncAttributeMaxDynamicSharedMemorySize,
+		                               static_cast<int>(sharedBytes));
+		      }
+		      else if(attrStatus == cudaSuccess &&
+		              sharedBytes > static_cast<size_t>(optinLimit))
+		      {
+		        status = cudaErrorInvalidConfiguration;
+		        if(errorOut != NULL)
+		        {
+		          *errorOut =
+		            prealign_cuda_shared_smem_exceeds_optin_error(sharedBytes,
+		                                                         optinLimit);
+		        }
+		      }
+		      if(attrStatus != cudaSuccess)
+		      {
+		        status = attrStatus;
 	      }
 	      if(status == cudaSuccess)
 	      {
@@ -3694,14 +3716,17 @@ bool prealign_cuda_find_streaming_scoreinfo_batch_pruned(const PreAlignCudaQuery
   cudaEventDestroy(d2hStart);
   cudaEventDestroy(d2hStop);
 
-  if(status != cudaSuccess)
-  {
-    if(errorOut != NULL)
-    {
-      *errorOut = cuda_error_string(status);
-    }
-    return false;
-  }
+	  if(status != cudaSuccess)
+	  {
+	    if(errorOut != NULL)
+	    {
+	      if(errorOut->empty())
+	      {
+	        *errorOut = cuda_error_string(status);
+	      }
+	    }
+	    return false;
+	  }
 
   outScoreInfos->swap(scoreInfos);
   outCounts->swap(counts);
@@ -3958,6 +3983,17 @@ bool prealign_cuda_find_streaming_scoreinfo_batch_pruned_fused_minscore(const Pr
                                cudaFuncAttributeMaxDynamicSharedMemorySize,
                                static_cast<int>(sharedBytes));
       }
+      else if(attrStatus == cudaSuccess &&
+              sharedBytes > static_cast<size_t>(optinLimit))
+      {
+        status = cudaErrorInvalidConfiguration;
+        if(errorOut != NULL)
+        {
+          *errorOut =
+            prealign_cuda_shared_smem_exceeds_optin_error(sharedBytes,
+                                                         optinLimit);
+        }
+      }
       if(attrStatus != cudaSuccess)
       {
         status = attrStatus;
@@ -4147,7 +4183,10 @@ bool prealign_cuda_find_streaming_scoreinfo_batch_pruned_fused_minscore(const Pr
   {
     if(errorOut != NULL)
     {
-      *errorOut = cuda_error_string(status);
+      if(errorOut->empty())
+      {
+        *errorOut = cuda_error_string(status);
+      }
     }
     return false;
   }

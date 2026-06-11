@@ -59,6 +59,34 @@ inline bool fasim_gasal2_identity_rounds_enabled_runtime()
 	return enabled;
 }
 
+inline bool fasim_tfosorted_cigar_archive_probe_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_TFOSORTED_CIGAR_ARCHIVE_PROBE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_tfosorted_compact_archive_probe_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_TFOSORTED_COMPACT_ARCHIVE_PROBE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline int fasim_gasal2_min_attempts_runtime()
 {
 	static const int minAttempts = []()
@@ -168,6 +196,33 @@ inline bool fasim_gasal2_score_prepass_state_machine_consumer_trust_runtime()
 	return enabled;
 }
 
+inline bool fasim_gasal2_cpu_authority_candidate_coverage_shadow_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv(
+			"FASIM_GASAL2_CPU_AUTHORITY_CANDIDATE_COVERAGE_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_gasal2_cpu_authority_selected_only_coverage_shadow_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv(
+			"FASIM_GASAL2_CPU_AUTHORITY_SELECTED_ONLY_COVERAGE_SHADOW");
+		if (env == NULL || env[0] == '\0') return false;
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_gasal2_score_prepass_state_machine_align_cache_runtime()
 {
 	static const bool enabled = []()
@@ -247,6 +302,79 @@ inline bool fasim_gasal2_emission_only_consumer_shadow_enabled_runtime()
 	static const bool enabled = []()
 	{
 		const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_gasal2_emission_only_consumer_shadow_debug_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW_DEBUG");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline size_t fasim_gasal2_emission_only_consumer_shadow_debug_limit_runtime()
+{
+	const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW_DEBUG_LIMIT");
+	if (env == NULL || env[0] == '\0' || env[0] == '-')
+	{
+		return 8;
+	}
+	const size_t limit = static_cast<size_t>(strtoul(env, NULL, 10));
+	return limit > 128 ? static_cast<size_t>(128) : limit;
+}
+
+inline long fasim_gasal2_emission_only_consumer_shadow_debug_task_runtime()
+{
+	const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW_DEBUG_TASK");
+	if (env == NULL || env[0] == '\0')
+	{
+		return -1;
+	}
+	return strtol(env, NULL, 10);
+}
+
+inline long fasim_gasal2_emission_only_consumer_shadow_debug_scoreinfo_runtime()
+{
+	const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW_DEBUG_SCOREINFO");
+	if (env == NULL || env[0] == '\0')
+	{
+		return -1;
+	}
+	return strtol(env, NULL, 10);
+}
+
+inline bool fasim_gasal2_emission_only_consumer_shadow_no_gpu_terminal_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW_NO_GPU_TERMINAL");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_gasal2_emission_only_consumer_shadow_verify_terminal_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW_VERIFY_TERMINAL");
 		if (env == NULL || env[0] == '\0')
 		{
 			return false;
@@ -670,6 +798,16 @@ void getAlignment(const StripedSmithWaterman::Alignment &alignment,
 	string &ref_align,
 	string &read_align,
 	string &ref_align_src);
+
+inline string fasim_cigar_probe_string(const std::vector<uint32_t> &cigar)
+{
+	std::ostringstream out;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		out << cigar_int_to_len(cigar[i]) << cigar_int_to_op(cigar[i]);
+	}
+	return out.str();
+}
 
 inline void fasim_calc_identity_and_triscore_from_cigar(const StripedSmithWaterman::Alignment &alignment,
                                                         const string &ref_seq,
@@ -1880,6 +2018,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 	long dnaStartPos,
 	const std::vector<struct StripedSmithWaterman::scoreInfo> &finalScoreInfo,
 	uint64_t realpathReferenceAlignAttempts,
+	long debugTaskKey,
 	vector<struct triplex> &shadowTriplexList,
 	long strand,
 	long Para,
@@ -1904,7 +2043,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 		fasim_gasal2_record_emission_only_consumer_shadow_request(
 			1, 0, 0, "empty_scoreinfo");
 		fasim_gasal2_record_emission_only_consumer_shadow_result(
-			0, 0, 0, 0, realpathReferenceAlignAttempts,
+			0, 0, 0, 0, 0, realpathReferenceAlignAttempts,
 			0.0, 0.0, 0.0, 0.0,
 			std::chrono::duration<double>(
 				std::chrono::steady_clock::now() - totalStart).count(),
@@ -1973,7 +2112,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			*errorOut = "empty_attempts";
 		}
 		fasim_gasal2_record_emission_only_consumer_shadow_result(
-			0, 0, 0, 0, realpathReferenceAlignAttempts,
+			0, 0, 0, 0, 0, realpathReferenceAlignAttempts,
 			0.0, 0.0, 0.0, 0.0,
 			std::chrono::duration<double>(
 				std::chrono::steady_clock::now() - totalStart).count(),
@@ -2078,7 +2217,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			*errorOut = scoreError.empty() ? "gasal2_score_failed" : scoreError;
 		}
 		fasim_gasal2_record_emission_only_consumer_shadow_result(
-			0, 0, 0, 0, realpathReferenceAlignAttempts,
+			0, 0, 0, 0, 0, realpathReferenceAlignAttempts,
 			std::chrono::duration<double>(
 				std::chrono::steady_clock::now() - scoreStart).count(),
 			0.0, 0.0, 0.0,
@@ -2098,7 +2237,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			*errorOut = "score_result_count_mismatch";
 		}
 		fasim_gasal2_record_emission_only_consumer_shadow_result(
-			0, 0, 0, 0, realpathReferenceAlignAttempts,
+			0, 0, 0, 0, 0, realpathReferenceAlignAttempts,
 			scoreSeconds, 0.0, 0.0, 0.0,
 			std::chrono::duration<double>(
 				std::chrono::steady_clock::now() - totalStart).count(),
@@ -2111,9 +2250,53 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 	emittedAttemptIndexes.reserve(finalScoreInfo.size());
 	uint64_t thresholdEmits = 0;
 	uint64_t terminalEmits = 0;
+	uint64_t lastEmits = 0;
 	uint64_t emptyEmits = 0;
 	const std::chrono::steady_clock::time_point selectStart =
 		std::chrono::steady_clock::now();
+	struct FasimEmissionOnlyDebugDecision
+	{
+		FasimEmissionOnlyDebugDecision() :
+			legacy_have(false),
+			legacy_index(0),
+			legacy_score(0),
+			legacy_ref_end(-1),
+			legacy_query_end(-1),
+			legacy_emit_reason("none"),
+			shadow_have(false),
+			shadow_index(0),
+			shadow_score(0),
+			shadow_ref_end(-1),
+			shadow_query_end(-1),
+			shadow_emit_reason("none")
+		{
+		}
+
+		bool legacy_have;
+		size_t legacy_index;
+		int legacy_score;
+		int legacy_ref_end;
+		int legacy_query_end;
+		const char *legacy_emit_reason;
+		bool shadow_have;
+		size_t shadow_index;
+		int shadow_score;
+		int shadow_ref_end;
+		int shadow_query_end;
+		const char *shadow_emit_reason;
+	};
+	std::vector<FasimEmissionOnlyDebugDecision> debugDecisions;
+	const bool debugEnabled =
+		fasim_gasal2_emission_only_consumer_shadow_debug_runtime();
+	const bool noGpuTerminal =
+		fasim_gasal2_emission_only_consumer_shadow_no_gpu_terminal_runtime();
+	const bool verifyGpuTerminal =
+		fasim_gasal2_emission_only_consumer_shadow_verify_terminal_runtime();
+	if (debugEnabled)
+	{
+		debugDecisions.assign(finalScoreInfo.size(),
+		                      FasimEmissionOnlyDebugDecision());
+	}
 	for (size_t begin = 0; begin < scoredAttempts.size();)
 	{
 		const int scoreInfoIndex = scoredAttempts[begin].scoreinfo_index;
@@ -2125,7 +2308,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 				*errorOut = "scoreinfo_index_out_of_range";
 			}
 			fasim_gasal2_record_emission_only_consumer_shadow_result(
-				thresholdEmits, terminalEmits, emptyEmits, 0,
+				thresholdEmits, terminalEmits, lastEmits, emptyEmits, 0,
 				realpathReferenceAlignAttempts,
 				scoreSeconds, 0.0, 0.0, 0.0,
 				std::chrono::duration<double>(
@@ -2145,21 +2328,73 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 		bool haveTerminal = false;
 		size_t terminalBestIndex = begin;
 		int terminalBestScore = 0;
+		bool haveVerifiedTerminal = false;
+		size_t verifiedTerminalBestIndex = begin;
+		int verifiedTerminalBestScore = 0;
+		bool haveLast = false;
+		size_t lastIndex = begin;
+		int lastScore = 0;
 		for (size_t i = begin; i < end; ++i)
 		{
 			const FasimGasal2ScoreOnlyAlignment &score = scoredAttempts[i];
 			const FasimGasal2Attempt &attempt = attempts[i];
+			if (!emitted)
+			{
+				haveLast = true;
+				lastIndex = i;
+				lastScore = score.score;
+			}
 			if (score.score >= finalScoreInfo[
 			        static_cast<size_t>(scoreInfoIndex)].score)
 			{
 				emittedAttemptIndexes.push_back(i);
+				if (debugEnabled)
+				{
+					FasimEmissionOnlyDebugDecision &decision =
+						debugDecisions[static_cast<size_t>(scoreInfoIndex)];
+					decision.shadow_have = true;
+					decision.shadow_index = i;
+					decision.shadow_score = score.score;
+					decision.shadow_ref_end = score.ref_end;
+					decision.shadow_query_end = score.query_end;
+					decision.shadow_emit_reason = "threshold";
+				}
 				++thresholdEmits;
 				emitted = true;
 				break;
 			}
-			if (score.ref_end == attempt.start + attempt.cutlength - 1)
+			if (!noGpuTerminal &&
+			    score.ref_end == attempt.start + attempt.cutlength - 1)
 			{
-				if (!haveTerminal || score.score > terminalBestScore)
+				if (verifyGpuTerminal)
+				{
+					if (attempt.start < 0 ||
+					    attempt.cutlength <= 0 ||
+					    attempt.start + attempt.cutlength >
+						    static_cast<int>(strB.size()))
+					{
+						continue;
+					}
+					std::string verifySmallSeq(
+						strB.data() + attempt.start,
+						static_cast<size_t>(attempt.cutlength));
+					StripedSmithWaterman::Alignment verifyAlignment;
+					aligner.Align(strA.c_str(),
+					              verifySmallSeq.c_str(),
+					              verifySmallSeq.size(),
+					              filter,
+					              &verifyAlignment,
+					              maskLen);
+					if (verifyAlignment.ref_end == attempt.cutlength - 1 &&
+					    (!haveVerifiedTerminal ||
+					     verifyAlignment.sw_score > verifiedTerminalBestScore))
+					{
+						haveVerifiedTerminal = true;
+						verifiedTerminalBestIndex = i;
+						verifiedTerminalBestScore = verifyAlignment.sw_score;
+					}
+				}
+				else if (!haveTerminal || score.score > terminalBestScore)
 				{
 					haveTerminal = true;
 					terminalBestIndex = i;
@@ -2167,13 +2402,69 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 				}
 			}
 		}
-		if (!emitted && haveTerminal)
+		if (!emitted && verifyGpuTerminal && haveVerifiedTerminal)
+		{
+			emittedAttemptIndexes.push_back(verifiedTerminalBestIndex);
+			if (debugEnabled)
+			{
+				const FasimGasal2ScoreOnlyAlignment &score =
+					scoredAttempts[verifiedTerminalBestIndex];
+				FasimEmissionOnlyDebugDecision &decision =
+					debugDecisions[static_cast<size_t>(scoreInfoIndex)];
+				decision.shadow_have = true;
+				decision.shadow_index = verifiedTerminalBestIndex;
+				decision.shadow_score = verifiedTerminalBestScore;
+				decision.shadow_ref_end = score.ref_end;
+				decision.shadow_query_end = score.query_end;
+				decision.shadow_emit_reason = "verified_terminal";
+			}
+			++terminalEmits;
+		}
+		else if (!emitted && haveTerminal)
 		{
 			emittedAttemptIndexes.push_back(terminalBestIndex);
+			if (debugEnabled)
+			{
+				const FasimGasal2ScoreOnlyAlignment &score =
+					scoredAttempts[terminalBestIndex];
+				FasimEmissionOnlyDebugDecision &decision =
+					debugDecisions[static_cast<size_t>(scoreInfoIndex)];
+				decision.shadow_have = true;
+				decision.shadow_index = terminalBestIndex;
+				decision.shadow_score = score.score;
+				decision.shadow_ref_end = score.ref_end;
+				decision.shadow_query_end = score.query_end;
+				decision.shadow_emit_reason = "terminal";
+			}
 			++terminalEmits;
+		}
+		else if (!emitted && debugEnabled && haveLast && lastScore != 0)
+		{
+			const FasimGasal2ScoreOnlyAlignment &score = scoredAttempts[lastIndex];
+			FasimEmissionOnlyDebugDecision &decision =
+				debugDecisions[static_cast<size_t>(scoreInfoIndex)];
+			emittedAttemptIndexes.push_back(lastIndex);
+			decision.shadow_have = true;
+			decision.shadow_index = lastIndex;
+			decision.shadow_score = score.score;
+			decision.shadow_ref_end = score.ref_end;
+			decision.shadow_query_end = score.query_end;
+			decision.shadow_emit_reason = "last_nonzero";
+			++lastEmits;
+		}
+		else if (!emitted && !debugEnabled && haveLast && lastScore != 0)
+		{
+			emittedAttemptIndexes.push_back(lastIndex);
+			++lastEmits;
 		}
 		else if (!emitted)
 		{
+			if (debugEnabled)
+			{
+				FasimEmissionOnlyDebugDecision &decision =
+					debugDecisions[static_cast<size_t>(scoreInfoIndex)];
+				decision.shadow_emit_reason = "empty";
+			}
 			++emptyEmits;
 		}
 		begin = end;
@@ -2181,6 +2472,198 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 	const double selectSeconds =
 		std::chrono::duration<double>(
 			std::chrono::steady_clock::now() - selectStart).count();
+
+	if (debugEnabled)
+	{
+		const long debugTaskFilter =
+			fasim_gasal2_emission_only_consumer_shadow_debug_task_runtime();
+		const long debugScoreInfoFilter =
+			fasim_gasal2_emission_only_consumer_shadow_debug_scoreinfo_runtime();
+		const bool debugTaskMatches =
+			debugTaskFilter < 0 || debugTaskFilter == debugTaskKey;
+		if (debugTaskMatches)
+		{
+			for (size_t begin = 0; begin < attempts.size();)
+			{
+				const int scoreInfoIndex = attempts[begin].scoreinfo_index;
+				size_t end = begin + 1;
+				while (end < attempts.size() &&
+				       attempts[end].scoreinfo_index == scoreInfoIndex)
+				{
+					++end;
+				}
+				if (scoreInfoIndex < 0 ||
+				    static_cast<size_t>(scoreInfoIndex) >= debugDecisions.size())
+				{
+					begin = end;
+					continue;
+				}
+				if (debugScoreInfoFilter >= 0 &&
+				    debugScoreInfoFilter != scoreInfoIndex)
+				{
+					begin = end;
+					continue;
+				}
+				FasimEmissionOnlyDebugDecision &decision =
+					debugDecisions[static_cast<size_t>(scoreInfoIndex)];
+				bool haveBest = false;
+				size_t bestIndex = begin;
+				StripedSmithWaterman::Alignment bestAlignment;
+				bestAlignment.Clear();
+				bool haveLast = false;
+				size_t lastIndex = begin;
+				StripedSmithWaterman::Alignment lastAlignment;
+				bool emittedLegacy = false;
+				for (size_t i = begin; i < end; ++i)
+				{
+					const FasimGasal2Attempt &attempt = attempts[i];
+					const FasimGasal2ScoreOnlyAlignment &shadowScore =
+						scoredAttempts[i];
+					if (attempt.start < 0 ||
+					    attempt.cutlength <= 0 ||
+					    attempt.start + attempt.cutlength >
+						    static_cast<int>(strB.size()))
+					{
+						continue;
+					}
+					std::string debugSmallSeq(
+						strB.data() + attempt.start,
+						static_cast<size_t>(attempt.cutlength));
+					StripedSmithWaterman::Alignment localAlignment;
+					aligner.Align(strA.c_str(),
+					              debugSmallSeq.c_str(),
+					              debugSmallSeq.size(),
+					              filter,
+					              &localAlignment,
+					              maskLen);
+					std::cerr
+						<< "debug.fasim_gasal2_emission_only_consumer_shadow_attempt"
+						<< " task_key=" << debugTaskKey
+						<< " scoreinfo_index=" << scoreInfoIndex
+						<< " attempt_index=" << i
+						<< " prealign_score="
+						<< finalScoreInfo[static_cast<size_t>(scoreInfoIndex)].score
+						<< " position="
+						<< finalScoreInfo[static_cast<size_t>(scoreInfoIndex)].position
+						<< " attempt_start=" << attempt.start
+						<< " attempt_cutlength=" << attempt.cutlength
+						<< " cpu_score=" << localAlignment.sw_score
+						<< " cpu_ref_end=" << localAlignment.ref_end + attempt.start
+						<< " cpu_query_end=" << localAlignment.query_end
+						<< " cpu_terminal="
+						<< (localAlignment.ref_end == attempt.cutlength - 1 ? 1 : 0)
+						<< " shadow_score=" << shadowScore.score
+						<< " shadow_ref_end=" << shadowScore.ref_end
+						<< " shadow_query_end=" << shadowScore.query_end
+						<< " shadow_terminal="
+						<< (shadowScore.ref_end ==
+						    attempt.start + attempt.cutlength - 1 ? 1 : 0)
+						<< "\n";
+					if (!emittedLegacy)
+					{
+						haveLast = true;
+						lastIndex = i;
+						lastAlignment = localAlignment;
+					}
+					if (!emittedLegacy &&
+					    localAlignment.sw_score >= finalScoreInfo[
+						    static_cast<size_t>(scoreInfoIndex)].score)
+					{
+						decision.legacy_have = true;
+						decision.legacy_index = i;
+						decision.legacy_score = localAlignment.sw_score;
+						decision.legacy_ref_end =
+							localAlignment.ref_end + attempt.start;
+						decision.legacy_query_end = localAlignment.query_end;
+						decision.legacy_emit_reason = "threshold";
+						emittedLegacy = true;
+						break;
+					}
+					if (!emittedLegacy &&
+					    localAlignment.sw_score > bestAlignment.sw_score &&
+					    localAlignment.ref_end == attempt.cutlength - 1)
+					{
+						haveBest = true;
+						bestIndex = i;
+						bestAlignment = localAlignment;
+					}
+				}
+				if (!emittedLegacy && haveBest)
+				{
+					const FasimGasal2Attempt &attempt = attempts[bestIndex];
+					decision.legacy_have = true;
+					decision.legacy_index = bestIndex;
+					decision.legacy_score = bestAlignment.sw_score;
+					decision.legacy_ref_end = bestAlignment.ref_end + attempt.start;
+					decision.legacy_query_end = bestAlignment.query_end;
+					decision.legacy_emit_reason = "terminal";
+				}
+				else if (!emittedLegacy && haveLast && lastAlignment.sw_score != 0)
+				{
+					const FasimGasal2Attempt &attempt = attempts[lastIndex];
+					decision.legacy_have = true;
+					decision.legacy_index = lastIndex;
+					decision.legacy_score = lastAlignment.sw_score;
+					decision.legacy_ref_end = lastAlignment.ref_end + attempt.start;
+					decision.legacy_query_end = lastAlignment.query_end;
+					decision.legacy_emit_reason = "last_nonzero";
+				}
+				begin = end;
+			}
+		}
+
+		size_t printed = 0;
+		const size_t limit =
+			fasim_gasal2_emission_only_consumer_shadow_debug_limit_runtime();
+		for (size_t i = 0; i < debugDecisions.size() && printed < limit; ++i)
+		{
+			if (!debugTaskMatches ||
+			    (debugScoreInfoFilter >= 0 &&
+			     debugScoreInfoFilter != static_cast<long>(i)))
+			{
+				continue;
+			}
+			const FasimEmissionOnlyDebugDecision &decision = debugDecisions[i];
+			const bool same =
+				decision.legacy_have == decision.shadow_have &&
+				(!decision.legacy_have ||
+				 decision.legacy_index == decision.shadow_index);
+			if (same)
+			{
+				continue;
+			}
+			const size_t legacyIndex =
+				decision.legacy_index < attempts.size() ?
+				decision.legacy_index : static_cast<size_t>(0);
+			const size_t shadowIndex =
+				decision.shadow_index < attempts.size() ?
+				decision.shadow_index : static_cast<size_t>(0);
+			std::cerr
+				<< "debug.fasim_gasal2_emission_only_consumer_shadow"
+				<< " task_key=" << debugTaskKey
+				<< " scoreinfo_index=" << i
+				<< " prealign_score=" << finalScoreInfo[i].score
+				<< " position=" << finalScoreInfo[i].position
+				<< " legacy_have=" << (decision.legacy_have ? 1 : 0)
+				<< " legacy_emit_reason=" << decision.legacy_emit_reason
+				<< " legacy_attempt_index=" << legacyIndex
+				<< " legacy_attempt_start=" << attempts[legacyIndex].start
+				<< " legacy_attempt_cutlength=" << attempts[legacyIndex].cutlength
+				<< " legacy_align_score=" << decision.legacy_score
+				<< " legacy_ref_end=" << decision.legacy_ref_end
+				<< " legacy_query_end=" << decision.legacy_query_end
+				<< " shadow_have=" << (decision.shadow_have ? 1 : 0)
+				<< " shadow_emit_reason=" << decision.shadow_emit_reason
+				<< " shadow_attempt_index=" << shadowIndex
+				<< " shadow_attempt_start=" << attempts[shadowIndex].start
+				<< " shadow_attempt_cutlength=" << attempts[shadowIndex].cutlength
+				<< " shadow_score=" << decision.shadow_score
+				<< " shadow_ref_end=" << decision.shadow_ref_end
+				<< " shadow_query_end=" << decision.shadow_query_end
+				<< "\n";
+			++printed;
+		}
+	}
 	if (emittedAttemptIndexes.empty())
 	{
 		if (errorOut != NULL)
@@ -2188,7 +2671,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			*errorOut = "empty_emitted_attempts";
 		}
 		fasim_gasal2_record_emission_only_consumer_shadow_result(
-			thresholdEmits, terminalEmits, emptyEmits, 0,
+			thresholdEmits, terminalEmits, lastEmits, emptyEmits, 0,
 			realpathReferenceAlignAttempts,
 			scoreSeconds, selectSeconds, 0.0, 0.0,
 			std::chrono::duration<double>(
@@ -2214,7 +2697,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 				*errorOut = "emitted_attempt_index_out_of_range";
 			}
 			fasim_gasal2_record_emission_only_consumer_shadow_result(
-				thresholdEmits, terminalEmits, emptyEmits,
+				thresholdEmits, terminalEmits, lastEmits, emptyEmits,
 				cpuAlignAttempts, realpathReferenceAlignAttempts,
 				scoreSeconds, selectSeconds, cpuAlignSeconds, convertSeconds,
 				std::chrono::duration<double>(
@@ -2271,23 +2754,6 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			std::chrono::steady_clock::now() - convertStart).count();
 	}
 
-	if (cpuAlignAttempts >= realpathReferenceAlignAttempts)
-	{
-		if (errorOut != NULL)
-		{
-			*errorOut = "no_cpu_align_reduction";
-		}
-		fasim_gasal2_record_emission_only_consumer_shadow_result(
-			thresholdEmits, terminalEmits, emptyEmits,
-			cpuAlignAttempts, realpathReferenceAlignAttempts,
-			scoreSeconds, selectSeconds, cpuAlignSeconds, convertSeconds,
-			std::chrono::duration<double>(
-				std::chrono::steady_clock::now() - totalStart).count(),
-			false,
-			"emission_only_consumer_no_cpu_align_reduction_no_go");
-		return false;
-	}
-
 	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
 	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
 	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
@@ -2306,6 +2772,7 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 	fasim_gasal2_record_emission_only_consumer_shadow_result(
 		thresholdEmits,
 		terminalEmits,
+		lastEmits,
 		emptyEmits,
 		cpuAlignAttempts,
 		realpathReferenceAlignAttempts,
@@ -2485,6 +2952,11 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	                      refStart + dnaStartPos, refEnd + dnaStartPos,
 	                      strand, Para, rule, nt, score, identity, tri_score,
 	                      read_align, ref_align_src, 0, 0, 0, 0, 0, 0, "");
+	if (fasim_tfosorted_cigar_archive_probe_enabled_runtime() ||
+	    fasim_tfosorted_compact_archive_probe_enabled_runtime())
+	{
+		fullTriplex.cigar_probe = fasim_cigar_probe_string(alignment.cigar);
+	}
 	if (nt >= ntMin)
 	{
 		triplex_list.push_back(fullTriplex);

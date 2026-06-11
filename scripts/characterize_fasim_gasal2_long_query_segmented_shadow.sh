@@ -31,9 +31,35 @@ CPU_TRACEBACK_REPLAY="${CPU_TRACEBACK_REPLAY:-0}"
 CPU_TRACEBACK_NO_LAST="${CPU_TRACEBACK_NO_LAST:-0}"
 CPU_TRACEBACK_THRESHOLD_LAST="${CPU_TRACEBACK_THRESHOLD_LAST:-0}"
 CPU_TRACEBACK_ORDER="${CPU_TRACEBACK_ORDER:-legacy}"
-MALAT1_RECORD_LIMIT="${MALAT1_RECORD_LIMIT:-8}"
-MALAT1_RNA="${MALAT1_RNA:-"$ROOT/.tmp/Fasim-LongTarget/example/MALAT1/MALAT1.fa"}"
-MALAT1_DNA="${MALAT1_DNA:-"$ROOT/.tmp/Fasim-LongTarget/example/MALAT1/MALAT1-DNAseq.fa"}"
+CPU_TRACEBACK_MAX_RANK="${CPU_TRACEBACK_MAX_RANK:-0}"
+WORKLOAD_NAME="${WORKLOAD_NAME:-MALAT1}"
+if [[ -z "${RECORD_LIMIT:-}" ]]; then
+  case "$WORKLOAD_NAME" in
+    NEAT1|neat1)
+      RECORD_LIMIT="${NEAT1_RECORD_LIMIT:-8}"
+      ;;
+    *)
+      RECORD_LIMIT="${MALAT1_RECORD_LIMIT:-8}"
+      ;;
+  esac
+fi
+case "$WORKLOAD_NAME" in
+  NEAT1|neat1)
+    WORKLOAD_LABEL="neat1"
+    RNA_INPUT="${RNA_INPUT:-${NEAT1_RNA:-"$ROOT/.tmp/Fasim-LongTarget/example/NEAT1/NEAT1.fa"}}"
+    DNA_INPUT="${DNA_INPUT:-${NEAT1_DNA:-"$ROOT/.tmp/Fasim-LongTarget/example/NEAT1/NEAT1-DNAseq.fa"}}"
+    ;;
+  MALAT1|malat1)
+    WORKLOAD_LABEL="malat1"
+    RNA_INPUT="${RNA_INPUT:-${MALAT1_RNA:-"$ROOT/.tmp/Fasim-LongTarget/example/MALAT1/MALAT1.fa"}}"
+    DNA_INPUT="${DNA_INPUT:-${MALAT1_DNA:-"$ROOT/.tmp/Fasim-LongTarget/example/MALAT1/MALAT1-DNAseq.fa"}}"
+    ;;
+  *)
+    WORKLOAD_LABEL="$(printf '%s' "$WORKLOAD_NAME" | tr '[:upper:]' '[:lower:]')"
+    RNA_INPUT="${RNA_INPUT:-}"
+    DNA_INPUT="${DNA_INPUT:-}"
+    ;;
+esac
 
 if [[ "$K" != "5" ]]; then
   echo "segmented shadow probe requires K=5" >&2
@@ -71,8 +97,12 @@ if [[ "$CPU_TRACEBACK_THRESHOLD_LAST" -lt 0 ]]; then
   echo "CPU_TRACEBACK_THRESHOLD_LAST must be >=0" >&2
   exit 1
 fi
-if [[ "$MALAT1_RECORD_LIMIT" -le 0 ]]; then
-  echo "MALAT1_RECORD_LIMIT must be positive" >&2
+if ! [[ "$CPU_TRACEBACK_MAX_RANK" =~ ^[0-9]+$ ]]; then
+  echo "CPU_TRACEBACK_MAX_RANK must be >=0" >&2
+  exit 1
+fi
+if ! [[ "$RECORD_LIMIT" =~ ^[0-9]+$ ]] || [[ "$RECORD_LIMIT" -le 0 ]]; then
+  echo "RECORD_LIMIT must be positive" >&2
   exit 1
 fi
 
@@ -85,25 +115,25 @@ fi
 rm -rf "$WORK"
 mkdir -p "$WORK/inputs"
 
-if [[ ! -s "$MALAT1_RNA" ]]; then
-  echo "missing MALAT1 RNA: $MALAT1_RNA" >&2
+if [[ ! -s "$RNA_INPUT" ]]; then
+  echo "missing RNA input for $WORKLOAD_LABEL: $RNA_INPUT" >&2
   exit 1
 fi
-if [[ ! -s "$MALAT1_DNA" ]]; then
-  echo "missing MALAT1 DNA: $MALAT1_DNA" >&2
+if [[ ! -s "$DNA_INPUT" ]]; then
+  echo "missing DNA input for $WORKLOAD_LABEL: $DNA_INPUT" >&2
   exit 1
 fi
 
-target_label="malat1_first${MALAT1_RECORD_LIMIT}"
-MALAT1_SAMPLE="$WORK/inputs/${target_label}.fa"
-awk -v limit="$MALAT1_RECORD_LIMIT" '
+target_label="${WORKLOAD_LABEL}_first${RECORD_LIMIT}"
+TARGET_SAMPLE="$WORK/inputs/${target_label}.fa"
+awk -v limit="$RECORD_LIMIT" '
   /^>/ {
     ++records
   }
   records <= limit {
     print
   }
-' "$MALAT1_DNA" >"$MALAT1_SAMPLE"
+' "$DNA_INPUT" >"$TARGET_SAMPLE"
 
 query_len="$(
   awk '
@@ -113,7 +143,7 @@ query_len="$(
       len += length($0)
     }
     END { print len + 0 }
-  ' "$MALAT1_RNA"
+  ' "$RNA_INPUT"
 )"
 
 segments="$(
@@ -152,8 +182,8 @@ env \
   FASIM_OUTPUT_MODE=lite \
   FASIM_VERBOSE=0 \
   "$BIN" \
-  -f1 "$MALAT1_SAMPLE" \
-  -f2 "$MALAT1_RNA" \
+  -f1 "$TARGET_SAMPLE" \
+  -f2 "$RNA_INPUT" \
   -r "$RULE" \
   -O "$cpu_dir" \
   >"$cpu_dir/stdout.log" 2>"$cpu_dir/stderr.log"
@@ -176,9 +206,10 @@ env \
   FASIM_TOP5_GASAL2_LONG_QUERY_SEGMENTED_CPU_TRACEBACK_ORDER="$CPU_TRACEBACK_ORDER" \
   FASIM_ALIGN_GASAL2_CPU_TRACEBACK_NO_LAST="$CPU_TRACEBACK_NO_LAST" \
   FASIM_ALIGN_GASAL2_CPU_TRACEBACK_THRESHOLD_LAST="$CPU_TRACEBACK_THRESHOLD_LAST" \
+  FASIM_ALIGN_GASAL2_CPU_TRACEBACK_MAX_RANK="$CPU_TRACEBACK_MAX_RANK" \
   "$BIN" \
-  -f1 "$MALAT1_SAMPLE" \
-  -f2 "$MALAT1_RNA" \
+  -f1 "$TARGET_SAMPLE" \
+  -f2 "$RNA_INPUT" \
   -r "$RULE" \
   -O "$candidate_dir" \
   >"$candidate_dir/stdout.log" 2>"$candidate_dir/stderr.log"
@@ -243,6 +274,7 @@ telemetry_gasal2_score_wait_seconds="$(metric benchmark.fasim_gasal2_score_wait_
 telemetry_cpu_replay_attempts="$(metric benchmark.fasim_gasal2_cpu_traceback_replay_attempts 0)"
 telemetry_cpu_replay_selected="$(metric benchmark.fasim_gasal2_cpu_traceback_selected_attempts 0)"
 telemetry_cpu_replay_align_calls="$(metric benchmark.fasim_gasal2_cpu_traceback_align_calls 0)"
+telemetry_cpu_traceback_rank_cutoff_skipped="$(metric benchmark.fasim_gasal2_cpu_traceback_rank_cutoff_skipped 0)"
 baseline_rows="$(awk -F= '/^baseline_rows=/{print $2}' "$run_dir/top5_compare.txt")"
 candidate_rows="$(awk -F= '/^candidate_rows=/{print $2}' "$run_dir/top5_compare.txt")"
 missing_rows="$(awk -F= '/^missing_rows=/{print $2}' "$run_dir/top5_compare.txt")"
@@ -268,12 +300,12 @@ fi
 
 summary="$WORK/summary.tsv"
 printf '%s\n' \
-  "decision	label	target_record_limit	query_len	tile_len	tile_overlap	max_segments	segments	requested	active	gasal2_requests	traceback_requests	fallbacks	shadow_total_seconds	scoreinfo_max_per_task	scoreinfo_prune_mode	scoreinfo_input_groups	scoreinfo_kept_groups	scoreinfo_pruned_groups	gasal2_batches	gasal2_score_batches	gasal2_score_wait_seconds	cpu_traceback_no_last	cpu_traceback_threshold_last	cpu_traceback_order	cpu_replay_attempts	cpu_replay_selected	cpu_replay_align_calls	baseline_rows	candidate_rows	missing_rows	extra_rows	top5_score_equal	top5_stability_equal	top5_nt_score_equal	baseline_wall_seconds	candidate_wall_seconds	speedup_vs_baseline	run_dir" \
+  "decision	label	target_record_limit	query_len	tile_len	tile_overlap	max_segments	segments	requested	active	gasal2_requests	traceback_requests	fallbacks	shadow_total_seconds	scoreinfo_max_per_task	scoreinfo_prune_mode	scoreinfo_input_groups	scoreinfo_kept_groups	scoreinfo_pruned_groups	gasal2_batches	gasal2_score_batches	gasal2_score_wait_seconds	cpu_traceback_no_last	cpu_traceback_threshold_last	cpu_traceback_order	cpu_traceback_max_rank	cpu_traceback_rank_cutoff_skipped	cpu_replay_attempts	cpu_replay_selected	cpu_replay_align_calls	baseline_rows	candidate_rows	missing_rows	extra_rows	top5_score_equal	top5_stability_equal	top5_nt_score_equal	baseline_wall_seconds	candidate_wall_seconds	speedup_vs_baseline	run_dir" \
   >"$summary"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$decision" \
   "$target_label" \
-  "$MALAT1_RECORD_LIMIT" \
+  "$RECORD_LIMIT" \
   "$telemetry_query_len" \
   "$telemetry_tile_len" \
   "$telemetry_tile_overlap" \
@@ -296,6 +328,8 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t
   "$CPU_TRACEBACK_NO_LAST" \
   "$CPU_TRACEBACK_THRESHOLD_LAST" \
   "$CPU_TRACEBACK_ORDER" \
+  "$CPU_TRACEBACK_MAX_RANK" \
+  "$telemetry_cpu_traceback_rank_cutoff_skipped" \
   "$telemetry_cpu_replay_attempts" \
   "$telemetry_cpu_replay_selected" \
   "$telemetry_cpu_replay_align_calls" \

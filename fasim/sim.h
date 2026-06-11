@@ -35,6 +35,7 @@ struct triplex
 	float tri_score;
 	string stri_align;
 	string strj_align;
+	string cigar_probe;
 	int middle;
 	int center;
 	int motif;
@@ -1141,5 +1142,4 @@ void SIM(string& strA, string& strB, string& strSrc, long dnaStartPos, long min_
 		}
 	}
 }
-
 

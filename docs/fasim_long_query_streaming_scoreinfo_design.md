@@ -441,7 +441,7 @@ record_limit  tasks  realpath_used  fallback  GPU groups  CPU groups  CPU preAli
 4             192    192            0         3257        0           0s            3.12604s
 16            768    768            0         13492       0           0s            12.4996s
 32            1536   1536           0         25960       0           0s            25.2269s
-64            3072   3072           0         52994       0           0s            49.9507s
+64            3072   3072           0         52994       0           0s            50.0708s
 ```
 
 The first32 and first64 digest-gated runs record whole-run slowdowns:
@@ -455,13 +455,31 @@ NEAT1 first32:
 
 NEAT1 first64:
 digest = 5070d390bdffe9d47c4790193a798bba256d6ec81fc8cef3682a7036f403b01f
-baseline Running time = 86.0335s
-candidate Running time = 121.948s
-candidate/baseline speedup = 0.705493x
+baseline Running time = 87.1285s
+candidate Running time = 123.041s
+candidate/baseline speedup = 0.708143x
 ```
 
 So NEAT1 trust correctness is clean through first64, but performance remains a
 hard no-go for the current global-state execution shape.
+
+NEAT1 shared-smem boundary:
+
+```text
+query_len = 22,767
+legacy-byte segLen = 1,423
+required_smem = 136,608
+default_smem_limit = 49,152
+optin_smem_limit = 101,376
+error = legacy_byte_shared_smem_exceeds_optin_limit
+```
+
+The shared legacy-byte scoreInfo kernel is now rejected by a preflight when its
+dynamic shared-memory requirement exceeds the device opt-in limit, so the
+launch is rejected before CUDA returns a generic invalid argument. This is a
+resource-shape boundary for the shared kernel, not a scoreInfo correctness
+failure. The non-shared legacy-byte path remains correctness-clean but
+performance no-go for NEAT1.
 
 ### NEAT1 Runtime Boundary
 

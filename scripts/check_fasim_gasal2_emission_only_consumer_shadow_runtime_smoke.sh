@@ -68,6 +68,7 @@ scoreinfos = int(metric("scoreinfos"))
 scored_attempts = int(metric("scored_attempts"))
 threshold_emits = int(metric("threshold_emits"))
 terminal_emits = int(metric("terminal_emits"))
+last_emits = int(metric("last_emits"))
 cpu_align_attempts = int(metric("cpu_align_attempts"))
 reference_align_attempts = int(metric("realpath_reference_align_attempts"))
 align_attempt_reduction = int(metric("align_attempt_reduction"))
@@ -89,10 +90,10 @@ if scoreinfos <= 0:
     raise SystemExit(f"expected positive scoreinfos, got {scoreinfos}")
 if scored_attempts <= 0:
     raise SystemExit(f"expected positive scored_attempts, got {scored_attempts}")
-if threshold_emits + terminal_emits <= 0:
+if threshold_emits + terminal_emits + last_emits <= 0:
     raise SystemExit(
-        "expected at least one threshold or terminal emit, got "
-        f"threshold={threshold_emits} terminal={terminal_emits}"
+        "expected at least one threshold, terminal, or last emit, got "
+        f"threshold={threshold_emits} terminal={terminal_emits} last={last_emits}"
     )
 if cpu_align_attempts <= 0:
     raise SystemExit(f"expected positive cpu_align_attempts, got {cpu_align_attempts}")

@@ -61,7 +61,9 @@ The current full-MALAT1 no-probe lite result is:
 schema = lite
 rows = 98,713
 digest = f080498ad8b9661100243e8eec89b6b54b566d7ed96fa5db7e268a8ce8513e0b
-candidate_vs_baseline = 1.037747x
+baseline_wall_seconds = 2611.940621
+candidate_wall_seconds = 2514.945686
+candidate_vs_baseline = 1.038567x
 tasks = 200,400
 two_contract_used = 200,400
 realpath_used = 200,400
@@ -76,7 +78,9 @@ The current full-MALAT1 no-probe TFOsorted result is:
 schema = tfosorted
 rows = 98,713
 digest = ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc
-candidate_vs_baseline = 1.037590x
+baseline_wall_seconds = 2636.136998
+candidate_wall_seconds = 2537.678266
+candidate_vs_baseline = 1.038799x
 tasks = 200,400
 two_contract_used = 200,400
 realpath_used = 200,400
@@ -90,21 +94,24 @@ The current first64/first128/first256 no-probe lite results are:
 ```text
 first64:
   rows = 9,741
-  candidate_vs_baseline = 1.030868x
+  digest = f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d
+  candidate_vs_baseline = 1.029812x
   tasks = 18,096
   gpu_scoreinfo_groups = 319,280
   probe_positive_numeric_keys = 0
 
 first128:
   rows = 22,531
-  candidate_vs_baseline = 1.043793x
+  digest = 91ea0b8191027916e3237fb5381c6271fc9acd03b46a5cf67826c253fe41edd1
+  candidate_vs_baseline = 1.041215x
   tasks = 40,128
   gpu_scoreinfo_groups = 715,473
   probe_positive_numeric_keys = 0
 
 first256:
   rows = 42,504
-  candidate_vs_baseline = 1.042764x
+  digest = 7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e
+  candidate_vs_baseline = 1.040931x
   tasks = 80,640
   gpu_scoreinfo_groups = 1,434,844
   probe_positive_numeric_keys = 0

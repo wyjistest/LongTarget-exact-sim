@@ -32,6 +32,7 @@ fields = [
     "emission_only_consumer_shadow_scored_attempts",
     "emission_only_consumer_shadow_threshold_emits",
     "emission_only_consumer_shadow_terminal_emits",
+    "emission_only_consumer_shadow_last_emits",
     "emission_only_consumer_shadow_empty_emits",
     "emission_only_consumer_shadow_cpu_align_attempts",
     "emission_only_consumer_shadow_realpath_reference_align_attempts",

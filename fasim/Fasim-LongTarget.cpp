@@ -39,6 +39,7 @@
 #include <limits>
 #include <stdint.h>
 #include <iomanip>
+#include <cstring>
 
 #include "fastsim.h"
 using namespace std;
@@ -664,6 +665,26 @@ static inline bool fasim_write_tfosorted_lite_enabled_runtime()
     return env[0] != '0';
 }
 
+static inline bool fasim_tfosorted_cigar_archive_probe_runtime()
+{
+	const char *env = getenv("FASIM_TFOSORTED_CIGAR_ARCHIVE_PROBE");
+	if (env == NULL || env[0] == '\0')
+	{
+		return false;
+	}
+	return env[0] != '0';
+}
+
+static inline bool fasim_tfosorted_compact_archive_probe_runtime()
+{
+	const char *env = getenv("FASIM_TFOSORTED_COMPACT_ARCHIVE_PROBE");
+	if (env == NULL || env[0] == '\0')
+	{
+		return false;
+	}
+	return env[0] != '0';
+}
+
 static inline FasimOutputMode fasim_output_mode_runtime()
 {
     static const FasimOutputMode mode = []()
@@ -987,6 +1008,13 @@ static inline uint64_t fasim_env_uint64_or_default_allow_zero(const char *name,
 		return defaultValue;
 	}
 	return static_cast<uint64_t>(value);
+}
+
+static inline uint64_t fasim_gasal2_cpu_traceback_max_rank_runtime()
+{
+	return fasim_env_uint64_or_default_allow_zero(
+		"FASIM_ALIGN_GASAL2_CPU_TRACEBACK_MAX_RANK",
+		0ULL);
 }
 
 static inline size_t fasim_gasal2_long_query_segmented_tile_len_runtime()
@@ -1483,8 +1511,320 @@ static inline void fasim_write_tfosorted_lite_header(std::ofstream &out)
         << "Nt(bp)\t"
         << "MeanIdentity(%)\t"
         << "MeanStability"
-        << std::endl;
+	        << std::endl;
 }
+
+static inline void fasim_write_tfosorted_cigar_archive_probe_header(std::ofstream &out)
+{
+	out << "QueryStart\t"
+	    << "QueryEnd\t"
+	    << "StartInSeq\t"
+	    << "EndInSeq\t"
+	    << "Direction\t"
+	    << "Chr\t"
+	    << "StartInGenome\t"
+	    << "EndInGenome\t"
+	    << "MeanStability\t"
+	    << "MeanIdentity(%)\t"
+	    << "Strand\t"
+	    << "Rule\t"
+	    << "Score\t"
+	    << "Nt(bp)\t"
+	    << "Class\t"
+	    << "MidPoint\t"
+	    << "Center\t"
+	    << "CIGAR"
+	    << std::endl;
+}
+
+static inline void fasim_put_varint(std::string &out, uint64_t value)
+{
+	while (value >= 0x80)
+	{
+		out.push_back(static_cast<char>((value & 0x7f) | 0x80));
+		value >>= 7;
+	}
+	out.push_back(static_cast<char>(value));
+}
+
+static inline uint64_t fasim_zigzag_i64(int64_t value)
+{
+	return value >= 0 ?
+		static_cast<uint64_t>(value) << 1 :
+		(static_cast<uint64_t>(-value) << 1) - 1;
+}
+
+static inline void fasim_put_delta_varint(std::string &out,
+                                          int64_t value,
+                                          int64_t &previous)
+{
+	const int64_t delta = value - previous;
+	fasim_put_varint(out, fasim_zigzag_i64(delta));
+	previous = value;
+}
+
+static inline void fasim_put_bytes(std::string &out, const std::string &value)
+{
+	fasim_put_varint(out, static_cast<uint64_t>(value.size()));
+	out.append(value);
+}
+
+struct FasimCigarOp
+{
+	FasimCigarOp(uint64_t lenValue, char opValue) :
+		len(lenValue),
+		op(opValue)
+	{
+	}
+	uint64_t len;
+	char op;
+};
+
+static inline std::vector<FasimCigarOp> fasim_parse_cigar_probe(const std::string &cigar)
+{
+	std::vector<FasimCigarOp> ops;
+	uint64_t len = 0;
+	bool haveLen = false;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char ch = cigar[i];
+		if (ch >= '0' && ch <= '9')
+		{
+			len = len * 10 + static_cast<uint64_t>(ch - '0');
+			haveLen = true;
+			continue;
+		}
+		if (!haveLen || len == 0)
+		{
+			cerr << "compact archive probe bad CIGAR: " << cigar << endl;
+			abort();
+		}
+		ops.push_back(FasimCigarOp(len, ch));
+		len = 0;
+		haveLen = false;
+	}
+	if (haveLen)
+	{
+		cerr << "compact archive probe bad trailing CIGAR length: " << cigar << endl;
+		abort();
+	}
+	return ops;
+}
+
+static inline uint64_t fasim_cigar_query_len(const std::vector<FasimCigarOp> &cigar)
+{
+	uint64_t len = 0;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char op = cigar[i].op;
+		if (op == 'M' || op == '=' || op == 'X' || op == 'I' || op == 'S')
+		{
+			len += cigar[i].len;
+		}
+	}
+	return len;
+}
+
+static inline uint64_t fasim_cigar_target_len(const std::vector<FasimCigarOp> &cigar)
+{
+	uint64_t len = 0;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char op = cigar[i].op;
+		if (op == 'M' || op == '=' || op == 'X' || op == 'D')
+		{
+			len += cigar[i].len;
+		}
+	}
+	return len;
+}
+
+static inline std::string fasim_cigar_gap_mask(const std::vector<FasimCigarOp> &cigar,
+                                               bool queryMask)
+{
+	uint64_t alignedLen = 0;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char op = cigar[i].op;
+		if (op == 'M' || op == '=' || op == 'X' || op == 'I' || op == 'D')
+		{
+			alignedLen += cigar[i].len;
+		}
+	}
+	std::string mask(static_cast<size_t>((alignedLen + 7) / 8), '\0');
+	uint64_t pos = 0;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char op = cigar[i].op;
+		const uint64_t len = cigar[i].len;
+		if (op != 'M' && op != '=' && op != 'X' && op != 'I' && op != 'D')
+		{
+			continue;
+		}
+		const bool gap = queryMask ? op == 'D' : op == 'I';
+		if (gap)
+		{
+			for (uint32_t j = 0; j < len; ++j)
+			{
+				const uint64_t bit = pos + j;
+				mask[static_cast<size_t>(bit / 8)] =
+					static_cast<char>(
+						static_cast<unsigned char>(
+							mask[static_cast<size_t>(bit / 8)]) |
+						static_cast<unsigned char>(1u << (bit % 8)));
+			}
+		}
+		pos += len;
+	}
+	return mask;
+}
+
+static inline uint64_t fasim_cigar_aligned_len(const std::vector<FasimCigarOp> &cigar)
+{
+	uint64_t len = 0;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char op = cigar[i].op;
+		if (op == 'M' || op == '=' || op == 'X' || op == 'I' || op == 'D')
+		{
+			len += cigar[i].len;
+		}
+	}
+	return len;
+}
+
+static inline int fasim_compact_strand_code(int reverse, int strand)
+{
+	const std::string value = getStrand(reverse, strand);
+	if (value == "ParaPlus")
+	{
+		return 0;
+	}
+	if (value == "ParaMinus")
+	{
+		return 1;
+	}
+	if (value == "AntiPlus")
+	{
+		return 2;
+	}
+	if (value == "AntiMinus")
+	{
+		return 3;
+	}
+	return -1;
+}
+
+struct FasimCompactArchiveProbeWriter
+{
+	FasimCompactArchiveProbeWriter() :
+		opened(false),
+		previousQueryStart(0),
+		previousSeqStart(0),
+		previousScore(0)
+	{
+	}
+
+	void open(const std::string &path)
+	{
+		file.open(path.c_str(), ios::binary | ios::trunc);
+		if (!file.is_open())
+		{
+			cerr << "failed to open compact archive probe: " << path << endl;
+			abort();
+		}
+		static const char magic[] = "FATFOD1";
+		file.write(magic, 8);
+		const uint32_t version = 1;
+		file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+		opened = true;
+	}
+
+	void write_row(const triplex &atr,
+	               int motif,
+	               int middle,
+	               int center)
+	{
+		if (!opened)
+		{
+			return;
+		}
+		const int strandCode =
+			fasim_compact_strand_code(atr.reverse, atr.strand);
+		if (strandCode < 0 ||
+		    atr.starj >= atr.endj ||
+		    !atr.chr.empty() ||
+		    atr.genomestart != atr.starj ||
+		    atr.genomeend != atr.endj ||
+		    motif != 0 ||
+		    middle != center)
+		{
+			cerr << "compact archive probe unsupported row shape" << endl;
+			abort();
+		}
+		if (atr.cigar_probe.empty())
+		{
+			cerr << "compact archive probe missing CIGAR" << endl;
+			abort();
+		}
+		const std::vector<FasimCigarOp> cigar =
+			fasim_parse_cigar_probe(atr.cigar_probe);
+		const uint64_t alignedLen = fasim_cigar_aligned_len(cigar);
+		const uint64_t queryLen = fasim_cigar_query_len(cigar);
+		const uint64_t targetLen = fasim_cigar_target_len(cigar);
+		if (queryLen == 0 || targetLen == 0 ||
+		    atr.endi != atr.stari + static_cast<int>(queryLen) - 1 ||
+		    atr.endj != atr.starj + static_cast<int>(targetLen) - 1 ||
+		    atr.nt != static_cast<int>(alignedLen))
+		{
+			cerr << "compact archive probe unsupported CIGAR-derived row"
+			     << endl;
+			abort();
+		}
+		std::string row;
+		fasim_put_delta_varint(row, atr.stari, previousQueryStart);
+		fasim_put_delta_varint(row, atr.starj, previousSeqStart);
+		fasim_put_delta_varint(row, static_cast<int64_t>(atr.score), previousScore);
+		fasim_put_varint(row, alignedLen);
+		fasim_put_varint(row, queryLen);
+		fasim_put_varint(row, targetLen);
+		fasim_put_varint(row, static_cast<uint64_t>(atr.rule));
+		fasim_put_varint(row, static_cast<uint64_t>(atr.nt));
+		const uint64_t flags = static_cast<uint64_t>(strandCode << 1);
+		fasim_put_varint(row, flags);
+		{
+			std::ostringstream value;
+			value << atr.tri_score;
+			fasim_put_bytes(row, value.str());
+		}
+		{
+			std::ostringstream value;
+			value << atr.identity;
+			fasim_put_bytes(row, value.str());
+		}
+		fasim_put_bytes(row, fasim_cigar_gap_mask(cigar, true));
+		fasim_put_bytes(row, fasim_cigar_gap_mask(cigar, false));
+		std::string prefix;
+		fasim_put_varint(prefix, static_cast<uint64_t>(row.size()));
+		file.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+		file.write(row.data(), static_cast<std::streamsize>(row.size()));
+	}
+
+	void close()
+	{
+		if (opened)
+		{
+			file.close();
+			opened = false;
+		}
+	}
+
+	bool opened;
+	ofstream file;
+	int64_t previousQueryStart;
+	int64_t previousSeqStart;
+	int64_t previousScore;
+};
 
 struct FasimLiteRow
 {
@@ -2377,6 +2717,12 @@ static inline void fasim_print_long_query_streaming_scoreinfo_shadow_stats(
 	          << stats.boundary_state_bytes << "\n";
 	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_legacy_byte_shared="
 	          << stats.legacy_byte_shared << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_legacy_byte_shared_required_smem_bytes="
+	          << stats.legacy_byte_shared_required_smem_bytes << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_legacy_byte_shared_default_smem_limit_bytes="
+	          << stats.legacy_byte_shared_default_smem_limit_bytes << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_legacy_byte_shared_optin_smem_limit_bytes="
+	          << stats.legacy_byte_shared_optin_smem_limit_bytes << "\n";
 	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_gpu_minscore_requested="
 	          << stats.gpu_minscore_requested << "\n";
 	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_gpu_minscore_active="
@@ -2868,6 +3214,40 @@ std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_realpath
 	          << stats.score_prepass_state_machine_shadow_expanded_segment_traceback_seconds << "\n";
 	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_triplex_mismatches="
 	          << stats.score_prepass_state_machine_shadow_triplex_mismatches << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_requested="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_requested << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_active="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_active << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_scoreinfos="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_attempts="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_candidate_attempts="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_candidate_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_selected="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_selected << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_covered="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_covered << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_false_negative_scoreinfos="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_false_negative_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_task="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_task << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_scoreinfo="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_scoreinfo << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_reason="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_reason << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_cpu_align_attempts="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_cpu_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_cpu_align_seconds="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_cpu_align_seconds << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_candidate_align_attempts="
+	          << stats.score_prepass_state_machine_shadow_cpu_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_candidate_align_seconds="
+	          << stats.score_prepass_state_machine_shadow_cpu_align_seconds << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_reference_align_attempts="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_cpu_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_candidate_coverage_reference_align_seconds="
+	          << stats.score_prepass_state_machine_shadow_candidate_coverage_cpu_align_seconds << "\n";
 	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_first_mismatch="
 	          << stats.score_prepass_state_machine_shadow_first_mismatch_task << "\n";
 	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_score_prepass_state_machine_shadow_first_mismatch_source="
@@ -3698,23 +4078,33 @@ int main(int argc, char* const* argv)
 			bool minScoreReady;
 		};
 
-		ofstream outFile;
-		ofstream outLiteFile;
-		ofstream broadCpuTriplexFile;
+			ofstream outFile;
+			ofstream outLiteFile;
+			ofstream cigarArchiveProbeFile;
+			FasimCompactArchiveProbeWriter compactArchiveProbeWriter;
+			ofstream broadCpuTriplexFile;
 		ofstream broadPlannerDescriptorFile;
 		string outFilePath;
-		string outLiteFilePath;
+			string outLiteFilePath;
+			string cigarArchiveProbePath;
+			string compactArchiveProbePath;
 		string broadCpuTriplexPath;
 		string broadPlannerDescriptorPath;
 		string outSpecies;
-		bool outOpened = false;
+			bool outOpened = false;
+			bool cigarArchiveProbeOpened = false;
+			bool compactArchiveProbeOpened = false;
 		bool broadCpuTriplexOpened = false;
 		bool broadPlannerDescriptorOpened = false;
 		uint64_t broadCpuTriplexDigest = 1469598103934665603ULL;
 		uint64_t broadPlannerDescriptorDigest = 1469598103934665603ULL;
 		std::mutex outMutex;
-		const bool writeFull = outputMode == FASIM_OUTPUT_TFOSORTED;
-		const bool writeLite = (outputMode == FASIM_OUTPUT_LITE) || fasim_write_tfosorted_lite_enabled_runtime();
+			const bool writeFull = outputMode == FASIM_OUTPUT_TFOSORTED;
+			const bool writeLite = (outputMode == FASIM_OUTPUT_LITE) || fasim_write_tfosorted_lite_enabled_runtime();
+			const bool writeCigarArchiveProbe =
+				fasim_tfosorted_cigar_archive_probe_runtime();
+			const bool writeCompactArchiveProbe =
+				fasim_tfosorted_compact_archive_probe_runtime();
 		const int outputTopkLite = fasim_output_topk_lite_runtime();
 		const bool collectTopkLite = writeLite && outputTopkLite > 0;
 		const bool broadCpuTriplexExportEnabled =
@@ -3763,17 +4153,40 @@ int main(int argc, char* const* argv)
 				}
 				fasim_write_tfosorted_header(outFile);
 			}
-			if (writeLite)
-			{
-				outLiteFile.open(outLiteFilePath.c_str(), ios::trunc);
+				if (writeLite)
+				{
+					outLiteFile.open(outLiteFilePath.c_str(), ios::trunc);
 				if (!outLiteFile.is_open())
 				{
 					cerr << "failed to open output file: " << outLiteFilePath << endl;
 					abort();
 				}
-				fasim_write_tfosorted_lite_header(outLiteFile);
-			}
-			if (broadCpuTriplexExportEnabled)
+					fasim_write_tfosorted_lite_header(outLiteFile);
+				}
+				if (writeCigarArchiveProbe)
+				{
+					cigarArchiveProbePath =
+						outFilePath + ".cigar-archive.tsv";
+					cigarArchiveProbeFile.open(
+						cigarArchiveProbePath.c_str(), ios::trunc);
+					if (!cigarArchiveProbeFile.is_open())
+					{
+						cerr << "failed to open CIGAR archive probe: "
+						     << cigarArchiveProbePath << endl;
+						abort();
+					}
+					fasim_write_tfosorted_cigar_archive_probe_header(
+						cigarArchiveProbeFile);
+					cigarArchiveProbeOpened = true;
+				}
+				if (writeCompactArchiveProbe)
+				{
+					compactArchiveProbePath =
+						outFilePath + ".compact-archive.tfoa";
+					compactArchiveProbeWriter.open(compactArchiveProbePath);
+					compactArchiveProbeOpened = true;
+				}
+				if (broadCpuTriplexExportEnabled)
 			{
 				broadCpuTriplexPath = outFilePath + ".broad_cpu_triplex.tsv";
 				broadCpuTriplexFile.open(broadCpuTriplexPath.c_str(), ios::trunc);
@@ -4954,10 +5367,10 @@ int main(int argc, char* const* argv)
 						                                  atr));
 				}
 
-					if (writeFull)
-					{
-						FasimScopedSeconds scoped(phaseTimingEnabled,
-						                          &phaseTiming.output_write_seconds);
+						if (writeFull)
+						{
+							FasimScopedSeconds scoped(phaseTimingEnabled,
+							                          &phaseTiming.output_write_seconds);
 						if (atr.starj < atr.endj)
 						{
 						outFile << atr.stari << "\t" << atr.endi << "\t" << atr.starj << "\t" << atr.endj << "\t"
@@ -4976,14 +5389,52 @@ int main(int argc, char* const* argv)
 						        << motif << "\t" << middle << "\t" << center << "\t"
 						        << atr.stri_align << "\t" << atr.strj_align << "\n";
 					}
-					if (phaseTimingEnabled)
+						if (phaseTimingEnabled)
+						{
+							++phaseTiming.gasal2_emit_rows_full;
+						}
+					}
+					if (writeCigarArchiveProbe)
 					{
-						++phaseTiming.gasal2_emit_rows_full;
+						if (atr.cigar_probe.empty())
+						{
+							cerr << "CIGAR archive probe missing CIGAR for emitted row"
+							     << endl;
+							abort();
+						}
+						FasimScopedSeconds scoped(phaseTimingEnabled,
+						                          &phaseTiming.output_write_seconds);
+						cigarArchiveProbeFile << atr.stari << "\t"
+						                      << atr.endi << "\t"
+						                      << atr.starj << "\t"
+						                      << atr.endj << "\t"
+						                      << (atr.starj < atr.endj ? "R" : "L")
+						                      << "\t" << atr.chr << "\t"
+						                      << atr.genomestart << "\t"
+						                      << atr.genomeend << "\t"
+						                      << atr.tri_score << "\t"
+						                      << atr.identity << "\t"
+						                      << getStrand(atr.reverse, atr.strand)
+						                      << "\t" << atr.rule << "\t"
+						                      << atr.score << "\t"
+						                      << atr.nt << "\t"
+						                      << motif << "\t"
+						                      << middle << "\t"
+						                      << center << "\t"
+						                      << atr.cigar_probe << "\n";
+					}
+					if (writeCompactArchiveProbe)
+					{
+						FasimScopedSeconds scoped(phaseTimingEnabled,
+						                          &phaseTiming.output_write_seconds);
+						compactArchiveProbeWriter.write_row(atr,
+						                                    motif,
+						                                    middle,
+						                                    center);
 					}
 				}
-			}
-			taskTriplexes.clear();
-		};
+				taskTriplexes.clear();
+			};
 
 		auto finalize_attempt_consumer_shadow = [&]()
 		{
@@ -5758,6 +6209,9 @@ int main(int argc, char* const* argv)
 			uint64_t cpuTracebackRank2Emits = 0;
 			uint64_t cpuTracebackRank3Emits = 0;
 			uint64_t cpuTracebackRank4PlusEmits = 0;
+			uint64_t cpuTracebackRankCutoffSkipped = 0;
+			const uint64_t cpuTracebackMaxRank =
+				fasim_gasal2_cpu_traceback_max_rank_runtime();
 			double cpuTracebackSubstrSeconds = 0.0;
 			double cpuTracebackAlignSeconds = 0.0;
 			const auto replayStart = std::chrono::steady_clock::now();
@@ -5848,6 +6302,12 @@ int main(int argc, char* const* argv)
 						{
 							++cpuTracebackSkippedAfterEmit;
 						}
+						continue;
+					}
+					if (cpuTracebackMaxRank > 0 &&
+					    currentGroupAlignRank >= cpuTracebackMaxRank)
+					{
+						++cpuTracebackRankCutoffSkipped;
 						continue;
 					}
 
@@ -5941,7 +6401,8 @@ int main(int argc, char* const* argv)
 			}
 			fasim_gasal2_record_cpu_traceback_replay(gasalSelected.size(), replaySelectedCount);
 			fasim_gasal2_record_cpu_traceback_aligns(cpuTracebackAlignCalls,
-			                                         cpuTracebackSkippedAfterEmit);
+			                                         cpuTracebackSkippedAfterEmit,
+			                                         cpuTracebackRankCutoffSkipped);
 			fasim_gasal2_record_cpu_traceback_outcomes(cpuTracebackThresholdEmits,
 			                                           cpuTracebackBestFallbackEmits,
 			                                           cpuTracebackLastEmits,
@@ -6458,9 +6919,38 @@ int main(int argc, char* const* argv)
 					const bool legacyByteSharedMemoryMode =
 						legacyByteMode &&
 						fasim_long_query_streaming_scoreinfo_legacy_byte_shared_runtime();
-					longQueryStreamingScoreInfoShadowStats.legacy_byte_shared =
-						legacyByteSharedMemoryMode ? 1ULL : 0ULL;
-					if (streamingScoreInfoLegacyByteRequested && !legacyByteMode)
+						longQueryStreamingScoreInfoShadowStats.legacy_byte_shared =
+							legacyByteSharedMemoryMode ? 1ULL : 0ULL;
+						if (legacyByteSharedMemoryMode)
+						{
+							PreAlignCudaResourceLimits sharedResourceLimits;
+							std::string sharedResourceError;
+							if (prealign_cuda_query_resource_limits(
+								    streamingScoreInfoLegacyByteCudaQuery,
+								    &sharedResourceLimits,
+								    &sharedResourceError))
+							{
+								longQueryStreamingScoreInfoShadowStats
+									.legacy_byte_shared_required_smem_bytes =
+									static_cast<uint64_t>(
+										sharedResourceLimits.requiredDynamicSmemBytes / 2);
+								longQueryStreamingScoreInfoShadowStats
+									.legacy_byte_shared_default_smem_limit_bytes =
+									static_cast<uint64_t>(
+										sharedResourceLimits.defaultDynamicSmemLimitBytes);
+								longQueryStreamingScoreInfoShadowStats
+									.legacy_byte_shared_optin_smem_limit_bytes =
+									static_cast<uint64_t>(
+										sharedResourceLimits.optinDynamicSmemLimitBytes);
+							}
+							else if (!sharedResourceError.empty() &&
+							         longQueryStreamingScoreInfoShadowStats.error == "none")
+							{
+								longQueryStreamingScoreInfoShadowStats.error =
+									sharedResourceError;
+							}
+						}
+						if (streamingScoreInfoLegacyByteRequested && !legacyByteMode)
 					{
 						longQueryStreamingScoreInfoShadowStats.unsupported = 1;
 						++longQueryStreamingScoreInfoShadowStats.fallback_batches;
@@ -8830,8 +9320,8 @@ int main(int argc, char* const* argv)
 
 											outBuf.str("");
 											outBuf.clear();
-											if (writeLite)
-											{
+					if (writeLite)
+					{
 												liteRowsLocal.clear();
 											}
 
@@ -9922,6 +10412,10 @@ int main(int argc, char* const* argv)
 												fasim_gasal2_score_prepass_state_machine_segment_traceback_shadow_runtime();
 											const bool stateMachineExpandedSegmentTracebackShadowRequested =
 												fasim_gasal2_score_prepass_state_machine_expanded_segment_traceback_shadow_runtime();
+												const bool scorePrepassStateMachineCandidateCoverageRequested =
+													fasim_gasal2_cpu_authority_candidate_coverage_shadow_runtime();
+												const bool scorePrepassStateMachineSelectedOnlyCoverageRequested =
+													fasim_gasal2_cpu_authority_selected_only_coverage_shadow_runtime();
 											if (stateMachineAlignCacheRequested)
 											{
 												longQueryStreamingScoreInfoShadowStats
@@ -9942,6 +10436,28 @@ int main(int argc, char* const* argv)
 												longQueryStreamingScoreInfoShadowStats
 													.score_prepass_state_machine_shadow_expanded_segment_traceback_requested = 1;
 											}
+												if (scorePrepassStateMachineCandidateCoverageRequested)
+												{
+													const uint64_t coverageCandidateAttemptCount =
+														scorePrepassStateMachineSelectedOnlyCoverageRequested ?
+														static_cast<uint64_t>(
+															flushReplaySelectedAttemptOrdinals.size()) :
+														static_cast<uint64_t>(
+															stateMachinePrefixAttemptOrdinals.size());
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_requested = 1;
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_active = 1;
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_scoreinfos +=
+														static_cast<uint64_t>(flushProbeScoreInfoTaskIndexes.size());
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_attempts +=
+														static_cast<uint64_t>(flushProbeAttempts.size());
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_candidate_attempts +=
+														coverageCandidateAttemptCount;
+												}
 											std::map<std::pair<size_t, std::pair<int, int> >,
 											         StripedSmithWaterman::Alignment>
 												stateMachineAlignCache;
@@ -10016,10 +10532,249 @@ int main(int argc, char* const* argv)
 												stateMachineGasal2TracebackCpuAlignments.reserve(
 													stateMachinePrefixAttemptOrdinals.size());
 											}
-
-											auto alignmentProbeKey =
-												[](const StripedSmithWaterman::Alignment &alignment) -> std::string
+											std::vector<unsigned char> stateMachinePrefixAttemptOrdinalSet;
+											if (scorePrepassStateMachineCandidateCoverageRequested)
 											{
+												stateMachinePrefixAttemptOrdinalSet.assign(
+													flushProbeAttempts.size(),
+													static_cast<unsigned char>(0));
+												const std::vector<size_t> &coverageAttemptOrdinals =
+													scorePrepassStateMachineSelectedOnlyCoverageRequested ?
+													flushReplaySelectedAttemptOrdinals :
+													stateMachinePrefixAttemptOrdinals;
+												for (size_t prefixIndex = 0;
+												     prefixIndex < coverageAttemptOrdinals.size();
+												     ++prefixIndex)
+												{
+													const size_t prefixOrdinal =
+														coverageAttemptOrdinals[prefixIndex];
+													if (prefixOrdinal <
+													    stateMachinePrefixAttemptOrdinalSet.size())
+													{
+														stateMachinePrefixAttemptOrdinalSet[
+															prefixOrdinal] =
+															static_cast<unsigned char>(1);
+													}
+												}
+											}
+
+												auto recordStateMachineCandidateCoverage =
+													[&](size_t taskIndex,
+													    int scoreInfoIndex,
+													    size_t attemptOrdinal,
+												    const char *reason)
+											{
+												if (!scorePrepassStateMachineCandidateCoverageRequested)
+												{
+														return;
+													}
+													++longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_selected;
+													const bool stateMachineLegacySelectedAttemptCovered =
+														attemptOrdinal <
+														    stateMachinePrefixAttemptOrdinalSet.size() &&
+														stateMachinePrefixAttemptOrdinalSet[attemptOrdinal] != 0;
+													if (stateMachineLegacySelectedAttemptCovered)
+													{
+														++longQueryStreamingScoreInfoShadowStats
+															.score_prepass_state_machine_shadow_candidate_coverage_covered;
+													return;
+												}
+												++longQueryStreamingScoreInfoShadowStats
+													.score_prepass_state_machine_shadow_candidate_coverage_false_negative_scoreinfos;
+												if (longQueryStreamingScoreInfoShadowStats
+												        .score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_task < 0)
+												{
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_task =
+														static_cast<int64_t>(taskIndex);
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_scoreinfo =
+														static_cast<int64_t>(scoreInfoIndex);
+													longQueryStreamingScoreInfoShadowStats
+														.score_prepass_state_machine_shadow_candidate_coverage_first_false_negative_reason =
+														reason != NULL ? reason : "unknown";
+													}
+												};
+
+												if (scorePrepassStateMachineCandidateCoverageRequested)
+												{
+													int coverageCurrentScoreInfo = -1;
+													size_t coverageCurrentTask = 0;
+													FasimGasal2Attempt coverageBestAttempt;
+													FasimGasal2Attempt coverageLastAttempt;
+													size_t coverageBestAttemptOrdinal =
+														static_cast<size_t>(-1);
+													size_t coverageLastAttemptOrdinal =
+														static_cast<size_t>(-1);
+													StripedSmithWaterman::Alignment
+														coverageBestAlignment;
+													StripedSmithWaterman::Alignment
+														coverageLastAlignment;
+													bool coverageHaveBest = false;
+													bool coverageHaveLast = false;
+													bool coverageEmitted = false;
+
+													auto flushCoverageScoreInfo = [&]()
+													{
+														if (coverageCurrentScoreInfo < 0 ||
+														    coverageCurrentTask >= shadowTaskCount)
+														{
+															coverageHaveBest = false;
+															coverageHaveLast = false;
+															coverageEmitted = false;
+															coverageBestAlignment.Clear();
+															coverageLastAlignment.Clear();
+															return;
+														}
+														if (!coverageEmitted &&
+														    coverageHaveBest)
+														{
+															recordStateMachineCandidateCoverage(
+																coverageCurrentTask,
+																coverageCurrentScoreInfo,
+																coverageBestAttemptOrdinal,
+																"best_fallback");
+														}
+														else if (!coverageEmitted &&
+														         coverageHaveLast &&
+														         coverageLastAlignment.sw_score != 0)
+														{
+															recordStateMachineCandidateCoverage(
+																coverageCurrentTask,
+																coverageCurrentScoreInfo,
+																coverageLastAttemptOrdinal,
+																"last_nonzero");
+														}
+														coverageHaveBest = false;
+														coverageHaveLast = false;
+														coverageEmitted = false;
+														coverageBestAttempt = FasimGasal2Attempt();
+														coverageLastAttempt = FasimGasal2Attempt();
+														coverageBestAttemptOrdinal =
+															static_cast<size_t>(-1);
+														coverageLastAttemptOrdinal =
+															static_cast<size_t>(-1);
+														coverageBestAlignment.Clear();
+														coverageLastAlignment.Clear();
+													};
+
+													for (size_t attemptOrdinal = 0;
+													     attemptOrdinal < flushProbeAttempts.size();
+													     ++attemptOrdinal)
+													{
+														const FasimGasal2Attempt &attempt =
+															flushProbeAttempts[attemptOrdinal];
+														if (attempt.scoreinfo_index < 0 ||
+														    static_cast<size_t>(attempt.scoreinfo_index) >=
+														    flushProbeScoreInfoTaskIndexes.size() ||
+														    static_cast<size_t>(attempt.scoreinfo_index) >=
+														    flushProbeScoreInfoScores.size())
+														{
+															continue;
+														}
+														const size_t taskIndex =
+															flushProbeScoreInfoTaskIndexes[
+																static_cast<size_t>(
+																	attempt.scoreinfo_index)];
+														if (taskIndex >= shadowTaskCount)
+														{
+															if (attempt.scoreinfo_index !=
+															    coverageCurrentScoreInfo)
+															{
+																flushCoverageScoreInfo();
+															}
+															continue;
+														}
+														if (attempt.scoreinfo_index !=
+														    coverageCurrentScoreInfo)
+														{
+															flushCoverageScoreInfo();
+															coverageCurrentScoreInfo =
+																attempt.scoreinfo_index;
+															coverageCurrentTask = taskIndex;
+														}
+														if (coverageEmitted)
+														{
+															continue;
+														}
+														StreamTask &coverageTask = tasks[taskIndex];
+														if (attempt.start < 0 ||
+														    attempt.cutlength <= 0 ||
+														    attempt.start + attempt.cutlength >
+														        static_cast<int>(coverageTask.seq2.size()))
+														{
+															continue;
+														}
+														const std::pair<size_t, std::pair<int, int> >
+															alignCacheKey =
+																std::make_pair(
+																	taskIndex,
+																	std::make_pair(
+																		attempt.start,
+																		attempt.cutlength));
+														StripedSmithWaterman::Alignment
+															coverageAlignment;
+														bool alignCacheHit = false;
+														if (!alignCacheHit)
+														{
+															const std::string smallSeq =
+																coverageTask.seq2.substr(
+																	static_cast<size_t>(
+																		attempt.start),
+																	static_cast<size_t>(
+																		attempt.cutlength));
+															const std::chrono::steady_clock::time_point
+																alignStart =
+																	std::chrono::steady_clock::now();
+															aligner.Align(lncSeq.c_str(),
+															              smallSeq.c_str(),
+															              smallSeq.size(),
+															              filter,
+															              &coverageAlignment,
+															              15);
+															longQueryStreamingScoreInfoShadowStats
+																.score_prepass_state_machine_shadow_candidate_coverage_cpu_align_seconds +=
+																fasim_seconds_since(alignStart);
+															++longQueryStreamingScoreInfoShadowStats
+																.score_prepass_state_machine_shadow_candidate_coverage_cpu_align_attempts;
+														}
+														coverageLastAttempt = attempt;
+														coverageLastAttemptOrdinal = attemptOrdinal;
+														coverageLastAlignment = coverageAlignment;
+														coverageHaveLast = true;
+														if (coverageAlignment.sw_score >=
+														    flushProbeScoreInfoScores[
+															    static_cast<size_t>(
+																    attempt.scoreinfo_index)])
+														{
+															recordStateMachineCandidateCoverage(
+																taskIndex,
+																attempt.scoreinfo_index,
+																attemptOrdinal,
+																"threshold");
+															coverageEmitted = true;
+															continue;
+														}
+														if (coverageAlignment.sw_score >
+														        coverageBestAlignment.sw_score &&
+														    coverageAlignment.ref_end ==
+														        attempt.cutlength - 1)
+														{
+															coverageBestAttempt = attempt;
+															coverageBestAttemptOrdinal =
+																attemptOrdinal;
+															coverageBestAlignment =
+																coverageAlignment;
+															coverageHaveBest = true;
+														}
+													}
+													flushCoverageScoreInfo();
+												}
+
+												auto alignmentProbeKey =
+													[](const StripedSmithWaterman::Alignment &alignment) -> std::string
+												{
 												std::ostringstream out;
 												out << alignment.sw_score << ':'
 												    << alignment.query_begin << ':'
@@ -10093,21 +10848,21 @@ int main(int argc, char* const* argv)
 												stateMachineLastAlignment.Clear();
 												return;
 											}
-											if (!stateMachineEmitted &&
-											    stateMachineHaveBest)
-											{
-												appendStateMachineTriplexes(
-													currentStateMachineTask,
-													stateMachineBestAttempt,
+												if (!stateMachineEmitted &&
+												    stateMachineHaveBest)
+												{
+													appendStateMachineTriplexes(
+														currentStateMachineTask,
+														stateMachineBestAttempt,
 													stateMachineBestAlignment);
 											}
-											else if (!stateMachineEmitted &&
-											         stateMachineHaveLast &&
-											         stateMachineLastAlignment.sw_score != 0)
-											{
-												appendStateMachineTriplexes(
-													currentStateMachineTask,
-													stateMachineLastAttempt,
+												else if (!stateMachineEmitted &&
+												         stateMachineHaveLast &&
+												         stateMachineLastAlignment.sw_score != 0)
+												{
+													appendStateMachineTriplexes(
+														currentStateMachineTask,
+														stateMachineLastAttempt,
 													stateMachineLastAlignment);
 											}
 											stateMachineHaveBest = false;
@@ -10519,14 +11274,14 @@ int main(int argc, char* const* argv)
 												stateMachineLastAttempt = attempt;
 											stateMachineLastAlignment = shadowAlignment;
 											stateMachineHaveLast = true;
-											if (shadowAlignment.sw_score >=
-											    flushProbeScoreInfoScores[
-												    static_cast<size_t>(
-													    attempt.scoreinfo_index)])
-											{
-												appendStateMachineTriplexes(
-													taskIndex,
-													attempt,
+												if (shadowAlignment.sw_score >=
+												    flushProbeScoreInfoScores[
+													    static_cast<size_t>(
+														    attempt.scoreinfo_index)])
+												{
+													appendStateMachineTriplexes(
+														taskIndex,
+														attempt,
 													shadowAlignment);
 												stateMachineEmitted = true;
 												continue;
@@ -12243,10 +12998,11 @@ int main(int argc, char* const* argv)
 														lncSeq,
 														task.seq2,
 														*task.srcSeq,
-														task.dnaStartPos,
-														streamingRealpathScoreInfos[t],
-														extendTiming.align_attempts,
-														emissionOnlyTriplexes,
+															task.dnaStartPos,
+															streamingRealpathScoreInfos[t],
+															extendTiming.align_attempts,
+															task.taskIndex,
+															emissionOnlyTriplexes,
 														task.strand,
 														task.Para,
 														task.rule,
@@ -12844,9 +13600,19 @@ int main(int argc, char* const* argv)
 								topkLiteRankBuckets.rank33_plus;
 						}
 					}
-					outLiteFile.close();
-				}
-				if (broadCpuTriplexOpened)
+						outLiteFile.close();
+					}
+					if (cigarArchiveProbeOpened)
+					{
+						cigarArchiveProbeFile.close();
+						cigarArchiveProbeOpened = false;
+					}
+					if (compactArchiveProbeOpened)
+					{
+						compactArchiveProbeWriter.close();
+						compactArchiveProbeOpened = false;
+					}
+					if (broadCpuTriplexOpened)
 				{
 					broadCpuTriplexFile.close();
 					broadScoreInfoConsumerShadowStats.broad_path_cpu_triplex_digest =

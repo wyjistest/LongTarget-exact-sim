@@ -1,6 +1,6 @@
 #include "gasal2_align_bridge.h"
 
-#include "../.tmp/GASAL2/include/gasal_header.h"
+#include "gasal_header.h"
 #include "ssw.h"
 
 #include <algorithm>
@@ -298,8 +298,8 @@ void ensure_params(BridgeState *state, GasalMode mode)
 	state->params->n_threads = 1;
 	state->params->sa = 5;
 	state->params->sb = 4;
-	state->params->gapo = 12;
-	state->params->gape = 4;
+	state->params->gapo = env_int_or_default("FASIM_ALIGN_GASAL2_GAP_OPEN", 12);
+	state->params->gape = env_int_or_default("FASIM_ALIGN_GASAL2_GAP_EXTEND", 4);
 	state->params->algo = LOCAL;
 	state->params->secondBest = FALSE;
 	state->params->isPacked = false;
@@ -1396,6 +1396,7 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_selected_attempts=" << stats.cpu_traceback_selected_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_align_calls=" << stats.cpu_traceback_align_calls << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_skipped_after_emit=" << stats.cpu_traceback_skipped_after_emit << "\n";
+	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_rank_cutoff_skipped=" << stats.cpu_traceback_rank_cutoff_skipped << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_emit_threshold=" << stats.cpu_traceback_emit_threshold << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_emit_best_fallback=" << stats.cpu_traceback_emit_best_fallback << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_emit_last=" << stats.cpu_traceback_emit_last << "\n";
@@ -1434,6 +1435,7 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_scored_attempts=" << stats.emission_only_consumer_shadow_scored_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_threshold_emits=" << stats.emission_only_consumer_shadow_threshold_emits << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_terminal_emits=" << stats.emission_only_consumer_shadow_terminal_emits << "\n";
+	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_last_emits=" << stats.emission_only_consumer_shadow_last_emits << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_empty_emits=" << stats.emission_only_consumer_shadow_empty_emits << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_cpu_align_attempts=" << stats.emission_only_consumer_shadow_cpu_align_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_realpath_reference_align_attempts=" << stats.emission_only_consumer_shadow_realpath_reference_align_attempts << "\n";
@@ -1836,6 +1838,7 @@ void fasim_gasal2_record_emission_only_consumer_shadow_request(
 void fasim_gasal2_record_emission_only_consumer_shadow_result(
 	uint64_t thresholdEmits,
 	uint64_t terminalEmits,
+	uint64_t lastEmits,
 	uint64_t emptyEmits,
 	uint64_t cpuAlignAttempts,
 	uint64_t realpathReferenceAlignAttempts,
@@ -1854,6 +1857,7 @@ void fasim_gasal2_record_emission_only_consumer_shadow_result(
 	}
 	g_stats.emission_only_consumer_shadow_threshold_emits += thresholdEmits;
 	g_stats.emission_only_consumer_shadow_terminal_emits += terminalEmits;
+	g_stats.emission_only_consumer_shadow_last_emits += lastEmits;
 	g_stats.emission_only_consumer_shadow_empty_emits += emptyEmits;
 	g_stats.emission_only_consumer_shadow_cpu_align_attempts += cpuAlignAttempts;
 	g_stats.emission_only_consumer_shadow_realpath_reference_align_attempts +=
@@ -2017,11 +2021,13 @@ void fasim_gasal2_record_cpu_traceback_replay(uint64_t replayAttempts,
 }
 
 void fasim_gasal2_record_cpu_traceback_aligns(uint64_t alignCalls,
-                                              uint64_t skippedAfterEmit)
+                                              uint64_t skippedAfterEmit,
+                                              uint64_t rankCutoffSkipped)
 {
 	std::lock_guard<std::mutex> lock(g_mutex);
 	g_stats.cpu_traceback_align_calls += alignCalls;
 	g_stats.cpu_traceback_skipped_after_emit += skippedAfterEmit;
+	g_stats.cpu_traceback_rank_cutoff_skipped += rankCutoffSkipped;
 }
 
 void fasim_gasal2_record_cpu_traceback_outcomes(uint64_t thresholdEmits,

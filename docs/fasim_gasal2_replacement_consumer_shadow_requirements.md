@@ -14,14 +14,14 @@ MALAT1 full lite:
   two_contract_used = 200,400
   realpath_used = 200,400
   gpu_scoreinfo_groups = 3,561,123
-  candidate_vs_baseline = 1.037747x
+  candidate_vs_baseline = 1.038567x
 
 MALAT1 full TFOsorted:
   tasks = 200,400
   two_contract_used = 200,400
   realpath_used = 200,400
   gpu_scoreinfo_groups = 3,561,123
-  candidate_vs_baseline = 1.037590x
+  candidate_vs_baseline = 1.038799x
 ```
 
 This proves a MALAT1-like scoped path. It does not complete the broad

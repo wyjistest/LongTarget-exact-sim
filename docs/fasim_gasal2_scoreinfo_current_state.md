@@ -1067,7 +1067,8 @@ MALAT1 first8 TFOsorted no-probe:
 MALAT1 first64 no-probe:
   schema = lite
   rows = 9,741
-  candidate_vs_baseline = 1.030868x
+  digest = f57a418be0ec9439cf2c4c453e2e45cc9d35b03df5e2c63f60860e6575db180d
+  candidate_vs_baseline = 1.029812x
   tasks = 18,096
   two_contract_used = 18,096
   realpath_used = 18,096
@@ -1077,7 +1078,8 @@ MALAT1 first64 no-probe:
 MALAT1 first128 no-probe:
   schema = lite
   rows = 22,531
-  candidate_vs_baseline = 1.043793x
+  digest = 91ea0b8191027916e3237fb5381c6271fc9acd03b46a5cf67826c253fe41edd1
+  candidate_vs_baseline = 1.041215x
   tasks = 40,128
   two_contract_used = 40,128
   realpath_used = 40,128
@@ -1087,7 +1089,8 @@ MALAT1 first128 no-probe:
 MALAT1 first256 no-probe:
   schema = lite
   rows = 42,504
-  candidate_vs_baseline = 1.042764x
+  digest = 7f553b74ae31bed4cb7b9c312a188e2df19627ac4882c7ad7ac484d65b004a4e
+  candidate_vs_baseline = 1.040931x
   tasks = 80,640
   two_contract_used = 80,640
   realpath_used = 80,640
@@ -1098,36 +1101,32 @@ MALAT1 full no-probe:
   schema = lite
   rows = 98,713
   digest = f080498ad8b9661100243e8eec89b6b54b566d7ed96fa5db7e268a8ce8513e0b
-  baseline_wall_seconds = 2616.446186
-  candidate_wall_seconds = 2521.276554
-  candidate_vs_baseline = 1.037747x
+  baseline_wall_seconds = 2611.940621
+  candidate_wall_seconds = 2514.945686
+  candidate_vs_baseline = 1.038567x
   tasks = 200,400
   two_contract_used = 200,400
   realpath_used = 200,400
   gpu_minscore_used = 200,400
   gpu_scoreinfo_groups = 3,561,123
-  two_contract_total_seconds = 486.853900
-  gpu_minscore_wall_seconds = 159.007290
-  realpath_extend_seconds = 1143.153600
-  realpath_extend_align_seconds = 1137.801300
   probe_positive_numeric_keys = 0
 
 MALAT1 full TFOsorted no-probe:
   schema = tfosorted
   rows = 98,713
   digest = ac667f460cd1446bc5598fa163f7fc2755265bf56e6b82c105e672873c895ffc
-  baseline_wall_seconds = 2640.948210
-  candidate_wall_seconds = 2545.271840
-  candidate_vs_baseline = 1.037590x
+  baseline_wall_seconds = 2636.136998
+  candidate_wall_seconds = 2537.678266
+  candidate_vs_baseline = 1.038799x
   tasks = 200,400
   two_contract_used = 200,400
   realpath_used = 200,400
   gpu_minscore_used = 200,400
   gpu_scoreinfo_groups = 3,561,123
-  two_contract_total_seconds = 486.866600
-  gpu_minscore_wall_seconds = 159.077360
-  realpath_extend_seconds = 1165.680900
-  realpath_extend_align_seconds = 1139.782800
+  two_contract_total_seconds = 481.568400
+  gpu_minscore_wall_seconds = 157.575680
+  realpath_extend_seconds = 1165.840400
+  realpath_extend_align_seconds = 1139.782900
   probe_positive_numeric_keys = 0
 ```
 
@@ -1145,14 +1144,14 @@ not broad scoreInfo/preAlign replacement:
   yes
 
 remaining bottleneck is CPU realpath extend/align:
-  realpath_extend_seconds = 1143.153600
-  realpath_extend_align_seconds = 1137.801300
+  realpath_extend_seconds = 1165.840400
+  realpath_extend_align_seconds = 1139.782900
   realpath_extend_align_attempts = 8,526,477
 
 GPU scoreInfo path:
-  two_contract_total_seconds = 486.853900
-  two_contract_kernel_seconds = 486.154600
-  gpu_minscore_wall_seconds = 159.007290
+  two_contract_total_seconds = 481.568400
+  two_contract_kernel_seconds = 480.874600
+  gpu_minscore_wall_seconds = 157.575680
 ```
 
 The full-MALAT1 gate proves the no-probe contract for this workload shape, not
@@ -1379,6 +1378,19 @@ probe reports zero triplex mismatches, but it only covers one task per flush.
 NEAT1 gives the opposite performance signal. The shared-memory legacy-byte
 scoreInfo path fails launch for NEAT1 query_len=22767, while the lower-shared-
 memory global-state path is correctness-clean but performance no-go:
+
+NEAT1 shared-smem boundary:
+
+```text
+required_smem = 136,608
+optin_smem_limit = 101,376
+error = legacy_byte_shared_smem_exceeds_optin_limit
+```
+
+The shared scoreInfo launch is rejected before CUDA returns a generic
+`invalid argument`. This confirms the shared kernel is outside the device
+dynamic shared-memory resource shape for NEAT1; it does not change the
+non-shared correctness-clean/performance-no-go result.
 
 ```text
 NEAT1 first4 global-state:
@@ -1831,7 +1843,8 @@ make check-fasim-gasal2-score-prepass-state-machine-trust-runtime-smoke
 This rules out a broad long-query real path from the current implementation.
 The runner trust preset's shared-memory legacy-byte shape is not a NEAT1
 replacement path either: on NEAT1 first4 it launches GPU minScore cleanly, but
-the shared scoreInfo kernel fails with `invalid argument`, leaving
+the shared scoreInfo kernel fails with
+`legacy_byte_shared_smem_exceeds_optin_limit`, leaving
 `gpu_scoreinfo_groups=0`, `realpath_used=0`, and `realpath_fallbacks=4`.
 Any next prototype must be workload-gated and validation-first, or must replace
 the NEAT1 scoreInfo execution shape.
@@ -1916,8 +1929,123 @@ full objective open until broader requirements are proven. The top5 scoped
 completion candidate records the conditional scope only; the full objective
 remains open unless that narrowed product contract is explicitly accepted.
 
-The next broad attempt is an emission-only scoreInfo consumer shadow:
-FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1. It must use GASAL2 score/end to
-choose emitted attempts and CPU-align only those emitted attempts. It is a
-go only if NEAT1 first64 is triplex/digest clean and CPU align attempts are
-lower than the realpath reference.
+The emission-only scoreInfo consumer shadow has also been characterized on
+NEAT1 first64:
+
+```text
+FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1
+decision = emission_only_consumer_shadow_correctness_no_go
+candidate_vs_baseline = 0.157653x
+cpu_align_attempts = 52,994
+realpath_reference_align_attempts = 140,087
+align_attempt_reduction = 87,093
+triplex_mismatches = 4,404
+missing_triplexes = 2,096
+extra_triplexes = 1,460
+```
+
+This reduces CPU align attempts but changes the triplex stream and is much
+slower, so it is a broad-path no-go rather than the next real path.
+
+Focused debug narrowed the mismatch source:
+
+```text
+task_key=49:
+  GASAL2 score equals CPU score for attempt 26
+  CPU ref_end = 1574, terminal = 0
+  GASAL2 ref_end = 1575, terminal = 1
+  legacy selects attempt 27
+  shadow selects attempt 26
+```
+
+The sampled mismatch taxonomy also includes threshold false positives:
+
+```text
+summary mismatches = 471
+terminal -> terminal = 240
+last_nonzero -> terminal = 184
+shadow threshold while legacy non-threshold = 35
+```
+
+A focused threshold false-positive debug row confirms this is a score authority
+problem, not only endpoint selection:
+
+```text
+task_key=117 scoreinfo_index=26 attempt_index=104:
+  prealign_score = 110
+  CPU score = 68
+  GASAL2 segmented score = 138
+  shadow emits by threshold
+  legacy emits last_nonzero
+```
+
+The score false positive is partly explained by scoring parameters: CPU SSW uses
+gap open `16`, extend `4`, while the current GASAL2 bridge default remains gap
+open `12`, extend `4`. For task117, `FASIM_ALIGN_GASAL2_GAP_OPEN=16` lowers the
+same GASAL2 score from `138` to `104`, below `prealign_score=110`. But changing
+the GASAL2 default to gap open `16` breaks the existing NEAT1 first1
+emission-only clean gate with `triplex_mismatches=12`, `missing_triplexes=1`,
+and `extra_triplexes=15`; explicitly keeping gap open `12` leaves that gate
+clean. Therefore `FASIM_ALIGN_GASAL2_GAP_OPEN` remains diagnostic only, not a
+default fix.
+
+`NO_GPU_TERMINAL=1` is not a fix because legacy still needs terminal-best
+selection. `VERIFY_TERMINAL=1` fixes the focused task49 selector mismatch, but
+it uses CPU `aligner.Align()` as terminal authority and is too expensive to
+promote as a performance path. Therefore the current emission-only selector may
+remain diagnostic only: GASAL2 endpoint/terminal and current segmented
+max-score threshold must not become output authority or safe reject/accept
+authority.
+
+It is checked by:
+
+```bash
+make check-fasim-gasal2-emission-only-consumer-debug
+```
+
+The scoring-parameter matrix is checked by:
+
+```bash
+make check-fasim-gasal2-scoring-parameter-matrix
+```
+
+That matrix records the current narrow evidence:
+
+```text
+task49:
+  score matches, endpoint/terminal differs
+
+task117:
+  gap_open=12 over-threshold segmented GASAL2 score = 138
+  CPU score = 68
+  gap_open=16 lowers GASAL2 score to 104
+
+NEAT1 first1:
+  gap_open=12 clean
+  gap_open=16 introduces triplex_mismatches=12
+```
+
+So the next broad attempt must pursue a full-query-compatible score/end/tie
+policy or CPU-authority validation that still reduces enough total work. A
+single scoring-parameter tweak is not a validated replacement path.
+
+The CPU-authority candidate coverage plan is checked by:
+
+```bash
+make check-fasim-gasal2-cpu-authority-candidate-coverage-plan
+```
+
+That plan is the next broad-path probe: GASAL2 may only propose candidate
+attempts, while CPU `aligner.Align()` remains the semantic authority. It must
+measure whether the legacy selected attempt is present in the GASAL2 candidate
+set for every scoreInfo before any performance claim. The hard gates are:
+
+```text
+false_negative_scoreinfos = 0
+triplex_mismatches = 0
+cpu_align_attempts < realpath_reference_align_attempts
+total_seconds < realpath_reference_seconds
+```
+
+If candidate coverage is not exact, this reducer stops; if coverage is exact
+but CPU align attempts or wall time do not improve, it remains diagnostic only.

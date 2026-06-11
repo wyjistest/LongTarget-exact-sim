@@ -229,11 +229,29 @@ It proves the attempt-level shadow can be output-equivalent on NEAT1 first64,
 but it does not reduce CPU realpath align attempts and is therefore not a real
 path candidate.
 
-The next broad attempt is an emission-only scoreInfo consumer shadow:
-FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1. It must use GASAL2 score/end to
-choose emitted attempts and CPU-align only those emitted attempts. It is a
-go only if NEAT1 first64 is triplex/digest clean and CPU align attempts are
-lower than the realpath reference.
+The emission-only scoreInfo consumer shadow is now a measured NEAT1 first64
+stop checkpoint:
+
+```text
+FASIM_GASAL2_EMISSION_ONLY_CONSUMER_SHADOW=1
+decision = emission_only_consumer_shadow_correctness_no_go
+baseline_wall_seconds = 86.781985
+candidate_wall_seconds = 550.461678
+candidate_vs_baseline = 0.157653x
+scored_attempts = 211,976
+cpu_align_attempts = 52,994
+realpath_reference_align_attempts = 140,087
+align_attempt_reduction = 87,093
+triplex_mismatches = 4,404
+missing_triplexes = 2,096
+extra_triplexes = 1,460
+emission_shadow_total_seconds = 262.714
+score_seconds = 241.564
+```
+
+It proves the emission-only shape can reduce CPU align attempts, but it is not
+semantically equivalent and is much slower than baseline. It must not be
+promoted as the broad path.
 
 ## Decision
 
