@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <vector>
 #include <map>
+#include <set>
 #include <algorithm>
 #include <omp.h>
 #include <ctype.h>
@@ -678,6 +679,16 @@ static inline bool fasim_tfosorted_cigar_archive_probe_runtime()
 static inline bool fasim_tfosorted_compact_archive_probe_runtime()
 {
 	const char *env = getenv("FASIM_TFOSORTED_COMPACT_ARCHIVE_PROBE");
+	if (env == NULL || env[0] == '\0')
+	{
+		return false;
+	}
+	return env[0] != '0';
+}
+
+static inline bool fasim_tfosorted_column_archive_probe_runtime()
+{
+	const char *env = getenv("FASIM_TFOSORTED_COLUMN_ARCHIVE_PROBE");
 	if (env == NULL || env[0] == '\0')
 	{
 		return false;
@@ -1569,6 +1580,59 @@ static inline void fasim_put_bytes(std::string &out, const std::string &value)
 	out.append(value);
 }
 
+static inline std::string fasim_encode_varints(const std::vector<uint64_t> &values)
+{
+	std::string out;
+	for (size_t i = 0; i < values.size(); ++i)
+	{
+		fasim_put_varint(out, values[i]);
+	}
+	return out;
+}
+
+static inline std::string fasim_encode_delta_varints(const std::vector<int64_t> &values)
+{
+	std::string out;
+	int64_t previous = 0;
+	for (size_t i = 0; i < values.size(); ++i)
+	{
+		fasim_put_delta_varint(out, values[i], previous);
+	}
+	return out;
+}
+
+static inline std::string fasim_encode_bytes_column(const std::vector<std::string> &values)
+{
+	std::string out;
+	for (size_t i = 0; i < values.size(); ++i)
+	{
+		fasim_put_bytes(out, values[i]);
+	}
+	return out;
+}
+
+static inline std::string fasim_encode_dictionary_column(const std::vector<std::string> &values)
+{
+	std::set<std::string> unique(values.begin(), values.end());
+	std::vector<std::string> dictionary(unique.begin(), unique.end());
+	std::map<std::string, uint64_t> index;
+	for (size_t i = 0; i < dictionary.size(); ++i)
+	{
+		index[dictionary[i]] = static_cast<uint64_t>(i);
+	}
+	std::string out;
+	fasim_put_varint(out, static_cast<uint64_t>(dictionary.size()));
+	for (size_t i = 0; i < dictionary.size(); ++i)
+	{
+		fasim_put_bytes(out, dictionary[i]);
+	}
+	for (size_t i = 0; i < values.size(); ++i)
+	{
+		fasim_put_varint(out, index[values[i]]);
+	}
+	return out;
+}
+
 struct FasimCigarOp
 {
 	FasimCigarOp(uint64_t lenValue, char opValue) :
@@ -1824,6 +1888,184 @@ struct FasimCompactArchiveProbeWriter
 	int64_t previousQueryStart;
 	int64_t previousSeqStart;
 	int64_t previousScore;
+};
+
+struct FasimColumnArchiveProbeWriter
+{
+	FasimColumnArchiveProbeWriter() :
+		opened(false),
+		blockRows(65536)
+	{
+	}
+
+	void open(const std::string &path)
+	{
+		file.open(path.c_str(), ios::binary | ios::trunc);
+		if (!file.is_open())
+		{
+			cerr << "failed to open column archive probe: " << path << endl;
+			abort();
+		}
+		static const char magic[] = "FATFOC1";
+		file.write(magic, 8);
+		const uint32_t version = 2;
+		const uint32_t blockRowsOut = static_cast<uint32_t>(blockRows);
+		file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+		file.write(reinterpret_cast<const char*>(&blockRowsOut), sizeof(blockRowsOut));
+		opened = true;
+	}
+
+	void write_row(const triplex &atr,
+	               int motif,
+	               int middle,
+	               int center)
+	{
+		if (!opened)
+		{
+			return;
+		}
+		const int strandCode =
+			fasim_compact_strand_code(atr.reverse, atr.strand);
+		if (strandCode < 0 ||
+		    atr.starj >= atr.endj ||
+		    !atr.chr.empty() ||
+		    atr.genomestart != atr.starj ||
+		    atr.genomeend != atr.endj ||
+		    motif != 0 ||
+		    middle != center)
+		{
+			cerr << "column archive probe unsupported row shape" << endl;
+			abort();
+		}
+		if (atr.cigar_probe.empty())
+		{
+			cerr << "column archive probe missing CIGAR" << endl;
+			abort();
+		}
+		const std::vector<FasimCigarOp> cigar =
+			fasim_parse_cigar_probe(atr.cigar_probe);
+		const uint64_t alignedLen = fasim_cigar_aligned_len(cigar);
+		const uint64_t queryLen = fasim_cigar_query_len(cigar);
+		const uint64_t targetLen = fasim_cigar_target_len(cigar);
+		if (queryLen == 0 || targetLen == 0 ||
+		    atr.endi != atr.stari + static_cast<int>(queryLen) - 1 ||
+		    atr.endj != atr.starj + static_cast<int>(targetLen) - 1 ||
+		    atr.nt != static_cast<int>(alignedLen))
+		{
+			cerr << "column archive probe unsupported CIGAR-derived row"
+			     << endl;
+			abort();
+		}
+		qStart.push_back(atr.stari);
+		seqStart.push_back(atr.starj);
+		score.push_back(static_cast<int64_t>(atr.score));
+		alignLen.push_back(static_cast<int64_t>(alignedLen));
+		qLen.push_back(queryLen);
+		targetLenVec.push_back(targetLen);
+		rule.push_back(static_cast<uint64_t>(atr.rule));
+		nt.push_back(static_cast<uint64_t>(atr.nt));
+		flags.push_back(static_cast<unsigned char>(strandCode << 1));
+		{
+			std::ostringstream value;
+			value << atr.tri_score;
+			stability.push_back(value.str());
+		}
+		{
+			std::ostringstream value;
+			value << atr.identity;
+			identity.push_back(value.str());
+		}
+		tfoMasks.push_back(fasim_cigar_gap_mask(cigar, true));
+		ttsMasks.push_back(fasim_cigar_gap_mask(cigar, false));
+		if (qStart.size() >= blockRows)
+		{
+			flush();
+		}
+	}
+
+	void close()
+	{
+		if (!opened)
+		{
+			return;
+		}
+		flush();
+		const uint32_t zero = 0;
+		file.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
+		file.close();
+		opened = false;
+	}
+
+	void flush()
+	{
+		if (qStart.empty())
+		{
+			return;
+		}
+		std::vector<std::string> payloads;
+		payloads.push_back(fasim_encode_delta_varints(qStart));
+		payloads.push_back(fasim_encode_delta_varints(seqStart));
+		payloads.push_back(fasim_encode_delta_varints(score));
+		payloads.push_back(fasim_encode_delta_varints(alignLen));
+		payloads.push_back(fasim_encode_varints(qLen));
+		payloads.push_back(fasim_encode_varints(targetLenVec));
+		payloads.push_back(fasim_encode_varints(rule));
+		payloads.push_back(fasim_encode_varints(nt));
+		payloads.push_back(std::string(reinterpret_cast<const char*>(&flags[0]),
+		                               flags.size()));
+		payloads.push_back(fasim_encode_dictionary_column(stability));
+		payloads.push_back(fasim_encode_dictionary_column(identity));
+		payloads.push_back(fasim_encode_bytes_column(tfoMasks));
+		payloads.push_back(fasim_encode_bytes_column(ttsMasks));
+
+		std::string block;
+		const uint32_t rowCount = static_cast<uint32_t>(qStart.size());
+		const uint32_t payloadCount = static_cast<uint32_t>(payloads.size());
+		block.append(reinterpret_cast<const char*>(&rowCount), sizeof(rowCount));
+		block.append(reinterpret_cast<const char*>(&payloadCount), sizeof(payloadCount));
+		for (size_t i = 0; i < payloads.size(); ++i)
+		{
+			const uint32_t size = static_cast<uint32_t>(payloads[i].size());
+			block.append(reinterpret_cast<const char*>(&size), sizeof(size));
+		}
+		for (size_t i = 0; i < payloads.size(); ++i)
+		{
+			block.append(payloads[i]);
+		}
+		const uint32_t blockSize = static_cast<uint32_t>(block.size());
+		file.write(reinterpret_cast<const char*>(&blockSize), sizeof(blockSize));
+		file.write(block.data(), static_cast<std::streamsize>(block.size()));
+		qStart.clear();
+		seqStart.clear();
+		score.clear();
+		alignLen.clear();
+		qLen.clear();
+		targetLenVec.clear();
+		rule.clear();
+		nt.clear();
+		flags.clear();
+		stability.clear();
+		identity.clear();
+		tfoMasks.clear();
+		ttsMasks.clear();
+	}
+
+	bool opened;
+	ofstream file;
+	size_t blockRows;
+	std::vector<int64_t> qStart;
+	std::vector<int64_t> seqStart;
+	std::vector<int64_t> score;
+	std::vector<int64_t> alignLen;
+	std::vector<uint64_t> qLen;
+	std::vector<uint64_t> targetLenVec;
+	std::vector<uint64_t> rule;
+	std::vector<uint64_t> nt;
+	std::vector<unsigned char> flags;
+	std::vector<std::string> stability;
+	std::vector<std::string> identity;
+	std::vector<std::string> tfoMasks;
+	std::vector<std::string> ttsMasks;
 };
 
 struct FasimLiteRow
@@ -4082,18 +4324,21 @@ int main(int argc, char* const* argv)
 			ofstream outLiteFile;
 			ofstream cigarArchiveProbeFile;
 			FasimCompactArchiveProbeWriter compactArchiveProbeWriter;
+			FasimColumnArchiveProbeWriter columnArchiveProbeWriter;
 			ofstream broadCpuTriplexFile;
 		ofstream broadPlannerDescriptorFile;
 		string outFilePath;
 			string outLiteFilePath;
 			string cigarArchiveProbePath;
 			string compactArchiveProbePath;
+			string columnArchiveProbePath;
 		string broadCpuTriplexPath;
 		string broadPlannerDescriptorPath;
 		string outSpecies;
 			bool outOpened = false;
 			bool cigarArchiveProbeOpened = false;
 			bool compactArchiveProbeOpened = false;
+			bool columnArchiveProbeOpened = false;
 		bool broadCpuTriplexOpened = false;
 		bool broadPlannerDescriptorOpened = false;
 		uint64_t broadCpuTriplexDigest = 1469598103934665603ULL;
@@ -4105,6 +4350,8 @@ int main(int argc, char* const* argv)
 				fasim_tfosorted_cigar_archive_probe_runtime();
 			const bool writeCompactArchiveProbe =
 				fasim_tfosorted_compact_archive_probe_runtime();
+			const bool writeColumnArchiveProbe =
+				fasim_tfosorted_column_archive_probe_runtime();
 		const int outputTopkLite = fasim_output_topk_lite_runtime();
 		const bool collectTopkLite = writeLite && outputTopkLite > 0;
 		const bool broadCpuTriplexExportEnabled =
@@ -4185,6 +4432,13 @@ int main(int argc, char* const* argv)
 						outFilePath + ".compact-archive.tfoa";
 					compactArchiveProbeWriter.open(compactArchiveProbePath);
 					compactArchiveProbeOpened = true;
+				}
+				if (writeColumnArchiveProbe)
+				{
+					columnArchiveProbePath =
+						outFilePath + ".column-archive.tfoa";
+					columnArchiveProbeWriter.open(columnArchiveProbePath);
+					columnArchiveProbeOpened = true;
 				}
 				if (broadCpuTriplexExportEnabled)
 			{
@@ -5431,6 +5685,15 @@ int main(int argc, char* const* argv)
 						                                    motif,
 						                                    middle,
 						                                    center);
+					}
+					if (writeColumnArchiveProbe)
+					{
+						FasimScopedSeconds scoped(phaseTimingEnabled,
+						                          &phaseTiming.output_write_seconds);
+						columnArchiveProbeWriter.write_row(atr,
+						                                   motif,
+						                                   middle,
+						                                   center);
 					}
 				}
 				taskTriplexes.clear();
@@ -13611,6 +13874,11 @@ int main(int argc, char* const* argv)
 					{
 						compactArchiveProbeWriter.close();
 						compactArchiveProbeOpened = false;
+					}
+					if (columnArchiveProbeOpened)
+					{
+						columnArchiveProbeWriter.close();
+						columnArchiveProbeOpened = false;
 					}
 					if (broadCpuTriplexOpened)
 				{

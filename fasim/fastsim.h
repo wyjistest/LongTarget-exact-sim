@@ -87,6 +87,20 @@ inline bool fasim_tfosorted_compact_archive_probe_enabled_runtime()
 	return enabled;
 }
 
+inline bool fasim_tfosorted_column_archive_probe_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_TFOSORTED_COLUMN_ARCHIVE_PROBE");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline int fasim_gasal2_min_attempts_runtime()
 {
 	static const int minAttempts = []()
@@ -2953,7 +2967,8 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	                      strand, Para, rule, nt, score, identity, tri_score,
 	                      read_align, ref_align_src, 0, 0, 0, 0, 0, 0, "");
 	if (fasim_tfosorted_cigar_archive_probe_enabled_runtime() ||
-	    fasim_tfosorted_compact_archive_probe_enabled_runtime())
+	    fasim_tfosorted_compact_archive_probe_enabled_runtime() ||
+	    fasim_tfosorted_column_archive_probe_enabled_runtime())
 	{
 		fullTriplex.cigar_probe = fasim_cigar_probe_string(alignment.cigar);
 	}

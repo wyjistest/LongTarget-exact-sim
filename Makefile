@@ -1503,6 +1503,13 @@ check-fasim-tfosorted-compact-archive-probe:
 
 .PHONY: check-fasim-tfosorted-compact-archive-probe
 
+check-fasim-tfosorted-column-archive-probe:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(CURDIR)/.tmp/check_fasim_tfosorted_column_archive_probe ARCHIVE_OUTPUT_MODE=tfosorted bash ./scripts/check_fasim_tfosorted_column_archive_probe.sh
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(CURDIR)/.tmp/check_fasim_tfosorted_column_archive_probe_lite ARCHIVE_OUTPUT_MODE=lite bash ./scripts/check_fasim_tfosorted_column_archive_probe.sh
+
+.PHONY: check-fasim-tfosorted-column-archive-probe
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 

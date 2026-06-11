@@ -303,11 +303,175 @@ It does not yet match the 19 MB post-hoc `opt_ref` archive, because this
 runtime probe is row-oriented. The remaining storage win likely requires the
 post-hoc design's block column layout and per-block dictionaries.
 
+## Direct Column Probe
+
+`FASIM_TFOSORTED_COLUMN_ARCHIVE_PROBE=1` adds a third default-off probe that
+writes a block-column binary `.column-archive.tfoa` file directly at runtime.
+It keeps the same restore contract as the compact probe, but buffers rows into
+blocks and writes each field as a separate payload:
+
+```text
+block rows:
+  65,536
+
+delta-varint columns:
+  QueryStart
+  StartInSeq
+  Score
+  alignment length
+
+varint columns:
+  ungapped query length
+  ungapped target length
+  Rule
+  Nt(bp)
+
+byte columns:
+  direction/strand flags
+  TFO gap mask
+  TTS gap mask
+
+per-block dictionary columns:
+  MeanStability
+  MeanIdentity
+```
+
+The current column probe uses per-block dictionaries for the two repeated text
+score columns. This keeps the direct runtime write path while recovering part
+of the post-hoc column archive's storage win. The archive format version is 2
+for this dictionary layout.
+
+### chr22 2Mb Column Smoke, Full + Archive
+
+```text
+mode = FASIM_OUTPUT_MODE=tfosorted
+
+archive_full_restored_match = 1
+run_wall_seconds = 3.457412
+restore_wall_seconds = 0.226333
+full_bytes = 1,836,889
+archive_bytes = 321,411
+archive_gzip_bytes = 133,991
+restored_rows = 8,291
+dictionary_payloads = 2
+convert_alignment_seconds = 1.41066
+cpu_traceback_convert_seconds = 1.46553
+```
+
+### chr22 2Mb Column Smoke, Lite + Archive
+
+```text
+mode = FASIM_OUTPUT_MODE=lite
+
+run_wall_seconds = 2.308468
+restore_wall_seconds = 0.229149
+archive_bytes = 321,411
+archive_gzip_bytes = 133,991
+restored_rows = 8,291
+dictionary_payloads = 2
+restored_bytes = 1,836,889
+convert_alignment_seconds = 0.32878
+cpu_traceback_convert_seconds = 0.368517
+```
+
+### chr22 Full Column, Lite + Archive
+
+```text
+target = .tmp/characterize_fasim_gasal2_gpu_scoreinfo_utilization_full_chr22/input/chr22.fa
+mode = FASIM_OUTPUT_MODE=lite
+
+run_wall_seconds = 66.465195
+restore_wall_seconds = 7.878062
+archive_bytes = 13,783,660
+archive_gzip_bytes = 5,491,182
+restored_rows = 388,819
+dictionary_payloads = 12
+restored_bytes = 88,101,920
+convert_alignment_seconds = 12.948
+cpu_traceback_convert_seconds = 14.5279
+output_write_seconds = 1.26732
+```
+
+Compared with the direct row compact probe on chr22:
+
+```text
+row compact gzip = 7,039,466
+dictionary column gzip = 5,491,182
+size reduction = 22.0%
+```
+
+Compared with the previous non-dictionary direct column probe:
+
+```text
+old column gzip = 5,979,220
+dictionary column gzip = 5,491,182
+size reduction = 8.2%
+```
+
+### chr1 Full Column, Lite + Archive
+
+```text
+target = .tmp/fasim_gasal2_chr1_full_input/chr1.fa
+mode = FASIM_OUTPUT_MODE=lite
+
+run_wall_seconds = 374.422819
+restore_wall_seconds = 31.725864
+archive_bytes = 55,223,107
+archive_gzip_bytes = 22,230,378
+restored_rows = 1,577,067
+dictionary_payloads = 50
+restored_bytes = 356,713,160
+convert_alignment_seconds = 71.997
+cpu_traceback_convert_seconds = 80.5742
+output_write_seconds = 5.34477
+```
+
+Compared with the direct row compact probe on chr1:
+
+```text
+row compact gzip = 28,360,621
+dictionary column gzip = 22,230,378
+size reduction = 21.6%
+```
+
+Compared with the previous non-dictionary direct column probe:
+
+```text
+old column gzip = 24,182,057
+dictionary column gzip = 22,230,378
+size reduction = 8.1%
+```
+
+Compared with the previous full `.TFOsorted` baseline:
+
+```text
+full wall = 563.419139s
+direct dictionary-column-lite wall = 374.422819s
+runtime speedup = 1.505x
+runtime saved = 188.996320s
+
+full cpu traceback convert = 275.076s
+direct dictionary-column cpu traceback convert = 80.5742s
+convert speedup = 3.414x
+convert saved = 194.5018s
+
+full text bytes = 356,712,668
+direct dictionary-column gzip bytes = 22,230,378
+```
+
+The dictionary block-column probe improves storage over both the row compact
+writer and the first non-dictionary column writer while preserving the runtime
+benefit. It still does not reach the 19 MB post-hoc `opt_ref` result; chr1
+remains about 16.9% larger than that post-hoc archive. The remaining gap likely
+requires a more specialized reference or block payload model, not another small
+adjustment to the current row-derived field set.
+
 ## Check
 
 ```bash
 make check-fasim-tfosorted-cigar-archive-probe
 make check-fasim-tfosorted-compact-archive-probe
+make check-fasim-tfosorted-column-archive-probe
 ```
 
 The check runs the small chr22 2Mb smoke in both `tfosorted` and `lite` modes.
