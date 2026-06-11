@@ -7658,7 +7658,7 @@ int main(int argc, char* const* argv)
 							                 paraList.ntMin,
 							                 paraList.ntMax,
 							                 writeFull,
-							                 true);
+							                 !equivalenceFirstConvertActive);
 								if (equivalenceFirstConvertActive &&
 								    myTriplexList.size() > beforeTriplexCount)
 								{
