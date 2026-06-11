@@ -850,7 +850,8 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	int penaltyC,
 	int ntMin,
 	int ntMax,
-	bool materializeAlignmentStrings);
+	bool materializeAlignmentStrings,
+	bool materializeCigarProbe = true);
 
 void cutSequence(string& seq, vector<string>& seqsVec, vector<int>& seqsStartPos,
 	int cutLength, int overlapLength, int &cut_num)
@@ -2921,7 +2922,8 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	int penaltyC,
 	int ntMin,
 	int ntMax,
-	bool materializeAlignmentStrings)
+	bool materializeAlignmentStrings,
+	bool materializeCigarProbe)
 {
 	int nt = 0;
 	float identity = 0.0f;
@@ -2966,9 +2968,10 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	                      refStart + dnaStartPos, refEnd + dnaStartPos,
 	                      strand, Para, rule, nt, score, identity, tri_score,
 	                      read_align, ref_align_src, 0, 0, 0, 0, 0, 0, "");
-	if (fasim_tfosorted_cigar_archive_probe_enabled_runtime() ||
-	    fasim_tfosorted_compact_archive_probe_enabled_runtime() ||
-	    fasim_tfosorted_column_archive_probe_enabled_runtime())
+	if (materializeCigarProbe &&
+	    (fasim_tfosorted_cigar_archive_probe_enabled_runtime() ||
+	     fasim_tfosorted_compact_archive_probe_enabled_runtime() ||
+	     fasim_tfosorted_column_archive_probe_enabled_runtime()))
 	{
 		fullTriplex.cigar_probe = fasim_cigar_probe_string(alignment.cigar);
 	}
