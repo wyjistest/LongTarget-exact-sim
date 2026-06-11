@@ -13,6 +13,8 @@
 #include<dirent.h>
 #include<unistd.h>
 #include<string>
+#include<vector>
+#include<stdint.h>
 #include "stats.h"
 #define K 50  
 #include "rules.h"
@@ -36,6 +38,7 @@ struct triplex
 	string stri_align;
 	string strj_align;
 	string cigar_probe;
+	std::vector<uint32_t> typed_cigar;
 	int middle;
 	int center;
 	int motif;
@@ -1142,4 +1145,3 @@ void SIM(string& strA, string& strB, string& strSrc, long dnaStartPos, long min_
 		}
 	}
 }
-

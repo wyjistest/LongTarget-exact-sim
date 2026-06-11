@@ -1528,6 +1528,12 @@ check-fasim-gasal2-archive-first-output:
 
 .PHONY: check-fasim-gasal2-archive-first-output
 
+check-fasim-gasal2-equivalence-first-convert:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_equivalence_first_convert) bash ./scripts/check_fasim_gasal2_equivalence_first_convert.sh
+
+.PHONY: check-fasim-gasal2-equivalence-first-convert
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 

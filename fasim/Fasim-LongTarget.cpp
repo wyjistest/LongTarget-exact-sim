@@ -226,6 +226,9 @@ struct FasimTop5PhaseTimingStats
 			gasal2_archive_first_output_requested(false),
 			gasal2_archive_first_output_active(false),
 			gasal2_archive_first_output_decision("not_requested"),
+			gasal2_equivalence_first_convert_requested(false),
+			gasal2_equivalence_first_convert_active(false),
+			gasal2_equivalence_first_convert_decision("not_requested"),
 			gasal2_convert_wall_seconds(0.0),
 		gasal2_convert_selected_scan_seconds(0.0),
 		gasal2_convert_span_check_seconds(0.0),
@@ -367,6 +370,9 @@ struct FasimTop5PhaseTimingStats
 	bool gasal2_archive_first_output_requested;
 	bool gasal2_archive_first_output_active;
 	std::string gasal2_archive_first_output_decision;
+	bool gasal2_equivalence_first_convert_requested;
+	bool gasal2_equivalence_first_convert_active;
+	std::string gasal2_equivalence_first_convert_decision;
 	double gasal2_convert_wall_seconds;
 	double gasal2_convert_selected_scan_seconds;
 	double gasal2_convert_span_check_seconds;
@@ -769,6 +775,11 @@ static inline bool fasim_gasal2_direct_lite_archive_convert_runtime()
 static inline bool fasim_gasal2_archive_first_output_runtime()
 {
 	return fasim_env_flag_enabled("FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT");
+}
+
+static inline bool fasim_gasal2_equivalence_first_convert_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_EQUIVALENCE_FIRST_CONVERT");
 }
 
 static inline bool fasim_gasal2_long_query_segmented_shadow_requested_runtime()
@@ -1978,13 +1989,20 @@ struct FasimColumnArchiveProbeWriter
 			cerr << "column archive probe unsupported row shape" << endl;
 			abort();
 		}
-		if (atr.cigar_probe.empty())
+		std::vector<FasimCigarOp> cigar;
+		if (!atr.typed_cigar.empty())
+		{
+			cigar = fasim_cigar_ops_from_alignment(atr.typed_cigar);
+		}
+		else if (!atr.cigar_probe.empty())
+		{
+			cigar = fasim_parse_cigar_probe(atr.cigar_probe);
+		}
+		else
 		{
 			cerr << "column archive probe missing CIGAR" << endl;
 			abort();
 		}
-		const std::vector<FasimCigarOp> cigar =
-			fasim_parse_cigar_probe(atr.cigar_probe);
 		const uint64_t alignedLen = fasim_cigar_aligned_len(cigar);
 		const uint64_t queryLen = fasim_cigar_query_len(cigar);
 		const uint64_t targetLen = fasim_cigar_target_len(cigar);
@@ -2080,6 +2098,80 @@ struct FasimColumnArchiveProbeWriter
 		}
 		tfoMasks.push_back(fasim_cigar_gap_mask(cigar, true));
 		ttsMasks.push_back(fasim_cigar_gap_mask(cigar, false));
+		if (qStart.size() >= blockRows)
+		{
+			flush();
+		}
+	}
+
+	void write_converted_row(const FasimConvertedTriplexRecord &record)
+	{
+		if (!opened)
+		{
+			return;
+		}
+		const int strandCode =
+			fasim_compact_strand_code(record.reverse, record.strand);
+		if (strandCode < 0 || record.starj >= record.endj ||
+		    record.motif != 0 ||
+		    record.middle != record.center)
+		{
+			cerr << "column archive probe unsupported converted row shape"
+			     << endl;
+			abort();
+		}
+		std::vector<FasimCigarOp> cigar;
+		if (!record.typed_cigar.empty())
+		{
+			cigar = fasim_cigar_ops_from_alignment(record.typed_cigar);
+		}
+		else if (!record.cigar_probe.empty())
+		{
+			cigar = fasim_parse_cigar_probe(record.cigar_probe);
+		}
+		else
+		{
+			cerr << "column archive probe missing converted row CIGAR"
+			     << endl;
+			abort();
+		}
+		const uint64_t alignedLen = fasim_cigar_aligned_len(cigar);
+		const uint64_t queryLen = fasim_cigar_query_len(cigar);
+		const uint64_t targetLen = fasim_cigar_target_len(cigar);
+		if (queryLen == 0 || targetLen == 0 ||
+		    record.endi != record.stari + static_cast<int>(queryLen) - 1 ||
+		    record.endj != record.starj + static_cast<int>(targetLen) - 1 ||
+		    record.nt != static_cast<int>(alignedLen))
+		{
+			cerr << "column archive probe unsupported converted CIGAR-derived row"
+			     << endl;
+			abort();
+		}
+		qStart.push_back(record.stari);
+		seqStart.push_back(record.starj);
+		score.push_back(static_cast<int64_t>(record.score));
+		alignLen.push_back(static_cast<int64_t>(alignedLen));
+		qLen.push_back(queryLen);
+		targetLenVec.push_back(targetLen);
+		rule.push_back(static_cast<uint64_t>(record.rule));
+		nt.push_back(static_cast<uint64_t>(record.nt));
+		flags.push_back(static_cast<unsigned char>(strandCode << 1));
+		{
+			std::ostringstream value;
+			value << record.tri_score;
+			stability.push_back(value.str());
+		}
+		{
+			std::ostringstream value;
+			value << record.identity;
+			identity.push_back(value.str());
+		}
+		tfoMasks.push_back(record.query_gap_mask.empty() ?
+		                   fasim_cigar_gap_mask(cigar, true) :
+		                   record.query_gap_mask);
+		ttsMasks.push_back(record.target_gap_mask.empty() ?
+		                   fasim_cigar_gap_mask(cigar, false) :
+		                   record.target_gap_mask);
 		if (qStart.size() >= blockRows)
 		{
 			flush();
@@ -2185,14 +2277,14 @@ struct FasimLiteRow
 struct FasimGasal2DirectLiteArchiveTriplex
 {
 	FasimGasal2DirectLiteArchiveTriplex(const triplex &valueIn,
-	                                    const std::vector<FasimCigarOp> &cigarIn) :
+	                                    const FasimConvertedTriplexRecord &recordIn) :
 		value(valueIn),
-		cigar(cigarIn)
+		record(recordIn)
 	{
 	}
 
 	triplex value;
-	std::vector<FasimCigarOp> cigar;
+	FasimConvertedTriplexRecord record;
 };
 
 static inline bool fasim_direct_triplex_less_multiple(
@@ -2221,6 +2313,44 @@ static inline bool fasim_same_direct_triplex(
 	const FasimGasal2DirectLiteArchiveTriplex &rhs)
 {
 	return sameMyTriplex(lhs.value, rhs.value);
+}
+
+static inline void fasim_sort_unique_filter_converted_rows(
+	std::vector<FasimGasal2DirectLiteArchiveTriplex> &rows,
+	std::vector<FasimGasal2DirectLiteArchiveTriplex> &filteredRows,
+	const para &paraList)
+{
+	std::sort(rows.begin(),
+	          rows.end(),
+	          fasim_direct_triplex_less_multiple);
+	rows.erase(std::unique(rows.begin(),
+	                       rows.end(),
+	                       fasim_same_direct_triplex),
+	           rows.end());
+	std::sort(rows.begin(),
+	          rows.end(),
+	          fasim_direct_triplex_less_multiple2);
+	rows.erase(std::unique(rows.begin(),
+	                       rows.end(),
+	                       fasim_same_direct_triplex),
+	           rows.end());
+	std::sort(rows.begin(),
+	          rows.end(),
+	          fasim_direct_triplex_less_single);
+	const size_t keep =
+		std::min(static_cast<size_t>(N), rows.size());
+	filteredRows.clear();
+	filteredRows.reserve(keep);
+	for (size_t i = 0; i < keep; ++i)
+	{
+		const triplex &row = rows[i].value;
+		if (row.identity >= paraList.minIdentity &&
+		    row.tri_score >= paraList.minStability &&
+		    row.nt >= paraList.ntMin)
+		{
+			filteredRows.push_back(rows[i]);
+		}
+	}
 }
 
 struct FasimScoreInfoRankBuckets
@@ -2649,6 +2779,9 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_gasal2_archive_first_output_requested=" << (stats.gasal2_archive_first_output_requested ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_gasal2_archive_first_output_active=" << (stats.gasal2_archive_first_output_active ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_gasal2_archive_first_output_decision=" << stats.gasal2_archive_first_output_decision << "\n";
+	std::cerr << "benchmark.fasim_gasal2_equivalence_first_convert_requested=" << (stats.gasal2_equivalence_first_convert_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_equivalence_first_convert_active=" << (stats.gasal2_equivalence_first_convert_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_equivalence_first_convert_decision=" << stats.gasal2_equivalence_first_convert_decision << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_convert_wall_seconds=" << stats.gasal2_convert_wall_seconds << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_convert_selected_scan_seconds=" << stats.gasal2_convert_selected_scan_seconds << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_convert_span_check_seconds=" << stats.gasal2_convert_span_check_seconds << "\n";
@@ -6301,10 +6434,25 @@ int main(int argc, char* const* argv)
 					gasal2LongtargetCpuTracebackBatch ||
 					segmentedLongQueryReplayRequested;
 				const bool ntSumSpanPrune = fasim_gasal2_nt_sum_span_prune_enabled_runtime();
-				const bool directConvertRequested =
-					fasim_gasal2_direct_lite_archive_convert_runtime();
+			const bool directConvertRequested =
+				fasim_gasal2_direct_lite_archive_convert_runtime();
+				const bool equivalenceFirstConvertRequested =
+					fasim_gasal2_equivalence_first_convert_runtime();
 				const bool directConvertActive =
 					directConvertRequested &&
+					outputMode == FASIM_OUTPUT_LITE &&
+					writeLite &&
+					writeColumnArchiveProbe &&
+					!writeFull &&
+					!writeCigarArchiveProbe &&
+					!writeCompactArchiveProbe &&
+					!collectTopkLite &&
+					!broadReplacementConsumerEnabled &&
+					!attemptConsumerShadowEnabled &&
+					!emissionOnlyConsumerShadowEnabled &&
+					!broadCpuTriplexOpened;
+				const bool equivalenceFirstConvertActive =
+					equivalenceFirstConvertRequested &&
 					outputMode == FASIM_OUTPUT_LITE &&
 					writeLite &&
 					writeColumnArchiveProbe &&
@@ -6336,6 +6484,24 @@ int main(int argc, char* const* argv)
 					phaseTiming.gasal2_direct_lite_archive_convert_active =
 						phaseTiming.gasal2_direct_lite_archive_convert_active ||
 						directConvertActive;
+					phaseTiming.gasal2_equivalence_first_convert_requested =
+						phaseTiming.gasal2_equivalence_first_convert_requested ||
+						equivalenceFirstConvertRequested;
+					phaseTiming.gasal2_equivalence_first_convert_active =
+						phaseTiming.gasal2_equivalence_first_convert_active ||
+						equivalenceFirstConvertActive;
+					if (equivalenceFirstConvertActive)
+					{
+						phaseTiming.gasal2_equivalence_first_convert_decision =
+							"active";
+					}
+					else if (equivalenceFirstConvertRequested &&
+					         phaseTiming.gasal2_equivalence_first_convert_decision ==
+					             "not_requested")
+					{
+						phaseTiming.gasal2_equivalence_first_convert_decision =
+							"unsupported_shape";
+					}
 					phaseTiming.gasal2_archive_first_output_active =
 						phaseTiming.gasal2_archive_first_output_active ||
 						archiveFirstConvertActive;
@@ -7013,7 +7179,8 @@ int main(int argc, char* const* argv)
 							emitRank33Plus.fetch_add(1, std::memory_order_relaxed);
 						}
 						};
-					if (directConvertActive || archiveFirstConvertActive)
+					if (directConvertActive ||
+					    archiveFirstConvertActive)
 					{
 						std::vector< std::vector<FasimGasal2DirectLiteArchiveTriplex> >
 							directRowsByTask(tasks.size());
@@ -7113,45 +7280,88 @@ int main(int argc, char* const* argv)
 								}
 								const auto convertAlignmentStart =
 									std::chrono::steady_clock::now();
-								std::vector<triplex> convertedRows;
-								convertMyTriplex(*alignmentForRow,
-								                 convertedRows,
-								                 lncSeq,
-								                 task.seq2,
-								                 *task.srcSeq,
-								                 nt_table,
-								                 task.dnaStartPos,
-								                 task.rule,
-								                 task.strand,
-								                 task.Para,
-								                 paraList.penaltyT,
-								                 paraList.penaltyC,
-								                 paraList.ntMin,
-								                 paraList.ntMax,
-								                 false,
-								                 true);
-								const std::vector<FasimCigarOp> cigar =
-									fasim_cigar_ops_from_alignment(alignmentForRow->cigar);
-								for (size_t ci = 0; ci < convertedRows.size(); ++ci)
+								FasimConvertMaterializationPolicy policy;
+								policy.materialize_alignment_strings = false;
+								policy.materialize_cigar_probe_string =
+									!equivalenceFirstConvertActive;
+								policy.materialize_typed_cigar =
+									directConvertActive ||
+									equivalenceFirstConvertActive ||
+									archiveFirstConvertActive;
+								policy.materialize_gap_masks =
+									equivalenceFirstConvertActive ||
+									archiveFirstConvertActive;
+								FasimConvertedTriplexRecord convertedRecord;
+								if (buildConvertedTriplexRecord(
+									    *alignmentForRow,
+									    convertedRecord,
+									    lncSeq,
+									    task.seq2,
+									    *task.srcSeq,
+									    nt_table,
+									    task.dnaStartPos,
+									    task.rule,
+									    task.strand,
+									    task.Para,
+									    paraList.penaltyT,
+									    paraList.penaltyC,
+									    paraList.ntMin,
+									    paraList.ntMax,
+									    policy))
 								{
-									triplex converted = convertedRows[ci];
-									converted.chr = task.chr;
-									converted.genomestart =
-										converted.starj + task.recordStartGenome - 1;
-									converted.genomeend =
-										converted.endj + task.recordStartGenome - 1;
+									convertedRecord.chr = task.chr;
+									convertedRecord.genomestart =
+										convertedRecord.starj +
+										task.recordStartGenome - 1;
+									convertedRecord.genomeend =
+										convertedRecord.endj +
+										task.recordStartGenome - 1;
 									if (selectedScoreInfoRank > 0 &&
 									    selectedScoreInfoRank <=
 									    static_cast<uint64_t>(
 										    std::numeric_limits<int>::max()))
 									{
-										converted.neartriplex =
+										convertedRecord.neartriplex =
 											-static_cast<int>(selectedScoreInfoRank);
 									}
+									if (policy.materialize_gap_masks)
+									{
+										const std::vector<FasimCigarOp> cigarOps =
+											fasim_cigar_ops_from_alignment(
+												convertedRecord.typed_cigar);
+										convertedRecord.query_gap_mask =
+											fasim_cigar_gap_mask(cigarOps, true);
+										convertedRecord.target_gap_mask =
+											fasim_cigar_gap_mask(cigarOps, false);
+									}
+									triplex converted = triplex(
+										convertedRecord.stari,
+										convertedRecord.endi,
+										convertedRecord.starj,
+										convertedRecord.endj,
+										convertedRecord.strand,
+										convertedRecord.reverse,
+										convertedRecord.rule,
+										convertedRecord.nt,
+										convertedRecord.score,
+										convertedRecord.identity,
+										convertedRecord.tri_score,
+										convertedRecord.stri_align,
+										convertedRecord.strj_align,
+										0, 0, 0, 0, 0, 0, "");
+									converted.chr = convertedRecord.chr;
+									converted.genomestart =
+										convertedRecord.genomestart;
+									converted.genomeend =
+										convertedRecord.genomeend;
+									converted.neartriplex =
+										convertedRecord.neartriplex;
+									converted.cigar_probe =
+										convertedRecord.cigar_probe;
 									rows.push_back(
 										FasimGasal2DirectLiteArchiveTriplex(
 											converted,
-											cigar));
+											convertedRecord));
 								}
 								if (phaseTimingEnabled)
 								{
@@ -7184,23 +7394,10 @@ int main(int argc, char* const* argv)
 							}
 
 							const auto sortStart = std::chrono::steady_clock::now();
-							std::sort(rows.begin(),
-							          rows.end(),
-							          fasim_direct_triplex_less_multiple);
-							rows.erase(std::unique(rows.begin(),
-							                       rows.end(),
-							                       fasim_same_direct_triplex),
-							           rows.end());
-							std::sort(rows.begin(),
-							          rows.end(),
-							          fasim_direct_triplex_less_multiple2);
-							rows.erase(std::unique(rows.begin(),
-							                       rows.end(),
-							                       fasim_same_direct_triplex),
-							           rows.end());
-							std::sort(rows.begin(),
-							          rows.end(),
-							          fasim_direct_triplex_less_single);
+							std::vector<FasimGasal2DirectLiteArchiveTriplex> filteredRows;
+							fasim_sort_unique_filter_converted_rows(rows,
+							                                        filteredRows,
+							                                        paraList);
 							if (phaseTimingEnabled)
 							{
 								convertSortNanos.fetch_add(
@@ -7212,20 +7409,6 @@ int main(int argc, char* const* argv)
 									std::memory_order_relaxed);
 							}
 							const auto filterStart = std::chrono::steady_clock::now();
-							std::vector<FasimGasal2DirectLiteArchiveTriplex> filteredRows;
-							const size_t keep =
-								std::min(static_cast<size_t>(N), rows.size());
-							filteredRows.reserve(keep);
-							for (size_t i = 0; i < keep; ++i)
-							{
-								const triplex &row = rows[i].value;
-								if (row.identity >= paraList.minIdentity &&
-								    row.tri_score >= paraList.minStability &&
-								    row.nt >= paraList.ntMin)
-								{
-									filteredRows.push_back(rows[i]);
-								}
-							}
 							directRowsByTask[t].swap(filteredRows);
 							if (phaseTimingEnabled)
 							{
@@ -7359,19 +7542,29 @@ int main(int argc, char* const* argv)
 											                                  row.genomeend,
 											                                  row));
 										}
-									columnArchiveProbeWriter.write_direct_row(
-										row.stari,
-										row.endi,
-										row.starj,
-										row.endj,
-										row.reverse,
-										row.strand,
-										row.rule,
-										row.nt,
-										static_cast<int>(row.score),
-										row.tri_score,
+									if (equivalenceFirstConvertActive ||
+									    archiveFirstConvertActive)
+									{
+										columnArchiveProbeWriter.write_converted_row(
+											directRow.record);
+									}
+									else
+									{
+										columnArchiveProbeWriter.write_direct_row(
+											row.stari,
+											row.endi,
+											row.starj,
+											row.endj,
+											row.reverse,
+											row.strand,
+											row.rule,
+											row.nt,
+											static_cast<int>(row.score),
+											row.tri_score,
 											row.identity,
-											directRow.cigar);
+											fasim_cigar_ops_from_alignment(
+												directRow.record.typed_cigar));
+									}
 								}
 							}
 						}
@@ -7464,7 +7657,19 @@ int main(int argc, char* const* argv)
 							                 paraList.penaltyC,
 							                 paraList.ntMin,
 							                 paraList.ntMax,
-							                 writeFull);
+							                 writeFull,
+							                 true);
+								if (equivalenceFirstConvertActive &&
+								    myTriplexList.size() > beforeTriplexCount)
+								{
+									for (size_t rowIndex = beforeTriplexCount;
+									     rowIndex < myTriplexList.size();
+									     ++rowIndex)
+									{
+										myTriplexList[rowIndex].typed_cigar =
+											alignmentForTriplex->cigar;
+									}
+								}
 								if (phaseTimingEnabled)
 								{
 									const uint64_t triplexNanos =

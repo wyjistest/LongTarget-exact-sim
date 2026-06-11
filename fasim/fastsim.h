@@ -840,6 +840,87 @@ inline void fasim_calc_identity_and_triscore_from_cigar(const StripedSmithWaterm
                                                         float &triScoreOut,
                                                         int &ntOut);
 
+struct FasimConvertMaterializationPolicy
+{
+	FasimConvertMaterializationPolicy() :
+		materialize_alignment_strings(true),
+		materialize_cigar_probe_string(false),
+		materialize_typed_cigar(false),
+		materialize_gap_masks(false)
+	{
+	}
+
+	bool materialize_alignment_strings;
+	bool materialize_cigar_probe_string;
+	bool materialize_typed_cigar;
+	bool materialize_gap_masks;
+};
+
+struct FasimConvertedTriplexRecord
+{
+	FasimConvertedTriplexRecord() :
+		stari(0),
+		endi(0),
+		starj(0),
+		endj(0),
+		strand(0),
+		reverse(0),
+		rule(0),
+		score(0.0f),
+		nt(0),
+		identity(0.0f),
+		tri_score(0.0f),
+		genomestart(0),
+		genomeend(0),
+		motif(0),
+		middle(0),
+		center(0),
+		neartriplex(0)
+	{
+	}
+
+	int stari;
+	int endi;
+	int starj;
+	int endj;
+	int strand;
+	int reverse;
+	int rule;
+	float score;
+	int nt;
+	float identity;
+	float tri_score;
+	string chr;
+	long genomestart;
+	long genomeend;
+	int motif;
+	int middle;
+	int center;
+	int neartriplex;
+	string stri_align;
+	string strj_align;
+	string cigar_probe;
+	std::vector<uint32_t> typed_cigar;
+	string query_gap_mask;
+	string target_gap_mask;
+};
+
+bool buildConvertedTriplexRecord(const StripedSmithWaterman::Alignment &alignment,
+	FasimConvertedTriplexRecord &record,
+	const string &read_seq,
+	const string &ref_seq,
+	const string &ref_seq_src,
+	const int8_t* table,
+	long dnaStartPos,
+	long rule,
+	long strand,
+	long Para,
+	int penaltyT,
+	int penaltyC,
+	int ntMin,
+	int ntMax,
+	const FasimConvertMaterializationPolicy &policy);
+
 void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	std::vector<struct triplex> &triplex_list,
 	const string &read_seq,
@@ -2912,8 +2993,8 @@ inline void fasim_calc_identity_and_triscore_from_cigar(const StripedSmithWaterm
 	}
 }
 
-void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
-	std::vector<struct triplex> &triplex_list,
+bool buildConvertedTriplexRecord(const StripedSmithWaterman::Alignment &alignment,
+	FasimConvertedTriplexRecord &record,
 	const string &read_seq,
 	const string &ref_seq,
 	const string &ref_seq_src,
@@ -2926,8 +3007,7 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	int penaltyC,
 	int ntMin,
 	int ntMax,
-	bool materializeAlignmentStrings,
-	bool materializeCigarProbe)
+	const FasimConvertMaterializationPolicy &policy)
 {
 	int nt = 0;
 	float identity = 0.0f;
@@ -2947,7 +3027,7 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 
 	string read_align;
 	string ref_align_src;
-	if (materializeAlignmentStrings)
+	if (policy.materialize_alignment_strings)
 	{
 		string ref_align;
 		getAlignment(alignment, ref_seq, read_seq, ref_seq_src, table, ref_align, read_align, ref_align_src);
@@ -2967,22 +3047,90 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	}
 
 	const float score = static_cast<float>(alignment.sw_score);
-	struct triplex fullTriplex;
-	fullTriplex = triplex(alignment.query_begin + 1, alignment.query_end + 1,
-	                      refStart + dnaStartPos, refEnd + dnaStartPos,
-	                      strand, Para, rule, nt, score, identity, tri_score,
-	                      read_align, ref_align_src, 0, 0, 0, 0, 0, 0, "");
-	if (materializeCigarProbe &&
+	record = FasimConvertedTriplexRecord();
+	record.stari = alignment.query_begin + 1;
+	record.endi = alignment.query_end + 1;
+	record.starj = refStart + dnaStartPos;
+	record.endj = refEnd + dnaStartPos;
+	record.strand = static_cast<int>(strand);
+	record.reverse = static_cast<int>(Para);
+	record.rule = static_cast<int>(rule);
+	record.nt = nt;
+	record.score = score;
+	record.identity = identity;
+	record.tri_score = tri_score;
+	record.stri_align = read_align;
+	record.strj_align = ref_align_src;
+	record.middle = static_cast<int>((record.stari + record.endi) / 2);
+	record.center = record.middle;
+	if (policy.materialize_cigar_probe_string &&
 	    (fasim_tfosorted_cigar_archive_probe_enabled_runtime() ||
 	     fasim_tfosorted_compact_archive_probe_enabled_runtime() ||
 	     fasim_tfosorted_column_archive_probe_enabled_runtime()))
 	{
-		fullTriplex.cigar_probe = fasim_cigar_probe_string(alignment.cigar);
+		record.cigar_probe = fasim_cigar_probe_string(alignment.cigar);
+	}
+	if (policy.materialize_typed_cigar)
+	{
+		record.typed_cigar = alignment.cigar;
 	}
 	if (nt >= ntMin)
 	{
-		triplex_list.push_back(fullTriplex);
+		return true;
 	}
+	return false;
+}
+
+void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
+	std::vector<struct triplex> &triplex_list,
+	const string &read_seq,
+	const string &ref_seq,
+	const string &ref_seq_src,
+	const int8_t* table,
+	long dnaStartPos,
+	long rule,
+	long strand,
+	long Para,
+	int penaltyT,
+	int penaltyC,
+	int ntMin,
+	int ntMax,
+	bool materializeAlignmentStrings,
+	bool materializeCigarProbe)
+{
+	FasimConvertMaterializationPolicy policy;
+	policy.materialize_alignment_strings = materializeAlignmentStrings;
+	policy.materialize_cigar_probe_string = materializeCigarProbe;
+	FasimConvertedTriplexRecord converted;
+	if (!buildConvertedTriplexRecord(alignment,
+	                                 converted,
+	                                 read_seq,
+	                                 ref_seq,
+	                                 ref_seq_src,
+	                                 table,
+	                                 dnaStartPos,
+	                                 rule,
+	                                 strand,
+	                                 Para,
+	                                 penaltyT,
+	                                 penaltyC,
+	                                 ntMin,
+	                                 ntMax,
+	                                 policy))
+	{
+		return;
+	}
+	struct triplex fullTriplex;
+	fullTriplex = triplex(converted.stari, converted.endi,
+	                      converted.starj, converted.endj,
+	                      converted.strand, converted.reverse,
+	                      converted.rule, converted.nt, converted.score,
+	                      converted.identity, converted.tri_score,
+	                      converted.stri_align, converted.strj_align,
+	                      0, 0, 0, 0, 0, 0, "");
+	fullTriplex.cigar_probe = converted.cigar_probe;
+	fullTriplex.typed_cigar = converted.typed_cigar;
+	triplex_list.push_back(fullTriplex);
 }
 
 void getAlignment(const StripedSmithWaterman::Alignment &alignment,
