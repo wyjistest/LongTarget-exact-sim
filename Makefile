@@ -1556,6 +1556,21 @@ check-fasim-gasal2-pretraceback-pruning-eligibility-smoke:
 
 .PHONY: check-fasim-gasal2-pretraceback-pruning-eligibility-smoke
 
+check-fasim-gasal2-pretraceback-span-real-workload-parser:
+	bash ./scripts/check_fasim_gasal2_pretraceback_span_real_workload_parser.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-span-real-workload-parser
+
+characterize-fasim-gasal2-pretraceback-span-real-workloads:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_pretraceback_span_real_workloads) BIN=$(or $(BIN),$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct) GASAL2_DIR=$(or $(GASAL2_DIR),$(CURDIR)/.tmp/GASAL2) bash ./scripts/characterize_fasim_gasal2_pretraceback_span_real_workloads.sh
+
+.PHONY: characterize-fasim-gasal2-pretraceback-span-real-workloads
+
+check-fasim-gasal2-pretraceback-span-real-workload-result:
+	bash ./scripts/check_fasim_gasal2_pretraceback_span_real_workload_result.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-span-real-workload-result
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 
