@@ -1609,6 +1609,87 @@ bool fasim_gasal2_align_attempts(const std::string &query,
 	return true;
 }
 
+bool fasim_gasal2_align_attempt_indexes(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<size_t> &attemptIndexes,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::string *errorOut)
+{
+	if (selected != NULL)
+	{
+		selected->clear();
+	}
+	if (!fasim_gasal2_enabled())
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = "FASIM_ALIGN_GASAL2 is not enabled";
+		}
+		return false;
+	}
+	if (query.empty() || attempts.empty() || selected == NULL)
+	{
+		return true;
+	}
+	if (attemptIndexes.empty())
+	{
+		return true;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	const auto totalStart = std::chrono::steady_clock::now();
+	const int batchSize = gasal2_batch_size_default();
+	record_effective_batch_size(batchSize);
+
+	std::vector<FasimGasal2Attempt> tracebackAttempts;
+	tracebackAttempts.reserve(attemptIndexes.size());
+	for (size_t i = 0; i < attemptIndexes.size(); ++i)
+	{
+		const size_t attemptIndex = attemptIndexes[i];
+		if (attemptIndex >= attempts.size())
+		{
+			if (errorOut != NULL)
+			{
+				*errorOut = "attempt index out of range";
+			}
+			++g_stats.fallbacks;
+			return false;
+		}
+		if (attempts[attemptIndex].uses_target_view())
+		{
+			++g_stats.target_view_requests;
+		}
+		tracebackAttempts.push_back(attempts[attemptIndex]);
+	}
+
+	std::vector<StripedSmithWaterman::Alignment> tracebackAlignments;
+	if (!run_traceback(&g_traceback_state,
+	                   query,
+	                   tracebackAttempts,
+	                   batchSize,
+	                   &tracebackAlignments,
+	                   errorOut))
+	{
+		++g_stats.fallbacks;
+		return false;
+	}
+
+	selected->reserve(tracebackAttempts.size());
+	for (size_t i = 0; i < tracebackAttempts.size(); ++i)
+	{
+		FasimGasal2SelectedAlignment out;
+		out.scoreinfo_index = tracebackAttempts[i].scoreinfo_index;
+		out.cutlength = tracebackAttempts[i].cutlength;
+		out.start = tracebackAttempts[i].start;
+		out.selected = true;
+		out.alignment = tracebackAlignments[i];
+		selected->push_back(out);
+	}
+	g_stats.total_seconds += seconds_since(totalStart);
+	return true;
+}
+
 bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
@@ -1668,6 +1749,80 @@ bool fasim_gasal2_select_attempt_indexes_from_scores(
 		std::chrono::steady_clock::now();
 	select_attempts_from_scores(attempts, scoreResults, selectedAttemptIndexes);
 	g_stats.attempt_consumer_shadow_select_seconds += seconds_since(selectStart);
+	return true;
+}
+
+bool fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<size_t> *spanPruneAttemptIndexes,
+	std::string *errorOut)
+{
+	if (selectedAttemptIndexes != NULL)
+	{
+		selectedAttemptIndexes->clear();
+	}
+	if (spanPruneAttemptIndexes != NULL)
+	{
+		spanPruneAttemptIndexes->clear();
+	}
+	if (!fasim_gasal2_enabled())
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = "gasal2_disabled";
+		}
+		return false;
+	}
+	if (query.empty() || attempts.empty() || selectedAttemptIndexes == NULL ||
+	    spanPruneAttemptIndexes == NULL)
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = attempts.empty() ? "empty_attempts" : "invalid_input";
+		}
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	const int batchSize = gasal2_batch_size_default();
+	record_effective_batch_size(batchSize);
+	g_stats.score_prepass_enabled = true;
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		if (attempts[i].uses_target_view())
+		{
+			++g_stats.target_view_requests;
+		}
+	}
+
+	std::vector<ScoreOnlyResult> scoreResults;
+	if (!run_score_only(&g_score_state,
+	                    query,
+	                    attempts,
+	                    batchSize,
+	                    &scoreResults,
+	                    errorOut))
+	{
+		++g_stats.fallbacks;
+		return false;
+	}
+
+	select_attempts_from_scores(attempts, scoreResults, selectedAttemptIndexes);
+	for (size_t i = 0; i < selectedAttemptIndexes->size(); ++i)
+	{
+		const size_t attemptIndex = (*selectedAttemptIndexes)[i];
+		if (attemptIndex >= attempts.size() || attemptIndex >= scoreResults.size())
+		{
+			continue;
+		}
+		if (attempt_pruned_by_nt_sum_span(attempts[attemptIndex],
+		                                  scoreResults[attemptIndex]))
+		{
+			spanPruneAttemptIndexes->push_back(attemptIndex);
+		}
+	}
 	return true;
 }
 

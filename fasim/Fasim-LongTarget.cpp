@@ -777,6 +777,11 @@ static inline bool fasim_gasal2_pretraceback_pruning_eligibility_runtime()
 	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY");
 }
 
+static inline bool fasim_gasal2_pretraceback_span_prune_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_SPAN_PRUNE_SHADOW");
+}
+
 static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
 {
 	const char *env = getenv("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT");
@@ -3199,6 +3204,76 @@ struct FasimGasal2PretracebackPruningEligibilityRuntime
 	FasimGasal2PretracebackPruningEligibilityStats stats;
 };
 
+struct FasimGasal2PretracebackSpanPruneShadowStats
+{
+	FasimGasal2PretracebackSpanPruneShadowStats() :
+		requested(false),
+		active(false),
+		decision("not_requested"),
+		batches(0),
+		input_attempts(0),
+		authority_selected_attempts(0),
+		kept_selected_attempts(0),
+		skipped_selected_attempts(0),
+		score_requests(0),
+		score_batches(0),
+		traceback_requests(0),
+		traceback_batches(0),
+		traceback_fill_seconds(0.0),
+		traceback_submit_seconds(0.0),
+		traceback_wait_seconds(0.0),
+		traceback_result_copy_seconds(0.0),
+		traceback_cigar_vector_seconds(0.0),
+		traceback_cigar_string_seconds(0.0),
+		traceback_seconds(0.0),
+		total_seconds(0.0),
+		authority_skipped_seen(0),
+		authority_skipped_invalid_span(0),
+		false_prune(0),
+		missing_rows(0),
+		extra_rows(0),
+		fallbacks(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	std::string decision;
+	uint64_t batches;
+	uint64_t input_attempts;
+	uint64_t authority_selected_attempts;
+	uint64_t kept_selected_attempts;
+	uint64_t skipped_selected_attempts;
+	uint64_t score_requests;
+	uint64_t score_batches;
+	uint64_t traceback_requests;
+	uint64_t traceback_batches;
+	double traceback_fill_seconds;
+	double traceback_submit_seconds;
+	double traceback_wait_seconds;
+	double traceback_result_copy_seconds;
+	double traceback_cigar_vector_seconds;
+	double traceback_cigar_string_seconds;
+	double traceback_seconds;
+	double total_seconds;
+	uint64_t authority_skipped_seen;
+	uint64_t authority_skipped_invalid_span;
+	uint64_t false_prune;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t fallbacks;
+};
+
+static inline uint64_t fasim_metric_delta(uint64_t after, uint64_t before)
+{
+	return after >= before ? after - before : 0;
+}
+
+static inline double fasim_metric_delta(double after, double before)
+{
+	return after >= before ? after - before : 0.0;
+}
+
 static inline uint64_t fasim_hash_int64(uint64_t digest, int64_t value)
 {
 	for (int i = 0; i < 8; ++i)
@@ -3362,6 +3437,110 @@ static inline void fasim_print_gasal2_pretraceback_pruning_eligibility_stats(
 	fasim_print_pretraceback_eligibility_metric(
 		"export_truncated",
 		stats.export_truncated ? 1 : 0);
+}
+
+static inline void fasim_print_pretraceback_span_prune_shadow_metric(
+	const char *name,
+	uint64_t value)
+{
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_span_prune_shadow_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_pretraceback_span_prune_shadow_metric(
+	const char *name,
+	double value)
+{
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_span_prune_shadow_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_gasal2_pretraceback_span_prune_shadow_stats(
+	const FasimGasal2PretracebackSpanPruneShadowStats &stats)
+{
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"requested",
+		static_cast<uint64_t>(stats.requested ? 1 : 0));
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"active",
+		static_cast<uint64_t>(stats.active ? 1 : 0));
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_span_prune_shadow_decision="
+	          << stats.decision << "\n";
+	fasim_print_pretraceback_span_prune_shadow_metric("batches", stats.batches);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"input_attempts",
+		stats.input_attempts);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"authority_selected_attempts",
+		stats.authority_selected_attempts);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"kept_selected_attempts",
+		stats.kept_selected_attempts);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"skipped_selected_attempts",
+		stats.skipped_selected_attempts);
+	const double skippedFraction =
+		stats.authority_selected_attempts == 0 ?
+		0.0 :
+		static_cast<double>(stats.skipped_selected_attempts) /
+			static_cast<double>(stats.authority_selected_attempts);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"skipped_fraction_of_selected",
+		skippedFraction);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"score_requests",
+		stats.score_requests);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"score_batches",
+		stats.score_batches);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_requests",
+		stats.traceback_requests);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_batches",
+		stats.traceback_batches);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_fill_seconds",
+		stats.traceback_fill_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_submit_seconds",
+		stats.traceback_submit_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_wait_seconds",
+		stats.traceback_wait_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_result_copy_seconds",
+		stats.traceback_result_copy_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_cigar_vector_seconds",
+		stats.traceback_cigar_vector_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_cigar_string_seconds",
+		stats.traceback_cigar_string_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"traceback_seconds",
+		stats.traceback_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"total_seconds",
+		stats.total_seconds);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"authority_skipped_seen",
+		stats.authority_skipped_seen);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"authority_skipped_invalid_span",
+		stats.authority_skipped_invalid_span);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"false_prune",
+		stats.false_prune);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"missing_rows",
+		stats.missing_rows);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"extra_rows",
+		stats.extra_rows);
+	fasim_print_pretraceback_span_prune_shadow_metric(
+		"fallbacks",
+		stats.fallbacks);
 }
 
 static inline uint64_t fasim_take_taxonomy_bucket(uint64_t requested,
@@ -5305,10 +5484,13 @@ int main(int argc, char* const* argv)
 		fasim_gasal2_traceback_rejection_taxonomy_runtime();
 	const bool eligibilityEnabled =
 		fasim_gasal2_pretraceback_pruning_eligibility_runtime();
+	const bool spanPruneShadowEnabled =
+		fasim_gasal2_pretraceback_span_prune_shadow_runtime();
 	const bool phaseTimingEnabled =
 		fasim_top5_gasal2_phase_timing_enabled_runtime() ||
 		taxonomyEnabled ||
-		eligibilityEnabled;
+		eligibilityEnabled ||
+		spanPruneShadowEnabled;
 	const bool minScoreShadowEnabled = fasim_exact_column_min_score_shadow_enabled_runtime();
 	const bool streamingScoreInfoTwoContractRequested =
 		fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
@@ -5331,6 +5513,9 @@ int main(int argc, char* const* argv)
 	taxonomyExporter.open();
 	FasimGasal2PretracebackPruningEligibilityRuntime eligibilityRuntime;
 	eligibilityRuntime.open();
+	FasimGasal2PretracebackSpanPruneShadowStats
+		pretracebackSpanPruneShadowStats;
+	pretracebackSpanPruneShadowStats.requested = spanPruneShadowEnabled;
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -7690,6 +7875,183 @@ int main(int argc, char* const* argv)
 				return false;
 			}
 
+			std::set<std::string> spanPruneShadowSkippedRequests;
+			if (spanPruneShadowEnabled)
+			{
+				pretracebackSpanPruneShadowStats.requested = true;
+				pretracebackSpanPruneShadowStats.input_attempts +=
+					static_cast<uint64_t>(gasalAttempts.size());
+				if (useCpuTracebackReplay ||
+				    (segmentedLongQueryReplayRequested && !gasal2CanRun))
+				{
+					pretracebackSpanPruneShadowStats.decision =
+						"unsupported_authority_shape";
+				}
+				else
+				{
+					std::vector<size_t> selectedAttemptIndexes;
+					std::vector<size_t> spanPruneAttemptIndexes;
+					std::string shadowError;
+					FasimGasal2Stats scoreBefore =
+						fasim_gasal2_snapshot_stats();
+					const bool scoreOk =
+						fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
+							lncSeq,
+							gasalAttempts,
+							&selectedAttemptIndexes,
+							&spanPruneAttemptIndexes,
+							&shadowError);
+					FasimGasal2Stats scoreAfter =
+						fasim_gasal2_snapshot_stats();
+					pretracebackSpanPruneShadowStats.score_requests +=
+						fasim_metric_delta(scoreAfter.score_requests,
+						                   scoreBefore.score_requests);
+					pretracebackSpanPruneShadowStats.score_batches +=
+						fasim_metric_delta(scoreAfter.score_batches,
+						                   scoreBefore.score_batches);
+					if (!scoreOk)
+					{
+						++pretracebackSpanPruneShadowStats.fallbacks;
+						pretracebackSpanPruneShadowStats.decision =
+							"score_prepass_failed";
+					}
+					else
+					{
+						std::vector<size_t> keptAttemptIndexes;
+						std::set<size_t> spanPruneAttemptIndexSet(
+							spanPruneAttemptIndexes.begin(),
+							spanPruneAttemptIndexes.end());
+						keptAttemptIndexes.reserve(selectedAttemptIndexes.size());
+						pretracebackSpanPruneShadowStats.authority_selected_attempts +=
+							static_cast<uint64_t>(selectedAttemptIndexes.size());
+						for (size_t i = 0; i < selectedAttemptIndexes.size(); ++i)
+						{
+							const size_t attemptIndex = selectedAttemptIndexes[i];
+							if (attemptIndex >= gasalAttempts.size())
+							{
+								++pretracebackSpanPruneShadowStats.fallbacks;
+								continue;
+							}
+							const FasimGasal2Attempt &attempt =
+								gasalAttempts[attemptIndex];
+							if (spanPruneAttemptIndexSet.find(attemptIndex) !=
+							    spanPruneAttemptIndexSet.end())
+							{
+								++pretracebackSpanPruneShadowStats
+									.skipped_selected_attempts;
+								if (attempt.scoreinfo_index >= 0 &&
+								    static_cast<size_t>(attempt.scoreinfo_index) <
+								        scoreGroups.size())
+								{
+									FasimGasal2SelectedAlignment skipped;
+									skipped.scoreinfo_index =
+										attempt.scoreinfo_index;
+									skipped.cutlength = attempt.cutlength;
+									skipped.start = attempt.start;
+									skipped.selected = true;
+									spanPruneShadowSkippedRequests.insert(
+										fasim_hash_selected_request(
+											skipped,
+											static_cast<uint64_t>(
+												scoreGroups[static_cast<size_t>(
+													attempt.scoreinfo_index)]
+													.taskIndex)));
+								}
+								continue;
+							}
+							keptAttemptIndexes.push_back(attemptIndex);
+						}
+						pretracebackSpanPruneShadowStats.kept_selected_attempts +=
+							static_cast<uint64_t>(keptAttemptIndexes.size());
+						if (pretracebackSpanPruneShadowStats.fallbacks != 0)
+						{
+							pretracebackSpanPruneShadowStats.decision =
+								"invalid_selected_index";
+						}
+						else
+						{
+							FasimGasal2Stats before =
+								fasim_gasal2_snapshot_stats();
+							const auto shadowStart =
+								std::chrono::steady_clock::now();
+							std::vector<FasimGasal2SelectedAlignment>
+								shadowSelected;
+							const bool shadowOk =
+								fasim_gasal2_align_attempt_indexes(
+									lncSeq,
+									gasalAttempts,
+									keptAttemptIndexes,
+									&shadowSelected,
+									&shadowError);
+							const double shadowSeconds =
+								fasim_seconds_since(shadowStart);
+							FasimGasal2Stats after =
+								fasim_gasal2_snapshot_stats();
+							++pretracebackSpanPruneShadowStats.batches;
+							pretracebackSpanPruneShadowStats.total_seconds +=
+								shadowSeconds;
+							pretracebackSpanPruneShadowStats.traceback_requests +=
+								fasim_metric_delta(after.traceback_requests,
+								                   before.traceback_requests);
+							pretracebackSpanPruneShadowStats.traceback_batches +=
+								fasim_metric_delta(after.traceback_batches,
+								                   before.traceback_batches);
+							const double traceFill =
+								fasim_metric_delta(after.traceback_fill_seconds,
+								                   before.traceback_fill_seconds);
+							const double traceSubmit =
+								fasim_metric_delta(after.traceback_submit_seconds,
+								                   before.traceback_submit_seconds);
+							const double traceWait =
+								fasim_metric_delta(after.traceback_wait_seconds,
+								                   before.traceback_wait_seconds);
+							const double traceCopy =
+								fasim_metric_delta(
+									after.traceback_result_copy_seconds,
+									before.traceback_result_copy_seconds);
+							const double cigarVector =
+								fasim_metric_delta(
+									after.traceback_cigar_vector_seconds,
+									before.traceback_cigar_vector_seconds);
+							const double cigarString =
+								fasim_metric_delta(
+									after.traceback_cigar_string_seconds,
+									before.traceback_cigar_string_seconds);
+							pretracebackSpanPruneShadowStats
+								.traceback_fill_seconds += traceFill;
+							pretracebackSpanPruneShadowStats
+								.traceback_submit_seconds += traceSubmit;
+							pretracebackSpanPruneShadowStats
+								.traceback_wait_seconds += traceWait;
+							pretracebackSpanPruneShadowStats
+								.traceback_result_copy_seconds += traceCopy;
+							pretracebackSpanPruneShadowStats
+								.traceback_cigar_vector_seconds += cigarVector;
+							pretracebackSpanPruneShadowStats
+								.traceback_cigar_string_seconds += cigarString;
+							pretracebackSpanPruneShadowStats.traceback_seconds +=
+								traceFill + traceSubmit + traceWait + traceCopy +
+								cigarVector + cigarString;
+							if (!shadowOk)
+							{
+								++pretracebackSpanPruneShadowStats.fallbacks;
+								pretracebackSpanPruneShadowStats.decision =
+									"traceback_shadow_failed";
+							}
+							else
+							{
+								pretracebackSpanPruneShadowStats.active = true;
+								pretracebackSpanPruneShadowStats.decision =
+									pretracebackSpanPruneShadowStats
+										.skipped_selected_attempts == 0 ?
+									"no_span_candidates" :
+									"shadow_clean_more_characterization_needed";
+							}
+						}
+					}
+				}
+			}
+
 			std::vector< std::vector<FasimGasal2SelectedAlignment> > replaySelectedByTask(tasks.size());
 			uint64_t replaySelectedCount = 0;
 			uint64_t cpuTracebackAlignCalls = 0;
@@ -7707,6 +8069,41 @@ int main(int argc, char* const* argv)
 			double cpuTracebackSubstrSeconds = 0.0;
 			double cpuTracebackAlignSeconds = 0.0;
 			const auto replayStart = std::chrono::steady_clock::now();
+
+			auto observeSpanPruneShadowAuthorityOutcome =
+				[&](const FasimGasal2SelectedAlignment &selectedAlignment,
+				    size_t taskIndex,
+				    bool invalidSpan,
+				    bool retainedRow)
+			{
+				if (!spanPruneShadowEnabled ||
+				    spanPruneShadowSkippedRequests.empty())
+				{
+					return;
+				}
+				const std::string requestHash =
+					fasim_hash_selected_request(
+						selectedAlignment,
+						static_cast<uint64_t>(taskIndex));
+				if (spanPruneShadowSkippedRequests.find(requestHash) ==
+				    spanPruneShadowSkippedRequests.end())
+				{
+					return;
+				}
+				++pretracebackSpanPruneShadowStats.authority_skipped_seen;
+				if (invalidSpan)
+				{
+					++pretracebackSpanPruneShadowStats
+						.authority_skipped_invalid_span;
+				}
+				if (retainedRow)
+				{
+					++pretracebackSpanPruneShadowStats.false_prune;
+					++pretracebackSpanPruneShadowStats.missing_rows;
+					pretracebackSpanPruneShadowStats.decision =
+						"no_go_false_prune";
+				}
+			};
 
 			auto recordReplayRank = [&](uint64_t rank)
 			{
@@ -8298,6 +8695,14 @@ int main(int argc, char* const* argv)
 										eligibilityAttempt
 											.invalid_span_pretraceback_provable =
 												pretracebackProvable;
+										if (pretracebackProvable)
+										{
+											observeSpanPruneShadowAuthorityOutcome(
+												selectedAlignment,
+												t,
+												true,
+												false);
+										}
 										if (ntSumSpanPrune)
 										{
 											recordEligibilityInvalidSpan(
@@ -8397,13 +8802,27 @@ int main(int argc, char* const* argv)
 										convertedRecord.neartriplex;
 									converted.cigar_probe =
 										convertedRecord.cigar_probe;
-										rows.push_back(
-											FasimGasal2DirectLiteArchiveTriplex(
-												converted,
-												convertedRecord));
-										if (eligibilityRuntime.active)
-										{
-											FasimLiteRow liteRow =
+											rows.push_back(
+												FasimGasal2DirectLiteArchiveTriplex(
+													converted,
+													convertedRecord));
+											const bool retainedForSpanShadow =
+												converted.score >= paraList.scoreMin &&
+												converted.identity >= paraList.minIdentity &&
+												converted.tri_score >=
+													paraList.minStability &&
+												converted.nt >= paraList.cLength;
+											if (retainedForSpanShadow)
+											{
+												observeSpanPruneShadowAuthorityOutcome(
+													selectedAlignment,
+													t,
+													false,
+													true);
+											}
+											if (eligibilityRuntime.active)
+											{
+												FasimLiteRow liteRow =
 												fasim_make_lite_row(
 													converted.chr,
 													converted.genomestart,
@@ -8469,12 +8888,12 @@ int main(int argc, char* const* argv)
 													row.identity,
 													row.tri_score,
 													"converted row rejected by emit thresholds");
-											}
-											else
-											{
-												exportTaxonomyAttempt(
-													selectedAlignment,
-													t,
+												}
+												else
+												{
+													exportTaxonomyAttempt(
+														selectedAlignment,
+														t,
 													*alignmentForRow,
 													"retained_emitted",
 													0, 0, 0, 1, 1, 0,
@@ -8968,12 +9387,20 @@ int main(int argc, char* const* argv)
 									selectedAlignment.cutlength <
 										paraList.cLength;
 								eligibilityAttempt.invalid_span_bound = true;
-								eligibilityAttempt
-									.invalid_span_pretraceback_provable =
-										pretracebackProvable;
-								if (ntSumSpanPrune)
-								{
-										recordEligibilityInvalidSpan(
+									eligibilityAttempt
+										.invalid_span_pretraceback_provable =
+											pretracebackProvable;
+									if (pretracebackProvable)
+									{
+										observeSpanPruneShadowAuthorityOutcome(
+											selectedAlignment,
+											t,
+											true,
+											false);
+									}
+									if (ntSumSpanPrune)
+									{
+											recordEligibilityInvalidSpan(
 											eligibilityAttempt,
 											pretracebackProvable,
 											pretracebackProvable ?
@@ -9015,11 +9442,28 @@ int main(int argc, char* const* argv)
 									{
 											myTriplexList[rowIndex].typed_cigar =
 												alignmentForTriplex->cigar;
+											}
 										}
-									}
-									if (eligibilityRuntime.active &&
-									    myTriplexList.size() > beforeTriplexCount)
-									{
+										if (myTriplexList.size() > beforeTriplexCount)
+										{
+											const triplex &newRow =
+												myTriplexList[beforeTriplexCount];
+											if (newRow.score >= paraList.scoreMin &&
+											    newRow.identity >= paraList.minIdentity &&
+											    newRow.tri_score >=
+												    paraList.minStability &&
+											    newRow.nt >= paraList.cLength)
+											{
+												observeSpanPruneShadowAuthorityOutcome(
+													selectedAlignment,
+													t,
+													false,
+													true);
+											}
+										}
+										if (eligibilityRuntime.active &&
+										    myTriplexList.size() > beforeTriplexCount)
+										{
 										const triplex &newRow =
 											myTriplexList[beforeTriplexCount];
 										const std::string chrForRow =
@@ -16445,6 +16889,11 @@ int main(int argc, char* const* argv)
 			{
 				fasim_print_gasal2_pretraceback_pruning_eligibility_stats(
 					eligibilityRuntime);
+			}
+			if (spanPruneShadowEnabled)
+			{
+				fasim_print_gasal2_pretraceback_span_prune_shadow_stats(
+					pretracebackSpanPruneShadowStats);
 			}
 			if (minScoreShadowEnabled)
 			{
