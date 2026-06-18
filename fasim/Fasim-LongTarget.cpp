@@ -41,6 +41,7 @@
 #include <stdint.h>
 #include <iomanip>
 #include <cstring>
+#include <functional>
 
 #include "fastsim.h"
 using namespace std;
@@ -780,6 +781,11 @@ static inline bool fasim_gasal2_pretraceback_pruning_eligibility_runtime()
 static inline bool fasim_gasal2_pretraceback_span_prune_shadow_runtime()
 {
 	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_SPAN_PRUNE_SHADOW");
+}
+
+static inline bool fasim_gasal2_top5_traceback_certificate_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_TOP5_TRACEBACK_CERTIFICATE_SHADOW");
 }
 
 static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
@@ -3264,6 +3270,76 @@ struct FasimGasal2PretracebackSpanPruneShadowStats
 	uint64_t fallbacks;
 };
 
+struct FasimGasal2Top5TracebackCertificateShadowStats
+{
+	FasimGasal2Top5TracebackCertificateShadowStats() :
+		requested(false),
+		active(false),
+		decision("not_requested"),
+		baseline_traceback_requests(0),
+		certificate_traceback_requests(0),
+		tracebacks_skipped(0),
+		score_certificate_supported(false),
+		stability_certificate_supported(false),
+		nt_score_certificate_supported(false),
+		score_rank5_boundary("unknown"),
+		stability_rank5_boundary("unknown"),
+		nt_score_rank5_boundary("unknown"),
+		score_boundary_ties(0),
+		stability_boundary_ties(0),
+		nt_score_boundary_ties(0),
+		score_groups_processed(0),
+		stability_groups_processed(0),
+		nt_score_groups_processed(0),
+		boundary_updates(0),
+		invalid_after_traceback(0),
+		filtered_nt_after_traceback(0),
+		dedup_removed_after_traceback(0),
+		certificate_pack_seconds(0.0),
+		certificate_traceback_seconds(0.0),
+		certificate_convert_seconds(0.0),
+		certificate_total_seconds(0.0),
+		measured_net_saved_seconds(0.0),
+		false_prune(0),
+		missing_top5_rows(0),
+		extra_top5_rows(0),
+		fallbacks(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	std::string decision;
+	uint64_t baseline_traceback_requests;
+	uint64_t certificate_traceback_requests;
+	uint64_t tracebacks_skipped;
+	bool score_certificate_supported;
+	bool stability_certificate_supported;
+	bool nt_score_certificate_supported;
+	std::string score_rank5_boundary;
+	std::string stability_rank5_boundary;
+	std::string nt_score_rank5_boundary;
+	uint64_t score_boundary_ties;
+	uint64_t stability_boundary_ties;
+	uint64_t nt_score_boundary_ties;
+	uint64_t score_groups_processed;
+	uint64_t stability_groups_processed;
+	uint64_t nt_score_groups_processed;
+	uint64_t boundary_updates;
+	uint64_t invalid_after_traceback;
+	uint64_t filtered_nt_after_traceback;
+	uint64_t dedup_removed_after_traceback;
+	double certificate_pack_seconds;
+	double certificate_traceback_seconds;
+	double certificate_convert_seconds;
+	double certificate_total_seconds;
+	double measured_net_saved_seconds;
+	uint64_t false_prune;
+	uint64_t missing_top5_rows;
+	uint64_t extra_top5_rows;
+	uint64_t fallbacks;
+};
+
 static inline uint64_t fasim_metric_delta(uint64_t after, uint64_t before)
 {
 	return after >= before ? after - before : 0;
@@ -3539,6 +3615,124 @@ static inline void fasim_print_gasal2_pretraceback_span_prune_shadow_stats(
 		"extra_rows",
 		stats.extra_rows);
 	fasim_print_pretraceback_span_prune_shadow_metric(
+		"fallbacks",
+		stats.fallbacks);
+}
+
+static inline void fasim_print_top5_traceback_certificate_shadow_metric(
+	const char *name,
+	uint64_t value)
+{
+	std::cerr << "benchmark.fasim_gasal2_top5_traceback_certificate_shadow_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_top5_traceback_certificate_shadow_metric(
+	const char *name,
+	double value)
+{
+	std::cerr << "benchmark.fasim_gasal2_top5_traceback_certificate_shadow_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_gasal2_top5_traceback_certificate_shadow_stats(
+	const FasimGasal2Top5TracebackCertificateShadowStats &stats)
+{
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"requested",
+		static_cast<uint64_t>(stats.requested ? 1 : 0));
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"active",
+		static_cast<uint64_t>(stats.active ? 1 : 0));
+	std::cerr << "benchmark.fasim_gasal2_top5_traceback_certificate_shadow_decision="
+	          << stats.decision << "\n";
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"baseline_traceback_requests",
+		stats.baseline_traceback_requests);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"certificate_traceback_requests",
+		stats.certificate_traceback_requests);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"tracebacks_skipped",
+		stats.tracebacks_skipped);
+	const double skippedFraction =
+		stats.baseline_traceback_requests == 0 ?
+		0.0 :
+		static_cast<double>(stats.tracebacks_skipped) /
+			static_cast<double>(stats.baseline_traceback_requests);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"tracebacks_skipped_fraction",
+		skippedFraction);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"score_certificate_supported",
+		static_cast<uint64_t>(stats.score_certificate_supported ? 1 : 0));
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"stability_certificate_supported",
+		static_cast<uint64_t>(stats.stability_certificate_supported ? 1 : 0));
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"nt_score_certificate_supported",
+		static_cast<uint64_t>(stats.nt_score_certificate_supported ? 1 : 0));
+	std::cerr << "benchmark.fasim_gasal2_top5_traceback_certificate_shadow_score_rank5_boundary="
+	          << stats.score_rank5_boundary << "\n";
+	std::cerr << "benchmark.fasim_gasal2_top5_traceback_certificate_shadow_stability_rank5_boundary="
+	          << stats.stability_rank5_boundary << "\n";
+	std::cerr << "benchmark.fasim_gasal2_top5_traceback_certificate_shadow_nt_score_rank5_boundary="
+	          << stats.nt_score_rank5_boundary << "\n";
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"score_boundary_ties",
+		stats.score_boundary_ties);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"stability_boundary_ties",
+		stats.stability_boundary_ties);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"nt_score_boundary_ties",
+		stats.nt_score_boundary_ties);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"score_groups_processed",
+		stats.score_groups_processed);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"stability_groups_processed",
+		stats.stability_groups_processed);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"nt_score_groups_processed",
+		stats.nt_score_groups_processed);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"boundary_updates",
+		stats.boundary_updates);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"invalid_after_traceback",
+		stats.invalid_after_traceback);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"filtered_nt_after_traceback",
+		stats.filtered_nt_after_traceback);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"dedup_removed_after_traceback",
+		stats.dedup_removed_after_traceback);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"certificate_pack_seconds",
+		stats.certificate_pack_seconds);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"certificate_traceback_seconds",
+		stats.certificate_traceback_seconds);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"certificate_convert_seconds",
+		stats.certificate_convert_seconds);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"certificate_total_seconds",
+		stats.certificate_total_seconds);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"measured_net_saved_seconds",
+		stats.measured_net_saved_seconds);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"false_prune",
+		stats.false_prune);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"missing_top5_rows",
+		stats.missing_top5_rows);
+	fasim_print_top5_traceback_certificate_shadow_metric(
+		"extra_top5_rows",
+		stats.extra_top5_rows);
+	fasim_print_top5_traceback_certificate_shadow_metric(
 		"fallbacks",
 		stats.fallbacks);
 }
@@ -5486,11 +5680,14 @@ int main(int argc, char* const* argv)
 		fasim_gasal2_pretraceback_pruning_eligibility_runtime();
 	const bool spanPruneShadowEnabled =
 		fasim_gasal2_pretraceback_span_prune_shadow_runtime();
+	const bool top5TracebackCertificateShadowEnabled =
+		fasim_gasal2_top5_traceback_certificate_shadow_runtime();
 	const bool phaseTimingEnabled =
 		fasim_top5_gasal2_phase_timing_enabled_runtime() ||
 		taxonomyEnabled ||
 		eligibilityEnabled ||
-		spanPruneShadowEnabled;
+		spanPruneShadowEnabled ||
+		top5TracebackCertificateShadowEnabled;
 	const bool minScoreShadowEnabled = fasim_exact_column_min_score_shadow_enabled_runtime();
 	const bool streamingScoreInfoTwoContractRequested =
 		fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
@@ -5516,6 +5713,10 @@ int main(int argc, char* const* argv)
 	FasimGasal2PretracebackSpanPruneShadowStats
 		pretracebackSpanPruneShadowStats;
 	pretracebackSpanPruneShadowStats.requested = spanPruneShadowEnabled;
+	FasimGasal2Top5TracebackCertificateShadowStats
+		top5TracebackCertificateShadowStats;
+	top5TracebackCertificateShadowStats.requested =
+		top5TracebackCertificateShadowEnabled;
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -8047,6 +8248,179 @@ int main(int argc, char* const* argv)
 									"no_span_candidates" :
 									"shadow_clean_more_characterization_needed";
 							}
+						}
+					}
+				}
+			}
+
+			if (top5TracebackCertificateShadowEnabled)
+			{
+				top5TracebackCertificateShadowStats.requested = true;
+				if (useCpuTracebackReplay ||
+				    (segmentedLongQueryReplayRequested && !gasal2CanRun))
+				{
+					top5TracebackCertificateShadowStats.decision =
+						"unsupported_authority_shape";
+				}
+				else
+				{
+					std::vector<FasimGasal2SelectedAttemptScore>
+						selectedScores;
+					std::string shadowError;
+					const auto packStart = std::chrono::steady_clock::now();
+					FasimGasal2Stats scoreBefore =
+						fasim_gasal2_snapshot_stats();
+					const bool scoreOk =
+						fasim_gasal2_select_attempt_indexes_with_scores(
+							lncSeq,
+							gasalAttempts,
+							&selectedScores,
+							&shadowError);
+					FasimGasal2Stats scoreAfter =
+						fasim_gasal2_snapshot_stats();
+					top5TracebackCertificateShadowStats
+						.certificate_pack_seconds +=
+							fasim_seconds_since(packStart);
+					(void)scoreBefore;
+					(void)scoreAfter;
+					if (!scoreOk)
+					{
+						++top5TracebackCertificateShadowStats.fallbacks;
+						top5TracebackCertificateShadowStats.decision =
+							"score_prepass_failed";
+					}
+					else
+					{
+						top5TracebackCertificateShadowStats.active = true;
+						top5TracebackCertificateShadowStats
+							.score_certificate_supported = true;
+						top5TracebackCertificateShadowStats
+							.stability_certificate_supported = false;
+						top5TracebackCertificateShadowStats
+							.nt_score_certificate_supported = false;
+						top5TracebackCertificateShadowStats
+							.baseline_traceback_requests +=
+								static_cast<uint64_t>(selectedScores.size());
+
+						std::vector<int> selectedScoreValues;
+						selectedScoreValues.reserve(selectedScores.size());
+						for (size_t i = 0; i < selectedScores.size(); ++i)
+						{
+							selectedScoreValues.push_back(
+								selectedScores[i].score);
+						}
+						std::sort(selectedScoreValues.begin(),
+						          selectedScoreValues.end(),
+						          std::greater<int>());
+						if (!selectedScoreValues.empty())
+						{
+							const size_t boundaryIndex =
+								std::min(static_cast<size_t>(4),
+								         selectedScoreValues.size() - 1);
+							const int boundary =
+								selectedScoreValues[boundaryIndex];
+							top5TracebackCertificateShadowStats
+								.score_rank5_boundary =
+									std::to_string(boundary);
+							uint64_t boundaryTies = 0;
+							std::set<int> processedScoreGroups;
+							for (size_t i = 0;
+							     i < selectedScoreValues.size();
+							     ++i)
+							{
+								if (selectedScoreValues[i] == boundary)
+								{
+									++boundaryTies;
+								}
+								if (selectedScoreValues[i] >= boundary)
+								{
+									processedScoreGroups.insert(
+										selectedScoreValues[i]);
+								}
+							}
+							top5TracebackCertificateShadowStats
+								.score_boundary_ties += boundaryTies;
+							top5TracebackCertificateShadowStats
+								.score_groups_processed +=
+									static_cast<uint64_t>(
+										processedScoreGroups.size());
+							top5TracebackCertificateShadowStats
+								.boundary_updates +=
+									std::min<uint64_t>(
+										5,
+										static_cast<uint64_t>(
+											processedScoreGroups.size()));
+						}
+
+						std::vector<size_t> conservativeTracebackIndexes;
+						conservativeTracebackIndexes.reserve(
+							selectedScores.size());
+						for (size_t i = 0; i < selectedScores.size(); ++i)
+						{
+							conservativeTracebackIndexes.push_back(
+								selectedScores[i].attempt_index);
+						}
+
+						FasimGasal2Stats before =
+							fasim_gasal2_snapshot_stats();
+						const auto shadowStart =
+							std::chrono::steady_clock::now();
+						std::vector<FasimGasal2SelectedAlignment>
+							shadowSelected;
+						const bool shadowOk =
+							fasim_gasal2_align_attempt_indexes(
+								lncSeq,
+								gasalAttempts,
+								conservativeTracebackIndexes,
+								&shadowSelected,
+								&shadowError);
+						const double shadowSeconds =
+							fasim_seconds_since(shadowStart);
+						FasimGasal2Stats after =
+							fasim_gasal2_snapshot_stats();
+						top5TracebackCertificateShadowStats
+							.certificate_total_seconds += shadowSeconds;
+						const uint64_t tracebackRequests =
+							fasim_metric_delta(after.traceback_requests,
+							                   before.traceback_requests);
+						top5TracebackCertificateShadowStats
+							.certificate_traceback_requests +=
+								tracebackRequests;
+						top5TracebackCertificateShadowStats
+							.certificate_traceback_seconds +=
+								fasim_metric_delta(after.traceback_fill_seconds,
+								                   before.traceback_fill_seconds) +
+								fasim_metric_delta(after.traceback_submit_seconds,
+								                   before.traceback_submit_seconds) +
+								fasim_metric_delta(after.traceback_wait_seconds,
+								                   before.traceback_wait_seconds) +
+								fasim_metric_delta(
+									after.traceback_result_copy_seconds,
+									before.traceback_result_copy_seconds) +
+								fasim_metric_delta(
+									after.traceback_cigar_vector_seconds,
+									before.traceback_cigar_vector_seconds) +
+								fasim_metric_delta(
+									after.traceback_cigar_string_seconds,
+									before.traceback_cigar_string_seconds);
+						const uint64_t baseline =
+							static_cast<uint64_t>(selectedScores.size());
+						if (tracebackRequests < baseline)
+						{
+							top5TracebackCertificateShadowStats
+								.tracebacks_skipped +=
+									baseline - tracebackRequests;
+						}
+						if (!shadowOk)
+						{
+							++top5TracebackCertificateShadowStats.fallbacks;
+							top5TracebackCertificateShadowStats.decision =
+								"traceback_shadow_failed";
+						}
+						else
+						{
+							top5TracebackCertificateShadowStats.decision =
+								"no_go_unsupported_modes";
 						}
 					}
 				}
@@ -16894,6 +17268,23 @@ int main(int argc, char* const* argv)
 			{
 				fasim_print_gasal2_pretraceback_span_prune_shadow_stats(
 					pretracebackSpanPruneShadowStats);
+			}
+			if (top5TracebackCertificateShadowEnabled)
+			{
+				top5TracebackCertificateShadowStats.invalid_after_traceback =
+					phaseTiming.gasal2_nt_shadow_sum_span_lt_clength;
+				top5TracebackCertificateShadowStats.filtered_nt_after_traceback =
+					phaseTiming.gasal2_emit_filtered_nt;
+				top5TracebackCertificateShadowStats.dedup_removed_after_traceback =
+					phaseTiming.gasal2_convert_triplexes_raw >
+						(phaseTiming.gasal2_emit_rows_lite +
+						 phaseTiming.gasal2_emit_rows_full) ?
+					phaseTiming.gasal2_convert_triplexes_raw -
+						(phaseTiming.gasal2_emit_rows_lite +
+						 phaseTiming.gasal2_emit_rows_full) :
+					0;
+				fasim_print_gasal2_top5_traceback_certificate_shadow_stats(
+					top5TracebackCertificateShadowStats);
 			}
 			if (minScoreShadowEnabled)
 			{

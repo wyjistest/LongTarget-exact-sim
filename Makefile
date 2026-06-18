@@ -1597,6 +1597,21 @@ check-fasim-gasal2-tie-complete-top5-traceback-certificate-goal:
 
 .PHONY: check-fasim-gasal2-tie-complete-top5-traceback-certificate-goal
 
+check-fasim-gasal2-tie-complete-top5-traceback-certificate-parser:
+	bash ./scripts/check_fasim_gasal2_tie_complete_top5_traceback_certificate_parser.sh
+
+.PHONY: check-fasim-gasal2-tie-complete-top5-traceback-certificate-parser
+
+check-fasim-gasal2-tie-complete-top5-traceback-certificate-result:
+	bash ./scripts/check_fasim_gasal2_tie_complete_top5_traceback_certificate_result.sh
+
+.PHONY: check-fasim-gasal2-tie-complete-top5-traceback-certificate-result
+
+check-fasim-gasal2-tie-complete-top5-traceback-certificate-smoke:
+	bash ./scripts/check_fasim_gasal2_tie_complete_top5_traceback_certificate_smoke.sh
+
+.PHONY: check-fasim-gasal2-tie-complete-top5-traceback-certificate-smoke
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 

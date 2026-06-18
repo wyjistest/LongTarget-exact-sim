@@ -433,6 +433,22 @@ struct FasimGasal2ScoreOnlyAlignment
 	int ref_end;
 };
 
+struct FasimGasal2SelectedAttemptScore
+{
+	FasimGasal2SelectedAttemptScore() :
+		attempt_index(0),
+		score(0),
+		query_end(0),
+		ref_end(0)
+	{
+	}
+
+	size_t attempt_index;
+	int score;
+	int query_end;
+	int ref_end;
+};
+
 struct FasimGasal2LongQuerySegment
 {
 	FasimGasal2LongQuerySegment() :
@@ -1197,6 +1213,12 @@ bool fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
 	const std::vector<FasimGasal2Attempt> &attempts,
 	std::vector<size_t> *selectedAttemptIndexes,
 	std::vector<size_t> *spanPruneAttemptIndexes,
+	std::string *errorOut);
+
+bool fasim_gasal2_select_attempt_indexes_with_scores(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAttemptScore> *selectedScores,
 	std::string *errorOut);
 
 bool fasim_gasal2_score_attempts(

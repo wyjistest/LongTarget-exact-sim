@@ -1826,6 +1826,79 @@ bool fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
 	return true;
 }
 
+bool fasim_gasal2_select_attempt_indexes_with_scores(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAttemptScore> *selectedScores,
+	std::string *errorOut)
+{
+	if (selectedScores != NULL)
+	{
+		selectedScores->clear();
+	}
+	if (!fasim_gasal2_enabled())
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = "gasal2_disabled";
+		}
+		return false;
+	}
+	if (query.empty() || attempts.empty() || selectedScores == NULL)
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = attempts.empty() ? "empty_attempts" : "invalid_input";
+		}
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	const int batchSize = gasal2_batch_size_default();
+	record_effective_batch_size(batchSize);
+	g_stats.score_prepass_enabled = true;
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		if (attempts[i].uses_target_view())
+		{
+			++g_stats.target_view_requests;
+		}
+	}
+
+	std::vector<ScoreOnlyResult> scoreResults;
+	if (!run_score_only(&g_score_state,
+	                    query,
+	                    attempts,
+	                    batchSize,
+	                    &scoreResults,
+	                    errorOut))
+	{
+		++g_stats.fallbacks;
+		return false;
+	}
+
+	std::vector<size_t> selectedAttemptIndexes;
+	select_attempts_from_scores(attempts,
+	                            scoreResults,
+	                            &selectedAttemptIndexes);
+	selectedScores->reserve(selectedAttemptIndexes.size());
+	for (size_t i = 0; i < selectedAttemptIndexes.size(); ++i)
+	{
+		const size_t attemptIndex = selectedAttemptIndexes[i];
+		if (attemptIndex >= scoreResults.size())
+		{
+			continue;
+		}
+		FasimGasal2SelectedAttemptScore selected;
+		selected.attempt_index = attemptIndex;
+		selected.score = scoreResults[attemptIndex].sw_score;
+		selected.query_end = scoreResults[attemptIndex].query_end;
+		selected.ref_end = scoreResults[attemptIndex].ref_end;
+		selectedScores->push_back(selected);
+	}
+	return true;
+}
+
 bool fasim_gasal2_score_attempts(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,

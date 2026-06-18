@@ -284,6 +284,25 @@ bool fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
 	return false;
 }
 
+bool fasim_gasal2_select_attempt_indexes_with_scores(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAttemptScore> *selectedScores,
+	std::string *errorOut)
+{
+	(void)query;
+	(void)attempts;
+	if (selectedScores != NULL)
+	{
+		selectedScores->clear();
+	}
+	if (errorOut != NULL)
+	{
+		*errorOut = "gasal2_unavailable";
+	}
+	return false;
+}
+
 bool fasim_gasal2_score_attempts(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
