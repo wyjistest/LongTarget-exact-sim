@@ -1571,6 +1571,27 @@ check-fasim-gasal2-pretraceback-span-real-workload-result:
 
 .PHONY: check-fasim-gasal2-pretraceback-span-real-workload-result
 
+check-fasim-gasal2-pretraceback-span-prune-shadow-parser:
+	bash ./scripts/check_fasim_gasal2_pretraceback_span_prune_shadow_parser.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-span-prune-shadow-parser
+
+check-fasim-gasal2-pretraceback-span-prune-shadow-api:
+	bash ./scripts/check_fasim_gasal2_pretraceback_span_prune_shadow_api.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-span-prune-shadow-api
+
+check-fasim-gasal2-pretraceback-span-prune-shadow-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct GASAL2_DIR=$(if $(wildcard $(GASAL2_DIR)/Makefile),$(GASAL2_DIR),$(abspath $(CURDIR)/../..)/.tmp/GASAL2)
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct GASAL2_DIR=$(if $(wildcard $(GASAL2_DIR)/Makefile),$(GASAL2_DIR),$(abspath $(CURDIR)/../..)/.tmp/GASAL2) bash ./scripts/check_fasim_gasal2_pretraceback_span_prune_shadow_smoke.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-span-prune-shadow-smoke
+
+check-fasim-gasal2-pretraceback-span-prune-shadow-result:
+	bash ./scripts/check_fasim_gasal2_pretraceback_span_prune_shadow_result.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-span-prune-shadow-result
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 

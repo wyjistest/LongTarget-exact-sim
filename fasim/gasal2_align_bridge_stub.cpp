@@ -230,6 +230,17 @@ bool fasim_gasal2_select_attempts(const std::string &query,
 	return fasim_gasal2_align_attempts(query, attempts, selected, errorOut);
 }
 
+bool fasim_gasal2_align_attempt_indexes(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<size_t> &attemptIndexes,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::string *errorOut)
+{
+	(void)attemptIndexes;
+	return fasim_gasal2_align_attempts(query, attempts, selected, errorOut);
+}
+
 bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
@@ -241,6 +252,30 @@ bool fasim_gasal2_select_attempt_indexes_from_scores(
 	if (selectedAttemptIndexes != NULL)
 	{
 		selectedAttemptIndexes->clear();
+	}
+	if (errorOut != NULL)
+	{
+		*errorOut = "gasal2_unavailable";
+	}
+	return false;
+}
+
+bool fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<size_t> *spanPruneAttemptIndexes,
+	std::string *errorOut)
+{
+	(void)query;
+	(void)attempts;
+	if (selectedAttemptIndexes != NULL)
+	{
+		selectedAttemptIndexes->clear();
+	}
+	if (spanPruneAttemptIndexes != NULL)
+	{
+		spanPruneAttemptIndexes->clear();
 	}
 	if (errorOut != NULL)
 	{

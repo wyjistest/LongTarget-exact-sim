@@ -1174,6 +1174,13 @@ bool fasim_gasal2_align_attempts(const std::string &query,
                                  std::vector<FasimGasal2SelectedAlignment> *selected,
                                  std::string *errorOut);
 
+bool fasim_gasal2_align_attempt_indexes(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<size_t> &attemptIndexes,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::string *errorOut);
+
 bool fasim_gasal2_select_attempts(const std::string &query,
                                   const std::vector<FasimGasal2Attempt> &attempts,
                                   std::vector<FasimGasal2SelectedAlignment> *selected,
@@ -1183,6 +1190,13 @@ bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
 	std::vector<size_t> *selectedAttemptIndexes,
+	std::string *errorOut);
+
+bool fasim_gasal2_select_attempt_indexes_for_span_prune_shadow(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<size_t> *spanPruneAttemptIndexes,
 	std::string *errorOut);
 
 bool fasim_gasal2_score_attempts(
