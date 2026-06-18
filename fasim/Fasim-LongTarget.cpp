@@ -767,6 +767,21 @@ static inline bool fasim_top5_gasal2_phase_timing_enabled_runtime()
 	return fasim_env_flag_enabled("FASIM_TOP5_GASAL2_PHASE_TIMING");
 }
 
+static inline bool fasim_gasal2_traceback_rejection_taxonomy_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY");
+}
+
+static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
+{
+	const char *env = getenv("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT");
+	if (env == NULL)
+	{
+		return "";
+	}
+	return std::string(env);
+}
+
 static inline bool fasim_gasal2_direct_lite_archive_convert_runtime()
 {
 	return fasim_env_flag_enabled("FASIM_GASAL2_DIRECT_LITE_ARCHIVE_CONVERT");
@@ -2649,6 +2664,271 @@ static inline uint64_t fasim_saturating_mul_uint64(uint64_t lhs, uint64_t rhs)
 	return lhs * rhs;
 }
 
+struct FasimGasal2TracebackRejectionTaxonomyStats
+{
+	FasimGasal2TracebackRejectionTaxonomyStats() :
+		requested(false),
+		active(false),
+		attempts(0),
+		retained_emitted(0),
+		filtered_score(0),
+		filtered_identity(0),
+		filtered_stability(0),
+		filtered_nt(0),
+		invalid_span_bound(0),
+		duplicate_descriptor(0),
+		duplicate_row(0),
+		final_sort_dedup_removed(0),
+		final_nonoverlap_dominated(0),
+		top5_frontier_dominated(0),
+		post_cigar_only(0),
+		unknown(0),
+		export_path(""),
+		export_rows(0),
+		export_truncated(false)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t attempts;
+	uint64_t retained_emitted;
+	uint64_t filtered_score;
+	uint64_t filtered_identity;
+	uint64_t filtered_stability;
+	uint64_t filtered_nt;
+	uint64_t invalid_span_bound;
+	uint64_t duplicate_descriptor;
+	uint64_t duplicate_row;
+	uint64_t final_sort_dedup_removed;
+	uint64_t final_nonoverlap_dominated;
+	uint64_t top5_frontier_dominated;
+	uint64_t post_cigar_only;
+	uint64_t unknown;
+	std::string export_path;
+	uint64_t export_rows;
+	bool export_truncated;
+};
+
+struct FasimGasal2TracebackRejectionTaxonomyExporter
+{
+	FasimGasal2TracebackRejectionTaxonomyExporter() :
+		active(false),
+		limit(0),
+		rows(0),
+		attempts(0),
+		path(""),
+		mutex(),
+		output()
+	{
+	}
+
+	void open()
+	{
+		active = fasim_gasal2_traceback_rejection_taxonomy_runtime();
+		if (!active)
+		{
+			return;
+		}
+		limit = fasim_env_uint64_or_default(
+			"FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT_LIMIT",
+			1000ULL);
+		path = fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime();
+		if (path.empty())
+		{
+			return;
+		}
+		output.open(path.c_str());
+		if (!output)
+		{
+			return;
+		}
+		output
+			<< "attempt_id\ttask_id\tscoreinfo_index\tprealign_score\t"
+			<< "target_size\tdecision_bucket\tpre_traceback_decidable\t"
+			<< "post_traceback_only\ttop5_only_safe_candidate\t"
+			<< "full_output_safe_candidate\temitted_row\tfinal_row\t"
+			<< "output_global_start\toutput_global_end\tscore\tnt\tidentity\t"
+			<< "stability\tnotes\n";
+	}
+
+	bool can_write() const
+	{
+		return active && output && rows < limit;
+	}
+
+	void write(const FasimGasal2SelectedAlignment &selectedAlignment,
+	           uint64_t taskId,
+	           int targetSize,
+	           const char *bucket,
+	           int preTracebackDecidable,
+	           int postTracebackOnly,
+	           int top5OnlySafeCandidate,
+	           int fullOutputSafeCandidate,
+	           int emittedRow,
+	           int finalRow,
+	           long outputGlobalStart,
+	           long outputGlobalEnd,
+	           int score,
+	           int nt,
+	           double identity,
+	           double stability,
+	           const char *notes)
+	{
+		if (!active)
+		{
+			return;
+		}
+		std::lock_guard<std::mutex> lock(mutex);
+		const uint64_t attemptId = ++attempts;
+		if (!can_write())
+		{
+			return;
+		}
+		const int prealignScore =
+			selectedAlignment.score_prepass_score != 0 ?
+			selectedAlignment.score_prepass_score :
+			selectedAlignment.alignment.sw_score;
+		output
+			<< attemptId << "\t"
+			<< taskId << "\t"
+			<< selectedAlignment.scoreinfo_index << "\t"
+			<< prealignScore << "\t"
+			<< targetSize << "\t"
+			<< bucket << "\t"
+			<< preTracebackDecidable << "\t"
+			<< postTracebackOnly << "\t"
+			<< top5OnlySafeCandidate << "\t"
+			<< fullOutputSafeCandidate << "\t"
+			<< emittedRow << "\t"
+			<< finalRow << "\t"
+			<< outputGlobalStart << "\t"
+			<< outputGlobalEnd << "\t"
+			<< score << "\t"
+			<< nt << "\t"
+			<< identity << "\t"
+			<< stability << "\t"
+			<< notes << "\n";
+		++rows;
+	}
+
+	void apply(FasimGasal2TracebackRejectionTaxonomyStats *taxonomy) const
+	{
+		if (taxonomy == NULL || path.empty())
+		{
+			return;
+		}
+		taxonomy->export_path = path;
+		taxonomy->export_rows = rows;
+		taxonomy->export_truncated = attempts > rows;
+	}
+
+	bool active;
+	uint64_t limit;
+	uint64_t rows;
+	uint64_t attempts;
+	std::string path;
+	std::mutex mutex;
+	std::ofstream output;
+};
+
+static inline uint64_t fasim_take_taxonomy_bucket(uint64_t requested,
+                                                  uint64_t *remaining)
+{
+	if (remaining == NULL || *remaining == 0)
+	{
+		return 0;
+	}
+	const uint64_t taken = std::min(requested, *remaining);
+	*remaining -= taken;
+	return taken;
+}
+
+static inline FasimGasal2TracebackRejectionTaxonomyStats
+fasim_build_gasal2_traceback_rejection_taxonomy(
+	const FasimTop5PhaseTimingStats &stats)
+{
+	FasimGasal2TracebackRejectionTaxonomyStats taxonomy;
+	taxonomy.requested = fasim_gasal2_traceback_rejection_taxonomy_runtime();
+	taxonomy.active = taxonomy.requested;
+	taxonomy.attempts = stats.gasal2_convert_input_alignments;
+	uint64_t remaining = taxonomy.attempts;
+
+	taxonomy.retained_emitted = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_rows_lite + stats.gasal2_emit_rows_full,
+		&remaining);
+	taxonomy.filtered_score = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_score,
+		&remaining);
+	taxonomy.filtered_identity = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_identity,
+		&remaining);
+	taxonomy.filtered_stability = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_stability,
+		&remaining);
+	taxonomy.filtered_nt = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_nt,
+		&remaining);
+	taxonomy.invalid_span_bound = fasim_take_taxonomy_bucket(
+		stats.gasal2_nt_shadow_sum_span_lt_clength,
+		&remaining);
+
+	const uint64_t convertedNotEmitted =
+		stats.gasal2_convert_triplexes_raw >
+			(stats.gasal2_emit_rows_lite + stats.gasal2_emit_rows_full) ?
+		stats.gasal2_convert_triplexes_raw -
+			(stats.gasal2_emit_rows_lite + stats.gasal2_emit_rows_full) :
+		0;
+	taxonomy.final_sort_dedup_removed = fasim_take_taxonomy_bucket(
+		convertedNotEmitted,
+		&remaining);
+	taxonomy.post_cigar_only = remaining;
+	return taxonomy;
+}
+
+static inline void fasim_print_taxonomy_metric(const char *name, uint64_t value)
+{
+	std::cerr << "benchmark.fasim_gasal2_traceback_rejection_taxonomy_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_gasal2_traceback_rejection_taxonomy_stats(
+	const FasimTop5PhaseTimingStats &stats,
+	const FasimGasal2TracebackRejectionTaxonomyExporter &exporter)
+{
+	FasimGasal2TracebackRejectionTaxonomyStats taxonomy =
+		fasim_build_gasal2_traceback_rejection_taxonomy(stats);
+	exporter.apply(&taxonomy);
+
+	fasim_print_taxonomy_metric("requested", taxonomy.requested ? 1 : 0);
+	fasim_print_taxonomy_metric("active", taxonomy.active ? 1 : 0);
+	fasim_print_taxonomy_metric("attempts", taxonomy.attempts);
+	fasim_print_taxonomy_metric("retained_emitted", taxonomy.retained_emitted);
+	fasim_print_taxonomy_metric("filtered_score", taxonomy.filtered_score);
+	fasim_print_taxonomy_metric("filtered_identity", taxonomy.filtered_identity);
+	fasim_print_taxonomy_metric("filtered_stability",
+	                            taxonomy.filtered_stability);
+	fasim_print_taxonomy_metric("filtered_nt", taxonomy.filtered_nt);
+	fasim_print_taxonomy_metric("invalid_span_bound",
+	                            taxonomy.invalid_span_bound);
+	fasim_print_taxonomy_metric("duplicate_descriptor",
+	                            taxonomy.duplicate_descriptor);
+	fasim_print_taxonomy_metric("duplicate_row", taxonomy.duplicate_row);
+	fasim_print_taxonomy_metric("final_sort_dedup_removed",
+	                            taxonomy.final_sort_dedup_removed);
+	fasim_print_taxonomy_metric("final_nonoverlap_dominated",
+	                            taxonomy.final_nonoverlap_dominated);
+	fasim_print_taxonomy_metric("top5_frontier_dominated",
+	                            taxonomy.top5_frontier_dominated);
+	fasim_print_taxonomy_metric("post_cigar_only", taxonomy.post_cigar_only);
+	fasim_print_taxonomy_metric("unknown", taxonomy.unknown);
+	std::cerr << "benchmark.fasim_gasal2_traceback_rejection_taxonomy_export_path="
+	          << taxonomy.export_path << "\n";
+	fasim_print_taxonomy_metric("export_rows", taxonomy.export_rows);
+	fasim_print_taxonomy_metric("export_truncated",
+	                            taxonomy.export_truncated ? 1 : 0);
+}
+
 static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimingStats &stats)
 {
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_timing_enabled=1\n";
@@ -4489,7 +4769,10 @@ int main(int argc, char* const* argv)
 	clock_t start, end;
 	float cpu_time;
 	start = clock();
-	const bool phaseTimingEnabled = fasim_top5_gasal2_phase_timing_enabled_runtime();
+	const bool taxonomyEnabled =
+		fasim_gasal2_traceback_rejection_taxonomy_runtime();
+	const bool phaseTimingEnabled =
+		fasim_top5_gasal2_phase_timing_enabled_runtime() || taxonomyEnabled;
 	const bool minScoreShadowEnabled = fasim_exact_column_min_score_shadow_enabled_runtime();
 	const bool streamingScoreInfoTwoContractRequested =
 		fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
@@ -4508,6 +4791,8 @@ int main(int argc, char* const* argv)
 		fasim_env_int_or_default("FASIM_EXACT_COLUMN_MIN_SCORE_SHADOW_DEBUG_LIMIT", 3);
 	int minScoreShadowDebugPrinted = 0;
 	FasimTop5PhaseTimingStats phaseTiming;
+	FasimGasal2TracebackRejectionTaxonomyExporter taxonomyExporter;
+	taxonomyExporter.open();
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -7134,11 +7419,11 @@ int main(int argc, char* const* argv)
 					return static_cast<uint64_t>(
 						scoreGroups[static_cast<size_t>(selectedAlignment.scoreinfo_index)].scoreInfoIndex) + 1;
 				};
-				auto observeScoreInfoRank = [&](const FasimGasal2SelectedAlignment &selectedAlignment)
-				{
-					if (!observeEmitRank)
+					auto observeScoreInfoRank = [&](const FasimGasal2SelectedAlignment &selectedAlignment)
 					{
-						return;
+						if (!observeEmitRank)
+						{
+							return;
 					}
 					const uint64_t rank = scoreInfoRankForSelected(selectedAlignment);
 					if (rank == 0)
@@ -7177,8 +7462,53 @@ int main(int argc, char* const* argv)
 						else
 						{
 							emitRank33Plus.fetch_add(1, std::memory_order_relaxed);
+							}
+							};
+					auto exportTaxonomyAttempt =
+						[&](const FasimGasal2SelectedAlignment &selectedAlignment,
+						    size_t taskIndex,
+						    const StripedSmithWaterman::Alignment &alignment,
+						    const char *bucket,
+						    int preTracebackDecidable,
+						    int postTracebackOnly,
+						    int top5OnlySafeCandidate,
+						    int fullOutputSafeCandidate,
+						    int emittedRow,
+						    int finalRow,
+						    long outputGlobalStart,
+						    long outputGlobalEnd,
+						    int score,
+						    int nt,
+						    double identity,
+						    double stability,
+						    const char *notes)
+					{
+						if (!taxonomyExporter.active)
+						{
+							return;
 						}
-						};
+						const int targetSize =
+							alignment.ref_end >= alignment.ref_begin ?
+							alignment.ref_end - alignment.ref_begin + 1 :
+							selectedAlignment.cutlength;
+						taxonomyExporter.write(selectedAlignment,
+						                       static_cast<uint64_t>(taskIndex),
+						                       targetSize,
+						                       bucket,
+						                       preTracebackDecidable,
+						                       postTracebackOnly,
+						                       top5OnlySafeCandidate,
+						                       fullOutputSafeCandidate,
+						                       emittedRow,
+						                       finalRow,
+						                       outputGlobalStart,
+						                       outputGlobalEnd,
+						                       score,
+						                       nt,
+						                       identity,
+						                       stability,
+						                       notes);
+					};
 					if (directConvertActive ||
 					    archiveFirstConvertActive)
 					{
@@ -7220,12 +7550,13 @@ int main(int argc, char* const* argv)
 								{
 									continue;
 								}
-								observeScoreInfoRank(selectedAlignment);
-								const uint64_t selectedScoreInfoRank =
-									scoreInfoRankForSelected(selectedAlignment);
-								if (phaseTimingEnabled)
-								{
-									convertInputAlignments.fetch_add(
+									observeScoreInfoRank(selectedAlignment);
+									const uint64_t selectedScoreInfoRank =
+										scoreInfoRankForSelected(selectedAlignment);
+									const size_t beforeRows = rows.size();
+									if (phaseTimingEnabled)
+									{
+										convertInputAlignments.fetch_add(
 										1,
 										std::memory_order_relaxed);
 									const auto spanCheckStart =
@@ -7358,14 +7689,84 @@ int main(int argc, char* const* argv)
 										convertedRecord.neartriplex;
 									converted.cigar_probe =
 										convertedRecord.cigar_probe;
-									rows.push_back(
-										FasimGasal2DirectLiteArchiveTriplex(
-											converted,
-											convertedRecord));
-								}
-								if (phaseTimingEnabled)
-								{
-									const uint64_t triplexNanos =
+										rows.push_back(
+											FasimGasal2DirectLiteArchiveTriplex(
+												converted,
+												convertedRecord));
+									}
+									if (taxonomyExporter.active)
+									{
+										if (rows.size() == beforeRows)
+										{
+											exportTaxonomyAttempt(selectedAlignment,
+											                      t,
+											                      *alignmentForRow,
+											                      "post_cigar_only",
+											                      0, 1, 0, 0, 0, 0,
+											                      0, 0,
+											                      alignmentForRow->sw_score,
+											                      0, 0.0, 0.0,
+											                      "no converted row after CIGAR materialization");
+										}
+										else
+										{
+											const FasimGasal2DirectLiteArchiveTriplex &newRow =
+												rows.back();
+											const triplex &row = newRow.value;
+											const bool scoreFail = row.score < paraList.scoreMin;
+											const bool identityFail =
+												row.identity < paraList.minIdentity;
+											const bool stabilityFail =
+												row.tri_score < paraList.minStability;
+											const bool ntFail = row.nt < paraList.cLength;
+											if (scoreFail || identityFail ||
+											    stabilityFail || ntFail)
+											{
+												const char *bucket = scoreFail ?
+													"filtered_score" :
+													(identityFail ? "filtered_identity" :
+													 (stabilityFail ?
+													  "filtered_stability" :
+													  "filtered_nt"));
+												exportTaxonomyAttempt(
+													selectedAlignment,
+													t,
+													*alignmentForRow,
+													bucket,
+													scoreFail ? 1 : 0,
+													scoreFail ? 0 : 1,
+													scoreFail ? 1 : 0,
+													scoreFail ? 1 : 0,
+													0, 0,
+													row.genomestart,
+													row.genomeend,
+													static_cast<int>(row.score),
+													row.nt,
+													row.identity,
+													row.tri_score,
+													"converted row rejected by emit thresholds");
+											}
+											else
+											{
+												exportTaxonomyAttempt(
+													selectedAlignment,
+													t,
+													*alignmentForRow,
+													"retained_emitted",
+													0, 0, 0, 1, 1, 0,
+													row.genomestart,
+													row.genomeend,
+													static_cast<int>(row.score),
+													row.nt,
+													row.identity,
+													row.tri_score,
+													"converted row kept by emit thresholds");
+											}
+										}
+									}
+									if (phaseTimingEnabled)
+									{
+										const uint64_t triplexNanos =
 										static_cast<uint64_t>(
 											std::chrono::duration_cast<
 												std::chrono::nanoseconds>(
@@ -7670,11 +8071,11 @@ int main(int argc, char* const* argv)
 											alignmentForTriplex->cigar;
 									}
 								}
-								if (phaseTimingEnabled)
-								{
-									const uint64_t triplexNanos =
-										static_cast<uint64_t>(
-											std::chrono::duration_cast<std::chrono::nanoseconds>(
+									if (phaseTimingEnabled)
+									{
+										const uint64_t triplexNanos =
+											static_cast<uint64_t>(
+												std::chrono::duration_cast<std::chrono::nanoseconds>(
 												std::chrono::steady_clock::now() -
 												convertAlignmentStart).count());
 									convertTriplexNanos.fetch_add(
@@ -7682,10 +8083,81 @@ int main(int argc, char* const* argv)
 										std::memory_order_relaxed);
 									convertAlignmentNanos.fetch_add(
 										triplexNanos,
-										std::memory_order_relaxed);
-								}
-							if (collectLiteRankMap && selectedScoreInfoRank != 0)
-							{
+											std::memory_order_relaxed);
+									}
+									if (taxonomyExporter.active)
+									{
+										if (myTriplexList.size() == beforeTriplexCount)
+										{
+											exportTaxonomyAttempt(selectedAlignment,
+											                      t,
+											                      *alignmentForTriplex,
+											                      "post_cigar_only",
+											                      0, 1, 0, 0, 0, 0,
+											                      0, 0,
+											                      alignmentForTriplex->sw_score,
+											                      0, 0.0, 0.0,
+											                      "no triplex row after CIGAR materialization");
+										}
+										else
+										{
+											const triplex &row =
+												myTriplexList[beforeTriplexCount];
+											const bool scoreFail =
+												row.score < paraList.scoreMin;
+											const bool identityFail =
+												row.identity < paraList.minIdentity;
+											const bool stabilityFail =
+												row.tri_score < paraList.minStability;
+											const bool ntFail =
+												row.nt < paraList.cLength;
+											if (scoreFail || identityFail ||
+											    stabilityFail || ntFail)
+											{
+												const char *bucket = scoreFail ?
+													"filtered_score" :
+													(identityFail ? "filtered_identity" :
+													 (stabilityFail ?
+													  "filtered_stability" :
+													  "filtered_nt"));
+												exportTaxonomyAttempt(
+													selectedAlignment,
+													t,
+													*alignmentForTriplex,
+													bucket,
+													scoreFail ? 1 : 0,
+													scoreFail ? 0 : 1,
+													scoreFail ? 1 : 0,
+													scoreFail ? 1 : 0,
+													0, 0,
+													row.genomestart,
+													row.genomeend,
+													static_cast<int>(row.score),
+													row.nt,
+													row.identity,
+													row.tri_score,
+													"triplex row rejected by emit thresholds");
+											}
+											else
+											{
+												exportTaxonomyAttempt(
+													selectedAlignment,
+													t,
+													*alignmentForTriplex,
+													"retained_emitted",
+													0, 0, 0, 1, 1, 0,
+													row.genomestart,
+													row.genomeend,
+													static_cast<int>(row.score),
+													row.nt,
+													row.identity,
+													row.tri_score,
+													"triplex row kept by emit thresholds");
+											}
+										}
+									}
+								if (collectLiteRankMap && selectedScoreInfoRank != 0)
+								{
 								const auto rankMapStart = std::chrono::steady_clock::now();
 								for (size_t rankIndex = beforeTriplexCount;
 								     rankIndex < myTriplexList.size();
@@ -14805,6 +15277,12 @@ int main(int argc, char* const* argv)
 			if (phaseTimingEnabled)
 			{
 				fasim_print_top5_phase_timing_stats(phaseTiming);
+			}
+			if (taxonomyEnabled)
+			{
+				fasim_print_gasal2_traceback_rejection_taxonomy_stats(
+					phaseTiming,
+					taxonomyExporter);
 			}
 			if (minScoreShadowEnabled)
 			{
