@@ -1545,6 +1545,17 @@ check-fasim-gasal2-traceback-rejection-taxonomy-smoke:
 
 .PHONY: check-fasim-gasal2-traceback-rejection-taxonomy-smoke
 
+check-fasim-gasal2-pretraceback-pruning-eligibility-parser:
+	bash ./scripts/check_fasim_gasal2_pretraceback_pruning_eligibility_parser.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-pruning-eligibility-parser
+
+check-fasim-gasal2-pretraceback-pruning-eligibility-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_pretraceback_pruning_eligibility_smoke.sh
+
+.PHONY: check-fasim-gasal2-pretraceback-pruning-eligibility-smoke
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 

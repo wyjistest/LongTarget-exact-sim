@@ -772,9 +772,24 @@ static inline bool fasim_gasal2_traceback_rejection_taxonomy_runtime()
 	return fasim_env_flag_enabled("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY");
 }
 
+static inline bool fasim_gasal2_pretraceback_pruning_eligibility_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY");
+}
+
 static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
 {
 	const char *env = getenv("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT");
+	if (env == NULL)
+	{
+		return "";
+	}
+	return std::string(env);
+}
+
+static inline std::string fasim_gasal2_pretraceback_pruning_eligibility_export_path_runtime()
+{
+	const char *env = getenv("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY_EXPORT");
 	if (env == NULL)
 	{
 		return "";
@@ -2832,6 +2847,523 @@ struct FasimGasal2TracebackRejectionTaxonomyExporter
 	std::ofstream output;
 };
 
+struct FasimGasal2PretracebackPruningEligibilityAttempt
+{
+	FasimGasal2PretracebackPruningEligibilityAttempt() :
+		attempt_id(0),
+		flush_id(0),
+		task_id(0),
+		scoreinfo_index(-1),
+		prealign_score(0),
+		query_len(0),
+		target_size(0),
+		target_start(0),
+		cutlength(0),
+		request_key_hash("0"),
+		descriptor_key_hash("0"),
+		final_row_hash("0"),
+		representative_attempt_id(0),
+		representative_flush_id(0),
+		representative_request_key_hash("0"),
+		representative_descriptor_key_hash("0"),
+		same_flush(false),
+		cross_flush(false),
+		invalid_span_bound(false),
+		invalid_span_pretraceback_provable(false),
+		score(0),
+		query_begin(0),
+		query_end(0),
+		ref_begin(0),
+		ref_end(0),
+		output_global_start(0),
+		output_global_end(0),
+		nt(0),
+		identity(0.0),
+		stability(0.0),
+		cigar_hash("0"),
+		final_rejection_bucket("unknown"),
+		eligibility_bucket("unknown"),
+		pre_traceback_decidable(false),
+		post_traceback_only(false),
+		top5_only_safe_candidate(false),
+		full_output_safe_candidate(false),
+		notes("")
+	{
+	}
+
+	uint64_t attempt_id;
+	uint64_t flush_id;
+	uint64_t task_id;
+	int scoreinfo_index;
+	int prealign_score;
+	uint64_t query_len;
+	int target_size;
+	int target_start;
+	int cutlength;
+	std::string request_key_hash;
+	std::string descriptor_key_hash;
+	std::string final_row_hash;
+	uint64_t representative_attempt_id;
+	uint64_t representative_flush_id;
+	std::string representative_request_key_hash;
+	std::string representative_descriptor_key_hash;
+	bool same_flush;
+	bool cross_flush;
+	bool invalid_span_bound;
+	bool invalid_span_pretraceback_provable;
+	int score;
+	int query_begin;
+	int query_end;
+	int ref_begin;
+	int ref_end;
+	long output_global_start;
+	long output_global_end;
+	int nt;
+	double identity;
+	double stability;
+	std::string cigar_hash;
+	std::string final_rejection_bucket;
+	std::string eligibility_bucket;
+	bool pre_traceback_decidable;
+	bool post_traceback_only;
+	bool top5_only_safe_candidate;
+	bool full_output_safe_candidate;
+	std::string notes;
+};
+
+struct FasimGasal2PretracebackPruningEligibilityStats
+{
+	FasimGasal2PretracebackPruningEligibilityStats() :
+		requested(false),
+		active(false),
+		attempts(0),
+		retained_final_rows(0),
+		removed_attempts(0),
+		mapped_removed_attempts(0),
+		unmapped_removed_attempts(0),
+		exact_request_duplicate(0),
+		exact_descriptor_duplicate(0),
+		same_final_row_different_descriptor(0),
+		cross_flush_exact_duplicate(0),
+		cigar_dependent_duplicate(0),
+		representative_selection_dependent(0),
+		sort_or_dominance_removed(0),
+		pretraceback_span_provable(0),
+		reverse_start_dependent_span(0),
+		cigar_dependent_span(0),
+		unknown(0),
+		false_prune_shadow(0),
+		missing_rows_shadow(0),
+		extra_rows_shadow(0),
+		export_path(""),
+		export_rows(0),
+		export_truncated(false)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t attempts;
+	uint64_t retained_final_rows;
+	uint64_t removed_attempts;
+	uint64_t mapped_removed_attempts;
+	uint64_t unmapped_removed_attempts;
+	uint64_t exact_request_duplicate;
+	uint64_t exact_descriptor_duplicate;
+	uint64_t same_final_row_different_descriptor;
+	uint64_t cross_flush_exact_duplicate;
+	uint64_t cigar_dependent_duplicate;
+	uint64_t representative_selection_dependent;
+	uint64_t sort_or_dominance_removed;
+	uint64_t pretraceback_span_provable;
+	uint64_t reverse_start_dependent_span;
+	uint64_t cigar_dependent_span;
+	uint64_t unknown;
+	uint64_t false_prune_shadow;
+	uint64_t missing_rows_shadow;
+	uint64_t extra_rows_shadow;
+	std::string export_path;
+	uint64_t export_rows;
+	bool export_truncated;
+};
+
+struct FasimGasal2PretracebackPruningEligibilityRuntime
+{
+	FasimGasal2PretracebackPruningEligibilityRuntime() :
+		active(false),
+		limit(0),
+		export_rows(0),
+		export_attempts(0),
+		next_attempt_id(0),
+		path(""),
+		mutex(),
+		output(),
+		stats()
+	{
+	}
+
+	void open()
+	{
+		active = fasim_gasal2_pretraceback_pruning_eligibility_runtime();
+		stats.requested = active;
+		stats.active = active;
+		if (!active)
+		{
+			return;
+		}
+		limit = fasim_env_uint64_or_default(
+			"FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY_EXPORT_LIMIT",
+			1000ULL);
+		path =
+			fasim_gasal2_pretraceback_pruning_eligibility_export_path_runtime();
+		if (path.empty())
+		{
+			return;
+		}
+		output.open(path.c_str());
+		if (!output)
+		{
+			return;
+		}
+		output
+			<< "attempt_id\tflush_id\ttask_id\tscoreinfo_index\t"
+			<< "prealign_score\tquery_len\ttarget_size\ttarget_start\t"
+			<< "cutlength\trequest_key_hash\tdescriptor_key_hash\t"
+			<< "final_row_hash\trepresentative_attempt_id\t"
+			<< "representative_flush_id\trepresentative_request_key_hash\t"
+			<< "representative_descriptor_key_hash\tsame_flush\t"
+			<< "cross_flush\tscore\tquery_begin\tquery_end\tref_begin\t"
+			<< "ref_end\toutput_global_start\toutput_global_end\tnt\t"
+			<< "identity\tstability\tcigar_hash\tfinal_rejection_bucket\t"
+			<< "eligibility_bucket\tpre_traceback_decidable\t"
+			<< "post_traceback_only\ttop5_only_safe_candidate\t"
+			<< "full_output_safe_candidate\tnotes\n";
+	}
+
+	uint64_t next_attempt()
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		return ++next_attempt_id;
+	}
+
+	void record(const FasimGasal2PretracebackPruningEligibilityAttempt &attempt)
+	{
+		if (!active)
+		{
+			return;
+		}
+		std::lock_guard<std::mutex> lock(mutex);
+		++stats.attempts;
+		if (attempt.final_rejection_bucket == "retained_emitted")
+		{
+			++stats.retained_final_rows;
+			++export_attempts;
+			if (!output || export_rows >= limit)
+			{
+				return;
+			}
+		}
+		else
+		{
+			++stats.removed_attempts;
+			if (attempt.representative_attempt_id != 0)
+			{
+				++stats.mapped_removed_attempts;
+			}
+			else
+			{
+				++stats.unmapped_removed_attempts;
+			}
+
+			if (attempt.eligibility_bucket == "exact_request_duplicate")
+			{
+				++stats.exact_request_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "exact_descriptor_duplicate")
+			{
+				++stats.exact_descriptor_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "same_final_row_different_descriptor")
+			{
+				++stats.same_final_row_different_descriptor;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "cross_flush_exact_duplicate")
+			{
+				++stats.cross_flush_exact_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "cigar_dependent_duplicate")
+			{
+				++stats.cigar_dependent_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "representative_selection_dependent")
+			{
+				++stats.representative_selection_dependent;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "sort_or_dominance_removed")
+			{
+				++stats.sort_or_dominance_removed;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "pretraceback_span_provable")
+			{
+				++stats.pretraceback_span_provable;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "reverse_start_dependent_span")
+			{
+				++stats.reverse_start_dependent_span;
+			}
+			else if (attempt.eligibility_bucket == "cigar_dependent_span")
+			{
+				++stats.cigar_dependent_span;
+			}
+			else if (attempt.eligibility_bucket == "unknown")
+			{
+				++stats.unknown;
+			}
+			else
+			{
+				++stats.unknown;
+			}
+
+			++export_attempts;
+			if (!output || export_rows >= limit)
+			{
+				return;
+			}
+		}
+		output
+			<< attempt.attempt_id << "\t"
+			<< attempt.flush_id << "\t"
+			<< attempt.task_id << "\t"
+			<< attempt.scoreinfo_index << "\t"
+			<< attempt.prealign_score << "\t"
+			<< attempt.query_len << "\t"
+			<< attempt.target_size << "\t"
+			<< attempt.target_start << "\t"
+			<< attempt.cutlength << "\t"
+			<< attempt.request_key_hash << "\t"
+			<< attempt.descriptor_key_hash << "\t"
+			<< attempt.final_row_hash << "\t"
+			<< attempt.representative_attempt_id << "\t"
+			<< attempt.representative_flush_id << "\t"
+			<< attempt.representative_request_key_hash << "\t"
+			<< attempt.representative_descriptor_key_hash << "\t"
+			<< (attempt.same_flush ? 1 : 0) << "\t"
+			<< (attempt.cross_flush ? 1 : 0) << "\t"
+			<< attempt.score << "\t"
+			<< attempt.query_begin << "\t"
+			<< attempt.query_end << "\t"
+			<< attempt.ref_begin << "\t"
+			<< attempt.ref_end << "\t"
+			<< attempt.output_global_start << "\t"
+			<< attempt.output_global_end << "\t"
+			<< attempt.nt << "\t"
+			<< attempt.identity << "\t"
+			<< attempt.stability << "\t"
+			<< attempt.cigar_hash << "\t"
+			<< attempt.final_rejection_bucket << "\t"
+			<< attempt.eligibility_bucket << "\t"
+			<< (attempt.pre_traceback_decidable ? 1 : 0) << "\t"
+			<< (attempt.post_traceback_only ? 1 : 0) << "\t"
+			<< (attempt.top5_only_safe_candidate ? 1 : 0) << "\t"
+			<< (attempt.full_output_safe_candidate ? 1 : 0) << "\t"
+			<< attempt.notes << "\n";
+		++export_rows;
+	}
+
+	FasimGasal2PretracebackPruningEligibilityStats snapshot() const
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		FasimGasal2PretracebackPruningEligibilityStats out = stats;
+		out.export_path = path;
+		out.export_rows = export_rows;
+		out.export_truncated = export_attempts > export_rows;
+		return out;
+	}
+
+	bool active;
+	uint64_t limit;
+	uint64_t export_rows;
+	uint64_t export_attempts;
+	uint64_t next_attempt_id;
+	std::string path;
+	mutable std::mutex mutex;
+	std::ofstream output;
+	FasimGasal2PretracebackPruningEligibilityStats stats;
+};
+
+static inline uint64_t fasim_hash_int64(uint64_t digest, int64_t value)
+{
+	for (int i = 0; i < 8; ++i)
+	{
+		const unsigned char byte =
+			static_cast<unsigned char>((static_cast<uint64_t>(value) >>
+			                            (i * 8)) & 0xffU);
+		digest ^= byte;
+		digest *= 1099511628211ULL;
+	}
+	return digest;
+}
+
+static inline uint64_t fasim_hash_string_field(uint64_t digest,
+                                               const std::string &value)
+{
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(value.size()));
+	return fasim_fnv1a_update(digest, value);
+}
+
+static inline std::string fasim_hash_selected_request(
+	const FasimGasal2SelectedAlignment &selectedAlignment,
+	uint64_t taskId)
+{
+	uint64_t digest = 1469598103934665603ULL;
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(taskId));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.scoreinfo_index));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(selectedAlignment.start));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.cutlength));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.score_prepass_score));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.score_prepass_query_end));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.score_prepass_ref_end));
+	return fasim_hex_u64(digest);
+}
+
+static inline std::string fasim_hash_selected_descriptor(
+	const FasimGasal2SelectedAlignment &selectedAlignment,
+	const StripedSmithWaterman::Alignment &alignment,
+	uint64_t taskId)
+{
+	uint64_t digest = 1469598103934665603ULL;
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(taskId));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.scoreinfo_index));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(selectedAlignment.start));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.cutlength));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.sw_score));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.query_begin));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.query_end));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.ref_begin));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.ref_end));
+	return fasim_hex_u64(digest);
+}
+
+static inline std::string fasim_hash_cigar(
+	const std::vector<uint32_t> &cigar)
+{
+	uint64_t digest = 1469598103934665603ULL;
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(cigar.size()));
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		digest = fasim_hash_int64(digest, static_cast<int64_t>(cigar[i]));
+	}
+	return fasim_hex_u64(digest);
+}
+
+static inline std::string fasim_hash_lite_row_key(const std::string &key)
+{
+	return fasim_hex_u64(fasim_hash_string_field(1469598103934665603ULL, key));
+}
+
+static inline void fasim_print_pretraceback_eligibility_metric(
+	const char *name,
+	uint64_t value)
+{
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_pruning_eligibility_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_gasal2_pretraceback_pruning_eligibility_stats(
+	const FasimGasal2PretracebackPruningEligibilityRuntime &runtime)
+{
+	const FasimGasal2PretracebackPruningEligibilityStats stats =
+		runtime.snapshot();
+	fasim_print_pretraceback_eligibility_metric("requested",
+	                                            stats.requested ? 1 : 0);
+	fasim_print_pretraceback_eligibility_metric("active",
+	                                            stats.active ? 1 : 0);
+	fasim_print_pretraceback_eligibility_metric("attempts", stats.attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"retained_final_rows",
+		stats.retained_final_rows);
+	fasim_print_pretraceback_eligibility_metric("removed_attempts",
+	                                            stats.removed_attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"mapped_removed_attempts",
+		stats.mapped_removed_attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"unmapped_removed_attempts",
+		stats.unmapped_removed_attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"exact_request_duplicate",
+		stats.exact_request_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"exact_descriptor_duplicate",
+		stats.exact_descriptor_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"same_final_row_different_descriptor",
+		stats.same_final_row_different_descriptor);
+	fasim_print_pretraceback_eligibility_metric(
+		"cross_flush_exact_duplicate",
+		stats.cross_flush_exact_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"cigar_dependent_duplicate",
+		stats.cigar_dependent_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"representative_selection_dependent",
+		stats.representative_selection_dependent);
+	fasim_print_pretraceback_eligibility_metric(
+		"sort_or_dominance_removed",
+		stats.sort_or_dominance_removed);
+	fasim_print_pretraceback_eligibility_metric(
+		"pretraceback_span_provable",
+		stats.pretraceback_span_provable);
+	fasim_print_pretraceback_eligibility_metric(
+		"reverse_start_dependent_span",
+		stats.reverse_start_dependent_span);
+	fasim_print_pretraceback_eligibility_metric("cigar_dependent_span",
+	                                            stats.cigar_dependent_span);
+	fasim_print_pretraceback_eligibility_metric("unknown", stats.unknown);
+	fasim_print_pretraceback_eligibility_metric("false_prune_shadow",
+	                                            stats.false_prune_shadow);
+	fasim_print_pretraceback_eligibility_metric("missing_rows_shadow",
+	                                            stats.missing_rows_shadow);
+	fasim_print_pretraceback_eligibility_metric("extra_rows_shadow",
+	                                            stats.extra_rows_shadow);
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_pruning_eligibility_export_path="
+	          << stats.export_path << "\n";
+	fasim_print_pretraceback_eligibility_metric("export_rows",
+	                                            stats.export_rows);
+	fasim_print_pretraceback_eligibility_metric(
+		"export_truncated",
+		stats.export_truncated ? 1 : 0);
+}
+
 static inline uint64_t fasim_take_taxonomy_bucket(uint64_t requested,
                                                   uint64_t *remaining)
 {
@@ -4771,8 +5303,12 @@ int main(int argc, char* const* argv)
 	start = clock();
 	const bool taxonomyEnabled =
 		fasim_gasal2_traceback_rejection_taxonomy_runtime();
+	const bool eligibilityEnabled =
+		fasim_gasal2_pretraceback_pruning_eligibility_runtime();
 	const bool phaseTimingEnabled =
-		fasim_top5_gasal2_phase_timing_enabled_runtime() || taxonomyEnabled;
+		fasim_top5_gasal2_phase_timing_enabled_runtime() ||
+		taxonomyEnabled ||
+		eligibilityEnabled;
 	const bool minScoreShadowEnabled = fasim_exact_column_min_score_shadow_enabled_runtime();
 	const bool streamingScoreInfoTwoContractRequested =
 		fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
@@ -4793,6 +5329,8 @@ int main(int argc, char* const* argv)
 	FasimTop5PhaseTimingStats phaseTiming;
 	FasimGasal2TracebackRejectionTaxonomyExporter taxonomyExporter;
 	taxonomyExporter.open();
+	FasimGasal2PretracebackPruningEligibilityRuntime eligibilityRuntime;
+	eligibilityRuntime.open();
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -7464,7 +8002,149 @@ int main(int argc, char* const* argv)
 							emitRank33Plus.fetch_add(1, std::memory_order_relaxed);
 							}
 							};
-					auto exportTaxonomyAttempt =
+						auto makeEligibilityAttempt =
+							[&](const FasimGasal2SelectedAlignment &selectedAlignment,
+							    size_t taskIndex,
+							    const StripedSmithWaterman::Alignment &alignment)
+							-> FasimGasal2PretracebackPruningEligibilityAttempt
+						{
+							FasimGasal2PretracebackPruningEligibilityAttempt attempt;
+							if (!eligibilityRuntime.active)
+							{
+								return attempt;
+							}
+							attempt.attempt_id = eligibilityRuntime.next_attempt();
+							attempt.flush_id = phaseTiming.flushes;
+							attempt.task_id = static_cast<uint64_t>(taskIndex);
+							attempt.scoreinfo_index =
+								selectedAlignment.scoreinfo_index;
+							attempt.prealign_score =
+								selectedAlignment.score_prepass_score != 0 ?
+								selectedAlignment.score_prepass_score :
+								alignment.sw_score;
+							attempt.query_len =
+								static_cast<uint64_t>(lncSeq.size());
+							attempt.target_size =
+								alignment.ref_end >= alignment.ref_begin ?
+								alignment.ref_end - alignment.ref_begin + 1 :
+								selectedAlignment.cutlength;
+							attempt.target_start = selectedAlignment.start;
+							attempt.cutlength = selectedAlignment.cutlength;
+							attempt.request_key_hash =
+								fasim_hash_selected_request(
+									selectedAlignment,
+									static_cast<uint64_t>(taskIndex));
+							attempt.descriptor_key_hash =
+								fasim_hash_selected_descriptor(
+									selectedAlignment,
+									alignment,
+									static_cast<uint64_t>(taskIndex));
+							attempt.score = alignment.sw_score;
+							attempt.query_begin = alignment.query_begin;
+							attempt.query_end = alignment.query_end;
+							attempt.ref_begin = alignment.ref_begin;
+							attempt.ref_end = alignment.ref_end;
+							attempt.cigar_hash = fasim_hash_cigar(alignment.cigar);
+							return attempt;
+						};
+						auto fillEligibilityFromLiteRow =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt *attempt,
+							    const FasimLiteRow &row,
+							    long outputGlobalStart,
+							    long outputGlobalEnd)
+						{
+							if (attempt == NULL)
+							{
+								return;
+							}
+							attempt->final_row_hash =
+								fasim_hash_lite_row_key(row.key);
+							attempt->output_global_start = outputGlobalStart;
+							attempt->output_global_end = outputGlobalEnd;
+							attempt->score = static_cast<int>(row.score);
+							attempt->nt = static_cast<int>(row.nt);
+							attempt->identity = row.identity;
+							attempt->stability = row.stability;
+						};
+						auto recordEligibilityThresholdRemoval =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt attempt,
+							    const char *bucket,
+							    bool scoreFail,
+							    bool ntFail,
+							    const char *notes)
+						{
+							if (!eligibilityRuntime.active ||
+							    attempt.attempt_id == 0)
+							{
+								return;
+							}
+							attempt.final_rejection_bucket = bucket;
+							if (scoreFail)
+							{
+								attempt.eligibility_bucket =
+									"sort_or_dominance_removed";
+								attempt.pre_traceback_decidable = true;
+								attempt.top5_only_safe_candidate = true;
+							}
+							else if (ntFail)
+							{
+								attempt.eligibility_bucket =
+									"cigar_dependent_span";
+								attempt.post_traceback_only = true;
+							}
+							else
+							{
+								attempt.eligibility_bucket =
+									"cigar_dependent_duplicate";
+								attempt.post_traceback_only = true;
+							}
+							attempt.notes = notes;
+							eligibilityRuntime.record(attempt);
+						};
+						auto recordEligibilityPostCigarOnly =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt attempt,
+							    const char *notes)
+						{
+							if (!eligibilityRuntime.active ||
+							    attempt.attempt_id == 0)
+							{
+								return;
+							}
+							attempt.final_rejection_bucket = "post_cigar_only";
+							attempt.eligibility_bucket =
+								"cigar_dependent_duplicate";
+							attempt.post_traceback_only = true;
+							attempt.notes = notes;
+							eligibilityRuntime.record(attempt);
+						};
+						auto recordEligibilityInvalidSpan =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt attempt,
+							    bool pretracebackProvable,
+							    const char *notes)
+						{
+							if (!eligibilityRuntime.active ||
+							    attempt.attempt_id == 0)
+							{
+								return;
+							}
+							attempt.final_rejection_bucket = "invalid_span_bound";
+							if (pretracebackProvable)
+							{
+								attempt.eligibility_bucket =
+									"pretraceback_span_provable";
+								attempt.pre_traceback_decidable = true;
+								attempt.top5_only_safe_candidate = true;
+							}
+							else
+							{
+								attempt.eligibility_bucket =
+									"cigar_dependent_span";
+								attempt.post_traceback_only = true;
+							}
+							attempt.notes = notes;
+							eligibilityRuntime.record(attempt);
+						};
+						auto exportTaxonomyAttempt =
 						[&](const FasimGasal2SelectedAlignment &selectedAlignment,
 						    size_t taskIndex,
 						    const StripedSmithWaterman::Alignment &alignment,
@@ -7514,12 +8194,20 @@ int main(int argc, char* const* argv)
 					{
 						std::vector< std::vector<FasimGasal2DirectLiteArchiveTriplex> >
 							directRowsByTask(tasks.size());
+						std::vector< std::vector<FasimGasal2PretracebackPruningEligibilityAttempt> >
+							directEligibilityByTask(tasks.size());
 
 						auto convertDirectTask = [&](size_t t)
 						{
 							const StreamTask &task = tasks[t];
 							std::vector<FasimGasal2DirectLiteArchiveTriplex> rows;
+							std::vector<FasimGasal2PretracebackPruningEligibilityAttempt>
+								eligibilityRows;
 							rows.reserve(replaySelectedByTask[t].size());
+							if (eligibilityRuntime.active)
+							{
+								eligibilityRows.reserve(replaySelectedByTask[t].size());
+							}
 							if (phaseTimingEnabled)
 							{
 								convertTasks.fetch_add(1, std::memory_order_relaxed);
@@ -7550,6 +8238,12 @@ int main(int argc, char* const* argv)
 								{
 									continue;
 								}
+									FasimGasal2PretracebackPruningEligibilityAttempt
+										eligibilityAttempt =
+											makeEligibilityAttempt(
+												selectedAlignment,
+												t,
+												*alignmentForRow);
 									observeScoreInfoRank(selectedAlignment);
 									const uint64_t selectedScoreInfoRank =
 										scoreInfoRankForSelected(selectedAlignment);
@@ -7596,8 +8290,22 @@ int main(int argc, char* const* argv)
 										shadowSumSpanLtCLength.fetch_add(
 											1,
 											std::memory_order_relaxed);
+										const bool pretracebackProvable =
+											selectedAlignment.cutlength > 0 &&
+											selectedAlignment.cutlength <
+												paraList.cLength;
+										eligibilityAttempt.invalid_span_bound = true;
+										eligibilityAttempt
+											.invalid_span_pretraceback_provable =
+												pretracebackProvable;
 										if (ntSumSpanPrune)
 										{
+											recordEligibilityInvalidSpan(
+												eligibilityAttempt,
+												pretracebackProvable,
+												pretracebackProvable ?
+												"span bound provable from pre-traceback cutlength" :
+												"span bound depends on traceback endpoints");
 											continue;
 										}
 									}
@@ -7693,6 +8401,22 @@ int main(int argc, char* const* argv)
 											FasimGasal2DirectLiteArchiveTriplex(
 												converted,
 												convertedRecord));
+										if (eligibilityRuntime.active)
+										{
+											FasimLiteRow liteRow =
+												fasim_make_lite_row(
+													converted.chr,
+													converted.genomestart,
+													converted.genomeend,
+													converted);
+											fillEligibilityFromLiteRow(
+												&eligibilityAttempt,
+												liteRow,
+												converted.genomestart,
+												converted.genomeend);
+											eligibilityRows.push_back(
+												eligibilityAttempt);
+										}
 									}
 									if (taxonomyExporter.active)
 									{
@@ -7764,6 +8488,27 @@ int main(int argc, char* const* argv)
 											}
 										}
 									}
+									if (eligibilityRuntime.active &&
+									    rows.size() == beforeRows)
+									{
+										if (eligibilityAttempt.invalid_span_bound)
+										{
+											recordEligibilityInvalidSpan(
+												eligibilityAttempt,
+												eligibilityAttempt
+													.invalid_span_pretraceback_provable,
+												eligibilityAttempt
+													.invalid_span_pretraceback_provable ?
+												"span bound provable from pre-traceback cutlength" :
+												"span bound depends on traceback endpoints");
+										}
+										else
+										{
+											recordEligibilityPostCigarOnly(
+												eligibilityAttempt,
+												"no converted row after CIGAR materialization");
+										}
+									}
 									if (phaseTimingEnabled)
 									{
 										const uint64_t triplexNanos =
@@ -7799,6 +8544,181 @@ int main(int argc, char* const* argv)
 							fasim_sort_unique_filter_converted_rows(rows,
 							                                        filteredRows,
 							                                        paraList);
+							if (eligibilityRuntime.active)
+							{
+								std::map<std::string,
+								         FasimGasal2PretracebackPruningEligibilityAttempt>
+									retainedByHash;
+								for (size_t ri = 0; ri < filteredRows.size(); ++ri)
+								{
+									const triplex &retained = filteredRows[ri].value;
+									if (retained.score < paraList.scoreMin ||
+									    retained.identity < paraList.minIdentity ||
+									    retained.tri_score < paraList.minStability ||
+									    retained.nt < paraList.cLength)
+									{
+										continue;
+									}
+									const FasimLiteRow retainedLite =
+										fasim_make_lite_row(
+											retained.chr,
+											retained.genomestart,
+											retained.genomeend,
+											retained);
+									const std::string retainedHash =
+										fasim_hash_lite_row_key(retainedLite.key);
+									for (size_t ai = 0;
+									     ai < eligibilityRows.size();
+									     ++ai)
+									{
+										if (eligibilityRows[ai].final_row_hash ==
+										    retainedHash)
+										{
+											retainedByHash[retainedHash] =
+												eligibilityRows[ai];
+											break;
+										}
+									}
+								}
+								for (size_t ai = 0;
+								     ai < eligibilityRows.size();
+								     ++ai)
+								{
+									FasimGasal2PretracebackPruningEligibilityAttempt
+										attempt = eligibilityRows[ai];
+									std::map<std::string,
+									         FasimGasal2PretracebackPruningEligibilityAttempt>
+										::const_iterator repIt =
+											retainedByHash.find(
+												attempt.final_row_hash);
+									const bool hasRepresentative =
+										repIt != retainedByHash.end();
+									if (hasRepresentative)
+									{
+										const FasimGasal2PretracebackPruningEligibilityAttempt
+											&rep = repIt->second;
+										attempt.representative_attempt_id =
+											rep.attempt_id;
+										attempt.representative_flush_id =
+											rep.flush_id;
+										attempt.representative_request_key_hash =
+											rep.request_key_hash;
+										attempt.representative_descriptor_key_hash =
+											rep.descriptor_key_hash;
+										attempt.same_flush =
+											attempt.flush_id == rep.flush_id;
+										attempt.cross_flush =
+											attempt.flush_id != rep.flush_id;
+										if (attempt.attempt_id == rep.attempt_id)
+										{
+											attempt.final_rejection_bucket =
+												"retained_emitted";
+											attempt.eligibility_bucket =
+												"representative_selection_dependent";
+											attempt.full_output_safe_candidate = true;
+											attempt.notes =
+												"canonical retained representative";
+										}
+										else if (attempt.cross_flush &&
+										         attempt.request_key_hash ==
+										             rep.request_key_hash)
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"cross_flush_exact_duplicate";
+											attempt.pre_traceback_decidable = true;
+											attempt.top5_only_safe_candidate = true;
+											attempt.notes =
+												"same final row and request as retained representative across flush";
+										}
+										else if (attempt.request_key_hash ==
+										         rep.request_key_hash)
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"exact_request_duplicate";
+											attempt.pre_traceback_decidable = true;
+											attempt.top5_only_safe_candidate = true;
+											attempt.notes =
+												"same pre-traceback request as retained representative";
+										}
+										else if (attempt.descriptor_key_hash ==
+										         rep.descriptor_key_hash)
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"exact_descriptor_duplicate";
+											attempt.pre_traceback_decidable = true;
+											attempt.top5_only_safe_candidate = true;
+											attempt.notes =
+												"same normalized descriptor as retained representative";
+										}
+										else
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"same_final_row_different_descriptor";
+											attempt.post_traceback_only = true;
+											attempt.notes =
+												"same final row but different pre-traceback descriptor";
+										}
+										eligibilityRuntime.record(attempt);
+										continue;
+									}
+
+									const bool scoreFail =
+										attempt.score < paraList.scoreMin;
+									const bool identityFail =
+										attempt.identity < paraList.minIdentity;
+									const bool stabilityFail =
+										attempt.stability < paraList.minStability;
+									const bool ntFail =
+										attempt.nt < paraList.cLength;
+									if (attempt.invalid_span_bound)
+									{
+										recordEligibilityInvalidSpan(
+											attempt,
+											attempt
+												.invalid_span_pretraceback_provable,
+											attempt
+												.invalid_span_pretraceback_provable ?
+											"span bound provable from pre-traceback cutlength" :
+											"span bound depends on traceback endpoints");
+									}
+									else if (scoreFail || identityFail ||
+									         stabilityFail || ntFail)
+									{
+										const char *bucket = scoreFail ?
+											"filtered_score" :
+											(identityFail ? "filtered_identity" :
+											 (stabilityFail ?
+											  "filtered_stability" :
+											  "filtered_nt"));
+										recordEligibilityThresholdRemoval(
+											attempt,
+											bucket,
+											scoreFail,
+											ntFail,
+											"converted row rejected before final retained set");
+									}
+									else
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"sort_or_dominance_removed";
+										attempt.post_traceback_only = true;
+										attempt.notes =
+											"converted row removed by sort/filter without retained representative";
+										eligibilityRuntime.record(attempt);
+									}
+								}
+								directEligibilityByTask[t].swap(eligibilityRows);
+							}
 							if (phaseTimingEnabled)
 							{
 								convertSortNanos.fetch_add(
@@ -7975,10 +8895,16 @@ int main(int argc, char* const* argv)
 					{
 						auto convertOneTask = [&](size_t t)
 					{
-					const StreamTask &task = tasks[t];
-					std::vector<triplex> myTriplexList;
-					myTriplexList.reserve(replaySelectedByTask[t].size());
-					if (phaseTimingEnabled)
+						const StreamTask &task = tasks[t];
+						std::vector<triplex> myTriplexList;
+						myTriplexList.reserve(replaySelectedByTask[t].size());
+						std::vector<FasimGasal2PretracebackPruningEligibilityAttempt>
+							eligibilityRows;
+						if (eligibilityRuntime.active)
+						{
+							eligibilityRows.reserve(replaySelectedByTask[t].size());
+						}
+						if (phaseTimingEnabled)
 					{
 						convertTasks.fetch_add(1, std::memory_order_relaxed);
 						if (!replaySelectedByTask[t].empty())
@@ -8003,6 +8929,12 @@ int main(int argc, char* const* argv)
 						}
 							if (selectedAlignment.selected && alignmentForTriplex->sw_score != 0)
 							{
+								FasimGasal2PretracebackPruningEligibilityAttempt
+									eligibilityAttempt =
+										makeEligibilityAttempt(
+											selectedAlignment,
+											t,
+											*alignmentForTriplex);
 								observeScoreInfoRank(selectedAlignment);
 								const uint64_t selectedScoreInfoRank = scoreInfoRankForSelected(selectedAlignment);
 								const size_t beforeTriplexCount = myTriplexList.size();
@@ -8031,8 +8963,22 @@ int main(int argc, char* const* argv)
 							if (querySpan + refSpan < paraList.cLength)
 							{
 								shadowSumSpanLtCLength.fetch_add(1, std::memory_order_relaxed);
+								const bool pretracebackProvable =
+									selectedAlignment.cutlength > 0 &&
+									selectedAlignment.cutlength <
+										paraList.cLength;
+								eligibilityAttempt.invalid_span_bound = true;
+								eligibilityAttempt
+									.invalid_span_pretraceback_provable =
+										pretracebackProvable;
 								if (ntSumSpanPrune)
 								{
+										recordEligibilityInvalidSpan(
+											eligibilityAttempt,
+											pretracebackProvable,
+											pretracebackProvable ?
+											"span bound provable from pre-traceback cutlength" :
+											"span bound depends on traceback endpoints");
 										continue;
 									}
 								}
@@ -8060,18 +9006,45 @@ int main(int argc, char* const* argv)
 							                 paraList.ntMax,
 							                 writeFull,
 							                 !equivalenceFirstConvertActive);
-								if (equivalenceFirstConvertActive &&
-								    myTriplexList.size() > beforeTriplexCount)
-								{
-									for (size_t rowIndex = beforeTriplexCount;
+									if (equivalenceFirstConvertActive &&
+									    myTriplexList.size() > beforeTriplexCount)
+									{
+										for (size_t rowIndex = beforeTriplexCount;
 									     rowIndex < myTriplexList.size();
 									     ++rowIndex)
 									{
-										myTriplexList[rowIndex].typed_cigar =
-											alignmentForTriplex->cigar;
+											myTriplexList[rowIndex].typed_cigar =
+												alignmentForTriplex->cigar;
+										}
 									}
-								}
-									if (phaseTimingEnabled)
+									if (eligibilityRuntime.active &&
+									    myTriplexList.size() > beforeTriplexCount)
+									{
+										const triplex &newRow =
+											myTriplexList[beforeTriplexCount];
+										const std::string chrForRow =
+											newRow.chr.empty() ? task.chr : newRow.chr;
+										const long startForRow =
+											newRow.genomestart != 0 ?
+											newRow.genomestart :
+											newRow.starj + task.recordStartGenome - 1;
+										const long endForRow =
+											newRow.genomeend != 0 ?
+											newRow.genomeend :
+											newRow.endj + task.recordStartGenome - 1;
+										const FasimLiteRow liteRow =
+											fasim_make_lite_row(chrForRow,
+											                    startForRow,
+											                    endForRow,
+											                    newRow);
+										fillEligibilityFromLiteRow(
+											&eligibilityAttempt,
+											liteRow,
+											startForRow,
+											endForRow);
+										eligibilityRows.push_back(eligibilityAttempt);
+									}
+										if (phaseTimingEnabled)
 									{
 										const uint64_t triplexNanos =
 											static_cast<uint64_t>(
@@ -8183,18 +9156,39 @@ int main(int argc, char* const* argv)
 										liteRowScoreInfoRanks[rankRow.key] = selectedScoreInfoRank;
 									}
 								}
-								if (phaseTimingEnabled)
-								{
-									convertRankMapNanos.fetch_add(
-										static_cast<uint64_t>(
-											std::chrono::duration_cast<std::chrono::nanoseconds>(
+									if (phaseTimingEnabled)
+									{
+										convertRankMapNanos.fetch_add(
+											static_cast<uint64_t>(
+												std::chrono::duration_cast<std::chrono::nanoseconds>(
 												std::chrono::steady_clock::now() -
 												rankMapStart).count()),
 										std::memory_order_relaxed);
+									}
+									}
+								if (eligibilityRuntime.active &&
+								    myTriplexList.size() == beforeTriplexCount)
+								{
+									if (eligibilityAttempt.invalid_span_bound)
+									{
+										recordEligibilityInvalidSpan(
+											eligibilityAttempt,
+											eligibilityAttempt
+												.invalid_span_pretraceback_provable,
+											eligibilityAttempt
+												.invalid_span_pretraceback_provable ?
+											"span bound provable from pre-traceback cutlength" :
+											"span bound depends on traceback endpoints");
+									}
+									else
+									{
+										recordEligibilityPostCigarOnly(
+											eligibilityAttempt,
+											"no triplex row after CIGAR materialization");
+									}
 								}
 								}
 							}
-						}
 						if (phaseTimingEnabled)
 						{
 							convertSelectedScanNanos.fetch_add(
@@ -8245,10 +9239,10 @@ int main(int argc, char* const* argv)
 										filterStart).count()),
 								std::memory_order_relaxed);
 						}
-						if (!liteRowScoreInfoRanks.empty())
-						{
-							const auto rankApplyStart = std::chrono::steady_clock::now();
-							for (size_t i = 0; i < triplexesByTask[t].size(); ++i)
+							if (!liteRowScoreInfoRanks.empty())
+							{
+								const auto rankApplyStart = std::chrono::steady_clock::now();
+								for (size_t i = 0; i < triplexesByTask[t].size(); ++i)
 							{
 								triplex &atr = triplexesByTask[t][i];
 								const std::string &chrForRank = atr.chr.empty() ? task.chr : atr.chr;
@@ -8279,6 +9273,169 @@ int main(int argc, char* const* argv)
 											std::chrono::steady_clock::now() -
 											rankApplyStart).count()),
 									std::memory_order_relaxed);
+							}
+						}
+						if (eligibilityRuntime.active)
+						{
+							std::map<std::string,
+							         FasimGasal2PretracebackPruningEligibilityAttempt>
+								retainedByHash;
+							for (size_t ri = 0;
+							     ri < triplexesByTask[t].size();
+							     ++ri)
+							{
+								triplex retained = triplexesByTask[t][ri];
+								const std::string chrForRow =
+									retained.chr.empty() ? task.chr : retained.chr;
+								const long startForRow =
+									retained.genomestart != 0 ?
+									retained.genomestart :
+									retained.starj + task.recordStartGenome - 1;
+								const long endForRow =
+									retained.genomeend != 0 ?
+									retained.genomeend :
+									retained.endj + task.recordStartGenome - 1;
+								const FasimLiteRow retainedLite =
+									fasim_make_lite_row(chrForRow,
+									                    startForRow,
+									                    endForRow,
+									                    retained);
+								const std::string retainedHash =
+									fasim_hash_lite_row_key(retainedLite.key);
+								for (size_t ai = 0;
+								     ai < eligibilityRows.size();
+								     ++ai)
+								{
+									if (eligibilityRows[ai].final_row_hash ==
+									    retainedHash)
+									{
+										retainedByHash[retainedHash] =
+											eligibilityRows[ai];
+										break;
+									}
+								}
+							}
+							for (size_t ai = 0;
+							     ai < eligibilityRows.size();
+							     ++ai)
+							{
+								FasimGasal2PretracebackPruningEligibilityAttempt
+									attempt = eligibilityRows[ai];
+								std::map<std::string,
+								         FasimGasal2PretracebackPruningEligibilityAttempt>
+									::const_iterator repIt =
+										retainedByHash.find(
+											attempt.final_row_hash);
+								if (repIt != retainedByHash.end())
+								{
+									const FasimGasal2PretracebackPruningEligibilityAttempt
+										&rep = repIt->second;
+									attempt.representative_attempt_id =
+										rep.attempt_id;
+									attempt.representative_flush_id =
+										rep.flush_id;
+									attempt.representative_request_key_hash =
+										rep.request_key_hash;
+									attempt.representative_descriptor_key_hash =
+										rep.descriptor_key_hash;
+									attempt.same_flush =
+										attempt.flush_id == rep.flush_id;
+									attempt.cross_flush =
+										attempt.flush_id != rep.flush_id;
+									if (attempt.attempt_id == rep.attempt_id)
+									{
+										attempt.final_rejection_bucket =
+											"retained_emitted";
+										attempt.eligibility_bucket =
+											"representative_selection_dependent";
+										attempt.full_output_safe_candidate = true;
+										attempt.notes =
+											"canonical retained representative";
+									}
+									else if (attempt.request_key_hash ==
+									         rep.request_key_hash)
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"exact_request_duplicate";
+										attempt.pre_traceback_decidable = true;
+										attempt.top5_only_safe_candidate = true;
+										attempt.notes =
+											"same pre-traceback request as retained representative";
+									}
+									else if (attempt.descriptor_key_hash ==
+									         rep.descriptor_key_hash)
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"exact_descriptor_duplicate";
+										attempt.pre_traceback_decidable = true;
+										attempt.top5_only_safe_candidate = true;
+										attempt.notes =
+											"same normalized descriptor as retained representative";
+									}
+									else
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"same_final_row_different_descriptor";
+										attempt.post_traceback_only = true;
+										attempt.notes =
+											"same final row but different pre-traceback descriptor";
+									}
+									eligibilityRuntime.record(attempt);
+									continue;
+								}
+
+								const bool scoreFail =
+									attempt.score < paraList.scoreMin;
+								const bool identityFail =
+									attempt.identity < paraList.minIdentity;
+								const bool stabilityFail =
+									attempt.stability < paraList.minStability;
+								const bool ntFail =
+									attempt.nt < paraList.cLength;
+								if (attempt.invalid_span_bound)
+								{
+									recordEligibilityInvalidSpan(
+										attempt,
+										attempt
+											.invalid_span_pretraceback_provable,
+										attempt
+											.invalid_span_pretraceback_provable ?
+										"span bound provable from pre-traceback cutlength" :
+										"span bound depends on traceback endpoints");
+								}
+								else if (scoreFail || identityFail ||
+								         stabilityFail || ntFail)
+								{
+									const char *bucket = scoreFail ?
+										"filtered_score" :
+										(identityFail ? "filtered_identity" :
+										 (stabilityFail ?
+										  "filtered_stability" :
+										  "filtered_nt"));
+									recordEligibilityThresholdRemoval(
+										attempt,
+										bucket,
+										scoreFail,
+										ntFail,
+										"triplex row rejected before final retained set");
+								}
+								else
+								{
+									attempt.final_rejection_bucket =
+										"final_sort_dedup_removed";
+									attempt.eligibility_bucket =
+										"sort_or_dominance_removed";
+									attempt.post_traceback_only = true;
+									attempt.notes =
+										"triplex row removed by sort/filter without retained representative";
+									eligibilityRuntime.record(attempt);
+								}
 							}
 						}
 					};
@@ -15283,6 +16440,11 @@ int main(int argc, char* const* argv)
 				fasim_print_gasal2_traceback_rejection_taxonomy_stats(
 					phaseTiming,
 					taxonomyExporter);
+			}
+			if (eligibilityEnabled)
+			{
+				fasim_print_gasal2_pretraceback_pruning_eligibility_stats(
+					eligibilityRuntime);
 			}
 			if (minScoreShadowEnabled)
 			{
