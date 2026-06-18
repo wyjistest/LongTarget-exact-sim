@@ -1592,6 +1592,11 @@ check-fasim-gasal2-pretraceback-span-prune-shadow-result:
 
 .PHONY: check-fasim-gasal2-pretraceback-span-prune-shadow-result
 
+check-fasim-gasal2-tie-complete-top5-traceback-certificate-goal:
+	bash ./scripts/check_fasim_gasal2_tie_complete_top5_traceback_certificate_goal.sh
+
+.PHONY: check-fasim-gasal2-tie-complete-top5-traceback-certificate-goal
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 
