@@ -1534,6 +1534,17 @@ check-fasim-gasal2-equivalence-first-convert:
 
 .PHONY: check-fasim-gasal2-equivalence-first-convert
 
+check-fasim-gasal2-traceback-rejection-taxonomy-parser:
+	bash ./scripts/check_fasim_gasal2_traceback_rejection_taxonomy_parser.sh
+
+.PHONY: check-fasim-gasal2-traceback-rejection-taxonomy-parser
+
+check-fasim-gasal2-traceback-rejection-taxonomy-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_traceback_rejection_taxonomy_smoke.sh
+
+.PHONY: check-fasim-gasal2-traceback-rejection-taxonomy-smoke
+
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py
 
