@@ -1274,6 +1274,11 @@ check-fasim-gasal2-segmented-query-kcnq1ot1-target-scope-result:
 
 .PHONY: check-fasim-gasal2-segmented-query-kcnq1ot1-target-scope-result
 
+check-fasim-gasal2-segmented-query-kcnq1ot1-coverage-ladder-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_kcnq1ot1_coverage_ladder_result.sh
+
+.PHONY: check-fasim-gasal2-segmented-query-kcnq1ot1-coverage-ladder-result
+
 check-fasim-gasal2-formal-makefile-gate:
 	bash ./scripts/check_fasim_gasal2_formal_makefile_gate.sh
 
