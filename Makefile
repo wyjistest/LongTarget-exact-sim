@@ -1242,6 +1242,33 @@ check-fasim-gasal2-short-query-top5-readiness:
 check-fasim-gasal2-short-query-top5-tfo-contract:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_tfo_contract.sh
 
+KCNQ1OT1_FASTA ?= $(CURDIR)/.tmp/fasim_gasal2_query_inputs/KCNQ1OT1_ENST00000597346.fa
+
+characterize-fasim-gasal2-short-query-generalization-panel:
+	KCNQ1OT1_FASTA="$(KCNQ1OT1_FASTA)" \
+	bash ./scripts/characterize_fasim_gasal2_short_query_generalization_panel.sh
+
+check-fasim-gasal2-short-query-generalization-panel-result:
+	bash ./scripts/check_fasim_gasal2_short_query_generalization_panel_result.sh
+
+.PHONY: characterize-fasim-gasal2-short-query-generalization-panel check-fasim-gasal2-short-query-generalization-panel-result
+
+characterize-fasim-gasal2-segmented-query-h19-control:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_segmented_query_h19_control.sh
+
+check-fasim-gasal2-segmented-query-h19-control-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_h19_control_result.sh
+
+.PHONY: characterize-fasim-gasal2-segmented-query-h19-control check-fasim-gasal2-segmented-query-h19-control-result
+
+characterize-fasim-gasal2-segmented-query-kcnq1ot1-pilot:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct KCNQ1OT1_FASTA="$(KCNQ1OT1_FASTA)" bash ./scripts/characterize_fasim_gasal2_segmented_query_kcnq1ot1_pilot.sh
+
+check-fasim-gasal2-segmented-query-kcnq1ot1-pilot-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_kcnq1ot1_pilot_result.sh
+
+.PHONY: characterize-fasim-gasal2-segmented-query-kcnq1ot1-pilot check-fasim-gasal2-segmented-query-kcnq1ot1-pilot-result
+
 check-fasim-gasal2-formal-makefile-gate:
 	bash ./scripts/check_fasim_gasal2_formal_makefile_gate.sh
 
