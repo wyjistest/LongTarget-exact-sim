@@ -1269,6 +1269,11 @@ check-fasim-gasal2-segmented-query-kcnq1ot1-pilot-result:
 
 .PHONY: characterize-fasim-gasal2-segmented-query-kcnq1ot1-pilot check-fasim-gasal2-segmented-query-kcnq1ot1-pilot-result
 
+check-fasim-gasal2-segmented-query-kcnq1ot1-target-scope-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_kcnq1ot1_target_scope_result.sh
+
+.PHONY: check-fasim-gasal2-segmented-query-kcnq1ot1-target-scope-result
+
 check-fasim-gasal2-formal-makefile-gate:
 	bash ./scripts/check_fasim_gasal2_formal_makefile_gate.sh
 

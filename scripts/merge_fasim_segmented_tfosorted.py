@@ -77,7 +77,9 @@ def main() -> int:
     for segment in segments:
         tfosorted = Path(segment["tfosorted"])
         if not tfosorted.is_absolute():
-            tfosorted = args.segments.parent / tfosorted
+            manifest_relative = args.segments.parent / tfosorted
+            if not tfosorted.exists() and manifest_relative.exists():
+                tfosorted = manifest_relative
         offset = int(segment["global_start"])
         with tfosorted.open(newline="", encoding="utf-8", errors="replace") as handle:
             reader = csv.DictReader(handle, delimiter="\t")
