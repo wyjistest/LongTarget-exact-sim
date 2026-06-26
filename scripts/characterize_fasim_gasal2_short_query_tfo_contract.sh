@@ -13,6 +13,7 @@ GASAL2_BATCH="${GASAL2_BATCH:-20000}"
 GPU_SAMPLE_INTERVAL_SECONDS="${GPU_SAMPLE_INTERVAL_SECONDS:-1}"
 SKIP_CPU="${SKIP_CPU:-0}"
 BASELINE_OUTPUT="${BASELINE_OUTPUT:-}"
+REQUIRE_TOPK_EQUAL="${REQUIRE_TOPK_EQUAL:-1}"
 
 if [[ ! -x "$BIN" ]]; then
   (
@@ -170,10 +171,15 @@ python3 "$ROOT/scripts/compare_fasim_lite_full_equivalence.py" \
   --baseline "$cpu_out" \
   --candidate "$candidate_out" \
   >"$WORK/full_row_compare.txt" || true
+compare_tfo_args=(
+  --baseline "$cpu_out"
+  --candidate "$candidate_out"
+)
+if [[ "$REQUIRE_TOPK_EQUAL" == "1" ]]; then
+  compare_tfo_args+=(--require-topk-equal)
+fi
 python3 "$ROOT/scripts/compare_fasim_tfosorted_tfo_contract.py" \
-  --baseline "$cpu_out" \
-  --candidate "$candidate_out" \
-  --require-topk-equal \
+  "${compare_tfo_args[@]}" \
   >"$WORK/tfo_contract_compare.txt"
 
 extract_metric() {
@@ -222,6 +228,7 @@ fi
   printf 'prune_max_per_task=%s\n' "$PRUNE_MAX_PER_TASK"
   printf 'gasal2_streams=%s\n' "$GASAL2_STREAMS"
   printf 'gasal2_batch=%s\n' "$GASAL2_BATCH"
+  printf 'require_topk_equal=%s\n' "$REQUIRE_TOPK_EQUAL"
   printf 'baseline_output=%s\n' "$cpu_out"
   printf 'candidate_output=%s\n' "$candidate_out"
   printf 'full_rows_equal=%s\n' "$(read_compare "$WORK/full_row_compare.txt" full_rows_equal)"
