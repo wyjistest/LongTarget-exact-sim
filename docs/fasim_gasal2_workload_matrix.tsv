@@ -1,0 +1,8 @@
+workload	contract	scope	status	row_equal	top5_equal	speedup	fallbacks	scoreinfo_reduced	align_side_reduced	notes
+chr22_full	equivalence_first_full_output	claimed	pass	true	NA	0.993	0	false	false	restored row-set equal; run speedup not positive on final2 stream1 evidence
+chr1_full	equivalence_first_full_output	claimed	pass	true	NA	1.094	0	false	false	restored row-set equal; convert speedup 1.788x
+chr21_chr22_top5	gasal2_top5_column_pruned_scoreinfo_artifact_v1	claimed	pass	NA	true	40.119	0	true	false	top5 artifact only; not full TFOsorted replacement
+meg3_group32_top5	gasal2_top5_column_pruned_scoreinfo_artifact_v1	claimed	pass	NA	true	1.939	0	true	false	grouped tiny-region top5 artifact; not full broad replacement
+neat1_first64	long_query_boundary	unclaimed	fallback	NA	true	1.009	0	false	false	query_len 22767 exceeds GASAL2 max query; top5 clean but GPU path inactive
+malat1_first8	long_query_boundary	blocked	fail	false	true	0.702	3091	false	false	top5 clean but full/broad path not recommended
+malat1_first64_two_contract	long_query_two_contract_experimental	unclaimed	pass	NA	true	1.031	0	true	false	experimental two-contract trust; not broad aligner replacement

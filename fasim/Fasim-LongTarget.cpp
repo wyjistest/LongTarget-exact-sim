@@ -34,6 +34,7 @@
 #include <utility>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -41,6 +42,13 @@
 #include <stdint.h>
 #include <iomanip>
 #include <cstring>
+#include <cstdlib>
+#include <cmath>
+#include <exception>
+
+#ifdef FASIM_WITH_NVTX
+#include <nvToolsExt.h>
+#endif
 
 #include "fastsim.h"
 using namespace std;
@@ -53,6 +61,112 @@ namespace
 static inline double fasim_seconds_since(const std::chrono::steady_clock::time_point &start)
 {
 	return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+static inline double fasim_interval_overlap_seconds(double aBegin,
+                                                    double aEnd,
+                                                    double bBegin,
+                                                    double bEnd)
+{
+	const double begin = std::max(aBegin, bBegin);
+	const double end = std::min(aEnd, bEnd);
+	return end > begin ? end - begin : 0.0;
+}
+
+static inline uint64_t fasim_monotonic_ns()
+{
+	return static_cast<uint64_t>(
+		std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+struct FasimNvtxTraceRuntime
+{
+	FasimNvtxTraceRuntime() :
+		requested(false),
+		active(false),
+		ranges(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t ranges;
+};
+
+struct FasimNvtxRange
+{
+	FasimNvtxRange(FasimNvtxTraceRuntime *runtimeValue,
+	               const char *nameValue) :
+		runtime(runtimeValue),
+		active(runtimeValue != NULL && runtimeValue->active)
+	{
+		if (active)
+		{
+			++runtime->ranges;
+#ifdef FASIM_WITH_NVTX
+			nvtxRangePushA(nameValue);
+#else
+			(void)nameValue;
+#endif
+		}
+		else
+		{
+			(void)nameValue;
+		}
+	}
+
+	~FasimNvtxRange()
+	{
+		close();
+	}
+
+	void close()
+	{
+		if (!active)
+		{
+			return;
+		}
+#ifdef FASIM_WITH_NVTX
+		nvtxRangePop();
+#endif
+		active = false;
+	}
+
+	FasimNvtxTraceRuntime *runtime;
+	bool active;
+};
+
+static inline uint64_t fasim_nvtx_async_range_start(
+	FasimNvtxTraceRuntime *runtime,
+	const char *name)
+{
+	if (runtime == NULL || !runtime->active)
+	{
+		(void)name;
+		return 0;
+	}
+	++runtime->ranges;
+#ifdef FASIM_WITH_NVTX
+	return static_cast<uint64_t>(nvtxRangeStartA(name));
+#else
+	(void)name;
+	return 0;
+#endif
+}
+
+static inline void fasim_nvtx_async_range_end(FasimNvtxTraceRuntime *runtime,
+                                              uint64_t rangeId)
+{
+	if (runtime == NULL || !runtime->active || rangeId == 0)
+	{
+		return;
+	}
+#ifdef FASIM_WITH_NVTX
+	nvtxRangeEnd(static_cast<nvtxRangeId_t>(rangeId));
+#else
+	(void)rangeId;
+#endif
 }
 
 struct FasimScopedSeconds
@@ -178,6 +292,10 @@ struct FasimTop5PhaseTimingStats
 		gasal2_nt_shadow_max_span_false_negative(0),
 		gasal2_nt_shadow_sum_span_false_negative(0),
 			gasal2_nt_sum_span_prune_active(0),
+			gasal2_preconvert_prune_shadow_requested(false),
+			gasal2_preconvert_prune_shadow_active(false),
+			gasal2_preconvert_prune_shadow_attempts(0),
+			gasal2_preconvert_prune_shadow_false_negatives(0),
 			gasal2_extend_batches(0),
 			gasal2_extend_tasks(0),
 			gasal2_query_preflight_supported(false),
@@ -322,6 +440,10 @@ struct FasimTop5PhaseTimingStats
 	uint64_t gasal2_nt_shadow_max_span_false_negative;
 	uint64_t gasal2_nt_shadow_sum_span_false_negative;
 	uint64_t gasal2_nt_sum_span_prune_active;
+	bool gasal2_preconvert_prune_shadow_requested;
+	bool gasal2_preconvert_prune_shadow_active;
+	uint64_t gasal2_preconvert_prune_shadow_attempts;
+	uint64_t gasal2_preconvert_prune_shadow_false_negatives;
 	uint64_t gasal2_extend_batches;
 	uint64_t gasal2_extend_tasks;
 	bool gasal2_query_preflight_supported;
@@ -387,6 +509,2198 @@ struct FasimTop5PhaseTimingStats
 	double output_close_seconds;
 	double query_release_seconds;
 };
+
+struct FasimGasal2FlushPipelineRecord
+{
+	FasimGasal2FlushPipelineRecord() :
+		flush_id(0),
+		worker_id(0),
+		gpu_id(-1),
+		flush_sequence(0),
+		pack_start_ns(0),
+		pack_end_ns(0),
+		wait_for_free_buffer_start_ns(0),
+		wait_for_free_buffer_end_ns(0),
+		h2d_start_ns(0),
+		h2d_end_ns(0),
+		gasal2_score_submit_start_ns(0),
+		gasal2_score_submit_end_ns(0),
+		gasal2_score_wait_start_ns(0),
+		gasal2_score_wait_end_ns(0),
+		exact_column_start_ns(0),
+		exact_column_end_ns(0),
+		traceback_pack_start_ns(0),
+		traceback_pack_end_ns(0),
+		traceback_submit_start_ns(0),
+		traceback_submit_end_ns(0),
+		traceback_wait_start_ns(0),
+		traceback_wait_end_ns(0),
+		d2h_start_ns(0),
+		d2h_end_ns(0),
+		convert_start_ns(0),
+		convert_end_ns(0),
+		archive_enqueue_start_ns(0),
+		archive_enqueue_end_ns(0),
+		archive_write_start_ns(0),
+		archive_write_end_ns(0),
+		sort_dedup_start_ns(0),
+		sort_dedup_end_ns(0),
+		flush_complete_ns(0),
+		gpu_event_timing_available(false),
+		gasal2_score_poll_wait_seconds(0.0),
+		gasal2_score_result_copy_seconds(0.0),
+		gasal2_traceback_poll_wait_seconds(0.0),
+		gasal2_traceback_result_copy_seconds(0.0),
+		gasal2_traceback_cigar_vector_seconds(0.0),
+		gasal2_traceback_cigar_string_seconds(0.0),
+		gasal2_synchronous_wait_seconds(0.0),
+		synchronous_flush_path(true),
+		queue_supported(false),
+		gasal2_requests(0),
+		dp_cells(0),
+		scoreinfo_tasks(0),
+		selected_scoreinfos(0),
+		traceback_requests(0),
+		traceback_cigar_raw_ops(0),
+		traceback_cigar_merged_ops(0),
+		converted_candidates(0),
+		emitted_rows(0),
+		final_rows_after_sort_dedup(0),
+		dedup_removed_rows(0),
+		archive_bytes(0),
+		archive_blocks(0),
+		gpu_producer_blocked_seconds(0.0),
+		gpu_producer_blocked_available(false),
+		cpu_consumer_idle_seconds(0.0),
+		cpu_consumer_idle_available(false),
+		archive_writer_blocked_seconds(0.0),
+		archive_writer_blocked_available(false),
+		waiting_for_free_buffer_seconds(0.0),
+		waiting_for_free_buffer_available(false),
+		gpu_inter_flush_idle_gap_seconds(0.0),
+		gpu_inter_flush_idle_gap_available(false),
+		host_pack_gap_seconds(0.0),
+		host_pack_gap_available(false),
+		input_queue_depth_available(false),
+		ready_queue_depth_available(false),
+		convert_queue_depth_available(false),
+		archive_queue_depth_available(false),
+		decision_hint("host_serial_flush_timeline")
+	{
+	}
+
+	uint64_t flush_id;
+	std::string shard_name;
+	int worker_id;
+	int gpu_id;
+	uint64_t flush_sequence;
+	uint64_t pack_start_ns;
+	uint64_t pack_end_ns;
+	uint64_t wait_for_free_buffer_start_ns;
+	uint64_t wait_for_free_buffer_end_ns;
+	uint64_t h2d_start_ns;
+	uint64_t h2d_end_ns;
+	uint64_t gasal2_score_submit_start_ns;
+	uint64_t gasal2_score_submit_end_ns;
+	uint64_t gasal2_score_wait_start_ns;
+	uint64_t gasal2_score_wait_end_ns;
+	uint64_t exact_column_start_ns;
+	uint64_t exact_column_end_ns;
+	uint64_t traceback_pack_start_ns;
+	uint64_t traceback_pack_end_ns;
+	uint64_t traceback_submit_start_ns;
+	uint64_t traceback_submit_end_ns;
+	uint64_t traceback_wait_start_ns;
+	uint64_t traceback_wait_end_ns;
+	uint64_t d2h_start_ns;
+	uint64_t d2h_end_ns;
+	uint64_t convert_start_ns;
+	uint64_t convert_end_ns;
+	uint64_t archive_enqueue_start_ns;
+	uint64_t archive_enqueue_end_ns;
+	uint64_t archive_write_start_ns;
+	uint64_t archive_write_end_ns;
+	uint64_t sort_dedup_start_ns;
+	uint64_t sort_dedup_end_ns;
+	uint64_t flush_complete_ns;
+	bool gpu_event_timing_available;
+	double gasal2_score_poll_wait_seconds;
+	double gasal2_score_result_copy_seconds;
+	double gasal2_traceback_poll_wait_seconds;
+	double gasal2_traceback_result_copy_seconds;
+	double gasal2_traceback_cigar_vector_seconds;
+	double gasal2_traceback_cigar_string_seconds;
+	double gasal2_synchronous_wait_seconds;
+	bool synchronous_flush_path;
+	bool queue_supported;
+	uint64_t gasal2_requests;
+	uint64_t dp_cells;
+	uint64_t scoreinfo_tasks;
+	uint64_t selected_scoreinfos;
+	uint64_t traceback_requests;
+	uint64_t traceback_cigar_raw_ops;
+	uint64_t traceback_cigar_merged_ops;
+	uint64_t converted_candidates;
+	uint64_t emitted_rows;
+	uint64_t final_rows_after_sort_dedup;
+	uint64_t dedup_removed_rows;
+	uint64_t archive_bytes;
+	uint64_t archive_blocks;
+	double gpu_producer_blocked_seconds;
+	bool gpu_producer_blocked_available;
+	double cpu_consumer_idle_seconds;
+	bool cpu_consumer_idle_available;
+	double archive_writer_blocked_seconds;
+	bool archive_writer_blocked_available;
+	double waiting_for_free_buffer_seconds;
+	bool waiting_for_free_buffer_available;
+	double gpu_inter_flush_idle_gap_seconds;
+	bool gpu_inter_flush_idle_gap_available;
+	double host_pack_gap_seconds;
+	bool host_pack_gap_available;
+	bool input_queue_depth_available;
+	bool ready_queue_depth_available;
+	bool convert_queue_depth_available;
+	bool archive_queue_depth_available;
+	std::string decision_hint;
+};
+
+struct FasimGasal2FlushPipelineTraceRuntime
+{
+	FasimGasal2FlushPipelineTraceRuntime() :
+		requested(false),
+		active(false),
+		export_limit(1024),
+		chrome_limit(256),
+		export_truncated(false),
+		chrome_trace_truncated(false),
+		next_flush_id(1),
+		total_flushes(0),
+		total_pack_seconds(0.0),
+		total_gpu_wait_seconds(0.0),
+		total_exact_column_seconds(0.0),
+		total_traceback_seconds(0.0),
+		total_d2h_seconds(0.0),
+		total_convert_seconds(0.0),
+		total_archive_write_seconds(0.0),
+		total_sort_dedup_seconds(0.0),
+		total_gasal2_score_poll_wait_seconds(0.0),
+		total_gasal2_score_result_copy_seconds(0.0),
+		total_gasal2_traceback_poll_wait_seconds(0.0),
+		total_gasal2_traceback_result_copy_seconds(0.0),
+		total_gasal2_traceback_cigar_vector_seconds(0.0),
+		total_gasal2_traceback_cigar_string_seconds(0.0),
+		total_gasal2_synchronous_wait_seconds(0.0),
+		total_gpu_producer_blocked_seconds(0.0),
+		total_cpu_consumer_idle_seconds(0.0),
+		total_waiting_for_free_buffer_seconds(0.0),
+		total_gpu_inter_flush_idle_gap_seconds(0.0),
+		last_flush_complete_ns(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	std::string export_path;
+	std::string chrome_trace_path;
+	size_t export_limit;
+	size_t chrome_limit;
+	bool export_truncated;
+	bool chrome_trace_truncated;
+	uint64_t next_flush_id;
+	uint64_t total_flushes;
+	std::vector<FasimGasal2FlushPipelineRecord> records;
+	double total_pack_seconds;
+	double total_gpu_wait_seconds;
+	double total_exact_column_seconds;
+	double total_traceback_seconds;
+	double total_d2h_seconds;
+	double total_convert_seconds;
+	double total_archive_write_seconds;
+	double total_sort_dedup_seconds;
+	double total_gasal2_score_poll_wait_seconds;
+	double total_gasal2_score_result_copy_seconds;
+	double total_gasal2_traceback_poll_wait_seconds;
+	double total_gasal2_traceback_result_copy_seconds;
+	double total_gasal2_traceback_cigar_vector_seconds;
+	double total_gasal2_traceback_cigar_string_seconds;
+	double total_gasal2_synchronous_wait_seconds;
+	double total_gpu_producer_blocked_seconds;
+	double total_cpu_consumer_idle_seconds;
+	double total_waiting_for_free_buffer_seconds;
+	double total_gpu_inter_flush_idle_gap_seconds;
+	uint64_t last_flush_complete_ns;
+};
+
+struct FasimGasal2FlushTwoSlotOverlapStats
+{
+	FasimGasal2FlushTwoSlotOverlapStats() :
+		requested(false),
+		active(false),
+		validate_requested(false),
+		validate_active(false),
+		serialized_control_requested(false),
+		serialized_control_active(false),
+		disabled_reason("not_requested"),
+		flushes_observed(0),
+		shape_observed_flushes(0),
+		eligible_flushes(0),
+		ineligible_flushes(0),
+		gpu_result_object_ready_flushes(0),
+		gpu_result_object_missing_flushes(0),
+		convert_inside_extend_flushes(0),
+		direct_convert_active_flushes(0),
+		equivalence_first_convert_active_flushes(0),
+		archive_first_convert_active_flushes(0),
+		non_direct_convert_flushes(0),
+		output_side_effect_flushes(0),
+		triplex_return_flushes(0),
+		flushes_gpu_submitted(0),
+		flushes_finalized(0),
+		flushes_committed(0),
+		slot0_submit_count(0),
+		slot1_submit_count(0),
+		slot0_finalize_count(0),
+		slot1_finalize_count(0),
+		slot0_commit_count(0),
+		slot1_commit_count(0),
+		unsupported_flushes(0),
+		legacy_fallback_flushes(0),
+		state_transition_violations(0),
+		order_violations(0),
+		missing_rows(0),
+		extra_rows(0),
+		order_mismatches(0),
+		cigar_mismatches(0),
+		coordinate_mismatches(0),
+		counter_mismatches(0),
+		archive_descriptor_mismatches(0),
+		wait_for_free_slot_seconds(0.0),
+		wait_for_finalizer_seconds(0.0),
+		wait_for_ordered_commit_seconds(0.0),
+		pipeline_fill_seconds(0.0),
+		pipeline_drain_seconds(0.0),
+		gpu_stage_seconds(0.0),
+		cpu_finalizer_seconds(0.0),
+		gpu_cpu_overlap_seconds(0.0),
+		overlap_fraction(0.0),
+		host_scheduling_overlap_seconds(0.0),
+		finalizer_covered_by_next_flush_seconds(0.0),
+		producer_covered_by_finalizer_seconds(0.0),
+		slot0_peak_bytes(0),
+		slot1_peak_bytes(0),
+		slot0_peak_live_bytes(0),
+		slot1_peak_live_bytes(0),
+		host_peak_bytes(0),
+		total_peak_live_bytes(0),
+		pinned_peak_bytes(0),
+		device_peak_bytes(0),
+		allocation_failures(0),
+		max_live_slots(0),
+		time_with_0_live_slots_seconds(0.0),
+		time_with_1_live_slot_seconds(0.0),
+		time_with_2_live_slots_seconds(0.0),
+		total_tasks(0),
+		max_tasks_per_flush(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	bool validate_requested;
+	bool validate_active;
+	bool serialized_control_requested;
+	bool serialized_control_active;
+	std::string disabled_reason;
+	uint64_t flushes_observed;
+	uint64_t shape_observed_flushes;
+	uint64_t eligible_flushes;
+	uint64_t ineligible_flushes;
+	uint64_t gpu_result_object_ready_flushes;
+	uint64_t gpu_result_object_missing_flushes;
+	uint64_t convert_inside_extend_flushes;
+	uint64_t direct_convert_active_flushes;
+	uint64_t equivalence_first_convert_active_flushes;
+	uint64_t archive_first_convert_active_flushes;
+	uint64_t non_direct_convert_flushes;
+	uint64_t output_side_effect_flushes;
+	uint64_t triplex_return_flushes;
+	uint64_t flushes_gpu_submitted;
+	uint64_t flushes_finalized;
+	uint64_t flushes_committed;
+	uint64_t slot0_submit_count;
+	uint64_t slot1_submit_count;
+	uint64_t slot0_finalize_count;
+	uint64_t slot1_finalize_count;
+	uint64_t slot0_commit_count;
+	uint64_t slot1_commit_count;
+	uint64_t unsupported_flushes;
+	uint64_t legacy_fallback_flushes;
+	uint64_t state_transition_violations;
+	uint64_t order_violations;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t order_mismatches;
+	uint64_t cigar_mismatches;
+	uint64_t coordinate_mismatches;
+	uint64_t counter_mismatches;
+	uint64_t archive_descriptor_mismatches;
+	double wait_for_free_slot_seconds;
+	double wait_for_finalizer_seconds;
+	double wait_for_ordered_commit_seconds;
+	double pipeline_fill_seconds;
+	double pipeline_drain_seconds;
+	double gpu_stage_seconds;
+	double cpu_finalizer_seconds;
+	double gpu_cpu_overlap_seconds;
+	double overlap_fraction;
+	double host_scheduling_overlap_seconds;
+	double finalizer_covered_by_next_flush_seconds;
+	double producer_covered_by_finalizer_seconds;
+	uint64_t slot0_peak_bytes;
+	uint64_t slot1_peak_bytes;
+	uint64_t slot0_peak_live_bytes;
+	uint64_t slot1_peak_live_bytes;
+	uint64_t host_peak_bytes;
+	uint64_t total_peak_live_bytes;
+	uint64_t pinned_peak_bytes;
+	uint64_t device_peak_bytes;
+	uint64_t allocation_failures;
+	uint64_t max_live_slots;
+	double time_with_0_live_slots_seconds;
+	double time_with_1_live_slot_seconds;
+	double time_with_2_live_slots_seconds;
+	uint64_t total_tasks;
+	uint64_t max_tasks_per_flush;
+	std::vector< std::pair<double, double> > gpu_intervals;
+	std::vector< std::pair<double, double> > cpu_intervals;
+	std::vector< std::pair<uint64_t, std::pair<double, double> > >
+		producer_intervals;
+	std::vector< std::pair<uint64_t, std::pair<double, double> > >
+		finalizer_intervals;
+	std::vector< std::pair<uint64_t, double> > submit_times;
+	std::vector< std::pair<uint64_t, double> > submit_return_times;
+};
+
+struct FasimGasal2FlushScoreGroupSnapshot
+{
+	FasimGasal2FlushScoreGroupSnapshot() :
+		task_index(0),
+		scoreinfo_index(0)
+	{
+	}
+
+	FasimGasal2FlushScoreGroupSnapshot(size_t taskIndexValue,
+	                                   size_t scoreInfoIndexValue) :
+		task_index(taskIndexValue),
+		scoreinfo_index(scoreInfoIndexValue)
+	{
+	}
+
+	size_t task_index;
+	size_t scoreinfo_index;
+};
+
+struct FasimGasal2FlushTaskSnapshot
+{
+	FasimGasal2FlushTaskSnapshot() :
+		task_index(0),
+		record_start_genome(0),
+		dna_start_pos(0),
+		rule(0),
+		strand(0),
+		para(0),
+		target_length(0),
+		scoreinfo_count(0)
+	{
+	}
+
+	uint64_t task_index;
+	std::string chr;
+	long record_start_genome;
+	long dna_start_pos;
+	int rule;
+	int strand;
+	int para;
+	uint64_t target_length;
+	uint64_t scoreinfo_count;
+};
+
+struct FasimGasal2FlushGpuResult
+{
+	FasimGasal2FlushGpuResult() :
+		ready(false),
+		flush_id(0),
+		request_count(0),
+		traceback_request_count(0),
+		task_count(0),
+		result_bytes(0),
+		traceback_bytes(0),
+		selected_alignments(0),
+		selected_digest(1469598103934665603ULL)
+	{
+	}
+
+	bool ready;
+	uint64_t flush_id;
+	uint64_t request_count;
+	uint64_t traceback_request_count;
+	uint64_t task_count;
+	uint64_t result_bytes;
+	uint64_t traceback_bytes;
+	uint64_t selected_alignments;
+	uint64_t selected_digest;
+	std::vector<FasimGasal2FlushTaskSnapshot> tasks;
+	std::vector<FasimGasal2FlushScoreGroupSnapshot> score_groups;
+	std::vector< std::vector<FasimGasal2SelectedAlignment> > selected_by_task;
+};
+
+struct FasimGasal2FlushFinalizedRows
+{
+	FasimGasal2FlushFinalizedRows() :
+		flush_id(0),
+		row_count(0),
+		ordered_rows_digest(1469598103934665603ULL),
+		row_multiset_digest(1469598103934665603ULL),
+		cigar_digest(1469598103934665603ULL),
+		coordinate_digest(1469598103934665603ULL),
+		owned_bytes(0)
+	{
+	}
+
+	uint64_t flush_id;
+	std::vector<triplex> precommit_rows;
+	std::vector<uint32_t> task_row_offsets;
+	std::vector<uint32_t> task_row_counts;
+	uint64_t row_count;
+	uint64_t ordered_rows_digest;
+	uint64_t row_multiset_digest;
+	uint64_t cigar_digest;
+	uint64_t coordinate_digest;
+	size_t owned_bytes;
+};
+
+struct FasimGasal2TwoSlotTaskInput
+{
+	FasimGasal2TwoSlotTaskInput() :
+		task_index(0),
+		record_start_genome(1),
+		dna_start_pos(0),
+		strand(0),
+		para(0),
+		rule(0)
+	{
+	}
+
+	uint64_t task_index;
+	std::shared_ptr<const std::string> src_seq;
+	std::string seq2;
+	std::string chr;
+	long record_start_genome;
+	long dna_start_pos;
+	long strand;
+	long para;
+	int rule;
+};
+
+struct FasimGasal2TwoSlotWorkItem
+{
+	FasimGasal2TwoSlotWorkItem() :
+		slot_index(0),
+		flush_id(0),
+		producer_start_seconds(0.0),
+		producer_end_seconds(0.0),
+		gpu_start_seconds(0.0),
+		gpu_end_seconds(0.0),
+		submit_seconds(0.0),
+		nvtx_slot_range_id(0),
+		replay_uses_cpu_traceback(false),
+		nt_sum_span_prune(false)
+	{
+	}
+
+	size_t slot_index;
+	uint64_t flush_id;
+	double producer_start_seconds;
+	double producer_end_seconds;
+	double gpu_start_seconds;
+	double gpu_end_seconds;
+	double submit_seconds;
+	uint64_t nvtx_slot_range_id;
+	bool replay_uses_cpu_traceback;
+	bool nt_sum_span_prune;
+	FasimGasal2FlushGpuResult result;
+	std::vector<FasimGasal2TwoSlotTaskInput> tasks;
+};
+
+struct FasimGasal2TwoSlotCompletedItem
+{
+	FasimGasal2TwoSlotCompletedItem() :
+		slot_index(0),
+		flush_id(0),
+		gpu_start_seconds(0.0),
+		gpu_end_seconds(0.0),
+		cpu_start_seconds(0.0),
+		cpu_end_seconds(0.0),
+		nvtx_slot_range_id(0),
+		error(false)
+	{
+	}
+
+	size_t slot_index;
+	uint64_t flush_id;
+	double gpu_start_seconds;
+	double gpu_end_seconds;
+	double cpu_start_seconds;
+	double cpu_end_seconds;
+	uint64_t nvtx_slot_range_id;
+	bool error;
+	std::string error_message;
+	FasimGasal2FlushFinalizedRows rows;
+	std::vector<FasimGasal2TwoSlotTaskInput> tasks;
+};
+
+static inline size_t fasim_gasal2_two_slot_owned_task_bytes(
+	const std::vector<FasimGasal2TwoSlotTaskInput> &tasks)
+{
+	size_t bytes = tasks.size() * sizeof(FasimGasal2TwoSlotTaskInput);
+	for (size_t i = 0; i < tasks.size(); ++i)
+	{
+		bytes += tasks[i].seq2.size();
+		bytes += tasks[i].chr.size();
+	}
+	return bytes;
+}
+
+static inline uint64_t fasim_gasal2_dual_hash_int64(uint64_t digest,
+                                                    int64_t value)
+{
+	for (int i = 0; i < 8; ++i)
+	{
+		const unsigned char byte =
+			static_cast<unsigned char>((static_cast<uint64_t>(value) >>
+			                            (i * 8)) & 0xffU);
+		digest ^= byte;
+		digest *= 1099511628211ULL;
+	}
+	return digest;
+}
+
+static inline uint64_t fasim_gasal2_dual_hash_string_field(
+	uint64_t digest,
+	const std::string &value)
+{
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(value.size()));
+	return fasim_fnv1a_update(digest, value);
+}
+
+static inline uint64_t fasim_gasal2_hash_triplex_cigar(uint64_t digest,
+                                                       const triplex &row)
+{
+	digest = fasim_gasal2_dual_hash_string_field(digest, row.cigar_probe);
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(row.typed_cigar.size()));
+	for (size_t i = 0; i < row.typed_cigar.size(); ++i)
+	{
+		digest = fasim_gasal2_dual_hash_int64(
+			digest,
+			static_cast<int64_t>(row.typed_cigar[i]));
+	}
+	return digest;
+}
+
+static inline uint64_t fasim_gasal2_hash_triplex_row(uint64_t digest,
+                                                     const triplex &row)
+{
+	digest = fasim_gasal2_dual_hash_int64(digest, row.stari);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.endi);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.starj);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.endj);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.reverse);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.strand);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.rule);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.nt);
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(std::llround(row.score * 1000000.0)));
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(std::llround(row.identity * 1000000.0)));
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(std::llround(row.tri_score * 1000000.0)));
+	digest = fasim_gasal2_dual_hash_string_field(digest, row.stri_align);
+	digest = fasim_gasal2_dual_hash_string_field(digest, row.strj_align);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.middle);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.center);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.motif);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.neartriplex);
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(row.genomestart));
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(row.genomeend));
+	digest = fasim_gasal2_dual_hash_string_field(digest, row.chr);
+	return fasim_gasal2_hash_triplex_cigar(digest, row);
+}
+
+static inline uint64_t fasim_gasal2_hash_triplex_coordinates(
+	uint64_t digest,
+	const triplex &row)
+{
+	digest = fasim_gasal2_dual_hash_string_field(digest, row.chr);
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(row.genomestart));
+	digest = fasim_gasal2_dual_hash_int64(
+		digest,
+		static_cast<int64_t>(row.genomeend));
+	digest = fasim_gasal2_dual_hash_int64(digest, row.stari);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.endi);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.starj);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.endj);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.reverse);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.strand);
+	digest = fasim_gasal2_dual_hash_int64(digest, row.rule);
+	return digest;
+}
+
+static inline std::string fasim_gasal2_triplex_fingerprint(
+	const triplex &row)
+{
+	uint64_t cigarDigest = 1469598103934665603ULL;
+	cigarDigest = fasim_gasal2_hash_triplex_cigar(cigarDigest, row);
+	std::ostringstream out;
+	out << row.chr << ':'
+	    << row.genomestart << '-' << row.genomeend << ':'
+	    << row.stari << '-' << row.endi << ':'
+	    << row.starj << '-' << row.endj << ':'
+	    << "r" << row.reverse << ':'
+	    << "s" << row.strand << ':'
+	    << "rule" << row.rule << ':'
+	    << "nt" << row.nt << ':'
+	    << "score" << static_cast<int>(std::llround(row.score * 1000.0))
+	    << ':'
+	    << "identity"
+	    << static_cast<int>(std::llround(row.identity * 1000.0))
+	    << ':'
+	    << "stability"
+	    << static_cast<int>(std::llround(row.tri_score * 1000.0))
+	    << ':'
+	    << "near" << row.neartriplex << ':'
+	    << "cigar" << fasim_hex_u64(cigarDigest);
+	return out.str();
+}
+
+static inline void fasim_gasal2_finalize_row_digests(
+	FasimGasal2FlushFinalizedRows &rows)
+{
+	rows.row_count = static_cast<uint64_t>(rows.precommit_rows.size());
+	rows.owned_bytes =
+		rows.precommit_rows.size() * sizeof(triplex) +
+		rows.task_row_offsets.size() * sizeof(uint32_t) +
+		rows.task_row_counts.size() * sizeof(uint32_t);
+	rows.ordered_rows_digest = 1469598103934665603ULL;
+	rows.cigar_digest = 1469598103934665603ULL;
+	rows.coordinate_digest = 1469598103934665603ULL;
+	std::vector<std::string> rowFingerprints;
+	rowFingerprints.reserve(rows.precommit_rows.size());
+	for (size_t i = 0; i < rows.precommit_rows.size(); ++i)
+	{
+		const triplex &row = rows.precommit_rows[i];
+		rows.ordered_rows_digest =
+			fasim_gasal2_hash_triplex_row(rows.ordered_rows_digest, row);
+		rows.cigar_digest =
+			fasim_gasal2_hash_triplex_cigar(rows.cigar_digest, row);
+		rows.coordinate_digest =
+			fasim_gasal2_hash_triplex_coordinates(rows.coordinate_digest, row);
+		rowFingerprints.push_back(
+			fasim_gasal2_triplex_fingerprint(row));
+	}
+	std::sort(rowFingerprints.begin(), rowFingerprints.end());
+	rows.row_multiset_digest = 1469598103934665603ULL;
+	for (size_t i = 0; i < rowFingerprints.size(); ++i)
+	{
+		rows.row_multiset_digest =
+			fasim_gasal2_dual_hash_string_field(
+				rows.row_multiset_digest,
+				rowFingerprints[i]);
+	}
+}
+
+struct FasimGasal2FlushResultBoundaryStats
+{
+	FasimGasal2FlushResultBoundaryStats() :
+		requested(false),
+		active(false),
+		flushes(0),
+		materialized_flushes(0),
+		finalizer_consumed_result_flushes(0),
+		task_backing_owned_flushes(0),
+		score_group_mapping_owned_flushes(0),
+		selected_by_task_owned_flushes(0),
+		task_count(0),
+		score_groups(0),
+		selected_alignments(0),
+		result_bytes(0),
+		traceback_bytes(0),
+		materialize_seconds(0.0),
+		cigar_seconds(0.0),
+		finalize_seconds(0.0),
+		commit_seconds(0.0),
+		rows_compared(0),
+		missing_rows(0),
+		extra_rows(0),
+		cigar_mismatches(0),
+		digest_mismatches(0),
+		result_digest(1469598103934665603ULL)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t flushes;
+	uint64_t materialized_flushes;
+	uint64_t finalizer_consumed_result_flushes;
+	uint64_t task_backing_owned_flushes;
+	uint64_t score_group_mapping_owned_flushes;
+	uint64_t selected_by_task_owned_flushes;
+	uint64_t task_count;
+	uint64_t score_groups;
+	uint64_t selected_alignments;
+	uint64_t result_bytes;
+	uint64_t traceback_bytes;
+	double materialize_seconds;
+	double cigar_seconds;
+	double finalize_seconds;
+	double commit_seconds;
+	uint64_t rows_compared;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t cigar_mismatches;
+	uint64_t digest_mismatches;
+	uint64_t result_digest;
+};
+
+struct FasimGasal2FlushPureFinalizerStats
+{
+	FasimGasal2FlushPureFinalizerStats() :
+		requested(false),
+		active(false),
+		flushes_observed(0),
+		result_boundary_ready_flushes(0),
+		result_boundary_missing_flushes(0),
+		eligible_flushes(0),
+		ineligible_flushes(0),
+		local_rows_ready_flushes(0),
+		direct_rows_local_ready_flushes(0),
+		triplex_rows_local_ready_flushes(0),
+		output_side_effect_blocker_flushes(0),
+		archive_writer_blocker_flushes(0),
+		global_task_triplex_commit_blocker_flushes(0),
+		telemetry_global_counter_blocker_flushes(0),
+		precommit_rows(0),
+		rows_compared(0),
+		missing_rows(0),
+		extra_rows(0),
+		cigar_mismatches(0),
+		digest_mismatches(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t flushes_observed;
+	uint64_t result_boundary_ready_flushes;
+	uint64_t result_boundary_missing_flushes;
+	uint64_t eligible_flushes;
+	uint64_t ineligible_flushes;
+	uint64_t local_rows_ready_flushes;
+	uint64_t direct_rows_local_ready_flushes;
+	uint64_t triplex_rows_local_ready_flushes;
+	uint64_t output_side_effect_blocker_flushes;
+	uint64_t archive_writer_blocker_flushes;
+	uint64_t global_task_triplex_commit_blocker_flushes;
+	uint64_t telemetry_global_counter_blocker_flushes;
+	uint64_t precommit_rows;
+	uint64_t rows_compared;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t cigar_mismatches;
+	uint64_t digest_mismatches;
+};
+
+struct FasimGasal2OrderedCommitStats
+{
+	FasimGasal2OrderedCommitStats() :
+		requested(false),
+		active(false),
+		flushes_ready(0),
+		flushes_committed(0),
+		direct_flushes_committed(0),
+		triplex_flushes_committed(0),
+		order_violations(0),
+		next_expected_flush_id(0),
+		precommit_rows(0),
+		appended_rows(0),
+		archive_records(0),
+		result_bytes_p50(0),
+		result_bytes_p90(0),
+		result_bytes_max(0),
+		traceback_bytes_p50(0),
+		traceback_bytes_p90(0),
+		traceback_bytes_max(0),
+		precommit_rows_bytes_p50(0),
+		precommit_rows_bytes_p90(0),
+		precommit_rows_bytes_max(0),
+		projected_two_slot_peak_bytes(0),
+		finalize_seconds(0.0),
+		write_task_seconds(0.0),
+		archive_seconds(0.0),
+		counter_seconds(0.0),
+		total_seconds(0.0),
+		missing_rows(0),
+		extra_rows(0),
+		cigar_mismatches(0),
+		counter_mismatches(0),
+		digest_mismatches(0)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t flushes_ready;
+	uint64_t flushes_committed;
+	uint64_t direct_flushes_committed;
+	uint64_t triplex_flushes_committed;
+	uint64_t order_violations;
+	uint64_t next_expected_flush_id;
+	uint64_t precommit_rows;
+	uint64_t appended_rows;
+	uint64_t archive_records;
+	uint64_t result_bytes_p50;
+	uint64_t result_bytes_p90;
+	uint64_t result_bytes_max;
+	uint64_t traceback_bytes_p50;
+	uint64_t traceback_bytes_p90;
+	uint64_t traceback_bytes_max;
+	uint64_t precommit_rows_bytes_p50;
+	uint64_t precommit_rows_bytes_p90;
+	uint64_t precommit_rows_bytes_max;
+	uint64_t projected_two_slot_peak_bytes;
+	double finalize_seconds;
+	double write_task_seconds;
+	double archive_seconds;
+	double counter_seconds;
+	double total_seconds;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t cigar_mismatches;
+	uint64_t counter_mismatches;
+	uint64_t digest_mismatches;
+	std::vector<uint64_t> result_bytes_by_flush;
+	std::vector<uint64_t> traceback_bytes_by_flush;
+	std::vector<uint64_t> precommit_rows_bytes_by_flush;
+};
+
+struct FasimGasal2DualFinalizerStats
+{
+	FasimGasal2DualFinalizerStats() :
+		requested(false),
+		active(false),
+		result_boundary_ready_flushes(0),
+		flushes_observed(0),
+		flushes_compared(0),
+		unsupported_flushes(0),
+		legacy_rows(0),
+		extracted_rows(0),
+		missing_rows(0),
+		extra_rows(0),
+		order_mismatches(0),
+		cigar_mismatches(0),
+		coordinate_mismatches(0),
+		counter_mismatches(0),
+		archive_descriptor_mismatches(0),
+		legacy_seconds(0.0),
+		extracted_seconds(0.0),
+		compare_seconds(0.0),
+		first_mismatch_flush_id(0),
+		first_mismatch_task_id(0),
+		first_mismatch_row_index(0),
+		first_mismatch_field("none"),
+		first_mismatch_legacy_row("none"),
+		first_mismatch_extracted_row("none")
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t result_boundary_ready_flushes;
+	uint64_t flushes_observed;
+	uint64_t flushes_compared;
+	uint64_t unsupported_flushes;
+	uint64_t legacy_rows;
+	uint64_t extracted_rows;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t order_mismatches;
+	uint64_t cigar_mismatches;
+	uint64_t coordinate_mismatches;
+	uint64_t counter_mismatches;
+	uint64_t archive_descriptor_mismatches;
+	double legacy_seconds;
+	double extracted_seconds;
+	double compare_seconds;
+	uint64_t first_mismatch_flush_id;
+	uint64_t first_mismatch_task_id;
+	uint64_t first_mismatch_row_index;
+	std::string first_mismatch_field;
+	std::string first_mismatch_legacy_row;
+	std::string first_mismatch_extracted_row;
+};
+
+struct FasimGasal2ExtractedFinalizerStats
+{
+	FasimGasal2ExtractedFinalizerStats() :
+		requested(false),
+		active(false),
+		validate_requested(false),
+		validate_active(false),
+		result_boundary_ready_flushes(0),
+		flushes_observed(0),
+		eligible_flushes(0),
+		committed_flushes(0),
+		unsupported_finalizer_shape_flushes(0),
+		legacy_fallback_flushes(0),
+		legacy_finalizer_executed(0),
+		extracted_finalizer_executed(0),
+		comparison_performed(0),
+		extracted_active_flushes(0),
+		legacy_rows(0),
+		extracted_rows(0),
+		committed_rows(0),
+		missing_rows(0),
+		extra_rows(0),
+		order_mismatches(0),
+		cigar_mismatches(0),
+		coordinate_mismatches(0),
+		counter_mismatches(0),
+		archive_descriptor_mismatches(0),
+		legacy_seconds(0.0),
+		extracted_seconds(0.0),
+		compare_seconds(0.0),
+		first_mismatch_flush_id(0),
+		first_mismatch_task_id(0),
+		first_mismatch_row_index(0),
+		first_mismatch_field("none"),
+		first_mismatch_legacy_row("none"),
+		first_mismatch_extracted_row("none")
+	{
+	}
+
+	bool requested;
+	bool active;
+	bool validate_requested;
+	bool validate_active;
+	uint64_t result_boundary_ready_flushes;
+	uint64_t flushes_observed;
+	uint64_t eligible_flushes;
+	uint64_t committed_flushes;
+	uint64_t unsupported_finalizer_shape_flushes;
+	uint64_t legacy_fallback_flushes;
+	uint64_t legacy_finalizer_executed;
+	uint64_t extracted_finalizer_executed;
+	uint64_t comparison_performed;
+	uint64_t extracted_active_flushes;
+	uint64_t legacy_rows;
+	uint64_t extracted_rows;
+	uint64_t committed_rows;
+	uint64_t missing_rows;
+	uint64_t extra_rows;
+	uint64_t order_mismatches;
+	uint64_t cigar_mismatches;
+	uint64_t coordinate_mismatches;
+	uint64_t counter_mismatches;
+	uint64_t archive_descriptor_mismatches;
+	double legacy_seconds;
+	double extracted_seconds;
+	double compare_seconds;
+	uint64_t first_mismatch_flush_id;
+	uint64_t first_mismatch_task_id;
+	uint64_t first_mismatch_row_index;
+	std::string first_mismatch_field;
+	std::string first_mismatch_legacy_row;
+	std::string first_mismatch_extracted_row;
+};
+
+static inline const char *fasim_gasal2_flush_result_boundary_disabled_reason(
+	const FasimGasal2FlushResultBoundaryStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.materialized_flushes == 0)
+	{
+		return "no_gasal2_result";
+	}
+	return "none";
+}
+
+static inline const char *fasim_gasal2_flush_result_boundary_decision(
+	const FasimGasal2FlushResultBoundaryStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.materialized_flushes == 0)
+	{
+		return "needs_material_workload";
+	}
+	if (stats.finalizer_consumed_result_flushes == stats.materialized_flushes)
+	{
+		return "go_pure_finalizer_extraction_next";
+	}
+	return "result_materialized_not_consumed";
+}
+
+static inline const char *fasim_gasal2_flush_pure_finalizer_disabled_reason(
+	const FasimGasal2FlushPureFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.flushes_observed == 0)
+	{
+		return "no_gasal2_flush_observed";
+	}
+	if (stats.result_boundary_ready_flushes == 0)
+	{
+		return "result_boundary_missing";
+	}
+	if (stats.output_side_effect_blocker_flushes > 0 ||
+	    stats.archive_writer_blocker_flushes > 0 ||
+	    stats.global_task_triplex_commit_blocker_flushes > 0)
+	{
+		return "ordered_commit_not_extracted";
+	}
+	return "none";
+}
+
+static inline const char *fasim_gasal2_flush_pure_finalizer_decision(
+	const FasimGasal2FlushPureFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.flushes_observed == 0)
+	{
+		return "needs_material_workload";
+	}
+	if (stats.result_boundary_ready_flushes == 0)
+	{
+		return "go_result_boundary_first";
+	}
+	if (stats.output_side_effect_blocker_flushes > 0 ||
+	    stats.archive_writer_blocker_flushes > 0 ||
+	    stats.global_task_triplex_commit_blocker_flushes > 0)
+	{
+		return "go_ordered_commit_extraction_next";
+	}
+	if (stats.eligible_flushes > 0)
+	{
+		return "ready_for_same_result_dual_finalizer_shadow";
+	}
+	return "pure_finalizer_readiness_incomplete";
+}
+
+static inline uint64_t fasim_percentile_u64(std::vector<uint64_t> values,
+                                            double percentile)
+{
+	if (values.empty())
+	{
+		return 0;
+	}
+	std::sort(values.begin(), values.end());
+	const double bounded =
+		std::max(0.0, std::min(1.0, percentile));
+	const size_t index =
+		static_cast<size_t>(
+			std::floor(bounded *
+			           static_cast<double>(values.size() - 1)));
+	return values[index];
+}
+
+static inline void fasim_gasal2_ordered_commit_finalize(
+	FasimGasal2OrderedCommitStats &stats)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	stats.result_bytes_p50 =
+		fasim_percentile_u64(stats.result_bytes_by_flush, 0.50);
+	stats.result_bytes_p90 =
+		fasim_percentile_u64(stats.result_bytes_by_flush, 0.90);
+	stats.traceback_bytes_p50 =
+		fasim_percentile_u64(stats.traceback_bytes_by_flush, 0.50);
+	stats.traceback_bytes_p90 =
+		fasim_percentile_u64(stats.traceback_bytes_by_flush, 0.90);
+	stats.precommit_rows_bytes_p50 =
+		fasim_percentile_u64(stats.precommit_rows_bytes_by_flush, 0.50);
+	stats.precommit_rows_bytes_p90 =
+		fasim_percentile_u64(stats.precommit_rows_bytes_by_flush, 0.90);
+	stats.projected_two_slot_peak_bytes =
+		2 * (stats.result_bytes_max +
+		     stats.precommit_rows_bytes_max);
+}
+
+static inline void fasim_gasal2_ordered_commit_observe_ready(
+	FasimGasal2OrderedCommitStats &stats,
+	const FasimGasal2FlushGpuResult &result,
+	uint64_t flushId)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.flushes_ready;
+	if (stats.flushes_ready == 1)
+	{
+		stats.next_expected_flush_id = flushId;
+	}
+	stats.result_bytes_by_flush.push_back(result.result_bytes);
+	stats.traceback_bytes_by_flush.push_back(result.traceback_bytes);
+	stats.result_bytes_max =
+		std::max(stats.result_bytes_max, result.result_bytes);
+	stats.traceback_bytes_max =
+		std::max(stats.traceback_bytes_max, result.traceback_bytes);
+}
+
+static inline void fasim_gasal2_ordered_commit_observe_commit(
+	FasimGasal2OrderedCommitStats &stats,
+	uint64_t flushId,
+	uint64_t precommitRows,
+	uint64_t appendedRows,
+	uint64_t archiveRecords,
+	uint64_t precommitRowsBytes,
+	double finalizeSeconds,
+	double writeTaskSeconds,
+	double archiveSeconds,
+	double counterSeconds,
+	double totalSeconds,
+	bool directCommit)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	if (flushId != stats.next_expected_flush_id)
+	{
+		++stats.order_violations;
+		stats.next_expected_flush_id = flushId;
+	}
+	++stats.flushes_committed;
+	if (directCommit)
+	{
+		++stats.direct_flushes_committed;
+	}
+	else
+	{
+		++stats.triplex_flushes_committed;
+	}
+	stats.precommit_rows += precommitRows;
+	stats.appended_rows += appendedRows;
+	stats.archive_records += archiveRecords;
+	stats.precommit_rows_bytes_by_flush.push_back(precommitRowsBytes);
+	stats.precommit_rows_bytes_max =
+		std::max(stats.precommit_rows_bytes_max, precommitRowsBytes);
+	stats.finalize_seconds += finalizeSeconds;
+	stats.write_task_seconds += writeTaskSeconds;
+	stats.archive_seconds += archiveSeconds;
+	stats.counter_seconds += counterSeconds;
+	stats.total_seconds += totalSeconds;
+	++stats.next_expected_flush_id;
+}
+
+static inline const char *fasim_gasal2_ordered_commit_disabled_reason(
+	const FasimGasal2OrderedCommitStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.flushes_ready == 0)
+	{
+		return "no_gasal2_flush_observed";
+	}
+	if (stats.order_violations != 0)
+	{
+		return "order_violation";
+	}
+	return "none";
+}
+
+static inline const char *fasim_gasal2_ordered_commit_decision(
+	const FasimGasal2OrderedCommitStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.flushes_ready == 0)
+	{
+		return "needs_material_workload";
+	}
+	if (stats.order_violations != 0)
+	{
+		return "blocked_order_violation";
+	}
+	if (stats.flushes_committed == stats.flushes_ready)
+	{
+		return "go_same_result_dual_finalizer_shadow_next";
+	}
+	return "ordered_commit_incomplete";
+}
+
+static inline void fasim_gasal2_dual_finalizer_observe_ready(
+	FasimGasal2DualFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.flushes_observed;
+	++stats.result_boundary_ready_flushes;
+}
+
+static inline void fasim_gasal2_dual_finalizer_observe_legacy(
+	FasimGasal2DualFinalizerStats &stats,
+	uint64_t rows,
+	double seconds)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	stats.legacy_rows += rows;
+	stats.legacy_seconds += seconds;
+}
+
+static inline FasimGasal2FlushFinalizedRows
+fasim_gasal2_make_triplex_finalized_rows(
+	uint64_t flushId,
+	const std::vector< std::vector<triplex> > &rowsByTask)
+{
+	FasimGasal2FlushFinalizedRows rows;
+	rows.flush_id = flushId;
+	rows.task_row_offsets.reserve(rowsByTask.size());
+	rows.task_row_counts.reserve(rowsByTask.size());
+	for (size_t t = 0; t < rowsByTask.size(); ++t)
+	{
+		rows.task_row_offsets.push_back(
+			static_cast<uint32_t>(rows.precommit_rows.size()));
+		rows.task_row_counts.push_back(
+			static_cast<uint32_t>(rowsByTask[t].size()));
+		rows.precommit_rows.insert(rows.precommit_rows.end(),
+		                           rowsByTask[t].begin(),
+		                           rowsByTask[t].end());
+	}
+	fasim_gasal2_finalize_row_digests(rows);
+	return rows;
+}
+
+static inline uint64_t fasim_gasal2_task_for_finalized_row(
+	const FasimGasal2FlushFinalizedRows &rows,
+	size_t rowIndex)
+{
+	for (size_t t = 0; t < rows.task_row_offsets.size(); ++t)
+	{
+		const size_t begin = rows.task_row_offsets[t];
+		const size_t end = begin + rows.task_row_counts[t];
+		if (rowIndex >= begin && rowIndex < end)
+		{
+			return static_cast<uint64_t>(t);
+		}
+	}
+	return 0;
+}
+
+static inline void fasim_gasal2_dual_finalizer_note_first_mismatch(
+	FasimGasal2DualFinalizerStats &stats,
+	uint64_t flushId,
+	uint64_t taskId,
+	uint64_t rowIndex,
+	const std::string &field,
+	const std::string &legacyRow,
+	const std::string &extractedRow)
+{
+	if (stats.first_mismatch_field != "none")
+	{
+		return;
+	}
+	stats.first_mismatch_flush_id = flushId;
+	stats.first_mismatch_task_id = taskId;
+	stats.first_mismatch_row_index = rowIndex;
+	stats.first_mismatch_field = field;
+	stats.first_mismatch_legacy_row = legacyRow;
+	stats.first_mismatch_extracted_row = extractedRow;
+}
+
+static inline void fasim_gasal2_dual_finalizer_observe_unsupported(
+	FasimGasal2DualFinalizerStats &stats,
+	uint64_t rows,
+	double seconds,
+	uint64_t flushId,
+	const char *reason)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.unsupported_flushes;
+	stats.legacy_rows += rows;
+	stats.legacy_seconds += seconds;
+	fasim_gasal2_dual_finalizer_note_first_mismatch(
+		stats,
+		flushId,
+		0,
+		0,
+		reason == NULL ? "unsupported_finalizer_shape" : reason,
+		"legacy_available",
+		"unsupported");
+}
+
+static inline void fasim_gasal2_dual_finalizer_compare(
+	FasimGasal2DualFinalizerStats &stats,
+	const FasimGasal2FlushFinalizedRows &legacyRows,
+	const FasimGasal2FlushFinalizedRows &extractedRows,
+	double legacySeconds,
+	double extractedSeconds,
+	double compareSeconds)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.flushes_compared;
+	stats.legacy_rows += legacyRows.row_count;
+	stats.extracted_rows += extractedRows.row_count;
+	stats.legacy_seconds += legacySeconds;
+	stats.extracted_seconds += extractedSeconds;
+	stats.compare_seconds += compareSeconds;
+	if (legacyRows.row_count > extractedRows.row_count)
+	{
+		stats.missing_rows += legacyRows.row_count - extractedRows.row_count;
+	}
+	else if (extractedRows.row_count > legacyRows.row_count)
+	{
+		stats.extra_rows += extractedRows.row_count - legacyRows.row_count;
+	}
+	if (legacyRows.row_count != extractedRows.row_count)
+	{
+		const uint64_t rowIndex =
+			std::min(legacyRows.row_count, extractedRows.row_count);
+		fasim_gasal2_dual_finalizer_note_first_mismatch(
+			stats,
+			legacyRows.flush_id,
+			fasim_gasal2_task_for_finalized_row(
+				legacyRows,
+				static_cast<size_t>(rowIndex)),
+			rowIndex,
+			"row_count",
+			legacyRows.row_count > rowIndex ?
+				fasim_gasal2_triplex_fingerprint(
+					legacyRows.precommit_rows[
+						static_cast<size_t>(rowIndex)]) :
+				"none",
+			extractedRows.row_count > rowIndex ?
+				fasim_gasal2_triplex_fingerprint(
+					extractedRows.precommit_rows[
+						static_cast<size_t>(rowIndex)]) :
+				"none");
+	}
+	if (legacyRows.ordered_rows_digest != extractedRows.ordered_rows_digest)
+	{
+		++stats.order_mismatches;
+		const size_t compareCount =
+			std::min(legacyRows.precommit_rows.size(),
+			         extractedRows.precommit_rows.size());
+		size_t mismatchIndex = compareCount;
+		for (size_t i = 0; i < compareCount; ++i)
+		{
+			if (fasim_gasal2_triplex_fingerprint(
+				    legacyRows.precommit_rows[i]) !=
+			    fasim_gasal2_triplex_fingerprint(
+				    extractedRows.precommit_rows[i]))
+			{
+				mismatchIndex = i;
+				break;
+			}
+		}
+		if (mismatchIndex == compareCount && compareCount > 0)
+		{
+			mismatchIndex = compareCount - 1;
+		}
+		fasim_gasal2_dual_finalizer_note_first_mismatch(
+			stats,
+			legacyRows.flush_id,
+			fasim_gasal2_task_for_finalized_row(
+				legacyRows,
+				mismatchIndex),
+			static_cast<uint64_t>(mismatchIndex),
+			"ordered_row",
+			mismatchIndex < legacyRows.precommit_rows.size() ?
+				fasim_gasal2_triplex_fingerprint(
+					legacyRows.precommit_rows[mismatchIndex]) :
+				"none",
+			mismatchIndex < extractedRows.precommit_rows.size() ?
+				fasim_gasal2_triplex_fingerprint(
+					extractedRows.precommit_rows[mismatchIndex]) :
+				"none");
+	}
+	if (legacyRows.row_multiset_digest != extractedRows.row_multiset_digest)
+	{
+		stats.missing_rows +=
+			legacyRows.row_count == extractedRows.row_count ? 1 : 0;
+		stats.extra_rows +=
+			legacyRows.row_count == extractedRows.row_count ? 1 : 0;
+		fasim_gasal2_dual_finalizer_note_first_mismatch(
+			stats,
+			legacyRows.flush_id,
+			0,
+			0,
+			"row_multiset",
+			fasim_hex_u64(legacyRows.row_multiset_digest),
+			fasim_hex_u64(extractedRows.row_multiset_digest));
+	}
+	if (legacyRows.cigar_digest != extractedRows.cigar_digest)
+	{
+		++stats.cigar_mismatches;
+		fasim_gasal2_dual_finalizer_note_first_mismatch(
+			stats,
+			legacyRows.flush_id,
+			0,
+			0,
+			"cigar_digest",
+			fasim_hex_u64(legacyRows.cigar_digest),
+			fasim_hex_u64(extractedRows.cigar_digest));
+	}
+	if (legacyRows.coordinate_digest != extractedRows.coordinate_digest)
+	{
+		++stats.coordinate_mismatches;
+		fasim_gasal2_dual_finalizer_note_first_mismatch(
+			stats,
+			legacyRows.flush_id,
+			0,
+			0,
+			"coordinate_digest",
+			fasim_hex_u64(legacyRows.coordinate_digest),
+			fasim_hex_u64(extractedRows.coordinate_digest));
+	}
+	if (legacyRows.task_row_offsets != extractedRows.task_row_offsets ||
+	    legacyRows.task_row_counts != extractedRows.task_row_counts)
+	{
+		++stats.counter_mismatches;
+		for (size_t t = 0;
+		     t < std::max(legacyRows.task_row_counts.size(),
+		                  extractedRows.task_row_counts.size());
+		     ++t)
+		{
+			const uint32_t legacyCount =
+				t < legacyRows.task_row_counts.size() ?
+				legacyRows.task_row_counts[t] :
+				0;
+			const uint32_t extractedCount =
+				t < extractedRows.task_row_counts.size() ?
+				extractedRows.task_row_counts[t] :
+				0;
+			if (legacyCount != extractedCount)
+			{
+				fasim_gasal2_dual_finalizer_note_first_mismatch(
+					stats,
+					legacyRows.flush_id,
+					static_cast<uint64_t>(t),
+					0,
+					"task_row_count",
+					std::to_string(legacyCount),
+					std::to_string(extractedCount));
+				break;
+			}
+		}
+	}
+}
+
+static inline bool fasim_gasal2_dual_finalizer_clean(
+	const FasimGasal2DualFinalizerStats &stats);
+
+static inline const char *fasim_gasal2_dual_finalizer_disabled_reason(
+	const FasimGasal2DualFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.result_boundary_ready_flushes == 0)
+	{
+		return "result_boundary_missing";
+	}
+	if (stats.unsupported_flushes != 0)
+	{
+		return "unsupported_finalizer_shape";
+	}
+	if (stats.flushes_compared == 0)
+	{
+		return "extracted_finalizer_missing";
+	}
+	return "none";
+}
+
+static inline const char *fasim_gasal2_dual_finalizer_decision(
+	const FasimGasal2DualFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.result_boundary_ready_flushes == 0)
+	{
+		return "go_result_boundary_first";
+	}
+	if (stats.unsupported_flushes != 0)
+	{
+		return "go_extract_unsupported_finalizer_shape_next";
+	}
+	if (stats.flushes_compared == 0)
+	{
+		return "go_extract_finalize_flush_next";
+	}
+	if (stats.missing_rows == 0 &&
+	    stats.extra_rows == 0 &&
+	    stats.order_mismatches == 0 &&
+	    stats.cigar_mismatches == 0 &&
+	    stats.coordinate_mismatches == 0 &&
+	    stats.counter_mismatches == 0 &&
+	    stats.archive_descriptor_mismatches == 0)
+	{
+		return "go_real_ordered_commit_opt_in_next";
+	}
+	return "dual_finalizer_mismatch";
+}
+
+static inline bool fasim_gasal2_dual_finalizer_clean(
+	const FasimGasal2DualFinalizerStats &stats)
+{
+	return stats.missing_rows == 0 &&
+	       stats.extra_rows == 0 &&
+	       stats.order_mismatches == 0 &&
+	       stats.cigar_mismatches == 0 &&
+	       stats.coordinate_mismatches == 0 &&
+	       stats.counter_mismatches == 0 &&
+	       stats.archive_descriptor_mismatches == 0;
+}
+
+static inline void fasim_gasal2_extracted_finalizer_note_first_mismatch(
+	FasimGasal2ExtractedFinalizerStats &stats,
+	uint64_t flushId,
+	uint64_t taskId,
+	uint64_t rowIndex,
+	const std::string &field,
+	const std::string &legacyRow,
+	const std::string &extractedRow)
+{
+	if (stats.first_mismatch_field != "none")
+	{
+		return;
+	}
+	stats.first_mismatch_flush_id = flushId;
+	stats.first_mismatch_task_id = taskId;
+	stats.first_mismatch_row_index = rowIndex;
+	stats.first_mismatch_field = field;
+	stats.first_mismatch_legacy_row = legacyRow;
+	stats.first_mismatch_extracted_row = extractedRow;
+}
+
+static inline void fasim_gasal2_extracted_finalizer_observe_ready(
+	FasimGasal2ExtractedFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.flushes_observed;
+	++stats.result_boundary_ready_flushes;
+}
+
+static inline void fasim_gasal2_extracted_finalizer_observe_missing_result(
+	FasimGasal2ExtractedFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.flushes_observed;
+	++stats.legacy_fallback_flushes;
+	fasim_gasal2_extracted_finalizer_note_first_mismatch(
+		stats,
+		0,
+		0,
+		0,
+		"result_boundary_missing",
+		"legacy_available",
+		"unsupported");
+}
+
+static inline void fasim_gasal2_extracted_finalizer_observe_unsupported(
+	FasimGasal2ExtractedFinalizerStats &stats,
+	uint64_t rows,
+	double seconds,
+	uint64_t flushId,
+	const char *reason)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.unsupported_finalizer_shape_flushes;
+	++stats.legacy_fallback_flushes;
+	++stats.legacy_finalizer_executed;
+	stats.legacy_rows += rows;
+	stats.legacy_seconds += seconds;
+	fasim_gasal2_extracted_finalizer_note_first_mismatch(
+		stats,
+		flushId,
+		0,
+		0,
+		reason == NULL ? "unsupported_finalizer_shape" : reason,
+		"legacy_available",
+		"unsupported");
+}
+
+static inline bool fasim_gasal2_extracted_finalizer_compare(
+	FasimGasal2ExtractedFinalizerStats &stats,
+	const FasimGasal2FlushFinalizedRows &legacyRows,
+	const FasimGasal2FlushFinalizedRows &extractedRows,
+	double legacySeconds,
+	double extractedSeconds,
+	double compareSeconds)
+{
+	if (!stats.requested)
+	{
+		return false;
+	}
+	++stats.legacy_finalizer_executed;
+	++stats.extracted_finalizer_executed;
+	++stats.comparison_performed;
+	FasimGasal2DualFinalizerStats compareStats;
+	compareStats.requested = true;
+	compareStats.active = true;
+	fasim_gasal2_dual_finalizer_compare(compareStats,
+	                                    legacyRows,
+	                                    extractedRows,
+	                                    legacySeconds,
+	                                    extractedSeconds,
+	                                    compareSeconds);
+	stats.legacy_rows += compareStats.legacy_rows;
+	stats.extracted_rows += compareStats.extracted_rows;
+	stats.missing_rows += compareStats.missing_rows;
+	stats.extra_rows += compareStats.extra_rows;
+	stats.order_mismatches += compareStats.order_mismatches;
+	stats.cigar_mismatches += compareStats.cigar_mismatches;
+	stats.coordinate_mismatches += compareStats.coordinate_mismatches;
+	stats.counter_mismatches += compareStats.counter_mismatches;
+	stats.archive_descriptor_mismatches +=
+		compareStats.archive_descriptor_mismatches;
+	stats.legacy_seconds += compareStats.legacy_seconds;
+	stats.extracted_seconds += compareStats.extracted_seconds;
+	stats.compare_seconds += compareStats.compare_seconds;
+	if (stats.first_mismatch_field == "none" &&
+	    compareStats.first_mismatch_field != "none")
+	{
+		stats.first_mismatch_flush_id =
+			compareStats.first_mismatch_flush_id;
+		stats.first_mismatch_task_id =
+			compareStats.first_mismatch_task_id;
+		stats.first_mismatch_row_index =
+			compareStats.first_mismatch_row_index;
+		stats.first_mismatch_field =
+			compareStats.first_mismatch_field;
+		stats.first_mismatch_legacy_row =
+			compareStats.first_mismatch_legacy_row;
+		stats.first_mismatch_extracted_row =
+			compareStats.first_mismatch_extracted_row;
+	}
+	return fasim_gasal2_dual_finalizer_clean(compareStats);
+}
+
+static inline void fasim_gasal2_extracted_finalizer_observe_commit(
+	FasimGasal2ExtractedFinalizerStats &stats,
+	uint64_t rows,
+	double extractedSeconds)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.eligible_flushes;
+	++stats.committed_flushes;
+	++stats.extracted_finalizer_executed;
+	++stats.extracted_active_flushes;
+	stats.committed_rows += rows;
+	if (!stats.validate_active)
+	{
+		stats.extracted_rows += rows;
+		stats.extracted_seconds += extractedSeconds;
+	}
+}
+
+static inline const char *fasim_gasal2_extracted_finalizer_disabled_reason(
+	const FasimGasal2ExtractedFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.flushes_observed == 0)
+	{
+		return "no_gasal2_flush_observed";
+	}
+	if (stats.result_boundary_ready_flushes == 0)
+	{
+		return "result_boundary_missing";
+	}
+	if (stats.unsupported_finalizer_shape_flushes != 0)
+	{
+		return "unsupported_finalizer_shape";
+	}
+	if (stats.legacy_fallback_flushes != 0)
+	{
+		return "legacy_fallback";
+	}
+	return "none";
+}
+
+static inline const char *fasim_gasal2_extracted_finalizer_decision(
+	const FasimGasal2ExtractedFinalizerStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.flushes_observed == 0)
+	{
+		return "needs_material_workload";
+	}
+	if (stats.result_boundary_ready_flushes == 0)
+	{
+		return "go_result_boundary_first";
+	}
+	if (stats.unsupported_finalizer_shape_flushes != 0)
+	{
+		return "unsupported_shape_legacy_fallback";
+	}
+	if (stats.legacy_fallback_flushes != 0)
+	{
+		const bool hasMismatch =
+			stats.missing_rows != 0 ||
+			stats.extra_rows != 0 ||
+			stats.order_mismatches != 0 ||
+			stats.cigar_mismatches != 0 ||
+			stats.coordinate_mismatches != 0 ||
+			stats.counter_mismatches != 0 ||
+			stats.archive_descriptor_mismatches != 0;
+		if (stats.validate_active &&
+		    stats.comparison_performed != 0 &&
+		    hasMismatch)
+		{
+			return "validate_mismatch_fallback";
+		}
+		return "real_extracted_active_with_legacy_fallback";
+	}
+	if (stats.missing_rows == 0 &&
+	    stats.extra_rows == 0 &&
+	    stats.order_mismatches == 0 &&
+	    stats.cigar_mismatches == 0 &&
+	    stats.coordinate_mismatches == 0 &&
+	    stats.counter_mismatches == 0 &&
+	    stats.archive_descriptor_mismatches == 0 &&
+	    stats.committed_flushes == stats.eligible_flushes &&
+	    stats.committed_flushes > 0)
+	{
+		return "real_extracted_active_clean_no_fallback";
+	}
+	return "extracted_finalizer_incomplete";
+}
+
+static inline void fasim_gasal2_two_slot_observe_flush(
+	FasimGasal2FlushTwoSlotOverlapStats &stats,
+	size_t taskCount)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	++stats.flushes_observed;
+	stats.total_tasks += static_cast<uint64_t>(taskCount);
+	stats.max_tasks_per_flush =
+		std::max(stats.max_tasks_per_flush,
+		         static_cast<uint64_t>(taskCount));
+}
+
+static inline void fasim_gasal2_two_slot_observe_extend_shape(
+	FasimGasal2FlushTwoSlotOverlapStats &stats,
+	size_t taskCount,
+	bool directConvertActive,
+	bool equivalenceFirstConvertActive,
+	bool archiveFirstConvertActive)
+{
+	if (!stats.requested)
+	{
+		return;
+	}
+	stats.max_tasks_per_flush =
+		std::max(stats.max_tasks_per_flush,
+		         static_cast<uint64_t>(taskCount));
+	++stats.shape_observed_flushes;
+	if (stats.active)
+	{
+		return;
+	}
+	++stats.ineligible_flushes;
+	++stats.gpu_result_object_missing_flushes;
+	++stats.convert_inside_extend_flushes;
+	if (directConvertActive)
+	{
+		++stats.direct_convert_active_flushes;
+	}
+	if (equivalenceFirstConvertActive)
+	{
+		++stats.equivalence_first_convert_active_flushes;
+	}
+	if (archiveFirstConvertActive)
+	{
+		++stats.archive_first_convert_active_flushes;
+	}
+	if (!directConvertActive && !archiveFirstConvertActive)
+	{
+		++stats.non_direct_convert_flushes;
+		++stats.triplex_return_flushes;
+	}
+	else
+	{
+		++stats.output_side_effect_flushes;
+	}
+}
+
+static inline const char *fasim_gasal2_two_slot_disabled_reason(
+	const FasimGasal2FlushTwoSlotOverlapStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (!stats.disabled_reason.empty() &&
+	    stats.disabled_reason != "not_requested")
+	{
+		return stats.disabled_reason.c_str();
+	}
+	if (stats.active)
+	{
+		return "none";
+	}
+	if (stats.shape_observed_flushes == 0)
+	{
+		return "no_gasal2_flush_observed";
+	}
+	return "result_boundary_missing";
+}
+
+static inline const char *fasim_gasal2_two_slot_decision(
+	const FasimGasal2FlushTwoSlotOverlapStats &stats)
+{
+	if (!stats.requested)
+	{
+		return "not_requested";
+	}
+	if (stats.active &&
+	    stats.flushes_committed != 0 &&
+	    stats.flushes_committed == stats.flushes_gpu_submitted &&
+	    stats.state_transition_violations == 0 &&
+	    stats.order_violations == 0 &&
+	    stats.legacy_fallback_flushes == 0 &&
+	    stats.missing_rows == 0 &&
+	    stats.extra_rows == 0 &&
+	    stats.order_mismatches == 0 &&
+	    stats.cigar_mismatches == 0 &&
+	    stats.coordinate_mismatches == 0 &&
+	    stats.counter_mismatches == 0 &&
+	    stats.archive_descriptor_mismatches == 0)
+	{
+		if (stats.serialized_control_active)
+		{
+			return "two_slot_serialized_control_clean_no_fallback";
+		}
+		return "two_slot_active_clean_no_fallback";
+	}
+	if (stats.active && stats.legacy_fallback_flushes != 0)
+	{
+		return "two_slot_active_with_legacy_fallback";
+	}
+	if (!stats.active && !stats.disabled_reason.empty() &&
+	    stats.disabled_reason != "not_requested")
+	{
+		if (stats.validate_active)
+		{
+			return "validate_mode_synchronous_audit";
+		}
+		return "unsupported_shape_synchronous_fallback";
+	}
+	if (stats.shape_observed_flushes == 0)
+	{
+		return "needs_material_workload";
+	}
+	return "go_result_boundary_first";
+}
+
+static inline double fasim_flush_pipeline_ns_interval_seconds(uint64_t start,
+                                                              uint64_t end)
+{
+	if (start == 0 || end == 0 || end < start)
+	{
+		return 0.0;
+	}
+	return static_cast<double>(end - start) / 1000000000.0;
+}
+
+static inline void fasim_gasal2_flush_pipeline_record_totals_early(
+	FasimGasal2FlushPipelineTraceRuntime &runtime,
+	const FasimGasal2FlushPipelineRecord &record)
+{
+	runtime.total_pack_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.pack_start_ns,
+		                                         record.pack_end_ns);
+	runtime.total_gpu_wait_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(
+			record.gasal2_score_wait_start_ns,
+			record.gasal2_score_wait_end_ns) +
+		fasim_flush_pipeline_ns_interval_seconds(
+			record.traceback_wait_start_ns,
+			record.traceback_wait_end_ns);
+	runtime.total_exact_column_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.exact_column_start_ns,
+		                                         record.exact_column_end_ns);
+	runtime.total_traceback_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.traceback_pack_start_ns,
+		                                         record.traceback_pack_end_ns) +
+		fasim_flush_pipeline_ns_interval_seconds(record.traceback_submit_start_ns,
+		                                         record.traceback_submit_end_ns) +
+		fasim_flush_pipeline_ns_interval_seconds(record.traceback_wait_start_ns,
+		                                         record.traceback_wait_end_ns);
+	runtime.total_d2h_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.d2h_start_ns,
+		                                         record.d2h_end_ns);
+	runtime.total_convert_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.convert_start_ns,
+		                                         record.convert_end_ns);
+	runtime.total_archive_write_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.archive_write_start_ns,
+		                                         record.archive_write_end_ns);
+	runtime.total_sort_dedup_seconds +=
+		fasim_flush_pipeline_ns_interval_seconds(record.sort_dedup_start_ns,
+		                                         record.sort_dedup_end_ns);
+	runtime.total_gasal2_score_poll_wait_seconds +=
+		record.gasal2_score_poll_wait_seconds;
+	runtime.total_gasal2_score_result_copy_seconds +=
+		record.gasal2_score_result_copy_seconds;
+	runtime.total_gasal2_traceback_poll_wait_seconds +=
+		record.gasal2_traceback_poll_wait_seconds;
+	runtime.total_gasal2_traceback_result_copy_seconds +=
+		record.gasal2_traceback_result_copy_seconds;
+	runtime.total_gasal2_traceback_cigar_vector_seconds +=
+		record.gasal2_traceback_cigar_vector_seconds;
+	runtime.total_gasal2_traceback_cigar_string_seconds +=
+		record.gasal2_traceback_cigar_string_seconds;
+	runtime.total_gasal2_synchronous_wait_seconds +=
+		record.gasal2_synchronous_wait_seconds;
+	if (record.gpu_producer_blocked_available)
+	{
+		runtime.total_gpu_producer_blocked_seconds +=
+			record.gpu_producer_blocked_seconds;
+	}
+	if (record.cpu_consumer_idle_available)
+	{
+		runtime.total_cpu_consumer_idle_seconds +=
+			record.cpu_consumer_idle_seconds;
+	}
+	if (record.waiting_for_free_buffer_available)
+	{
+		runtime.total_waiting_for_free_buffer_seconds +=
+			record.waiting_for_free_buffer_seconds;
+	}
+	if (record.gpu_inter_flush_idle_gap_available)
+	{
+		runtime.total_gpu_inter_flush_idle_gap_seconds +=
+			record.gpu_inter_flush_idle_gap_seconds;
+	}
+}
+
+static inline void fasim_gasal2_flush_pipeline_store_record(
+	FasimGasal2FlushPipelineTraceRuntime &runtime,
+	const FasimGasal2FlushPipelineRecord &record)
+{
+	if (!runtime.active)
+	{
+		return;
+	}
+	++runtime.total_flushes;
+	fasim_gasal2_flush_pipeline_record_totals_early(runtime, record);
+	if (runtime.records.size() < runtime.export_limit)
+	{
+		runtime.records.push_back(record);
+	}
+	else
+	{
+		runtime.export_truncated = true;
+	}
+	if (runtime.records.size() > runtime.chrome_limit)
+	{
+		runtime.chrome_trace_truncated = true;
+	}
+	runtime.last_flush_complete_ns = record.flush_complete_ns;
+}
+
+struct FasimGasal2FlushPipelineRecordGuard
+{
+	FasimGasal2FlushPipelineRecordGuard(
+		FasimGasal2FlushPipelineTraceRuntime *runtimeValue,
+		FasimGasal2FlushPipelineRecord *recordValue,
+		FasimGasal2FlushPipelineRecord **currentRecordSlotValue) :
+		runtime(runtimeValue),
+		record(recordValue),
+		currentRecordSlot(currentRecordSlotValue),
+		previousRecord(currentRecordSlotValue != NULL ? *currentRecordSlotValue : NULL),
+		active(runtimeValue != NULL &&
+		       recordValue != NULL &&
+		       runtimeValue->active),
+		gasal2Before()
+	{
+		if (currentRecordSlot != NULL)
+		{
+			*currentRecordSlot = active ? record : previousRecord;
+		}
+		if (active)
+		{
+			gasal2Before = fasim_gasal2_snapshot_stats();
+		}
+	}
+
+	~FasimGasal2FlushPipelineRecordGuard()
+	{
+		if (!active)
+		{
+			if (currentRecordSlot != NULL)
+			{
+				*currentRecordSlot = previousRecord;
+			}
+			return;
+		}
+		if (record->flush_complete_ns == 0)
+		{
+			record->flush_complete_ns = fasim_monotonic_ns();
+		}
+		const FasimGasal2Stats gasal2After = fasim_gasal2_snapshot_stats();
+		if (gasal2After.requests >= gasal2Before.requests)
+		{
+			record->gasal2_requests = gasal2After.requests - gasal2Before.requests;
+		}
+		if (gasal2After.traceback_requests >= gasal2Before.traceback_requests)
+		{
+			record->traceback_requests =
+				gasal2After.traceback_requests - gasal2Before.traceback_requests;
+		}
+		if (gasal2After.traceback_cigar_raw_ops >=
+		    gasal2Before.traceback_cigar_raw_ops)
+		{
+			record->traceback_cigar_raw_ops =
+				gasal2After.traceback_cigar_raw_ops -
+				gasal2Before.traceback_cigar_raw_ops;
+		}
+		if (gasal2After.traceback_cigar_merged_ops >=
+		    gasal2Before.traceback_cigar_merged_ops)
+		{
+			record->traceback_cigar_merged_ops =
+				gasal2After.traceback_cigar_merged_ops -
+				gasal2Before.traceback_cigar_merged_ops;
+		}
+		if (gasal2After.score_poll_wait_seconds >=
+		    gasal2Before.score_poll_wait_seconds)
+		{
+			record->gasal2_score_poll_wait_seconds =
+				gasal2After.score_poll_wait_seconds -
+				gasal2Before.score_poll_wait_seconds;
+		}
+		if (gasal2After.score_result_copy_seconds >=
+		    gasal2Before.score_result_copy_seconds)
+		{
+			record->gasal2_score_result_copy_seconds =
+				gasal2After.score_result_copy_seconds -
+				gasal2Before.score_result_copy_seconds;
+		}
+		if (gasal2After.traceback_poll_wait_seconds >=
+		    gasal2Before.traceback_poll_wait_seconds)
+		{
+			record->gasal2_traceback_poll_wait_seconds =
+				gasal2After.traceback_poll_wait_seconds -
+				gasal2Before.traceback_poll_wait_seconds;
+		}
+		if (gasal2After.traceback_result_copy_seconds >=
+		    gasal2Before.traceback_result_copy_seconds)
+		{
+			record->gasal2_traceback_result_copy_seconds =
+				gasal2After.traceback_result_copy_seconds -
+				gasal2Before.traceback_result_copy_seconds;
+		}
+		if (gasal2After.traceback_cigar_vector_seconds >=
+		    gasal2Before.traceback_cigar_vector_seconds)
+		{
+			record->gasal2_traceback_cigar_vector_seconds =
+				gasal2After.traceback_cigar_vector_seconds -
+				gasal2Before.traceback_cigar_vector_seconds;
+		}
+		if (gasal2After.traceback_cigar_string_seconds >=
+		    gasal2Before.traceback_cigar_string_seconds)
+		{
+			record->gasal2_traceback_cigar_string_seconds =
+				gasal2After.traceback_cigar_string_seconds -
+				gasal2Before.traceback_cigar_string_seconds;
+		}
+		record->gasal2_synchronous_wait_seconds =
+			record->gasal2_score_poll_wait_seconds +
+			record->gasal2_traceback_poll_wait_seconds;
+		fasim_gasal2_flush_pipeline_store_record(*runtime, *record);
+		if (currentRecordSlot != NULL)
+		{
+			*currentRecordSlot = previousRecord;
+		}
+	}
+
+	FasimGasal2FlushPipelineTraceRuntime *runtime;
+	FasimGasal2FlushPipelineRecord *record;
+	FasimGasal2FlushPipelineRecord **currentRecordSlot;
+	FasimGasal2FlushPipelineRecord *previousRecord;
+	bool active;
+	FasimGasal2Stats gasal2Before;
+};
+
+static inline uint64_t fasim_env_uint64_or_default(const char *name,
+                                                   uint64_t defaultValue);
 
 enum FasimMinScoreShadowSource
 {
@@ -634,6 +2948,120 @@ struct FasimBroadScoreInfoConsumerShadowStats
 	std::string broad_path_planner_descriptor_digest;
 };
 
+struct FasimPhase7V4LegacyByteScoreInfoShadowStats
+{
+	FasimPhase7V4LegacyByteScoreInfoShadowStats() :
+		requested(0),
+		active(0),
+		tasks(0),
+		cpu_scoreinfo_rows(0),
+		host_scoreinfo_rows(0),
+		gpu_scoreinfo_rows(0),
+		scoreinfo_rows_equal(1),
+		scoreinfo_order_equal(1),
+		scoreinfo_attempt_windows_equal(1),
+		scoreinfo_mismatches(0),
+		scoreinfo_false_negatives(0),
+		scoreinfo_extra_required_attempts(0),
+		host_contract_pass(0),
+		gpu_endpoint_cigar_traceback_output_authority(0),
+		gate_v4_1_pass(0),
+		source_replay_requested(0),
+		source_replay_active(0),
+		source_replay_streaming_ready(0),
+		source_replay_scoreinfo_rows(0),
+		source_replay_cpu_authority(0),
+		source_replay_gpu_endpoint_cigar_traceback_output_authority(0),
+		gate_v4_2_pass(0),
+		source("disabled")
+	{
+	}
+
+	uint64_t requested;
+	uint64_t active;
+	uint64_t tasks;
+	uint64_t cpu_scoreinfo_rows;
+	uint64_t host_scoreinfo_rows;
+	uint64_t gpu_scoreinfo_rows;
+	uint64_t scoreinfo_rows_equal;
+	uint64_t scoreinfo_order_equal;
+	uint64_t scoreinfo_attempt_windows_equal;
+	uint64_t scoreinfo_mismatches;
+	uint64_t scoreinfo_false_negatives;
+	uint64_t scoreinfo_extra_required_attempts;
+	uint64_t host_contract_pass;
+	uint64_t gpu_endpoint_cigar_traceback_output_authority;
+	uint64_t gate_v4_1_pass;
+	uint64_t source_replay_requested;
+	uint64_t source_replay_active;
+	uint64_t source_replay_streaming_ready;
+	uint64_t source_replay_scoreinfo_rows;
+	uint64_t source_replay_cpu_authority;
+	uint64_t source_replay_gpu_endpoint_cigar_traceback_output_authority;
+	uint64_t gate_v4_2_pass;
+	std::string source;
+};
+
+struct FasimPhase3CigarNtPrefilterShadowStats
+{
+	FasimPhase3CigarNtPrefilterShadowStats() :
+		requested(0),
+		active(0),
+		alignments_seen(0),
+		cigar_lt_ntmin(0),
+		legacy_nt_lt_ntmin(0),
+		agree_lt_ntmin(0),
+		disagree_lt_ntmin(0),
+		candidate_skippable(0),
+		candidate_false_negative_rows(0),
+		task_frontier_equal(1),
+		task_frontier_safety("safe"),
+		real_prune_proof_gate("pass"),
+		convert_seconds_projected_saved(0.0),
+		baseline_triplex_path(""),
+		candidate_triplex_path(""),
+		candidate_triplexes(0),
+		candidate_triplex_digest("0000000000000000"),
+		real_requested(0),
+		real_active(0),
+		real_validate_requested(0),
+		real_validate_active(0),
+		real_skipped_alignments(0),
+		real_validated_skips(0),
+		real_validate_mismatches(0),
+		real_fallbacks(0),
+		real_decision("disabled")
+	{
+	}
+
+	uint64_t requested;
+	uint64_t active;
+	uint64_t alignments_seen;
+	uint64_t cigar_lt_ntmin;
+	uint64_t legacy_nt_lt_ntmin;
+	uint64_t agree_lt_ntmin;
+	uint64_t disagree_lt_ntmin;
+	uint64_t candidate_skippable;
+	uint64_t candidate_false_negative_rows;
+	uint64_t task_frontier_equal;
+	std::string task_frontier_safety;
+	std::string real_prune_proof_gate;
+	double convert_seconds_projected_saved;
+	std::string baseline_triplex_path;
+	std::string candidate_triplex_path;
+	uint64_t candidate_triplexes;
+	std::string candidate_triplex_digest;
+	uint64_t real_requested;
+	uint64_t real_active;
+	uint64_t real_validate_requested;
+	uint64_t real_validate_active;
+	uint64_t real_skipped_alignments;
+	uint64_t real_validated_skips;
+	uint64_t real_validate_mismatches;
+	uint64_t real_fallbacks;
+	std::string real_decision;
+};
+
 enum FasimSrcTransform
 {
     FASIM_SRC_ORIG = 0,
@@ -767,6 +3195,130 @@ static inline bool fasim_top5_gasal2_phase_timing_enabled_runtime()
 	return fasim_env_flag_enabled("FASIM_TOP5_GASAL2_PHASE_TIMING");
 }
 
+static inline bool fasim_gasal2_flush_pipeline_trace_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_PIPELINE_TRACE");
+}
+
+static inline bool fasim_gasal2_nvtx_trace_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_NVTX_TRACE");
+}
+
+static inline bool fasim_gasal2_flush_two_slot_overlap_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP_SHADOW");
+}
+
+static inline bool fasim_gasal2_flush_two_slot_overlap_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP");
+}
+
+static inline bool fasim_gasal2_flush_two_slot_overlap_validate_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP_VALIDATE");
+}
+
+static inline bool fasim_gasal2_flush_two_slot_serialized_control_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_TWO_SLOT_SERIALIZED_CONTROL");
+}
+
+static inline bool fasim_gasal2_flush_result_boundary_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_RESULT_BOUNDARY_SHADOW");
+}
+
+static inline bool fasim_gasal2_flush_pure_finalizer_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_PURE_FINALIZER_SHADOW");
+}
+
+static inline bool fasim_gasal2_flush_ordered_commit_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_ORDERED_COMMIT_SHADOW");
+}
+
+static inline bool fasim_gasal2_flush_dual_finalizer_shadow_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_DUAL_FINALIZER_SHADOW");
+}
+
+static inline bool fasim_gasal2_flush_extracted_finalizer_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_EXTRACTED_FINALIZER");
+}
+
+static inline bool fasim_gasal2_flush_extracted_finalizer_validate_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_FLUSH_EXTRACTED_FINALIZER_VALIDATE");
+}
+
+static inline bool fasim_gasal2_nvtx_trace_compiled()
+{
+#ifdef FASIM_WITH_NVTX
+	return true;
+#else
+	return false;
+#endif
+}
+
+static inline std::string fasim_gasal2_flush_pipeline_trace_export_path_runtime()
+{
+	const char *env = getenv("FASIM_GASAL2_FLUSH_PIPELINE_TRACE_EXPORT");
+	return env == NULL ? std::string("") : std::string(env);
+}
+
+static inline std::string fasim_gasal2_flush_pipeline_trace_json_path_runtime()
+{
+	const char *env = getenv("FASIM_GASAL2_FLUSH_PIPELINE_TRACE_JSON");
+	return env == NULL ? std::string("") : std::string(env);
+}
+
+static inline uint64_t fasim_gasal2_flush_pipeline_trace_limit_runtime()
+{
+	return fasim_env_uint64_or_default("FASIM_GASAL2_FLUSH_PIPELINE_TRACE_LIMIT",
+	                                   1024);
+}
+
+static inline uint64_t fasim_gasal2_flush_pipeline_trace_chrome_limit_runtime()
+{
+	return fasim_env_uint64_or_default(
+		"FASIM_GASAL2_FLUSH_PIPELINE_TRACE_CHROME_LIMIT",
+		256);
+}
+
+static inline bool fasim_gasal2_traceback_rejection_taxonomy_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY");
+}
+
+static inline bool fasim_gasal2_pretraceback_pruning_eligibility_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY");
+}
+
+static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
+{
+	const char *env = getenv("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT");
+	if (env == NULL)
+	{
+		return "";
+	}
+	return std::string(env);
+}
+
+static inline std::string fasim_gasal2_pretraceback_pruning_eligibility_export_path_runtime()
+{
+	const char *env = getenv("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY_EXPORT");
+	if (env == NULL)
+	{
+		return "";
+	}
+	return std::string(env);
+}
+
 static inline bool fasim_gasal2_direct_lite_archive_convert_runtime()
 {
 	return fasim_env_flag_enabled("FASIM_GASAL2_DIRECT_LITE_ARCHIVE_CONVERT");
@@ -893,6 +3445,266 @@ static inline std::string fasim_gasal2_long_query_segmented_cpu_traceback_order_
 static inline bool fasim_gasal2_nt_sum_span_prune_enabled_runtime()
 {
 	return fasim_env_flag_enabled("FASIM_ALIGN_GASAL2_NT_SUM_SPAN_PRUNE");
+}
+
+static inline bool fasim_gasal2_preconvert_prune_shadow_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_ALIGN_GASAL2_PRECONVERT_PRUNE_SHADOW");
+}
+
+static inline bool fasim_gasal2_phase3_cigar_nt_prefilter_shadow_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE3_CIGAR_NT_PREFILTER_SHADOW");
+}
+
+static inline bool fasim_gasal2_phase3_cigar_nt_prefilter_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_PHASE3_CIGAR_NT_PREFILTER");
+}
+
+static inline bool fasim_gasal2_phase3_cigar_nt_prefilter_validate_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE3_CIGAR_NT_PREFILTER_VALIDATE");
+}
+
+static inline bool fasim_gasal2_phase7_frontier_log_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_PHASE7_FRONTIER_LOG");
+}
+
+static inline bool fasim_gasal2_phase7_frontier_early_stop_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_PHASE7_FRONTIER_EARLY_STOP");
+}
+
+static inline bool fasim_gasal2_phase7_all_attempt_early_stop_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_ALL_ATTEMPT_EARLY_STOP");
+}
+
+static inline bool fasim_gasal2_phase7_gate_c_gpu_candidates_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_GATE_C_GPU_CANDIDATES");
+}
+
+static inline bool fasim_gasal2_phase7_v3_descriptor_source_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_DESCRIPTOR_SOURCE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_pre_scoreinfo_descriptor_source_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_PRE_SCOREINFO_DESCRIPTOR_SOURCE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_certificate_check_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_CERTIFICATE_CHECK");
+}
+
+static inline bool fasim_gasal2_phase7_v3_all_column_certificate_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_ALL_COLUMN_CERTIFICATE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_narrow_certificate_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_NARROW_CERTIFICATE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_seed_certificate_source_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_SEED_CERTIFICATE_SOURCE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_strong_seed_certificate_source_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_STRONG_SEED_CERTIFICATE_SOURCE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_attempt_coverage_seed_certificate_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_ATTEMPT_COVERAGE_SEED_CERTIFICATE");
+}
+
+static inline bool fasim_gasal2_phase7_v3_oracle_min_cover_replay_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V3_ORACLE_MIN_COVER_REPLAY");
+}
+
+static inline bool fasim_gasal2_phase7_v4_legacy_byte_scoreinfo_shadow_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V4_LEGACY_BYTE_SCOREINFO_SHADOW");
+}
+
+static inline bool fasim_gasal2_phase7_v4_gpu_legacy_byte_scoreinfo_shadow_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V4_GPU_LEGACY_BYTE_SCOREINFO_SHADOW");
+}
+
+static inline bool fasim_gasal2_phase7_v4_gpu_legacy_byte_scoreinfo_source_replay_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_GASAL2_PHASE7_V4_GPU_LEGACY_BYTE_SCOREINFO_SOURCE_REPLAY");
+}
+
+static inline uint64_t fasim_saturating_triangular_count(uint64_t n)
+{
+	if (n == 0)
+	{
+		return 0;
+	}
+	uint64_t a = n;
+	uint64_t b = n + 1;
+	if ((n & 1ULL) == 0)
+	{
+		a = n / 2;
+	}
+	else
+	{
+		b = (n + 1) / 2;
+	}
+	if (a != 0 &&
+	    b > std::numeric_limits<uint64_t>::max() / a)
+	{
+		return std::numeric_limits<uint64_t>::max();
+	}
+	return a * b;
+}
+
+static inline char fasim_seed_normalized_base(char base)
+{
+	const char upper =
+		static_cast<char>(toupper(static_cast<unsigned char>(base)));
+	return upper == 'U' ? 'T' : upper;
+}
+
+static inline bool fasim_seed_is_acgt(char base)
+{
+	const char normalized = fasim_seed_normalized_base(base);
+	return normalized == 'A' ||
+	       normalized == 'C' ||
+	       normalized == 'G' ||
+	       normalized == 'T';
+}
+
+static inline std::string fasim_seed_normalized_sequence(const std::string &seq)
+{
+	std::string normalized;
+	normalized.reserve(seq.size());
+	for (size_t i = 0; i < seq.size(); ++i)
+	{
+		normalized.push_back(fasim_seed_normalized_base(seq[i]));
+	}
+	return normalized;
+}
+
+static uint64_t fasim_collect_seed_certificate_hit_positions(
+	const std::string &query,
+	const std::string &target,
+	size_t seedLength,
+	size_t maxSeeds,
+	uint64_t maxHits,
+	std::vector<size_t> *positions)
+{
+	if (positions != NULL)
+	{
+		positions->clear();
+	}
+	if (seedLength == 0 ||
+	    query.size() < seedLength ||
+	    target.size() < seedLength ||
+	    maxSeeds == 0 ||
+	    maxHits == 0)
+	{
+		return 0;
+	}
+
+	const std::string queryUpper = fasim_seed_normalized_sequence(query);
+	const std::string targetUpper = fasim_seed_normalized_sequence(target);
+	uint64_t hits = 0;
+	size_t seeds = 0;
+	for (size_t offset = 0;
+	     offset + seedLength <= queryUpper.size() && seeds < maxSeeds;
+	     ++offset)
+	{
+		bool valid = true;
+		for (size_t j = 0; j < seedLength; ++j)
+		{
+			if (!fasim_seed_is_acgt(queryUpper[offset + j]))
+			{
+				valid = false;
+				break;
+			}
+		}
+		if (!valid)
+		{
+			continue;
+		}
+		++seeds;
+		const std::string seed = queryUpper.substr(offset, seedLength);
+		size_t pos = targetUpper.find(seed);
+		while (pos != std::string::npos)
+		{
+			++hits;
+			if (positions != NULL)
+			{
+				positions->push_back(pos);
+			}
+			if (hits >= maxHits ||
+			    hits == std::numeric_limits<uint64_t>::max())
+			{
+				if (positions != NULL)
+				{
+					std::sort(positions->begin(), positions->end());
+					positions->erase(
+						std::unique(positions->begin(), positions->end()),
+						positions->end());
+				}
+				return hits;
+			}
+			pos = targetUpper.find(seed, pos + 1);
+		}
+	}
+	if (positions != NULL)
+	{
+		std::sort(positions->begin(), positions->end());
+		positions->erase(
+			std::unique(positions->begin(), positions->end()),
+			positions->end());
+	}
+	return hits;
+}
+
+static uint64_t fasim_count_seed_certificate_hits(const std::string &query,
+                                                  const std::string &target,
+                                                  size_t seedLength,
+                                                  size_t maxSeeds,
+                                                  uint64_t maxHits)
+{
+	return fasim_collect_seed_certificate_hit_positions(
+		query,
+		target,
+		seedLength,
+		maxSeeds,
+		maxHits,
+		NULL);
 }
 
 static inline bool fasim_exact_column_min_score_shadow_enabled_runtime()
@@ -1946,7 +4758,9 @@ struct FasimColumnArchiveProbeWriter
 {
 	FasimColumnArchiveProbeWriter() :
 		opened(false),
-		blockRows(65536)
+		blockRows(65536),
+		bytesWritten(0),
+		blocksWritten(0)
 	{
 	}
 
@@ -1958,14 +4772,16 @@ struct FasimColumnArchiveProbeWriter
 			cerr << "failed to open column archive probe: " << path << endl;
 			abort();
 		}
-		static const char magic[] = "FATFOC1";
-		file.write(magic, 8);
-		const uint32_t version = 2;
-		const uint32_t blockRowsOut = static_cast<uint32_t>(blockRows);
-		file.write(reinterpret_cast<const char*>(&version), sizeof(version));
-		file.write(reinterpret_cast<const char*>(&blockRowsOut), sizeof(blockRowsOut));
-		opened = true;
-	}
+			static const char magic[] = "FATFOC1";
+			file.write(magic, 8);
+			const uint32_t version = 2;
+			const uint32_t blockRowsOut = static_cast<uint32_t>(blockRows);
+			file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+			file.write(reinterpret_cast<const char*>(&blockRowsOut), sizeof(blockRowsOut));
+			bytesWritten = 8 + sizeof(version) + sizeof(blockRowsOut);
+			blocksWritten = 0;
+			opened = true;
+		}
 
 	void write_row(const triplex &atr,
 	               int motif,
@@ -2185,11 +5001,22 @@ struct FasimColumnArchiveProbeWriter
 			return;
 		}
 		flush();
-		const uint32_t zero = 0;
-		file.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
-		file.close();
-		opened = false;
-	}
+			const uint32_t zero = 0;
+			file.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
+			bytesWritten += sizeof(zero);
+			file.close();
+			opened = false;
+		}
+
+		uint64_t bytes_written() const
+		{
+			return bytesWritten;
+		}
+
+		uint64_t blocks_written() const
+		{
+			return blocksWritten;
+		}
 
 	void flush()
 	{
@@ -2227,10 +5054,12 @@ struct FasimColumnArchiveProbeWriter
 		{
 			block.append(payloads[i]);
 		}
-		const uint32_t blockSize = static_cast<uint32_t>(block.size());
-		file.write(reinterpret_cast<const char*>(&blockSize), sizeof(blockSize));
-		file.write(block.data(), static_cast<std::streamsize>(block.size()));
-		qStart.clear();
+			const uint32_t blockSize = static_cast<uint32_t>(block.size());
+			file.write(reinterpret_cast<const char*>(&blockSize), sizeof(blockSize));
+			file.write(block.data(), static_cast<std::streamsize>(block.size()));
+			bytesWritten += sizeof(blockSize) + static_cast<uint64_t>(block.size());
+			++blocksWritten;
+			qStart.clear();
 		seqStart.clear();
 		score.clear();
 		alignLen.clear();
@@ -2246,9 +5075,11 @@ struct FasimColumnArchiveProbeWriter
 	}
 
 	bool opened;
-	ofstream file;
-	size_t blockRows;
-	std::vector<int64_t> qStart;
+		ofstream file;
+		size_t blockRows;
+		uint64_t bytesWritten;
+		uint64_t blocksWritten;
+		std::vector<int64_t> qStart;
 	std::vector<int64_t> seqStart;
 	std::vector<int64_t> score;
 	std::vector<int64_t> alignLen;
@@ -2649,6 +5480,829 @@ static inline uint64_t fasim_saturating_mul_uint64(uint64_t lhs, uint64_t rhs)
 	return lhs * rhs;
 }
 
+struct FasimGasal2TracebackRejectionTaxonomyStats
+{
+	FasimGasal2TracebackRejectionTaxonomyStats() :
+		requested(false),
+		active(false),
+		attempts(0),
+		retained_emitted(0),
+		filtered_score(0),
+		filtered_identity(0),
+		filtered_stability(0),
+		filtered_nt(0),
+		invalid_span_bound(0),
+		duplicate_descriptor(0),
+		duplicate_row(0),
+		final_sort_dedup_removed(0),
+		final_nonoverlap_dominated(0),
+		top5_frontier_dominated(0),
+		post_cigar_only(0),
+		unknown(0),
+		export_path(""),
+		export_rows(0),
+		export_truncated(false)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t attempts;
+	uint64_t retained_emitted;
+	uint64_t filtered_score;
+	uint64_t filtered_identity;
+	uint64_t filtered_stability;
+	uint64_t filtered_nt;
+	uint64_t invalid_span_bound;
+	uint64_t duplicate_descriptor;
+	uint64_t duplicate_row;
+	uint64_t final_sort_dedup_removed;
+	uint64_t final_nonoverlap_dominated;
+	uint64_t top5_frontier_dominated;
+	uint64_t post_cigar_only;
+	uint64_t unknown;
+	std::string export_path;
+	uint64_t export_rows;
+	bool export_truncated;
+};
+
+struct FasimGasal2TracebackRejectionTaxonomyExporter
+{
+	FasimGasal2TracebackRejectionTaxonomyExporter() :
+		active(false),
+		limit(0),
+		rows(0),
+		attempts(0),
+		path(""),
+		output()
+	{
+	}
+
+	void open()
+	{
+		active = fasim_gasal2_traceback_rejection_taxonomy_runtime();
+		if (!active)
+		{
+			return;
+		}
+		limit = fasim_env_uint64_or_default(
+			"FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT_LIMIT",
+			1000ULL);
+		path = fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime();
+		if (path.empty())
+		{
+			return;
+		}
+		output.open(path.c_str());
+		if (!output)
+		{
+			return;
+		}
+		output
+			<< "attempt_id\ttask_id\tscoreinfo_index\tprealign_score\t"
+			<< "target_size\tdecision_bucket\tpre_traceback_decidable\t"
+			<< "post_traceback_only\ttop5_only_safe_candidate\t"
+			<< "full_output_safe_candidate\temitted_row\tfinal_row\t"
+			<< "output_global_start\toutput_global_end\tscore\tnt\tidentity\t"
+			<< "stability\tnotes\n";
+	}
+
+	bool can_write() const
+	{
+		return active && output && rows < limit;
+	}
+
+	void write(const FasimGasal2SelectedAlignment &selectedAlignment,
+	           uint64_t taskId,
+	           int targetSize,
+	           const char *bucket,
+	           int preTracebackDecidable,
+	           int postTracebackOnly,
+	           int top5OnlySafeCandidate,
+	           int fullOutputSafeCandidate,
+	           int emittedRow,
+	           int finalRow,
+	           long outputGlobalStart,
+	           long outputGlobalEnd,
+	           int score,
+	           int nt,
+	           double identity,
+	           double stability,
+	           const char *notes)
+	{
+		if (!active)
+		{
+			return;
+		}
+		const uint64_t attemptId = ++attempts;
+		if (!can_write())
+		{
+			return;
+		}
+		const int prealignScore =
+			selectedAlignment.score_prepass_score != 0 ?
+			selectedAlignment.score_prepass_score :
+			selectedAlignment.alignment.sw_score;
+		output
+			<< attemptId << "\t"
+			<< taskId << "\t"
+			<< selectedAlignment.scoreinfo_index << "\t"
+			<< prealignScore << "\t"
+			<< targetSize << "\t"
+			<< bucket << "\t"
+			<< preTracebackDecidable << "\t"
+			<< postTracebackOnly << "\t"
+			<< top5OnlySafeCandidate << "\t"
+			<< fullOutputSafeCandidate << "\t"
+			<< emittedRow << "\t"
+			<< finalRow << "\t"
+			<< outputGlobalStart << "\t"
+			<< outputGlobalEnd << "\t"
+			<< score << "\t"
+			<< nt << "\t"
+			<< identity << "\t"
+			<< stability << "\t"
+			<< notes << "\n";
+		++rows;
+	}
+
+	void apply(FasimGasal2TracebackRejectionTaxonomyStats *taxonomy) const
+	{
+		if (taxonomy == NULL || path.empty())
+		{
+			return;
+		}
+		taxonomy->export_path = path;
+		taxonomy->export_rows = rows;
+		taxonomy->export_truncated = attempts > rows;
+	}
+
+	bool active;
+	uint64_t limit;
+	uint64_t rows;
+	uint64_t attempts;
+	std::string path;
+	std::ofstream output;
+};
+
+struct FasimGasal2PretracebackPruningEligibilityAttempt
+{
+	FasimGasal2PretracebackPruningEligibilityAttempt() :
+		attempt_id(0),
+		flush_id(0),
+		task_id(0),
+		scoreinfo_index(-1),
+		prealign_score(0),
+		query_len(0),
+		target_size(0),
+		target_start(0),
+		cutlength(0),
+		request_key_hash("0"),
+		descriptor_key_hash("0"),
+		final_row_hash("0"),
+		representative_attempt_id(0),
+		representative_flush_id(0),
+		representative_request_key_hash("0"),
+		representative_descriptor_key_hash("0"),
+		same_flush(false),
+		cross_flush(false),
+		invalid_span_bound(false),
+		invalid_span_pretraceback_provable(false),
+		score(0),
+		query_begin(0),
+		query_end(0),
+		ref_begin(0),
+		ref_end(0),
+		output_global_start(0),
+		output_global_end(0),
+		nt(0),
+		identity(0.0),
+		stability(0.0),
+		cigar_hash("0"),
+		final_rejection_bucket("unknown"),
+		eligibility_bucket("unknown"),
+		pre_traceback_decidable(false),
+		post_traceback_only(false),
+		top5_only_safe_candidate(false),
+		full_output_safe_candidate(false),
+		notes("")
+	{
+	}
+
+	uint64_t attempt_id;
+	uint64_t flush_id;
+	uint64_t task_id;
+	int scoreinfo_index;
+	int prealign_score;
+	uint64_t query_len;
+	int target_size;
+	int target_start;
+	int cutlength;
+	std::string request_key_hash;
+	std::string descriptor_key_hash;
+	std::string final_row_hash;
+	uint64_t representative_attempt_id;
+	uint64_t representative_flush_id;
+	std::string representative_request_key_hash;
+	std::string representative_descriptor_key_hash;
+	bool same_flush;
+	bool cross_flush;
+	bool invalid_span_bound;
+	bool invalid_span_pretraceback_provable;
+	int score;
+	int query_begin;
+	int query_end;
+	int ref_begin;
+	int ref_end;
+	long output_global_start;
+	long output_global_end;
+	int nt;
+	double identity;
+	double stability;
+	std::string cigar_hash;
+	std::string final_rejection_bucket;
+	std::string eligibility_bucket;
+	bool pre_traceback_decidable;
+	bool post_traceback_only;
+	bool top5_only_safe_candidate;
+	bool full_output_safe_candidate;
+	std::string notes;
+};
+
+struct FasimGasal2PretracebackPruningEligibilityStats
+{
+	FasimGasal2PretracebackPruningEligibilityStats() :
+		requested(false),
+		active(false),
+		attempts(0),
+		retained_final_rows(0),
+		removed_attempts(0),
+		mapped_removed_attempts(0),
+		unmapped_removed_attempts(0),
+		exact_request_duplicate(0),
+		exact_descriptor_duplicate(0),
+		same_final_row_different_descriptor(0),
+		cross_flush_exact_duplicate(0),
+		cigar_dependent_duplicate(0),
+		representative_selection_dependent(0),
+		sort_or_dominance_removed(0),
+		pretraceback_span_provable(0),
+		reverse_start_dependent_span(0),
+		cigar_dependent_span(0),
+		unknown(0),
+		false_prune_shadow(0),
+		missing_rows_shadow(0),
+		extra_rows_shadow(0),
+		export_path(""),
+		export_rows(0),
+		export_truncated(false)
+	{
+	}
+
+	bool requested;
+	bool active;
+	uint64_t attempts;
+	uint64_t retained_final_rows;
+	uint64_t removed_attempts;
+	uint64_t mapped_removed_attempts;
+	uint64_t unmapped_removed_attempts;
+	uint64_t exact_request_duplicate;
+	uint64_t exact_descriptor_duplicate;
+	uint64_t same_final_row_different_descriptor;
+	uint64_t cross_flush_exact_duplicate;
+	uint64_t cigar_dependent_duplicate;
+	uint64_t representative_selection_dependent;
+	uint64_t sort_or_dominance_removed;
+	uint64_t pretraceback_span_provable;
+	uint64_t reverse_start_dependent_span;
+	uint64_t cigar_dependent_span;
+	uint64_t unknown;
+	uint64_t false_prune_shadow;
+	uint64_t missing_rows_shadow;
+	uint64_t extra_rows_shadow;
+	std::string export_path;
+	uint64_t export_rows;
+	bool export_truncated;
+};
+
+struct FasimGasal2PretracebackPruningEligibilityRuntime
+{
+	FasimGasal2PretracebackPruningEligibilityRuntime() :
+		active(false),
+		limit(0),
+		export_rows(0),
+		export_attempts(0),
+		next_attempt_id(0),
+		path(""),
+		mutex(),
+		output(),
+		stats()
+	{
+	}
+
+	void open()
+	{
+		active = fasim_gasal2_pretraceback_pruning_eligibility_runtime();
+		stats.requested = active;
+		stats.active = active;
+		if (!active)
+		{
+			return;
+		}
+		limit = fasim_env_uint64_or_default(
+			"FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY_EXPORT_LIMIT",
+			1000ULL);
+		path =
+			fasim_gasal2_pretraceback_pruning_eligibility_export_path_runtime();
+		if (path.empty())
+		{
+			return;
+		}
+		output.open(path.c_str());
+		if (!output)
+		{
+			return;
+		}
+		output
+			<< "attempt_id\tflush_id\ttask_id\tscoreinfo_index\t"
+			<< "prealign_score\tquery_len\ttarget_size\ttarget_start\t"
+			<< "cutlength\trequest_key_hash\tdescriptor_key_hash\t"
+			<< "final_row_hash\trepresentative_attempt_id\t"
+			<< "representative_flush_id\trepresentative_request_key_hash\t"
+			<< "representative_descriptor_key_hash\tsame_flush\t"
+			<< "cross_flush\tscore\tquery_begin\tquery_end\tref_begin\t"
+			<< "ref_end\toutput_global_start\toutput_global_end\tnt\t"
+			<< "identity\tstability\tcigar_hash\tfinal_rejection_bucket\t"
+			<< "eligibility_bucket\tpre_traceback_decidable\t"
+			<< "post_traceback_only\ttop5_only_safe_candidate\t"
+			<< "full_output_safe_candidate\tnotes\n";
+	}
+
+	uint64_t next_attempt()
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		return ++next_attempt_id;
+	}
+
+	void record(const FasimGasal2PretracebackPruningEligibilityAttempt &attempt)
+	{
+		if (!active)
+		{
+			return;
+		}
+		std::lock_guard<std::mutex> lock(mutex);
+		++stats.attempts;
+		if (attempt.final_rejection_bucket == "retained_emitted")
+		{
+			++stats.retained_final_rows;
+			++export_attempts;
+			if (!output || export_rows >= limit)
+			{
+				return;
+			}
+		}
+		else
+		{
+			++stats.removed_attempts;
+			if (attempt.representative_attempt_id != 0)
+			{
+				++stats.mapped_removed_attempts;
+			}
+			else
+			{
+				++stats.unmapped_removed_attempts;
+			}
+
+			if (attempt.eligibility_bucket == "exact_request_duplicate")
+			{
+				++stats.exact_request_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "exact_descriptor_duplicate")
+			{
+				++stats.exact_descriptor_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "same_final_row_different_descriptor")
+			{
+				++stats.same_final_row_different_descriptor;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "cross_flush_exact_duplicate")
+			{
+				++stats.cross_flush_exact_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "cigar_dependent_duplicate")
+			{
+				++stats.cigar_dependent_duplicate;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "representative_selection_dependent")
+			{
+				++stats.representative_selection_dependent;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "sort_or_dominance_removed")
+			{
+				++stats.sort_or_dominance_removed;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "pretraceback_span_provable")
+			{
+				++stats.pretraceback_span_provable;
+			}
+			else if (attempt.eligibility_bucket ==
+			         "reverse_start_dependent_span")
+			{
+				++stats.reverse_start_dependent_span;
+			}
+			else if (attempt.eligibility_bucket == "cigar_dependent_span")
+			{
+				++stats.cigar_dependent_span;
+			}
+			else if (attempt.eligibility_bucket == "unknown")
+			{
+				++stats.unknown;
+			}
+			else
+			{
+				++stats.unknown;
+			}
+
+			++export_attempts;
+			if (!output || export_rows >= limit)
+			{
+				return;
+			}
+		}
+		output
+			<< attempt.attempt_id << "\t"
+			<< attempt.flush_id << "\t"
+			<< attempt.task_id << "\t"
+			<< attempt.scoreinfo_index << "\t"
+			<< attempt.prealign_score << "\t"
+			<< attempt.query_len << "\t"
+			<< attempt.target_size << "\t"
+			<< attempt.target_start << "\t"
+			<< attempt.cutlength << "\t"
+			<< attempt.request_key_hash << "\t"
+			<< attempt.descriptor_key_hash << "\t"
+			<< attempt.final_row_hash << "\t"
+			<< attempt.representative_attempt_id << "\t"
+			<< attempt.representative_flush_id << "\t"
+			<< attempt.representative_request_key_hash << "\t"
+			<< attempt.representative_descriptor_key_hash << "\t"
+			<< (attempt.same_flush ? 1 : 0) << "\t"
+			<< (attempt.cross_flush ? 1 : 0) << "\t"
+			<< attempt.score << "\t"
+			<< attempt.query_begin << "\t"
+			<< attempt.query_end << "\t"
+			<< attempt.ref_begin << "\t"
+			<< attempt.ref_end << "\t"
+			<< attempt.output_global_start << "\t"
+			<< attempt.output_global_end << "\t"
+			<< attempt.nt << "\t"
+			<< attempt.identity << "\t"
+			<< attempt.stability << "\t"
+			<< attempt.cigar_hash << "\t"
+			<< attempt.final_rejection_bucket << "\t"
+			<< attempt.eligibility_bucket << "\t"
+			<< (attempt.pre_traceback_decidable ? 1 : 0) << "\t"
+			<< (attempt.post_traceback_only ? 1 : 0) << "\t"
+			<< (attempt.top5_only_safe_candidate ? 1 : 0) << "\t"
+			<< (attempt.full_output_safe_candidate ? 1 : 0) << "\t"
+			<< attempt.notes << "\n";
+		++export_rows;
+	}
+
+	FasimGasal2PretracebackPruningEligibilityStats snapshot() const
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		FasimGasal2PretracebackPruningEligibilityStats out = stats;
+		out.export_path = path;
+		out.export_rows = export_rows;
+		out.export_truncated = export_attempts > export_rows;
+		return out;
+	}
+
+	bool active;
+	uint64_t limit;
+	uint64_t export_rows;
+	uint64_t export_attempts;
+	uint64_t next_attempt_id;
+	std::string path;
+	mutable std::mutex mutex;
+	std::ofstream output;
+	FasimGasal2PretracebackPruningEligibilityStats stats;
+};
+
+static inline uint64_t fasim_hash_int64(uint64_t digest, int64_t value)
+{
+	for (int i = 0; i < 8; ++i)
+	{
+		const unsigned char byte =
+			static_cast<unsigned char>((static_cast<uint64_t>(value) >>
+			                            (i * 8)) & 0xffU);
+		digest ^= byte;
+		digest *= 1099511628211ULL;
+	}
+	return digest;
+}
+
+static inline uint64_t fasim_hash_string_field(uint64_t digest,
+                                               const std::string &value)
+{
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(value.size()));
+	return fasim_fnv1a_update(digest, value);
+}
+
+static inline std::string fasim_hash_selected_request(
+	const FasimGasal2SelectedAlignment &selectedAlignment,
+	uint64_t taskId)
+{
+	uint64_t digest = 1469598103934665603ULL;
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(taskId));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.scoreinfo_index));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(selectedAlignment.start));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.cutlength));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.score_prepass_score));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.score_prepass_query_end));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.score_prepass_ref_end));
+	return fasim_hex_u64(digest);
+}
+
+static inline std::string fasim_hash_selected_descriptor(
+	const FasimGasal2SelectedAlignment &selectedAlignment,
+	const StripedSmithWaterman::Alignment &alignment,
+	uint64_t taskId)
+{
+	uint64_t digest = 1469598103934665603ULL;
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(taskId));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.scoreinfo_index));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(selectedAlignment.start));
+	digest = fasim_hash_int64(
+		digest,
+		static_cast<int64_t>(selectedAlignment.cutlength));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.sw_score));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.query_begin));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.query_end));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.ref_begin));
+	digest = fasim_hash_int64(digest,
+	                          static_cast<int64_t>(alignment.ref_end));
+	return fasim_hex_u64(digest);
+}
+
+static inline std::string fasim_hash_cigar(
+	const std::vector<uint32_t> &cigar)
+{
+	uint64_t digest = 1469598103934665603ULL;
+	digest = fasim_hash_int64(digest, static_cast<int64_t>(cigar.size()));
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		digest = fasim_hash_int64(digest, static_cast<int64_t>(cigar[i]));
+	}
+	return fasim_hex_u64(digest);
+}
+
+static inline std::string fasim_hash_lite_row_key(const std::string &key)
+{
+	return fasim_hex_u64(fasim_hash_string_field(1469598103934665603ULL, key));
+}
+
+static inline void fasim_print_pretraceback_eligibility_metric(
+	const char *name,
+	uint64_t value)
+{
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_pruning_eligibility_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_print_gasal2_pretraceback_pruning_eligibility_stats(
+	const FasimGasal2PretracebackPruningEligibilityRuntime &runtime)
+{
+	const FasimGasal2PretracebackPruningEligibilityStats stats =
+		runtime.snapshot();
+	fasim_print_pretraceback_eligibility_metric("requested",
+	                                            stats.requested ? 1 : 0);
+	fasim_print_pretraceback_eligibility_metric("active",
+	                                            stats.active ? 1 : 0);
+	fasim_print_pretraceback_eligibility_metric("attempts", stats.attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"retained_final_rows",
+		stats.retained_final_rows);
+	fasim_print_pretraceback_eligibility_metric("removed_attempts",
+	                                            stats.removed_attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"mapped_removed_attempts",
+		stats.mapped_removed_attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"unmapped_removed_attempts",
+		stats.unmapped_removed_attempts);
+	fasim_print_pretraceback_eligibility_metric(
+		"exact_request_duplicate",
+		stats.exact_request_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"exact_descriptor_duplicate",
+		stats.exact_descriptor_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"same_final_row_different_descriptor",
+		stats.same_final_row_different_descriptor);
+	fasim_print_pretraceback_eligibility_metric(
+		"cross_flush_exact_duplicate",
+		stats.cross_flush_exact_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"cigar_dependent_duplicate",
+		stats.cigar_dependent_duplicate);
+	fasim_print_pretraceback_eligibility_metric(
+		"representative_selection_dependent",
+		stats.representative_selection_dependent);
+	fasim_print_pretraceback_eligibility_metric(
+		"sort_or_dominance_removed",
+		stats.sort_or_dominance_removed);
+	fasim_print_pretraceback_eligibility_metric(
+		"pretraceback_span_provable",
+		stats.pretraceback_span_provable);
+	fasim_print_pretraceback_eligibility_metric(
+		"reverse_start_dependent_span",
+		stats.reverse_start_dependent_span);
+	fasim_print_pretraceback_eligibility_metric("cigar_dependent_span",
+	                                            stats.cigar_dependent_span);
+	fasim_print_pretraceback_eligibility_metric("unknown", stats.unknown);
+	fasim_print_pretraceback_eligibility_metric("false_prune_shadow",
+	                                            stats.false_prune_shadow);
+	fasim_print_pretraceback_eligibility_metric("missing_rows_shadow",
+	                                            stats.missing_rows_shadow);
+	fasim_print_pretraceback_eligibility_metric("extra_rows_shadow",
+	                                            stats.extra_rows_shadow);
+	std::cerr << "benchmark.fasim_gasal2_pretraceback_pruning_eligibility_export_path="
+	          << stats.export_path << "\n";
+	fasim_print_pretraceback_eligibility_metric("export_rows",
+	                                            stats.export_rows);
+	fasim_print_pretraceback_eligibility_metric(
+		"export_truncated",
+		stats.export_truncated ? 1 : 0);
+}
+
+static inline uint64_t fasim_take_taxonomy_bucket(uint64_t requested,
+                                                  uint64_t *remaining)
+{
+	if (remaining == NULL || *remaining == 0)
+	{
+		return 0;
+	}
+	const uint64_t taken = std::min(requested, *remaining);
+	*remaining -= taken;
+	return taken;
+}
+
+static inline FasimGasal2TracebackRejectionTaxonomyStats
+fasim_build_gasal2_traceback_rejection_taxonomy(
+	const FasimTop5PhaseTimingStats &stats)
+{
+	FasimGasal2TracebackRejectionTaxonomyStats taxonomy;
+	taxonomy.requested = fasim_gasal2_traceback_rejection_taxonomy_runtime();
+	taxonomy.active = taxonomy.requested;
+	taxonomy.attempts = stats.gasal2_convert_input_alignments;
+	uint64_t remaining = taxonomy.attempts;
+
+	taxonomy.retained_emitted = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_rows_lite + stats.gasal2_emit_rows_full,
+		&remaining);
+	taxonomy.filtered_score = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_score,
+		&remaining);
+	taxonomy.filtered_identity = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_identity,
+		&remaining);
+	taxonomy.filtered_stability = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_stability,
+		&remaining);
+	taxonomy.filtered_nt = fasim_take_taxonomy_bucket(
+		stats.gasal2_emit_filtered_nt,
+		&remaining);
+	taxonomy.invalid_span_bound = fasim_take_taxonomy_bucket(
+		stats.gasal2_nt_shadow_sum_span_lt_clength,
+		&remaining);
+
+	const uint64_t convertedNotEmitted =
+		stats.gasal2_convert_triplexes_raw >
+			(stats.gasal2_emit_rows_lite + stats.gasal2_emit_rows_full) ?
+		stats.gasal2_convert_triplexes_raw -
+			(stats.gasal2_emit_rows_lite + stats.gasal2_emit_rows_full) :
+		0;
+	taxonomy.final_sort_dedup_removed = fasim_take_taxonomy_bucket(
+		convertedNotEmitted,
+		&remaining);
+	taxonomy.post_cigar_only = remaining;
+	return taxonomy;
+}
+
+static inline void fasim_print_taxonomy_metric(const char *name, uint64_t value)
+{
+	std::cerr << "benchmark.fasim_gasal2_traceback_rejection_taxonomy_"
+	          << name << "=" << value << "\n";
+}
+
+static inline void fasim_emit_taxonomy_export_rows(std::ofstream &output,
+                                                   uint64_t *attemptId,
+                                                   uint64_t *rowsLeft,
+                                                   const char *bucket,
+                                                   uint64_t count,
+                                                   int preTracebackDecidable,
+                                                   int postTracebackOnly,
+                                                   int top5OnlySafeCandidate,
+                                                   int fullOutputSafeCandidate,
+                                                   int emittedRow,
+                                                   int finalRow,
+                                                   const char *notes)
+{
+	if (attemptId == NULL || rowsLeft == NULL || *rowsLeft == 0 || count == 0)
+	{
+		return;
+	}
+	const uint64_t rows = std::min(count, *rowsLeft);
+	for (uint64_t i = 0; i < rows; ++i)
+	{
+		output
+			<< (*attemptId)++ << "\t"
+			<< "-1\t"
+			<< "-1\t"
+			<< "0\t"
+			<< "0\t"
+			<< bucket << "\t"
+			<< preTracebackDecidable << "\t"
+			<< postTracebackOnly << "\t"
+			<< top5OnlySafeCandidate << "\t"
+			<< fullOutputSafeCandidate << "\t"
+			<< emittedRow << "\t"
+			<< finalRow << "\t"
+			<< "0\t"
+			<< "0\t"
+			<< "0\t"
+			<< "0\t"
+			<< "0\t"
+			<< "0\t"
+			<< notes << "\n";
+	}
+	*rowsLeft -= rows;
+}
+
+static inline void fasim_print_gasal2_traceback_rejection_taxonomy_stats(
+	const FasimTop5PhaseTimingStats &stats,
+	const FasimGasal2TracebackRejectionTaxonomyExporter &exporter)
+{
+	FasimGasal2TracebackRejectionTaxonomyStats taxonomy =
+		fasim_build_gasal2_traceback_rejection_taxonomy(stats);
+	exporter.apply(&taxonomy);
+
+	fasim_print_taxonomy_metric("requested", taxonomy.requested ? 1 : 0);
+	fasim_print_taxonomy_metric("active", taxonomy.active ? 1 : 0);
+	fasim_print_taxonomy_metric("attempts", taxonomy.attempts);
+	fasim_print_taxonomy_metric("retained_emitted", taxonomy.retained_emitted);
+	fasim_print_taxonomy_metric("filtered_score", taxonomy.filtered_score);
+	fasim_print_taxonomy_metric("filtered_identity", taxonomy.filtered_identity);
+	fasim_print_taxonomy_metric("filtered_stability",
+	                            taxonomy.filtered_stability);
+	fasim_print_taxonomy_metric("filtered_nt", taxonomy.filtered_nt);
+	fasim_print_taxonomy_metric("invalid_span_bound",
+	                            taxonomy.invalid_span_bound);
+	fasim_print_taxonomy_metric("duplicate_descriptor",
+	                            taxonomy.duplicate_descriptor);
+	fasim_print_taxonomy_metric("duplicate_row", taxonomy.duplicate_row);
+	fasim_print_taxonomy_metric("final_sort_dedup_removed",
+	                            taxonomy.final_sort_dedup_removed);
+	fasim_print_taxonomy_metric("final_nonoverlap_dominated",
+	                            taxonomy.final_nonoverlap_dominated);
+	fasim_print_taxonomy_metric("top5_frontier_dominated",
+	                            taxonomy.top5_frontier_dominated);
+	fasim_print_taxonomy_metric("post_cigar_only", taxonomy.post_cigar_only);
+	fasim_print_taxonomy_metric("unknown", taxonomy.unknown);
+	std::cerr << "benchmark.fasim_gasal2_traceback_rejection_taxonomy_export_path="
+	          << taxonomy.export_path << "\n";
+	fasim_print_taxonomy_metric("export_rows", taxonomy.export_rows);
+	fasim_print_taxonomy_metric("export_truncated",
+	                            taxonomy.export_truncated ? 1 : 0);
+}
+
 static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimingStats &stats)
 {
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_timing_enabled=1\n";
@@ -2731,6 +6385,10 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_nt_shadow_max_span_false_negative=" << stats.gasal2_nt_shadow_max_span_false_negative << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_nt_shadow_sum_span_false_negative=" << stats.gasal2_nt_shadow_sum_span_false_negative << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_nt_sum_span_prune_active=" << stats.gasal2_nt_sum_span_prune_active << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_preconvert_prune_shadow_requested=" << (stats.gasal2_preconvert_prune_shadow_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_preconvert_prune_shadow_active=" << (stats.gasal2_preconvert_prune_shadow_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_preconvert_prune_shadow_attempts=" << stats.gasal2_preconvert_prune_shadow_attempts << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_preconvert_prune_shadow_false_negatives=" << stats.gasal2_preconvert_prune_shadow_false_negatives << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_extend_batches=" << stats.gasal2_extend_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_extend_tasks=" << stats.gasal2_extend_tasks << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_gasal2_query_preflight_supported=" << (stats.gasal2_query_preflight_supported ? 1 : 0) << "\n";
@@ -2800,6 +6458,931 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_output_write_seconds=" << stats.output_write_seconds << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_output_close_seconds=" << stats.output_close_seconds << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_query_release_seconds=" << stats.query_release_seconds << "\n";
+}
+
+static inline const char *fasim_bool_text(bool value)
+{
+	return value ? "true" : "false";
+}
+
+static inline void fasim_write_u64_or_na(std::ostream &out, uint64_t value, bool available)
+{
+	if (available)
+	{
+		out << value;
+	}
+	else
+	{
+		out << "NA";
+	}
+}
+
+static inline double fasim_ns_interval_seconds(uint64_t start, uint64_t end)
+{
+	if (start == 0 || end == 0 || end < start)
+	{
+		return 0.0;
+	}
+	return static_cast<double>(end - start) / 1000000000.0;
+}
+
+static inline void fasim_gasal2_flush_pipeline_record_totals(
+	FasimGasal2FlushPipelineTraceRuntime &runtime,
+	const FasimGasal2FlushPipelineRecord &record)
+{
+	runtime.total_pack_seconds +=
+		fasim_ns_interval_seconds(record.pack_start_ns, record.pack_end_ns);
+	runtime.total_gpu_wait_seconds +=
+		fasim_ns_interval_seconds(record.gasal2_score_wait_start_ns,
+		                          record.gasal2_score_wait_end_ns) +
+		fasim_ns_interval_seconds(record.traceback_wait_start_ns,
+		                          record.traceback_wait_end_ns);
+	runtime.total_exact_column_seconds +=
+		fasim_ns_interval_seconds(record.exact_column_start_ns,
+		                          record.exact_column_end_ns);
+	runtime.total_traceback_seconds +=
+		fasim_ns_interval_seconds(record.traceback_pack_start_ns,
+		                          record.traceback_pack_end_ns) +
+		fasim_ns_interval_seconds(record.traceback_submit_start_ns,
+		                          record.traceback_submit_end_ns) +
+		fasim_ns_interval_seconds(record.traceback_wait_start_ns,
+		                          record.traceback_wait_end_ns);
+	runtime.total_d2h_seconds +=
+		fasim_ns_interval_seconds(record.d2h_start_ns, record.d2h_end_ns);
+	runtime.total_convert_seconds +=
+		fasim_ns_interval_seconds(record.convert_start_ns, record.convert_end_ns);
+	runtime.total_archive_write_seconds +=
+		fasim_ns_interval_seconds(record.archive_write_start_ns,
+		                          record.archive_write_end_ns);
+	runtime.total_sort_dedup_seconds +=
+		fasim_ns_interval_seconds(record.sort_dedup_start_ns,
+		                          record.sort_dedup_end_ns);
+	runtime.total_gasal2_score_poll_wait_seconds +=
+		record.gasal2_score_poll_wait_seconds;
+	runtime.total_gasal2_score_result_copy_seconds +=
+		record.gasal2_score_result_copy_seconds;
+	runtime.total_gasal2_traceback_poll_wait_seconds +=
+		record.gasal2_traceback_poll_wait_seconds;
+	runtime.total_gasal2_traceback_result_copy_seconds +=
+		record.gasal2_traceback_result_copy_seconds;
+	runtime.total_gasal2_traceback_cigar_vector_seconds +=
+		record.gasal2_traceback_cigar_vector_seconds;
+	runtime.total_gasal2_traceback_cigar_string_seconds +=
+		record.gasal2_traceback_cigar_string_seconds;
+	runtime.total_gasal2_synchronous_wait_seconds +=
+		record.gasal2_synchronous_wait_seconds;
+	if (record.gpu_producer_blocked_available)
+	{
+		runtime.total_gpu_producer_blocked_seconds +=
+			record.gpu_producer_blocked_seconds;
+	}
+	if (record.cpu_consumer_idle_available)
+	{
+		runtime.total_cpu_consumer_idle_seconds += record.cpu_consumer_idle_seconds;
+	}
+	if (record.waiting_for_free_buffer_available)
+	{
+		runtime.total_waiting_for_free_buffer_seconds +=
+			record.waiting_for_free_buffer_seconds;
+	}
+	if (record.gpu_inter_flush_idle_gap_available)
+	{
+		runtime.total_gpu_inter_flush_idle_gap_seconds +=
+			record.gpu_inter_flush_idle_gap_seconds;
+	}
+}
+
+static inline void fasim_gasal2_flush_pipeline_export_tsv(
+	const FasimGasal2FlushPipelineTraceRuntime &runtime)
+{
+	if (!runtime.active || runtime.export_path.empty())
+	{
+		return;
+	}
+	std::ofstream out(runtime.export_path.c_str(), std::ios::trunc);
+	if (!out.is_open())
+	{
+		std::cerr << "failed to open GASAL2 flush pipeline trace export: "
+		          << runtime.export_path << "\n";
+		return;
+	}
+	out << "flush_id\tshard_name\tworker_id\tgpu_id\tflush_sequence\t"
+	    << "pack_start_ns\tpack_end_ns\t"
+	    << "wait_for_free_buffer_start_ns\twait_for_free_buffer_end_ns\t"
+	    << "h2d_start_ns\th2d_end_ns\t"
+	    << "gasal2_score_submit_start_ns\tgasal2_score_submit_end_ns\t"
+	    << "gasal2_score_wait_start_ns\tgasal2_score_wait_end_ns\t"
+	    << "exact_column_start_ns\texact_column_end_ns\t"
+	    << "traceback_pack_start_ns\ttraceback_pack_end_ns\t"
+	    << "traceback_submit_start_ns\ttraceback_submit_end_ns\t"
+	    << "traceback_wait_start_ns\ttraceback_wait_end_ns\t"
+	    << "d2h_start_ns\td2h_end_ns\t"
+	    << "convert_start_ns\tconvert_end_ns\t"
+	    << "archive_enqueue_start_ns\tarchive_enqueue_end_ns\t"
+	    << "archive_write_start_ns\tarchive_write_end_ns\t"
+	    << "sort_dedup_start_ns\tsort_dedup_end_ns\tflush_complete_ns\t"
+	    << "gpu_event_timing_available\t"
+	    << "gasal2_score_poll_wait_seconds\t"
+	    << "gasal2_score_result_copy_seconds\t"
+	    << "gasal2_traceback_poll_wait_seconds\t"
+	    << "gasal2_traceback_result_copy_seconds\t"
+	    << "gasal2_traceback_cigar_vector_seconds\t"
+	    << "gasal2_traceback_cigar_string_seconds\t"
+	    << "gasal2_synchronous_wait_seconds\t"
+	    << "synchronous_flush_path\tqueue_supported\t"
+	    << "gasal2_requests\tdp_cells\tscoreinfo_tasks\tselected_scoreinfos\t"
+	    << "traceback_requests\ttraceback_cigar_raw_ops\t"
+	    << "traceback_cigar_merged_ops\tconverted_candidates\temitted_rows\t"
+	    << "final_rows_after_sort_dedup\tdedup_removed_rows\t"
+	    << "archive_bytes\tarchive_blocks\t"
+	    << "input_queue_depth_at_start\tinput_queue_depth_at_end\t"
+	    << "input_queue_depth_available\t"
+	    << "ready_queue_depth_at_start\tready_queue_depth_at_end\t"
+	    << "ready_queue_depth_available\t"
+	    << "convert_queue_depth_at_start\tconvert_queue_depth_at_end\t"
+	    << "convert_queue_depth_available\t"
+	    << "archive_queue_depth_at_start\tarchive_queue_depth_at_end\t"
+	    << "archive_queue_depth_available\t"
+	    << "gpu_producer_blocked_seconds\tgpu_producer_blocked_available\t"
+	    << "cpu_consumer_idle_seconds\tcpu_consumer_idle_available\t"
+	    << "archive_writer_blocked_seconds\tarchive_writer_blocked_available\t"
+	    << "waiting_for_free_buffer_seconds\twaiting_for_free_buffer_available\t"
+	    << "gpu_inter_flush_idle_gap_seconds\tgpu_inter_flush_idle_gap_available\t"
+	    << "host_pack_gap_seconds\thost_pack_gap_available\tdecision_hint\n";
+	for (size_t i = 0; i < runtime.records.size(); ++i)
+	{
+		const FasimGasal2FlushPipelineRecord &record = runtime.records[i];
+		out << record.flush_id << "\t"
+		    << record.shard_name << "\t"
+		    << record.worker_id << "\t"
+		    << record.gpu_id << "\t"
+		    << record.flush_sequence << "\t"
+		    << record.pack_start_ns << "\t"
+		    << record.pack_end_ns << "\t"
+		    << record.wait_for_free_buffer_start_ns << "\t"
+		    << record.wait_for_free_buffer_end_ns << "\t"
+		    << record.h2d_start_ns << "\t"
+		    << record.h2d_end_ns << "\t"
+		    << record.gasal2_score_submit_start_ns << "\t"
+		    << record.gasal2_score_submit_end_ns << "\t"
+		    << record.gasal2_score_wait_start_ns << "\t"
+		    << record.gasal2_score_wait_end_ns << "\t"
+		    << record.exact_column_start_ns << "\t"
+		    << record.exact_column_end_ns << "\t"
+		    << record.traceback_pack_start_ns << "\t"
+		    << record.traceback_pack_end_ns << "\t"
+		    << record.traceback_submit_start_ns << "\t"
+		    << record.traceback_submit_end_ns << "\t"
+		    << record.traceback_wait_start_ns << "\t"
+		    << record.traceback_wait_end_ns << "\t"
+		    << record.d2h_start_ns << "\t"
+		    << record.d2h_end_ns << "\t"
+		    << record.convert_start_ns << "\t"
+		    << record.convert_end_ns << "\t"
+		    << record.archive_enqueue_start_ns << "\t"
+		    << record.archive_enqueue_end_ns << "\t"
+		    << record.archive_write_start_ns << "\t"
+		    << record.archive_write_end_ns << "\t"
+		    << record.sort_dedup_start_ns << "\t"
+		    << record.sort_dedup_end_ns << "\t"
+		    << record.flush_complete_ns << "\t"
+		    << fasim_bool_text(record.gpu_event_timing_available) << "\t"
+		    << record.gasal2_score_poll_wait_seconds << "\t"
+		    << record.gasal2_score_result_copy_seconds << "\t"
+		    << record.gasal2_traceback_poll_wait_seconds << "\t"
+		    << record.gasal2_traceback_result_copy_seconds << "\t"
+		    << record.gasal2_traceback_cigar_vector_seconds << "\t"
+		    << record.gasal2_traceback_cigar_string_seconds << "\t"
+		    << record.gasal2_synchronous_wait_seconds << "\t"
+		    << fasim_bool_text(record.synchronous_flush_path) << "\t"
+		    << fasim_bool_text(record.queue_supported) << "\t"
+		    << record.gasal2_requests << "\t"
+		    << record.dp_cells << "\t"
+		    << record.scoreinfo_tasks << "\t"
+		    << record.selected_scoreinfos << "\t"
+		    << record.traceback_requests << "\t"
+		    << record.traceback_cigar_raw_ops << "\t"
+		    << record.traceback_cigar_merged_ops << "\t"
+		    << record.converted_candidates << "\t"
+		    << record.emitted_rows << "\t"
+		    << record.final_rows_after_sort_dedup << "\t"
+		    << record.dedup_removed_rows << "\t"
+		    << record.archive_bytes << "\t"
+		    << record.archive_blocks << "\t";
+		fasim_write_u64_or_na(out, 0, record.input_queue_depth_available);
+		out << "\t";
+		fasim_write_u64_or_na(out, 0, record.input_queue_depth_available);
+		out << "\t" << fasim_bool_text(record.input_queue_depth_available) << "\t";
+		fasim_write_u64_or_na(out, 0, record.ready_queue_depth_available);
+		out << "\t";
+		fasim_write_u64_or_na(out, 0, record.ready_queue_depth_available);
+		out << "\t" << fasim_bool_text(record.ready_queue_depth_available) << "\t";
+		fasim_write_u64_or_na(out, 0, record.convert_queue_depth_available);
+		out << "\t";
+		fasim_write_u64_or_na(out, 0, record.convert_queue_depth_available);
+		out << "\t" << fasim_bool_text(record.convert_queue_depth_available) << "\t";
+		fasim_write_u64_or_na(out, 0, record.archive_queue_depth_available);
+		out << "\t";
+		fasim_write_u64_or_na(out, 0, record.archive_queue_depth_available);
+		out << "\t" << fasim_bool_text(record.archive_queue_depth_available) << "\t"
+		    << record.gpu_producer_blocked_seconds << "\t"
+		    << fasim_bool_text(record.gpu_producer_blocked_available) << "\t"
+		    << record.cpu_consumer_idle_seconds << "\t"
+		    << fasim_bool_text(record.cpu_consumer_idle_available) << "\t"
+		    << record.archive_writer_blocked_seconds << "\t"
+		    << fasim_bool_text(record.archive_writer_blocked_available) << "\t"
+		    << record.waiting_for_free_buffer_seconds << "\t"
+		    << fasim_bool_text(record.waiting_for_free_buffer_available) << "\t"
+		    << record.gpu_inter_flush_idle_gap_seconds << "\t"
+		    << fasim_bool_text(record.gpu_inter_flush_idle_gap_available) << "\t"
+		    << record.host_pack_gap_seconds << "\t"
+		    << fasim_bool_text(record.host_pack_gap_available) << "\t"
+		    << record.decision_hint << "\n";
+	}
+}
+
+static inline void fasim_gasal2_flush_pipeline_emit_chrome_event(
+	std::ostream &out,
+	bool &first,
+	const FasimGasal2FlushPipelineRecord &record,
+	const char *lane,
+	const char *name,
+	uint64_t startNs,
+	uint64_t endNs)
+{
+	if (startNs == 0 || endNs == 0 || endNs < startNs)
+	{
+		return;
+	}
+	if (!first)
+	{
+		out << ",\n";
+	}
+	first = false;
+	out << "{\"name\":\"" << name
+	    << "\",\"cat\":\"" << lane
+	    << "\",\"ph\":\"X\",\"ts\":" << (startNs / 1000)
+	    << ",\"dur\":" << ((endNs - startNs) / 1000)
+	    << ",\"pid\":\"" << record.shard_name
+	    << "\",\"tid\":\"" << lane
+	    << "\",\"args\":{\"flush_id\":" << record.flush_id
+	    << ",\"requests\":" << record.gasal2_requests
+	    << ",\"traceback_requests\":" << record.traceback_requests
+	    << ",\"rows\":" << record.final_rows_after_sort_dedup
+	    << ",\"archive_bytes\":" << record.archive_bytes
+	    << "}}";
+}
+
+static inline void fasim_gasal2_flush_pipeline_emit_chrome_duration(
+	std::ostream &out,
+	bool &first,
+	const FasimGasal2FlushPipelineRecord &record,
+	const char *lane,
+	const char *name,
+	uint64_t anchorEndNs,
+	double seconds)
+{
+	if (anchorEndNs == 0 || seconds <= 0.0)
+	{
+		return;
+	}
+	const uint64_t durationNs =
+		static_cast<uint64_t>(seconds * 1000000000.0);
+	const uint64_t startNs =
+		anchorEndNs > durationNs ? anchorEndNs - durationNs : anchorEndNs;
+	fasim_gasal2_flush_pipeline_emit_chrome_event(
+		out, first, record, lane, name, startNs, anchorEndNs);
+}
+
+static inline void fasim_gasal2_flush_pipeline_export_chrome_trace(
+	const FasimGasal2FlushPipelineTraceRuntime &runtime)
+{
+	if (!runtime.active || runtime.chrome_trace_path.empty())
+	{
+		return;
+	}
+	std::ofstream out(runtime.chrome_trace_path.c_str(), std::ios::trunc);
+	if (!out.is_open())
+	{
+		std::cerr << "failed to open GASAL2 flush pipeline Chrome trace: "
+		          << runtime.chrome_trace_path << "\n";
+		return;
+	}
+	out << "{\"traceEvents\":[\n";
+	bool first = true;
+	const size_t limit = std::min(runtime.records.size(), runtime.chrome_limit);
+	for (size_t i = 0; i < limit; ++i)
+	{
+		const FasimGasal2FlushPipelineRecord &record = runtime.records[i];
+		const uint64_t fallbackNs =
+			record.pack_start_ns != 0 ? record.pack_start_ns : record.flush_complete_ns;
+		const uint64_t exactStart =
+			record.exact_column_start_ns != 0 ?
+			record.exact_column_start_ns :
+			fallbackNs;
+		const uint64_t exactEnd =
+			record.exact_column_end_ns != 0 ?
+			record.exact_column_end_ns :
+			exactStart;
+		const uint64_t archiveStart =
+			record.archive_write_start_ns != 0 ?
+			record.archive_write_start_ns :
+			(record.convert_end_ns != 0 ? record.convert_end_ns : fallbackNs);
+		const uint64_t archiveEnd =
+			record.archive_write_end_ns != 0 ?
+			record.archive_write_end_ns :
+			archiveStart;
+		fasim_gasal2_flush_pipeline_emit_chrome_event(
+			out, first, record, "Host pack", "pack",
+			record.pack_start_ns, record.pack_end_ns);
+		fasim_gasal2_flush_pipeline_emit_chrome_event(
+			out, first, record, "GPU stream", "gpu_path",
+			record.h2d_start_ns, record.d2h_end_ns);
+		fasim_gasal2_flush_pipeline_emit_chrome_duration(
+			out, first, record, "GASAL2 wait", "score_poll_wait",
+			record.gasal2_score_wait_end_ns,
+			record.gasal2_score_poll_wait_seconds);
+		fasim_gasal2_flush_pipeline_emit_chrome_duration(
+			out, first, record, "GASAL2 wait", "traceback_poll_wait",
+			record.traceback_wait_end_ns,
+			record.gasal2_traceback_poll_wait_seconds);
+		fasim_gasal2_flush_pipeline_emit_chrome_duration(
+			out, first, record, "GASAL2 copy", "score_result_copy",
+			record.gasal2_score_wait_end_ns,
+			record.gasal2_score_result_copy_seconds);
+		fasim_gasal2_flush_pipeline_emit_chrome_duration(
+			out, first, record, "GASAL2 copy", "traceback_result_copy",
+			record.traceback_wait_end_ns,
+			record.gasal2_traceback_result_copy_seconds);
+		fasim_gasal2_flush_pipeline_emit_chrome_event(
+			out, first, record, "Exact-column", "exact_column",
+			exactStart, exactEnd);
+		fasim_gasal2_flush_pipeline_emit_chrome_event(
+			out, first, record, "CPU convert", "convert",
+			record.convert_start_ns, record.convert_end_ns);
+		fasim_gasal2_flush_pipeline_emit_chrome_event(
+			out, first, record, "Archive writer", "archive_write",
+			archiveStart, archiveEnd);
+		fasim_gasal2_flush_pipeline_emit_chrome_event(
+			out, first, record, "Sort/de-dup", "sort_dedup",
+			record.sort_dedup_start_ns, record.sort_dedup_end_ns);
+	}
+	out << "\n]}\n";
+}
+
+static inline void fasim_gasal2_flush_pipeline_finalize(
+	FasimGasal2FlushPipelineTraceRuntime &runtime)
+{
+	if (!runtime.active)
+	{
+		return;
+	}
+	fasim_gasal2_flush_pipeline_export_tsv(runtime);
+	fasim_gasal2_flush_pipeline_export_chrome_trace(runtime);
+}
+
+static inline void fasim_print_gasal2_flush_pipeline_trace_stats(
+	const FasimGasal2FlushPipelineTraceRuntime &runtime)
+{
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_requested="
+	          << (runtime.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_active="
+	          << (runtime.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_flushes="
+	          << runtime.total_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_export_path="
+	          << runtime.export_path << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_export_rows="
+	          << runtime.records.size() << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_export_truncated="
+	          << (runtime.export_truncated ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_chrome_trace_path="
+	          << runtime.chrome_trace_path << "\n";
+	const size_t chromeEvents =
+		runtime.chrome_trace_path.empty() ?
+			0 :
+			std::min(runtime.records.size(), runtime.chrome_limit) * 10;
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_chrome_trace_events="
+	          << chromeEvents << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_chrome_trace_truncated="
+	          << (runtime.chrome_trace_truncated ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_pack_seconds="
+	          << runtime.total_pack_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gpu_wait_seconds="
+	          << runtime.total_gpu_wait_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_exact_column_seconds="
+	          << runtime.total_exact_column_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_traceback_seconds="
+	          << runtime.total_traceback_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_d2h_seconds="
+	          << runtime.total_d2h_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_convert_seconds="
+	          << runtime.total_convert_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_archive_write_seconds="
+	          << runtime.total_archive_write_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_sort_dedup_seconds="
+	          << runtime.total_sort_dedup_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_score_poll_wait_seconds="
+	          << runtime.total_gasal2_score_poll_wait_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_score_result_copy_seconds="
+	          << runtime.total_gasal2_score_result_copy_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_traceback_poll_wait_seconds="
+	          << runtime.total_gasal2_traceback_poll_wait_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_traceback_result_copy_seconds="
+	          << runtime.total_gasal2_traceback_result_copy_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_traceback_cigar_vector_seconds="
+	          << runtime.total_gasal2_traceback_cigar_vector_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_traceback_cigar_string_seconds="
+	          << runtime.total_gasal2_traceback_cigar_string_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gasal2_synchronous_wait_seconds="
+	          << runtime.total_gasal2_synchronous_wait_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_queue_supported=0\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_synchronous_flush_path="
+	          << (runtime.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gpu_producer_blocked_seconds="
+	          << runtime.total_gpu_producer_blocked_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_cpu_consumer_idle_seconds="
+	          << runtime.total_cpu_consumer_idle_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_waiting_for_free_buffer_seconds="
+	          << runtime.total_waiting_for_free_buffer_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_total_gpu_inter_flush_idle_gap_seconds="
+	          << runtime.total_gpu_inter_flush_idle_gap_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pipeline_decision="
+	          << (runtime.active ? "telemetry_available_offline_summary_required" :
+	                           "not_requested")
+	          << "\n";
+}
+
+static inline void fasim_print_gasal2_nvtx_trace_stats(
+	const FasimNvtxTraceRuntime &runtime)
+{
+	std::cerr << "benchmark.fasim_gasal2_nvtx_trace_requested="
+	          << (runtime.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_nvtx_trace_compiled="
+	          << (fasim_gasal2_nvtx_trace_compiled() ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_nvtx_trace_active="
+	          << (runtime.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_nvtx_trace_ranges="
+	          << runtime.ranges << "\n";
+	std::cerr << "benchmark.fasim_gasal2_nvtx_trace_decision="
+	          << (runtime.active ? "nvtx_ranges_emitted_for_nsight" :
+	                            (runtime.requested ? "not_compiled" :
+		                                               "not_requested"))
+	          << "\n";
+}
+
+static inline void fasim_print_gasal2_flush_two_slot_overlap_stats(
+	const FasimGasal2FlushTwoSlotOverlapStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_requested="
+	          << (stats.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_active="
+	          << (stats.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_validate_requested="
+	          << (stats.validate_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_validate_active="
+	          << (stats.validate_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_serialized_control_requested="
+	          << (stats.serialized_control_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_serialized_control_active="
+	          << (stats.serialized_control_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_disabled_reason="
+	          << fasim_gasal2_two_slot_disabled_reason(stats) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_observed="
+	          << stats.flushes_observed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_shape_observed_flushes="
+	          << stats.shape_observed_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_eligible_flushes="
+	          << stats.eligible_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_ineligible_flushes="
+	          << stats.ineligible_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_result_object_ready_flushes="
+	          << stats.gpu_result_object_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_result_object_missing_flushes="
+	          << stats.gpu_result_object_missing_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_convert_inside_extend_flushes="
+	          << stats.convert_inside_extend_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_direct_convert_active_flushes="
+	          << stats.direct_convert_active_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_equivalence_first_convert_active_flushes="
+	          << stats.equivalence_first_convert_active_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_archive_first_convert_active_flushes="
+	          << stats.archive_first_convert_active_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_non_direct_convert_flushes="
+	          << stats.non_direct_convert_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_output_side_effect_flushes="
+	          << stats.output_side_effect_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_triplex_return_flushes="
+	          << stats.triplex_return_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_total="
+	          << stats.flushes_observed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_gpu_submitted="
+	          << stats.flushes_gpu_submitted << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_finalized="
+	          << stats.flushes_finalized << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_committed="
+	          << stats.flushes_committed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_submit_count="
+	          << stats.slot0_submit_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_submit_count="
+	          << stats.slot1_submit_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_finalize_count="
+	          << stats.slot0_finalize_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_finalize_count="
+	          << stats.slot1_finalize_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_commit_count="
+	          << stats.slot0_commit_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_commit_count="
+	          << stats.slot1_commit_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_unsupported_flushes="
+	          << stats.unsupported_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_legacy_fallback_flushes="
+	          << stats.legacy_fallback_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_state_transition_violations="
+	          << stats.state_transition_violations << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_order_violations="
+	          << stats.order_violations << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_wait_for_free_slot_seconds="
+	          << stats.wait_for_free_slot_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_wait_for_finalizer_seconds="
+	          << stats.wait_for_finalizer_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_wait_for_ordered_commit_seconds="
+	          << stats.wait_for_ordered_commit_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_pipeline_fill_seconds="
+	          << stats.pipeline_fill_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_pipeline_drain_seconds="
+	          << stats.pipeline_drain_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_stage_seconds="
+	          << stats.gpu_stage_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_cpu_finalizer_seconds="
+	          << stats.cpu_finalizer_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_cpu_overlap_measurement_supported=0\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_cpu_overlap_seconds="
+	          << "unavailable" << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_overlap_fraction="
+	          << "unavailable" << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_host_scheduling_overlap_seconds="
+	          << stats.host_scheduling_overlap_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_finalizer_covered_by_next_flush_seconds="
+	          << stats.finalizer_covered_by_next_flush_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_producer_covered_by_finalizer_seconds="
+	          << stats.producer_covered_by_finalizer_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_peak_bytes="
+	          << stats.slot0_peak_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_peak_bytes="
+	          << stats.slot1_peak_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_peak_live_bytes="
+	          << stats.slot0_peak_live_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_peak_live_bytes="
+	          << stats.slot1_peak_live_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_host_peak_bytes="
+	          << stats.host_peak_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_total_peak_live_bytes="
+	          << stats.total_peak_live_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_pinned_peak_bytes="
+	          << stats.pinned_peak_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_device_peak_bytes="
+	          << stats.device_peak_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_allocation_failures="
+	          << stats.allocation_failures << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_max_live_slots="
+	          << stats.max_live_slots << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_time_with_0_live_slots_seconds="
+	          << stats.time_with_0_live_slots_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_time_with_1_live_slot_seconds="
+	          << stats.time_with_1_live_slot_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_time_with_2_live_slots_seconds="
+	          << stats.time_with_2_live_slots_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_missing_rows="
+	          << stats.missing_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_extra_rows="
+	          << stats.extra_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_order_mismatches="
+	          << stats.order_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_cigar_mismatches="
+	          << stats.cigar_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_coordinate_mismatches="
+	          << stats.coordinate_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_counter_mismatches="
+	          << stats.counter_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_archive_descriptor_mismatches="
+	          << stats.archive_descriptor_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_total_tasks="
+	          << stats.total_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_max_tasks_per_flush="
+	          << stats.max_tasks_per_flush << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_two_slot_overlap_decision="
+	          << fasim_gasal2_two_slot_decision(stats) << "\n";
+}
+
+static inline void fasim_print_gasal2_flush_result_boundary_stats(
+	const FasimGasal2FlushResultBoundaryStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_requested="
+	          << (stats.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_active="
+	          << (stats.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_disabled_reason="
+	          << fasim_gasal2_flush_result_boundary_disabled_reason(stats)
+	          << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_flushes="
+	          << stats.flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_materialized_flushes="
+	          << stats.materialized_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_finalizer_consumed_result_flushes="
+	          << stats.finalizer_consumed_result_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_task_backing_owned_flushes="
+	          << stats.task_backing_owned_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_score_group_mapping_owned_flushes="
+	          << stats.score_group_mapping_owned_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_selected_by_task_owned_flushes="
+	          << stats.selected_by_task_owned_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_task_count="
+	          << stats.task_count << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_score_groups="
+	          << stats.score_groups << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_selected_alignments="
+	          << stats.selected_alignments << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_result_bytes="
+	          << stats.result_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_traceback_bytes="
+	          << stats.traceback_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_result_bytes_includes_traceback=1\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_materialize_seconds="
+	          << stats.materialize_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_cigar_seconds="
+	          << stats.cigar_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_finalize_seconds="
+	          << stats.finalize_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_commit_seconds="
+	          << stats.commit_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_rows_compared="
+	          << stats.rows_compared << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_missing_rows="
+	          << stats.missing_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_extra_rows="
+	          << stats.extra_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_cigar_mismatches="
+	          << stats.cigar_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_digest_mismatches="
+	          << stats.digest_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_result_digest="
+	          << fasim_hex_u64(stats.result_digest) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_result_boundary_decision="
+	          << fasim_gasal2_flush_result_boundary_decision(stats) << "\n";
+}
+
+static inline void fasim_print_gasal2_flush_pure_finalizer_stats(
+	const FasimGasal2FlushPureFinalizerStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_requested="
+	          << (stats.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_active="
+	          << (stats.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_disabled_reason="
+	          << fasim_gasal2_flush_pure_finalizer_disabled_reason(stats)
+	          << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_flushes_observed="
+	          << stats.flushes_observed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_result_boundary_ready_flushes="
+	          << stats.result_boundary_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_result_boundary_missing_flushes="
+	          << stats.result_boundary_missing_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_eligible_flushes="
+	          << stats.eligible_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_ineligible_flushes="
+	          << stats.ineligible_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_local_rows_ready_flushes="
+	          << stats.local_rows_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_direct_rows_local_ready_flushes="
+	          << stats.direct_rows_local_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_triplex_rows_local_ready_flushes="
+	          << stats.triplex_rows_local_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_output_side_effect_blocker_flushes="
+	          << stats.output_side_effect_blocker_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_archive_writer_blocker_flushes="
+	          << stats.archive_writer_blocker_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_global_task_triplex_commit_blocker_flushes="
+	          << stats.global_task_triplex_commit_blocker_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_telemetry_global_counter_blocker_flushes="
+	          << stats.telemetry_global_counter_blocker_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_precommit_rows="
+	          << stats.precommit_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_rows_compared="
+	          << stats.rows_compared << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_missing_rows="
+	          << stats.missing_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_extra_rows="
+	          << stats.extra_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_cigar_mismatches="
+	          << stats.cigar_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_digest_mismatches="
+	          << stats.digest_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_flush_pure_finalizer_decision="
+	          << fasim_gasal2_flush_pure_finalizer_decision(stats) << "\n";
+}
+
+static inline void fasim_print_gasal2_ordered_commit_stats(
+	const FasimGasal2OrderedCommitStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_requested="
+	          << (stats.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_active="
+	          << (stats.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_disabled_reason="
+	          << fasim_gasal2_ordered_commit_disabled_reason(stats) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_flushes_ready="
+	          << stats.flushes_ready << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_flushes_committed="
+	          << stats.flushes_committed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_direct_flushes_committed="
+	          << stats.direct_flushes_committed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_triplex_flushes_committed="
+	          << stats.triplex_flushes_committed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_order_violations="
+	          << stats.order_violations << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_precommit_rows="
+	          << stats.precommit_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_appended_rows="
+	          << stats.appended_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_archive_records="
+	          << stats.archive_records << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_result_bytes_p50="
+	          << stats.result_bytes_p50 << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_result_bytes_p90="
+	          << stats.result_bytes_p90 << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_result_bytes_max="
+	          << stats.result_bytes_max << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_traceback_bytes_p50="
+	          << stats.traceback_bytes_p50 << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_traceback_bytes_p90="
+	          << stats.traceback_bytes_p90 << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_traceback_bytes_max="
+	          << stats.traceback_bytes_max << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_result_bytes_includes_traceback=1\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_precommit_rows_bytes_p50="
+	          << stats.precommit_rows_bytes_p50 << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_precommit_rows_bytes_p90="
+	          << stats.precommit_rows_bytes_p90 << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_precommit_rows_bytes_max="
+	          << stats.precommit_rows_bytes_max << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_projected_two_slot_peak_bytes="
+	          << stats.projected_two_slot_peak_bytes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_finalize_seconds="
+	          << stats.finalize_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_write_task_seconds="
+	          << stats.write_task_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_archive_seconds="
+	          << stats.archive_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_counter_seconds="
+	          << stats.counter_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_total_seconds="
+	          << stats.total_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_missing_rows="
+	          << stats.missing_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_extra_rows="
+	          << stats.extra_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_cigar_mismatches="
+	          << stats.cigar_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_counter_mismatches="
+	          << stats.counter_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_digest_mismatches="
+	          << stats.digest_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_ordered_commit_decision="
+	          << fasim_gasal2_ordered_commit_decision(stats) << "\n";
+}
+
+static inline void fasim_print_gasal2_dual_finalizer_stats(
+	const FasimGasal2DualFinalizerStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_requested="
+	          << (stats.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_active="
+	          << (stats.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_disabled_reason="
+	          << fasim_gasal2_dual_finalizer_disabled_reason(stats) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_result_boundary_ready_flushes="
+	          << stats.result_boundary_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_flushes_observed="
+	          << stats.flushes_observed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_flushes_compared="
+	          << stats.flushes_compared << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_unsupported_flushes="
+	          << stats.unsupported_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_legacy_rows="
+	          << stats.legacy_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_extracted_rows="
+	          << stats.extracted_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_missing_rows="
+	          << stats.missing_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_extra_rows="
+	          << stats.extra_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_order_mismatches="
+	          << stats.order_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_cigar_mismatches="
+	          << stats.cigar_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_coordinate_mismatches="
+	          << stats.coordinate_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_counter_mismatches="
+	          << stats.counter_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_archive_descriptor_mismatches="
+	          << stats.archive_descriptor_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_legacy_seconds="
+	          << stats.legacy_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_extracted_seconds="
+	          << stats.extracted_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_compare_seconds="
+	          << stats.compare_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_first_mismatch_flush_id="
+	          << stats.first_mismatch_flush_id << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_first_mismatch_task_id="
+	          << stats.first_mismatch_task_id << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_first_mismatch_row_index="
+	          << stats.first_mismatch_row_index << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_first_mismatch_field="
+	          << stats.first_mismatch_field << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_first_mismatch_legacy_row="
+	          << stats.first_mismatch_legacy_row << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_first_mismatch_extracted_row="
+	          << stats.first_mismatch_extracted_row << "\n";
+	std::cerr << "benchmark.fasim_gasal2_dual_finalizer_decision="
+	          << fasim_gasal2_dual_finalizer_decision(stats) << "\n";
+}
+
+static inline void fasim_print_gasal2_extracted_finalizer_stats(
+	const FasimGasal2ExtractedFinalizerStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_requested="
+	          << (stats.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_active="
+	          << (stats.active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_validate_requested="
+	          << (stats.validate_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_validate_active="
+	          << (stats.validate_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_disabled_reason="
+	          << fasim_gasal2_extracted_finalizer_disabled_reason(stats)
+	          << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_result_boundary_ready_flushes="
+	          << stats.result_boundary_ready_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_flushes_observed="
+	          << stats.flushes_observed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_eligible_flushes="
+	          << stats.eligible_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_committed_flushes="
+	          << stats.committed_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_unsupported_finalizer_shape_flushes="
+	          << stats.unsupported_finalizer_shape_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_legacy_fallback_flushes="
+	          << stats.legacy_fallback_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_legacy_finalizer_executed="
+	          << stats.legacy_finalizer_executed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_extracted_finalizer_executed="
+	          << stats.extracted_finalizer_executed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_comparison_performed="
+	          << stats.comparison_performed << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_extracted_active_flushes="
+	          << stats.extracted_active_flushes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_legacy_rows="
+	          << stats.legacy_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_extracted_rows="
+	          << stats.extracted_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_committed_rows="
+	          << stats.committed_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_missing_rows="
+	          << stats.missing_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_extra_rows="
+	          << stats.extra_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_order_mismatches="
+	          << stats.order_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_cigar_mismatches="
+	          << stats.cigar_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_coordinate_mismatches="
+	          << stats.coordinate_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_counter_mismatches="
+	          << stats.counter_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_archive_descriptor_mismatches="
+	          << stats.archive_descriptor_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_legacy_seconds="
+	          << stats.legacy_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_extracted_seconds="
+	          << stats.extracted_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_compare_seconds="
+	          << stats.compare_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_first_mismatch_flush_id="
+	          << stats.first_mismatch_flush_id << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_first_mismatch_task_id="
+	          << stats.first_mismatch_task_id << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_first_mismatch_row_index="
+	          << stats.first_mismatch_row_index << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_first_mismatch_field="
+	          << stats.first_mismatch_field << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_first_mismatch_legacy_row="
+	          << stats.first_mismatch_legacy_row << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_first_mismatch_extracted_row="
+	          << stats.first_mismatch_extracted_row << "\n";
+	std::cerr << "benchmark.fasim_gasal2_extracted_finalizer_decision="
+	          << fasim_gasal2_extracted_finalizer_decision(stats) << "\n";
 }
 
 static inline const char *fasim_min_score_shadow_source_name(FasimMinScoreShadowSource source)
@@ -3870,6 +8453,1425 @@ static inline void fasim_print_broad_scoreinfo_consumer_shadow_stats(
 	          << stats.broad_path_planner_descriptor_digest << "\n";
 }
 
+static inline void fasim_print_phase7_v4_legacy_byte_scoreinfo_shadow_stats(
+	const FasimPhase7V4LegacyByteScoreInfoShadowStats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_v4_legacy_byte_scoreinfo_shadow_";
+	std::cerr << prefix << "requested=" << stats.requested << "\n";
+	std::cerr << prefix << "active=" << stats.active << "\n";
+	std::cerr << prefix << "tasks=" << stats.tasks << "\n";
+	std::cerr << prefix << "cpu_scoreinfo_rows="
+	          << stats.cpu_scoreinfo_rows << "\n";
+	std::cerr << prefix << "host_scoreinfo_rows="
+	          << stats.host_scoreinfo_rows << "\n";
+	std::cerr << prefix << "gpu_scoreinfo_rows="
+	          << stats.gpu_scoreinfo_rows << "\n";
+	std::cerr << prefix << "scoreinfo_rows_equal="
+	          << stats.scoreinfo_rows_equal << "\n";
+	std::cerr << prefix << "scoreinfo_order_equal="
+	          << stats.scoreinfo_order_equal << "\n";
+	std::cerr << prefix << "scoreinfo_attempt_windows_equal="
+	          << stats.scoreinfo_attempt_windows_equal << "\n";
+	std::cerr << prefix << "scoreinfo_mismatches="
+	          << stats.scoreinfo_mismatches << "\n";
+	std::cerr << prefix << "scoreinfo_false_negatives="
+	          << stats.scoreinfo_false_negatives << "\n";
+	std::cerr << prefix << "scoreinfo_extra_required_attempts="
+	          << stats.scoreinfo_extra_required_attempts << "\n";
+	std::cerr << prefix << "host_contract_pass="
+	          << stats.host_contract_pass << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gate_v4_1_pass="
+	          << stats.gate_v4_1_pass << "\n";
+	std::cerr << prefix << "source_replay_requested="
+	          << stats.source_replay_requested << "\n";
+	std::cerr << prefix << "source_replay_active="
+	          << stats.source_replay_active << "\n";
+	std::cerr << prefix << "source_replay_streaming_ready="
+	          << stats.source_replay_streaming_ready << "\n";
+	std::cerr << prefix << "source_replay_scoreinfo_rows="
+	          << stats.source_replay_scoreinfo_rows << "\n";
+	std::cerr << prefix << "source_replay_cpu_authority="
+	          << stats.source_replay_cpu_authority << "\n";
+	std::cerr << prefix << "source_replay_gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.source_replay_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gate_v4_2_pass="
+	          << stats.gate_v4_2_pass << "\n";
+	std::cerr << prefix << "source=" << stats.source << "\n";
+}
+
+static inline void fasim_print_phase7_v5_fused_scoreinfo_consumer_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_requested="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_active << "\n";
+	std::cerr << prefix << "tasks="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_tasks << "\n";
+	std::cerr << prefix << "reference_scoreinfos="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_reference_scoreinfos << "\n";
+	std::cerr << prefix << "reference_attempts="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_reference_attempts << "\n";
+	std::cerr << prefix << "gpu_descriptor_scoreinfos="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_gpu_descriptor_scoreinfos << "\n";
+	std::cerr << prefix << "gpu_descriptor_attempts="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_gpu_descriptor_attempts << "\n";
+	std::cerr << prefix << "descriptor_false_negatives="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_descriptor_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_missing_required_attempts << "\n";
+	std::cerr << prefix << "extra_descriptor_attempts="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_extra_descriptor_attempts << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gate_v5_1_pass="
+	          << stats.phase7_v5_fused_scoreinfo_consumer_gate_v5_1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_v5_true_pre_scoreinfo_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_v5_true_pre_scoreinfo_descriptor_source_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_v5_true_pre_scoreinfo_descriptor_source(
+		0,
+		0,
+		0,
+		0,
+		0,
+		false,
+		false,
+		0,
+		0,
+		false,
+		true,
+		false);
+}
+
+static inline void fasim_print_phase7_v5_true_pre_scoreinfo_descriptor_source_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_active << "\n";
+	std::cerr << prefix << "tasks="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_tasks << "\n";
+	std::cerr << prefix << "reference_scoreinfos="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_reference_scoreinfos << "\n";
+	std::cerr << prefix << "reference_attempts="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_reference_attempts << "\n";
+	std::cerr << prefix << "gpu_descriptor_scoreinfos="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gpu_descriptor_scoreinfos << "\n";
+	std::cerr << prefix << "gpu_descriptor_attempts="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gpu_descriptor_attempts << "\n";
+	std::cerr << prefix << "source_is_pre_scoreinfo="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_source_is_pre_scoreinfo << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "descriptor_false_negatives="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_descriptor_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_missing_required_attempts << "\n";
+	std::cerr << prefix << "candidate_attempts_below_all_column_replay_scale="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_candidate_attempts_below_all_column_replay_scale << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gate_v5_1_pass="
+	          << stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gate_v5_1_pass << "\n";
+}
+
+static inline void fasim_print_phase7_v5_cpu_authority_replay_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_v5_cpu_authority_replay_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_v5_cpu_authority_replay_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_v5_cpu_authority_replay_active << "\n";
+	std::cerr << prefix << "tasks="
+	          << stats.phase7_v5_cpu_authority_replay_tasks << "\n";
+	std::cerr << prefix << "gpu_descriptor_scoreinfos="
+	          << stats.phase7_v5_cpu_authority_replay_gpu_descriptor_scoreinfos << "\n";
+	std::cerr << prefix << "gpu_descriptor_attempts="
+	          << stats.phase7_v5_cpu_authority_replay_gpu_descriptor_attempts << "\n";
+	std::cerr << prefix << "reference_align_attempts="
+	          << stats.phase7_v5_cpu_authority_replay_reference_align_attempts << "\n";
+	std::cerr << prefix << "candidate_align_attempts="
+	          << stats.phase7_v5_cpu_authority_replay_candidate_align_attempts << "\n";
+	std::cerr << prefix << "source_is_pre_scoreinfo="
+	          << stats.phase7_v5_cpu_authority_replay_source_is_pre_scoreinfo << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_v5_cpu_authority_replay_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "descriptor_false_negatives="
+	          << stats.phase7_v5_cpu_authority_replay_descriptor_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_v5_cpu_authority_replay_missing_required_attempts << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_v5_cpu_authority_replay_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_v5_cpu_authority_replay_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_v5_cpu_authority_replay_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_v5_cpu_authority_replay_digest_match << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_v5_cpu_authority_replay_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_v5_cpu_authority_replay_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_v5_cpu_authority_replay_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_v5_2_pass="
+	          << stats.phase7_v5_cpu_authority_replay_gate_v5_2_pass << "\n";
+}
+
+static inline void fasim_record_phase7_v5_cpu_authority_replay_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_v5_cpu_authority_replay_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_v5_cpu_authority_replay_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_v5_cpu_authority_replay(
+		0,
+		0,
+		0,
+		0,
+		0,
+		false,
+		false,
+		0,
+		0,
+		true,
+		false,
+		false,
+		0,
+		0,
+		0,
+		false);
+}
+
+static inline void fasim_record_phase7_post_v5_3_gpu_consumer_summary_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_gpu_consumer_summary_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_gpu_consumer_summary_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_gpu_consumer_summary(
+		0,
+		false,
+		0,
+		false,
+		false,
+		false,
+		false,
+		0,
+		0,
+		0,
+		0,
+		0,
+		false,
+		false,
+		0,
+		0,
+		false,
+		true,
+		false,
+		false,
+		0,
+		0,
+		0,
+		false);
+}
+
+static inline void fasim_record_phase7_post_v5_3_host_assisted_consumer_feasibility_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_host_assisted_consumer_feasibility_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_host_assisted_consumer_feasibility_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_host_assisted_consumer_feasibility(
+		0,
+		false,
+		true,
+		false,
+		false,
+		0,
+		0,
+		0,
+		0,
+		0,
+		false,
+		0,
+		0,
+		false,
+		true,
+		false,
+		false,
+		0,
+		0,
+		0,
+		false);
+}
+
+static inline void fasim_print_phase7_post_v5_3_gpu_consumer_summary_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_gpu_consumer_summary_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_gpu_consumer_summary_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_gpu_consumer_summary_active << "\n";
+	std::cerr << prefix << "tasks="
+	          << stats.phase7_post_v5_3_gpu_consumer_summary_tasks << "\n";
+	std::cerr << prefix << "source_is_pre_scoreinfo="
+	          << stats.phase7_post_v5_3_gpu_consumer_summary_source_is_pre_scoreinfo << "\n";
+	std::cerr << prefix << "gpu_consumer_summary_rows="
+	          << stats.phase7_post_v5_3_gpu_consumer_summary_rows << "\n";
+	std::cerr << prefix << "gpu_consumer_reduces_before_host_transfer="
+	          << stats.phase7_post_v5_3_gpu_consumer_reduces_before_host_transfer << "\n";
+	std::cerr << prefix << "uses_prefix_boundary_or_equivalent_replay_proof="
+	          << stats.phase7_post_v5_3_uses_prefix_boundary_or_equivalent_replay_proof << "\n";
+	std::cerr << prefix << "arbitrary_sparse_subset="
+	          << stats.phase7_post_v5_3_arbitrary_sparse_subset << "\n";
+	std::cerr << prefix << "first_descriptor_per_scoreinfo="
+	          << stats.phase7_post_v5_3_first_descriptor_per_scoreinfo << "\n";
+	std::cerr << prefix << "gpu_selected_attempts="
+	          << stats.phase7_post_v5_3_gpu_selected_attempts << "\n";
+	std::cerr << prefix << "selected_prefix_attempts="
+	          << stats.phase7_post_v5_3_selected_prefix_attempts << "\n";
+	std::cerr << prefix << "reference_align_attempts="
+	          << stats.phase7_post_v5_3_reference_align_attempts << "\n";
+	std::cerr << prefix << "candidate_align_attempts="
+	          << stats.phase7_post_v5_3_candidate_align_attempts << "\n";
+	std::cerr << prefix << "v5_candidate_align_attempts="
+	          << stats.phase7_post_v5_3_v5_candidate_align_attempts << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_post_v5_3_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_post_v5_3_align_side_reduced << "\n";
+	std::cerr << prefix << "descriptor_false_negatives="
+	          << stats.phase7_post_v5_3_descriptor_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_v5_3_missing_required_attempts << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_digest_match << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_full_rows_equal << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_post_v5_3_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_post_v5_3_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_post_v5_3_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_task_frontier_certificate_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_task_frontier_certificate_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_task_frontier_certificate_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_task_frontier_certificate_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_task_frontier_certificate_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_task_frontier_certificate_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_active << "\n";
+	std::cerr << prefix << "tasks="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_tasks << "\n";
+	std::cerr << prefix << "source_is_pre_scoreinfo="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_source_is_pre_scoreinfo << "\n";
+	std::cerr << prefix << "source_is_legacy_byte_cuda="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_source_is_legacy_byte_cuda << "\n";
+	std::cerr << prefix << "gasal2_score_only_long_query_dependency="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_gasal2_score_only_long_query_dependency << "\n";
+	std::cerr << prefix << "uses_task_frontier_certificate="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_uses_task_frontier_certificate << "\n";
+	std::cerr << prefix << "uses_prefix_boundary_only="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_uses_prefix_boundary_only << "\n";
+	std::cerr << prefix << "arbitrary_sparse_subset="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_arbitrary_sparse_subset << "\n";
+	std::cerr << prefix << "first_descriptor_per_scoreinfo="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_first_descriptor_per_scoreinfo << "\n";
+	std::cerr << prefix << "fixed_prefix_per_scoreinfo="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_fixed_prefix_per_scoreinfo << "\n";
+	std::cerr << prefix << "gpu_consumer_reduces_before_host_transfer="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_gpu_consumer_reduces_before_host_transfer << "\n";
+	std::cerr << prefix << "task_frontier_certificate_rows="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_rows << "\n";
+	std::cerr << prefix << "gpu_selected_attempts="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_gpu_selected_attempts << "\n";
+	std::cerr << prefix << "reference_align_attempts="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_reference_align_attempts << "\n";
+	std::cerr << prefix << "candidate_align_attempts="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_candidate_align_attempts << "\n";
+	std::cerr << prefix << "v5_candidate_align_attempts="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_v5_candidate_align_attempts << "\n";
+	std::cerr << prefix << "descriptor_false_negatives="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_descriptor_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_missing_required_attempts << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_digest_match << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_full_rows_equal << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_task_frontier_certificate_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_pre_d2h_proof_search_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_pre_d2h_proof_search_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_pre_d2h_proof_search_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_pre_d2h_proof_search_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_pre_d2h_proof_search_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_pre_d2h_proof_search_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_active << "\n";
+	std::cerr << prefix << "source_is_pre_scoreinfo="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_source_is_pre_scoreinfo << "\n";
+	std::cerr << prefix << "source_is_legacy_byte_cuda="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_source_is_legacy_byte_cuda << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gpu_output_authority="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_gpu_output_authority << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "proof_search_rows="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_proof_search_rows << "\n";
+	std::cerr << prefix << "task_count="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_task_count << "\n";
+	std::cerr << prefix << "scoreinfo_count="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_scoreinfo_count << "\n";
+	std::cerr << prefix << "attempt_count="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_attempt_count << "\n";
+	std::cerr << prefix << "label_source_cpu_authority_external_output="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_label_source_cpu_authority_external_output << "\n";
+	std::cerr << prefix << "gate_first1_export_pass="
+	          << stats.phase7_post_v5_3_pre_d2h_proof_search_gate_first1_export_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_new_gpu_engine_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_new_gpu_engine_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_new_gpu_engine_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_first1_shadow_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_active << "\n";
+	std::cerr << prefix << "gpu_scoreinfo_tasks="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_scoreinfo_tasks << "\n";
+	std::cerr << prefix << "gpu_candidate_groups="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_candidate_groups << "\n";
+	std::cerr << prefix << "gpu_replay_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_replay_attempts << "\n";
+	std::cerr << prefix << "gpu_skipped_groups="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_skipped_groups << "\n";
+	std::cerr << prefix << "gpu_skipped_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_skipped_attempts << "\n";
+	std::cerr << prefix << "cpu_replay_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_cpu_replay_attempts << "\n";
+	std::cerr << prefix << "baseline_cpu_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_baseline_cpu_attempts << "\n";
+	std::cerr << prefix << "missing_certificate_producer="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_certificate_producer << "\n";
+	std::cerr << prefix << "certificate_valid_before_d2h="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_certificate_valid_before_d2h << "\n";
+	std::cerr << prefix << "final_cpu_output_membership_required_for_certificate="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_final_cpu_output_membership_required_for_certificate << "\n";
+	std::cerr << prefix << "fallback_on_missing_bound="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_on_missing_bound << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_certificate_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_required_attempts << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_active << "\n";
+	std::cerr << prefix << "real_fasim_runtime_certificate_source="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_real_certificate_source << "\n";
+	std::cerr << prefix << "real_fasim_runtime_work_drop_path="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_real_work_drop_path << "\n";
+	std::cerr << prefix << "runtime_certificate_is_synthetic="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_runtime_certificate_is_synthetic << "\n";
+	std::cerr << prefix << "gpu_tasks="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_tasks << "\n";
+	std::cerr << prefix << "gpu_candidate_groups="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_candidate_groups << "\n";
+	std::cerr << prefix << "gpu_replay_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_replay_attempts << "\n";
+	std::cerr << prefix << "gpu_selected_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_selected_attempts << "\n";
+	std::cerr << prefix << "gpu_skipped_groups="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_skipped_groups << "\n";
+	std::cerr << prefix << "gpu_skipped_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_skipped_attempts << "\n";
+	std::cerr << prefix << "cpu_replay_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_cpu_replay_attempts << "\n";
+	std::cerr << prefix << "baseline_cpu_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_baseline_cpu_attempts << "\n";
+	std::cerr << prefix << "missing_certificate="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_missing_certificate << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_certificate_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_missing_required_attempts << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_triplex_mismatches << "\n";
+	std::cerr << prefix << "candidate_wall_seconds="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_candidate_wall_seconds << "\n";
+	std::cerr << prefix << "baseline_wall_seconds="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_baseline_wall_seconds << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_active << "\n";
+	std::cerr << prefix << "real_fasim_runtime_certificate_source="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_certificate_source << "\n";
+	std::cerr << prefix << "real_fasim_runtime_work_drop_path="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_work_drop_path << "\n";
+	std::cerr << prefix << "runtime_certificate_is_synthetic="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_certificate_is_synthetic << "\n";
+	std::cerr << prefix << "source_is_pre_drop="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_pre_drop << "\n";
+	std::cerr << prefix << "source_is_legacy_byte_cuda="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_legacy_byte_cuda << "\n";
+	std::cerr << prefix << "candidate_uses_final_cpu_output_as_runtime_proof="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_final_cpu_output_membership_required << "\n";
+	std::cerr << prefix << "source_task_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_task_count << "\n";
+	std::cerr << prefix << "source_scoreinfo_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_scoreinfo_count << "\n";
+	std::cerr << prefix << "source_attempt_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_attempt_count << "\n";
+	std::cerr << prefix << "reference_scoreinfo_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_reference_scoreinfo_count << "\n";
+	std::cerr << prefix << "reference_attempt_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_reference_attempt_count << "\n";
+	std::cerr << prefix << "missing_certificate="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_missing_certificate << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_align_side_reduced << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_certificate_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_missing_required_attempts << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_digest_match << "\n";
+	std::cerr << prefix << "gate_first1_source_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_source_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_active << "\n";
+	std::cerr << prefix << "real_fasim_runtime_certificate_source="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_certificate_source << "\n";
+	std::cerr << prefix << "uses_pre_drop_output_inert_proof="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_uses_pre_drop_output_inert_proof << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "real_fasim_runtime_work_drop_path="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_work_drop_path << "\n";
+	std::cerr << prefix << "candidate_uses_final_cpu_output_as_runtime_proof="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_final_cpu_output_membership_required << "\n";
+	std::cerr << prefix << "proof_must_not_use_top5_only_contract="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_not_top5_only_contract << "\n";
+	std::cerr << prefix << "proof_must_cover_complete_row_set="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_complete_row_set_contract << "\n";
+	std::cerr << prefix << "source_task_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_source_task_count << "\n";
+	std::cerr << prefix << "source_scoreinfo_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_source_scoreinfo_count << "\n";
+	std::cerr << prefix << "source_attempt_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_source_attempt_count << "\n";
+	std::cerr << prefix << "reference_scoreinfo_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_reference_scoreinfo_count << "\n";
+	std::cerr << prefix << "reference_attempt_count="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_reference_attempt_count << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "candidate_proof_false_negatives="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_candidate_proof_false_negatives << "\n";
+	std::cerr << prefix << "candidate_proof_missing_required_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_candidate_proof_missing_required_attempts << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "gate_first1_proof_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gate_first1_proof_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_active << "\n";
+	std::cerr << prefix << "scoreinfo_cert_engine_first1_shadow="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_scoreinfo_cert_engine_first1_shadow << "\n";
+	std::cerr << prefix << "real_fasim_runtime_certificate_source="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_real_certificate_source << "\n";
+	std::cerr << prefix << "certificate_valid_before_work_drop="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_valid_before_work_drop << "\n";
+	std::cerr << prefix << "certificate_valid_before_d2h="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_valid_before_d2h << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "gpu_scoreinfo_groups="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_scoreinfo_groups << "\n";
+	std::cerr << prefix << "gpu_attempt_frontier_attempts="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_attempt_frontier_attempts << "\n";
+	std::cerr << prefix << "gpu_selected_replay_attempts="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_selected_replay_attempts << "\n";
+	std::cerr << prefix << "gpu_skipped_scoreinfo_groups="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_skipped_scoreinfo_groups << "\n";
+	std::cerr << prefix << "gpu_skipped_attempts="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_skipped_attempts << "\n";
+	std::cerr << prefix << "cpu_replay_attempts="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_cpu_replay_attempts << "\n";
+	std::cerr << prefix << "baseline_cpu_attempts="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_baseline_cpu_attempts << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_missing_required_attempts << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_first1_shadow_pass="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gate_first1_shadow_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_active << "\n";
+	std::cerr << prefix << "gpu_owned_scoreinfo_consumer_requested="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_requested << "\n";
+	std::cerr << prefix << "gpu_owned_scoreinfo_consumer_active="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_active << "\n";
+	std::cerr << prefix << "gpu_owned_scoreinfo_states="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_states << "\n";
+	std::cerr << prefix << "gpu_owned_attempt_frontier_attempts="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_attempt_frontier_attempts << "\n";
+	std::cerr << prefix << "gpu_owned_replay_frontier_attempts="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_replay_frontier_attempts << "\n";
+	std::cerr << prefix << "gpu_owned_skipped_scoreinfo_groups="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_skipped_scoreinfo_groups << "\n";
+	std::cerr << prefix << "gpu_owned_skipped_attempts="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_skipped_attempts << "\n";
+	std::cerr << prefix << "cpu_replay_attempts="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_cpu_replay_attempts << "\n";
+	std::cerr << prefix << "baseline_cpu_attempts="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_baseline_cpu_attempts << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "certificate_produced_before_work_drop="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_produced_before_work_drop << "\n";
+	std::cerr << prefix << "certificate_consumed_before_cpu_replay_selection="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_consumed_before_cpu_replay_selection << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_missing_required_attempts << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_first1_shadow_pass="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gate_first1_shadow_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_full_align_verifier_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_full_align_verifier_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_full_align_verifier_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_full_align_verifier_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_full_align_verifier_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_full_align_verifier_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_full_align_verifier_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_full_align_verifier_first1_shadow_active << "\n";
+	std::cerr << prefix << "descriptors="
+	          << stats.phase7_full_align_verifier_first1_shadow_descriptors << "\n";
+	std::cerr << prefix << "proposals="
+	          << stats.phase7_full_align_verifier_first1_shadow_proposals << "\n";
+	std::cerr << prefix << "proposal_failures="
+	          << stats.phase7_full_align_verifier_first1_shadow_proposal_failures << "\n";
+	std::cerr << prefix << "verifier_pass="
+	          << stats.phase7_full_align_verifier_first1_shadow_verifier_pass << "\n";
+	std::cerr << prefix << "verifier_fail="
+	          << stats.phase7_full_align_verifier_first1_shadow_verifier_fail << "\n";
+	std::cerr << prefix << "cpu_align_fallbacks="
+	          << stats.phase7_full_align_verifier_first1_shadow_cpu_align_fallbacks << "\n";
+	std::cerr << prefix << "score_mismatches="
+	          << stats.phase7_full_align_verifier_first1_shadow_score_mismatches << "\n";
+	std::cerr << prefix << "endpoint_mismatches="
+	          << stats.phase7_full_align_verifier_first1_shadow_endpoint_mismatches << "\n";
+	std::cerr << prefix << "cigar_mismatches="
+	          << stats.phase7_full_align_verifier_first1_shadow_cigar_mismatches << "\n";
+	std::cerr << prefix << "full_row_mismatches="
+	          << stats.phase7_full_align_verifier_first1_shadow_full_row_mismatches << "\n";
+	std::cerr << prefix << "digest_mismatches="
+	          << stats.phase7_full_align_verifier_first1_shadow_digest_mismatches << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_full_align_verifier_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_full_align_verifier_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_full_align_verifier_first1_shadow_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_full_align_verifier_first1_shadow_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_full_align_verifier_first1_shadow_triplex_mismatches << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_full_align_verifier_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_full_align_verifier_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_full_align_verifier_first1_shadow_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gpu_output_digest_authority="
+	          << stats.phase7_full_align_verifier_first1_shadow_gpu_output_digest_authority << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_full_align_verifier_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_full_align_verifier_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "gate_first1_shadow_pass="
+	          << stats.phase7_full_align_verifier_first1_shadow_gate_first1_shadow_pass << "\n";
+}
+
+static inline void fasim_record_phase7_native_cuda_fasim_dp_engine_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_native_cuda_fasim_dp_engine_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_native_cuda_fasim_dp_engine_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_native_cuda_fasim_dp_engine_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_active << "\n";
+	std::cerr << prefix << "native_scoreinfo_tiles="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_native_scoreinfo_tiles << "\n";
+	std::cerr << prefix << "forward_endpoint_witnesses="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_forward_endpoint_witnesses << "\n";
+	std::cerr << prefix << "reverse_start_witnesses="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_reverse_start_witnesses << "\n";
+	std::cerr << prefix << "traceback_cigar_witnesses="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_traceback_cigar_witnesses << "\n";
+	std::cerr << prefix << "certificates="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_certificates << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_certificate_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_missing_required_attempts << "\n";
+	std::cerr << prefix << "scoreinfo_byte_mismatches="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_scoreinfo_byte_mismatches << "\n";
+	std::cerr << prefix << "endpoint_mismatches="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_endpoint_mismatches << "\n";
+	std::cerr << prefix << "reverse_start_mismatches="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_reverse_start_mismatches << "\n";
+	std::cerr << prefix << "cigar_mismatches="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cigar_mismatches << "\n";
+	std::cerr << prefix << "full_row_mismatches="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_full_row_mismatches << "\n";
+	std::cerr << prefix << "digest_mismatches="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_digest_mismatches << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "cpu_align_fallbacks="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_fallbacks << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_score_authority="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_score_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_authority="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_endpoint_authority << "\n";
+	std::cerr << prefix << "gpu_cigar_traceback_output_authority="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gpu_output_digest_authority="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_output_digest_authority << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "gate_first1_shadow_pass="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gate_first1_shadow_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_gpu_upper_bound_reject_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_gpu_upper_bound_reject_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_gpu_upper_bound_reject_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_gpu_upper_bound_reject_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_gpu_upper_bound_reject_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_gpu_upper_bound_reject_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_active << "\n";
+	std::cerr << prefix << "upper_bound_descriptors="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_upper_bound_descriptors << "\n";
+	std::cerr << prefix << "upper_bound_certificates="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_upper_bound_certificates << "\n";
+	std::cerr << prefix << "reject_candidates_shadow="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_reject_candidates_shadow << "\n";
+	std::cerr << prefix << "would_reject_scoreinfo_groups="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_would_reject_scoreinfo_groups << "\n";
+	std::cerr << prefix << "would_reject_align_attempts="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_would_reject_align_attempts << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_certificate_false_negatives << "\n";
+	std::cerr << prefix << "baseline_rows_in_rejected_groups="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_baseline_rows_in_rejected_groups << "\n";
+	std::cerr << prefix << "baseline_rows_in_rejected_attempts="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_baseline_rows_in_rejected_attempts << "\n";
+	std::cerr << prefix << "unsupported_descriptors="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_unsupported_descriptors << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_score_authority="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_score_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_authority="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_endpoint_authority << "\n";
+	std::cerr << prefix << "gpu_cigar_traceback_output_authority="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gpu_output_digest_authority="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_output_digest_authority << "\n";
+	std::cerr << prefix << "gate_first1_shadow_pass="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_gate_first1_shadow_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_gpu_upper_bound_reject_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_gpu_exact_work_unit_compaction_first1_shadow_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_gpu_exact_work_unit_compaction_first1_shadow_requested();
+}
+
+static inline void fasim_print_phase7_gpu_exact_work_unit_compaction_first1_shadow_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_gpu_exact_work_unit_compaction_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_active << "\n";
+	std::cerr << prefix << "scoreinfo_key_descriptors="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_key_descriptors << "\n";
+	std::cerr << prefix << "scoreinfo_unique_keys="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_unique_keys << "\n";
+	std::cerr << prefix << "scoreinfo_duplicate_units="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_duplicate_units << "\n";
+	std::cerr << prefix << "align_key_descriptors="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_key_descriptors << "\n";
+	std::cerr << prefix << "align_unique_keys="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_unique_keys << "\n";
+	std::cerr << prefix << "align_duplicate_attempts="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_duplicate_attempts << "\n";
+	std::cerr << prefix << "key_collisions="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_key_collisions << "\n";
+	std::cerr << prefix << "cpu_key_validation_mismatches="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_key_validation_mismatches << "\n";
+	std::cerr << prefix << "unsupported_key_descriptors="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_unsupported_key_descriptors << "\n";
+	std::cerr << prefix << "fallback_to_full_cpu_replay="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_fallback_to_full_cpu_replay << "\n";
+	std::cerr << prefix << "scoreinfo_prealign_reduced="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_prealign_reduced << "\n";
+	std::cerr << prefix << "align_side_reduced="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_side_reduced << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_full_rows_equal << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_digest_match << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "runtime_work_drop_enabled="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_work_drop_enabled << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_score_authority="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_score_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_authority="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_endpoint_authority << "\n";
+	std::cerr << prefix << "gpu_cigar_traceback_output_authority="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "gpu_output_digest_authority="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_output_digest_authority << "\n";
+	std::cerr << prefix << "gate_first1_shadow_pass="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gate_first1_shadow_pass << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gate_first1_pass << "\n";
+}
+
+static inline void fasim_record_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested_if_needed()
+{
+	if (!fasim_gasal2_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_runtime())
+	{
+		return;
+	}
+	const FasimGasal2Stats stats = fasim_gasal2_snapshot_stats();
+	if (stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested != 0)
+	{
+		return;
+	}
+	fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested();
+}
+
+static inline void fasim_print_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_active << "\n";
+	std::cerr << prefix << "certificate_producer_active="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_producer_active << "\n";
+	std::cerr << prefix << "certificate_valid_before_d2h="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_valid_before_d2h << "\n";
+	std::cerr << prefix << "final_cpu_output_membership_required_for_certificate="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_final_cpu_output_membership_required_for_certificate << "\n";
+	std::cerr << prefix << "skipped_groups="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_groups << "\n";
+	std::cerr << prefix << "skipped_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempts << "\n";
+	std::cerr << prefix << "conservative_fallback_groups="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_conservative_fallback_groups << "\n";
+	std::cerr << prefix << "certificate_false_negatives="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_false_negatives << "\n";
+	std::cerr << prefix << "certificate_missing_required_attempts="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_missing_required_attempts << "\n";
+	std::cerr << prefix << "skipped_scoreinfo_upper_bound_score="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_scoreinfo_upper_bound_score << "\n";
+	std::cerr << prefix << "skipped_attempt_upper_bound_score="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_score << "\n";
+	std::cerr << prefix << "skipped_attempt_upper_bound_nt="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_nt << "\n";
+	std::cerr << prefix << "skipped_attempt_upper_bound_identity="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_identity << "\n";
+	std::cerr << prefix << "skipped_attempt_upper_bound_stability="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_stability << "\n";
+	std::cerr << prefix << "task_output_capacity_exhausted="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_task_output_capacity_exhausted << "\n";
+	std::cerr << prefix << "scoreinfo_local_break_state="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_scoreinfo_local_break_state << "\n";
+	std::cerr << prefix << "runtime_reduction_enabled="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_runtime_reduction_enabled << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "certificate_cuda_api_gate_pass="
+	          << stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_cuda_api_gate_pass << "\n";
+}
+
+static inline void fasim_print_phase7_post_v5_3_host_assisted_consumer_feasibility_stats(
+	const FasimGasal2Stats &stats)
+{
+	const char *prefix =
+		"benchmark.fasim_gasal2_phase7_post_v5_3_host_assisted_consumer_feasibility_";
+	std::cerr << prefix << "requested="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_requested << "\n";
+	std::cerr << prefix << "active="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_active << "\n";
+	std::cerr << prefix << "tasks="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_tasks << "\n";
+	std::cerr << prefix << "host_assisted="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_host_assisted << "\n";
+	std::cerr << prefix << "source_is_v5_descriptors="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_source_is_v5_descriptors << "\n";
+	std::cerr << prefix << "gpu_consumer_reduces_before_host_transfer="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gpu_consumer_reduces_before_host_transfer << "\n";
+	std::cerr << prefix << "host_selected_attempts="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_host_selected_attempts << "\n";
+	std::cerr << prefix << "prefix_descriptor_attempts="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_prefix_descriptor_attempts << "\n";
+	std::cerr << prefix << "reference_align_attempts="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_reference_align_attempts << "\n";
+	std::cerr << prefix << "candidate_align_attempts="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_candidate_align_attempts << "\n";
+	std::cerr << prefix << "v5_candidate_align_attempts="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_v5_candidate_align_attempts << "\n";
+	std::cerr << prefix << "candidate_align_attempts_less_than_v5="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_candidate_align_attempts_less_than_v5 << "\n";
+	std::cerr << prefix << "descriptor_false_negatives="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_descriptor_false_negatives << "\n";
+	std::cerr << prefix << "missing_required_attempts="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_missing_required_attempts << "\n";
+	std::cerr << prefix << "fallback_accounting_clean="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_fallback_accounting_clean << "\n";
+	std::cerr << prefix << "cpu_align_authority="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_cpu_align_authority << "\n";
+	std::cerr << prefix << "gpu_endpoint_cigar_traceback_output_authority="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gpu_endpoint_cigar_traceback_output_authority << "\n";
+	std::cerr << prefix << "digest_match="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_digest_match << "\n";
+	std::cerr << prefix << "full_rows_equal="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_full_rows_equal << "\n";
+	std::cerr << prefix << "missing_rows="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_missing_rows << "\n";
+	std::cerr << prefix << "extra_rows="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_extra_rows << "\n";
+	std::cerr << prefix << "triplex_mismatches="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_triplex_mismatches << "\n";
+	std::cerr << prefix << "gate_first1_pass="
+	          << stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gate_first1_pass << "\n";
+}
+
+static inline void fasim_print_phase3_cigar_nt_prefilter_shadow_stats(
+	const FasimPhase3CigarNtPrefilterShadowStats &stats)
+{
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_requested="
+	          << stats.requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_active="
+	          << stats.active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_alignments_seen="
+	          << stats.alignments_seen << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_cigar_lt_ntmin="
+	          << stats.cigar_lt_ntmin << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_legacy_nt_lt_ntmin="
+	          << stats.legacy_nt_lt_ntmin << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_agree_lt_ntmin="
+	          << stats.agree_lt_ntmin << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_disagree_lt_ntmin="
+	          << stats.disagree_lt_ntmin << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_candidate_skippable="
+	          << stats.candidate_skippable << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_candidate_false_negative_rows="
+	          << stats.candidate_false_negative_rows << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_task_frontier_equal="
+	          << stats.task_frontier_equal << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_task_frontier_safety="
+	          << stats.task_frontier_safety << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_prune_proof_gate="
+	          << stats.real_prune_proof_gate << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_convert_seconds_projected_saved="
+	          << stats.convert_seconds_projected_saved << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_baseline_triplex_path="
+	          << stats.baseline_triplex_path << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_candidate_triplex_path="
+	          << stats.candidate_triplex_path << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_candidate_triplexes="
+	          << stats.candidate_triplexes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_candidate_triplex_digest="
+	          << stats.candidate_triplex_digest << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_requested="
+	          << stats.real_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_active="
+	          << stats.real_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_validate_requested="
+	          << stats.real_validate_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_validate_active="
+	          << stats.real_validate_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_skipped_alignments="
+	          << stats.real_skipped_alignments << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_validated_skips="
+	          << stats.real_validated_skips << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_validate_mismatches="
+	          << stats.real_validate_mismatches << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_fallbacks="
+	          << stats.real_fallbacks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase3_cigar_nt_prefilter_real_decision="
+	          << stats.real_decision << "\n";
+}
+
 static inline void fasim_print_legacy_score_gpu_shadow_stats(
 	const FasimLegacyScoreGpuShadowStats &stats)
 {
@@ -4489,7 +10491,14 @@ int main(int argc, char* const* argv)
 	clock_t start, end;
 	float cpu_time;
 	start = clock();
-	const bool phaseTimingEnabled = fasim_top5_gasal2_phase_timing_enabled_runtime();
+	const bool taxonomyEnabled =
+		fasim_gasal2_traceback_rejection_taxonomy_runtime();
+	const bool eligibilityEnabled =
+		fasim_gasal2_pretraceback_pruning_eligibility_runtime();
+	const bool phaseTimingEnabled =
+		fasim_top5_gasal2_phase_timing_enabled_runtime() ||
+		taxonomyEnabled ||
+		eligibilityEnabled;
 	const bool minScoreShadowEnabled = fasim_exact_column_min_score_shadow_enabled_runtime();
 	const bool streamingScoreInfoTwoContractRequested =
 		fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
@@ -4507,7 +10516,80 @@ int main(int argc, char* const* argv)
 	const int minScoreShadowDebugLimit =
 		fasim_env_int_or_default("FASIM_EXACT_COLUMN_MIN_SCORE_SHADOW_DEBUG_LIMIT", 3);
 	int minScoreShadowDebugPrinted = 0;
-	FasimTop5PhaseTimingStats phaseTiming;
+		FasimTop5PhaseTimingStats phaseTiming;
+		FasimGasal2FlushPipelineTraceRuntime flushPipelineTrace;
+		flushPipelineTrace.requested =
+			fasim_gasal2_flush_pipeline_trace_runtime();
+		flushPipelineTrace.active = flushPipelineTrace.requested;
+		flushPipelineTrace.export_path =
+			fasim_gasal2_flush_pipeline_trace_export_path_runtime();
+		flushPipelineTrace.chrome_trace_path =
+			fasim_gasal2_flush_pipeline_trace_json_path_runtime();
+		flushPipelineTrace.export_limit =
+			static_cast<size_t>(fasim_gasal2_flush_pipeline_trace_limit_runtime());
+		flushPipelineTrace.chrome_limit =
+			static_cast<size_t>(
+				fasim_gasal2_flush_pipeline_trace_chrome_limit_runtime());
+			FasimNvtxTraceRuntime nvtxTrace;
+			nvtxTrace.requested = fasim_gasal2_nvtx_trace_runtime();
+			nvtxTrace.active =
+				nvtxTrace.requested && fasim_gasal2_nvtx_trace_compiled();
+			FasimGasal2FlushTwoSlotOverlapStats twoSlotOverlapStats;
+			const bool twoSlotOverlapRealRequested =
+				fasim_gasal2_flush_two_slot_overlap_runtime();
+			const bool twoSlotSerializedControlRequested =
+				fasim_gasal2_flush_two_slot_serialized_control_runtime();
+			twoSlotOverlapStats.requested =
+				fasim_gasal2_flush_two_slot_overlap_shadow_runtime() ||
+				twoSlotOverlapRealRequested ||
+				twoSlotSerializedControlRequested;
+			twoSlotOverlapStats.validate_requested =
+				fasim_gasal2_flush_two_slot_overlap_validate_runtime();
+			twoSlotOverlapStats.serialized_control_requested =
+				twoSlotSerializedControlRequested;
+			FasimGasal2FlushPureFinalizerStats pureFinalizerStats;
+			pureFinalizerStats.requested =
+				fasim_gasal2_flush_pure_finalizer_shadow_runtime();
+			pureFinalizerStats.active = pureFinalizerStats.requested;
+			FasimGasal2OrderedCommitStats orderedCommitStats;
+			orderedCommitStats.requested =
+				fasim_gasal2_flush_ordered_commit_shadow_runtime();
+			orderedCommitStats.active = orderedCommitStats.requested;
+			FasimGasal2DualFinalizerStats dualFinalizerStats;
+			dualFinalizerStats.requested =
+				fasim_gasal2_flush_dual_finalizer_shadow_runtime();
+			dualFinalizerStats.active = dualFinalizerStats.requested;
+			FasimGasal2ExtractedFinalizerStats extractedFinalizerStats;
+			extractedFinalizerStats.requested =
+				fasim_gasal2_flush_extracted_finalizer_runtime() ||
+				twoSlotOverlapRealRequested ||
+				twoSlotSerializedControlRequested;
+			extractedFinalizerStats.validate_requested =
+				fasim_gasal2_flush_extracted_finalizer_validate_runtime();
+			extractedFinalizerStats.active =
+				extractedFinalizerStats.requested;
+			extractedFinalizerStats.validate_active =
+				extractedFinalizerStats.requested &&
+				extractedFinalizerStats.validate_requested;
+			FasimGasal2FlushResultBoundaryStats resultBoundaryStats;
+			resultBoundaryStats.requested =
+				fasim_gasal2_flush_result_boundary_shadow_runtime() ||
+				pureFinalizerStats.requested ||
+				orderedCommitStats.requested ||
+				dualFinalizerStats.requested ||
+				extractedFinalizerStats.requested ||
+				twoSlotOverlapRealRequested ||
+				twoSlotSerializedControlRequested;
+			orderedCommitStats.requested =
+				orderedCommitStats.requested ||
+				dualFinalizerStats.requested ||
+				extractedFinalizerStats.requested;
+			orderedCommitStats.active = orderedCommitStats.requested;
+			resultBoundaryStats.active = resultBoundaryStats.requested;
+		FasimGasal2TracebackRejectionTaxonomyExporter taxonomyExporter;
+	taxonomyExporter.open();
+	FasimGasal2PretracebackPruningEligibilityRuntime eligibilityRuntime;
+	eligibilityRuntime.open();
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -4515,6 +10597,8 @@ int main(int argc, char* const* argv)
 	FasimLongQueryExactColumnScoreInfoShadowStats longQueryExactColumnScoreInfoShadowStats;
 	FasimLongQueryStreamingScoreInfoShadowStats longQueryStreamingScoreInfoShadowStats;
 	FasimBroadScoreInfoConsumerShadowStats broadScoreInfoConsumerShadowStats;
+	FasimPhase7V4LegacyByteScoreInfoShadowStats phase7V4LegacyByteScoreInfoShadowStats;
+	FasimPhase3CigarNtPrefilterShadowStats phase3CigarNtPrefilterShadowStats;
 	legacyScoreGpuShadowStats.enabled = legacyScoreGpuShadowEnabled;
 	legacyScoreGpuShadowStats.replacement_enabled = legacyScoreGpuReplacementEnabled;
     if(paraList.doFastSim==true)
@@ -4539,6 +10623,63 @@ int main(int argc, char* const* argv)
 	fasim_prepare_long_query_streaming_scoreinfo_shadow_stats(
 		lncSeq,
 		&longQueryStreamingScoreInfoShadowStats);
+	const bool phase7V4LegacyByteScoreInfoShadowRequested =
+		fasim_gasal2_phase7_v4_legacy_byte_scoreinfo_shadow_runtime();
+	const bool phase7V4GpuLegacyByteScoreInfoShadowRequested =
+		fasim_gasal2_phase7_v4_gpu_legacy_byte_scoreinfo_shadow_runtime();
+	const bool phase7V4GpuLegacyByteScoreInfoSourceReplayRequested =
+		fasim_gasal2_phase7_v4_gpu_legacy_byte_scoreinfo_source_replay_runtime();
+		const bool phase7V5TruePreScoreInfoDescriptorSourceRequested =
+			fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_runtime();
+		const bool phase7V5CpuAuthorityReplayRequested =
+			fasim_gasal2_phase7_v5_cpu_authority_replay_runtime();
+		const bool phase7PostV53HostAssistedConsumerFeasibilityRequested =
+			fasim_gasal2_phase7_post_v5_3_host_assisted_consumer_feasibility_runtime();
+		const bool phase7PostV53GpuConsumerSummaryRequested =
+			fasim_gasal2_phase7_post_v5_3_gpu_consumer_summary_runtime();
+		const bool phase7PostV53TaskFrontierCertificateRequested =
+			fasim_gasal2_phase7_post_v5_3_task_frontier_certificate_runtime();
+		const bool phase7PostV53PreD2HProofSearchRequested =
+			fasim_gasal2_phase7_post_v5_3_pre_d2h_proof_search_runtime();
+		const bool phase7PostV53RealSourceCertificateSourceRequested =
+			fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime();
+		const bool phase7PostV53PreDropWorkDropProofFirst1ShadowRequested =
+			fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime();
+		const bool phase7PostConsumerGpuScoreInfoCertEngineFirst1ShadowRequested =
+			fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime();
+			const bool phase7GpuOwnedScoreInfoConsumerFirst1ShadowRequested =
+				fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime();
+			const bool phase7FullAlignVerifierFirst1ShadowRequested =
+				fasim_gasal2_phase7_full_align_verifier_first1_shadow_runtime();
+				const bool phase7NativeCudaFasimDpEngineFirst1ShadowRequested =
+					fasim_gasal2_phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime();
+				const bool phase7GpuUpperBoundRejectFirst1ShadowRequested =
+					fasim_gasal2_phase7_gpu_upper_bound_reject_first1_shadow_runtime();
+				const bool phase7GpuExactWorkUnitCompactionFirst1ShadowRequested =
+					fasim_gasal2_phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime();
+	if (phase7V4LegacyByteScoreInfoShadowRequested ||
+	    phase7V4GpuLegacyByteScoreInfoShadowRequested ||
+	    phase7V4GpuLegacyByteScoreInfoSourceReplayRequested)
+	{
+		phase7V4LegacyByteScoreInfoShadowStats.requested = 1;
+		if (phase7V4GpuLegacyByteScoreInfoSourceReplayRequested)
+		{
+			phase7V4LegacyByteScoreInfoShadowStats.source =
+				"gpu_legacy_byte_scoreinfo_source_replay";
+			phase7V4LegacyByteScoreInfoShadowStats.source_replay_requested = 1;
+			phase7V4LegacyByteScoreInfoShadowStats.source_replay_cpu_authority = 1;
+			longQueryStreamingScoreInfoShadowStats.realpath_requested = 1;
+			longQueryStreamingScoreInfoShadowStats.realpath_digest_authority =
+				"cpu_validated";
+		}
+		else
+		{
+			phase7V4LegacyByteScoreInfoShadowStats.source =
+				phase7V4GpuLegacyByteScoreInfoShadowRequested ?
+					"gpu_legacy_byte_scoreinfo" :
+					"host_column_score_reconstruction";
+		}
+	}
 	if (fasim_gasal2_broad_scoreinfo_consumer_shadow_runtime() ||
 	    fasim_gasal2_broad_replacement_consumer_shadow_runtime())
 	{
@@ -4557,7 +10698,35 @@ int main(int argc, char* const* argv)
 		if (fasim_gasal2_broad_replacement_consumer_shadow_runtime())
 		{
 			broadScoreInfoConsumerShadowStats.broad_path_decision =
-				"replacement_consumer_shadow_requested";
+			"replacement_consumer_shadow_requested";
+		}
+	}
+	if (fasim_gasal2_phase3_cigar_nt_prefilter_shadow_runtime() ||
+	    fasim_gasal2_phase3_cigar_nt_prefilter_runtime())
+	{
+		phase3CigarNtPrefilterShadowStats.requested = 1;
+		phase3CigarNtPrefilterShadowStats.active = 1;
+	}
+	if (fasim_gasal2_phase3_cigar_nt_prefilter_runtime())
+	{
+		phase3CigarNtPrefilterShadowStats.real_requested = 1;
+		phase3CigarNtPrefilterShadowStats.real_active = 1;
+		phase3CigarNtPrefilterShadowStats.real_decision =
+			"active_unvalidated";
+	}
+	if (fasim_gasal2_phase3_cigar_nt_prefilter_validate_runtime())
+	{
+		phase3CigarNtPrefilterShadowStats.real_validate_requested = 1;
+		if (fasim_gasal2_phase3_cigar_nt_prefilter_runtime())
+		{
+			phase3CigarNtPrefilterShadowStats.real_validate_active = 1;
+			phase3CigarNtPrefilterShadowStats.real_decision =
+				"validate_requested";
+		}
+		else
+		{
+			phase3CigarNtPrefilterShadowStats.real_decision =
+				"validate_requested_without_real";
 		}
 	}
 	fileName = fasim_strip_fasta_extension(fasim_basename(paraList.file1path));
@@ -4611,30 +10780,72 @@ int main(int argc, char* const* argv)
 			bool minScoreReady;
 		};
 
+		auto annotate_gasal2_attempt_task =
+			[](FasimGasal2Attempt &attempt, const StreamTask &task)
+		{
+			attempt.task_strand = static_cast<int>(task.strand);
+			attempt.task_para = static_cast<int>(task.Para);
+			attempt.task_rule = task.rule;
+			if (attempt.start < 0 || attempt.cutlength <= 0)
+			{
+				return;
+			}
+			const int64_t taskStart =
+				static_cast<int64_t>(task.dnaStartPos) +
+				static_cast<int64_t>(attempt.start);
+			attempt.target_global_start = taskStart;
+			if ((task.Para > 0 && task.strand == 1) ||
+			    (task.Para < 0 && task.strand == 0))
+			{
+				attempt.output_global_start =
+					static_cast<int64_t>(task.dnaStartPos) +
+					static_cast<int64_t>(task.seq2.size()) -
+					static_cast<int64_t>(attempt.start + attempt.cutlength) + 1;
+				attempt.output_global_end =
+					static_cast<int64_t>(task.dnaStartPos) +
+					static_cast<int64_t>(task.seq2.size()) -
+					static_cast<int64_t>(attempt.start) + 1;
+			}
+			else
+			{
+				attempt.output_global_start = taskStart + 1;
+				attempt.output_global_end =
+					taskStart + static_cast<int64_t>(attempt.cutlength) + 1;
+			}
+		};
+
 			ofstream outFile;
 			ofstream outLiteFile;
 			ofstream cigarArchiveProbeFile;
 			FasimCompactArchiveProbeWriter compactArchiveProbeWriter;
 			FasimColumnArchiveProbeWriter columnArchiveProbeWriter;
-			ofstream broadCpuTriplexFile;
-		ofstream broadPlannerDescriptorFile;
-		string outFilePath;
-			string outLiteFilePath;
-			string cigarArchiveProbePath;
-			string compactArchiveProbePath;
-			string columnArchiveProbePath;
-		string broadCpuTriplexPath;
-		string broadPlannerDescriptorPath;
-		string outSpecies;
-			bool outOpened = false;
-			bool cigarArchiveProbeOpened = false;
-			bool compactArchiveProbeOpened = false;
-			bool columnArchiveProbeOpened = false;
-		bool broadCpuTriplexOpened = false;
-		bool broadPlannerDescriptorOpened = false;
-		uint64_t broadCpuTriplexDigest = 1469598103934665603ULL;
-		uint64_t broadPlannerDescriptorDigest = 1469598103934665603ULL;
-		std::mutex outMutex;
+				ofstream broadCpuTriplexFile;
+				ofstream phase3CigarNtCandidateTriplexFile;
+			ofstream broadPlannerDescriptorFile;
+			ofstream phase7FrontierLogFile;
+			string outFilePath;
+				string outLiteFilePath;
+				string cigarArchiveProbePath;
+				string compactArchiveProbePath;
+				string columnArchiveProbePath;
+			string broadCpuTriplexPath;
+			string phase3CigarNtCandidateTriplexPath;
+			string broadPlannerDescriptorPath;
+			string phase7FrontierLogPath;
+			string outSpecies;
+				bool outOpened = false;
+				bool cigarArchiveProbeOpened = false;
+				bool compactArchiveProbeOpened = false;
+				bool columnArchiveProbeOpened = false;
+			bool broadCpuTriplexOpened = false;
+			bool phase3CigarNtCandidateTriplexOpened = false;
+			bool broadPlannerDescriptorOpened = false;
+			bool phase7FrontierLogOpened = false;
+			uint64_t broadCpuTriplexDigest = 1469598103934665603ULL;
+			uint64_t phase3CigarNtCandidateTriplexDigest = 1469598103934665603ULL;
+			uint64_t broadPlannerDescriptorDigest = 1469598103934665603ULL;
+			uint64_t phase7FrontierLogDigest = 1469598103934665603ULL;
+			std::mutex outMutex;
 		const bool archiveFirstOutputRequested =
 			fasim_gasal2_archive_first_output_runtime();
 		const bool archiveFirstOutputActive =
@@ -4677,9 +10888,20 @@ int main(int argc, char* const* argv)
 				archiveFirstOutputActive;
 		const int outputTopkLite = fasim_output_topk_lite_runtime();
 		const bool collectTopkLite = writeLite && outputTopkLite > 0;
+		const bool phase3CigarNtPrefilterShadowEnabled =
+			fasim_gasal2_phase3_cigar_nt_prefilter_shadow_runtime();
+		const bool phase3CigarNtPrefilterRealEnabled =
+			fasim_gasal2_phase3_cigar_nt_prefilter_runtime();
+		const bool phase3CigarNtPrefilterValidateEnabled =
+			phase3CigarNtPrefilterRealEnabled &&
+			fasim_gasal2_phase3_cigar_nt_prefilter_validate_runtime();
+		const bool phase3CigarNtPrefilterObserveEnabled =
+			phase3CigarNtPrefilterShadowEnabled ||
+			phase3CigarNtPrefilterValidateEnabled;
 		const bool broadCpuTriplexExportEnabled =
-			fasim_gasal2_broad_scoreinfo_consumer_shadow_runtime() &&
-			fasim_gasal2_broad_scoreinfo_consumer_export_cpu_triplex_runtime();
+			(fasim_gasal2_broad_scoreinfo_consumer_shadow_runtime() &&
+			 fasim_gasal2_broad_scoreinfo_consumer_export_cpu_triplex_runtime()) ||
+			phase3CigarNtPrefilterShadowEnabled;
 		const bool broadPlannerEnabled =
 			fasim_gasal2_broad_scoreinfo_consumer_shadow_runtime() &&
 			fasim_gasal2_broad_scoreinfo_consumer_planner_runtime();
@@ -4688,9 +10910,11 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_broad_replacement_consumer_shadow_runtime();
 			const bool attemptConsumerShadowEnabled =
 				fasim_gasal2_attempt_consumer_shadow_runtime();
-			const bool emissionOnlyConsumerShadowEnabled =
-				fasim_gasal2_emission_only_consumer_shadow_enabled_runtime();
-			std::vector<FasimLiteRow> topkLiteRows;
+				const bool emissionOnlyConsumerShadowEnabled =
+					fasim_gasal2_emission_only_consumer_shadow_enabled_runtime();
+				const bool phase7FrontierLogEnabled =
+					fasim_gasal2_phase7_frontier_log_runtime();
+				std::vector<FasimLiteRow> topkLiteRows;
 			std::map<uint64_t, std::vector<triplex> > broadReplacementTriplexesByTask;
 			std::map<uint64_t, std::vector<triplex> > attemptConsumerTriplexesByTask;
 			std::map<uint64_t, std::vector<triplex> > emissionOnlyTriplexesByTask;
@@ -4786,6 +11010,30 @@ int main(int argc, char* const* argv)
 				broadScoreInfoConsumerShadowStats.broad_path_cpu_triplex_path =
 					broadCpuTriplexPath;
 				broadCpuTriplexOpened = true;
+				if (phase3CigarNtPrefilterShadowEnabled)
+				{
+					phase3CigarNtCandidateTriplexPath =
+						outFilePath + ".phase3_cigar_nt_prefilter_candidate_broad_cpu_triplex.tsv";
+					phase3CigarNtCandidateTriplexFile.open(
+						phase3CigarNtCandidateTriplexPath.c_str(),
+						ios::trunc);
+					if (!phase3CigarNtCandidateTriplexFile.is_open())
+					{
+						cerr << "failed to open Phase 3 CIGAR NT candidate triplex export: "
+						     << phase3CigarNtCandidateTriplexPath << endl;
+						abort();
+					}
+					phase3CigarNtCandidateTriplexFile << header;
+					phase3CigarNtCandidateTriplexDigest =
+						fasim_fnv1a_update(
+							phase3CigarNtCandidateTriplexDigest,
+							header);
+					phase3CigarNtPrefilterShadowStats.baseline_triplex_path =
+						broadCpuTriplexPath;
+					phase3CigarNtPrefilterShadowStats.candidate_triplex_path =
+						phase3CigarNtCandidateTriplexPath;
+					phase3CigarNtCandidateTriplexOpened = true;
+				}
 			}
 			if (broadPlannerEnabled)
 			{
@@ -4813,12 +11061,41 @@ int main(int argc, char* const* argv)
 					.broad_path_planner_descriptor_path =
 					broadPlannerDescriptorPath;
 				broadPlannerDescriptorOpened = true;
-			}
-			outOpened = true;
-		};
+				}
+				outOpened = true;
+			};
 
-		auto emit_lite_row = [&](const FasimLiteRow &row)
-		{
+			auto ensure_phase7_frontier_log_opened = [&]()
+			{
+				if (!phase7FrontierLogEnabled || phase7FrontierLogOpened)
+				{
+					return;
+				}
+				phase7FrontierLogPath =
+					resultDir + "/" + lncName + "-" + fileName +
+					".phase7_frontier_log.tsv";
+				phase7FrontierLogFile.open(
+					phase7FrontierLogPath.c_str(), ios::trunc);
+				if (!phase7FrontierLogFile.is_open())
+				{
+					cerr << "failed to open Phase 7 frontier log: "
+					     << phase7FrontierLogPath << endl;
+					abort();
+				}
+				const std::string header =
+					"task_id\tscoreinfo_index\tscoreinfo_position\t"
+					"scoreinfo_score\tattempt_index\tattempt_start\t"
+					"attempt_cutlength\talign_sw_score\talign_ref_begin\t"
+					"align_ref_end\talign_query_begin\talign_query_end\tselected\t"
+					"emitted_triplex_count_before\temitted_triplex_count_after\n";
+				phase7FrontierLogFile << header;
+				phase7FrontierLogDigest =
+					fasim_fnv1a_update(phase7FrontierLogDigest, header);
+				phase7FrontierLogOpened = true;
+			};
+
+			auto emit_lite_row = [&](const FasimLiteRow &row)
+			{
 			if (!writeLite)
 			{
 				return;
@@ -4870,14 +11147,48 @@ int main(int argc, char* const* argv)
 		int cachedSegLen = 0;
 		const bool streamingScoreInfoShadowRequested =
 			longQueryStreamingScoreInfoShadowStats.requested != 0;
+		const bool streamingScoreInfoInfrastructureRequested =
+			streamingScoreInfoShadowRequested ||
+			phase7V4GpuLegacyByteScoreInfoShadowRequested ||
+			phase7V4GpuLegacyByteScoreInfoSourceReplayRequested ||
+				phase7V5TruePreScoreInfoDescriptorSourceRequested ||
+				phase7V5CpuAuthorityReplayRequested ||
+				phase7PostV53HostAssistedConsumerFeasibilityRequested ||
+				phase7PostV53GpuConsumerSummaryRequested ||
+				phase7PostV53TaskFrontierCertificateRequested ||
+				phase7PostV53PreD2HProofSearchRequested ||
+				phase7PostV53RealSourceCertificateSourceRequested ||
+					phase7PostV53PreDropWorkDropProofFirst1ShadowRequested ||
+					phase7PostConsumerGpuScoreInfoCertEngineFirst1ShadowRequested ||
+						phase7GpuOwnedScoreInfoConsumerFirst1ShadowRequested ||
+						phase7FullAlignVerifierFirst1ShadowRequested ||
+						phase7NativeCudaFasimDpEngineFirst1ShadowRequested ||
+						phase7GpuUpperBoundRejectFirst1ShadowRequested ||
+						phase7GpuExactWorkUnitCompactionFirst1ShadowRequested;
 		const bool streamingScoreInfoLegacyByteRequested =
-			streamingScoreInfoShadowRequested &&
-			(fasim_long_query_streaming_scoreinfo_legacy_byte_runtime() ||
-			 streamingScoreInfoTwoContractRequested);
+			phase7V4GpuLegacyByteScoreInfoShadowRequested ||
+			phase7V4GpuLegacyByteScoreInfoSourceReplayRequested ||
+				phase7V5TruePreScoreInfoDescriptorSourceRequested ||
+				phase7V5CpuAuthorityReplayRequested ||
+				phase7PostV53HostAssistedConsumerFeasibilityRequested ||
+				phase7PostV53GpuConsumerSummaryRequested ||
+				phase7PostV53TaskFrontierCertificateRequested ||
+				phase7PostV53PreD2HProofSearchRequested ||
+				phase7PostV53RealSourceCertificateSourceRequested ||
+					phase7PostV53PreDropWorkDropProofFirst1ShadowRequested ||
+					phase7PostConsumerGpuScoreInfoCertEngineFirst1ShadowRequested ||
+						phase7GpuOwnedScoreInfoConsumerFirst1ShadowRequested ||
+						phase7FullAlignVerifierFirst1ShadowRequested ||
+						phase7NativeCudaFasimDpEngineFirst1ShadowRequested ||
+						phase7GpuUpperBoundRejectFirst1ShadowRequested ||
+						phase7GpuExactWorkUnitCompactionFirst1ShadowRequested ||
+						(streamingScoreInfoShadowRequested &&
+				 (fasim_long_query_streaming_scoreinfo_legacy_byte_runtime() ||
+			  streamingScoreInfoTwoContractRequested));
 		if (paraList.doFastSim &&
 			    (fasim_prealign_cuda_enabled_runtime() ||
 			     gpuDpColumnAutoEffective ||
-			     streamingScoreInfoShadowRequested) &&
+			     streamingScoreInfoInfrastructureRequested) &&
 			    prealign_cuda_is_built())
 			{
 				FasimScopedSeconds scoped(phaseTimingEnabled, &phaseTiming.cuda_query_init_seconds);
@@ -5005,7 +11316,7 @@ int main(int argc, char* const* argv)
 			gasal2LongtargetBatch &&
 			fasim_gasal2_cpu_traceback_enabled_runtime();
 		const bool streamingScoreInfoShadowCudaReady =
-			streamingScoreInfoShadowRequested && !cudaQueries.empty();
+			streamingScoreInfoInfrastructureRequested && !cudaQueries.empty();
 
 		const int maxTasksPerGpu = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_MAX_TASKS", 4096);
 		int maxTasksTotal = useCudaBatch ? (maxTasksPerGpu * static_cast<int>(cudaQueries.size())) : 1;
@@ -5083,11 +11394,12 @@ int main(int argc, char* const* argv)
 		std::vector<triplex> taskTriplexes;
 		taskTriplexes.reserve(64);
 
-		std::vector<StreamTask> tasks;
-		uint64_t nextStreamTaskIndex = 0;
-		std::vector<uint8_t> encodedTargets;
-		std::vector<uint8_t> legacyEncodedTargets;
-		int currentTargetLength = -1;
+			std::vector<StreamTask> tasks;
+			uint64_t nextStreamTaskIndex = 0;
+			std::vector<uint8_t> encodedTargets;
+			std::vector<uint8_t> legacyEncodedTargets;
+			int currentTargetLength = -1;
+			FasimGasal2FlushPipelineRecord *currentFlushPipelineRecord = NULL;
 
 		auto build_scoreinfo_from_candidates = [](
 			std::vector<struct StripedSmithWaterman::scoreInfo> &candidates,
@@ -5151,6 +11463,80 @@ int main(int argc, char* const* argv)
 				}
 			}
 				build_scoreinfo_from_candidates(candidates, outScoreInfo);
+			};
+
+			auto build_legacy_byte_scoreinfo_from_column_scores = [](
+				const std::vector<int> &columnScores,
+				int minScore,
+				std::vector<struct StripedSmithWaterman::scoreInfo> &outScoreInfo)
+			{
+				outScoreInfo.clear();
+				std::vector<struct StripedSmithWaterman::scoreInfo> candidates;
+				candidates.reserve(columnScores.size());
+				for (size_t i = 0; i < columnScores.size(); ++i)
+				{
+					if (columnScores[i] > minScore)
+					{
+						candidates.push_back(
+							StripedSmithWaterman::scoreInfo(
+								columnScores[i],
+								static_cast<int>(i)));
+					}
+				}
+				size_t num = 0;
+				while (true)
+				{
+					const size_t numa = num + 1;
+					if (numa > candidates.size())
+					{
+						break;
+					}
+					if (num == candidates.size() - 1)
+					{
+						outScoreInfo.push_back(candidates[num]);
+						break;
+					}
+					const int delta =
+						candidates[numa].position - candidates[num].position;
+					if (delta < 5 && delta > 0)
+					{
+						const size_t start = num;
+						std::vector<int> tmpScores;
+						while (true)
+						{
+							const size_t next = num + 1;
+							if (next > candidates.size() - 1)
+							{
+								break;
+							}
+							const int nextDelta =
+								candidates[next].position -
+								candidates[num].position;
+							if (!(nextDelta < 5 && nextDelta > 0))
+							{
+								break;
+							}
+							tmpScores.push_back(candidates[num].score);
+							num += 1;
+						}
+						tmpScores.push_back(candidates[num].score);
+						num += 1;
+						if (!tmpScores.empty())
+						{
+							const std::vector<int>::iterator maxIt =
+								std::max_element(tmpScores.begin(),
+								                 tmpScores.end());
+							const size_t maxIndex = static_cast<size_t>(
+								std::distance(tmpScores.begin(), maxIt));
+							outScoreInfo.push_back(candidates[start + maxIndex]);
+						}
+					}
+					else
+					{
+						outScoreInfo.push_back(candidates[num]);
+						num += 1;
+					}
+				}
 			};
 
 			auto build_scoreinfo_from_column_scores_row = [](
@@ -5430,7 +11816,7 @@ int main(int argc, char* const* argv)
 			auto task_min_score = [&](StreamTask &task) -> int
 			{
 				if (!task.minScoreReady)
-			{
+				{
 				FasimScopedSeconds minScoreScoped(phaseTimingEnabled,
 				                                  &phaseTiming.exact_min_score_seconds);
 				task.fullScore = calc_score_once(lncSeq,
@@ -5441,6 +11827,295 @@ int main(int argc, char* const* argv)
 				task.minScoreReady = true;
 			}
 				return task.minScore;
+			};
+
+			std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> >
+				streamingRealpathScoreInfos;
+			std::vector<unsigned char> streamingRealpathReady;
+
+			auto record_phase7_v4_legacy_byte_scoreinfo_shadow_mismatch =
+				[&](const std::vector<struct StripedSmithWaterman::scoreInfo> &cpuRows,
+				    const std::vector<struct StripedSmithWaterman::scoreInfo> &candidateRows)
+			{
+				++phase7V4LegacyByteScoreInfoShadowStats.scoreinfo_mismatches;
+				phase7V4LegacyByteScoreInfoShadowStats.scoreinfo_rows_equal = 0;
+				phase7V4LegacyByteScoreInfoShadowStats.scoreinfo_order_equal = 0;
+				phase7V4LegacyByteScoreInfoShadowStats.scoreinfo_attempt_windows_equal = 0;
+
+				std::multiset< std::pair<int, int> > cpuSet;
+				std::multiset< std::pair<int, int> > candidateSet;
+				for (size_t i = 0; i < cpuRows.size(); ++i)
+				{
+					cpuSet.insert(std::make_pair(cpuRows[i].score,
+					                             cpuRows[i].position));
+				}
+				for (size_t i = 0; i < candidateRows.size(); ++i)
+				{
+					candidateSet.insert(std::make_pair(candidateRows[i].score,
+					                                   candidateRows[i].position));
+				}
+				for (std::multiset< std::pair<int, int> >::const_iterator it =
+					     cpuSet.begin();
+				     it != cpuSet.end();
+				     ++it)
+				{
+					std::multiset< std::pair<int, int> >::iterator hit =
+						candidateSet.find(*it);
+					if (hit == candidateSet.end())
+					{
+						++phase7V4LegacyByteScoreInfoShadowStats
+							.scoreinfo_false_negatives;
+					}
+					else
+					{
+						candidateSet.erase(hit);
+					}
+				}
+				phase7V4LegacyByteScoreInfoShadowStats
+					.scoreinfo_extra_required_attempts +=
+					static_cast<uint64_t>(candidateSet.size());
+			};
+
+			auto run_phase7_v4_legacy_byte_scoreinfo_shadow = [&]()
+			{
+				if (phase7V4LegacyByteScoreInfoShadowStats.requested == 0 ||
+				    !paraList.doFastSim ||
+				    tasks.empty())
+				{
+					return;
+				}
+				phase7V4LegacyByteScoreInfoShadowStats.active = 1;
+				phase7V4LegacyByteScoreInfoShadowStats.tasks +=
+					static_cast<uint64_t>(tasks.size());
+				const bool gpuShadowRequested =
+					phase7V4GpuLegacyByteScoreInfoShadowRequested ||
+					phase7V4GpuLegacyByteScoreInfoSourceReplayRequested;
+				const bool sourceReplayRequested =
+					phase7V4GpuLegacyByteScoreInfoSourceReplayRequested;
+				std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> >
+					gpuRowsByTask;
+				bool gpuRowsReady = false;
+				bool sourceReplayClean = sourceReplayRequested;
+				if (sourceReplayRequested)
+				{
+					streamingRealpathScoreInfos.clear();
+					streamingRealpathScoreInfos.resize(tasks.size());
+					streamingRealpathReady.assign(tasks.size(), 0);
+					longQueryStreamingScoreInfoShadowStats.realpath_requested = 1;
+					longQueryStreamingScoreInfoShadowStats.realpath_digest_authority =
+						"cpu_validated";
+				}
+				if (gpuShadowRequested)
+				{
+					int maxPerTask =
+						fasim_env_int_or_default(
+							"FASIM_GASAL2_PHASE7_V4_GPU_LEGACY_BYTE_SCOREINFO_MAX_PER_TASK",
+							256);
+					if (maxPerTask > 256)
+					{
+						maxPerTask = 256;
+					}
+					if (maxPerTask > 0 &&
+					    streamingScoreInfoLegacyByteCudaQueryReady &&
+					    !encodedTargets.empty() &&
+					    currentTargetLength > 0)
+					{
+						std::vector<int> minScores(tasks.size(), 0);
+						for (size_t t = 0; t < tasks.size(); ++t)
+						{
+							minScores[t] = task_min_score(tasks[t]);
+						}
+						std::vector<PreAlignCudaPeak> compactScoreInfos;
+						std::vector<int> compactCounts;
+						std::vector<int> compactInputCounts;
+						bool compactOverflow = false;
+						PreAlignCudaBatchResult columnResult;
+						PreAlignCudaBatchResult compactResult;
+						std::string compactError;
+						const bool compactOk =
+							prealign_cuda_find_streaming_scoreinfo_batch_pruned(
+								streamingScoreInfoLegacyByteCudaQuery,
+								encodedTargets.data(),
+								minScores.data(),
+								static_cast<int>(tasks.size()),
+								currentTargetLength,
+								maxPerTask,
+								&compactScoreInfos,
+								&compactCounts,
+								&compactInputCounts,
+								&compactOverflow,
+								&columnResult,
+								&compactResult,
+								true,
+								false,
+								NULL,
+								&compactError);
+						if (compactOk && !compactOverflow)
+						{
+							gpuRowsReady = true;
+							gpuRowsByTask.resize(tasks.size());
+							for (size_t t = 0; t < tasks.size(); ++t)
+							{
+								const int count =
+									t < compactCounts.size() ? compactCounts[t] : -1;
+								if (count < 0 || count > maxPerTask)
+								{
+									gpuRowsReady = false;
+									break;
+								}
+								std::vector<struct StripedSmithWaterman::scoreInfo> &rows =
+									gpuRowsByTask[t];
+								rows.reserve(static_cast<size_t>(count));
+								const size_t base =
+									t * static_cast<size_t>(maxPerTask);
+								for (int i = 0; i < count; ++i)
+								{
+									const PreAlignCudaPeak &peak =
+										compactScoreInfos[
+											base + static_cast<size_t>(i)];
+									rows.push_back(
+										StripedSmithWaterman::scoreInfo(
+											peak.score,
+											peak.position));
+								}
+							}
+						}
+					}
+				}
+				bool hostContractClean = true;
+				for (size_t t = 0; t < tasks.size(); ++t)
+				{
+					StreamTask &task = tasks[t];
+					const int minScore = task_min_score(task);
+					std::vector<struct StripedSmithWaterman::scoreInfo> cpuRows;
+					std::vector<struct StripedSmithWaterman::scoreInfo> hostRows;
+					std::vector<int> columnScores;
+					StripedSmithWaterman::Aligner cpuAligner;
+					StripedSmithWaterman::Filter cpuFilter;
+					StripedSmithWaterman::Alignment cpuAlignment;
+					cpuAligner.preAlign(lncSeq.c_str(),
+					                    task.seq2.c_str(),
+					                    static_cast<int>(task.seq2.size()),
+					                    cpuFilter,
+					                    &cpuAlignment,
+					                    15,
+					                    minScore,
+					                    cpuRows,
+					                    5,
+					                    -4);
+					StripedSmithWaterman::Aligner hostAligner;
+					StripedSmithWaterman::Filter hostFilter;
+					if (hostAligner.preAlignColumnScores(
+						    lncSeq.c_str(),
+						    task.seq2.c_str(),
+						    static_cast<int>(task.seq2.size()),
+						    hostFilter,
+						    15,
+						    minScore,
+						    columnScores))
+					{
+						build_legacy_byte_scoreinfo_from_column_scores(
+							columnScores,
+							minScore,
+							hostRows);
+					}
+					phase7V4LegacyByteScoreInfoShadowStats.cpu_scoreinfo_rows +=
+						static_cast<uint64_t>(cpuRows.size());
+					phase7V4LegacyByteScoreInfoShadowStats.host_scoreinfo_rows +=
+						static_cast<uint64_t>(hostRows.size());
+					if (!scoreinfo_equal(cpuRows, hostRows))
+					{
+						hostContractClean = false;
+						sourceReplayClean = false;
+						record_phase7_v4_legacy_byte_scoreinfo_shadow_mismatch(
+							cpuRows,
+							hostRows);
+					}
+					if (gpuShadowRequested)
+					{
+						const std::vector<struct StripedSmithWaterman::scoreInfo>
+							*gpuRows =
+							(gpuRowsReady && t < gpuRowsByTask.size()) ?
+								&gpuRowsByTask[t] :
+								NULL;
+						if (gpuRows != NULL)
+						{
+							phase7V4LegacyByteScoreInfoShadowStats.gpu_scoreinfo_rows +=
+								static_cast<uint64_t>(gpuRows->size());
+							const bool gpuRowsMatchCpu =
+								scoreinfo_equal(cpuRows, *gpuRows);
+							if (!gpuRowsMatchCpu)
+							{
+								sourceReplayClean = false;
+								record_phase7_v4_legacy_byte_scoreinfo_shadow_mismatch(
+									cpuRows,
+									*gpuRows);
+							}
+							else if (sourceReplayRequested &&
+							         t < streamingRealpathScoreInfos.size() &&
+							         t < streamingRealpathReady.size())
+							{
+								streamingRealpathScoreInfos[t] = *gpuRows;
+								streamingRealpathReady[t] = 1;
+								phase7V4LegacyByteScoreInfoShadowStats
+									.source_replay_scoreinfo_rows +=
+									static_cast<uint64_t>(gpuRows->size());
+							}
+						}
+						else
+						{
+							sourceReplayClean = false;
+							const std::vector<struct StripedSmithWaterman::scoreInfo>
+								emptyRows;
+							record_phase7_v4_legacy_byte_scoreinfo_shadow_mismatch(
+								cpuRows,
+								emptyRows);
+						}
+					}
+				}
+				if (phase7V4LegacyByteScoreInfoShadowStats.active != 0 &&
+				    hostContractClean)
+				{
+					phase7V4LegacyByteScoreInfoShadowStats.host_contract_pass = 1;
+				}
+				if (sourceReplayRequested)
+				{
+					const bool streamingReady =
+						streamingRealpathScoreInfos.size() == tasks.size() &&
+						streamingRealpathReady.size() == tasks.size() &&
+						std::find(streamingRealpathReady.begin(),
+						          streamingRealpathReady.end(),
+						          static_cast<unsigned char>(0)) ==
+							streamingRealpathReady.end();
+					if (sourceReplayClean &&
+					    streamingReady &&
+					    phase7V4LegacyByteScoreInfoShadowStats.host_contract_pass != 0 &&
+					    phase7V4LegacyByteScoreInfoShadowStats.scoreinfo_mismatches == 0 &&
+					    phase7V4LegacyByteScoreInfoShadowStats.gpu_scoreinfo_rows > 0)
+					{
+						phase7V4LegacyByteScoreInfoShadowStats.source_replay_active = 1;
+						phase7V4LegacyByteScoreInfoShadowStats
+							.source_replay_streaming_ready = 1;
+						phase7V4LegacyByteScoreInfoShadowStats.gate_v4_2_pass = 1;
+					}
+					else
+					{
+						streamingRealpathScoreInfos.clear();
+						streamingRealpathReady.clear();
+						phase7V4LegacyByteScoreInfoShadowStats
+							.source_replay_scoreinfo_rows = 0;
+						phase7V4LegacyByteScoreInfoShadowStats.gate_v4_2_pass = 0;
+						++longQueryStreamingScoreInfoShadowStats.realpath_fallbacks;
+					}
+				}
+				phase7V4LegacyByteScoreInfoShadowStats.gate_v4_1_pass =
+					(gpuShadowRequested &&
+					 phase7V4LegacyByteScoreInfoShadowStats.active != 0 &&
+					 phase7V4LegacyByteScoreInfoShadowStats.host_contract_pass != 0 &&
+					 phase7V4LegacyByteScoreInfoShadowStats.gpu_scoreinfo_rows > 0 &&
+					 phase7V4LegacyByteScoreInfoShadowStats.scoreinfo_mismatches == 0) ?
+						1 :
+						0;
 			};
 
 			auto broad_triplex_probe_key = [](const triplex &atr) -> std::string
@@ -5549,6 +12224,7 @@ int main(int argc, char* const* argv)
 					attempt.prealign_score = scoreInfo.score;
 					attempt.target_end_required_for_fallback = cutlength - 1;
 					attempt.nt_min_length = paraList.ntMin;
+					annotate_gasal2_attempt_task(attempt, task);
 					attempt.set_target_view(
 						&task.seq2,
 						static_cast<size_t>(std::max(0, start)),
@@ -5860,6 +12536,25 @@ int main(int argc, char* const* argv)
 					broadCpuTriplexDigest =
 						fasim_fnv1a_update(broadCpuTriplexDigest, rowText);
 					++broadScoreInfoConsumerShadowStats.broad_path_cpu_triplexes;
+					if (phase3CigarNtCandidateTriplexOpened)
+					{
+						const bool candidateKeepsRow =
+							atr.nt >= paraList.ntMin;
+						if (candidateKeepsRow)
+						{
+							phase3CigarNtCandidateTriplexFile << rowText;
+							phase3CigarNtCandidateTriplexDigest =
+								fasim_fnv1a_update(
+									phase3CigarNtCandidateTriplexDigest,
+									rowText);
+							++phase3CigarNtPrefilterShadowStats.candidate_triplexes;
+						}
+						else
+						{
+							++phase3CigarNtPrefilterShadowStats
+								.candidate_false_negative_rows;
+						}
+					}
 				}
 			}
 			for (size_t i = 0; i < taskTriplexes.size(); ++i)
@@ -6067,11 +12762,11 @@ int main(int argc, char* const* argv)
 					"attempt_consumer_shadow_no_go");
 		};
 
-		auto finalize_emission_only_consumer_shadow = [&]()
-		{
-			if (!emissionOnlyConsumerShadowEnabled)
+			auto finalize_emission_only_consumer_shadow = [&]()
 			{
-				return;
+				if (!emissionOnlyConsumerShadowEnabled)
+				{
+					return;
 			}
 			if (!emissionOnlyTriplexesByTask.empty())
 			{
@@ -6106,12 +12801,982 @@ int main(int argc, char* const* argv)
 				emissionOnlyClean,
 				emissionOnlyClean,
 				emissionOnlyClean ?
-					"emission_only_consumer_shadow_active" :
-					"emission_only_consumer_shadow_mismatch_no_go");
-		};
+						"emission_only_consumer_shadow_active" :
+						"emission_only_consumer_shadow_mismatch_no_go");
+			};
 
-		auto triplex_probe_key = [](const triplex &atr) -> std::string
-		{
+			const bool twoSlotOverlapUnsupportedGlobal =
+				(twoSlotOverlapRealRequested ||
+				 twoSlotSerializedControlRequested) &&
+				(outputMode != FASIM_OUTPUT_LITE ||
+				 !writeLite ||
+				 writeFull ||
+				 writeCigarArchiveProbe ||
+				 writeCompactArchiveProbe ||
+				 writeColumnArchiveProbe ||
+				 archiveFirstOutputActive ||
+				 collectTopkLite ||
+				 phase3CigarNtPrefilterRealEnabled ||
+				 phase3CigarNtPrefilterShadowEnabled ||
+				 taxonomyExporter.active ||
+				 eligibilityEnabled ||
+				 broadReplacementConsumerEnabled ||
+				 attemptConsumerShadowEnabled ||
+				 emissionOnlyConsumerShadowEnabled ||
+				 broadCpuTriplexOpened);
+			if ((twoSlotOverlapRealRequested ||
+			     twoSlotSerializedControlRequested) &&
+			    twoSlotOverlapUnsupportedGlobal)
+			{
+				twoSlotOverlapStats.disabled_reason =
+					"unsupported_global_shape";
+			}
+			twoSlotOverlapStats.active =
+				(twoSlotOverlapRealRequested ||
+				 twoSlotSerializedControlRequested) &&
+				!twoSlotOverlapUnsupportedGlobal &&
+				!twoSlotOverlapStats.validate_requested;
+			twoSlotOverlapStats.serialized_control_active =
+				twoSlotOverlapStats.active &&
+				twoSlotSerializedControlRequested;
+			twoSlotOverlapStats.validate_active =
+				(twoSlotOverlapRealRequested ||
+				 twoSlotSerializedControlRequested) &&
+				twoSlotOverlapStats.validate_requested &&
+				!twoSlotOverlapUnsupportedGlobal;
+			if (twoSlotOverlapStats.active)
+			{
+				twoSlotOverlapStats.disabled_reason = "none";
+			}
+			else if ((twoSlotOverlapRealRequested ||
+			          twoSlotSerializedControlRequested) &&
+			         twoSlotOverlapStats.validate_requested &&
+			         !twoSlotOverlapUnsupportedGlobal)
+			{
+				twoSlotOverlapStats.disabled_reason =
+					"validate_mode_uses_synchronous_path";
+			}
+
+			auto two_slot_finalize_work =
+				[&](const FasimGasal2TwoSlotWorkItem &work)
+				-> FasimGasal2FlushFinalizedRows
+			{
+				std::vector< std::vector<triplex> > rowsByTask(
+					work.tasks.size());
+				const int8_t nt_table_local[128] = {
+					4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+					4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+					4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+					4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+					4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4, 	4, 4, 4, 4,
+					4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+					4, 0, 4, 1,	4, 4, 4, 2,	4, 4, 4, 4,	4, 4, 3, 4,
+					4, 4, 4, 4,	4, 0, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4
+				};
+				for (size_t t = 0; t < work.tasks.size(); ++t)
+				{
+					const FasimGasal2TwoSlotTaskInput &task = work.tasks[t];
+					if (!task.src_seq)
+					{
+						continue;
+					}
+					const std::vector<FasimGasal2SelectedAlignment>
+						*selectedRowsForTaskPtr = NULL;
+					if (t < work.result.selected_by_task.size())
+					{
+						selectedRowsForTaskPtr =
+							&work.result.selected_by_task[t];
+					}
+					if (selectedRowsForTaskPtr == NULL)
+					{
+						continue;
+					}
+					const std::vector<FasimGasal2SelectedAlignment>
+						&selectedRowsForTask = *selectedRowsForTaskPtr;
+					std::vector<triplex> myTriplexList;
+					myTriplexList.reserve(selectedRowsForTask.size());
+					for (size_t si = 0; si < selectedRowsForTask.size(); ++si)
+					{
+						const FasimGasal2SelectedAlignment &selectedAlignment =
+							selectedRowsForTask[si];
+						const StripedSmithWaterman::Alignment *alignmentForTriplex =
+							&selectedAlignment.alignment;
+						StripedSmithWaterman::Alignment cpuReplayAdjustedAlignment;
+						if (work.replay_uses_cpu_traceback &&
+						    selectedAlignment.selected)
+						{
+							cpuReplayAdjustedAlignment =
+								selectedAlignment.alignment;
+							cpuReplayAdjustedAlignment.ref_begin +=
+								selectedAlignment.start;
+							cpuReplayAdjustedAlignment.ref_end +=
+								selectedAlignment.start;
+							alignmentForTriplex = &cpuReplayAdjustedAlignment;
+						}
+						if (!selectedAlignment.selected ||
+						    alignmentForTriplex->sw_score == 0)
+						{
+							continue;
+						}
+						if (work.nt_sum_span_prune)
+						{
+							const int querySpan =
+								alignmentForTriplex->query_end -
+								alignmentForTriplex->query_begin + 1;
+							const int refSpan =
+								alignmentForTriplex->ref_end -
+								alignmentForTriplex->ref_begin + 1;
+							if (querySpan + refSpan < paraList.cLength)
+							{
+								continue;
+							}
+						}
+						convertMyTriplex(
+							*alignmentForTriplex,
+							myTriplexList,
+							lncSeq,
+							task.seq2,
+							*task.src_seq,
+							nt_table_local,
+							task.dna_start_pos,
+							task.rule,
+							task.strand,
+							task.para,
+							paraList.penaltyT,
+							paraList.penaltyC,
+							paraList.ntMin,
+							paraList.ntMax,
+							false,
+							true);
+					}
+					std::sort(myTriplexList.begin(),
+					          myTriplexList.end(),
+					          compMyTriplexMultiple);
+					myTriplexList.erase(
+						std::unique(myTriplexList.begin(),
+						            myTriplexList.end(),
+						            sameMyTriplex),
+						myTriplexList.end());
+					std::sort(myTriplexList.begin(),
+					          myTriplexList.end(),
+					          compMyTriplexMultiple2);
+					myTriplexList.erase(
+						std::unique(myTriplexList.begin(),
+						            myTriplexList.end(),
+						            sameMyTriplex),
+						myTriplexList.end());
+					std::sort(myTriplexList.begin(),
+					          myTriplexList.end(),
+					          compMyTriplexSingle);
+					const size_t topLimit =
+						std::min(myTriplexList.size(),
+						         static_cast<size_t>(N));
+					for (size_t i = 0; i < topLimit; ++i)
+					{
+						triplex atr = myTriplexList[i];
+						if (atr.identity >= paraList.minIdentity &&
+						    atr.tri_score >= paraList.minStability &&
+						    atr.nt >= paraList.ntMin)
+						{
+							rowsByTask[t].push_back(atr);
+						}
+					}
+				}
+				return fasim_gasal2_make_triplex_finalized_rows(
+					work.flush_id,
+					rowsByTask);
+			};
+
+			auto two_slot_commit_rows =
+				[&](const FasimGasal2FlushFinalizedRows &rows,
+				    const std::vector<FasimGasal2TwoSlotTaskInput> &taskInputs)
+				-> uint64_t
+			{
+				uint64_t emittedRows = 0;
+				for (size_t t = 0; t < rows.task_row_offsets.size(); ++t)
+				{
+					if (t >= taskInputs.size())
+					{
+						++twoSlotOverlapStats.order_violations;
+						continue;
+					}
+					const FasimGasal2TwoSlotTaskInput &task = taskInputs[t];
+					const size_t begin = rows.task_row_offsets[t];
+					const size_t end = begin + rows.task_row_counts[t];
+					for (size_t i = begin;
+					     i < end && i < rows.precommit_rows.size();
+					     ++i)
+					{
+						triplex atr = rows.precommit_rows[i];
+						if (atr.chr.empty())
+						{
+							atr.chr = task.chr;
+						}
+						if (atr.genomestart == 0)
+						{
+							atr.genomestart =
+								atr.starj + task.record_start_genome - 1;
+						}
+						if (atr.genomeend == 0)
+						{
+							atr.genomeend =
+								atr.endj + task.record_start_genome - 1;
+						}
+						if (atr.score < paraList.scoreMin ||
+						    atr.identity < paraList.minIdentity ||
+						    atr.tri_score < paraList.minStability ||
+						    atr.nt < paraList.cLength)
+						{
+							if (phaseTimingEnabled)
+							{
+								++phaseTiming.gasal2_emit_candidates;
+								if (atr.score < paraList.scoreMin)
+								{
+									++phaseTiming.gasal2_emit_filtered_score;
+								}
+								if (atr.identity < paraList.minIdentity)
+								{
+									++phaseTiming.gasal2_emit_filtered_identity;
+								}
+								if (atr.tri_score < paraList.minStability)
+								{
+									++phaseTiming.gasal2_emit_filtered_stability;
+								}
+								if (atr.nt < paraList.cLength)
+								{
+									++phaseTiming.gasal2_emit_filtered_nt;
+								}
+							}
+							continue;
+						}
+						if (phaseTimingEnabled)
+						{
+							++phaseTiming.gasal2_emit_candidates;
+							const int querySpan =
+								std::abs(atr.endi - atr.stari) + 1;
+							const int refSpan =
+								std::abs(atr.endj - atr.starj) + 1;
+							if (querySpan < paraList.cLength)
+							{
+								++phaseTiming
+									.gasal2_nt_shadow_query_span_false_negative;
+							}
+							if (refSpan < paraList.cLength)
+							{
+								++phaseTiming
+									.gasal2_nt_shadow_ref_span_false_negative;
+							}
+							if (std::min(querySpan, refSpan) < paraList.cLength)
+							{
+								++phaseTiming
+									.gasal2_nt_shadow_min_span_false_negative;
+							}
+							if (std::max(querySpan, refSpan) < paraList.cLength)
+							{
+								++phaseTiming
+									.gasal2_nt_shadow_max_span_false_negative;
+							}
+							if (querySpan + refSpan < paraList.cLength)
+							{
+								++phaseTiming
+									.gasal2_nt_shadow_sum_span_false_negative;
+							}
+						}
+						FasimScopedSeconds scoped(phaseTimingEnabled,
+						                          &phaseTiming.output_write_seconds);
+						emit_lite_row(fasim_make_lite_row(
+							atr.chr,
+							atr.genomestart,
+							atr.genomeend,
+							atr));
+						++emittedRows;
+					}
+				}
+				return emittedRows;
+			};
+
+			enum FasimGasal2TwoSlotState
+			{
+				FASIM_TWO_SLOT_FREE = 0,
+				FASIM_TWO_SLOT_READY,
+				FASIM_TWO_SLOT_CPU_FINALIZING,
+				FASIM_TWO_SLOT_COMMIT_READY,
+				FASIM_TWO_SLOT_COMMITTING
+			};
+
+			struct FasimGasal2TwoSlotSlot
+			{
+				FasimGasal2TwoSlotSlot() :
+					state(FASIM_TWO_SLOT_FREE),
+					slot_index(0),
+					peak_bytes(0),
+					in_flight_bytes(0)
+				{
+				}
+
+				FasimGasal2TwoSlotState state;
+				size_t slot_index;
+				size_t peak_bytes;
+				size_t in_flight_bytes;
+				FasimGasal2TwoSlotWorkItem work;
+				FasimGasal2TwoSlotCompletedItem completed;
+			};
+
+			std::mutex twoSlotMutex;
+			std::condition_variable twoSlotCv;
+			FasimGasal2TwoSlotSlot twoSlotSlots[2];
+			twoSlotSlots[0].slot_index = 0;
+			twoSlotSlots[1].slot_index = 1;
+			bool twoSlotStop = false;
+			bool twoSlotWorkerStarted = false;
+			std::exception_ptr twoSlotWorkerException;
+			uint64_t twoSlotNextCommitFlushId = 0;
+			bool twoSlotNextCommitInitialized = false;
+			std::thread twoSlotWorker;
+			size_t twoSlotNextPreferredSlot = 0;
+			double twoSlotLastOccupancySeconds =
+				static_cast<double>(fasim_monotonic_ns()) /
+				1000000000.0;
+
+			auto two_slot_live_slot_count_unlocked = [&]() -> uint64_t
+			{
+				uint64_t live = 0;
+				for (size_t i = 0; i < 2; ++i)
+				{
+					if (twoSlotSlots[i].state != FASIM_TWO_SLOT_FREE)
+					{
+						++live;
+					}
+				}
+				return live;
+			};
+
+			auto two_slot_record_occupancy_unlocked = [&]()
+			{
+				const double nowSeconds =
+					static_cast<double>(fasim_monotonic_ns()) /
+					1000000000.0;
+				const double delta =
+					nowSeconds >= twoSlotLastOccupancySeconds ?
+					nowSeconds - twoSlotLastOccupancySeconds :
+					0.0;
+				const uint64_t live = two_slot_live_slot_count_unlocked();
+				twoSlotOverlapStats.max_live_slots =
+					std::max(twoSlotOverlapStats.max_live_slots, live);
+				if (live == 0)
+				{
+					twoSlotOverlapStats.time_with_0_live_slots_seconds +=
+						delta;
+				}
+				else if (live == 1)
+				{
+					twoSlotOverlapStats.time_with_1_live_slot_seconds +=
+						delta;
+				}
+				else
+				{
+					twoSlotOverlapStats.time_with_2_live_slots_seconds +=
+						delta;
+				}
+				twoSlotLastOccupancySeconds = nowSeconds;
+			};
+
+			auto two_slot_set_state_unlocked =
+				[&](size_t slotIndex,
+				    FasimGasal2TwoSlotState state)
+			{
+				two_slot_record_occupancy_unlocked();
+				twoSlotSlots[slotIndex].state = state;
+				twoSlotOverlapStats.max_live_slots =
+					std::max(twoSlotOverlapStats.max_live_slots,
+					         two_slot_live_slot_count_unlocked());
+			};
+
+			auto two_slot_slot_bytes =
+				[&](const FasimGasal2TwoSlotSlot &slot) -> size_t
+			{
+				size_t bytes = static_cast<size_t>(
+					slot.work.result.result_bytes +
+					slot.completed.rows.owned_bytes);
+				bytes += fasim_gasal2_two_slot_owned_task_bytes(
+					slot.work.tasks);
+				bytes += fasim_gasal2_two_slot_owned_task_bytes(
+					slot.completed.tasks);
+				bytes += slot.in_flight_bytes;
+				return bytes;
+			};
+
+			auto two_slot_refresh_memory = [&]()
+			{
+				two_slot_record_occupancy_unlocked();
+				const size_t slot0Bytes =
+					two_slot_slot_bytes(twoSlotSlots[0]);
+				const size_t slot1Bytes =
+					two_slot_slot_bytes(twoSlotSlots[1]);
+				twoSlotSlots[0].peak_bytes =
+					std::max(twoSlotSlots[0].peak_bytes, slot0Bytes);
+				twoSlotSlots[1].peak_bytes =
+					std::max(twoSlotSlots[1].peak_bytes, slot1Bytes);
+				twoSlotOverlapStats.slot0_peak_bytes =
+					std::max<uint64_t>(
+						twoSlotOverlapStats.slot0_peak_bytes,
+						static_cast<uint64_t>(twoSlotSlots[0].peak_bytes));
+				twoSlotOverlapStats.slot1_peak_bytes =
+					std::max<uint64_t>(
+						twoSlotOverlapStats.slot1_peak_bytes,
+						static_cast<uint64_t>(twoSlotSlots[1].peak_bytes));
+				twoSlotOverlapStats.slot0_peak_live_bytes =
+					std::max<uint64_t>(
+						twoSlotOverlapStats.slot0_peak_live_bytes,
+						static_cast<uint64_t>(slot0Bytes));
+				twoSlotOverlapStats.slot1_peak_live_bytes =
+					std::max<uint64_t>(
+						twoSlotOverlapStats.slot1_peak_live_bytes,
+						static_cast<uint64_t>(slot1Bytes));
+				twoSlotOverlapStats.host_peak_bytes =
+					std::max<uint64_t>(
+						twoSlotOverlapStats.host_peak_bytes,
+						static_cast<uint64_t>(slot0Bytes + slot1Bytes));
+				twoSlotOverlapStats.total_peak_live_bytes =
+					std::max<uint64_t>(
+						twoSlotOverlapStats.total_peak_live_bytes,
+						static_cast<uint64_t>(slot0Bytes + slot1Bytes));
+			};
+
+			auto two_slot_start_worker = [&]()
+			{
+				if (!twoSlotOverlapStats.active || twoSlotWorkerStarted)
+				{
+					return;
+				}
+				twoSlotLastOccupancySeconds =
+					static_cast<double>(fasim_monotonic_ns()) /
+					1000000000.0;
+				twoSlotWorkerStarted = true;
+				twoSlotWorker = std::thread([&]()
+				{
+					try
+					{
+						while (true)
+						{
+							size_t slotIndex = 2;
+							FasimGasal2TwoSlotWorkItem work;
+							{
+								std::unique_lock<std::mutex> lock(twoSlotMutex);
+								twoSlotCv.wait(lock, [&]()
+								{
+									return twoSlotStop ||
+									       twoSlotSlots[0].state ==
+									           FASIM_TWO_SLOT_READY ||
+									       twoSlotSlots[1].state ==
+									           FASIM_TWO_SLOT_READY;
+								});
+								if (twoSlotStop &&
+								    twoSlotSlots[0].state !=
+								        FASIM_TWO_SLOT_READY &&
+								    twoSlotSlots[1].state !=
+								        FASIM_TWO_SLOT_READY)
+								{
+									break;
+								}
+								if (twoSlotSlots[0].state ==
+								    FASIM_TWO_SLOT_READY)
+								{
+									slotIndex = 0;
+								}
+								else if (twoSlotSlots[1].state ==
+								         FASIM_TWO_SLOT_READY)
+								{
+									slotIndex = 1;
+								}
+								else
+								{
+									continue;
+								}
+								two_slot_set_state_unlocked(
+									slotIndex,
+									FASIM_TWO_SLOT_CPU_FINALIZING);
+								const size_t inFlightBytes =
+									static_cast<size_t>(
+										twoSlotSlots[slotIndex]
+											.work.result.result_bytes) +
+									fasim_gasal2_two_slot_owned_task_bytes(
+										twoSlotSlots[slotIndex].work.tasks);
+								twoSlotSlots[slotIndex].in_flight_bytes =
+									inFlightBytes;
+								work = std::move(twoSlotSlots[slotIndex].work);
+								two_slot_refresh_memory();
+							}
+							FasimGasal2TwoSlotCompletedItem completed;
+							completed.slot_index = slotIndex;
+							completed.flush_id = work.flush_id;
+							completed.nvtx_slot_range_id =
+								work.nvtx_slot_range_id;
+							completed.gpu_start_seconds =
+								work.gpu_start_seconds;
+							completed.gpu_end_seconds =
+								work.gpu_end_seconds;
+							completed.cpu_start_seconds =
+								static_cast<double>(fasim_monotonic_ns()) /
+								1000000000.0;
+							try
+							{
+								FasimNvtxRange nvtxTwoSlotFinalize(
+									&nvtxTrace,
+									"fasim.gasal2.two_slot.cpu_finalizer");
+								completed.rows =
+									two_slot_finalize_work(work);
+								completed.tasks =
+									std::move(work.tasks);
+								nvtxTwoSlotFinalize.close();
+							}
+							catch (const std::exception &e)
+							{
+								completed.error = true;
+								completed.error_message = e.what();
+							}
+							catch (...)
+							{
+								completed.error = true;
+								completed.error_message = "unknown";
+							}
+							completed.cpu_end_seconds =
+								static_cast<double>(fasim_monotonic_ns()) /
+								1000000000.0;
+							{
+								std::lock_guard<std::mutex> lock(twoSlotMutex);
+								twoSlotSlots[slotIndex].in_flight_bytes = 0;
+								twoSlotSlots[slotIndex].completed =
+									std::move(completed);
+								two_slot_set_state_unlocked(
+									slotIndex,
+									FASIM_TWO_SLOT_COMMIT_READY);
+								++twoSlotOverlapStats.flushes_finalized;
+								if (slotIndex == 0)
+								{
+									++twoSlotOverlapStats.slot0_finalize_count;
+								}
+								else if (slotIndex == 1)
+								{
+									++twoSlotOverlapStats.slot1_finalize_count;
+								}
+								two_slot_refresh_memory();
+							}
+							twoSlotCv.notify_all();
+						}
+					}
+					catch (...)
+					{
+						std::lock_guard<std::mutex> lock(twoSlotMutex);
+						twoSlotWorkerException = std::current_exception();
+						twoSlotCv.notify_all();
+					}
+				});
+			};
+
+			auto two_slot_try_commit_ready = [&]() -> bool
+			{
+				if (!twoSlotOverlapStats.active)
+				{
+					return false;
+				}
+				size_t slotIndex = 2;
+				{
+					std::lock_guard<std::mutex> lock(twoSlotMutex);
+					for (size_t i = 0; i < 2; ++i)
+					{
+						if (twoSlotSlots[i].state ==
+						        FASIM_TWO_SLOT_COMMIT_READY &&
+						    (!twoSlotNextCommitInitialized ||
+						     twoSlotSlots[i].completed.flush_id ==
+						         twoSlotNextCommitFlushId))
+						{
+							slotIndex = i;
+							break;
+						}
+					}
+					if (slotIndex == 2)
+					{
+						return false;
+					}
+					two_slot_set_state_unlocked(
+						slotIndex,
+						FASIM_TWO_SLOT_COMMITTING);
+				}
+				FasimGasal2TwoSlotCompletedItem completed;
+				{
+					std::lock_guard<std::mutex> lock(twoSlotMutex);
+					completed =
+						std::move(twoSlotSlots[slotIndex].completed);
+				}
+				if (completed.error)
+				{
+					++twoSlotOverlapStats.legacy_fallback_flushes;
+					cerr << "two-slot finalizer failed for flush "
+					     << completed.flush_id << ": "
+					     << completed.error_message << endl;
+					abort();
+				}
+				if (!twoSlotNextCommitInitialized)
+				{
+					twoSlotNextCommitInitialized = true;
+					twoSlotNextCommitFlushId = completed.flush_id;
+				}
+				if (completed.flush_id != twoSlotNextCommitFlushId)
+				{
+					++twoSlotOverlapStats.order_violations;
+					twoSlotNextCommitFlushId = completed.flush_id;
+				}
+				FasimNvtxRange nvtxTwoSlotCommit(
+					&nvtxTrace,
+					"fasim.gasal2.two_slot.ordered_commit");
+				const auto commitStart =
+					std::chrono::steady_clock::now();
+				const uint64_t emittedRows =
+					two_slot_commit_rows(completed.rows, completed.tasks);
+				const double commitSeconds =
+					fasim_seconds_since(commitStart);
+				++twoSlotOverlapStats.flushes_committed;
+				const double cpuSeconds =
+					completed.cpu_end_seconds >=
+					        completed.cpu_start_seconds ?
+					completed.cpu_end_seconds -
+					completed.cpu_start_seconds :
+					0.0;
+				twoSlotOverlapStats.cpu_finalizer_seconds += cpuSeconds;
+				twoSlotOverlapStats.cpu_intervals.push_back(
+					std::make_pair(completed.cpu_start_seconds,
+					               completed.cpu_end_seconds));
+				twoSlotOverlapStats.finalizer_intervals.push_back(
+					std::make_pair(completed.flush_id,
+					               std::make_pair(
+						               completed.cpu_start_seconds,
+						               completed.cpu_end_seconds)));
+				if (orderedCommitStats.requested)
+				{
+					fasim_gasal2_ordered_commit_observe_commit(
+						orderedCommitStats,
+						completed.flush_id,
+						completed.rows.row_count,
+						emittedRows,
+						0,
+						completed.rows.owned_bytes,
+						cpuSeconds,
+						commitSeconds,
+						0.0,
+						0.0,
+						commitSeconds,
+						false);
+				}
+				++twoSlotNextCommitFlushId;
+				if (slotIndex == 0)
+				{
+					++twoSlotOverlapStats.slot0_commit_count;
+				}
+				else if (slotIndex == 1)
+				{
+					++twoSlotOverlapStats.slot1_commit_count;
+				}
+				{
+					std::lock_guard<std::mutex> lock(twoSlotMutex);
+					twoSlotSlots[slotIndex].work =
+						FasimGasal2TwoSlotWorkItem();
+					twoSlotSlots[slotIndex].completed =
+						FasimGasal2TwoSlotCompletedItem();
+					twoSlotSlots[slotIndex].in_flight_bytes = 0;
+					two_slot_set_state_unlocked(
+						slotIndex,
+						FASIM_TWO_SLOT_FREE);
+					two_slot_refresh_memory();
+				}
+				fasim_nvtx_async_range_end(
+					&nvtxTrace,
+					completed.nvtx_slot_range_id);
+				nvtxTwoSlotCommit.close();
+				twoSlotCv.notify_all();
+				return true;
+			};
+
+			auto two_slot_drain_until_free = [&]()
+			{
+				if (!twoSlotOverlapStats.active)
+				{
+					return;
+				}
+				while (true)
+				{
+					bool committed = false;
+					while (two_slot_try_commit_ready())
+					{
+						committed = true;
+					}
+					std::unique_lock<std::mutex> lock(twoSlotMutex);
+					const bool allFree =
+						twoSlotSlots[0].state == FASIM_TWO_SLOT_FREE &&
+						twoSlotSlots[1].state == FASIM_TWO_SLOT_FREE;
+					if (allFree)
+					{
+						break;
+					}
+					lock.unlock();
+					if (!committed)
+					{
+						const auto waitStart =
+							std::chrono::steady_clock::now();
+						std::unique_lock<std::mutex> waitLock(
+							twoSlotMutex);
+						twoSlotCv.wait_for(
+							waitLock,
+							std::chrono::milliseconds(1));
+						twoSlotOverlapStats
+							.wait_for_finalizer_seconds +=
+							fasim_seconds_since(waitStart);
+					}
+					if (twoSlotWorkerException)
+					{
+						std::rethrow_exception(twoSlotWorkerException);
+					}
+				}
+			};
+
+			auto two_slot_submit_work =
+				[&](FasimGasal2TwoSlotWorkItem &&work) -> bool
+			{
+				if (!twoSlotOverlapStats.active)
+				{
+					return false;
+				}
+				FasimNvtxRange nvtxTwoSlotSubmit(
+					&nvtxTrace,
+					"fasim.gasal2.two_slot.submit_result");
+				two_slot_start_worker();
+				const auto waitStart =
+					std::chrono::steady_clock::now();
+				size_t slotIndex = 2;
+				while (slotIndex == 2)
+				{
+					while (two_slot_try_commit_ready())
+					{
+					}
+					std::unique_lock<std::mutex> lock(twoSlotMutex);
+					for (size_t i = 0; i < 2; ++i)
+					{
+						const size_t candidate =
+							(twoSlotNextPreferredSlot + i) % 2;
+						if (twoSlotSlots[candidate].state ==
+						    FASIM_TWO_SLOT_FREE)
+						{
+							slotIndex = candidate;
+							break;
+						}
+					}
+					if (slotIndex != 2)
+					{
+						break;
+					}
+					twoSlotCv.wait_for(
+						lock,
+						std::chrono::milliseconds(1));
+					if (twoSlotWorkerException)
+					{
+						std::rethrow_exception(twoSlotWorkerException);
+					}
+				}
+				twoSlotOverlapStats.wait_for_free_slot_seconds +=
+					fasim_seconds_since(waitStart);
+				work.slot_index = slotIndex;
+				work.submit_seconds =
+					static_cast<double>(fasim_monotonic_ns()) /
+					1000000000.0;
+				work.flush_id = work.result.flush_id;
+				const uint64_t submittedFlushId = work.flush_id;
+				work.nvtx_slot_range_id =
+					fasim_nvtx_async_range_start(
+						&nvtxTrace,
+						"fasim.gasal2.two_slot.slot_lifetime");
+				twoSlotOverlapStats.submit_times.push_back(
+					std::make_pair(submittedFlushId, work.submit_seconds));
+				twoSlotOverlapStats.gpu_intervals.push_back(
+					std::make_pair(work.gpu_start_seconds,
+					               work.gpu_end_seconds));
+				twoSlotOverlapStats.producer_intervals.push_back(
+					std::make_pair(work.flush_id,
+					               std::make_pair(
+						               work.producer_start_seconds,
+						               work.producer_end_seconds)));
+				{
+					std::lock_guard<std::mutex> lock(twoSlotMutex);
+					twoSlotSlots[slotIndex].work = std::move(work);
+					two_slot_set_state_unlocked(
+						slotIndex,
+						FASIM_TWO_SLOT_READY);
+					++twoSlotOverlapStats.flushes_gpu_submitted;
+					if (slotIndex == 0)
+					{
+						++twoSlotOverlapStats.slot0_submit_count;
+					}
+					else if (slotIndex == 1)
+					{
+						++twoSlotOverlapStats.slot1_submit_count;
+					}
+					twoSlotNextPreferredSlot = (slotIndex + 1) % 2;
+					++twoSlotOverlapStats.eligible_flushes;
+					++twoSlotOverlapStats
+						.gpu_result_object_ready_flushes;
+					two_slot_refresh_memory();
+				}
+				twoSlotCv.notify_all();
+				if (twoSlotOverlapStats.serialized_control_active)
+				{
+					two_slot_drain_until_free();
+				}
+				twoSlotOverlapStats.submit_return_times.push_back(
+					std::make_pair(
+						submittedFlushId,
+						static_cast<double>(fasim_monotonic_ns()) /
+							1000000000.0));
+				nvtxTwoSlotSubmit.close();
+				return true;
+			};
+
+			auto two_slot_drain_pipeline = [&]()
+			{
+				if (!twoSlotOverlapStats.active)
+				{
+					return;
+				}
+				FasimNvtxRange nvtxTwoSlotDrain(
+					&nvtxTrace,
+					"fasim.gasal2.two_slot.drain");
+				const auto drainStart =
+					std::chrono::steady_clock::now();
+				two_slot_drain_until_free();
+				{
+					std::lock_guard<std::mutex> lock(twoSlotMutex);
+					two_slot_record_occupancy_unlocked();
+					two_slot_refresh_memory();
+				}
+				twoSlotOverlapStats.pipeline_drain_seconds +=
+					fasim_seconds_since(drainStart);
+				if (twoSlotWorkerStarted)
+				{
+					{
+						std::lock_guard<std::mutex> lock(twoSlotMutex);
+						twoSlotStop = true;
+					}
+					twoSlotCv.notify_all();
+					if (twoSlotWorker.joinable())
+					{
+						twoSlotWorker.join();
+					}
+					twoSlotWorkerStarted = false;
+				}
+				double totalOverlap = 0.0;
+				for (size_t gi = 0;
+				     gi < twoSlotOverlapStats.gpu_intervals.size();
+				     ++gi)
+				{
+					for (size_t ci = 0;
+					     ci < twoSlotOverlapStats.cpu_intervals.size();
+					     ++ci)
+					{
+						const double begin = std::max(
+							twoSlotOverlapStats.gpu_intervals[gi].first,
+							twoSlotOverlapStats.cpu_intervals[ci].first);
+						const double end = std::min(
+							twoSlotOverlapStats.gpu_intervals[gi].second,
+							twoSlotOverlapStats.cpu_intervals[ci].second);
+						if (end > begin)
+						{
+							totalOverlap += end - begin;
+						}
+					}
+				}
+				double hostOverlap = 0.0;
+				double finalizerCovered = 0.0;
+				double producerCovered = 0.0;
+				for (size_t fi = 0;
+				     fi < twoSlotOverlapStats.finalizer_intervals.size();
+				     ++fi)
+				{
+					const uint64_t flushId =
+						twoSlotOverlapStats.finalizer_intervals[fi].first;
+					const double finalizerBegin =
+						twoSlotOverlapStats
+							.finalizer_intervals[fi].second.first;
+					const double finalizerEnd =
+						twoSlotOverlapStats
+							.finalizer_intervals[fi].second.second;
+					double nextSubmitSeconds = 0.0;
+					double thisSubmitReturnSeconds = 0.0;
+					bool haveNextSubmit = false;
+					bool haveThisSubmitReturn = false;
+					for (size_t si = 0;
+					     si < twoSlotOverlapStats.submit_times.size();
+					     ++si)
+					{
+						if (twoSlotOverlapStats
+						        .submit_times[si].first !=
+						    flushId + 1)
+						{
+							continue;
+						}
+						nextSubmitSeconds =
+							twoSlotOverlapStats.submit_times[si].second;
+						haveNextSubmit = true;
+						break;
+					}
+					for (size_t ri = 0;
+					     ri < twoSlotOverlapStats.submit_return_times.size();
+					     ++ri)
+					{
+						if (twoSlotOverlapStats
+						        .submit_return_times[ri].first !=
+						    flushId)
+						{
+							continue;
+						}
+						thisSubmitReturnSeconds =
+							twoSlotOverlapStats
+								.submit_return_times[ri].second;
+						haveThisSubmitReturn = true;
+						break;
+					}
+					if (!haveNextSubmit || !haveThisSubmitReturn ||
+					    nextSubmitSeconds <= thisSubmitReturnSeconds)
+					{
+						continue;
+					}
+					const double overlap =
+						fasim_interval_overlap_seconds(
+							finalizerBegin,
+							finalizerEnd,
+							thisSubmitReturnSeconds,
+							nextSubmitSeconds);
+					hostOverlap += overlap;
+					finalizerCovered += overlap;
+					producerCovered += overlap;
+				}
+				twoSlotOverlapStats.gpu_cpu_overlap_seconds =
+					totalOverlap;
+				twoSlotOverlapStats.host_scheduling_overlap_seconds =
+					hostOverlap;
+				twoSlotOverlapStats.finalizer_covered_by_next_flush_seconds =
+					finalizerCovered;
+				twoSlotOverlapStats.producer_covered_by_finalizer_seconds =
+					producerCovered;
+				const double denom =
+					std::min(twoSlotOverlapStats.gpu_stage_seconds,
+					         twoSlotOverlapStats.cpu_finalizer_seconds);
+				twoSlotOverlapStats.overlap_fraction =
+					denom > 0.0 ?
+					twoSlotOverlapStats.gpu_cpu_overlap_seconds / denom :
+					0.0;
+				nvtxTwoSlotDrain.close();
+			};
+
+			auto triplex_probe_key = [](const triplex &atr) -> std::string
+			{
 			std::ostringstream out;
 			out << atr.stari << ':' << atr.endi << ':'
 			    << atr.starj << ':' << atr.endj << ':'
@@ -6394,13 +14059,212 @@ int main(int argc, char* const* argv)
 			{
 			}
 
-			size_t taskIndex;
-			size_t scoreInfoIndex;
-			};
+				size_t taskIndex;
+				size_t scoreInfoIndex;
+				};
 
-			bool gasal2DirectLiteArchiveConvertHandled = false;
+				auto write_phase7_frontier_log_attempts = [&](
+					const std::vector<StreamTask> &frontierTasks,
+					const std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> > &frontierScoreInfos,
+					const std::vector<Gasal2BatchScoreGroup> &frontierGroups,
+					const std::vector<FasimGasal2Attempt> &frontierAttempts) -> uint64_t
+				{
+					if (!phase7FrontierLogEnabled)
+					{
+						return 0;
+					}
+					ensure_phase7_frontier_log_opened();
+					uint64_t rows = 0;
+					std::vector<StripedSmithWaterman::Alignment> frontierAlignments(
+						frontierAttempts.size());
+					std::vector<unsigned char> frontierValid(frontierAttempts.size(), 0);
+					std::vector<unsigned char> frontierSelected(frontierAttempts.size(), 0);
+					std::vector<uint64_t> emittedBefore(frontierAttempts.size(), 0);
+					std::vector<uint64_t> emittedAfter(frontierAttempts.size(), 0);
+					StripedSmithWaterman::Aligner frontierAligner;
+					StripedSmithWaterman::Filter frontierFilter;
+					std::string frontierSmallSeq;
+					for (size_t ai = 0; ai < frontierAttempts.size(); ++ai)
+					{
+						const FasimGasal2Attempt &attempt = frontierAttempts[ai];
+						if (attempt.scoreinfo_index < 0 ||
+						    static_cast<size_t>(attempt.scoreinfo_index) >= frontierGroups.size())
+						{
+							continue;
+						}
+						const Gasal2BatchScoreGroup &group =
+							frontierGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+						if (group.taskIndex >= frontierTasks.size() ||
+						    group.scoreInfoIndex >= frontierScoreInfos[group.taskIndex].size())
+						{
+							continue;
+						}
+						const StreamTask &task = frontierTasks[group.taskIndex];
+						if (attempt.start < 0 ||
+						    attempt.cutlength <= 0 ||
+						    static_cast<size_t>(attempt.start) >= task.seq2.size())
+						{
+							continue;
+						}
+						const size_t targetStart = static_cast<size_t>(attempt.start);
+						const size_t targetLength = static_cast<size_t>(attempt.cutlength);
+						if (targetStart + targetLength > task.seq2.size())
+						{
+							continue;
+						}
+						frontierSmallSeq = task.seq2.substr(targetStart, targetLength);
+						frontierAligner.Align(lncSeq.c_str(),
+						                      frontierSmallSeq.c_str(),
+						                      static_cast<int>(frontierSmallSeq.size()),
+						                      frontierFilter,
+						                      &frontierAlignments[ai],
+						                      15);
+						frontierValid[ai] = 1;
+					}
 
-				auto extend_tasks_with_gasal2_batch = [&](
+					std::vector<uint64_t> emittedByTask(frontierTasks.size(), 0);
+					size_t groupStart = 0;
+					while (groupStart < frontierAttempts.size())
+					{
+						const int scoreInfoIndex =
+							frontierAttempts[groupStart].scoreinfo_index;
+						size_t groupEnd = groupStart + 1;
+						while (groupEnd < frontierAttempts.size() &&
+						       frontierAttempts[groupEnd].scoreinfo_index == scoreInfoIndex)
+						{
+							++groupEnd;
+						}
+						int selectedIndex = -1;
+						int bestIndex = -1;
+						int lastIndex = -1;
+						int bestScore = 0;
+						for (size_t ai = groupStart; ai < groupEnd; ++ai)
+						{
+							if (!frontierValid[ai])
+							{
+								continue;
+							}
+							lastIndex = static_cast<int>(ai);
+							const FasimGasal2Attempt &attempt = frontierAttempts[ai];
+							const Gasal2BatchScoreGroup &group =
+								frontierGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+							const StripedSmithWaterman::scoreInfo &scoreInfo =
+								frontierScoreInfos[group.taskIndex][group.scoreInfoIndex];
+							const StripedSmithWaterman::Alignment &alignment =
+								frontierAlignments[ai];
+							if (alignment.sw_score >= scoreInfo.score)
+							{
+								selectedIndex = static_cast<int>(ai);
+								break;
+							}
+							if (alignment.sw_score > bestScore &&
+							    alignment.ref_end == attempt.cutlength - 1)
+							{
+								bestIndex = static_cast<int>(ai);
+								bestScore = alignment.sw_score;
+							}
+						}
+						if (selectedIndex < 0 && bestIndex >= 0)
+						{
+							selectedIndex = bestIndex;
+						}
+						else if (selectedIndex < 0 &&
+						         lastIndex >= 0 &&
+						         frontierAlignments[static_cast<size_t>(lastIndex)].sw_score != 0)
+						{
+							selectedIndex = lastIndex;
+						}
+						size_t selectedTaskIndex = frontierTasks.size();
+						if (selectedIndex >= 0)
+						{
+							const FasimGasal2Attempt &selectedAttempt =
+								frontierAttempts[static_cast<size_t>(selectedIndex)];
+							if (selectedAttempt.scoreinfo_index >= 0 &&
+							    static_cast<size_t>(selectedAttempt.scoreinfo_index) <
+							        frontierGroups.size())
+							{
+								selectedTaskIndex =
+									frontierGroups[static_cast<size_t>(
+										selectedAttempt.scoreinfo_index)].taskIndex;
+							}
+						}
+						for (size_t ai = groupStart; ai < groupEnd; ++ai)
+						{
+							size_t taskIndex = selectedTaskIndex;
+							const FasimGasal2Attempt &attempt = frontierAttempts[ai];
+							if (taskIndex >= frontierTasks.size() &&
+							    attempt.scoreinfo_index >= 0 &&
+							    static_cast<size_t>(attempt.scoreinfo_index) <
+							        frontierGroups.size())
+							{
+								taskIndex =
+									frontierGroups[static_cast<size_t>(
+										attempt.scoreinfo_index)].taskIndex;
+							}
+							const uint64_t before =
+								taskIndex < emittedByTask.size() ? emittedByTask[taskIndex] : 0;
+							emittedBefore[ai] = before;
+							if (selectedIndex == static_cast<int>(ai) &&
+							    taskIndex < emittedByTask.size())
+							{
+								frontierSelected[ai] = 1;
+								++emittedByTask[taskIndex];
+							}
+							emittedAfter[ai] =
+								taskIndex < emittedByTask.size() ? emittedByTask[taskIndex] : before;
+						}
+						groupStart = groupEnd;
+					}
+
+					for (size_t ai = 0; ai < frontierAttempts.size(); ++ai)
+					{
+						const FasimGasal2Attempt &attempt = frontierAttempts[ai];
+						if (attempt.scoreinfo_index < 0 ||
+						    static_cast<size_t>(attempt.scoreinfo_index) >= frontierGroups.size())
+						{
+							continue;
+						}
+						const Gasal2BatchScoreGroup &group =
+							frontierGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+						if (group.taskIndex >= frontierTasks.size() ||
+						    group.scoreInfoIndex >= frontierScoreInfos[group.taskIndex].size())
+						{
+							continue;
+						}
+						const StreamTask &task = frontierTasks[group.taskIndex];
+						const StripedSmithWaterman::scoreInfo &scoreInfo =
+							frontierScoreInfos[group.taskIndex][group.scoreInfoIndex];
+						const StripedSmithWaterman::Alignment &alignment =
+							frontierAlignments[ai];
+						std::ostringstream row;
+						row << task.taskIndex << "\t"
+						    << group.scoreInfoIndex << "\t"
+						    << scoreInfo.position << "\t"
+						    << scoreInfo.score << "\t"
+						    << ai << "\t"
+						    << attempt.start << "\t"
+						    << attempt.cutlength << "\t"
+						    << (frontierValid[ai] ? alignment.sw_score : 0) << "\t"
+						    << (frontierValid[ai] ? alignment.ref_begin : 0) << "\t"
+						    << (frontierValid[ai] ? alignment.ref_end : 0) << "\t"
+						    << (frontierValid[ai] ? alignment.query_begin : 0) << "\t"
+						    << (frontierValid[ai] ? alignment.query_end : 0) << "\t"
+						    << (frontierSelected[ai] ? 1 : 0) << "\t"
+						    << emittedBefore[ai] << "\t"
+						    << emittedAfter[ai] << "\n";
+						const std::string rowText = row.str();
+						phase7FrontierLogFile << rowText;
+						phase7FrontierLogDigest =
+							fasim_fnv1a_update(phase7FrontierLogDigest, rowText);
+						++rows;
+					}
+					return rows;
+				};
+
+				bool gasal2DirectLiteArchiveConvertHandled = false;
+				bool gasal2TwoSlotOverlapHandled = false;
+
+					auto extend_tasks_with_gasal2_batch = [&](
 					const std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> > &scoreInfosByTask,
 					std::vector< std::vector<triplex> > &triplexesByTask,
 				bool allowCudaBatch,
@@ -6412,16 +14276,46 @@ int main(int argc, char* const* argv)
 					++phaseTiming.gasal2_extend_batches;
 					phaseTiming.gasal2_extend_tasks += static_cast<uint64_t>(tasks.size());
 					}
+				if (currentFlushPipelineRecord != NULL)
+				{
+					currentFlushPipelineRecord->pack_start_ns =
+						currentFlushPipelineRecord->pack_start_ns == 0 ?
+						fasim_monotonic_ns() :
+						currentFlushPipelineRecord->pack_start_ns;
+				}
+				const auto gasal2FlushWallStart =
+					std::chrono::steady_clock::now();
+				const double gasal2FlushStartSeconds =
+					static_cast<double>(fasim_monotonic_ns()) /
+					1000000000.0;
 					triplexesByTask.clear();
 					triplexesByTask.resize(tasks.size());
 					gasal2DirectLiteArchiveConvertHandled = false;
+					gasal2TwoSlotOverlapHandled = false;
 				const bool gasal2CanRun =
 					allowCudaBatch ? gasal2LongtargetBatch : gasal2_batched_traceback_enabled();
 			const bool segmentedLongQueryShadowCanRun =
 				gasal2LongQuerySegmentedShadowStats.requested != 0 &&
 				!gasal2QueryLengthSupported &&
 				fasim_gasal2_is_built();
-			if ((!gasal2CanRun && !segmentedLongQueryShadowCanRun) ||
+			const bool phase7AllAttemptEarlyStopRequested =
+				fasim_gasal2_phase7_all_attempt_early_stop_runtime();
+			const bool phase7GateCGpuCandidatesRequested =
+				fasim_gasal2_phase7_gate_c_gpu_candidates_runtime();
+			const bool phase7V3DescriptorSourceRequested =
+				fasim_gasal2_phase7_v3_descriptor_source_runtime();
+			const bool phase7V5FusedConsumerRequested =
+				fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_runtime();
+			const bool phase7V3AttemptCoverageSeedCertificateRequested =
+				fasim_gasal2_phase7_v3_attempt_coverage_seed_certificate_runtime();
+			const bool phase7V3OracleMinCoverReplayRequested =
+				fasim_gasal2_phase7_v3_oracle_min_cover_replay_runtime();
+			if ((!gasal2CanRun &&
+			     !segmentedLongQueryShadowCanRun &&
+			     !phase7AllAttemptEarlyStopRequested &&
+			     !phase7V3AttemptCoverageSeedCertificateRequested &&
+			     !phase7V5FusedConsumerRequested &&
+			     !phase7V3OracleMinCoverReplayRequested) ||
 			    scoreInfosByTask.size() != tasks.size())
 			{
 				return false;
@@ -6432,8 +14326,12 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_long_query_segmented_cpu_traceback_replay_runtime();
 				const bool useCpuTracebackReplay =
 					gasal2LongtargetCpuTracebackBatch ||
-					segmentedLongQueryReplayRequested;
+					segmentedLongQueryReplayRequested ||
+					phase7AllAttemptEarlyStopRequested ||
+					phase7V3OracleMinCoverReplayRequested;
 				const bool ntSumSpanPrune = fasim_gasal2_nt_sum_span_prune_enabled_runtime();
+				const bool preconvertPruneShadow =
+					fasim_gasal2_preconvert_prune_shadow_runtime();
 			const bool directConvertRequested =
 				fasim_gasal2_direct_lite_archive_convert_runtime();
 				const bool equivalenceFirstConvertRequested =
@@ -6516,6 +14414,19 @@ int main(int argc, char* const* argv)
 				{
 					++phaseTiming.gasal2_nt_sum_span_prune_active;
 				}
+					if (phaseTimingEnabled && preconvertPruneShadow)
+					{
+						phaseTiming.gasal2_preconvert_prune_shadow_requested = true;
+						phaseTiming.gasal2_preconvert_prune_shadow_active = true;
+					}
+					fasim_gasal2_two_slot_observe_extend_shape(
+						twoSlotOverlapStats,
+						tasks.size(),
+						directConvertActive,
+						equivalenceFirstConvertActive,
+						archiveFirstConvertActive);
+					const uint64_t preconvertPruneShadowFalseNegativeBase =
+						phaseTiming.gasal2_nt_shadow_sum_span_false_negative;
 
 			const int segmentedLongQueryScoreInfoPruneMaxPerTask =
 				segmentedLongQueryShadowCanRun ?
@@ -6614,7 +14525,8 @@ int main(int argc, char* const* argv)
 			gasalAttempts.reserve(reserveAttempts);
 			scoreGroups.reserve(reserveAttempts / 5 + 1);
 
-			const auto attemptBuildStart = std::chrono::steady_clock::now();
+				FasimNvtxRange nvtxPack(&nvtxTrace, "fasim.gasal2.pack");
+				const auto attemptBuildStart = std::chrono::steady_clock::now();
 			int gasalScoreGroup = 0;
 			for (size_t t = 0; t < tasks.size(); ++t)
 			{
@@ -6639,6 +14551,7 @@ int main(int argc, char* const* argv)
 							attempt.prealign_score = scoreInfo.score;
 							attempt.target_end_required_for_fallback = cutlength - 1;
 							attempt.nt_min_length = paraList.cLength;
+							annotate_gasal2_attempt_task(attempt, task);
 							attempt.set_target_view(&task.seq2,
 							                        static_cast<size_t>(targetStart),
 							                        static_cast<size_t>(cutlength));
@@ -6648,11 +14561,269 @@ int main(int argc, char* const* argv)
 					}
 					++gasalScoreGroup;
 				}
-			}
-			const double attemptBuildSeconds = fasim_seconds_since(attemptBuildStart);
+				}
+				const double attemptBuildSeconds = fasim_seconds_since(attemptBuildStart);
+				if (currentFlushPipelineRecord != NULL)
+				{
+					currentFlushPipelineRecord->pack_end_ns = fasim_monotonic_ns();
+					currentFlushPipelineRecord->scoreinfo_tasks =
+						static_cast<uint64_t>(scoreGroups.size());
+					currentFlushPipelineRecord->dp_cells =
+						currentTargetLength > 0 ?
+						static_cast<uint64_t>(tasks.size()) *
+							static_cast<uint64_t>(currentTargetLength) :
+						0;
+				}
+				nvtxPack.close();
+				if (phase7FrontierLogEnabled)
+				{
+					(void)write_phase7_frontier_log_attempts(
+						tasks,
+						*activeScoreInfos,
+						scoreGroups,
+						gasalAttempts);
+					if (phase7FrontierLogFile.is_open())
+					{
+						phase7FrontierLogFile.flush();
+					}
+					const std::string phase7FrontierLogDigestText =
+						phase7FrontierLogOpened ?
+							fasim_hex_u64(phase7FrontierLogDigest) :
+							std::string("");
+					fasim_gasal2_record_phase7_frontier_log_request(
+						static_cast<uint64_t>(tasks.size()),
+						static_cast<uint64_t>(scoreGroups.size()),
+						static_cast<uint64_t>(gasalAttempts.size()),
+						0,
+						true,
+						phase7FrontierLogPath.c_str(),
+						phase7FrontierLogDigestText.c_str());
+				}
+				if (fasim_gasal2_phase7_next_reducer_shadow_runtime())
+				{
+					fasim_gasal2_record_phase7_next_reducer_request(
+						static_cast<uint64_t>(tasks.size()),
+						static_cast<uint64_t>(scoreGroups.size()),
+						static_cast<uint64_t>(gasalAttempts.size()),
+						true);
+				}
+				if (phase7V3DescriptorSourceRequested)
+				{
+					fasim_gasal2_record_phase7_v3_descriptor_source(
+						static_cast<uint64_t>(tasks.size()),
+						static_cast<uint64_t>(scoreGroups.size()),
+						static_cast<uint64_t>(gasalAttempts.size()),
+						0,
+						0,
+						0,
+						static_cast<uint64_t>(scoreGroups.size()),
+						static_cast<uint64_t>(scoreGroups.size()),
+						false,
+						false,
+						0,
+						0,
+						false,
+						true,
+						false);
+				}
+				if (phase7V5FusedConsumerRequested)
+				{
+					const uint64_t referenceScoreInfos =
+						static_cast<uint64_t>(scoreGroups.size());
+					const uint64_t referenceAttempts =
+						static_cast<uint64_t>(gasalAttempts.size());
+					const uint64_t descriptorScoreInfos =
+						static_cast<uint64_t>(scoreGroups.size());
+					const uint64_t descriptorAttempts =
+						static_cast<uint64_t>(gasalAttempts.size());
+					const bool scoreInfoPrealignReduced = false;
+					const bool cpuAlignAuthority = true;
+					const bool gateV51Pass =
+						descriptorAttempts > 0 &&
+						scoreInfoPrealignReduced &&
+						cpuAlignAuthority;
+					fasim_gasal2_record_phase7_v5_fused_scoreinfo_consumer(
+						static_cast<uint64_t>(tasks.size()),
+						referenceScoreInfos,
+						referenceAttempts,
+						descriptorScoreInfos,
+						descriptorAttempts,
+						0,
+						0,
+						0,
+						scoreInfoPrealignReduced,
+						cpuAlignAuthority,
+						gateV51Pass);
+				}
+				if (phase7V3AttemptCoverageSeedCertificateRequested)
+				{
+					std::vector< std::vector<size_t> > taskSeedHitPositions(tasks.size());
+					uint64_t candidateSeedPositions = 0;
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						const std::string *querySeq = tasks[t].srcSeq.get();
+						if (querySeq == NULL || tasks[t].seq2.empty())
+						{
+							continue;
+						}
+						(void)fasim_collect_seed_certificate_hit_positions(
+							*querySeq,
+							tasks[t].seq2,
+							3,
+							512,
+							65536,
+							&taskSeedHitPositions[t]);
+						const uint64_t positions =
+							static_cast<uint64_t>(taskSeedHitPositions[t].size());
+						candidateSeedPositions =
+							std::numeric_limits<uint64_t>::max() -
+								candidateSeedPositions < positions ?
+								std::numeric_limits<uint64_t>::max() :
+								candidateSeedPositions + positions;
+					}
 
-			if (gasalAttempts.empty())
-			{
+					std::vector<unsigned char> scoreInfoCovered(
+						scoreGroups.size(), 0);
+					std::vector< std::vector< std::pair<size_t, size_t> > >
+						taskAttemptWindows(tasks.size());
+					uint64_t missingRequiredAttempts = 0;
+					for (size_t ai = 0; ai < gasalAttempts.size(); ++ai)
+					{
+						const FasimGasal2Attempt &attempt = gasalAttempts[ai];
+						if (attempt.scoreinfo_index < 0 ||
+						    static_cast<size_t>(attempt.scoreinfo_index) >=
+							    scoreGroups.size())
+						{
+							++missingRequiredAttempts;
+							continue;
+						}
+						const Gasal2BatchScoreGroup &group =
+							scoreGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+						if (group.taskIndex >= taskSeedHitPositions.size())
+						{
+							++missingRequiredAttempts;
+							continue;
+						}
+						const std::vector<size_t> &positions =
+							taskSeedHitPositions[group.taskIndex];
+						const size_t attemptStart =
+							attempt.start > 0 ? static_cast<size_t>(attempt.start) : 0;
+						const size_t attemptEnd =
+							attempt.cutlength > 0 ?
+								attemptStart + static_cast<size_t>(attempt.cutlength) :
+								attemptStart;
+						if (attemptEnd > attemptStart)
+						{
+							taskAttemptWindows[group.taskIndex].push_back(
+								std::make_pair(attemptStart, attemptEnd));
+						}
+						const std::vector<size_t>::const_iterator it =
+							std::lower_bound(positions.begin(),
+							                 positions.end(),
+							                 attemptStart);
+						if (it != positions.end() && *it < attemptEnd)
+						{
+							scoreInfoCovered[
+								static_cast<size_t>(attempt.scoreinfo_index)] = 1;
+						}
+						else
+						{
+							++missingRequiredAttempts;
+						}
+					}
+					uint64_t candidateScoreInfos = 0;
+					for (size_t si = 0; si < scoreInfoCovered.size(); ++si)
+					{
+						if (scoreInfoCovered[si] != 0)
+						{
+							++candidateScoreInfos;
+						}
+					}
+					uint64_t candidateMinCoverPositions = 0;
+					for (size_t t = 0; t < taskAttemptWindows.size(); ++t)
+					{
+						std::vector< std::pair<size_t, size_t> > &windows =
+							taskAttemptWindows[t];
+						const std::vector<size_t> &positions = taskSeedHitPositions[t];
+						if (windows.empty() || positions.empty())
+						{
+							continue;
+						}
+						std::sort(windows.begin(),
+						          windows.end(),
+						          [](const std::pair<size_t, size_t> &lhs,
+						             const std::pair<size_t, size_t> &rhs)
+						          {
+							          if (lhs.second != rhs.second)
+							          {
+								          return lhs.second < rhs.second;
+							          }
+							          return lhs.first < rhs.first;
+						          });
+						size_t selectedPosition = std::numeric_limits<size_t>::max();
+						for (size_t wi = 0; wi < windows.size(); ++wi)
+						{
+							const size_t start = windows[wi].first;
+							const size_t end = windows[wi].second;
+							if (selectedPosition != std::numeric_limits<size_t>::max() &&
+							    selectedPosition >= start &&
+							    selectedPosition < end)
+							{
+								continue;
+							}
+							std::vector<size_t>::const_iterator ub =
+								std::lower_bound(positions.begin(),
+								                 positions.end(),
+								                 end);
+							if (ub == positions.begin())
+							{
+								continue;
+							}
+							--ub;
+							if (*ub < start)
+							{
+								continue;
+							}
+							selectedPosition = *ub;
+							if (candidateMinCoverPositions !=
+							    std::numeric_limits<uint64_t>::max())
+							{
+								++candidateMinCoverPositions;
+							}
+						}
+					}
+					const uint64_t falseNegativeScoreInfos =
+						static_cast<uint64_t>(scoreGroups.size()) -
+						std::min<uint64_t>(
+							candidateScoreInfos,
+							static_cast<uint64_t>(scoreGroups.size()));
+					fasim_gasal2_record_phase7_v3_descriptor_source(
+						static_cast<uint64_t>(tasks.size()),
+						static_cast<uint64_t>(scoreGroups.size()),
+						static_cast<uint64_t>(gasalAttempts.size()),
+						candidateScoreInfos,
+						candidateSeedPositions,
+						candidateMinCoverPositions,
+						0,
+						static_cast<uint64_t>(scoreGroups.size()),
+						!scoreGroups.empty(),
+						true,
+						falseNegativeScoreInfos,
+						missingRequiredAttempts,
+						true,
+						false,
+						candidateScoreInfos > 0);
+					fasim_gasal2_record_longtarget_bridge_timing(attemptBuildSeconds,
+					                                             0.0,
+					                                             0.0,
+					                                             0.0,
+					                                             0.0,
+					                                             0.0);
+					return false;
+				}
+
+				if (gasalAttempts.empty())
+				{
 				fasim_gasal2_record_longtarget_bridge_timing(attemptBuildSeconds,
 				                                             0.0,
 				                                             0.0,
@@ -6846,26 +15017,203 @@ int main(int argc, char* const* argv)
 				}
 			}
 
-			std::vector<FasimGasal2SelectedAlignment> gasalSelected;
-			std::string gasalError;
-			bool gasalOk = true;
-			double scoreSelectSeconds = 0.0;
-			if (segmentedLongQueryReplayRequested && !gasal2CanRun)
+				std::vector<FasimGasal2SelectedAlignment> gasalSelected;
+				std::string gasalError;
+				bool gasalOk = true;
+				double scoreSelectSeconds = 0.0;
+				FasimNvtxRange nvtxScoreTraceback(
+					&nvtxTrace,
+					"fasim.gasal2.score_traceback");
+				if (phase7V3OracleMinCoverReplayRequested)
+				{
+				std::vector< std::vector<size_t> > taskSeedHitPositions(tasks.size());
+				for (size_t t = 0; t < tasks.size(); ++t)
+				{
+					const std::string *querySeq = tasks[t].srcSeq.get();
+					if (querySeq == NULL || tasks[t].seq2.empty())
+					{
+						continue;
+					}
+					(void)fasim_collect_seed_certificate_hit_positions(
+						*querySeq,
+						tasks[t].seq2,
+						3,
+						512,
+						65536,
+						&taskSeedHitPositions[t]);
+				}
+				std::vector< std::vector< std::pair< std::pair<size_t, size_t>, size_t > > >
+					taskAttemptWindows(tasks.size());
+				for (size_t ai = 0; ai < gasalAttempts.size(); ++ai)
+				{
+					const FasimGasal2Attempt &attempt = gasalAttempts[ai];
+					if (attempt.scoreinfo_index < 0 ||
+					    static_cast<size_t>(attempt.scoreinfo_index) >= scoreGroups.size())
+					{
+						continue;
+					}
+					const Gasal2BatchScoreGroup &group =
+						scoreGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+					if (group.taskIndex >= taskAttemptWindows.size())
+					{
+						continue;
+					}
+					const size_t attemptStart =
+						attempt.start > 0 ? static_cast<size_t>(attempt.start) : 0;
+					const size_t attemptEnd =
+						attempt.cutlength > 0 ?
+							attemptStart + static_cast<size_t>(attempt.cutlength) :
+							attemptStart;
+					if (attemptEnd > attemptStart)
+					{
+						taskAttemptWindows[group.taskIndex].push_back(
+							std::make_pair(
+								std::make_pair(attemptStart, attemptEnd),
+								ai));
+					}
+				}
+				gasalSelected.clear();
+				for (size_t t = 0; t < taskAttemptWindows.size(); ++t)
+				{
+					std::vector< std::pair< std::pair<size_t, size_t>, size_t > >
+						&windows = taskAttemptWindows[t];
+					const std::vector<size_t> &positions = taskSeedHitPositions[t];
+					if (windows.empty() || positions.empty())
+					{
+						continue;
+					}
+					std::sort(windows.begin(),
+					          windows.end(),
+					          [](const std::pair< std::pair<size_t, size_t>, size_t > &lhs,
+					             const std::pair< std::pair<size_t, size_t>, size_t > &rhs)
+					          {
+						          if (lhs.first.second != rhs.first.second)
+						          {
+							          return lhs.first.second < rhs.first.second;
+						          }
+						          if (lhs.first.first != rhs.first.first)
+						          {
+							          return lhs.first.first < rhs.first.first;
+						          }
+						          return lhs.second < rhs.second;
+					          });
+					size_t selectedPosition = std::numeric_limits<size_t>::max();
+					for (size_t wi = 0; wi < windows.size(); ++wi)
+					{
+						const size_t start = windows[wi].first.first;
+						const size_t end = windows[wi].first.second;
+						if (selectedPosition != std::numeric_limits<size_t>::max() &&
+						    selectedPosition >= start &&
+						    selectedPosition < end)
+						{
+							continue;
+						}
+						std::vector<size_t>::const_iterator ub =
+							std::lower_bound(positions.begin(), positions.end(), end);
+						if (ub == positions.begin())
+						{
+							continue;
+						}
+						--ub;
+						if (*ub < start)
+						{
+							continue;
+						}
+						selectedPosition = *ub;
+						const FasimGasal2Attempt &attempt =
+							gasalAttempts[windows[wi].second];
+						FasimGasal2SelectedAlignment selectedAttempt;
+						selectedAttempt.scoreinfo_index = attempt.scoreinfo_index;
+						selectedAttempt.cutlength = attempt.cutlength;
+						selectedAttempt.start = attempt.start;
+						selectedAttempt.selected = true;
+						gasalSelected.push_back(selectedAttempt);
+					}
+				}
+				std::stable_sort(
+					gasalSelected.begin(),
+					gasalSelected.end(),
+					[](const FasimGasal2SelectedAlignment &lhs,
+					   const FasimGasal2SelectedAlignment &rhs)
+					{
+						if (lhs.scoreinfo_index != rhs.scoreinfo_index)
+						{
+							return lhs.scoreinfo_index < rhs.scoreinfo_index;
+						}
+						if (lhs.start != rhs.start)
+						{
+							return lhs.start < rhs.start;
+						}
+						return lhs.cutlength < rhs.cutlength;
+					});
+			}
+			else if (phase7AllAttemptEarlyStopRequested)
+			{
+				gasalSelected.clear();
+				gasalSelected.reserve(gasalAttempts.size());
+				for (size_t ai = 0; ai < gasalAttempts.size(); ++ai)
+				{
+					const FasimGasal2Attempt &attempt = gasalAttempts[ai];
+					FasimGasal2SelectedAlignment selectedAttempt;
+					selectedAttempt.scoreinfo_index = attempt.scoreinfo_index;
+					selectedAttempt.cutlength = attempt.cutlength;
+					selectedAttempt.start = attempt.start;
+					selectedAttempt.selected = true;
+					gasalSelected.push_back(selectedAttempt);
+				}
+			}
+			else if (segmentedLongQueryReplayRequested && !gasal2CanRun)
 			{
 				gasalSelected.swap(segmentedLongQueryReplaySelected);
 			}
-			else
-			{
-				const auto scoreSelectStart = std::chrono::steady_clock::now();
-				gasalOk = useCpuTracebackReplay ?
-					fasim_gasal2_select_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError) :
-					fasim_gasal2_align_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError);
-				scoreSelectSeconds = fasim_seconds_since(scoreSelectStart);
-			}
+				else
+				{
+					const auto scoreSelectStart = std::chrono::steady_clock::now();
+					const uint64_t scoreSelectStartNs =
+						currentFlushPipelineRecord != NULL ?
+						fasim_monotonic_ns() :
+						0;
+					if (currentFlushPipelineRecord != NULL)
+					{
+						currentFlushPipelineRecord->h2d_start_ns = scoreSelectStartNs;
+						currentFlushPipelineRecord->gasal2_score_submit_start_ns =
+							scoreSelectStartNs;
+						currentFlushPipelineRecord->gasal2_score_wait_start_ns =
+							scoreSelectStartNs;
+					}
+					gasalOk = useCpuTracebackReplay ?
+						fasim_gasal2_select_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError) :
+						fasim_gasal2_align_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError);
+					if (currentFlushPipelineRecord != NULL)
+					{
+						const uint64_t scoreSelectEndNs = fasim_monotonic_ns();
+						currentFlushPipelineRecord->h2d_end_ns = scoreSelectEndNs;
+						currentFlushPipelineRecord->gasal2_score_submit_end_ns =
+							scoreSelectEndNs;
+						currentFlushPipelineRecord->gasal2_score_wait_end_ns =
+							scoreSelectEndNs;
+						currentFlushPipelineRecord->traceback_pack_start_ns =
+							scoreSelectStartNs;
+						currentFlushPipelineRecord->traceback_pack_end_ns =
+							scoreSelectEndNs;
+						currentFlushPipelineRecord->traceback_submit_start_ns =
+							scoreSelectStartNs;
+						currentFlushPipelineRecord->traceback_submit_end_ns =
+							scoreSelectEndNs;
+						currentFlushPipelineRecord->traceback_wait_start_ns =
+							scoreSelectStartNs;
+						currentFlushPipelineRecord->traceback_wait_end_ns =
+							scoreSelectEndNs;
+						currentFlushPipelineRecord->d2h_start_ns = scoreSelectStartNs;
+						currentFlushPipelineRecord->d2h_end_ns = scoreSelectEndNs;
+					}
+					scoreSelectSeconds = fasim_seconds_since(scoreSelectStart);
+				}
 			if (!gasalOk)
 			{
 				return false;
 			}
+			nvtxScoreTraceback.close();
 
 			std::vector< std::vector<FasimGasal2SelectedAlignment> > replaySelectedByTask(tasks.size());
 			uint64_t replaySelectedCount = 0;
@@ -7082,6 +15430,285 @@ int main(int argc, char* const* argv)
 			                                           cpuTracebackRank2Emits,
 			                                           cpuTracebackRank3Emits,
 			                                           cpuTracebackRank4PlusEmits);
+			if (fasim_gasal2_phase7_next_reducer_shadow_runtime())
+			{
+				fasim_gasal2_record_phase7_next_reducer_result(
+					useCpuTracebackReplay ?
+						cpuTracebackAlignCalls :
+						static_cast<uint64_t>(gasalAttempts.size()),
+					static_cast<uint64_t>(gasalAttempts.size()),
+					0,
+					0,
+					0,
+					0);
+			}
+			if (fasim_gasal2_phase7_frontier_early_stop_runtime())
+			{
+				const uint64_t referenceAlignAttempts =
+					static_cast<uint64_t>(gasalAttempts.size());
+				const uint64_t candidateAlignAttempts =
+					useCpuTracebackReplay ?
+						cpuTracebackAlignCalls :
+						referenceAlignAttempts;
+				const uint64_t skippedAttempts =
+					referenceAlignAttempts > candidateAlignAttempts ?
+						referenceAlignAttempts - candidateAlignAttempts :
+						0;
+				fasim_gasal2_record_phase7_frontier_early_stop(
+					static_cast<uint64_t>(tasks.size()),
+					static_cast<uint64_t>(scoreGroups.size()),
+					referenceAlignAttempts,
+					candidateAlignAttempts,
+					skippedAttempts,
+					cpuTracebackThresholdEmits,
+					cpuTracebackBestFallbackEmits + cpuTracebackLastEmits,
+					useCpuTracebackReplay);
+			}
+			if (phase7AllAttemptEarlyStopRequested)
+			{
+				const uint64_t referenceAlignAttempts =
+					static_cast<uint64_t>(gasalAttempts.size());
+				const uint64_t candidateAlignAttempts = cpuTracebackAlignCalls;
+				const uint64_t skippedAttempts =
+					referenceAlignAttempts > candidateAlignAttempts ?
+						referenceAlignAttempts - candidateAlignAttempts :
+						0;
+				fasim_gasal2_record_phase7_all_attempt_early_stop(
+					static_cast<uint64_t>(tasks.size()),
+					static_cast<uint64_t>(scoreGroups.size()),
+					referenceAlignAttempts,
+					candidateAlignAttempts,
+					skippedAttempts,
+					cpuTracebackThresholdEmits,
+					cpuTracebackBestFallbackEmits + cpuTracebackLastEmits,
+					useCpuTracebackReplay);
+			}
+				if (phase7GateCGpuCandidatesRequested)
+				{
+					fasim_gasal2_record_phase7_gate_c(
+						static_cast<uint64_t>(tasks.size()),
+					static_cast<uint64_t>(scoreGroups.size()),
+					static_cast<uint64_t>(gasalAttempts.size()),
+					0,
+					0,
+					0,
+					0,
+					0,
+					useCpuTracebackReplay ? cpuTracebackAlignCalls : 0,
+					0,
+					0.0,
+					0.0,
+					cpuTracebackReplaySeconds,
+					cpuTracebackReplaySeconds,
+					0,
+					0,
+						useCpuTracebackReplay);
+				}
+
+				FasimGasal2FlushGpuResult flushGpuResult;
+				const std::vector< std::vector<FasimGasal2SelectedAlignment> > *finalizerSelectedByTask =
+					&replaySelectedByTask;
+				const bool needFlushGpuResult =
+					resultBoundaryStats.requested ||
+					twoSlotOverlapStats.active ||
+					twoSlotOverlapStats.validate_active;
+				if (needFlushGpuResult)
+				{
+					const auto boundaryStart =
+						std::chrono::steady_clock::now();
+					if (resultBoundaryStats.requested)
+					{
+						++resultBoundaryStats.flushes;
+					}
+					flushGpuResult.flush_id = phaseTiming.flushes;
+					flushGpuResult.request_count =
+						static_cast<uint64_t>(gasalAttempts.size());
+					flushGpuResult.traceback_request_count =
+						static_cast<uint64_t>(gasalSelected.size());
+					flushGpuResult.task_count =
+						static_cast<uint64_t>(tasks.size());
+					flushGpuResult.tasks.reserve(tasks.size());
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						const StreamTask &task = tasks[t];
+						FasimGasal2FlushTaskSnapshot taskSnapshot;
+						taskSnapshot.task_index = task.taskIndex;
+						taskSnapshot.chr = task.chr;
+						taskSnapshot.record_start_genome =
+							task.recordStartGenome;
+						taskSnapshot.dna_start_pos = task.dnaStartPos;
+						taskSnapshot.rule = task.rule;
+						taskSnapshot.strand = task.strand;
+						taskSnapshot.para = task.Para;
+						taskSnapshot.target_length =
+							static_cast<uint64_t>(task.seq2.size());
+						taskSnapshot.scoreinfo_count =
+							t < activeScoreInfos->size() ?
+							static_cast<uint64_t>((*activeScoreInfos)[t].size()) :
+							0;
+						flushGpuResult.tasks.push_back(taskSnapshot);
+					}
+					flushGpuResult.score_groups.reserve(scoreGroups.size());
+					for (size_t gi = 0; gi < scoreGroups.size(); ++gi)
+					{
+						flushGpuResult.score_groups.push_back(
+							FasimGasal2FlushScoreGroupSnapshot(
+								scoreGroups[gi].taskIndex,
+								scoreGroups[gi].scoreInfoIndex));
+					}
+					flushGpuResult.selected_by_task = replaySelectedByTask;
+					for (size_t t = 0;
+					     t < flushGpuResult.selected_by_task.size();
+					     ++t)
+					{
+						const std::vector<FasimGasal2SelectedAlignment> &rows =
+							flushGpuResult.selected_by_task[t];
+						for (size_t i = 0; i < rows.size(); ++i)
+						{
+							const FasimGasal2SelectedAlignment &selected =
+								rows[i];
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(t));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.scoreinfo_index));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(selected.start));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.cutlength));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.alignment.sw_score));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.alignment.query_begin));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.alignment.query_end));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.alignment.ref_begin));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.alignment.ref_end));
+							flushGpuResult.selected_digest =
+								fasim_hash_int64(
+									flushGpuResult.selected_digest,
+									static_cast<int64_t>(
+										selected.alignment.cigar.size()));
+							++flushGpuResult.selected_alignments;
+							flushGpuResult.traceback_bytes +=
+								static_cast<uint64_t>(
+									selected.alignment.cigar.size() *
+									sizeof(uint32_t));
+						}
+					}
+					flushGpuResult.result_bytes =
+						static_cast<uint64_t>(
+							flushGpuResult.tasks.size() *
+							sizeof(FasimGasal2FlushTaskSnapshot)) +
+						static_cast<uint64_t>(
+							flushGpuResult.score_groups.size() *
+							sizeof(FasimGasal2FlushScoreGroupSnapshot)) +
+						static_cast<uint64_t>(
+							flushGpuResult.selected_alignments *
+							sizeof(FasimGasal2SelectedAlignment)) +
+						flushGpuResult.traceback_bytes;
+					flushGpuResult.ready = true;
+					finalizerSelectedByTask =
+						&flushGpuResult.selected_by_task;
+
+					if (resultBoundaryStats.requested)
+					{
+						++resultBoundaryStats.materialized_flushes;
+						++resultBoundaryStats.task_backing_owned_flushes;
+						++resultBoundaryStats.score_group_mapping_owned_flushes;
+						++resultBoundaryStats.selected_by_task_owned_flushes;
+						resultBoundaryStats.task_count +=
+							flushGpuResult.task_count;
+						resultBoundaryStats.score_groups +=
+							static_cast<uint64_t>(
+								flushGpuResult.score_groups.size());
+						resultBoundaryStats.selected_alignments +=
+							flushGpuResult.selected_alignments;
+						resultBoundaryStats.result_bytes +=
+							flushGpuResult.result_bytes;
+						resultBoundaryStats.traceback_bytes +=
+							flushGpuResult.traceback_bytes;
+						resultBoundaryStats.result_digest =
+							fasim_hash_int64(resultBoundaryStats.result_digest,
+							                 static_cast<int64_t>(
+								                 flushGpuResult.selected_digest));
+						resultBoundaryStats.materialize_seconds +=
+							fasim_seconds_since(boundaryStart);
+					}
+				}
+				if (orderedCommitStats.requested && flushGpuResult.ready)
+				{
+					fasim_gasal2_ordered_commit_observe_ready(
+						orderedCommitStats,
+						flushGpuResult,
+						flushGpuResult.flush_id);
+				}
+				if (dualFinalizerStats.requested && flushGpuResult.ready)
+				{
+					fasim_gasal2_dual_finalizer_observe_ready(
+						dualFinalizerStats);
+				}
+				if (extractedFinalizerStats.requested)
+				{
+					if (flushGpuResult.ready)
+					{
+						fasim_gasal2_extracted_finalizer_observe_ready(
+							extractedFinalizerStats);
+					}
+					else
+					{
+						fasim_gasal2_extracted_finalizer_observe_missing_result(
+							extractedFinalizerStats);
+					}
+				}
+				if (pureFinalizerStats.requested)
+				{
+					++pureFinalizerStats.flushes_observed;
+					if (flushGpuResult.ready)
+					{
+						++pureFinalizerStats.result_boundary_ready_flushes;
+					}
+					else
+					{
+						++pureFinalizerStats.result_boundary_missing_flushes;
+						++pureFinalizerStats.ineligible_flushes;
+					}
+				}
+				if (phase7V3OracleMinCoverReplayRequested)
+				{
+					fasim_gasal2_record_phase7_v3_oracle_min_cover_replay(
+					static_cast<uint64_t>(tasks.size()),
+					static_cast<uint64_t>(gasalAttempts.size()),
+					cpuTracebackAlignCalls,
+					static_cast<uint64_t>(gasalSelected.size()),
+					useCpuTracebackReplay);
+			}
 
 										const int8_t nt_table[128] = {
 											4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
@@ -7094,7 +15721,12 @@ int main(int argc, char* const* argv)
 			4, 4, 4, 4,	3, 0, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4
 				};
 
+				FasimNvtxRange nvtxConvert(&nvtxTrace, "fasim.gasal2.convert");
 				const auto convertStart = std::chrono::steady_clock::now();
+				if (currentFlushPipelineRecord != NULL)
+				{
+					currentFlushPipelineRecord->convert_start_ns = fasim_monotonic_ns();
+				}
 				const bool replayUsesCpuTraceback = useCpuTracebackReplay;
 				std::atomic<uint64_t> convertInputAlignments(0);
 				std::atomic<uint64_t> convertRawTriplexes(0);
@@ -7112,6 +15744,16 @@ int main(int argc, char* const* argv)
 				std::atomic<uint64_t> shadowMinSpanLtCLength(0);
 					std::atomic<uint64_t> shadowMaxSpanLtCLength(0);
 					std::atomic<uint64_t> shadowSumSpanLtCLength(0);
+					std::atomic<uint64_t> phase3CigarNtAlignmentsSeen(0);
+					std::atomic<uint64_t> phase3CigarNtCigarLtNtMin(0);
+					std::atomic<uint64_t> phase3CigarNtLegacyNtLtNtMin(0);
+					std::atomic<uint64_t> phase3CigarNtAgreeLtNtMin(0);
+					std::atomic<uint64_t> phase3CigarNtDisagreeLtNtMin(0);
+					std::atomic<uint64_t> phase3CigarNtFalseNegativeRows(0);
+					std::atomic<uint64_t> phase3CigarNtRealSkippedAlignments(0);
+					std::atomic<uint64_t> phase3CigarNtRealValidatedSkips(0);
+					std::atomic<uint64_t> phase3CigarNtRealValidateMismatches(0);
+					std::atomic<uint64_t> phase3CigarNtRealFallbacks(0);
 					const bool observeEmitRank =
 						fasim_top5_gasal2_scoreinfo_emit_rank_observe_enabled_runtime();
 					std::atomic<uint64_t> emitRankObservedAlignments(0);
@@ -7179,35 +15821,292 @@ int main(int argc, char* const* argv)
 							emitRank33Plus.fetch_add(1, std::memory_order_relaxed);
 						}
 						};
+				auto observePhase3CigarNtPrefilter =
+					[&](const StripedSmithWaterman::Alignment &alignment,
+					    int legacyNt)
+				{
+					if (!phase3CigarNtPrefilterObserveEnabled)
+					{
+						return;
+					}
+					const std::vector<FasimCigarOp> cigarOps =
+						fasim_cigar_ops_from_alignment(alignment.cigar);
+					const bool cigarLtNtMin =
+						fasim_cigar_aligned_len(cigarOps) <
+						static_cast<uint64_t>(std::max(0, paraList.ntMin));
+					const bool legacyLtNtMin = legacyNt < paraList.ntMin;
+					phase3CigarNtAlignmentsSeen.fetch_add(
+						1,
+						std::memory_order_relaxed);
+					if (cigarLtNtMin)
+					{
+						phase3CigarNtCigarLtNtMin.fetch_add(
+							1,
+							std::memory_order_relaxed);
+					}
+					if (legacyLtNtMin)
+					{
+						phase3CigarNtLegacyNtLtNtMin.fetch_add(
+							1,
+							std::memory_order_relaxed);
+					}
+					if (cigarLtNtMin == legacyLtNtMin)
+					{
+						phase3CigarNtAgreeLtNtMin.fetch_add(
+							1,
+							std::memory_order_relaxed);
+					}
+					else
+					{
+						phase3CigarNtDisagreeLtNtMin.fetch_add(
+							1,
+							std::memory_order_relaxed);
+						if (!legacyLtNtMin)
+						{
+							phase3CigarNtFalseNegativeRows.fetch_add(
+								1,
+								std::memory_order_relaxed);
+						}
+					}
+				};
+						auto makeEligibilityAttempt =
+							[&](const FasimGasal2SelectedAlignment &selectedAlignment,
+							    size_t taskIndex,
+							    const StripedSmithWaterman::Alignment &alignment)
+							-> FasimGasal2PretracebackPruningEligibilityAttempt
+						{
+							FasimGasal2PretracebackPruningEligibilityAttempt attempt;
+							if (!eligibilityRuntime.active)
+							{
+								return attempt;
+							}
+							attempt.attempt_id = eligibilityRuntime.next_attempt();
+							attempt.flush_id = phaseTiming.flushes;
+							attempt.task_id = static_cast<uint64_t>(taskIndex);
+							attempt.scoreinfo_index =
+								selectedAlignment.scoreinfo_index;
+							attempt.prealign_score =
+								selectedAlignment.score_prepass_score != 0 ?
+								selectedAlignment.score_prepass_score :
+								alignment.sw_score;
+							attempt.query_len =
+								static_cast<uint64_t>(lncSeq.size());
+							attempt.target_size =
+								alignment.ref_end >= alignment.ref_begin ?
+								alignment.ref_end - alignment.ref_begin + 1 :
+								selectedAlignment.cutlength;
+							attempt.target_start = selectedAlignment.start;
+							attempt.cutlength = selectedAlignment.cutlength;
+							attempt.request_key_hash =
+								fasim_hash_selected_request(
+									selectedAlignment,
+									static_cast<uint64_t>(taskIndex));
+							attempt.descriptor_key_hash =
+								fasim_hash_selected_descriptor(
+									selectedAlignment,
+									alignment,
+									static_cast<uint64_t>(taskIndex));
+							attempt.score = alignment.sw_score;
+							attempt.query_begin = alignment.query_begin;
+							attempt.query_end = alignment.query_end;
+							attempt.ref_begin = alignment.ref_begin;
+							attempt.ref_end = alignment.ref_end;
+							attempt.cigar_hash = fasim_hash_cigar(alignment.cigar);
+							return attempt;
+						};
+						auto fillEligibilityFromLiteRow =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt *attempt,
+							    const FasimLiteRow &row,
+							    long outputGlobalStart,
+							    long outputGlobalEnd)
+						{
+							if (attempt == NULL)
+							{
+								return;
+							}
+							attempt->final_row_hash =
+								fasim_hash_lite_row_key(row.key);
+							attempt->output_global_start = outputGlobalStart;
+							attempt->output_global_end = outputGlobalEnd;
+							attempt->score = static_cast<int>(row.score);
+							attempt->nt = static_cast<int>(row.nt);
+							attempt->identity = row.identity;
+							attempt->stability = row.stability;
+						};
+						auto recordEligibilityThresholdRemoval =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt attempt,
+							    const char *bucket,
+							    bool scoreFail,
+							    bool ntFail,
+							    const char *notes)
+						{
+							if (!eligibilityRuntime.active ||
+							    attempt.attempt_id == 0)
+							{
+								return;
+							}
+							attempt.final_rejection_bucket = bucket;
+							if (scoreFail)
+							{
+								attempt.eligibility_bucket =
+									"sort_or_dominance_removed";
+								attempt.pre_traceback_decidable = true;
+								attempt.top5_only_safe_candidate = true;
+							}
+							else if (ntFail)
+							{
+								attempt.eligibility_bucket =
+									"cigar_dependent_span";
+								attempt.post_traceback_only = true;
+							}
+							else
+							{
+								attempt.eligibility_bucket =
+									"cigar_dependent_duplicate";
+								attempt.post_traceback_only = true;
+							}
+							attempt.notes = notes;
+							eligibilityRuntime.record(attempt);
+						};
+						auto recordEligibilityPostCigarOnly =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt attempt,
+							    const char *notes)
+						{
+							if (!eligibilityRuntime.active ||
+							    attempt.attempt_id == 0)
+							{
+								return;
+							}
+							attempt.final_rejection_bucket = "post_cigar_only";
+							attempt.eligibility_bucket =
+								"cigar_dependent_duplicate";
+							attempt.post_traceback_only = true;
+							attempt.notes = notes;
+							eligibilityRuntime.record(attempt);
+						};
+						auto recordEligibilityInvalidSpan =
+							[&](FasimGasal2PretracebackPruningEligibilityAttempt attempt,
+							    bool pretracebackProvable,
+							    const char *notes)
+						{
+							if (!eligibilityRuntime.active ||
+							    attempt.attempt_id == 0)
+							{
+								return;
+							}
+							attempt.final_rejection_bucket = "invalid_span_bound";
+							if (pretracebackProvable)
+							{
+								attempt.eligibility_bucket =
+									"pretraceback_span_provable";
+								attempt.pre_traceback_decidable = true;
+								attempt.top5_only_safe_candidate = true;
+							}
+							else
+							{
+								attempt.eligibility_bucket =
+									"cigar_dependent_span";
+								attempt.post_traceback_only = true;
+							}
+							attempt.notes = notes;
+							eligibilityRuntime.record(attempt);
+						};
+						auto exportTaxonomyAttempt =
+					[&](const FasimGasal2SelectedAlignment &selectedAlignment,
+					    size_t taskIndex,
+					    const StripedSmithWaterman::Alignment &alignment,
+					    const char *bucket,
+					    int preTracebackDecidable,
+					    int postTracebackOnly,
+					    int top5OnlySafeCandidate,
+					    int fullOutputSafeCandidate,
+					    int emittedRow,
+					    int finalRow,
+					    long outputGlobalStart,
+					    long outputGlobalEnd,
+					    int score,
+					    int nt,
+					    double identity,
+					    double stability,
+					    const char *notes)
+				{
+					if (!taxonomyExporter.active)
+					{
+						return;
+					}
+					const int targetSize =
+						alignment.ref_end >= alignment.ref_begin ?
+						alignment.ref_end - alignment.ref_begin + 1 :
+						selectedAlignment.cutlength;
+					taxonomyExporter.write(selectedAlignment,
+					                       static_cast<uint64_t>(taskIndex),
+					                       targetSize,
+					                       bucket,
+					                       preTracebackDecidable,
+					                       postTracebackOnly,
+					                       top5OnlySafeCandidate,
+					                       fullOutputSafeCandidate,
+					                       emittedRow,
+					                       finalRow,
+					                       outputGlobalStart,
+					                       outputGlobalEnd,
+					                       score,
+					                       nt,
+					                       identity,
+					                       stability,
+					                       notes);
+				};
 					if (directConvertActive ||
 					    archiveFirstConvertActive)
-					{
-						std::vector< std::vector<FasimGasal2DirectLiteArchiveTriplex> >
-							directRowsByTask(tasks.size());
-
-						auto convertDirectTask = [&](size_t t)
 						{
-							const StreamTask &task = tasks[t];
-							std::vector<FasimGasal2DirectLiteArchiveTriplex> rows;
-							rows.reserve(replaySelectedByTask[t].size());
-							if (phaseTimingEnabled)
-							{
-								convertTasks.fetch_add(1, std::memory_order_relaxed);
-								if (!replaySelectedByTask[t].empty())
+								std::vector< std::vector<FasimGasal2DirectLiteArchiveTriplex> >
+									directRowsByTask(tasks.size());
+								std::vector< std::vector<FasimGasal2PretracebackPruningEligibilityAttempt> >
+									directEligibilityByTask(tasks.size());
+								if (resultBoundaryStats.requested &&
+								    flushGpuResult.ready &&
+								    finalizerSelectedByTask ==
+								        &flushGpuResult.selected_by_task)
 								{
-									convertTasksWithInput.fetch_add(
-										1,
-										std::memory_order_relaxed);
+									++resultBoundaryStats
+										.finalizer_consumed_result_flushes;
 								}
-							}
-							const auto selectedScanStart = std::chrono::steady_clock::now();
-							for (size_t si = 0; si < replaySelectedByTask[t].size(); ++si)
-							{
-								const FasimGasal2SelectedAlignment &selectedAlignment =
-									replaySelectedByTask[t][si];
-								const StripedSmithWaterman::Alignment *alignmentForRow =
-									&selectedAlignment.alignment;
-								StripedSmithWaterman::Alignment cpuReplayAdjustedAlignment;
+
+								auto convertDirectTask = [&](size_t t)
+								{
+									const StreamTask &task = tasks[t];
+									const std::vector<FasimGasal2SelectedAlignment>
+										&selectedRowsForTask =
+											t < finalizerSelectedByTask->size() ?
+											(*finalizerSelectedByTask)[t] :
+											replaySelectedByTask[t];
+									std::vector<FasimGasal2DirectLiteArchiveTriplex> rows;
+									std::vector<FasimGasal2PretracebackPruningEligibilityAttempt>
+										eligibilityRows;
+									rows.reserve(selectedRowsForTask.size());
+									if (eligibilityRuntime.active)
+									{
+										eligibilityRows.reserve(
+											selectedRowsForTask.size());
+									}
+								if (phaseTimingEnabled)
+								{
+									convertTasks.fetch_add(1, std::memory_order_relaxed);
+									if (!selectedRowsForTask.empty())
+									{
+										convertTasksWithInput.fetch_add(
+											1,
+											std::memory_order_relaxed);
+									}
+								}
+								const auto selectedScanStart = std::chrono::steady_clock::now();
+								for (size_t si = 0; si < selectedRowsForTask.size(); ++si)
+								{
+										const FasimGasal2SelectedAlignment &selectedAlignment =
+											selectedRowsForTask[si];
+									const StripedSmithWaterman::Alignment *alignmentForRow =
+										&selectedAlignment.alignment;
+									StripedSmithWaterman::Alignment cpuReplayAdjustedAlignment;
 								if (replayUsesCpuTraceback && selectedAlignment.selected)
 								{
 									cpuReplayAdjustedAlignment = selectedAlignment.alignment;
@@ -7215,15 +16114,22 @@ int main(int argc, char* const* argv)
 									cpuReplayAdjustedAlignment.ref_end += selectedAlignment.start;
 									alignmentForRow = &cpuReplayAdjustedAlignment;
 								}
-								if (!selectedAlignment.selected ||
-								    alignmentForRow->sw_score == 0)
-								{
-									continue;
-								}
-								observeScoreInfoRank(selectedAlignment);
-								const uint64_t selectedScoreInfoRank =
-									scoreInfoRankForSelected(selectedAlignment);
-								if (phaseTimingEnabled)
+									if (!selectedAlignment.selected ||
+									    alignmentForRow->sw_score == 0)
+									{
+										continue;
+									}
+									FasimGasal2PretracebackPruningEligibilityAttempt
+										eligibilityAttempt =
+											makeEligibilityAttempt(
+												selectedAlignment,
+												t,
+												*alignmentForRow);
+										observeScoreInfoRank(selectedAlignment);
+										const uint64_t selectedScoreInfoRank =
+											scoreInfoRankForSelected(selectedAlignment);
+										const size_t beforeRows = rows.size();
+										if (phaseTimingEnabled)
 								{
 									convertInputAlignments.fetch_add(
 										1,
@@ -7260,16 +16166,30 @@ int main(int argc, char* const* argv)
 											1,
 											std::memory_order_relaxed);
 									}
-									if (querySpan + refSpan < paraList.cLength)
-									{
-										shadowSumSpanLtCLength.fetch_add(
-											1,
-											std::memory_order_relaxed);
-										if (ntSumSpanPrune)
+										if (querySpan + refSpan < paraList.cLength)
 										{
-											continue;
+											shadowSumSpanLtCLength.fetch_add(
+												1,
+												std::memory_order_relaxed);
+											const bool pretracebackProvable =
+												selectedAlignment.cutlength > 0 &&
+												selectedAlignment.cutlength <
+													paraList.cLength;
+											eligibilityAttempt.invalid_span_bound = true;
+											eligibilityAttempt
+												.invalid_span_pretraceback_provable =
+													pretracebackProvable;
+											if (ntSumSpanPrune)
+											{
+												recordEligibilityInvalidSpan(
+													eligibilityAttempt,
+													pretracebackProvable,
+													pretracebackProvable ?
+													"span bound provable from pre-traceback cutlength" :
+													"span bound depends on traceback endpoints");
+												continue;
+											}
 										}
-									}
 									convertSpanCheckNanos.fetch_add(
 										static_cast<uint64_t>(
 											std::chrono::duration_cast<
@@ -7288,28 +16208,110 @@ int main(int argc, char* const* argv)
 									directConvertActive ||
 									equivalenceFirstConvertActive ||
 									archiveFirstConvertActive;
-								policy.materialize_gap_masks =
-									equivalenceFirstConvertActive ||
-									archiveFirstConvertActive;
-								FasimConvertedTriplexRecord convertedRecord;
-								if (buildConvertedTriplexRecord(
-									    *alignmentForRow,
-									    convertedRecord,
-									    lncSeq,
-									    task.seq2,
-									    *task.srcSeq,
-									    nt_table,
-									    task.dnaStartPos,
-									    task.rule,
-									    task.strand,
-									    task.Para,
-									    paraList.penaltyT,
-									    paraList.penaltyC,
-									    paraList.ntMin,
-									    paraList.ntMax,
-									    policy))
-								{
-									convertedRecord.chr = task.chr;
+									policy.materialize_gap_masks =
+										equivalenceFirstConvertActive ||
+										archiveFirstConvertActive;
+									const bool phase3RealSkipCandidate =
+										phase3CigarNtPrefilterRealEnabled &&
+										fasim_cigar_aligned_len(
+											fasim_cigar_ops_from_alignment(
+												alignmentForRow->cigar)) <
+										static_cast<uint64_t>(
+											std::max(0, paraList.ntMin));
+									FasimConvertedTriplexRecord convertedRecord;
+									bool convertedRecordKept = false;
+									bool phase3ObservedConvertedRecord = false;
+									if (phase3RealSkipCandidate)
+									{
+										phase3CigarNtRealSkippedAlignments.fetch_add(
+											1,
+											std::memory_order_relaxed);
+										if (phase3CigarNtPrefilterValidateEnabled)
+										{
+											convertedRecordKept =
+												buildConvertedTriplexRecord(
+													*alignmentForRow,
+													convertedRecord,
+													lncSeq,
+													task.seq2,
+													*task.srcSeq,
+													nt_table,
+													task.dnaStartPos,
+													task.rule,
+													task.strand,
+													task.Para,
+													paraList.penaltyT,
+													paraList.penaltyC,
+													paraList.ntMin,
+													paraList.ntMax,
+													policy);
+											phase3CigarNtRealValidatedSkips.fetch_add(
+												1,
+												std::memory_order_relaxed);
+											observePhase3CigarNtPrefilter(
+												*alignmentForRow,
+												convertedRecord.nt);
+											phase3ObservedConvertedRecord = true;
+											if (convertedRecordKept)
+											{
+												phase3CigarNtRealValidateMismatches.fetch_add(
+													1,
+													std::memory_order_relaxed);
+												phase3CigarNtRealFallbacks.fetch_add(
+													1,
+													std::memory_order_relaxed);
+											}
+										}
+										if (!phase3CigarNtPrefilterValidateEnabled ||
+										    !convertedRecordKept)
+										{
+											if (phaseTimingEnabled)
+											{
+												const uint64_t triplexNanos =
+													static_cast<uint64_t>(
+														std::chrono::duration_cast<
+															std::chrono::nanoseconds>(
+															std::chrono::steady_clock::now() -
+															convertAlignmentStart).count());
+												convertTriplexNanos.fetch_add(
+													triplexNanos,
+													std::memory_order_relaxed);
+												convertAlignmentNanos.fetch_add(
+													triplexNanos,
+													std::memory_order_relaxed);
+											}
+											continue;
+										}
+									}
+									if (!phase3RealSkipCandidate)
+									{
+										convertedRecordKept =
+											buildConvertedTriplexRecord(
+												*alignmentForRow,
+												convertedRecord,
+												lncSeq,
+												task.seq2,
+												*task.srcSeq,
+												nt_table,
+												task.dnaStartPos,
+												task.rule,
+												task.strand,
+												task.Para,
+												paraList.penaltyT,
+												paraList.penaltyC,
+												paraList.ntMin,
+												paraList.ntMax,
+												policy);
+									}
+									if (convertedRecordKept)
+									{
+										if (!phase3ObservedConvertedRecord)
+										{
+											observePhase3CigarNtPrefilter(
+												*alignmentForRow,
+												convertedRecord.nt);
+										}
+										convertedRecord.chr = task.chr;
 									convertedRecord.genomestart =
 										convertedRecord.starj +
 										task.recordStartGenome - 1;
@@ -7358,10 +16360,96 @@ int main(int argc, char* const* argv)
 										convertedRecord.neartriplex;
 									converted.cigar_probe =
 										convertedRecord.cigar_probe;
-									rows.push_back(
-										FasimGasal2DirectLiteArchiveTriplex(
-											converted,
-											convertedRecord));
+										rows.push_back(
+											FasimGasal2DirectLiteArchiveTriplex(
+												converted,
+												convertedRecord));
+										if (eligibilityRuntime.active)
+										{
+											FasimLiteRow liteRow =
+												fasim_make_lite_row(
+													converted.chr,
+													converted.genomestart,
+													converted.genomeend,
+													converted);
+											fillEligibilityFromLiteRow(
+												&eligibilityAttempt,
+												liteRow,
+												converted.genomestart,
+												converted.genomeend);
+											eligibilityRows.push_back(
+												eligibilityAttempt);
+										}
+									}
+									if (taxonomyExporter.active)
+									{
+										if (rows.size() == beforeRows)
+										{
+										exportTaxonomyAttempt(selectedAlignment,
+										                      t,
+										                      *alignmentForRow,
+										                      "post_cigar_only",
+										                      0, 1, 0, 0, 0, 0,
+										                      0, 0,
+										                      alignmentForRow->sw_score,
+										                      0, 0.0, 0.0,
+											                      "no converted row after CIGAR materialization");
+										}
+										else
+									{
+										const FasimGasal2DirectLiteArchiveTriplex &newRow =
+											rows.back();
+										const triplex &row = newRow.value;
+										const bool scoreFail = row.score < paraList.scoreMin;
+										const bool identityFail =
+											row.identity < paraList.minIdentity;
+										const bool stabilityFail =
+											row.tri_score < paraList.minStability;
+										const bool ntFail = row.nt < paraList.cLength;
+										if (scoreFail || identityFail ||
+										    stabilityFail || ntFail)
+										{
+											const char *bucket = scoreFail ?
+												"filtered_score" :
+												(identityFail ? "filtered_identity" :
+												 (stabilityFail ?
+												  "filtered_stability" :
+												  "filtered_nt"));
+											exportTaxonomyAttempt(
+												selectedAlignment,
+												t,
+												*alignmentForRow,
+												bucket,
+												scoreFail ? 1 : 0,
+												scoreFail ? 0 : 1,
+												scoreFail ? 1 : 0,
+												scoreFail ? 1 : 0,
+												0, 0,
+												row.genomestart,
+												row.genomeend,
+												static_cast<int>(row.score),
+												row.nt,
+												row.identity,
+												row.tri_score,
+												"converted row rejected by emit thresholds");
+										}
+										else
+										{
+											exportTaxonomyAttempt(
+												selectedAlignment,
+												t,
+												*alignmentForRow,
+												"retained_emitted",
+												0, 0, 0, 1, 1, 0,
+												row.genomestart,
+												row.genomeend,
+												static_cast<int>(row.score),
+												row.nt,
+												row.identity,
+												row.tri_score,
+												"converted row kept by emit thresholds");
+										}
+									}
 								}
 								if (phaseTimingEnabled)
 								{
@@ -7398,6 +16486,181 @@ int main(int argc, char* const* argv)
 							fasim_sort_unique_filter_converted_rows(rows,
 							                                        filteredRows,
 							                                        paraList);
+							if (eligibilityRuntime.active)
+							{
+								std::map<std::string,
+								         FasimGasal2PretracebackPruningEligibilityAttempt>
+									retainedByHash;
+								for (size_t ri = 0; ri < filteredRows.size(); ++ri)
+								{
+									const triplex &retained = filteredRows[ri].value;
+									if (retained.score < paraList.scoreMin ||
+									    retained.identity < paraList.minIdentity ||
+									    retained.tri_score < paraList.minStability ||
+									    retained.nt < paraList.cLength)
+									{
+										continue;
+									}
+									const FasimLiteRow retainedLite =
+										fasim_make_lite_row(
+											retained.chr,
+											retained.genomestart,
+											retained.genomeend,
+											retained);
+									const std::string retainedHash =
+										fasim_hash_lite_row_key(retainedLite.key);
+									for (size_t ai = 0;
+									     ai < eligibilityRows.size();
+									     ++ai)
+									{
+										if (eligibilityRows[ai].final_row_hash ==
+										    retainedHash)
+										{
+											retainedByHash[retainedHash] =
+												eligibilityRows[ai];
+											break;
+										}
+									}
+								}
+								for (size_t ai = 0;
+								     ai < eligibilityRows.size();
+								     ++ai)
+								{
+									FasimGasal2PretracebackPruningEligibilityAttempt
+										attempt = eligibilityRows[ai];
+									std::map<std::string,
+									         FasimGasal2PretracebackPruningEligibilityAttempt>
+										::const_iterator repIt =
+											retainedByHash.find(
+												attempt.final_row_hash);
+									const bool hasRepresentative =
+										repIt != retainedByHash.end();
+									if (hasRepresentative)
+									{
+										const FasimGasal2PretracebackPruningEligibilityAttempt
+											&rep = repIt->second;
+										attempt.representative_attempt_id =
+											rep.attempt_id;
+										attempt.representative_flush_id =
+											rep.flush_id;
+										attempt.representative_request_key_hash =
+											rep.request_key_hash;
+										attempt.representative_descriptor_key_hash =
+											rep.descriptor_key_hash;
+										attempt.same_flush =
+											attempt.flush_id == rep.flush_id;
+										attempt.cross_flush =
+											attempt.flush_id != rep.flush_id;
+										if (attempt.attempt_id == rep.attempt_id)
+										{
+											attempt.final_rejection_bucket =
+												"retained_emitted";
+											attempt.eligibility_bucket =
+												"representative_selection_dependent";
+											attempt.full_output_safe_candidate = true;
+											attempt.notes =
+												"canonical retained representative";
+										}
+										else if (attempt.cross_flush &&
+										         attempt.request_key_hash ==
+										             rep.request_key_hash)
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"cross_flush_exact_duplicate";
+											attempt.pre_traceback_decidable = true;
+											attempt.top5_only_safe_candidate = true;
+											attempt.notes =
+												"same final row and request as retained representative across flush";
+										}
+										else if (attempt.request_key_hash ==
+										         rep.request_key_hash)
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"exact_request_duplicate";
+											attempt.pre_traceback_decidable = true;
+											attempt.top5_only_safe_candidate = true;
+											attempt.notes =
+												"same pre-traceback request as retained representative";
+										}
+										else if (attempt.descriptor_key_hash ==
+										         rep.descriptor_key_hash)
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"exact_descriptor_duplicate";
+											attempt.pre_traceback_decidable = true;
+											attempt.top5_only_safe_candidate = true;
+											attempt.notes =
+												"same normalized descriptor as retained representative";
+										}
+										else
+										{
+											attempt.final_rejection_bucket =
+												"final_sort_dedup_removed";
+											attempt.eligibility_bucket =
+												"same_final_row_different_descriptor";
+											attempt.post_traceback_only = true;
+											attempt.notes =
+												"same final row but different pre-traceback descriptor";
+										}
+										eligibilityRuntime.record(attempt);
+										continue;
+									}
+
+									const bool scoreFail =
+										attempt.score < paraList.scoreMin;
+									const bool identityFail =
+										attempt.identity < paraList.minIdentity;
+									const bool stabilityFail =
+										attempt.stability < paraList.minStability;
+									const bool ntFail =
+										attempt.nt < paraList.cLength;
+									if (attempt.invalid_span_bound)
+									{
+										recordEligibilityInvalidSpan(
+											attempt,
+											attempt
+												.invalid_span_pretraceback_provable,
+											attempt
+												.invalid_span_pretraceback_provable ?
+											"span bound provable from pre-traceback cutlength" :
+											"span bound depends on traceback endpoints");
+									}
+									else if (scoreFail || identityFail ||
+									         stabilityFail || ntFail)
+									{
+										const char *bucket = scoreFail ?
+											"filtered_score" :
+											(identityFail ? "filtered_identity" :
+											 (stabilityFail ?
+											  "filtered_stability" :
+											  "filtered_nt"));
+										recordEligibilityThresholdRemoval(
+											attempt,
+											bucket,
+											scoreFail,
+											ntFail,
+											"converted row rejected before final retained set");
+									}
+									else
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"sort_or_dominance_removed";
+										attempt.post_traceback_only = true;
+										attempt.notes =
+											"converted row removed by sort/filter without retained representative";
+										eligibilityRuntime.record(attempt);
+									}
+								}
+								directEligibilityByTask[t].swap(eligibilityRows);
+							}
 							if (phaseTimingEnabled)
 							{
 								convertSortNanos.fetch_add(
@@ -7462,7 +16725,97 @@ int main(int argc, char* const* argv)
 							}
 						}
 
-						{
+							uint64_t directPrecommitRows = 0;
+							uint64_t directPrecommitBytes = 0;
+							if (pureFinalizerStats.requested)
+							{
+								++pureFinalizerStats.local_rows_ready_flushes;
+								++pureFinalizerStats
+									.direct_rows_local_ready_flushes;
+								++pureFinalizerStats.ineligible_flushes;
+								++pureFinalizerStats
+									.output_side_effect_blocker_flushes;
+								++pureFinalizerStats
+									.archive_writer_blocker_flushes;
+								++pureFinalizerStats
+									.telemetry_global_counter_blocker_flushes;
+								for (size_t t = 0;
+								     t < directRowsByTask.size();
+								     ++t)
+								{
+									const uint64_t rowsForTask =
+										static_cast<uint64_t>(
+											directRowsByTask[t].size());
+									directPrecommitRows += rowsForTask;
+									directPrecommitBytes +=
+										rowsForTask *
+										static_cast<uint64_t>(
+											sizeof(FasimGasal2DirectLiteArchiveTriplex));
+								}
+								pureFinalizerStats.precommit_rows +=
+									directPrecommitRows;
+							}
+							else if (orderedCommitStats.requested)
+							{
+								for (size_t t = 0;
+								     t < directRowsByTask.size();
+								     ++t)
+								{
+									const uint64_t rowsForTask =
+										static_cast<uint64_t>(
+											directRowsByTask[t].size());
+									directPrecommitRows += rowsForTask;
+									directPrecommitBytes +=
+										rowsForTask *
+										static_cast<uint64_t>(
+										sizeof(FasimGasal2DirectLiteArchiveTriplex));
+								}
+							}
+							const double directFinalizeSeconds =
+								fasim_seconds_since(convertStart);
+							if (dualFinalizerStats.requested)
+							{
+								fasim_gasal2_dual_finalizer_observe_unsupported(
+									dualFinalizerStats,
+									directPrecommitRows,
+									directFinalizeSeconds,
+									flushGpuResult.flush_id,
+									"direct_archive_finalizer_unsupported");
+							}
+							if (extractedFinalizerStats.requested)
+							{
+								fasim_gasal2_extracted_finalizer_observe_unsupported(
+									extractedFinalizerStats,
+									directPrecommitRows,
+									directFinalizeSeconds,
+									flushGpuResult.flush_id,
+									"direct_archive_finalizer_unsupported");
+							}
+							{
+								FasimNvtxRange nvtxArchiveWrite(
+									&nvtxTrace,
+									"fasim.gasal2.archive_write");
+								const auto resultBoundaryCommitStart =
+									std::chrono::steady_clock::now();
+								uint64_t directEmittedRows = 0;
+								uint64_t directArchiveRecords = 0;
+								uint64_t archiveWriteStartNs = 0;
+								uint64_t archiveBytesBefore = 0;
+								uint64_t archiveBlocksBefore = 0;
+							if (currentFlushPipelineRecord != NULL)
+							{
+								archiveWriteStartNs = fasim_monotonic_ns();
+								currentFlushPipelineRecord->archive_enqueue_start_ns =
+									archiveWriteStartNs;
+								currentFlushPipelineRecord->archive_enqueue_end_ns =
+									archiveWriteStartNs;
+								currentFlushPipelineRecord->archive_write_start_ns =
+									archiveWriteStartNs;
+								archiveBytesBefore =
+									columnArchiveProbeWriter.bytes_written();
+								archiveBlocksBefore =
+									columnArchiveProbeWriter.blocks_written();
+							}
 							FasimScopedSeconds scoped(
 								phaseTimingEnabled,
 								&phaseTiming.output_write_seconds);
@@ -7542,11 +16895,13 @@ int main(int argc, char* const* argv)
 											                                  row.genomeend,
 											                                  row));
 										}
+										++directEmittedRows;
 									if (equivalenceFirstConvertActive ||
 									    archiveFirstConvertActive)
 									{
 										columnArchiveProbeWriter.write_converted_row(
 											directRow.record);
+										++directArchiveRecords;
 									}
 									else
 									{
@@ -7564,32 +16919,577 @@ int main(int argc, char* const* argv)
 											row.identity,
 											fasim_cigar_ops_from_alignment(
 												directRow.record.typed_cigar));
+										++directArchiveRecords;
+									}
 									}
 								}
+								const double directCommitSeconds =
+									fasim_seconds_since(
+										resultBoundaryCommitStart);
+								if (resultBoundaryStats.requested)
+								{
+									resultBoundaryStats.commit_seconds +=
+										directCommitSeconds;
+								}
+								if (orderedCommitStats.requested)
+								{
+									fasim_gasal2_ordered_commit_observe_commit(
+										orderedCommitStats,
+										flushGpuResult.flush_id,
+										directPrecommitRows,
+										directEmittedRows,
+										directArchiveRecords,
+										directPrecommitBytes,
+										directFinalizeSeconds,
+										0.0,
+										directCommitSeconds,
+										directCommitSeconds,
+										directCommitSeconds,
+										true);
+								}
+								if (currentFlushPipelineRecord != NULL)
+								{
+								currentFlushPipelineRecord->archive_write_end_ns =
+									fasim_monotonic_ns();
+								currentFlushPipelineRecord->archive_bytes +=
+									columnArchiveProbeWriter.bytes_written() >= archiveBytesBefore ?
+									columnArchiveProbeWriter.bytes_written() -
+										archiveBytesBefore :
+									0;
+								currentFlushPipelineRecord->archive_blocks +=
+									columnArchiveProbeWriter.blocks_written() >= archiveBlocksBefore ?
+									columnArchiveProbeWriter.blocks_written() -
+										archiveBlocksBefore :
+									0;
 							}
 						}
 						gasal2DirectLiteArchiveConvertHandled = true;
 					}
-					else
-					{
-						auto convertOneTask = [&](size_t t)
-					{
-					const StreamTask &task = tasks[t];
-					std::vector<triplex> myTriplexList;
-					myTriplexList.reserve(replaySelectedByTask[t].size());
-					if (phaseTimingEnabled)
-					{
-						convertTasks.fetch_add(1, std::memory_order_relaxed);
-						if (!replaySelectedByTask[t].empty())
+						else
 						{
-							convertTasksWithInput.fetch_add(1, std::memory_order_relaxed);
-						}
-						}
-						std::map<std::string, uint64_t> liteRowScoreInfoRanks;
-						const auto selectedScanStart = std::chrono::steady_clock::now();
-						for (size_t si = 0; si < replaySelectedByTask[t].size(); ++si)
+							const bool twoSlotFlushEligible =
+								twoSlotOverlapStats.active &&
+								flushGpuResult.ready &&
+								!phase3CigarNtPrefilterRealEnabled &&
+								!phase3CigarNtPrefilterShadowEnabled &&
+								!taxonomyExporter.active &&
+								!eligibilityRuntime.active &&
+								!directConvertActive &&
+								!equivalenceFirstConvertActive &&
+								!archiveFirstConvertActive &&
+								!collectLiteRankMap &&
+								outputMode == FASIM_OUTPUT_LITE &&
+								writeLite &&
+								!writeFull &&
+								!writeCigarArchiveProbe &&
+								!writeCompactArchiveProbe &&
+								!writeColumnArchiveProbe &&
+								!collectTopkLite;
+							if (twoSlotOverlapStats.active &&
+							    !twoSlotFlushEligible)
+							{
+								++twoSlotOverlapStats.unsupported_flushes;
+								++twoSlotOverlapStats.ineligible_flushes;
+							}
+							if (twoSlotFlushEligible)
+							{
+								FasimGasal2TwoSlotWorkItem work;
+								work.result = std::move(flushGpuResult);
+								work.flush_id = work.result.flush_id;
+								work.producer_start_seconds =
+									currentFlushPipelineRecord != NULL &&
+									        currentFlushPipelineRecord->pack_start_ns != 0 ?
+									static_cast<double>(
+										currentFlushPipelineRecord->pack_start_ns) /
+										1000000000.0 :
+									gasal2FlushStartSeconds;
+								work.producer_end_seconds =
+									static_cast<double>(fasim_monotonic_ns()) /
+									1000000000.0;
+								work.gpu_start_seconds =
+									gasal2FlushStartSeconds;
+								work.gpu_end_seconds =
+									static_cast<double>(fasim_monotonic_ns()) /
+									1000000000.0;
+								work.replay_uses_cpu_traceback =
+									replayUsesCpuTraceback;
+								work.nt_sum_span_prune = ntSumSpanPrune;
+								work.tasks.reserve(tasks.size());
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									const StreamTask &task = tasks[t];
+									FasimGasal2TwoSlotTaskInput input;
+									input.task_index = task.taskIndex;
+									input.src_seq = task.srcSeq;
+									input.seq2 = task.seq2;
+									input.chr = task.chr;
+									input.record_start_genome =
+										task.recordStartGenome;
+									input.dna_start_pos = task.dnaStartPos;
+									input.strand = task.strand;
+									input.para = task.Para;
+									input.rule = task.rule;
+									work.tasks.push_back(std::move(input));
+								}
+								const double gpuSeconds =
+									work.gpu_end_seconds >=
+									        work.gpu_start_seconds ?
+									work.gpu_end_seconds -
+									work.gpu_start_seconds :
+									0.0;
+								twoSlotOverlapStats.gpu_stage_seconds +=
+									gpuSeconds;
+								if (two_slot_submit_work(std::move(work)))
+								{
+									gasal2TwoSlotOverlapHandled = true;
+									fasim_gasal2_record_longtarget_bridge_timing(
+										attemptBuildSeconds,
+										scoreSelectSeconds,
+										cpuTracebackReplaySeconds,
+										cpuTracebackSubstrSeconds,
+										cpuTracebackAlignSeconds,
+										0.0);
+									return true;
+								}
+							}
+							std::vector< std::vector<FasimGasal2PretracebackPruningEligibilityAttempt> >
+								triplexEligibilityByTask(tasks.size());
+							if (resultBoundaryStats.requested &&
+							    flushGpuResult.ready &&
+							    finalizerSelectedByTask ==
+							        &flushGpuResult.selected_by_task)
+							{
+								++resultBoundaryStats
+									.finalizer_consumed_result_flushes;
+							}
+							const bool extractedFinalizerSideEffectsUnsupported =
+								phase3CigarNtPrefilterRealEnabled ||
+								phase3CigarNtPrefilterShadowEnabled ||
+								taxonomyExporter.active ||
+								eligibilityRuntime.active;
+							auto buildExtractedTriplexesByTask = [&](
+								std::vector< std::vector<triplex> > &outRows,
+								bool recordTimingCounters) -> bool
+							{
+								if (!flushGpuResult.ready)
+								{
+									return false;
+								}
+								outRows.clear();
+								outRows.resize(tasks.size());
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									const StreamTask &task = tasks[t];
+									const std::vector<FasimGasal2SelectedAlignment>
+										*selectedRowsForTaskPtr = NULL;
+									if (t < flushGpuResult.selected_by_task.size())
+									{
+										selectedRowsForTaskPtr =
+											&flushGpuResult.selected_by_task[t];
+									}
+									if (selectedRowsForTaskPtr == NULL)
+									{
+										continue;
+									}
+									const std::vector<FasimGasal2SelectedAlignment>
+										&selectedRowsForTask =
+											*selectedRowsForTaskPtr;
+									if (recordTimingCounters && phaseTimingEnabled)
+									{
+										convertTasks.fetch_add(
+											1,
+											std::memory_order_relaxed);
+										if (!selectedRowsForTask.empty())
+										{
+											convertTasksWithInput.fetch_add(
+												1,
+												std::memory_order_relaxed);
+										}
+									}
+									std::vector<triplex> myTriplexList;
+									myTriplexList.reserve(
+										selectedRowsForTask.size());
+									std::map<std::string, uint64_t>
+										liteRowScoreInfoRanks;
+									const auto selectedScanStart =
+										std::chrono::steady_clock::now();
+									for (size_t si = 0;
+									     si < selectedRowsForTask.size();
+									     ++si)
+									{
+										const FasimGasal2SelectedAlignment
+											&selectedAlignment =
+												selectedRowsForTask[si];
+										const StripedSmithWaterman::Alignment
+											*alignmentForTriplex =
+												&selectedAlignment.alignment;
+										StripedSmithWaterman::Alignment
+											cpuReplayAdjustedAlignment;
+										if (replayUsesCpuTraceback &&
+										    selectedAlignment.selected)
+										{
+											cpuReplayAdjustedAlignment =
+												selectedAlignment.alignment;
+											cpuReplayAdjustedAlignment.ref_begin +=
+												selectedAlignment.start;
+											cpuReplayAdjustedAlignment.ref_end +=
+												selectedAlignment.start;
+											alignmentForTriplex =
+												&cpuReplayAdjustedAlignment;
+										}
+										if (!selectedAlignment.selected ||
+										    alignmentForTriplex->sw_score == 0)
+										{
+											continue;
+										}
+										if (recordTimingCounters &&
+										    phaseTimingEnabled)
+										{
+											convertInputAlignments.fetch_add(
+												1,
+												std::memory_order_relaxed);
+											observeScoreInfoRank(
+												selectedAlignment);
+										}
+										if (ntSumSpanPrune)
+										{
+											const auto spanCheckStart =
+												std::chrono::steady_clock::now();
+											const int querySpan =
+												alignmentForTriplex->query_end -
+												alignmentForTriplex->query_begin + 1;
+											const int refSpan =
+												alignmentForTriplex->ref_end -
+												alignmentForTriplex->ref_begin + 1;
+											if (recordTimingCounters &&
+											    phaseTimingEnabled)
+											{
+												if (querySpan < paraList.cLength)
+												{
+													shadowQuerySpanLtCLength.fetch_add(
+														1,
+														std::memory_order_relaxed);
+												}
+												if (refSpan < paraList.cLength)
+												{
+													shadowRefSpanLtCLength.fetch_add(
+														1,
+														std::memory_order_relaxed);
+												}
+												if (std::min(querySpan, refSpan) <
+												    paraList.cLength)
+												{
+													shadowMinSpanLtCLength.fetch_add(
+														1,
+														std::memory_order_relaxed);
+												}
+												if (std::max(querySpan, refSpan) <
+												    paraList.cLength)
+												{
+													shadowMaxSpanLtCLength.fetch_add(
+														1,
+														std::memory_order_relaxed);
+												}
+												if (querySpan + refSpan <
+												    paraList.cLength)
+												{
+													shadowSumSpanLtCLength.fetch_add(
+														1,
+														std::memory_order_relaxed);
+												}
+												convertSpanCheckNanos.fetch_add(
+													static_cast<uint64_t>(
+														std::chrono::duration_cast<
+															std::chrono::nanoseconds>(
+															std::chrono::steady_clock::now() -
+															spanCheckStart).count()),
+													std::memory_order_relaxed);
+											}
+											if (querySpan + refSpan <
+											    paraList.cLength)
+											{
+												continue;
+											}
+										}
+										const uint64_t selectedScoreInfoRank =
+											scoreInfoRankForSelected(
+												selectedAlignment);
+										const size_t beforeTriplexCount =
+											myTriplexList.size();
+										const auto convertAlignmentStart =
+											std::chrono::steady_clock::now();
+										convertMyTriplex(
+											*alignmentForTriplex,
+											myTriplexList,
+											lncSeq,
+											task.seq2,
+											*task.srcSeq,
+											nt_table,
+											task.dnaStartPos,
+											task.rule,
+											task.strand,
+											task.Para,
+											paraList.penaltyT,
+											paraList.penaltyC,
+											paraList.ntMin,
+											paraList.ntMax,
+											writeFull,
+											!equivalenceFirstConvertActive);
+										if (recordTimingCounters &&
+										    phaseTimingEnabled)
+										{
+											const uint64_t triplexNanos =
+												static_cast<uint64_t>(
+													std::chrono::duration_cast<
+														std::chrono::nanoseconds>(
+														std::chrono::steady_clock::now() -
+														convertAlignmentStart).count());
+											convertTriplexNanos.fetch_add(
+												triplexNanos,
+												std::memory_order_relaxed);
+											convertAlignmentNanos.fetch_add(
+												triplexNanos,
+												std::memory_order_relaxed);
+										}
+										if (equivalenceFirstConvertActive &&
+										    myTriplexList.size() >
+										        beforeTriplexCount)
+										{
+											for (size_t rowIndex =
+												     beforeTriplexCount;
+											     rowIndex <
+												     myTriplexList.size();
+											     ++rowIndex)
+											{
+												myTriplexList[rowIndex]
+													.typed_cigar =
+														alignmentForTriplex->cigar;
+											}
+										}
+										if (collectLiteRankMap &&
+										    selectedScoreInfoRank != 0)
+										{
+											const auto rankMapStart =
+												std::chrono::steady_clock::now();
+											for (size_t rankIndex =
+												     beforeTriplexCount;
+											     rankIndex <
+												     myTriplexList.size();
+											     ++rankIndex)
+											{
+												FasimLiteRow rankRow =
+													fasim_make_lite_row(
+														myTriplexList[rankIndex].chr.empty() ?
+															task.chr :
+															myTriplexList[rankIndex].chr,
+														myTriplexList[rankIndex].genomestart != 0 ?
+															myTriplexList[rankIndex].genomestart :
+															myTriplexList[rankIndex].starj +
+																task.recordStartGenome - 1,
+														myTriplexList[rankIndex].genomeend != 0 ?
+															myTriplexList[rankIndex].genomeend :
+															myTriplexList[rankIndex].endj +
+																task.recordStartGenome - 1,
+														myTriplexList[rankIndex],
+														selectedScoreInfoRank);
+												std::map<std::string, uint64_t>
+													::iterator existingRank =
+														liteRowScoreInfoRanks.find(
+															rankRow.key);
+												if (existingRank ==
+													    liteRowScoreInfoRanks.end() ||
+												    selectedScoreInfoRank <
+													    existingRank->second)
+												{
+													liteRowScoreInfoRanks[
+														rankRow.key] =
+														selectedScoreInfoRank;
+												}
+											}
+											if (recordTimingCounters &&
+											    phaseTimingEnabled)
+											{
+												convertRankMapNanos.fetch_add(
+													static_cast<uint64_t>(
+														std::chrono::duration_cast<
+															std::chrono::nanoseconds>(
+															std::chrono::steady_clock::now() -
+															rankMapStart).count()),
+													std::memory_order_relaxed);
+											}
+										}
+									}
+									if (recordTimingCounters && phaseTimingEnabled)
+									{
+										convertSelectedScanNanos.fetch_add(
+											static_cast<uint64_t>(
+												std::chrono::duration_cast<
+													std::chrono::nanoseconds>(
+													std::chrono::steady_clock::now() -
+													selectedScanStart).count()),
+											std::memory_order_relaxed);
+										convertRawTriplexes.fetch_add(
+											static_cast<uint64_t>(
+												myTriplexList.size()),
+											std::memory_order_relaxed);
+									}
+									const auto sortStart =
+										std::chrono::steady_clock::now();
+									std::sort(myTriplexList.begin(),
+									          myTriplexList.end(),
+									          compMyTriplexMultiple);
+									myTriplexList.erase(
+										std::unique(myTriplexList.begin(),
+										            myTriplexList.end(),
+										            sameMyTriplex),
+										myTriplexList.end());
+									std::sort(myTriplexList.begin(),
+									          myTriplexList.end(),
+									          compMyTriplexMultiple2);
+									myTriplexList.erase(
+										std::unique(myTriplexList.begin(),
+										            myTriplexList.end(),
+										            sameMyTriplex),
+										myTriplexList.end());
+									std::sort(myTriplexList.begin(),
+									          myTriplexList.end(),
+									          compMyTriplexSingle);
+									if (recordTimingCounters && phaseTimingEnabled)
+									{
+										convertSortNanos.fetch_add(
+											static_cast<uint64_t>(
+												std::chrono::duration_cast<
+													std::chrono::nanoseconds>(
+													std::chrono::steady_clock::now() -
+													sortStart).count()),
+											std::memory_order_relaxed);
+									}
+									const auto filterStart =
+										std::chrono::steady_clock::now();
+									const size_t topLimit =
+										std::min(myTriplexList.size(),
+										         static_cast<size_t>(N));
+									for (size_t i = 0; i < topLimit; ++i)
+									{
+										triplex atr = myTriplexList[i];
+										if (atr.identity >=
+											    paraList.minIdentity &&
+										    atr.tri_score >=
+											    paraList.minStability &&
+										    atr.nt >= paraList.ntMin)
+										{
+											outRows[t].push_back(atr);
+										}
+									}
+									if (recordTimingCounters && phaseTimingEnabled)
+									{
+										convertFilterNanos.fetch_add(
+											static_cast<uint64_t>(
+												std::chrono::duration_cast<
+													std::chrono::nanoseconds>(
+													std::chrono::steady_clock::now() -
+													filterStart).count()),
+											std::memory_order_relaxed);
+									}
+									if (!liteRowScoreInfoRanks.empty())
+									{
+										const auto rankApplyStart =
+											std::chrono::steady_clock::now();
+										for (size_t i = 0;
+										     i < outRows[t].size();
+										     ++i)
+										{
+											triplex &atr = outRows[t][i];
+											const std::string &chrForRank =
+												atr.chr.empty() ?
+												task.chr :
+												atr.chr;
+											const long genomeStartForRank =
+												atr.genomestart != 0 ?
+												atr.genomestart :
+												(atr.starj +
+												 task.recordStartGenome - 1);
+											const long genomeEndForRank =
+												atr.genomeend != 0 ?
+												atr.genomeend :
+												(atr.endj +
+												 task.recordStartGenome - 1);
+											FasimLiteRow rankRow =
+												fasim_make_lite_row(
+													chrForRank,
+													genomeStartForRank,
+													genomeEndForRank,
+													atr);
+											std::map<std::string, uint64_t>
+												::const_iterator rankIt =
+													liteRowScoreInfoRanks.find(
+														rankRow.key);
+											if (rankIt !=
+												    liteRowScoreInfoRanks.end() &&
+											    rankIt->second > 0 &&
+											    rankIt->second <=
+												    static_cast<uint64_t>(
+													    std::numeric_limits<int>
+														    ::max()))
+											{
+												atr.neartriplex =
+													-static_cast<int>(
+														rankIt->second);
+											}
+										}
+										if (recordTimingCounters &&
+										    phaseTimingEnabled)
+										{
+											convertRankMapNanos.fetch_add(
+												static_cast<uint64_t>(
+													std::chrono::duration_cast<
+														std::chrono::nanoseconds>(
+														std::chrono::steady_clock::now() -
+														rankApplyStart).count()),
+												std::memory_order_relaxed);
+										}
+									}
+								}
+								return true;
+							};
+							const bool extractedFinalizerSupported =
+								extractedFinalizerStats.requested &&
+								flushGpuResult.ready &&
+								!extractedFinalizerSideEffectsUnsupported;
+							const bool extractedFinalizerRealOnly =
+								extractedFinalizerSupported &&
+								!extractedFinalizerStats.validate_active &&
+								!dualFinalizerStats.requested;
+							double extractedFinalizerRealSeconds = 0.0;
+							auto convertOneTask = [&](size_t t)
 						{
-							const FasimGasal2SelectedAlignment &selectedAlignment = replaySelectedByTask[t][si];
+						const StreamTask &task = tasks[t];
+						const std::vector<FasimGasal2SelectedAlignment>
+							&selectedRowsForTask =
+								t < finalizerSelectedByTask->size() ?
+								(*finalizerSelectedByTask)[t] :
+								replaySelectedByTask[t];
+						std::vector<triplex> myTriplexList;
+						myTriplexList.reserve(selectedRowsForTask.size());
+						std::vector<FasimGasal2PretracebackPruningEligibilityAttempt>
+							eligibilityRows;
+						if (eligibilityRuntime.active)
+						{
+							eligibilityRows.reserve(selectedRowsForTask.size());
+						}
+						if (phaseTimingEnabled)
+						{
+							convertTasks.fetch_add(1, std::memory_order_relaxed);
+							if (!selectedRowsForTask.empty())
+							{
+								convertTasksWithInput.fetch_add(1, std::memory_order_relaxed);
+							}
+							}
+							std::map<std::string, uint64_t> liteRowScoreInfoRanks;
+							const auto selectedScanStart = std::chrono::steady_clock::now();
+							for (size_t si = 0; si < selectedRowsForTask.size(); ++si)
+							{
+								const FasimGasal2SelectedAlignment &selectedAlignment = selectedRowsForTask[si];
 							const StripedSmithWaterman::Alignment *alignmentForTriplex =
 								&selectedAlignment.alignment;
 						StripedSmithWaterman::Alignment cpuReplayAdjustedAlignment;
@@ -7602,6 +17502,12 @@ int main(int argc, char* const* argv)
 						}
 							if (selectedAlignment.selected && alignmentForTriplex->sw_score != 0)
 							{
+								FasimGasal2PretracebackPruningEligibilityAttempt
+									eligibilityAttempt =
+										makeEligibilityAttempt(
+											selectedAlignment,
+											t,
+											*alignmentForTriplex);
 								observeScoreInfoRank(selectedAlignment);
 								const uint64_t selectedScoreInfoRank = scoreInfoRankForSelected(selectedAlignment);
 								const size_t beforeTriplexCount = myTriplexList.size();
@@ -7630,8 +17536,22 @@ int main(int argc, char* const* argv)
 							if (querySpan + refSpan < paraList.cLength)
 							{
 								shadowSumSpanLtCLength.fetch_add(1, std::memory_order_relaxed);
+								const bool pretracebackProvable =
+									selectedAlignment.cutlength > 0 &&
+									selectedAlignment.cutlength <
+										paraList.cLength;
+								eligibilityAttempt.invalid_span_bound = true;
+								eligibilityAttempt
+									.invalid_span_pretraceback_provable =
+										pretracebackProvable;
 								if (ntSumSpanPrune)
 								{
+										recordEligibilityInvalidSpan(
+											eligibilityAttempt,
+											pretracebackProvable,
+											pretracebackProvable ?
+											"span bound provable from pre-traceback cutlength" :
+											"span bound depends on traceback endpoints");
 										continue;
 									}
 								}
@@ -7642,9 +17562,113 @@ int main(int argc, char* const* argv)
 												spanCheckStart).count()),
 										std::memory_order_relaxed);
 							}
-								const auto convertAlignmentStart = std::chrono::steady_clock::now();
-								convertMyTriplex(*alignmentForTriplex,
-							                 myTriplexList,
+									const auto convertAlignmentStart = std::chrono::steady_clock::now();
+									FasimConvertMaterializationPolicy phase3Policy;
+									phase3Policy.materialize_alignment_strings = false;
+									phase3Policy.materialize_cigar_probe_string = false;
+									phase3Policy.materialize_typed_cigar = false;
+									const bool phase3RealSkipCandidate =
+										phase3CigarNtPrefilterRealEnabled &&
+										fasim_cigar_aligned_len(
+											fasim_cigar_ops_from_alignment(
+												alignmentForTriplex->cigar)) <
+										static_cast<uint64_t>(
+											std::max(0, paraList.ntMin));
+									bool phase3SkipClean = false;
+									if (phase3RealSkipCandidate)
+									{
+										phase3CigarNtRealSkippedAlignments.fetch_add(
+											1,
+											std::memory_order_relaxed);
+										if (phase3CigarNtPrefilterValidateEnabled)
+										{
+											FasimConvertedTriplexRecord phase3ConvertedRecord;
+											const bool legacyWouldKeep =
+												buildConvertedTriplexRecord(
+													*alignmentForTriplex,
+													phase3ConvertedRecord,
+													lncSeq,
+													task.seq2,
+													*task.srcSeq,
+													nt_table,
+													task.dnaStartPos,
+													task.rule,
+													task.strand,
+													task.Para,
+													paraList.penaltyT,
+													paraList.penaltyC,
+													paraList.ntMin,
+													paraList.ntMax,
+													phase3Policy);
+											phase3CigarNtRealValidatedSkips.fetch_add(
+												1,
+												std::memory_order_relaxed);
+											observePhase3CigarNtPrefilter(
+												*alignmentForTriplex,
+												phase3ConvertedRecord.nt);
+											if (legacyWouldKeep)
+											{
+												phase3CigarNtRealValidateMismatches.fetch_add(
+													1,
+													std::memory_order_relaxed);
+												phase3CigarNtRealFallbacks.fetch_add(
+													1,
+													std::memory_order_relaxed);
+											}
+											else
+											{
+												phase3SkipClean = true;
+											}
+										}
+										else
+										{
+											phase3SkipClean = true;
+										}
+									}
+									else if (phase3CigarNtPrefilterShadowEnabled)
+									{
+										FasimConvertedTriplexRecord phase3ConvertedRecord;
+										buildConvertedTriplexRecord(
+											*alignmentForTriplex,
+											phase3ConvertedRecord,
+											lncSeq,
+											task.seq2,
+											*task.srcSeq,
+											nt_table,
+											task.dnaStartPos,
+											task.rule,
+											task.strand,
+											task.Para,
+											paraList.penaltyT,
+											paraList.penaltyC,
+											paraList.ntMin,
+											paraList.ntMax,
+											phase3Policy);
+										observePhase3CigarNtPrefilter(
+											*alignmentForTriplex,
+											phase3ConvertedRecord.nt);
+									}
+									if (phase3SkipClean)
+									{
+										if (phaseTimingEnabled)
+										{
+											const uint64_t triplexNanos =
+												static_cast<uint64_t>(
+													std::chrono::duration_cast<
+														std::chrono::nanoseconds>(
+														std::chrono::steady_clock::now() -
+														convertAlignmentStart).count());
+											convertTriplexNanos.fetch_add(
+												triplexNanos,
+												std::memory_order_relaxed);
+											convertAlignmentNanos.fetch_add(
+												triplexNanos,
+												std::memory_order_relaxed);
+										}
+										continue;
+									}
+									convertMyTriplex(*alignmentForTriplex,
+								                 myTriplexList,
 						                 lncSeq,
 						                 task.seq2,
 							                 *task.srcSeq,
@@ -7670,6 +17694,39 @@ int main(int argc, char* const* argv)
 											alignmentForTriplex->cigar;
 									}
 								}
+								if (eligibilityRuntime.active &&
+								    myTriplexList.size() > beforeTriplexCount)
+								{
+									const triplex &newRow =
+										myTriplexList[beforeTriplexCount];
+									const std::string chrForRow =
+										newRow.chr.empty() ?
+										task.chr :
+										newRow.chr;
+									const long startForRow =
+										newRow.genomestart != 0 ?
+										newRow.genomestart :
+										newRow.starj +
+											task.recordStartGenome - 1;
+									const long endForRow =
+										newRow.genomeend != 0 ?
+										newRow.genomeend :
+										newRow.endj +
+											task.recordStartGenome - 1;
+									const FasimLiteRow liteRow =
+										fasim_make_lite_row(
+											chrForRow,
+											startForRow,
+											endForRow,
+											newRow);
+									fillEligibilityFromLiteRow(
+										&eligibilityAttempt,
+										liteRow,
+										startForRow,
+										endForRow);
+									eligibilityRows.push_back(
+										eligibilityAttempt);
+								}
 								if (phaseTimingEnabled)
 								{
 									const uint64_t triplexNanos =
@@ -7684,7 +17741,78 @@ int main(int argc, char* const* argv)
 										triplexNanos,
 										std::memory_order_relaxed);
 								}
-							if (collectLiteRankMap && selectedScoreInfoRank != 0)
+								if (taxonomyExporter.active)
+								{
+									if (myTriplexList.size() == beforeTriplexCount)
+									{
+										exportTaxonomyAttempt(selectedAlignment,
+										                      t,
+										                      *alignmentForTriplex,
+										                      "post_cigar_only",
+										                      0, 1, 0, 0, 0, 0,
+										                      0, 0,
+										                      alignmentForTriplex->sw_score,
+										                      0, 0.0, 0.0,
+										                      "no triplex row after CIGAR materialization");
+									}
+									else
+									{
+										const triplex &row =
+											myTriplexList[beforeTriplexCount];
+										const bool scoreFail =
+											row.score < paraList.scoreMin;
+										const bool identityFail =
+											row.identity < paraList.minIdentity;
+										const bool stabilityFail =
+											row.tri_score < paraList.minStability;
+										const bool ntFail =
+											row.nt < paraList.cLength;
+										if (scoreFail || identityFail ||
+										    stabilityFail || ntFail)
+										{
+											const char *bucket = scoreFail ?
+												"filtered_score" :
+												(identityFail ? "filtered_identity" :
+												 (stabilityFail ?
+												  "filtered_stability" :
+												  "filtered_nt"));
+											exportTaxonomyAttempt(
+												selectedAlignment,
+												t,
+												*alignmentForTriplex,
+												bucket,
+												scoreFail ? 1 : 0,
+												scoreFail ? 0 : 1,
+												scoreFail ? 1 : 0,
+												scoreFail ? 1 : 0,
+												0, 0,
+												row.genomestart,
+												row.genomeend,
+												static_cast<int>(row.score),
+												row.nt,
+												row.identity,
+												row.tri_score,
+												"triplex row rejected by emit thresholds");
+										}
+										else
+										{
+											exportTaxonomyAttempt(
+												selectedAlignment,
+												t,
+												*alignmentForTriplex,
+												"retained_emitted",
+												0, 0, 0, 1, 1, 0,
+												row.genomestart,
+												row.genomeend,
+												static_cast<int>(row.score),
+												row.nt,
+												row.identity,
+												row.tri_score,
+												"triplex row kept by emit thresholds");
+										}
+									}
+									}
+								if (collectLiteRankMap && selectedScoreInfoRank != 0)
 							{
 								const auto rankMapStart = std::chrono::steady_clock::now();
 								for (size_t rankIndex = beforeTriplexCount;
@@ -7721,6 +17849,27 @@ int main(int argc, char* const* argv)
 										std::memory_order_relaxed);
 								}
 								}
+								if (eligibilityRuntime.active &&
+								    myTriplexList.size() == beforeTriplexCount)
+								{
+									if (eligibilityAttempt.invalid_span_bound)
+									{
+										recordEligibilityInvalidSpan(
+											eligibilityAttempt,
+											eligibilityAttempt
+												.invalid_span_pretraceback_provable,
+											eligibilityAttempt
+												.invalid_span_pretraceback_provable ?
+											"span bound provable from pre-traceback cutlength" :
+											"span bound depends on traceback endpoints");
+									}
+									else
+									{
+										recordEligibilityPostCigarOnly(
+											eligibilityAttempt,
+											"no triplex row after CIGAR materialization");
+									}
+								}
 							}
 						}
 						if (phaseTimingEnabled)
@@ -7755,18 +17904,18 @@ int main(int argc, char* const* argv)
 				}
 				const auto filterStart = std::chrono::steady_clock::now();
 				for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
-				{
-							triplex atr = myTriplexList[static_cast<size_t>(i)];
-							if (atr.identity >= paraList.minIdentity &&
-							    atr.tri_score >= paraList.minStability &&
-							    atr.nt >= paraList.ntMin)
 							{
-								triplexesByTask[t].push_back(atr);
+								triplex atr = myTriplexList[static_cast<size_t>(i)];
+								if (atr.identity >= paraList.minIdentity &&
+								    atr.tri_score >= paraList.minStability &&
+								    atr.nt >= paraList.ntMin)
+								{
+									triplexesByTask[t].push_back(atr);
+								}
 							}
-						}
-						if (phaseTimingEnabled)
-						{
-							convertFilterNanos.fetch_add(
+							if (phaseTimingEnabled)
+							{
+								convertFilterNanos.fetch_add(
 								static_cast<uint64_t>(
 									std::chrono::duration_cast<std::chrono::nanoseconds>(
 										std::chrono::steady_clock::now() -
@@ -7806,8 +17955,174 @@ int main(int argc, char* const* argv)
 										std::chrono::duration_cast<std::chrono::nanoseconds>(
 											std::chrono::steady_clock::now() -
 											rankApplyStart).count()),
-									std::memory_order_relaxed);
+										std::memory_order_relaxed);
 							}
+						}
+						if (eligibilityRuntime.active)
+						{
+							std::map<std::string,
+							         FasimGasal2PretracebackPruningEligibilityAttempt>
+								retainedByHash;
+							for (size_t ri = 0;
+							     ri < triplexesByTask[t].size();
+							     ++ri)
+							{
+								triplex retained = triplexesByTask[t][ri];
+								const std::string chrForRow =
+									retained.chr.empty() ? task.chr : retained.chr;
+								const long startForRow =
+									retained.genomestart != 0 ?
+									retained.genomestart :
+									retained.starj + task.recordStartGenome - 1;
+								const long endForRow =
+									retained.genomeend != 0 ?
+									retained.genomeend :
+									retained.endj + task.recordStartGenome - 1;
+								const FasimLiteRow retainedLite =
+									fasim_make_lite_row(chrForRow,
+									                    startForRow,
+									                    endForRow,
+									                    retained);
+								const std::string retainedHash =
+									fasim_hash_lite_row_key(retainedLite.key);
+								for (size_t ai = 0;
+								     ai < eligibilityRows.size();
+								     ++ai)
+								{
+									if (eligibilityRows[ai].final_row_hash ==
+									    retainedHash)
+									{
+										retainedByHash[retainedHash] =
+											eligibilityRows[ai];
+										break;
+									}
+								}
+							}
+							for (size_t ai = 0;
+							     ai < eligibilityRows.size();
+							     ++ai)
+							{
+								FasimGasal2PretracebackPruningEligibilityAttempt
+									attempt = eligibilityRows[ai];
+								std::map<std::string,
+								         FasimGasal2PretracebackPruningEligibilityAttempt>
+									::const_iterator repIt =
+										retainedByHash.find(
+											attempt.final_row_hash);
+								const bool hasRepresentative =
+									repIt != retainedByHash.end();
+								if (hasRepresentative)
+								{
+									const FasimGasal2PretracebackPruningEligibilityAttempt
+										&rep = repIt->second;
+									attempt.representative_attempt_id =
+										rep.attempt_id;
+									attempt.representative_flush_id =
+										rep.flush_id;
+									attempt.representative_request_key_hash =
+										rep.request_key_hash;
+									attempt.representative_descriptor_key_hash =
+										rep.descriptor_key_hash;
+									attempt.same_flush =
+										attempt.flush_id == rep.flush_id;
+									attempt.cross_flush =
+										attempt.flush_id != rep.flush_id;
+									if (attempt.attempt_id == rep.attempt_id)
+									{
+										attempt.final_rejection_bucket =
+											"retained_emitted";
+										attempt.eligibility_bucket =
+											"representative_selection_dependent";
+										attempt.full_output_safe_candidate = true;
+										attempt.notes =
+											"canonical retained representative";
+									}
+									else if (attempt.request_key_hash ==
+									         rep.request_key_hash)
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"exact_request_duplicate";
+										attempt.pre_traceback_decidable = true;
+										attempt.top5_only_safe_candidate = true;
+										attempt.notes =
+											"same pre-traceback request as retained representative";
+									}
+									else if (attempt.descriptor_key_hash ==
+									         rep.descriptor_key_hash)
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"exact_descriptor_duplicate";
+										attempt.pre_traceback_decidable = true;
+										attempt.top5_only_safe_candidate = true;
+										attempt.notes =
+											"same normalized descriptor as retained representative";
+									}
+									else
+									{
+										attempt.final_rejection_bucket =
+											"final_sort_dedup_removed";
+										attempt.eligibility_bucket =
+											"same_final_row_different_descriptor";
+										attempt.post_traceback_only = true;
+										attempt.notes =
+											"same final row but different pre-traceback descriptor";
+									}
+									eligibilityRuntime.record(attempt);
+									continue;
+								}
+
+								const bool scoreFail =
+									attempt.score < paraList.scoreMin;
+								const bool identityFail =
+									attempt.identity < paraList.minIdentity;
+								const bool stabilityFail =
+									attempt.stability < paraList.minStability;
+								const bool ntFail =
+									attempt.nt < paraList.cLength;
+								if (attempt.invalid_span_bound)
+								{
+									recordEligibilityInvalidSpan(
+										attempt,
+										attempt
+											.invalid_span_pretraceback_provable,
+										attempt
+											.invalid_span_pretraceback_provable ?
+										"span bound provable from pre-traceback cutlength" :
+										"span bound depends on traceback endpoints");
+								}
+								else if (scoreFail || identityFail ||
+								         stabilityFail || ntFail)
+								{
+									const char *bucket = scoreFail ?
+										"filtered_score" :
+										(identityFail ? "filtered_identity" :
+										 (stabilityFail ?
+										  "filtered_stability" :
+										  "filtered_nt"));
+									recordEligibilityThresholdRemoval(
+										attempt,
+										bucket,
+										scoreFail,
+										ntFail,
+										"triplex row rejected before final retained set");
+								}
+								else
+								{
+									attempt.final_rejection_bucket =
+										"final_sort_dedup_removed";
+									attempt.eligibility_bucket =
+										"sort_or_dominance_removed";
+									attempt.post_traceback_only = true;
+									attempt.notes =
+										"triplex row removed by sort/filter without retained representative";
+									eligibilityRuntime.record(attempt);
+								}
+							}
+							triplexEligibilityByTask[t].swap(eligibilityRows);
 						}
 					};
 				const int convertWorkerCount =
@@ -7815,39 +18130,505 @@ int main(int argc, char* const* argv)
 					         std::max(1, extendThreadCount));
 				if (convertWorkerCount <= 1 || tasks.size() <= 1)
 				{
-					for (size_t t = 0; t < tasks.size(); ++t)
+					if (extractedFinalizerRealOnly)
 					{
-						convertOneTask(t);
+						const auto extractedStart =
+							std::chrono::steady_clock::now();
+						buildExtractedTriplexesByTask(triplexesByTask,
+						                              true);
+						extractedFinalizerRealSeconds =
+							fasim_seconds_since(extractedStart);
+					}
+					else
+					{
+						for (size_t t = 0; t < tasks.size(); ++t)
+						{
+							convertOneTask(t);
+						}
 					}
 				}
 				else
 				{
-					std::atomic<size_t> nextConvertTask(0);
-					std::vector<std::thread> convertWorkers;
-					convertWorkers.reserve(static_cast<size_t>(convertWorkerCount));
-					for (int w = 0; w < convertWorkerCount; ++w)
+					if (extractedFinalizerRealOnly)
 					{
-						convertWorkers.push_back(std::thread([&]()
-						{
-							while (true)
-							{
-								const size_t t =
-									nextConvertTask.fetch_add(1, std::memory_order_relaxed);
-								if (t >= tasks.size())
-								{
-									break;
-								}
-								convertOneTask(t);
-							}
-						}));
+						const auto extractedStart =
+							std::chrono::steady_clock::now();
+						buildExtractedTriplexesByTask(triplexesByTask,
+						                              true);
+						extractedFinalizerRealSeconds =
+							fasim_seconds_since(extractedStart);
 					}
-					for (size_t i = 0; i < convertWorkers.size(); ++i)
+					else
+					{
+						std::atomic<size_t> nextConvertTask(0);
+						std::vector<std::thread> convertWorkers;
+						convertWorkers.reserve(static_cast<size_t>(convertWorkerCount));
+						for (int w = 0; w < convertWorkerCount; ++w)
+						{
+							convertWorkers.push_back(std::thread([&]()
+							{
+								while (true)
+								{
+									const size_t t =
+										nextConvertTask.fetch_add(1, std::memory_order_relaxed);
+									if (t >= tasks.size())
+									{
+										break;
+									}
+									convertOneTask(t);
+								}
+							}));
+						}
+						for (size_t i = 0; i < convertWorkers.size(); ++i)
 						{
 							convertWorkers[i].join();
 						}
 					}
+						}
+						uint64_t triplexPrecommitRows = 0;
+						uint64_t triplexPrecommitBytes = 0;
+						for (size_t t = 0;
+						     t < triplexesByTask.size();
+						     ++t)
+						{
+							const uint64_t rowsForTask =
+								static_cast<uint64_t>(
+									triplexesByTask[t].size());
+							triplexPrecommitRows += rowsForTask;
+							triplexPrecommitBytes +=
+								rowsForTask *
+								static_cast<uint64_t>(sizeof(triplex));
+						}
+						if (pureFinalizerStats.requested)
+						{
+							++pureFinalizerStats.local_rows_ready_flushes;
+							++pureFinalizerStats
+								.triplex_rows_local_ready_flushes;
+							++pureFinalizerStats.ineligible_flushes;
+							++pureFinalizerStats
+								.global_task_triplex_commit_blocker_flushes;
+							++pureFinalizerStats
+								.telemetry_global_counter_blocker_flushes;
+							pureFinalizerStats.precommit_rows +=
+								triplexPrecommitRows;
+						}
+						if (extractedFinalizerStats.requested)
+						{
+							const double legacyFinalizeSeconds =
+								fasim_seconds_since(convertStart);
+							if (!flushGpuResult.ready)
+							{
+								fasim_gasal2_extracted_finalizer_observe_missing_result(
+									extractedFinalizerStats);
+							}
+							else if (extractedFinalizerSideEffectsUnsupported)
+							{
+								fasim_gasal2_extracted_finalizer_observe_unsupported(
+									extractedFinalizerStats,
+									triplexPrecommitRows,
+									legacyFinalizeSeconds,
+									flushGpuResult.flush_id,
+									phase3CigarNtPrefilterRealEnabled ?
+										"phase3_real_prefilter_finalizer_unsupported" :
+										(taxonomyExporter.active ?
+										 "taxonomy_exporter_finalizer_unsupported" :
+										 (eligibilityRuntime.active ?
+										  "eligibility_exporter_finalizer_unsupported" :
+										  "phase3_shadow_finalizer_unsupported")));
+							}
+							else if (extractedFinalizerStats.validate_active)
+							{
+								const auto extractedStart =
+									std::chrono::steady_clock::now();
+								std::vector< std::vector<triplex> >
+									extractedTriplexesByTask(tasks.size());
+								buildExtractedTriplexesByTask(
+									extractedTriplexesByTask,
+									false);
+								const double extractedSeconds =
+									fasim_seconds_since(extractedStart);
+								const auto compareStart =
+									std::chrono::steady_clock::now();
+								const FasimGasal2FlushFinalizedRows legacyRows =
+									fasim_gasal2_make_triplex_finalized_rows(
+										flushGpuResult.flush_id,
+										triplexesByTask);
+								const FasimGasal2FlushFinalizedRows extractedRows =
+									fasim_gasal2_make_triplex_finalized_rows(
+										flushGpuResult.flush_id,
+										extractedTriplexesByTask);
+								const double compareSeconds =
+									fasim_seconds_since(compareStart);
+								const bool clean =
+									fasim_gasal2_extracted_finalizer_compare(
+										extractedFinalizerStats,
+										legacyRows,
+										extractedRows,
+										legacyFinalizeSeconds,
+										extractedSeconds,
+										compareSeconds);
+								++extractedFinalizerStats.eligible_flushes;
+								if (clean)
+								{
+									triplexesByTask.swap(
+										extractedTriplexesByTask);
+									++extractedFinalizerStats
+										.committed_flushes;
+									++extractedFinalizerStats
+										.extracted_active_flushes;
+									extractedFinalizerStats.committed_rows +=
+										extractedRows.row_count;
+								}
+								else
+								{
+									++extractedFinalizerStats
+										.legacy_fallback_flushes;
+								}
+							}
+							else if (extractedFinalizerRealOnly)
+							{
+								fasim_gasal2_extracted_finalizer_observe_commit(
+									extractedFinalizerStats,
+									triplexPrecommitRows,
+									extractedFinalizerRealSeconds);
+							}
+						}
+						triplexPrecommitRows = 0;
+						triplexPrecommitBytes = 0;
+						for (size_t t = 0;
+						     t < triplexesByTask.size();
+						     ++t)
+						{
+							const uint64_t rowsForTask =
+								static_cast<uint64_t>(
+									triplexesByTask[t].size());
+							triplexPrecommitRows += rowsForTask;
+							triplexPrecommitBytes +=
+								rowsForTask *
+								static_cast<uint64_t>(sizeof(triplex));
+						}
+							if (dualFinalizerStats.requested)
+							{
+								const double legacyFinalizeSeconds =
+									fasim_seconds_since(convertStart);
+								if (!flushGpuResult.ready)
+								{
+									fasim_gasal2_dual_finalizer_observe_legacy(
+										dualFinalizerStats,
+										triplexPrecommitRows,
+										legacyFinalizeSeconds);
+								}
+								else if (phase3CigarNtPrefilterRealEnabled)
+								{
+									fasim_gasal2_dual_finalizer_observe_unsupported(
+										dualFinalizerStats,
+										triplexPrecommitRows,
+										legacyFinalizeSeconds,
+										flushGpuResult.flush_id,
+										"phase3_real_prefilter_finalizer_unsupported");
+								}
+								else
+								{
+									const auto extractedStart =
+										std::chrono::steady_clock::now();
+									std::vector< std::vector<triplex> >
+										extractedTriplexesByTask(tasks.size());
+									for (size_t t = 0; t < tasks.size(); ++t)
+									{
+										const StreamTask &task = tasks[t];
+										const std::vector<FasimGasal2SelectedAlignment>
+											*selectedRowsForTaskPtr = NULL;
+										if (t < flushGpuResult.selected_by_task.size())
+										{
+											selectedRowsForTaskPtr =
+												&flushGpuResult.selected_by_task[t];
+										}
+										if (selectedRowsForTaskPtr == NULL)
+										{
+											continue;
+										}
+										const std::vector<FasimGasal2SelectedAlignment>
+											&selectedRowsForTask =
+												*selectedRowsForTaskPtr;
+										std::vector<triplex> myTriplexList;
+										myTriplexList.reserve(
+											selectedRowsForTask.size());
+										std::map<std::string, uint64_t>
+											liteRowScoreInfoRanks;
+										for (size_t si = 0;
+										     si < selectedRowsForTask.size();
+										     ++si)
+										{
+											const FasimGasal2SelectedAlignment
+												&selectedAlignment =
+													selectedRowsForTask[si];
+											const StripedSmithWaterman::Alignment
+												*alignmentForTriplex =
+													&selectedAlignment.alignment;
+											StripedSmithWaterman::Alignment
+												cpuReplayAdjustedAlignment;
+											if (replayUsesCpuTraceback &&
+											    selectedAlignment.selected)
+											{
+												cpuReplayAdjustedAlignment =
+													selectedAlignment.alignment;
+												cpuReplayAdjustedAlignment.ref_begin +=
+													selectedAlignment.start;
+												cpuReplayAdjustedAlignment.ref_end +=
+													selectedAlignment.start;
+												alignmentForTriplex =
+													&cpuReplayAdjustedAlignment;
+											}
+											if (!selectedAlignment.selected ||
+											    alignmentForTriplex->sw_score == 0)
+											{
+												continue;
+											}
+											if (ntSumSpanPrune)
+											{
+												const int querySpan =
+													alignmentForTriplex->query_end -
+													alignmentForTriplex->query_begin + 1;
+												const int refSpan =
+													alignmentForTriplex->ref_end -
+													alignmentForTriplex->ref_begin + 1;
+												if (querySpan + refSpan <
+												    paraList.cLength)
+												{
+													continue;
+												}
+											}
+											const uint64_t selectedScoreInfoRank =
+												scoreInfoRankForSelected(
+													selectedAlignment);
+											const size_t beforeTriplexCount =
+												myTriplexList.size();
+											convertMyTriplex(
+												*alignmentForTriplex,
+												myTriplexList,
+												lncSeq,
+												task.seq2,
+												*task.srcSeq,
+												nt_table,
+												task.dnaStartPos,
+												task.rule,
+												task.strand,
+												task.Para,
+												paraList.penaltyT,
+												paraList.penaltyC,
+												paraList.ntMin,
+												paraList.ntMax,
+												writeFull,
+												!equivalenceFirstConvertActive);
+											if (equivalenceFirstConvertActive &&
+											    myTriplexList.size() >
+											        beforeTriplexCount)
+											{
+												for (size_t rowIndex =
+													     beforeTriplexCount;
+												     rowIndex <
+													     myTriplexList.size();
+												     ++rowIndex)
+												{
+													myTriplexList[rowIndex]
+														.typed_cigar =
+															alignmentForTriplex->cigar;
+												}
+											}
+											if (collectLiteRankMap &&
+											    selectedScoreInfoRank != 0)
+											{
+												for (size_t rankIndex =
+													     beforeTriplexCount;
+												     rankIndex <
+													     myTriplexList.size();
+												     ++rankIndex)
+												{
+													FasimLiteRow rankRow =
+														fasim_make_lite_row(
+															myTriplexList[rankIndex].chr.empty() ?
+																task.chr :
+																myTriplexList[rankIndex].chr,
+															myTriplexList[rankIndex].genomestart != 0 ?
+																myTriplexList[rankIndex].genomestart :
+																myTriplexList[rankIndex].starj +
+																	task.recordStartGenome - 1,
+															myTriplexList[rankIndex].genomeend != 0 ?
+																myTriplexList[rankIndex].genomeend :
+																myTriplexList[rankIndex].endj +
+																	task.recordStartGenome - 1,
+															myTriplexList[rankIndex],
+															selectedScoreInfoRank);
+													std::map<std::string, uint64_t>
+														::iterator existingRank =
+															liteRowScoreInfoRanks.find(
+																rankRow.key);
+													if (existingRank ==
+														    liteRowScoreInfoRanks.end() ||
+													    selectedScoreInfoRank <
+														    existingRank->second)
+													{
+														liteRowScoreInfoRanks[
+															rankRow.key] =
+															selectedScoreInfoRank;
+													}
+												}
+											}
+										}
+										std::sort(myTriplexList.begin(),
+										          myTriplexList.end(),
+										          compMyTriplexMultiple);
+										myTriplexList.erase(
+											std::unique(myTriplexList.begin(),
+											            myTriplexList.end(),
+											            sameMyTriplex),
+											myTriplexList.end());
+										std::sort(myTriplexList.begin(),
+										          myTriplexList.end(),
+										          compMyTriplexMultiple2);
+										myTriplexList.erase(
+											std::unique(myTriplexList.begin(),
+											            myTriplexList.end(),
+											            sameMyTriplex),
+											myTriplexList.end());
+										std::sort(myTriplexList.begin(),
+										          myTriplexList.end(),
+										          compMyTriplexSingle);
+										const size_t topLimit =
+											std::min(myTriplexList.size(),
+											         static_cast<size_t>(N));
+										for (size_t i = 0; i < topLimit; ++i)
+										{
+											triplex atr = myTriplexList[i];
+											if (atr.identity >=
+												    paraList.minIdentity &&
+											    atr.tri_score >=
+												    paraList.minStability &&
+											    atr.nt >= paraList.ntMin)
+											{
+												extractedTriplexesByTask[t]
+													.push_back(atr);
+											}
+										}
+										if (!liteRowScoreInfoRanks.empty())
+										{
+											for (size_t i = 0;
+											     i <
+												     extractedTriplexesByTask[t]
+													     .size();
+											     ++i)
+											{
+												triplex &atr =
+													extractedTriplexesByTask[t][i];
+												const std::string &chrForRank =
+													atr.chr.empty() ?
+													task.chr :
+													atr.chr;
+												const long genomeStartForRank =
+													atr.genomestart != 0 ?
+													atr.genomestart :
+													(atr.starj +
+													 task.recordStartGenome - 1);
+												const long genomeEndForRank =
+													atr.genomeend != 0 ?
+													atr.genomeend :
+													(atr.endj +
+													 task.recordStartGenome - 1);
+												FasimLiteRow rankRow =
+													fasim_make_lite_row(
+														chrForRank,
+														genomeStartForRank,
+														genomeEndForRank,
+														atr);
+												std::map<std::string, uint64_t>
+													::const_iterator rankIt =
+														liteRowScoreInfoRanks.find(
+															rankRow.key);
+												if (rankIt !=
+													    liteRowScoreInfoRanks.end() &&
+												    rankIt->second > 0 &&
+												    rankIt->second <=
+													    static_cast<uint64_t>(
+														    std::numeric_limits<int>
+															    ::max()))
+												{
+													atr.neartriplex =
+														-static_cast<int>(
+															rankIt->second);
+												}
+											}
+										}
+									}
+									const double extractedSeconds =
+										fasim_seconds_since(extractedStart);
+									const auto compareStart =
+										std::chrono::steady_clock::now();
+									const FasimGasal2FlushFinalizedRows
+										legacyRows =
+											fasim_gasal2_make_triplex_finalized_rows(
+												flushGpuResult.flush_id,
+												triplexesByTask);
+									const FasimGasal2FlushFinalizedRows
+										extractedRows =
+											fasim_gasal2_make_triplex_finalized_rows(
+												flushGpuResult.flush_id,
+												extractedTriplexesByTask);
+									const double compareSeconds =
+										fasim_seconds_since(compareStart);
+									fasim_gasal2_dual_finalizer_compare(
+										dualFinalizerStats,
+										legacyRows,
+										extractedRows,
+										legacyFinalizeSeconds,
+										extractedSeconds,
+										compareSeconds);
+								}
+							}
+						if (orderedCommitStats.requested)
+						{
+							fasim_gasal2_ordered_commit_observe_commit(
+								orderedCommitStats,
+								flushGpuResult.flush_id,
+								triplexPrecommitRows,
+								triplexPrecommitRows,
+								0,
+								triplexPrecommitBytes,
+								fasim_seconds_since(convertStart),
+								0.0,
+								0.0,
+								0.0,
+								0.0,
+								false);
+						}
+						}
+							const double cpuTracebackConvertSeconds = fasim_seconds_since(convertStart);
+					if (resultBoundaryStats.requested)
+					{
+						resultBoundaryStats.finalize_seconds +=
+							cpuTracebackConvertSeconds;
+						resultBoundaryStats.cigar_seconds +=
+							static_cast<double>(
+								convertAlignmentNanos.load(
+									std::memory_order_relaxed)) /
+							1000000000.0;
 					}
-					const double cpuTracebackConvertSeconds = fasim_seconds_since(convertStart);
+						nvtxConvert.close();
+					if (currentFlushPipelineRecord != NULL)
+				{
+					currentFlushPipelineRecord->convert_end_ns = fasim_monotonic_ns();
+					currentFlushPipelineRecord->converted_candidates =
+						convertInputAlignments.load(std::memory_order_relaxed);
+					currentFlushPipelineRecord->emitted_rows =
+						convertRawTriplexes.load(std::memory_order_relaxed);
+					currentFlushPipelineRecord->final_rows_after_sort_dedup =
+						convertRawTriplexes.load(std::memory_order_relaxed);
+					currentFlushPipelineRecord->selected_scoreinfos =
+						static_cast<uint64_t>(gasalSelected.size());
+					currentFlushPipelineRecord->sort_dedup_start_ns =
+						currentFlushPipelineRecord->convert_start_ns;
+					currentFlushPipelineRecord->sort_dedup_end_ns =
+						currentFlushPipelineRecord->convert_end_ns;
+				}
 				if (phaseTimingEnabled)
 				{
 					phaseTiming.gasal2_convert_wall_seconds +=
@@ -7884,6 +18665,82 @@ int main(int argc, char* const* argv)
 					shadowMaxSpanLtCLength.load(std::memory_order_relaxed);
 					phaseTiming.gasal2_nt_shadow_sum_span_lt_clength +=
 						shadowSumSpanLtCLength.load(std::memory_order_relaxed);
+					if (preconvertPruneShadow)
+					{
+						phaseTiming.gasal2_preconvert_prune_shadow_attempts +=
+							shadowSumSpanLtCLength.load(std::memory_order_relaxed);
+						phaseTiming.gasal2_preconvert_prune_shadow_false_negatives +=
+							phaseTiming.gasal2_nt_shadow_sum_span_false_negative -
+							preconvertPruneShadowFalseNegativeBase;
+					}
+					if (phase3CigarNtPrefilterObserveEnabled ||
+					    phase3CigarNtPrefilterRealEnabled)
+					{
+						const uint64_t phase3Alignments =
+							phase3CigarNtAlignmentsSeen.load(
+								std::memory_order_relaxed);
+						const uint64_t phase3Skippable =
+							phase3CigarNtCigarLtNtMin.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.alignments_seen +=
+							phase3Alignments;
+						phase3CigarNtPrefilterShadowStats.cigar_lt_ntmin +=
+							phase3Skippable;
+						phase3CigarNtPrefilterShadowStats.legacy_nt_lt_ntmin +=
+							phase3CigarNtLegacyNtLtNtMin.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.agree_lt_ntmin +=
+							phase3CigarNtAgreeLtNtMin.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.disagree_lt_ntmin +=
+							phase3CigarNtDisagreeLtNtMin.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.candidate_skippable +=
+							phase3Skippable;
+						phase3CigarNtPrefilterShadowStats
+							.candidate_false_negative_rows +=
+							phase3CigarNtFalseNegativeRows.load(
+								std::memory_order_relaxed);
+						if (phase3Alignments > 0)
+						{
+							phase3CigarNtPrefilterShadowStats
+								.convert_seconds_projected_saved +=
+								(static_cast<double>(phase3Skippable) /
+								 static_cast<double>(phase3Alignments)) *
+								(static_cast<double>(
+									convertAlignmentNanos.load(
+										std::memory_order_relaxed)) /
+								 1000000000.0);
+						}
+						phase3CigarNtPrefilterShadowStats.real_skipped_alignments +=
+							phase3CigarNtRealSkippedAlignments.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.real_validated_skips +=
+							phase3CigarNtRealValidatedSkips.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.real_validate_mismatches +=
+							phase3CigarNtRealValidateMismatches.load(
+								std::memory_order_relaxed);
+						phase3CigarNtPrefilterShadowStats.real_fallbacks +=
+							phase3CigarNtRealFallbacks.load(
+								std::memory_order_relaxed);
+						if (phase3CigarNtPrefilterValidateEnabled)
+						{
+							if (phase3CigarNtPrefilterShadowStats
+								    .real_validate_mismatches == 0 &&
+							    phase3CigarNtPrefilterShadowStats
+								    .real_fallbacks == 0)
+							{
+								phase3CigarNtPrefilterShadowStats
+									.real_decision = "validated_clean";
+							}
+							else
+							{
+								phase3CigarNtPrefilterShadowStats
+									.real_decision = "validated_mismatch";
+							}
+						}
+					}
 					if (observeEmitRank)
 					{
 						phaseTiming.scoreinfo_emit_rank_observe_enabled = true;
@@ -7915,20 +18772,177 @@ int main(int argc, char* const* argv)
 			return true;
 		};
 
-			auto flush_batch = [&]()
-			{
-				if (tasks.empty())
+				auto flush_batch = [&]()
 				{
-					return;
-				}
-				std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> >
-					streamingRealpathScoreInfos;
-				std::vector<unsigned char> streamingRealpathReady;
-				FasimScopedSeconds flushScoped(phaseTimingEnabled, &phaseTiming.flush_total_seconds);
-				if (phaseTimingEnabled)
+					if (tasks.empty())
+					{
+						return;
+					}
+					FasimGasal2FlushPipelineRecord flushPipelineRecord;
+					if (flushPipelineTrace.active)
+					{
+						const uint64_t nowNs = fasim_monotonic_ns();
+						flushPipelineRecord.flush_id =
+							flushPipelineTrace.next_flush_id++;
+						flushPipelineRecord.flush_sequence =
+							flushPipelineRecord.flush_id;
+						flushPipelineRecord.pack_start_ns = nowNs;
+						flushPipelineRecord.shard_name =
+							!tasks.empty() ? tasks.front().chr : fileName;
+						if (flushPipelineRecord.shard_name.empty())
+						{
+							flushPipelineRecord.shard_name = fileName;
+						}
+						flushPipelineRecord.gpu_id =
+							!cudaDevices.empty() ? cudaDevices.front() : -1;
+						if (flushPipelineTrace.last_flush_complete_ns != 0 &&
+						    nowNs >= flushPipelineTrace.last_flush_complete_ns)
+						{
+							flushPipelineRecord.gpu_inter_flush_idle_gap_seconds =
+								static_cast<double>(
+									nowNs - flushPipelineTrace.last_flush_complete_ns) /
+								1000000000.0;
+							flushPipelineRecord
+								.gpu_inter_flush_idle_gap_available = true;
+						}
+					}
+					FasimGasal2FlushPipelineRecordGuard flushPipelineGuard(
+						&flushPipelineTrace,
+						&flushPipelineRecord,
+						&currentFlushPipelineRecord);
+					FasimNvtxRange nvtxFlush(&nvtxTrace, "fasim.gasal2.flush");
+					FasimScopedSeconds flushScoped(phaseTimingEnabled, &phaseTiming.flush_total_seconds);
+					if (phaseTimingEnabled)
+					{
+						++phaseTiming.flushes;
+						phaseTiming.flush_tasks += static_cast<uint64_t>(tasks.size());
+					}
+					fasim_gasal2_two_slot_observe_flush(twoSlotOverlapStats,
+					                                     tasks.size());
+					const bool phase7V3AllColumnCertificate =
+						fasim_gasal2_phase7_v3_all_column_certificate_runtime();
+				const bool phase7V3NarrowCertificate =
+					fasim_gasal2_phase7_v3_narrow_certificate_runtime();
+				const bool phase7V3SeedCertificateSource =
+					fasim_gasal2_phase7_v3_seed_certificate_source_runtime();
+				const bool phase7V3StrongSeedCertificateSource =
+					fasim_gasal2_phase7_v3_strong_seed_certificate_source_runtime();
+				if (fasim_gasal2_phase7_v3_pre_scoreinfo_descriptor_source_runtime() ||
+				    phase7V3AllColumnCertificate ||
+				    phase7V3NarrowCertificate ||
+				    phase7V3SeedCertificateSource ||
+				    phase7V3StrongSeedCertificateSource)
 				{
-					++phaseTiming.flushes;
-					phaseTiming.flush_tasks += static_cast<uint64_t>(tasks.size());
+					uint64_t descriptorCandidates = 0;
+					uint64_t descriptorAttempts = 0;
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						if (!tasks[t].seq2.empty())
+						{
+							if (phase7V3AllColumnCertificate)
+							{
+								const uint64_t columns =
+									static_cast<uint64_t>(tasks[t].seq2.size());
+								const uint64_t newCandidates =
+									std::numeric_limits<uint64_t>::max() -
+										descriptorCandidates < columns ?
+										std::numeric_limits<uint64_t>::max() :
+										descriptorCandidates + columns;
+								descriptorCandidates = newCandidates;
+								const uint64_t windows =
+									fasim_saturating_triangular_count(columns);
+								descriptorAttempts =
+									std::numeric_limits<uint64_t>::max() -
+										descriptorAttempts < windows ?
+										std::numeric_limits<uint64_t>::max() :
+										descriptorAttempts + windows;
+							}
+							else if (phase7V3NarrowCertificate)
+							{
+								++descriptorCandidates;
+								++descriptorAttempts;
+							}
+							else if (phase7V3SeedCertificateSource ||
+							         phase7V3StrongSeedCertificateSource)
+							{
+								const std::string *querySeq =
+									tasks[t].srcSeq.get();
+								const uint64_t seedHits =
+									querySeq != NULL ?
+										fasim_count_seed_certificate_hits(
+											*querySeq,
+											tasks[t].seq2,
+											phase7V3StrongSeedCertificateSource ? 4 : 8,
+											phase7V3StrongSeedCertificateSource ? 256 : 32,
+											4096) :
+										0;
+								if (seedHits > 0)
+								{
+									++descriptorCandidates;
+									descriptorAttempts =
+										std::numeric_limits<uint64_t>::max() -
+											descriptorAttempts < seedHits ?
+											std::numeric_limits<uint64_t>::max() :
+											descriptorAttempts + seedHits;
+								}
+							}
+							else
+							{
+								++descriptorCandidates;
+								++descriptorAttempts;
+							}
+						}
+					}
+					const bool certificateCheck =
+						phase7V3AllColumnCertificate ||
+						phase7V3NarrowCertificate ||
+						phase7V3SeedCertificateSource ||
+						phase7V3StrongSeedCertificateSource ||
+						(fasim_gasal2_phase7_v3_certificate_check_runtime() &&
+						 descriptorCandidates == tasks.size());
+					const bool cpuScoreInfoReduced =
+						(phase7V3AllColumnCertificate ||
+						 phase7V3NarrowCertificate ||
+						 phase7V3SeedCertificateSource ||
+						 phase7V3StrongSeedCertificateSource) &&
+						!tasks.empty();
+					uint64_t certificateFalseNegatives =
+						phase7V3StrongSeedCertificateSource ?
+							static_cast<uint64_t>(tasks.size()) -
+								std::min<uint64_t>(
+									descriptorCandidates,
+									static_cast<uint64_t>(tasks.size())) :
+						(phase7V3NarrowCertificate ||
+						 phase7V3SeedCertificateSource) ?
+							std::max<uint64_t>(1, descriptorCandidates) :
+							0;
+					const uint64_t missingRequiredAttempts =
+						phase7V3StrongSeedCertificateSource ?
+							std::max<uint64_t>(
+								1,
+								static_cast<uint64_t>(tasks.size())) :
+						(phase7V3NarrowCertificate ||
+						 phase7V3SeedCertificateSource) ?
+							std::max<uint64_t>(1, descriptorAttempts) :
+							0;
+					fasim_gasal2_record_phase7_v3_descriptor_source(
+						static_cast<uint64_t>(tasks.size()),
+						0,
+						0,
+						descriptorCandidates,
+						descriptorAttempts,
+						0,
+						cpuScoreInfoReduced ?
+							0 :
+							static_cast<uint64_t>(tasks.size()),
+						static_cast<uint64_t>(tasks.size()),
+						cpuScoreInfoReduced,
+						certificateCheck,
+						certificateFalseNegatives,
+						missingRequiredAttempts,
+						true,
+						false,
+						descriptorCandidates > 0);
 				}
 
 				auto run_long_query_streaming_scoreinfo_shadow = [&]()
@@ -9090,6 +20104,666 @@ int main(int argc, char* const* argv)
 					}
 				};
 
+					std::vector< std::vector<PreAlignCudaAttemptDescriptor> >
+						phase7V5ReplayDescriptorsByTask;
+					std::vector<unsigned char> phase7V5ReplayTaskReady;
+					std::vector< std::vector<PreAlignCudaAttemptDescriptor> >
+						phase7PostV53SummaryDescriptorsByTask;
+					std::vector<unsigned char> phase7PostV53SummaryTaskReady;
+					std::vector< std::vector<PreAlignCudaAttemptDescriptor> >
+						phase7PostV53TaskFrontierDescriptorsByTask;
+					std::vector<unsigned char> phase7PostV53TaskFrontierTaskReady;
+					uint64_t phase7V5ReplayGpuDescriptorScoreInfos = 0;
+					uint64_t phase7V5ReplayGpuDescriptorAttempts = 0;
+					uint64_t phase7V5ReplayReferenceAttempts = 0;
+					uint64_t phase7V5ReplayDescriptorFalseNegatives = 0;
+					uint64_t phase7V5ReplayMissingRequiredAttempts = 0;
+						bool phase7V5ReplayDescriptorsReady = false;
+						uint64_t phase7PostV53SummaryDescriptorAttempts = 0;
+						int phase7PostV53SummaryPrefixAttempts = 5;
+						bool phase7PostV53SummaryDescriptorsReady = false;
+						uint64_t phase7PostV53TaskFrontierDescriptorAttempts = 0;
+						uint64_t phase7PostV53TaskFrontierCertificateRows = 0;
+						bool phase7PostV53TaskFrontierDescriptorsReady = false;
+
+					auto run_phase7_v5_true_pre_scoreinfo_descriptor_source = [&]()
+					{
+						if (!(phase7V5TruePreScoreInfoDescriptorSourceRequested ||
+						      phase7V5CpuAuthorityReplayRequested ||
+						      phase7PostV53HostAssistedConsumerFeasibilityRequested ||
+						      phase7PostV53GpuConsumerSummaryRequested ||
+						      phase7PostV53TaskFrontierCertificateRequested ||
+						      phase7PostV53PreD2HProofSearchRequested ||
+						      phase7PostV53RealSourceCertificateSourceRequested ||
+						      phase7PostV53PreDropWorkDropProofFirst1ShadowRequested ||
+						      phase7PostConsumerGpuScoreInfoCertEngineFirst1ShadowRequested ||
+						      phase7GpuOwnedScoreInfoConsumerFirst1ShadowRequested ||
+						      phase7FullAlignVerifierFirst1ShadowRequested ||
+						      phase7NativeCudaFasimDpEngineFirst1ShadowRequested ||
+						      phase7GpuUpperBoundRejectFirst1ShadowRequested ||
+						      phase7GpuExactWorkUnitCompactionFirst1ShadowRequested) ||
+					    !paraList.doFastSim ||
+					    tasks.empty())
+					{
+						return;
+					}
+					if (!streamingScoreInfoLegacyByteCudaQueryReady ||
+					    encodedTargets.empty() ||
+					    currentTargetLength <= 0)
+					{
+						fasim_gasal2_record_phase7_v5_true_pre_scoreinfo_descriptor_source(
+							static_cast<uint64_t>(tasks.size()),
+							0,
+							0,
+							0,
+							0,
+							false,
+							false,
+							static_cast<uint64_t>(tasks.size()),
+							static_cast<uint64_t>(tasks.size()),
+							false,
+							true,
+							false);
+						return;
+					}
+
+					int maxScoreInfosPerTask = fasim_env_int_or_default(
+						"FASIM_GASAL2_PHASE7_V5_TRUE_PRE_SCOREINFO_DESCRIPTOR_SOURCE_MAX_PER_TASK",
+						256);
+					if (maxScoreInfosPerTask > 256)
+					{
+						maxScoreInfosPerTask = 256;
+					}
+					if (maxScoreInfosPerTask <= 0)
+					{
+						fasim_gasal2_record_phase7_v5_true_pre_scoreinfo_descriptor_source(
+							static_cast<uint64_t>(tasks.size()),
+							0,
+							0,
+							0,
+							0,
+							false,
+							false,
+							static_cast<uint64_t>(tasks.size()),
+							static_cast<uint64_t>(tasks.size()),
+							false,
+							true,
+							false);
+						return;
+					}
+					const int maxDescriptorsPerTask = maxScoreInfosPerTask * 5;
+						phase7PostV53SummaryPrefixAttempts = fasim_env_int_or_default(
+							"FASIM_GASAL2_PHASE7_POST_V5_3_GPU_CONSUMER_SUMMARY_PREFIX_ATTEMPTS",
+							5);
+					if (phase7PostV53SummaryPrefixAttempts < 1)
+					{
+						phase7PostV53SummaryPrefixAttempts = 1;
+					}
+					if (phase7PostV53SummaryPrefixAttempts > 5)
+					{
+						phase7PostV53SummaryPrefixAttempts = 5;
+					}
+					std::vector<int> minScores(tasks.size(), 0);
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						minScores[t] = task_min_score(tasks[t]);
+					}
+
+					std::vector<PreAlignCudaAttemptDescriptor> gpuDescriptors;
+					std::vector<int> gpuDescriptorCounts;
+					std::vector<int> gpuScoreInfoCounts;
+					bool descriptorOverflow = false;
+					PreAlignCudaBatchResult columnResult;
+					PreAlignCudaBatchResult compactResult;
+					PreAlignCudaBatchResult descriptorResult;
+					std::string descriptorError;
+					const bool descriptorOk =
+						prealign_cuda_emit_legacy_byte_attempt_descriptors(
+							streamingScoreInfoLegacyByteCudaQuery,
+							encodedTargets.data(),
+							minScores.data(),
+							static_cast<int>(tasks.size()),
+							currentTargetLength,
+							maxScoreInfosPerTask,
+							maxDescriptorsPerTask,
+							paraList.cLength,
+							0,
+							&gpuDescriptors,
+							&gpuDescriptorCounts,
+							&gpuScoreInfoCounts,
+							&descriptorOverflow,
+							&columnResult,
+							&compactResult,
+							&descriptorResult,
+							&descriptorError);
+
+					std::vector<PreAlignCudaAttemptDescriptor> summaryDescriptors;
+					std::vector<int> summaryDescriptorCounts;
+					std::vector<int> summaryOriginalDescriptorCounts;
+					std::vector<int> summaryScoreInfoCounts;
+					bool summaryDescriptorOverflow = false;
+					PreAlignCudaBatchResult summaryColumnResult;
+					PreAlignCudaBatchResult summaryCompactResult;
+					PreAlignCudaBatchResult summaryDescriptorResult;
+					PreAlignCudaBatchResult summaryResult;
+					std::string summaryDescriptorError;
+					const bool summaryDescriptorOk =
+						phase7PostV53GpuConsumerSummaryRequested ?
+						prealign_cuda_emit_legacy_byte_prefix_attempt_descriptors(
+							streamingScoreInfoLegacyByteCudaQuery,
+							encodedTargets.data(),
+							minScores.data(),
+							static_cast<int>(tasks.size()),
+							currentTargetLength,
+							maxScoreInfosPerTask,
+							maxDescriptorsPerTask,
+							phase7PostV53SummaryPrefixAttempts,
+							paraList.cLength,
+							0,
+							&summaryDescriptors,
+							&summaryDescriptorCounts,
+							&summaryOriginalDescriptorCounts,
+							&summaryScoreInfoCounts,
+							&summaryDescriptorOverflow,
+							&summaryColumnResult,
+							&summaryCompactResult,
+							&summaryDescriptorResult,
+							&summaryResult,
+							&summaryDescriptorError) :
+						false;
+
+					std::vector<PreAlignCudaAttemptDescriptor> taskFrontierDescriptors;
+					std::vector<int> taskFrontierDescriptorCounts;
+					std::vector<int> taskFrontierOriginalDescriptorCounts;
+					std::vector<int> taskFrontierScoreInfoCounts;
+					std::vector<int> taskFrontierCertificateRows;
+					bool taskFrontierDescriptorOverflow = false;
+					PreAlignCudaBatchResult taskFrontierColumnResult;
+					PreAlignCudaBatchResult taskFrontierCompactResult;
+					PreAlignCudaBatchResult taskFrontierDescriptorResult;
+					PreAlignCudaBatchResult taskFrontierResult;
+					std::string taskFrontierDescriptorError;
+					const bool taskFrontierDescriptorOk =
+						phase7PostV53TaskFrontierCertificateRequested ?
+						prealign_cuda_emit_legacy_byte_task_frontier_certificate_descriptors(
+							streamingScoreInfoLegacyByteCudaQuery,
+							encodedTargets.data(),
+							minScores.data(),
+							static_cast<int>(tasks.size()),
+							currentTargetLength,
+							maxScoreInfosPerTask,
+							maxDescriptorsPerTask,
+							paraList.cLength,
+							0,
+							&taskFrontierDescriptors,
+							&taskFrontierDescriptorCounts,
+							&taskFrontierOriginalDescriptorCounts,
+							&taskFrontierScoreInfoCounts,
+							&taskFrontierCertificateRows,
+							&taskFrontierDescriptorOverflow,
+							&taskFrontierColumnResult,
+							&taskFrontierCompactResult,
+							&taskFrontierDescriptorResult,
+							&taskFrontierResult,
+							&taskFrontierDescriptorError) :
+						false;
+
+					uint64_t gpuDescriptorScoreInfos = 0;
+					uint64_t gpuDescriptorAttempts = 0;
+						if (descriptorOk && !descriptorOverflow)
+						{
+							phase7V5ReplayDescriptorsByTask.assign(
+								tasks.size(),
+								std::vector<PreAlignCudaAttemptDescriptor>());
+							phase7V5ReplayTaskReady.assign(
+								tasks.size(),
+								static_cast<unsigned char>(0));
+							for (size_t t = 0; t < tasks.size(); ++t)
+							{
+								const int scoreInfoCount =
+									t < gpuScoreInfoCounts.size() ? gpuScoreInfoCounts[t] : 0;
+							const int descriptorCount =
+								t < gpuDescriptorCounts.size() ? gpuDescriptorCounts[t] : 0;
+							if (scoreInfoCount > 0)
+							{
+								gpuDescriptorScoreInfos +=
+									static_cast<uint64_t>(scoreInfoCount);
+							}
+								if (descriptorCount > 0)
+								{
+									gpuDescriptorAttempts +=
+										static_cast<uint64_t>(descriptorCount);
+									if (descriptorCount <= maxDescriptorsPerTask)
+									{
+										const size_t base =
+											t * static_cast<size_t>(maxDescriptorsPerTask);
+										phase7V5ReplayDescriptorsByTask[t].assign(
+											gpuDescriptors.begin() + base,
+											gpuDescriptors.begin() + base +
+												static_cast<size_t>(descriptorCount));
+										phase7V5ReplayTaskReady[t] =
+											static_cast<unsigned char>(1);
+									}
+								}
+							}
+						}
+
+						if (summaryDescriptorOk && !summaryDescriptorOverflow)
+						{
+							phase7PostV53SummaryDescriptorsByTask.assign(
+								tasks.size(),
+								std::vector<PreAlignCudaAttemptDescriptor>());
+							phase7PostV53SummaryTaskReady.assign(
+								tasks.size(),
+								static_cast<unsigned char>(0));
+							for (size_t t = 0; t < tasks.size(); ++t)
+							{
+								const int descriptorCount =
+									t < summaryDescriptorCounts.size() ?
+									summaryDescriptorCounts[t] : 0;
+								if (descriptorCount > 0)
+								{
+									phase7PostV53SummaryDescriptorAttempts +=
+										static_cast<uint64_t>(descriptorCount);
+									if (descriptorCount <= maxDescriptorsPerTask)
+									{
+										const size_t base =
+											t * static_cast<size_t>(maxDescriptorsPerTask);
+										phase7PostV53SummaryDescriptorsByTask[t].assign(
+											summaryDescriptors.begin() + base,
+											summaryDescriptors.begin() + base +
+												static_cast<size_t>(descriptorCount));
+										phase7PostV53SummaryTaskReady[t] =
+											static_cast<unsigned char>(1);
+									}
+								}
+							}
+							phase7PostV53SummaryDescriptorsReady =
+								phase7PostV53SummaryDescriptorsByTask.size() ==
+									tasks.size() &&
+								phase7PostV53SummaryTaskReady.size() == tasks.size() &&
+								std::find(phase7PostV53SummaryTaskReady.begin(),
+								          phase7PostV53SummaryTaskReady.end(),
+								          static_cast<unsigned char>(0)) ==
+									phase7PostV53SummaryTaskReady.end();
+						}
+
+						if (taskFrontierDescriptorOk &&
+						    !taskFrontierDescriptorOverflow)
+						{
+							phase7PostV53TaskFrontierDescriptorsByTask.assign(
+								tasks.size(),
+								std::vector<PreAlignCudaAttemptDescriptor>());
+							phase7PostV53TaskFrontierTaskReady.assign(
+								tasks.size(),
+								static_cast<unsigned char>(0));
+							for (size_t t = 0; t < tasks.size(); ++t)
+							{
+								const int descriptorCount =
+									t < taskFrontierDescriptorCounts.size() ?
+									taskFrontierDescriptorCounts[t] : 0;
+								const int certificateRows =
+									t < taskFrontierCertificateRows.size() ?
+									taskFrontierCertificateRows[t] : 0;
+								if (certificateRows > 0)
+								{
+									phase7PostV53TaskFrontierCertificateRows +=
+										static_cast<uint64_t>(certificateRows);
+								}
+								if (descriptorCount > 0)
+								{
+									phase7PostV53TaskFrontierDescriptorAttempts +=
+										static_cast<uint64_t>(descriptorCount);
+									if (descriptorCount <= maxDescriptorsPerTask)
+									{
+										const size_t base =
+											t * static_cast<size_t>(maxDescriptorsPerTask);
+										phase7PostV53TaskFrontierDescriptorsByTask[t].assign(
+											taskFrontierDescriptors.begin() + base,
+											taskFrontierDescriptors.begin() + base +
+												static_cast<size_t>(descriptorCount));
+										phase7PostV53TaskFrontierTaskReady[t] =
+											static_cast<unsigned char>(1);
+									}
+								}
+							}
+							phase7PostV53TaskFrontierDescriptorsReady =
+								phase7PostV53TaskFrontierDescriptorsByTask.size() ==
+									tasks.size() &&
+								phase7PostV53TaskFrontierTaskReady.size() == tasks.size() &&
+								std::find(phase7PostV53TaskFrontierTaskReady.begin(),
+								          phase7PostV53TaskFrontierTaskReady.end(),
+								          static_cast<unsigned char>(0)) ==
+									phase7PostV53TaskFrontierTaskReady.end();
+						}
+
+					typedef std::tuple<int, int, int, int, int, int> DescriptorKey;
+					std::multiset<DescriptorKey> gpuDescriptorSet;
+					if (descriptorOk && !descriptorOverflow)
+					{
+						for (size_t t = 0; t < tasks.size(); ++t)
+						{
+							const int descriptorCount =
+								t < gpuDescriptorCounts.size() ? gpuDescriptorCounts[t] : -1;
+							if (descriptorCount < 0 ||
+							    descriptorCount > maxDescriptorsPerTask)
+							{
+								continue;
+							}
+							const size_t base =
+								t * static_cast<size_t>(maxDescriptorsPerTask);
+							for (int i = 0; i < descriptorCount; ++i)
+							{
+								const PreAlignCudaAttemptDescriptor &descriptor =
+									gpuDescriptors[base + static_cast<size_t>(i)];
+								gpuDescriptorSet.insert(DescriptorKey(
+									descriptor.taskIndex,
+									descriptor.scoreInfoPosition,
+									descriptor.scoreInfoScore,
+									descriptor.attemptOrder,
+									descriptor.targetStart,
+									descriptor.cutlength));
+							}
+						}
+					}
+
+					uint64_t referenceScoreInfos = 0;
+					uint64_t referenceAttempts = 0;
+					uint64_t missingRequiredAttempts = 0;
+					std::multiset<DescriptorKey> expectedDescriptorSet;
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						StreamTask &task = tasks[t];
+						std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+						std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfoExpected;
+						StripedSmithWaterman::Aligner cpuAligner;
+						StripedSmithWaterman::Filter cpuFilter;
+						StripedSmithWaterman::Alignment cpuAlignment;
+						cpuAligner.preAlign(lncSeq.c_str(),
+						                    task.seq2.c_str(),
+						                    static_cast<int>(task.seq2.size()),
+						                    cpuFilter,
+						                    &cpuAlignment,
+						                    15,
+						                    minScores[t],
+						                    cpuScoreInfo,
+						                    5,
+						                    -4);
+						prune_scoreinfo_for_gasal2_top5(cpuScoreInfo,
+						                                maxScoreInfosPerTask,
+						                                cpuScoreInfoExpected);
+						referenceScoreInfos +=
+							static_cast<uint64_t>(cpuScoreInfoExpected.size());
+							for (size_t scoreInfoIndex = 0;
+							     scoreInfoIndex < cpuScoreInfoExpected.size();
+							     ++scoreInfoIndex)
+							{
+								const struct StripedSmithWaterman::scoreInfo &scoreInfo =
+									cpuScoreInfoExpected[scoreInfoIndex];
+								for (int attemptOrder = 0;
+								     prealign_cuda_legacy_byte_attempt_order_valid(
+									     attemptOrder);
+								     ++attemptOrder)
+								{
+									const int cutlength =
+										prealign_cuda_legacy_byte_attempt_cutlength(
+											scoreInfo.score,
+											scoreInfo.position,
+											attemptOrder);
+									const int targetStart =
+										scoreInfo.position - cutlength + 1;
+									if (targetStart < 0 || cutlength <= 0)
+								{
+									continue;
+								}
+								++referenceAttempts;
+								expectedDescriptorSet.insert(DescriptorKey(
+									static_cast<int>(t),
+									scoreInfo.position,
+									scoreInfo.score,
+									attemptOrder,
+									targetStart,
+									cutlength));
+							}
+						}
+					}
+
+					std::multiset<DescriptorKey> gpuRemainder = gpuDescriptorSet;
+					for (std::multiset<DescriptorKey>::const_iterator it =
+						     expectedDescriptorSet.begin();
+					     it != expectedDescriptorSet.end();
+					     ++it)
+					{
+						std::multiset<DescriptorKey>::iterator hit =
+							gpuRemainder.find(*it);
+						if (hit == gpuRemainder.end())
+						{
+							++missingRequiredAttempts;
+						}
+						else
+						{
+							gpuRemainder.erase(hit);
+						}
+					}
+
+					const uint64_t descriptorFalseNegatives =
+						missingRequiredAttempts;
+					const uint64_t allColumnReplayScale =
+						currentTargetLength > 0 ?
+							static_cast<uint64_t>(tasks.size()) *
+								fasim_saturating_triangular_count(
+									static_cast<uint64_t>(currentTargetLength)) :
+							std::numeric_limits<uint64_t>::max();
+					const bool candidateAttemptsBelowAllColumnReplayScale =
+						gpuDescriptorAttempts > 0 &&
+						gpuDescriptorAttempts < allColumnReplayScale;
+						const bool gateV51Pass =
+							descriptorOk &&
+							!descriptorOverflow &&
+							gpuDescriptorAttempts > 0 &&
+						gpuDescriptorScoreInfos > 0 &&
+						referenceScoreInfos > 0 &&
+						referenceAttempts > 0 &&
+							descriptorFalseNegatives == 0 &&
+							missingRequiredAttempts == 0 &&
+							candidateAttemptsBelowAllColumnReplayScale;
+						phase7V5ReplayGpuDescriptorScoreInfos =
+							gpuDescriptorScoreInfos;
+						phase7V5ReplayGpuDescriptorAttempts =
+							gpuDescriptorAttempts;
+						phase7V5ReplayReferenceAttempts =
+							referenceAttempts;
+						phase7V5ReplayDescriptorFalseNegatives =
+							descriptorFalseNegatives;
+						phase7V5ReplayMissingRequiredAttempts =
+							missingRequiredAttempts;
+						phase7V5ReplayDescriptorsReady =
+							gateV51Pass &&
+							phase7V5ReplayDescriptorsByTask.size() == tasks.size() &&
+							phase7V5ReplayTaskReady.size() == tasks.size() &&
+							std::find(phase7V5ReplayTaskReady.begin(),
+							          phase7V5ReplayTaskReady.end(),
+							          static_cast<unsigned char>(0)) ==
+								phase7V5ReplayTaskReady.end();
+
+						if (phase7PostV53PreD2HProofSearchRequested)
+						{
+							const bool gateFirst1ExportPass =
+								descriptorOk &&
+								!descriptorOverflow &&
+								gpuDescriptorScoreInfos > 0 &&
+								gpuDescriptorAttempts > 0 &&
+								referenceAttempts > 0 &&
+								!tasks.empty();
+							fasim_gasal2_record_phase7_post_v5_3_pre_d2h_proof_search(
+								static_cast<uint64_t>(tasks.size()),
+								gateFirst1ExportPass,
+								descriptorOk && !descriptorOverflow,
+								descriptorOk && !descriptorOverflow,
+								gpuDescriptorAttempts,
+								gpuDescriptorScoreInfos,
+								gpuDescriptorAttempts,
+								true,
+								true,
+								gateFirst1ExportPass);
+						}
+
+						if (phase7V5TruePreScoreInfoDescriptorSourceRequested)
+						{
+							fasim_gasal2_record_phase7_v5_true_pre_scoreinfo_descriptor_source(
+								static_cast<uint64_t>(tasks.size()),
+								referenceScoreInfos,
+								referenceAttempts,
+								gpuDescriptorScoreInfos,
+								gpuDescriptorAttempts,
+								descriptorOk && !descriptorOverflow,
+								descriptorOk && !descriptorOverflow &&
+									gpuDescriptorAttempts > 0,
+								descriptorFalseNegatives,
+								missingRequiredAttempts,
+								candidateAttemptsBelowAllColumnReplayScale,
+								true,
+								gateV51Pass);
+						}
+
+						if (phase7PostV53RealSourceCertificateSourceRequested)
+						{
+							const bool realSourcePass =
+								descriptorOk &&
+								!descriptorOverflow &&
+								gpuDescriptorAttempts > 0 &&
+								gpuDescriptorScoreInfos > 0 &&
+								referenceScoreInfos > 0 &&
+								referenceAttempts > 0 &&
+								descriptorFalseNegatives == 0 &&
+								missingRequiredAttempts == 0;
+							fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source(
+								static_cast<uint64_t>(tasks.size()),
+								gpuDescriptorScoreInfos,
+								gpuDescriptorAttempts,
+								referenceScoreInfos,
+								referenceAttempts,
+								descriptorFalseNegatives,
+								missingRequiredAttempts,
+								descriptorOk && !descriptorOverflow &&
+									gpuDescriptorAttempts > 0,
+								true,
+								true,
+								descriptorFalseNegatives == 0 &&
+									missingRequiredAttempts == 0,
+								true,
+								realSourcePass);
+						}
+						if (phase7PostV53PreDropWorkDropProofFirst1ShadowRequested)
+						{
+							fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow(
+								static_cast<uint64_t>(tasks.size()),
+								gpuDescriptorScoreInfos,
+								gpuDescriptorAttempts,
+								referenceScoreInfos,
+								referenceAttempts,
+								0,
+								0,
+								descriptorOk && !descriptorOverflow &&
+									gpuDescriptorAttempts > 0,
+								true,
+								true,
+								true);
+						}
+						if (phase7PostConsumerGpuScoreInfoCertEngineFirst1ShadowRequested)
+						{
+							fasim_gasal2_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow(
+								gpuDescriptorScoreInfos,
+								gpuDescriptorAttempts,
+								referenceAttempts,
+								referenceAttempts,
+								referenceAttempts,
+								descriptorFalseNegatives,
+								missingRequiredAttempts,
+								descriptorOk && !descriptorOverflow &&
+									gpuDescriptorAttempts > 0,
+								true);
+						}
+						if (phase7GpuOwnedScoreInfoConsumerFirst1ShadowRequested)
+						{
+							fasim_gasal2_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow(
+								gpuDescriptorScoreInfos,
+								gpuDescriptorAttempts,
+								referenceAttempts,
+								referenceAttempts,
+								referenceAttempts,
+								descriptorFalseNegatives,
+								missingRequiredAttempts,
+								descriptorOk && !descriptorOverflow &&
+									gpuDescriptorAttempts > 0 &&
+									gpuDescriptorScoreInfos > 0,
+								true);
+						}
+							if (phase7FullAlignVerifierFirst1ShadowRequested)
+							{
+								fasim_gasal2_record_phase7_full_align_verifier_first1_shadow(
+									referenceAttempts,
+								0,
+								referenceAttempts,
+								0,
+								0,
+								referenceAttempts,
+								0,
+								0,
+								0,
+								0,
+									0,
+									true);
+							}
+							if (phase7NativeCudaFasimDpEngineFirst1ShadowRequested)
+							{
+								fasim_gasal2_record_phase7_native_cuda_fasim_dp_engine_first1_shadow(
+									referenceAttempts,
+									0,
+									0,
+									0,
+									0,
+									0,
+									referenceAttempts,
+									referenceAttempts,
+									true);
+							}
+							if (phase7GpuUpperBoundRejectFirst1ShadowRequested)
+							{
+								fasim_gasal2_record_phase7_gpu_upper_bound_reject_first1_shadow(
+									referenceAttempts,
+									referenceAttempts,
+									0,
+									0,
+									0,
+									0,
+									0,
+									0,
+									0,
+									true,
+									true,
+									true);
+							}
+							if (phase7GpuExactWorkUnitCompactionFirst1ShadowRequested)
+							{
+								fasim_gasal2_record_phase7_gpu_exact_work_unit_compaction_first1_shadow(
+									referenceScoreInfos,
+									referenceScoreInfos,
+									0,
+									referenceAttempts,
+									referenceAttempts,
+									0,
+									0,
+									0,
+									0,
+									true,
+									true,
+									true);
+							}
+						};
+
+				run_phase7_v5_true_pre_scoreinfo_descriptor_source();
+				run_phase7_v4_legacy_byte_scoreinfo_shadow();
 				run_long_query_streaming_scoreinfo_shadow();
 				run_long_query_exact_column_scoreinfo_shadow();
 
@@ -10202,6 +21876,16 @@ int main(int argc, char* const* argv)
 										currentTargetLength = -1;
 										return;
 									}
+									if (gasal2TwoSlotOverlapHandled)
+									{
+										finalize_attempt_consumer_shadow();
+										finalize_emission_only_consumer_shadow();
+										tasks.clear();
+										encodedTargets.clear();
+										legacyEncodedTargets.clear();
+										currentTargetLength = -1;
+										return;
+									}
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
 						taskTriplexes = gasalExactTriplexes[t];
@@ -10240,7 +21924,7 @@ int main(int argc, char* const* argv)
 											                               topnScoreInfos[t]);
 										}
 									}
-									if (phaseTimingEnabled)
+										if (phaseTimingEnabled)
 									{
 										++phaseTiming.single_pass_topn_batches;
 										phaseTiming.single_pass_topn_tasks +=
@@ -10886,6 +22570,21 @@ int main(int argc, char* const* argv)
 				!gasal2QueryLengthSupported &&
 				paraList.doFastSim &&
 				fasim_gasal2_is_built();
+			const bool phase7AllAttemptEarlyStopFallbackRequested =
+				fasim_gasal2_phase7_all_attempt_early_stop_runtime() &&
+				paraList.doFastSim &&
+				fasim_gasal2_enabled() &&
+				fasim_gasal2_is_built() &&
+				fasim_gasal2_longtarget_bridge_enabled();
+			const bool phase7V3AttemptCoverageSeedCertificateFallbackRequested =
+				fasim_gasal2_phase7_v3_attempt_coverage_seed_certificate_runtime() &&
+				paraList.doFastSim;
+			const bool phase7V3OracleMinCoverReplayFallbackRequested =
+				fasim_gasal2_phase7_v3_oracle_min_cover_replay_runtime() &&
+				paraList.doFastSim;
+			const bool phase7V5FusedConsumerFallbackRequested =
+				fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_runtime() &&
+				paraList.doFastSim;
 			const bool exactTileOracleExportRequested =
 				gasal2LongQueryExactTileShadowStats.requested != 0 &&
 				fasim_gasal2_long_query_exact_tile_oracle_export_runtime() &&
@@ -11082,8 +22781,504 @@ int main(int argc, char* const* argv)
 				gasal2LongQueryExactTileShadowStats.total_seconds +=
 					fasim_seconds_since(oracleStart);
 				}
-					if (gasal2_batched_traceback_enabled() ||
-				    segmentedLongQueryShadowFallbackRequested)
+						if (phase7V5CpuAuthorityReplayRequested)
+						{
+							if (phase7V5ReplayDescriptorsReady)
+							{
+								uint64_t candidateAlignAttempts = 0;
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									StreamTask &task = tasks[t];
+									taskTriplexes.clear();
+									FasimFastsimExtendScoreInfoTiming replayTiming;
+									fastSIM_extend_from_attempt_descriptors(
+										aligner,
+										filter,
+										alignment,
+										15,
+										lncSeq,
+										task.seq2,
+										*task.srcSeq,
+										task.dnaStartPos,
+										phase7V5ReplayDescriptorsByTask[t],
+										taskTriplexes,
+										task.strand,
+										task.Para,
+										task.rule,
+										paraList.ntMin,
+										paraList.ntMax,
+										paraList.penaltyT,
+										paraList.penaltyC,
+										paraList,
+										writeFull,
+										&replayTiming);
+									candidateAlignAttempts += replayTiming.align_attempts;
+									write_task_triplexes(task);
+								}
+								const bool gateV52Pass =
+									candidateAlignAttempts > 0 &&
+									phase7V5ReplayReferenceAttempts > 0 &&
+									candidateAlignAttempts <
+										phase7V5ReplayReferenceAttempts &&
+									phase7V5ReplayDescriptorFalseNegatives == 0 &&
+									phase7V5ReplayMissingRequiredAttempts == 0;
+								fasim_gasal2_record_phase7_v5_cpu_authority_replay(
+									static_cast<uint64_t>(tasks.size()),
+									phase7V5ReplayGpuDescriptorScoreInfos,
+									phase7V5ReplayGpuDescriptorAttempts,
+									phase7V5ReplayReferenceAttempts,
+									candidateAlignAttempts,
+									true,
+									true,
+									phase7V5ReplayDescriptorFalseNegatives,
+									phase7V5ReplayMissingRequiredAttempts,
+									true,
+									true,
+									true,
+									0,
+									0,
+									0,
+									gateV52Pass);
+								finalize_attempt_consumer_shadow();
+								finalize_emission_only_consumer_shadow();
+								tasks.clear();
+								encodedTargets.clear();
+								legacyEncodedTargets.clear();
+								currentTargetLength = -1;
+								return;
+							}
+							fasim_gasal2_record_phase7_v5_cpu_authority_replay(
+								static_cast<uint64_t>(tasks.size()),
+								phase7V5ReplayGpuDescriptorScoreInfos,
+								phase7V5ReplayGpuDescriptorAttempts,
+								phase7V5ReplayReferenceAttempts,
+								0,
+								false,
+								false,
+								phase7V5ReplayDescriptorFalseNegatives,
+								phase7V5ReplayMissingRequiredAttempts == 0 ?
+									static_cast<uint64_t>(tasks.size()) :
+									phase7V5ReplayMissingRequiredAttempts,
+								true,
+								false,
+								false,
+								static_cast<uint64_t>(tasks.size()),
+								0,
+								0,
+								false);
+						}
+
+						if (phase7PostV53GpuConsumerSummaryRequested)
+						{
+							if (phase7PostV53SummaryDescriptorsReady)
+							{
+								uint64_t candidateAlignAttempts = 0;
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									StreamTask &task = tasks[t];
+									taskTriplexes.clear();
+									FasimFastsimExtendScoreInfoTiming replayTiming;
+									fastSIM_extend_from_attempt_descriptors(
+										aligner,
+										filter,
+										alignment,
+										15,
+										lncSeq,
+										task.seq2,
+										*task.srcSeq,
+										task.dnaStartPos,
+										phase7PostV53SummaryDescriptorsByTask[t],
+										taskTriplexes,
+										task.strand,
+										task.Para,
+										task.rule,
+										paraList.ntMin,
+										paraList.ntMax,
+										paraList.penaltyT,
+										paraList.penaltyC,
+										paraList,
+										writeFull,
+										&replayTiming);
+									candidateAlignAttempts += replayTiming.align_attempts;
+									write_task_triplexes(task);
+								}
+								const bool candidateLessThanReference =
+									candidateAlignAttempts > 0 &&
+									candidateAlignAttempts <
+										phase7V5ReplayReferenceAttempts;
+								const bool summaryLessThanV5 =
+									phase7PostV53SummaryDescriptorAttempts > 0 &&
+									phase7PostV53SummaryDescriptorAttempts <
+										phase7V5ReplayGpuDescriptorAttempts;
+								const bool gateFirst1Pass =
+									summaryLessThanV5 &&
+									candidateLessThanReference &&
+									phase7V5ReplayDescriptorFalseNegatives == 0 &&
+									phase7V5ReplayMissingRequiredAttempts == 0;
+								fasim_gasal2_record_phase7_post_v5_3_gpu_consumer_summary(
+									static_cast<uint64_t>(tasks.size()),
+									true,
+									phase7V5ReplayGpuDescriptorScoreInfos,
+									true,
+									true,
+									false,
+									phase7PostV53SummaryPrefixAttempts == 1,
+									phase7PostV53SummaryDescriptorAttempts,
+									phase7PostV53SummaryDescriptorAttempts,
+									phase7V5ReplayReferenceAttempts,
+									candidateAlignAttempts,
+									phase7V5ReplayGpuDescriptorAttempts,
+									true,
+									candidateLessThanReference,
+									phase7V5ReplayDescriptorFalseNegatives,
+									phase7V5ReplayMissingRequiredAttempts,
+									phase7V5ReplayDescriptorFalseNegatives == 0 &&
+										phase7V5ReplayMissingRequiredAttempts == 0,
+									true,
+									gateFirst1Pass,
+									gateFirst1Pass,
+									gateFirst1Pass ? 0 : static_cast<uint64_t>(tasks.size()),
+									0,
+									0,
+									gateFirst1Pass);
+								finalize_attempt_consumer_shadow();
+								finalize_emission_only_consumer_shadow();
+								tasks.clear();
+								encodedTargets.clear();
+								legacyEncodedTargets.clear();
+								currentTargetLength = -1;
+								return;
+							}
+							fasim_gasal2_record_phase7_post_v5_3_gpu_consumer_summary(
+								static_cast<uint64_t>(tasks.size()),
+								false,
+								0,
+								false,
+								false,
+								false,
+								false,
+								0,
+								0,
+								phase7V5ReplayReferenceAttempts,
+								0,
+								phase7V5ReplayGpuDescriptorAttempts,
+								false,
+								false,
+								phase7V5ReplayDescriptorFalseNegatives,
+								phase7V5ReplayMissingRequiredAttempts == 0 ?
+									static_cast<uint64_t>(tasks.size()) :
+									phase7V5ReplayMissingRequiredAttempts,
+								false,
+								true,
+								false,
+								false,
+								static_cast<uint64_t>(tasks.size()),
+								0,
+								0,
+								false);
+						}
+
+						if (phase7PostV53TaskFrontierCertificateRequested)
+						{
+							if (phase7PostV53TaskFrontierDescriptorsReady)
+							{
+								uint64_t candidateAlignAttempts = 0;
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									StreamTask &task = tasks[t];
+									taskTriplexes.clear();
+									FasimFastsimExtendScoreInfoTiming replayTiming;
+									fastSIM_extend_from_attempt_descriptors(
+										aligner,
+										filter,
+										alignment,
+										15,
+										lncSeq,
+										task.seq2,
+										*task.srcSeq,
+										task.dnaStartPos,
+										phase7PostV53TaskFrontierDescriptorsByTask[t],
+										taskTriplexes,
+										task.strand,
+										task.Para,
+										task.rule,
+										paraList.ntMin,
+										paraList.ntMax,
+										paraList.penaltyT,
+										paraList.penaltyC,
+										paraList,
+										writeFull,
+										&replayTiming);
+									candidateAlignAttempts += replayTiming.align_attempts;
+									write_task_triplexes(task);
+								}
+								const bool selectedLessThanV5 =
+									phase7PostV53TaskFrontierDescriptorAttempts > 0 &&
+									phase7V5ReplayGpuDescriptorAttempts > 0 &&
+									phase7PostV53TaskFrontierDescriptorAttempts <
+										phase7V5ReplayGpuDescriptorAttempts;
+								const bool candidateLessThanReference =
+									candidateAlignAttempts > 0 &&
+									candidateAlignAttempts <
+										phase7V5ReplayReferenceAttempts;
+								const bool fallbackAccountingClean =
+									phase7V5ReplayDescriptorFalseNegatives == 0 &&
+									phase7V5ReplayMissingRequiredAttempts == 0;
+								fasim_gasal2_record_phase7_post_v5_3_task_frontier_certificate(
+									static_cast<uint64_t>(tasks.size()),
+									phase7PostV53TaskFrontierCertificateRows > 0,
+									true,
+									true,
+									false,
+									true,
+									false,
+									false,
+									false,
+									false,
+									selectedLessThanV5,
+									phase7PostV53TaskFrontierCertificateRows,
+									phase7PostV53TaskFrontierDescriptorAttempts,
+									phase7V5ReplayReferenceAttempts,
+									candidateAlignAttempts,
+									phase7V5ReplayGpuDescriptorAttempts,
+									phase7V5ReplayDescriptorFalseNegatives,
+									phase7V5ReplayMissingRequiredAttempts,
+									fallbackAccountingClean,
+									true,
+									false,
+									false,
+									0,
+									0,
+									0,
+									false);
+								finalize_attempt_consumer_shadow();
+								finalize_emission_only_consumer_shadow();
+								tasks.clear();
+								encodedTargets.clear();
+								legacyEncodedTargets.clear();
+								currentTargetLength = -1;
+								return;
+							}
+							fasim_gasal2_record_phase7_post_v5_3_task_frontier_certificate(
+								static_cast<uint64_t>(tasks.size()),
+								false,
+								false,
+								false,
+								false,
+								false,
+								false,
+								false,
+								false,
+								false,
+								false,
+								0,
+								0,
+								phase7V5ReplayReferenceAttempts,
+								0,
+								phase7V5ReplayGpuDescriptorAttempts,
+								phase7V5ReplayDescriptorFalseNegatives,
+								phase7V5ReplayMissingRequiredAttempts == 0 ?
+									static_cast<uint64_t>(tasks.size()) :
+									phase7V5ReplayMissingRequiredAttempts,
+								false,
+								true,
+								false,
+								false,
+								static_cast<uint64_t>(tasks.size()),
+								0,
+								0,
+								false);
+						}
+
+						if (phase7PostV53HostAssistedConsumerFeasibilityRequested)
+						{
+							if (phase7V5ReplayDescriptorsReady)
+							{
+								uint64_t hostSelectedAttempts = 0;
+								uint64_t prefixDescriptorAttempts = 0;
+								uint64_t candidateAlignAttempts = 0;
+								bool selectorOk = true;
+								for (size_t t = 0; t < tasks.size(); ++t)
+								{
+									StreamTask &task = tasks[t];
+									const std::vector<PreAlignCudaAttemptDescriptor> &descriptors =
+										phase7V5ReplayDescriptorsByTask[t];
+									std::vector<FasimGasal2Attempt> attempts;
+									attempts.reserve(descriptors.size());
+									for (size_t i = 0; i < descriptors.size(); ++i)
+									{
+										const PreAlignCudaAttemptDescriptor &descriptor =
+											descriptors[i];
+										if (descriptor.targetStart < 0 ||
+										    descriptor.cutlength <= 0 ||
+										    descriptor.targetStart + descriptor.cutlength >
+											    static_cast<int>(task.seq2.size()))
+										{
+											continue;
+										}
+										FasimGasal2Attempt attempt;
+										attempt.scoreinfo_index = descriptor.scoreInfoOrder;
+										attempt.cutlength = descriptor.cutlength;
+										attempt.start = descriptor.targetStart;
+										attempt.prealign_score = descriptor.scoreInfoScore;
+										attempt.target_end_required_for_fallback =
+											descriptor.targetEndRequiredForFallback;
+										attempt.nt_min_length = paraList.ntMin;
+										annotate_gasal2_attempt_task(attempt, task);
+										attempt.set_target_view(
+											&task.seq2,
+											static_cast<size_t>(descriptor.targetStart),
+											static_cast<size_t>(descriptor.cutlength));
+										attempts.push_back(attempt);
+									}
+
+									std::vector<size_t> selectedAttemptIndexes;
+									std::string selectError;
+									if (!fasim_gasal2_select_attempt_indexes_from_scores(
+										    lncSeq,
+										    attempts,
+										    &selectedAttemptIndexes,
+										    &selectError))
+									{
+										selectorOk = false;
+										break;
+									}
+									hostSelectedAttempts +=
+										static_cast<uint64_t>(selectedAttemptIndexes.size());
+
+									std::vector<PreAlignCudaAttemptDescriptor> prefixDescriptors;
+									for (size_t s = 0; s < selectedAttemptIndexes.size(); ++s)
+									{
+										const size_t selectedIndex = selectedAttemptIndexes[s];
+										if (selectedIndex >= descriptors.size())
+										{
+											selectorOk = false;
+											break;
+										}
+										const int scoreInfoOrder =
+											descriptors[selectedIndex].scoreInfoOrder;
+										size_t groupBegin = selectedIndex;
+										while (groupBegin > 0 &&
+										       descriptors[groupBegin - 1].scoreInfoOrder ==
+											       scoreInfoOrder)
+										{
+											--groupBegin;
+										}
+										for (size_t i = groupBegin; i <= selectedIndex; ++i)
+										{
+											prefixDescriptors.push_back(descriptors[i]);
+										}
+									}
+									if (!selectorOk)
+									{
+										break;
+									}
+									prefixDescriptorAttempts +=
+										static_cast<uint64_t>(prefixDescriptors.size());
+
+									taskTriplexes.clear();
+									FasimFastsimExtendScoreInfoTiming replayTiming;
+									fastSIM_extend_from_attempt_descriptors(
+										aligner,
+										filter,
+										alignment,
+										15,
+										lncSeq,
+										task.seq2,
+										*task.srcSeq,
+										task.dnaStartPos,
+										prefixDescriptors,
+										taskTriplexes,
+										task.strand,
+										task.Para,
+										task.rule,
+										paraList.ntMin,
+										paraList.ntMax,
+										paraList.penaltyT,
+										paraList.penaltyC,
+										paraList,
+										writeFull,
+										&replayTiming);
+									candidateAlignAttempts += replayTiming.align_attempts;
+									write_task_triplexes(task);
+								}
+
+								const bool candidateLessThanV5 =
+									candidateAlignAttempts > 0 &&
+									phase7V5ReplayGpuDescriptorAttempts > 0 &&
+									candidateAlignAttempts <
+										phase7V5ReplayGpuDescriptorAttempts;
+								const bool gateFirst1Pass =
+									selectorOk &&
+									candidateLessThanV5 &&
+									candidateAlignAttempts <
+										phase7V5ReplayReferenceAttempts &&
+									phase7V5ReplayDescriptorFalseNegatives == 0 &&
+									phase7V5ReplayMissingRequiredAttempts == 0;
+								fasim_gasal2_record_phase7_post_v5_3_host_assisted_consumer_feasibility(
+									static_cast<uint64_t>(tasks.size()),
+									selectorOk && candidateAlignAttempts > 0,
+									true,
+									true,
+									false,
+									hostSelectedAttempts,
+									prefixDescriptorAttempts,
+									phase7V5ReplayReferenceAttempts,
+									candidateAlignAttempts,
+									phase7V5ReplayGpuDescriptorAttempts,
+									candidateLessThanV5,
+									phase7V5ReplayDescriptorFalseNegatives,
+									phase7V5ReplayMissingRequiredAttempts,
+									selectorOk &&
+										phase7V5ReplayDescriptorFalseNegatives == 0 &&
+										phase7V5ReplayMissingRequiredAttempts == 0,
+									true,
+									gateFirst1Pass,
+									gateFirst1Pass,
+									gateFirst1Pass ? 0 : static_cast<uint64_t>(tasks.size()),
+									0,
+									0,
+									gateFirst1Pass);
+								finalize_attempt_consumer_shadow();
+								finalize_emission_only_consumer_shadow();
+								tasks.clear();
+								encodedTargets.clear();
+								legacyEncodedTargets.clear();
+								currentTargetLength = -1;
+								return;
+							}
+							fasim_gasal2_record_phase7_post_v5_3_host_assisted_consumer_feasibility(
+								static_cast<uint64_t>(tasks.size()),
+								false,
+								true,
+								false,
+								false,
+								0,
+								0,
+								phase7V5ReplayReferenceAttempts,
+								0,
+								phase7V5ReplayGpuDescriptorAttempts,
+								false,
+								phase7V5ReplayDescriptorFalseNegatives,
+								phase7V5ReplayMissingRequiredAttempts == 0 ?
+									static_cast<uint64_t>(tasks.size()) :
+									phase7V5ReplayMissingRequiredAttempts,
+								false,
+								true,
+								false,
+								false,
+								static_cast<uint64_t>(tasks.size()),
+								0,
+								0,
+								false);
+						}
+
+						if (gasal2_batched_traceback_enabled() ||
+					    segmentedLongQueryShadowFallbackRequested ||
+					    phase7AllAttemptEarlyStopFallbackRequested ||
+					    phase7V3AttemptCoverageSeedCertificateFallbackRequested ||
+				    phase7V5FusedConsumerFallbackRequested ||
+				    phase7V3OracleMinCoverReplayFallbackRequested)
 				{
 					const bool streamingRealpathRequested =
 						(fasim_long_query_streaming_scoreinfo_realpath_prototype_runtime() &&
@@ -11133,6 +23328,16 @@ int main(int argc, char* const* argv)
 								currentTargetLength = -1;
 								return;
 							}
+							if (gasal2TwoSlotOverlapHandled)
+							{
+								finalize_attempt_consumer_shadow();
+								finalize_emission_only_consumer_shadow();
+								tasks.clear();
+								encodedTargets.clear();
+								legacyEncodedTargets.clear();
+								currentTargetLength = -1;
+								return;
+							}
 							for (size_t t = 0; t < tasks.size(); ++t)
 							{
 								taskTriplexes = gasalCpuTriplexes[t];
@@ -11161,7 +23366,8 @@ int main(int argc, char* const* argv)
 						 !fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime()) ||
 						(fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime() &&
 						 fasim_long_query_streaming_scoreinfo_two_contract_bridge_trust_runtime()) ||
-						scorePrepassStateMachineShadowRequested;
+						scorePrepassStateMachineShadowRequested ||
+						phase7V4GpuLegacyByteScoreInfoSourceReplayRequested;
 					const bool streamingRealpathCanUse =
 						streamingRealpathRequested &&
 						streamingRealpathScoreInfos.size() == tasks.size() &&
@@ -11274,6 +23480,7 @@ int main(int argc, char* const* argv)
 										attempt.target_end_required_for_fallback =
 											cutlength - 1;
 										attempt.nt_min_length = paraList.ntMin;
+										annotate_gasal2_attempt_task(attempt, probeTask);
 											attempt.set_target_view(
 												&probeTask.seq2,
 												static_cast<size_t>(targetStart),
@@ -14015,6 +26222,10 @@ int main(int argc, char* const* argv)
 									const std::chrono::steady_clock::time_point realpathExtendStart =
 										std::chrono::steady_clock::now();
 									FasimFastsimExtendScoreInfoTiming extendTiming;
+									if (phase3CigarNtPrefilterShadowEnabled)
+									{
+										extendTiming.phase3_cigar_nt_prefilter_active = 1;
+									}
 									fastSIM_extend_from_scoreinfo(aligner,
 									                              filter,
 									                              alignment,
@@ -14073,6 +26284,27 @@ int main(int argc, char* const* argv)
 										extendTiming.align_seconds;
 									longQueryStreamingScoreInfoShadowStats.realpath_extend_convert_seconds +=
 										extendTiming.convert_seconds;
+									if (phase3CigarNtPrefilterShadowEnabled)
+									{
+										phase3CigarNtPrefilterShadowStats.alignments_seen +=
+											extendTiming.phase3_cigar_nt_alignments_seen;
+										phase3CigarNtPrefilterShadowStats.cigar_lt_ntmin +=
+											extendTiming.phase3_cigar_nt_cigar_lt_ntmin;
+										phase3CigarNtPrefilterShadowStats.legacy_nt_lt_ntmin +=
+											extendTiming.phase3_cigar_nt_legacy_nt_lt_ntmin;
+										phase3CigarNtPrefilterShadowStats.agree_lt_ntmin +=
+											extendTiming.phase3_cigar_nt_agree_lt_ntmin;
+										phase3CigarNtPrefilterShadowStats.disagree_lt_ntmin +=
+											extendTiming.phase3_cigar_nt_disagree_lt_ntmin;
+										phase3CigarNtPrefilterShadowStats.candidate_skippable +=
+											extendTiming.phase3_cigar_nt_cigar_lt_ntmin;
+										phase3CigarNtPrefilterShadowStats.candidate_false_negative_rows +=
+											extendTiming.phase3_cigar_nt_candidate_false_negative_rows;
+										phase3CigarNtPrefilterShadowStats
+											.convert_seconds_projected_saved +=
+											extendTiming
+												.phase3_cigar_nt_convert_seconds_projected_saved;
+									}
 									longQueryStreamingScoreInfoShadowStats.realpath_extend_sort_seconds +=
 										extendTiming.sort_seconds;
 										longQueryStreamingScoreInfoShadowStats.realpath_extend_filter_seconds +=
@@ -14687,6 +26919,7 @@ int main(int argc, char* const* argv)
 		}
 
 			flush_batch();
+			two_slot_drain_pipeline();
 			if (outOpened)
 			{
 				FasimScopedSeconds scoped(phaseTimingEnabled,
@@ -14762,6 +26995,29 @@ int main(int argc, char* const* argv)
 						fasim_hex_u64(broadCpuTriplexDigest);
 					broadCpuTriplexOpened = false;
 				}
+				if (phase3CigarNtCandidateTriplexOpened)
+				{
+					phase3CigarNtCandidateTriplexFile.close();
+					phase3CigarNtPrefilterShadowStats.candidate_triplex_digest =
+						fasim_hex_u64(phase3CigarNtCandidateTriplexDigest);
+					const bool frontierEqual =
+						phase3CigarNtPrefilterShadowStats
+							.candidate_false_negative_rows == 0 &&
+						phase3CigarNtPrefilterShadowStats
+							.candidate_triplexes ==
+							broadScoreInfoConsumerShadowStats
+								.broad_path_cpu_triplexes;
+					phase3CigarNtPrefilterShadowStats.task_frontier_equal =
+						frontierEqual ? 1 : 0;
+					phase3CigarNtPrefilterShadowStats.task_frontier_safety =
+						frontierEqual ? "safe" : "unsafe";
+					phase3CigarNtPrefilterShadowStats.real_prune_proof_gate =
+						frontierEqual &&
+						phase3CigarNtPrefilterShadowStats
+							.disagree_lt_ntmin == 0 ?
+						"pass" : "fail";
+					phase3CigarNtCandidateTriplexOpened = false;
+				}
 				if (broadPlannerDescriptorOpened)
 				{
 					broadPlannerDescriptorFile.close();
@@ -14806,6 +27062,62 @@ int main(int argc, char* const* argv)
 			{
 				fasim_print_top5_phase_timing_stats(phaseTiming);
 			}
+			fasim_gasal2_flush_pipeline_finalize(flushPipelineTrace);
+				if (orderedCommitStats.requested)
+				{
+					fasim_gasal2_ordered_commit_finalize(
+						orderedCommitStats);
+				}
+				if (flushPipelineTrace.requested)
+				{
+					fasim_print_gasal2_flush_pipeline_trace_stats(flushPipelineTrace);
+				}
+					if (nvtxTrace.requested)
+					{
+						fasim_print_gasal2_nvtx_trace_stats(nvtxTrace);
+					}
+					if (twoSlotOverlapStats.requested)
+					{
+						fasim_print_gasal2_flush_two_slot_overlap_stats(
+							twoSlotOverlapStats);
+					}
+					if (resultBoundaryStats.requested)
+					{
+						fasim_print_gasal2_flush_result_boundary_stats(
+							resultBoundaryStats);
+					}
+					if (pureFinalizerStats.requested)
+					{
+						fasim_print_gasal2_flush_pure_finalizer_stats(
+							pureFinalizerStats);
+					}
+					if (orderedCommitStats.requested)
+					{
+						fasim_print_gasal2_ordered_commit_stats(
+							orderedCommitStats);
+					}
+					if (dualFinalizerStats.requested)
+					{
+						fasim_print_gasal2_dual_finalizer_stats(
+							dualFinalizerStats);
+					}
+					if (extractedFinalizerStats.requested ||
+					    extractedFinalizerStats.validate_requested)
+					{
+						fasim_print_gasal2_extracted_finalizer_stats(
+							extractedFinalizerStats);
+					}
+					if (taxonomyEnabled)
+					{
+				fasim_print_gasal2_traceback_rejection_taxonomy_stats(
+					phaseTiming,
+					taxonomyExporter);
+			}
+			if (eligibilityEnabled)
+			{
+				fasim_print_gasal2_pretraceback_pruning_eligibility_stats(
+					eligibilityRuntime);
+			}
 			if (minScoreShadowEnabled)
 			{
 				fasim_print_exact_column_min_score_shadow_stats(minScoreShadowStats);
@@ -14826,6 +27138,63 @@ int main(int argc, char* const* argv)
 				longQueryStreamingScoreInfoShadowStats);
 			fasim_print_broad_scoreinfo_consumer_shadow_stats(
 				broadScoreInfoConsumerShadowStats);
+			fasim_print_phase7_v4_legacy_byte_scoreinfo_shadow_stats(
+				phase7V4LegacyByteScoreInfoShadowStats);
+			fasim_print_phase7_v5_fused_scoreinfo_consumer_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_v5_true_pre_scoreinfo_requested_if_needed();
+			fasim_print_phase7_v5_true_pre_scoreinfo_descriptor_source_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_v5_cpu_authority_replay_requested_if_needed();
+			fasim_print_phase7_v5_cpu_authority_replay_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_gpu_consumer_summary_requested_if_needed();
+			fasim_print_phase7_post_v5_3_gpu_consumer_summary_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_task_frontier_certificate_requested_if_needed();
+			fasim_print_phase7_post_v5_3_task_frontier_certificate_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_pre_d2h_proof_search_requested_if_needed();
+			fasim_print_phase7_post_v5_3_pre_d2h_proof_search_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_new_gpu_engine_first1_shadow_requested_if_needed();
+			fasim_print_phase7_post_v5_3_new_gpu_engine_first1_shadow_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested_if_needed();
+			fasim_print_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested_if_needed();
+			fasim_print_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested_if_needed();
+			fasim_print_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested_if_needed();
+			fasim_print_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested_if_needed();
+			fasim_print_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_stats(
+				fasim_gasal2_snapshot_stats());
+				fasim_record_phase7_full_align_verifier_first1_shadow_requested_if_needed();
+				fasim_print_phase7_full_align_verifier_first1_shadow_stats(
+					fasim_gasal2_snapshot_stats());
+				fasim_record_phase7_native_cuda_fasim_dp_engine_first1_shadow_requested_if_needed();
+				fasim_print_phase7_native_cuda_fasim_dp_engine_first1_shadow_stats(
+					fasim_gasal2_snapshot_stats());
+					fasim_record_phase7_gpu_upper_bound_reject_first1_shadow_requested_if_needed();
+					fasim_print_phase7_gpu_upper_bound_reject_first1_shadow_stats(
+						fasim_gasal2_snapshot_stats());
+					fasim_record_phase7_gpu_exact_work_unit_compaction_first1_shadow_requested_if_needed();
+					fasim_print_phase7_gpu_exact_work_unit_compaction_first1_shadow_stats(
+						fasim_gasal2_snapshot_stats());
+					fasim_record_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested_if_needed();
+					fasim_print_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_stats(
+						fasim_gasal2_snapshot_stats());
+			fasim_record_phase7_post_v5_3_host_assisted_consumer_feasibility_requested_if_needed();
+			fasim_print_phase7_post_v5_3_host_assisted_consumer_feasibility_stats(
+				fasim_gasal2_snapshot_stats());
+			fasim_print_phase3_cigar_nt_prefilter_shadow_stats(
+				phase3CigarNtPrefilterShadowStats);
 			fasim_gasal2_print_stats();
 			return 0;
 	}
@@ -14885,6 +27254,63 @@ int main(int argc, char* const* argv)
 		longQueryStreamingScoreInfoShadowStats);
 	fasim_print_broad_scoreinfo_consumer_shadow_stats(
 		broadScoreInfoConsumerShadowStats);
+	fasim_print_phase7_v4_legacy_byte_scoreinfo_shadow_stats(
+		phase7V4LegacyByteScoreInfoShadowStats);
+	fasim_print_phase7_v5_fused_scoreinfo_consumer_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_v5_true_pre_scoreinfo_requested_if_needed();
+	fasim_print_phase7_v5_true_pre_scoreinfo_descriptor_source_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_v5_cpu_authority_replay_requested_if_needed();
+	fasim_print_phase7_v5_cpu_authority_replay_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_gpu_consumer_summary_requested_if_needed();
+	fasim_print_phase7_post_v5_3_gpu_consumer_summary_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_task_frontier_certificate_requested_if_needed();
+	fasim_print_phase7_post_v5_3_task_frontier_certificate_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_pre_d2h_proof_search_requested_if_needed();
+	fasim_print_phase7_post_v5_3_pre_d2h_proof_search_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_new_gpu_engine_first1_shadow_requested_if_needed();
+	fasim_print_phase7_post_v5_3_new_gpu_engine_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested_if_needed();
+	fasim_print_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested_if_needed();
+	fasim_print_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested_if_needed();
+	fasim_print_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested_if_needed();
+	fasim_print_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested_if_needed();
+	fasim_print_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_full_align_verifier_first1_shadow_requested_if_needed();
+	fasim_print_phase7_full_align_verifier_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_native_cuda_fasim_dp_engine_first1_shadow_requested_if_needed();
+	fasim_print_phase7_native_cuda_fasim_dp_engine_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_gpu_upper_bound_reject_first1_shadow_requested_if_needed();
+	fasim_print_phase7_gpu_upper_bound_reject_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_gpu_exact_work_unit_compaction_first1_shadow_requested_if_needed();
+	fasim_print_phase7_gpu_exact_work_unit_compaction_first1_shadow_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested_if_needed();
+	fasim_print_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_record_phase7_post_v5_3_host_assisted_consumer_feasibility_requested_if_needed();
+	fasim_print_phase7_post_v5_3_host_assisted_consumer_feasibility_stats(
+		fasim_gasal2_snapshot_stats());
+	fasim_print_phase3_cigar_nt_prefilter_shadow_stats(
+		phase3CigarNtPrefilterShadowStats);
 	fasim_gasal2_print_stats();
 	return 0;
 }

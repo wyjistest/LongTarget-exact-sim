@@ -1,0 +1,202 @@
+# Fasim GASAL2 Flush Two-Slot Overlap Prototype
+
+## Scope
+
+This checkpoint adds a default-off bounded two-slot overlap prototype for the
+normal triplex lite path.
+
+Runtime switches:
+
+```bash
+FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP=1
+FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP_VALIDATE=1
+FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP_SHADOW=1
+FASIM_GASAL2_FLUSH_TWO_SLOT_SERIALIZED_CONTROL=1
+```
+
+The real overlap path is intentionally narrow:
+
+```text
+normal triplex shape
+FASIM_OUTPUT_MODE=lite
+one GPU producer
+one CPU finalizer thread
+two fixed slots
+main-thread ordered commit
+```
+
+Unsupported output shapes fail closed to the synchronous path.
+
+`FASIM_GASAL2_FLUSH_TWO_SLOT_SERIALIZED_CONTROL=1` uses the same slot objects,
+owned result buffers, finalizer worker interface and ordered commit path, but
+drains the slot before submitting the next flush. It is a causal control for
+separating slot/layout/thread-boundary effects from true cross-flush scheduling
+overlap.
+
+## Architecture
+
+The prototype uses the previously extracted boundaries:
+
+```text
+FasimGasal2FlushGpuResult
+  -> CPU finalizer worker
+  -> FlushFinalizedRows
+  -> ordered main-thread commit
+```
+
+The first version uses one reusable GPU workspace and two owned host result
+slots. CPU finalization consumes an immutable `FasimGasal2FlushGpuResult`
+snapshot while the main thread submits the next GPU flush. The worker never
+writes output, updates global counters, or modifies cross-flush state.
+
+The slot state machine is fixed:
+
+```text
+FREE -> READY -> CPU_FINALIZING -> COMMIT_READY -> COMMITTING -> FREE
+```
+
+## Validate Mode
+
+`FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP_VALIDATE=1` records validate intent but
+uses the synchronous audit path rather than the performance overlap path. It is
+not a performance result.
+
+Expected validate decision:
+
+```text
+decision=validate_mode_synchronous_audit
+```
+
+## Metrics
+
+When requested, stderr reports:
+
+```text
+benchmark.fasim_gasal2_flush_two_slot_overlap_requested
+benchmark.fasim_gasal2_flush_two_slot_overlap_active
+benchmark.fasim_gasal2_flush_two_slot_overlap_validate_requested
+benchmark.fasim_gasal2_flush_two_slot_overlap_validate_active
+benchmark.fasim_gasal2_flush_two_slot_serialized_control_requested
+benchmark.fasim_gasal2_flush_two_slot_serialized_control_active
+benchmark.fasim_gasal2_flush_two_slot_overlap_disabled_reason
+benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_observed
+benchmark.fasim_gasal2_flush_two_slot_overlap_shape_observed_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_eligible_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_ineligible_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_result_object_ready_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_result_object_missing_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_convert_inside_extend_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_direct_convert_active_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_equivalence_first_convert_active_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_archive_first_convert_active_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_non_direct_convert_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_output_side_effect_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_triplex_return_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_total
+benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_gpu_submitted
+benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_finalized
+benchmark.fasim_gasal2_flush_two_slot_overlap_flushes_committed
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_submit_count
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_submit_count
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_finalize_count
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_finalize_count
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_commit_count
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_commit_count
+benchmark.fasim_gasal2_flush_two_slot_overlap_unsupported_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_legacy_fallback_flushes
+benchmark.fasim_gasal2_flush_two_slot_overlap_state_transition_violations
+benchmark.fasim_gasal2_flush_two_slot_overlap_order_violations
+benchmark.fasim_gasal2_flush_two_slot_overlap_wait_for_free_slot_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_wait_for_finalizer_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_wait_for_ordered_commit_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_pipeline_fill_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_pipeline_drain_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_stage_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_cpu_finalizer_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_cpu_overlap_measurement_supported
+benchmark.fasim_gasal2_flush_two_slot_overlap_gpu_cpu_overlap_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_overlap_fraction
+benchmark.fasim_gasal2_flush_two_slot_overlap_host_scheduling_overlap_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_finalizer_covered_by_next_flush_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_producer_covered_by_finalizer_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_peak_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_peak_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot0_peak_live_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_slot1_peak_live_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_host_peak_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_total_peak_live_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_pinned_peak_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_device_peak_bytes
+benchmark.fasim_gasal2_flush_two_slot_overlap_allocation_failures
+benchmark.fasim_gasal2_flush_two_slot_overlap_max_live_slots
+benchmark.fasim_gasal2_flush_two_slot_overlap_time_with_0_live_slots_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_time_with_1_live_slot_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_time_with_2_live_slots_seconds
+benchmark.fasim_gasal2_flush_two_slot_overlap_missing_rows
+benchmark.fasim_gasal2_flush_two_slot_overlap_extra_rows
+benchmark.fasim_gasal2_flush_two_slot_overlap_order_mismatches
+benchmark.fasim_gasal2_flush_two_slot_overlap_cigar_mismatches
+benchmark.fasim_gasal2_flush_two_slot_overlap_coordinate_mismatches
+benchmark.fasim_gasal2_flush_two_slot_overlap_counter_mismatches
+benchmark.fasim_gasal2_flush_two_slot_overlap_archive_descriptor_mismatches
+benchmark.fasim_gasal2_flush_two_slot_overlap_total_tasks
+benchmark.fasim_gasal2_flush_two_slot_overlap_max_tasks_per_flush
+benchmark.fasim_gasal2_flush_two_slot_overlap_decision
+```
+
+Clean real-overlap decision:
+
+```text
+active=1
+disabled_reason=none
+decision=two_slot_active_clean_no_fallback
+```
+
+Clean serialized-control decision:
+
+```text
+serialized_control_active=1
+decision=two_slot_serialized_control_clean_no_fallback
+```
+
+Runtime overlap attribution is intentionally split:
+
+```text
+gpu_cpu_overlap_measurement_supported=0
+gpu_cpu_overlap_seconds=unavailable
+overlap_fraction=unavailable
+host_scheduling_overlap_seconds=<measured>
+```
+
+`host_scheduling_overlap_seconds` is computed from host monotonic-clock
+intervals: CPU finalization for flush N overlapping the producer/submit window
+for flush N+1. It is the supported long-term runtime statistic.
+
+`gpu_cpu_overlap_seconds` is not a device-level measurement in this runtime
+telemetry. Device-level overlap between GPU kernels/memcpy and CPU finalization
+requires an NVTX/Nsight Systems profile.
+
+## Hard Gate
+
+The smoke requires:
+
+```text
+lite byte-equal to synchronous extracted finalizer
+submitted = finalized = committed
+slot0 and slot1 submit/finalize/commit counts > 0
+slot0 and slot1 live-byte peaks > 0
+serialized control keeps max_live_slots <= 1
+unsupported = 0
+fallback = 0
+state/order violations = 0
+missing/extra rows = 0
+host peak bytes > 0
+```
+
+The chr22 characterization gate, not the small smoke, requires scheduling
+overlap evidence: positive `host_scheduling_overlap_seconds` for the overlap
+mode, while the serialized control remains at zero host overlap. This is host
+scheduling evidence only; it should not be described as GPU kernel overlap until
+confirmed by Nsight. `max_live_slots` counts owned host result slots, not the
+single reusable GPU workspace, so it can remain one even when CPU finalization
+overlaps the next flush's producer work.

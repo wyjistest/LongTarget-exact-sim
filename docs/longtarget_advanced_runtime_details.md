@@ -348,6 +348,40 @@ multiple Fasim workers and make each worker see one GPU with
 Single-process `FASIM_CUDA_DEVICES=0,1` is not a supported final-stack
 performance mode because it can bypass exact-column batch.
 
+For GASAL2 two-slot overlap, keep worker density low. The supported
+default-off recommendation is `FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP=1` for
+normal-triplex lite runs with either one worker or one worker per GPU. The
+sharded runner rejects `worker_count > len(gpu_ids)` by default because
+resource characterization on two 24 GB GPUs showed GASAL2 OOM at 4 and 6
+workers before any two-slot-specific conclusion. Use
+`FASIM_GASAL2_FLUSH_TWO_SLOT_ALLOW_GPU_SHARING=1` only for explicit resource
+experiments.
+
+For GASAL2 top5-only traceback reduction,
+`FASIM_TOP5_GASAL2_TRACEBACK_MIN_PREALIGN_SCORE=116` is only an H19 calibration
+artifact, not a general runtime recommendation. It preserves the checked
+chr21/chr22 H19 top5 score, stability, and Nt-score summaries while reducing
+chr22 traceback requests by about 64.7%, but threshold `117` already fails the
+checked H19 stability top5. Do not reuse this fixed threshold for another
+lncRNA without a same-query threshold sweep; the useful general lesson is that
+traceback pruning needs a stability-risk signal rather than a hard-coded score
+cutoff.
+Use `scripts/estimate_fasim_gasal2_traceback_threshold.py` on a same-query
+threshold sweep when a per-lncRNA top5-only calibration is needed; its output is
+still a calibration result, not a general preset.
+For the topK-lite wrapper, `TRACEBACK_THRESHOLD_CALIBRATE=1` runs that
+calibration preflight before the formal sharded run and injects the estimated
+threshold only when the sweep brackets a failing boundary.
+Use `TRACEBACK_THRESHOLD_CALIBRATION_MAX_BASES` and
+`TRACEBACK_THRESHOLD_CALIBRATION_WINDOWS` to sample evenly spaced windows across
+single-record chromosomes instead of only the prefix. Calibration fails closed
+when the sampled baseline has too little traceback signal, controlled by
+`TRACEBACK_THRESHOLD_CALIBRATION_MIN_TRACEBACK_REQUESTS`.
+If a same-query baseline/probe has produced topK or risk-coordinate rows, pass
+them with `TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_TSV`; those anchors are
+sampled before the remaining uniform windows. Do not use anchors from a
+different lncRNA or scoring contract.
+
 Optional: skip `TFOclass1/2` for LongTarget as well:
 - `LONGTARGET_OUTPUT_MODE=tfosorted`: only write `*-TFOsorted` (skip clustering/class outputs)
 - `LONGTARGET_OUTPUT_MODE=lite`: only write `*-TFOsorted.lite` (skip `*-TFOsorted` and clustering/class outputs)

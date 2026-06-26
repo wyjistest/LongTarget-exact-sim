@@ -538,11 +538,51 @@ def _parse_env_overrides(items: list[str]) -> dict[str, str]:
     return env
 
 
+def _env_flag_enabled(env: dict[str, str], key: str) -> bool:
+    value = env.get(key)
+    if value is None:
+        return False
+    normalized = value.strip().lower()
+    return normalized not in ("", "0", "false", "no", "off")
+
+
+def _two_slot_low_density_guard(
+    *,
+    env_overrides: dict[str, str],
+    worker_count: int,
+    gpu_ids: list[str],
+) -> dict[str, object]:
+    requested = _env_flag_enabled(env_overrides, "FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP")
+    allow_gpu_sharing = _env_flag_enabled(
+        env_overrides,
+        "FASIM_GASAL2_FLUSH_TWO_SLOT_ALLOW_GPU_SHARING",
+    )
+    gpu_count = len(gpu_ids)
+    gpu_sharing = bool(gpu_count and worker_count > gpu_count)
+    active = requested and not (gpu_sharing and not allow_gpu_sharing)
+    disabled_reason = (
+        "unsupported_worker_density_for_current_gasal2_memory_budget"
+        if requested and gpu_sharing and not allow_gpu_sharing
+        else "none"
+    )
+    return {
+        "requested": requested,
+        "active": active,
+        "allow_gpu_sharing": allow_gpu_sharing,
+        "gpu_count": gpu_count,
+        "worker_count": worker_count,
+        "gpu_sharing": gpu_sharing,
+        "disabled_reason": disabled_reason,
+        "recommended_scope": "single_worker_or_one_worker_per_gpu",
+    }
+
+
 GASAL2_COLUMN_PRUNED_PRESET_ALLOWED_ENV = frozenset(
     {
         "FASIM_ALIGN_GASAL2_BATCH",
         "FASIM_ALIGN_GASAL2_MAX_QUERY_LEN",
         "FASIM_ALIGN_GASAL2_STREAMS",
+        "FASIM_TOP5_GASAL2_TRACEBACK_MIN_PREALIGN_SCORE",
         "FASIM_TOP5_GASAL2_SCOREINFO_EMIT_RANK_OBSERVE",
         "FASIM_TOP5_GASAL2_SCOREINFO_TOPK_LITE_RANK_OBSERVE",
         "FASIM_VERBOSE",
@@ -1294,6 +1334,7 @@ def _build_run_config_digest(
     worker_count: int,
     workers_derived_from_gpu_ids: bool,
     gpu_ids: list[str],
+    two_slot_low_density_guard: dict[str, object],
     cpu_core_ranges: list[str],
     shard_plan: list[dict[str, object]],
     shard_plan_digest: str,
@@ -1353,6 +1394,7 @@ def _build_run_config_digest(
         "workers_per_gpu": args.workers_per_gpu,
         "workers_derived_from_gpu_ids": workers_derived_from_gpu_ids,
         "gpu_ids": gpu_ids,
+        "two_slot_low_density_guard": two_slot_low_density_guard,
         "cpu_core_ranges": cpu_core_ranges,
         "cpu_pool": args.cpu_pool,
         "cpu_cores_per_worker": args.cpu_cores_per_worker,
@@ -3066,6 +3108,25 @@ def main(argv: list[str] | None = None) -> int:
         workers_per_gpu=args.workers_per_gpu,
         gpu_ids=gpu_ids,
     )
+    two_slot_guard = _two_slot_low_density_guard(
+        env_overrides=env_overrides,
+        worker_count=worker_count,
+        gpu_ids=gpu_ids,
+    )
+    if (
+        two_slot_guard["requested"]
+        and not two_slot_guard["active"]
+        and two_slot_guard["disabled_reason"]
+        == "unsupported_worker_density_for_current_gasal2_memory_budget"
+    ):
+        raise RuntimeError(
+            "FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP is default-off recommended "
+            "only for single-worker or one-worker-per-GPU normal-triplex lite "
+            "runs under the current GASAL2 memory profile; requested "
+            f"workers={worker_count} with gpu_ids={','.join(gpu_ids) or 'none'}. "
+            "Set FASIM_GASAL2_FLUSH_TWO_SLOT_ALLOW_GPU_SHARING=1 only for "
+            "explicit resource-characterization experiments."
+        )
     cpu_core_ranges = _resolve_cpu_core_ranges(
         explicit_cpu_core_ranges=explicit_cpu_core_ranges,
         auto_cpu_core_ranges=bool(args.auto_cpu_core_ranges),
@@ -3094,6 +3155,7 @@ def main(argv: list[str] | None = None) -> int:
         worker_count=worker_count,
         workers_derived_from_gpu_ids=workers_derived_from_gpu_ids,
         gpu_ids=gpu_ids,
+        two_slot_low_density_guard=two_slot_guard,
         cpu_core_ranges=cpu_core_ranges,
         shard_plan=shard_plan,
         shard_plan_digest=shard_plan_digest,
@@ -3394,6 +3456,7 @@ def main(argv: list[str] | None = None) -> int:
         "env_overrides": env_overrides,
         "worker_count": worker_count,
         "gpu_ids": gpu_ids,
+        "two_slot_low_density_guard": two_slot_guard,
         "workers_per_gpu": args.workers_per_gpu,
         "workers_derived_from_gpu_ids": workers_derived_from_gpu_ids,
         "gpu_sharing_mode": _gpu_sharing_mode(

@@ -1,0 +1,316 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOC="$ROOT/docs/fasim_gasal2_goal_completion_phase_to_completion_plan.md"
+ROADMAP="$ROOT/docs/fasim_gasal2_goal_completion_roadmap.md"
+
+python3 - "$DOC" "$ROADMAP" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+doc = Path(sys.argv[1])
+roadmap = Path(sys.argv[2])
+if not doc.exists():
+    raise SystemExit(f"missing required file: {doc}")
+if not roadmap.exists():
+    raise SystemExit(f"missing required file: {roadmap}")
+
+text = doc.read_text(encoding="utf-8")
+flat = " ".join(text.split())
+roadmap_text = roadmap.read_text(encoding="utf-8")
+
+required = [
+    "# Fasim GASAL2 Phase-To-Completion Plan",
+    "This document is the direct phase plan for making the active Fasim/GASAL2",
+    "It is not a completion claim.",
+    "broad_objective_status = open",
+    "must_not_call_update_goal_complete = 1",
+    "Path A: scoped product completion",
+    "Path B: broad objective completion",
+    "current_path = Path B unless Path A is explicitly accepted",
+    "current_phase = Phase 7",
+    "current_gate = phase7_gpu_exact_work_unit_compaction_first1_shadow_scaffold",
+    "current_next_pr = fasim_gpu_exact_work_unit_compaction_first1_shadow_scaffold",
+    "current_gate_document = docs/fasim_gasal2_phase7_gpu_exact_work_unit_compaction_design_spec_or_path_a_acceptance.md",
+    "Historical pre-upper-bound-reject-spec cursor:",
+    "current_gate = new_gpu_execution_design_family_spec_or_path_a_acceptance_after_native_cuda_fasim_dp_engine_no_go",
+    "current_next_pr = fasim_new_gpu_execution_design_family_spec_or_path_a_acceptance_after_native_cuda_fasim_dp_engine_no_go",
+    "Historical pre-post-native-DP-fork cursor:",
+    "current_gate = path_a_scope_acceptance_or_different_gpu_execution_design_after_native_cuda_fasim_dp_engine_no_go",
+    "current_next_pr = fasim_path_a_scope_acceptance_or_different_gpu_execution_design_after_native_cuda_fasim_dp_engine_no_go",
+    "Historical pre-native-DP-fork cursor:",
+    "current_gate = phase7_native_cuda_fasim_dp_engine_first1_shadow_consumer_or_no_go",
+    "current_next_pr = fasim_native_cuda_fasim_dp_engine_first1_shadow_consumer_or_no_go",
+    "Historical pre-native-DP-consumer cursor:",
+    "current_gate = phase7_native_cuda_fasim_dp_engine_first1_fail_closed_shadow_scaffold",
+    "current_next_pr = fasim_native_cuda_fasim_dp_engine_first1_fail_closed_shadow_scaffold",
+    "Historical pre-native-DP-shadow cursor:",
+    "current_gate = phase7_native_cuda_fasim_dp_engine_design_spec_or_path_a_acceptance",
+    "current_next_pr = fasim_native_cuda_fasim_dp_engine_design_spec_or_path_a_acceptance",
+    "Historical pre-native-DP-spec cursor:",
+    "current_gate = phase7_gasal2_full_align_verifier_first1_fail_closed_shadow_scaffold",
+    "current_next_pr = fasim_gasal2_full_align_verifier_first1_fail_closed_shadow_scaffold",
+    "Historical pre-consumer-no-go cursor:",
+    "current_gate = phase7_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_or_no_go",
+    "current_next_pr = fasim_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_or_no_go",
+    "Historical pre-scaffold cursor:",
+    "current_gate = phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold",
+    "current_next_pr = fasim_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold",
+    "runtime_reduction_allowed = 0",
+    "runtime_work_drop_allowed = 0",
+    "first1_runtime_reduction_gate_pass = 0",
+    "first64_runtime_allowed = 0",
+    "docs/fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_first1_spec_or_path_a_acceptance.md",
+    "docs/fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_first1.md",
+    "docs/fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_design.md",
+    "docs/fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow.md",
+    "docs/fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_consumer_no_go.md",
+    "docs/fasim_gasal2_phase7_post_v5_3_different_gpu_execution_design_after_consumer_no_go.md",
+    "docs/fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_certificate_engine_spec_or_path_a_acceptance.md",
+    "docs/fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_scaffold.md",
+    "docs/fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_consumer_no_go.md",
+    "docs/fasim_gasal2_path_a_scope_acceptance_or_different_gpu_execution_design_after_scoreinfo_cert_engine_no_go.md",
+    "docs/fasim_gasal2_phase7_gpu_upper_bound_reject_certificate_first1_shadow_consumer_no_go.md",
+    "phase7_gpu_upper_bound_reject_certificate_first1_shadow_consumer_no_go = recorded",
+    "phase7_gpu_upper_bound_reject_certificate_first1_shadow_consumer_status = no_go_no_rejected_work",
+    "path_b_gpu_upper_bound_reject_certificate_family_stopped = 1",
+    "path_a_scope_acceptance_or_different_gpu_execution_design_after_gpu_upper_bound_reject_certificate_no_go = recorded",
+    "path_b_different_gpu_execution_design_after_gpu_upper_bound_reject_certificate_no_go_status = required_not_defined",
+    "path_b_new_design_family_after_gpu_upper_bound_reject_certificate_no_go = undefined",
+    "phase7_gpu_exact_work_unit_compaction_design_spec_or_path_a_acceptance = defined",
+    "phase7_gpu_exact_work_unit_compaction_design_spec_status = spec_defined",
+    "design_family = gpu_exact_work_unit_compaction_replay",
+    "current_execution_gate = phase7_gpu_exact_work_unit_compaction_first1_shadow_scaffold",
+    "current_next_pr = fasim_gpu_exact_work_unit_compaction_first1_shadow_scaffold",
+    "CPU aligner.Align() authority = 1",
+    "GPU endpoint authority = 0",
+    "GPU CIGAR authority = 0",
+    "GPU traceback authority = 0",
+    "GPU output authority = 0",
+    "GPU digest authority = 0",
+    "top5-only evidence closes broad objective = 0",
+    "archive-only evidence closes broad objective = 0",
+    "output-drift speedup counts as success = 0",
+    "fallback-heavy evidence counts as GPU-fast-path clean = 0",
+    "synthetic certificate producer can be relabelled as real runtime proof = 0",
+    "first64 may run before first1 broad gate passes = 0",
+    "## Phase Summary",
+    "## Phase 0 - Reproducibility",
+    "## Phase 1 - Scope Decision",
+    "## Phase 2 - Full-Output Baseline",
+    "## Phase 3 - CPU Output-Side Reduction",
+    "## Phase 4 - Sort/Top-N Reduction",
+    "## Phase 5 - Archive Artifact",
+    "## Phase 6 - Workload Matrix",
+    "## Phase 7 - Broad GPU Path",
+    "## Phase 8 - Completion Decision",
+    "### Phase 7.1 - Real-Source First1 Shadow Or Path A Acceptance",
+    "### Phase 7.2 - Real Runtime Certificate Source",
+    "### Phase 7.3 - Work-Drop Proof Design",
+    "### Phase 7.4 - First1 Proof Shadow",
+    "### Phase 7.4b - Proof Consumer No-Go",
+    "### Phase 7.4c - Different GPU Execution Design After Consumer No-Go",
+    "### Phase 7.4d - GPU ScoreInfo Certificate Engine Spec",
+    "### Phase 7.4e - GPU ScoreInfo Certificate Engine First1 Shadow Scaffold",
+    "### Phase 7.4f - GPU ScoreInfo Certificate Engine Consumer No-Go",
+    "### Phase 7.4i - GPU-Owned ScoreInfo Consumer First1 Shadow Scaffold",
+    "### Phase 7.5 - First1 Reducing Runtime",
+    "### Phase 7.6 - First64 Broad Characterization",
+    "### Phase 7.7 - Workload-Matrix Promotion",
+    "make check-fasim-gasal2-roadmap-phase0-reproducibility",
+    "make check-fasim-gasal2-roadmap-phase2-equivalence-first-convert",
+    "make check-fasim-gasal2-roadmap-phase5-archive-artifact",
+    "make check-fasim-gasal2-roadmap-phase6-workload-matrix",
+    "fasim_new_gpu_engine_real_source_first1_shadow_or_path_a_acceptance",
+    "requested = 1, when the env is set",
+    "active = 0, until a real source exists",
+    "real_fasim_runtime_certificate_source = 0",
+    "real_fasim_runtime_work_drop_path = 0",
+    "runtime_certificate_is_synthetic = 0",
+    "missing_certificate = 1",
+    "fallback_to_full_cpu_replay = 1",
+    "gate_first1_pass = 0",
+    "current_next_gate = implement_real_source_certificate_source_or_path_a_acceptance",
+    "real_fasim_runtime_certificate_source = 1",
+    "runtime_certificate_is_synthetic = 0",
+    "source_task_count > 0",
+    "source_scoreinfo_count > 0",
+    "source_attempt_count > 0",
+    "gate_first1_source_pass = 1",
+    "real_source_certificate_source_gate_pass = 1",
+    "next_valid_gate = design_pre_drop_output_inert_work_drop_proof",
+    "phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_design = defined",
+    "design_only = 1",
+    "next_valid_gate = implement_pre_drop_output_inert_work_drop_proof_first1_shadow",
+    "current_next_pr = fasim_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow",
+    "phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow = fail_closed_shadow",
+    "uses_pre_drop_output_inert_proof = 0",
+    "runtime_work_drop_enabled = 0",
+    "proof_must_not_use_top5_only_contract = 1",
+    "proof_must_cover_complete_row_set = 1",
+    "next_valid_gate = implement_pre_drop_output_inert_work_drop_proof_consumer_or_no_go",
+    "current_next_pr = fasim_new_gpu_engine_pre_drop_work_drop_proof_consumer_or_no_go",
+    "phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_consumer_no_go = recorded",
+    "phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_consumer_status = no_go_current_descriptor_stream",
+    "accepted_pre_drop_output_inert_proof = 0",
+    "path_b_current_family_stopped = 1",
+    "current_descriptor_stream_can_prove_output_inert_skips = 0",
+    "complete_row_set_output_inert_certificate = missing",
+    "next_valid_gate = path_a_scope_acceptance_or_different_gpu_execution_design_after_consumer_no_go",
+    "current_next_pr = fasim_path_a_scope_acceptance_or_different_gpu_execution_design_after_consumer_no_go",
+    "phase7_post_v5_3_different_gpu_execution_design_after_consumer_no_go = defined",
+    "phase7_post_v5_3_different_gpu_execution_design_after_consumer_no_go_status = design_defined",
+    "path_b_new_design_family = fasim_compatible_gpu_scoreinfo_frontier_certificate_engine",
+    "not_current_descriptor_stream_continuation = 1",
+    "not_gasal2_align_replacement = 1",
+    "not_final_cpu_output_membership_proof = 1",
+    "not_top5_only_contract = 1",
+    "path_b_runtime_pr_allowed = 0",
+    "path_b_docs_spec_allowed = 1",
+    "next_valid_gate = phase7_post_consumer_gpu_scoreinfo_certificate_engine_spec_or_path_a_acceptance",
+    "current_next_pr = fasim_post_consumer_gpu_scoreinfo_certificate_engine_spec_or_path_a_acceptance",
+    "phase7_post_consumer_gpu_scoreinfo_certificate_engine_spec_or_path_a_acceptance = defined",
+    "phase7_post_consumer_gpu_scoreinfo_certificate_engine_spec_status = spec_defined",
+    "path_b_scoreinfo_certificate_engine_spec_defined = 1",
+    "path_b_first1_fail_closed_shadow_scaffold_allowed = 1",
+    "path_b_runtime_reduction_pr_allowed = 0",
+    "path_b_runtime_work_drop_allowed = 0",
+    "path_b_first64_runtime_allowed = 0",
+    "next_valid_gate = phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_scaffold",
+    "current_next_pr = fasim_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_scaffold",
+    "phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_scaffold = fail_closed_shadow",
+    "phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_scaffold_status = fail_closed_no_runtime_reduction",
+    "path_b_scoreinfo_certificate_engine_first1_shadow_scaffold = 1",
+    "fallback_to_full_cpu_replay = 1",
+    "gate_first1_shadow_pass = 0",
+    "next_valid_gate = phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_consumer_or_no_go",
+    "current_next_pr = fasim_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_consumer_or_no_go",
+    "phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_consumer_no_go = recorded",
+    "phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_consumer_status = no_go_no_valid_pre_drop_certificate",
+    "accepted_scoreinfo_certificate_engine_consumer = 0",
+    "accepted_pre_drop_output_inert_certificate = 0",
+    "consumer_can_drop_scoreinfo_work = 0",
+    "consumer_can_drop_align_work = 0",
+    "path_b_scoreinfo_certificate_engine_family_stopped = 1",
+    "next_valid_gate = path_a_scope_acceptance_or_different_gpu_execution_design_after_scoreinfo_cert_engine_no_go",
+    "current_next_pr = fasim_path_a_scope_acceptance_or_different_gpu_execution_design_after_scoreinfo_cert_engine_no_go",
+    "path_a_scope_acceptance_or_different_gpu_execution_design_after_scoreinfo_cert_engine_no_go = recorded",
+    "path_b_different_gpu_execution_design_after_scoreinfo_cert_engine_no_go_status = design_defined",
+    "path_b_new_design_family = gpu_owned_fasim_scoreinfo_consumer_with_pre_drop_frontier_certificate",
+    "next_valid_gate = phase7_gpu_owned_scoreinfo_consumer_design_spec_or_path_a_acceptance",
+    "current_next_pr = fasim_gpu_owned_scoreinfo_consumer_design_spec_or_path_a_acceptance",
+    "This fail-closed checkpoint is now recorded.",
+    "docs/fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold.md",
+    "fasim_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold",
+    "phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold = fail_closed_shadow",
+    "phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold_status = fail_closed_no_runtime_reduction",
+    "path_b_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold = 1",
+    "gpu_owned_scoreinfo_consumer_requested = 1",
+    "gpu_owned_scoreinfo_consumer_active = 1",
+    "gpu_owned_scoreinfo_states > 0",
+    "gpu_owned_attempt_frontier_attempts > 0",
+    "gpu_owned_replay_frontier_attempts > 0",
+    "gpu_owned_skipped_scoreinfo_groups = 0",
+    "gpu_owned_skipped_attempts = 0",
+    "cpu_replay_attempts = baseline_cpu_attempts",
+    "certificate_produced_before_work_drop = 0",
+    "certificate_consumed_before_cpu_replay_selection = 0",
+    "scoreInfo_prealign_reduced = 0",
+    "align_side_reduced = 0",
+    "gate_first1_shadow_pass = 0",
+    "next_valid_gate = phase7_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_or_no_go",
+    "current_next_pr = fasim_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_or_no_go",
+    "docs/fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_no_go.md",
+    "phase7_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_no_go = recorded",
+    "phase7_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_status = no_go_no_valid_pre_drop_certificate",
+    "accepted_gpu_owned_scoreinfo_consumer = 0",
+    "accepted_pre_drop_frontier_certificate = 0",
+    "path_b_gpu_owned_scoreinfo_consumer_family_stopped = 1",
+    "next_valid_gate = path_a_scope_acceptance_or_different_gpu_execution_design_after_gpu_owned_consumer_no_go",
+    "current_next_pr = fasim_gasal2_full_align_verifier_design_spec_or_path_a_acceptance",
+    "full_rows_equal = 1",
+    "digest_match = 1",
+    "missing_rows = 0",
+    "extra_rows = 0",
+    "triplex_mismatches = 0",
+    "scoreInfo_prealign_reduced = 1",
+    "align_side_reduced = 1",
+    "fallback_accounting_clean = 1",
+    "candidate_wall_seconds < baseline_wall_seconds",
+    "candidate_vs_baseline > 1.0",
+    "claimed_broad_replacement_rows > 0",
+    "user_scope_acceptance_recorded = 1",
+    "scoped_completion_may_close_goal = 1",
+    "The active goal is not complete at the time this document is written.",
+]
+
+missing = [phrase for phrase in required if phrase not in text and phrase not in flat]
+if missing:
+    raise SystemExit(
+        "missing phase-to-completion plan phrase(s):\n" + "\n".join(missing)
+    )
+
+phase_order = [
+    "## Phase 0 - Reproducibility",
+    "## Phase 1 - Scope Decision",
+    "## Phase 2 - Full-Output Baseline",
+    "## Phase 3 - CPU Output-Side Reduction",
+    "## Phase 4 - Sort/Top-N Reduction",
+    "## Phase 5 - Archive Artifact",
+    "## Phase 6 - Workload Matrix",
+    "## Phase 7 - Broad GPU Path",
+    "## Phase 8 - Completion Decision",
+]
+positions = [text.index(heading) for heading in phase_order]
+if positions != sorted(positions):
+    raise SystemExit("phase-to-completion plan headings are out of order")
+
+phase7_order = [
+    "### Phase 7.1 - Real-Source First1 Shadow Or Path A Acceptance",
+    "### Phase 7.2 - Real Runtime Certificate Source",
+    "### Phase 7.3 - Work-Drop Proof Design",
+    "### Phase 7.4 - First1 Proof Shadow",
+    "### Phase 7.4b - Proof Consumer No-Go",
+    "### Phase 7.4c - Different GPU Execution Design After Consumer No-Go",
+    "### Phase 7.4d - GPU ScoreInfo Certificate Engine Spec",
+    "### Phase 7.4e - GPU ScoreInfo Certificate Engine First1 Shadow Scaffold",
+    "### Phase 7.4f - GPU ScoreInfo Certificate Engine Consumer No-Go",
+    "### Phase 7.4i - GPU-Owned ScoreInfo Consumer First1 Shadow Scaffold",
+    "### Phase 7.5 - First1 Reducing Runtime",
+    "### Phase 7.6 - First64 Broad Characterization",
+    "### Phase 7.7 - Workload-Matrix Promotion",
+]
+phase7_positions = [text.index(heading) for heading in phase7_order]
+if phase7_positions != sorted(phase7_positions):
+    raise SystemExit("phase-to-completion Phase 7 gates are out of order")
+
+for forbidden in [
+    "GPU endpoint authority = 1",
+    "GPU CIGAR authority = 1",
+    "GPU traceback authority = 1",
+    "GPU output authority = 1",
+    "GPU digest authority = 1",
+    "top5-only evidence closes broad objective = 1",
+    "archive-only evidence closes broad objective = 1",
+    "output-drift speedup counts as success = 1",
+    "first64 may run before first1 broad gate passes = 1",
+    "runtime_reduction_allowed = 1",
+]:
+    if forbidden in text:
+        raise SystemExit(f"phase-to-completion plan contains forbidden phrase: {forbidden}")
+
+if "docs/fasim_gasal2_goal_completion_phase_to_completion_plan.md" not in roadmap_text:
+    raise SystemExit("roadmap does not link phase-to-completion plan")
+
+print("phase_to_completion_plan_document=present")
+print("phase_to_completion_plan_current_phase=phase7")
+print("phase_to_completion_plan_current_gate=phase7_gpu_exact_work_unit_compaction_first1_shadow_scaffold")
+print("phase_to_completion_plan_path_a_requires_user_acceptance=1")
+print("phase_to_completion_plan_path_b_requires_work_drop_proof_then_broad_gate=1")
+print("broad_objective_status=open")
+print("must_not_call_update_goal_complete=1")
+print("ok")
+PY

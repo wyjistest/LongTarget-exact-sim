@@ -241,6 +241,20 @@ inline bool fasim_gasal2_cpu_authority_selected_only_coverage_shadow_runtime()
 	return enabled;
 }
 
+inline bool fasim_gasal2_phase7_next_reducer_shadow_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char* env = getenv("FASIM_GASAL2_PHASE7_NEXT_REDUCER_SHADOW");
+		if (env == NULL || env[0] == '\0')
+		{
+			return false;
+		}
+		return env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_gasal2_score_prepass_state_machine_align_cache_runtime()
 {
 	static const bool enabled = []()
@@ -938,6 +952,94 @@ void convertMyTriplex(const StripedSmithWaterman::Alignment &alignment,
 	bool materializeAlignmentStrings,
 	bool materializeCigarProbe = true);
 
+inline uint64_t fasim_phase3_cigar_nt_aligned_len(
+	const std::vector<uint32_t> &cigar)
+{
+	uint64_t alignedLen = 0;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		const char op = cigar_int_to_op(cigar[i]);
+		if (op == 'M' || op == '=' || op == 'X' || op == 'I' || op == 'D')
+		{
+			alignedLen += cigar_int_to_len(cigar[i]);
+		}
+	}
+	return alignedLen;
+}
+
+inline void fasim_phase3_observe_cigar_nt_prefilter(
+	const StripedSmithWaterman::Alignment &alignment,
+	const string &read_seq,
+	const string &ref_seq,
+	const string &ref_seq_src,
+	const int8_t* table,
+	long dnaStartPos,
+	long rule,
+	long strand,
+	long Para,
+	int penaltyT,
+	int penaltyC,
+	int ntMin,
+	int ntMax,
+	FasimFastsimExtendScoreInfoTiming *timing)
+{
+	if (timing == NULL || timing->phase3_cigar_nt_prefilter_active == 0)
+	{
+		return;
+	}
+	const std::chrono::steady_clock::time_point convertStart =
+		std::chrono::steady_clock::now();
+	FasimConvertMaterializationPolicy policy;
+	policy.materialize_alignment_strings = false;
+	policy.materialize_cigar_probe_string = false;
+	policy.materialize_typed_cigar = false;
+	FasimConvertedTriplexRecord converted;
+	buildConvertedTriplexRecord(alignment,
+	                            converted,
+	                            read_seq,
+	                            ref_seq,
+	                            ref_seq_src,
+	                            table,
+	                            dnaStartPos,
+	                            rule,
+	                            strand,
+	                            Para,
+	                            penaltyT,
+	                            penaltyC,
+	                            ntMin,
+	                            ntMax,
+	                            policy);
+	const double convertSeconds = std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - convertStart).count();
+	const bool cigarLtNtMin =
+		fasim_phase3_cigar_nt_aligned_len(alignment.cigar) <
+		static_cast<uint64_t>(ntMin);
+	const bool legacyNtLtNtMin = converted.nt < ntMin;
+	++timing->phase3_cigar_nt_alignments_seen;
+	if (cigarLtNtMin)
+	{
+		++timing->phase3_cigar_nt_cigar_lt_ntmin;
+		timing->phase3_cigar_nt_convert_seconds_projected_saved +=
+			convertSeconds;
+		if (!legacyNtLtNtMin)
+		{
+			++timing->phase3_cigar_nt_candidate_false_negative_rows;
+		}
+	}
+	if (legacyNtLtNtMin)
+	{
+		++timing->phase3_cigar_nt_legacy_nt_lt_ntmin;
+	}
+	if (cigarLtNtMin == legacyNtLtNtMin)
+	{
+		++timing->phase3_cigar_nt_agree_lt_ntmin;
+	}
+	else
+	{
+		++timing->phase3_cigar_nt_disagree_lt_ntmin;
+	}
+}
+
 void cutSequence(string& seq, vector<string>& seqsVec, vector<int>& seqsStartPos,
 	int cutLength, int overlapLength, int &cut_num)
 {
@@ -1046,6 +1148,28 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 	                                         bool materializeAlignmentStrings = true,
 	                                         FasimFastsimExtendScoreInfoTiming *timing = NULL);
 
+inline void fastSIM_extend_from_attempt_descriptors(
+	StripedSmithWaterman::Aligner &aligner,
+	StripedSmithWaterman::Filter &filter,
+	StripedSmithWaterman::Alignment &alignment,
+	int32_t maskLen,
+	const string &strA,
+	const string &strB,
+	const string &strSrc,
+	long dnaStartPos,
+	const std::vector<PreAlignCudaAttemptDescriptor> &descriptors,
+	vector<struct triplex> &triplex_list,
+	long strand,
+	long Para,
+	long rule,
+	int ntMin,
+	int ntMax,
+	int penaltyT,
+	int penaltyC,
+	const struct para &paraList,
+	bool materializeAlignmentStrings = true,
+	FasimFastsimExtendScoreInfoTiming *timing = NULL);
+
 void fastSIM(string& strA, string& strB, string& strSrc,
 	long dnaStartPos, long min_score, float parm_M,
 	float parm_I, float parm_O, float parm_E,
@@ -1152,6 +1276,233 @@ void fastSIM(string& strA, string& strB, string& strSrc,
 	                              penaltyC,
 	                              paraList,
 	                              materializeAlignmentStrings);
+}
+
+inline void fastSIM_extend_from_attempt_descriptors(
+	StripedSmithWaterman::Aligner &aligner,
+	StripedSmithWaterman::Filter &filter,
+	StripedSmithWaterman::Alignment &alignment,
+	int32_t maskLen,
+	const string &strA,
+	const string &strB,
+	const string &strSrc,
+	long dnaStartPos,
+	const std::vector<PreAlignCudaAttemptDescriptor> &descriptors,
+	vector<struct triplex> &triplex_list,
+	long strand,
+	long Para,
+	long rule,
+	int ntMin,
+	int ntMax,
+	int penaltyT,
+	int penaltyC,
+	const struct para &paraList,
+	bool materializeAlignmentStrings,
+	FasimFastsimExtendScoreInfoTiming *timing)
+{
+	vector<struct triplex> myTriplexList;
+	const int8_t nt_table[128] = {
+	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 0, 4, 1,	4, 4, 4, 2,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 4, 4, 4,	3, 0, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 0, 4, 1,	4, 4, 4, 2,	4, 4, 4, 4,	4, 4, 4, 4,
+	4, 4, 4, 4,	3, 0, 4, 4,	4, 4, 4, 4,	4, 4, 4, 4
+	};
+
+	string smallSeq;
+	int currentScoreInfoOrder = -1;
+	int currentScoreInfoScore = 0;
+	FasimGasal2Attempt bestAttempt;
+	FasimGasal2Attempt lastAttempt;
+	StripedSmithWaterman::Alignment bestAlignment;
+	StripedSmithWaterman::Alignment lastAlignment;
+	bool haveBest = false;
+	bool haveLast = false;
+	bool emitted = false;
+
+	auto emit_alignment = [&](const FasimGasal2Attempt &attempt,
+	                          const StripedSmithWaterman::Alignment &localAlignment)
+	{
+		if (localAlignment.sw_score == 0)
+		{
+			return;
+		}
+		StripedSmithWaterman::Alignment emitAlignment = localAlignment;
+		emitAlignment.ref_begin += attempt.start;
+		emitAlignment.ref_end += attempt.start;
+		fasim_phase3_observe_cigar_nt_prefilter(
+			emitAlignment,
+			strA,
+			strB,
+			strSrc,
+			nt_table,
+			dnaStartPos,
+			rule,
+			strand,
+			Para,
+			penaltyT,
+			penaltyC,
+			ntMin,
+			ntMax,
+			timing);
+		const std::chrono::steady_clock::time_point convertStart =
+			std::chrono::steady_clock::now();
+		convertMyTriplex(emitAlignment,
+		                 myTriplexList,
+		                 strA,
+		                 strB,
+		                 strSrc,
+		                 nt_table,
+		                 dnaStartPos,
+		                 rule,
+		                 strand,
+		                 Para,
+		                 penaltyT,
+		                 penaltyC,
+		                 ntMin,
+		                 ntMax,
+		                 materializeAlignmentStrings);
+		if (timing != NULL)
+		{
+			timing->convert_seconds +=
+				std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - convertStart).count();
+		}
+	};
+
+	auto flush_scoreinfo = [&]()
+	{
+		if (currentScoreInfoOrder >= 0 && !emitted)
+		{
+			if (haveBest)
+			{
+				emit_alignment(bestAttempt, bestAlignment);
+			}
+			else if (haveLast && lastAlignment.sw_score != 0)
+			{
+				emit_alignment(lastAttempt, lastAlignment);
+			}
+		}
+		haveBest = false;
+		haveLast = false;
+		emitted = false;
+		bestAlignment.Clear();
+		lastAlignment.Clear();
+		bestAttempt = FasimGasal2Attempt();
+		lastAttempt = FasimGasal2Attempt();
+	};
+
+	for (size_t i = 0; i < descriptors.size(); ++i)
+	{
+		const PreAlignCudaAttemptDescriptor &descriptor = descriptors[i];
+		if (descriptor.scoreInfoOrder != currentScoreInfoOrder)
+		{
+			flush_scoreinfo();
+			currentScoreInfoOrder = descriptor.scoreInfoOrder;
+			currentScoreInfoScore = descriptor.scoreInfoScore;
+			if (timing != NULL)
+			{
+				++timing->scoreinfo_groups;
+			}
+		}
+		if (emitted)
+		{
+			continue;
+		}
+		if (descriptor.targetStart < 0 ||
+		    descriptor.cutlength <= 0 ||
+		    descriptor.targetStart + descriptor.cutlength >
+			    static_cast<int>(strB.size()))
+		{
+			continue;
+		}
+		FasimGasal2Attempt attempt;
+		attempt.scoreinfo_index = descriptor.scoreInfoOrder;
+		attempt.cutlength = descriptor.cutlength;
+		attempt.start = descriptor.targetStart;
+		attempt.prealign_score = descriptor.scoreInfoScore;
+		attempt.target_end_required_for_fallback =
+			descriptor.targetEndRequiredForFallback;
+		attempt.nt_min_length = ntMin;
+		const std::chrono::steady_clock::time_point substrStart =
+			std::chrono::steady_clock::now();
+		smallSeq = strB.substr(static_cast<size_t>(attempt.start),
+		                       static_cast<size_t>(attempt.cutlength));
+		if (timing != NULL)
+		{
+			timing->substr_seconds +=
+				std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - substrStart).count();
+		}
+		const std::chrono::steady_clock::time_point alignStart =
+			std::chrono::steady_clock::now();
+		StripedSmithWaterman::Alignment localAlignment;
+		aligner.Align(strA.c_str(),
+		              smallSeq.c_str(),
+		              smallSeq.size(),
+		              filter,
+		              &localAlignment,
+		              maskLen);
+		if (timing != NULL)
+		{
+			++timing->align_attempts;
+			timing->align_seconds +=
+				std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - alignStart).count();
+		}
+		lastAttempt = attempt;
+		lastAlignment = localAlignment;
+		haveLast = true;
+		if (localAlignment.sw_score >= currentScoreInfoScore)
+		{
+			emit_alignment(attempt, localAlignment);
+			emitted = true;
+			continue;
+		}
+		if (localAlignment.sw_score > bestAlignment.sw_score &&
+		    localAlignment.ref_end == attempt.cutlength - 1)
+		{
+			bestAttempt = attempt;
+			bestAlignment = localAlignment;
+			haveBest = true;
+		}
+	}
+	flush_scoreinfo();
+
+	const std::chrono::steady_clock::time_point sortStart =
+		std::chrono::steady_clock::now();
+	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	if (timing != NULL)
+	{
+		timing->sort_seconds +=
+			std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - sortStart).count();
+	}
+	const std::chrono::steady_clock::time_point filterStart =
+		std::chrono::steady_clock::now();
+	for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
+	{
+		triplex atr = myTriplexList[i];
+		if (atr.identity >= paraList.minIdentity &&
+		    atr.tri_score >= paraList.minStability &&
+		    atr.nt >= ntMin)
+		{
+			triplex_list.push_back(atr);
+		}
+	}
+	if (timing != NULL)
+	{
+		timing->filter_seconds +=
+			std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - filterStart).count();
+	}
 }
 
 inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner,
@@ -1457,6 +1808,21 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				}
 				if (selectedAlignment.selected && gasalAlignment.sw_score != 0)
 				{
+					fasim_phase3_observe_cigar_nt_prefilter(
+						gasalAlignment,
+						strA,
+						strB,
+						strSrc,
+						nt_table,
+						dnaStartPos,
+						rule,
+						strand,
+						Para,
+						penaltyT,
+						penaltyC,
+						ntMin,
+						ntMax,
+						timing);
 					convertMyTriplex(gasalAlignment,
 					                 myTriplexList,
 					                 strA,
@@ -1572,6 +1938,21 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			{
 				alignment.ref_begin = alignment.ref_begin + finalScoreInfo[i].position - cutlength + 1;
 				alignment.ref_end = alignment.ref_end + finalScoreInfo[i].position - cutlength + 1;
+				fasim_phase3_observe_cigar_nt_prefilter(
+					alignment,
+					strA,
+					strB,
+					strSrc,
+					nt_table,
+					dnaStartPos,
+					rule,
+					strand,
+					Para,
+					penaltyT,
+					penaltyC,
+					ntMin,
+					ntMax,
+					timing);
 				const std::chrono::steady_clock::time_point convertStart =
 					std::chrono::steady_clock::now();
 				convertMyTriplex(alignment,

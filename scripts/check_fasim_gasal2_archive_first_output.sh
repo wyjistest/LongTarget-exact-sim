@@ -42,7 +42,9 @@ if [[ ! -x "$BIN" ]]; then
   )
 fi
 
-for path in "$BIN" "$TARGET" "$RNA" "$ROOT/scripts/restore_fasim_tfosorted_column_archive_probe.py"; do
+for path in "$BIN" "$TARGET" "$RNA" \
+  "$ROOT/scripts/restore_fasim_tfosorted_column_archive_probe.py" \
+  "$ROOT/scripts/check_fasim_tfo_archive_integrity.py"; do
   if [[ ! -e "$path" ]]; then
     echo "missing dependency: $path" >&2
     exit 1
@@ -110,13 +112,54 @@ if [[ -z "$archive_file" || ! -s "$archive_file" ]]; then
 fi
 
 restore_start="$(now_seconds)"
-python3 "$ROOT/scripts/restore_fasim_tfosorted_column_archive_probe.py" \
-  --archive "$archive_file" \
-  --output "$WORK/archive/restored-TFOsorted" \
-  --query-fasta "$RNA" \
-  --target-fasta "$TARGET" \
+restore_command=(
+  python3 "$ROOT/scripts/restore_fasim_tfosorted_column_archive_probe.py"
+  --archive "$archive_file"
+  --output "$WORK/archive/restored-TFOsorted"
+  --query-fasta "$RNA"
+  --target-fasta "$TARGET"
+)
+"${restore_command[@]}" \
   >"$WORK/archive/restore.log"
 restore_end="$(now_seconds)"
+
+python3 "$ROOT/scripts/check_fasim_tfo_archive_integrity.py" \
+  --archive "$archive_file" \
+  --query-fasta "$RNA" \
+  --target-fasta "$TARGET" \
+  --restore-log "$WORK/archive/restore.log" \
+  --restored-output "$WORK/archive/restored-TFOsorted" \
+  >"$WORK/archive/integrity.txt"
+
+manifest="$WORK/archive/archive-manifest.tsv"
+{
+  printf 'archive_manifest_schema\tFASIM_TFO_ARCHIVE_MANIFEST_V1\n'
+  printf 'archive_path\t%s\n' "$archive_file"
+  awk -F= '
+    $1 == "archive_sha256" { printf "archive_sha256\t%s\n", $2 }
+    $1 == "archive_magic" { printf "archive_magic\t%s\n", $2 }
+    $1 == "archive_version" { printf "archive_version\t%s\n", $2 }
+    $1 == "archive_terminator_present" { printf "archive_terminator_present\t%s\n", $2 }
+  ' "$WORK/archive/integrity.txt"
+  printf 'query_fasta_path\t%s\n' "$RNA"
+  awk -F= '$1 == "query_fasta_sha256" { printf "query_fasta_sha256\t%s\n", $2 }' "$WORK/archive/integrity.txt"
+  printf 'target_fasta_path\t%s\n' "$TARGET"
+  awk -F= '$1 == "target_fasta_sha256" { printf "target_fasta_sha256\t%s\n", $2 }' "$WORK/archive/integrity.txt"
+  printf 'restored_output_path\t%s\n' "$WORK/archive/restored-TFOsorted"
+  awk -F= '$1 == "restored_sha256" { printf "restored_sha256\t%s\n", $2 }' "$WORK/archive/integrity.txt"
+  printf 'restore_command\t'
+  printf '%q ' "${restore_command[@]}"
+  printf '\n'
+  awk -F= '
+    $1 == "restore_rows" { printf "restore_rows\t%s\n", $2 }
+    $1 == "archive_bytes" { printf "archive_bytes\t%s\n", $2 }
+    $1 == "restored_bytes" { printf "restored_bytes\t%s\n", $2 }
+  ' "$WORK/archive/integrity.txt"
+} >"$manifest"
+
+python3 "$ROOT/scripts/check_fasim_gasal2_archive_manifest.py" \
+  --manifest "$manifest" \
+  >"$WORK/archive/manifest_check.txt"
 
 restored_equal=0
 legacy_only_rows=0
@@ -175,6 +218,31 @@ gzip -c "$archive_file" >"$archive_file.gz"
   printf 'legacy_text_bytes=%s\n' "$(stat -c%s "$legacy_out")"
   printf 'archive_bytes=%s\n' "$(stat -c%s "$archive_file")"
   printf 'archive_gzip_bytes=%s\n' "$(stat -c%s "$archive_file.gz")"
+  printf 'archive_manifest=%s\n' "$manifest"
+  awk -F= '
+    $1 == "archive_manifest_valid" ||
+    $1 == "restore_command_present" ||
+    $1 == "restore_command_has_archive" ||
+    $1 == "restore_command_has_output" ||
+    $1 == "restore_command_has_query_fasta" ||
+    $1 == "restore_command_has_target_fasta" ||
+    $1 == "archive_manifest_decision" {
+      print
+    }
+  ' "$WORK/archive/manifest_check.txt"
+  awk -F= '
+    $1 == "archive_magic" ||
+    $1 == "archive_version" ||
+    $1 == "archive_terminator_present" ||
+    $1 == "archive_sha256" ||
+    $1 == "query_fasta_sha256" ||
+    $1 == "target_fasta_sha256" ||
+    $1 == "restored_sha256" ||
+    $1 == "query_bases" ||
+    $1 == "target_bases" {
+      print
+    }
+  ' "$WORK/archive/integrity.txt"
 } >"$WORK/summary.txt"
 
 cat "$WORK/summary.txt"

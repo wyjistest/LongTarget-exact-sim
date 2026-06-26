@@ -166,6 +166,15 @@ build-fasim-gasal2: $(FASIM_GASAL2_TARGET)
 $(FASIM_GASAL2_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge.cpp cuda/prealign_cuda.o cuda/prealign_cuda.h $(GASAL2_BUILD_STAMP) $(GASAL2_DIR)/lib/libgasal.a
 	$(CXX) $(CPPFLAGS) -DFASIM_WITH_GASAL2 -I$(GASAL2_DIR)/include $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge.cpp cuda/prealign_cuda.o $(LDFLAGS) $(LDLIBS) -L$(GASAL2_DIR)/lib -lgasal $(CUDA_LDFLAGS) -L$(GASAL2_CUDA_LIB) -lcudart -o $@
 
+build-fasim-gasal2-nvtx:
+	$(MAKE) build-fasim-gasal2 \
+		FASIM_GASAL2_TARGET=$(or $(FASIM_GASAL2_NVTX_TARGET),$(CURDIR)/.tmp/fasim_longtarget_gasal2_nvtx) \
+		CPPFLAGS="$(CPPFLAGS) -DFASIM_WITH_NVTX -I$(CUDA_HOME)/include" \
+		LDFLAGS="$(LDFLAGS) -L$(CUDA_HOME)/lib64 -Wl,-rpath,$(CUDA_HOME)/lib64" \
+		LDLIBS="$(LDLIBS) -lnvToolsExt"
+
+.PHONY: build-fasim-gasal2-nvtx
+
 oracle-sample: $(TARGET)
 	./scripts/run_sample_exactness.sh --generate-oracle
 
@@ -1528,11 +1537,1482 @@ check-fasim-gasal2-archive-first-output:
 
 .PHONY: check-fasim-gasal2-archive-first-output
 
+check-fasim-gasal2-flush-pipeline-parser:
+	bash ./scripts/check_fasim_gasal2_flush_pipeline_parser.sh
+
+.PHONY: check-fasim-gasal2-flush-pipeline-parser
+
+check-fasim-gasal2-flush-pipeline-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_pipeline_smoke) bash ./scripts/check_fasim_gasal2_flush_pipeline_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-pipeline-smoke
+
+check-fasim-gasal2-nvtx-trace-scaffold:
+	bash ./scripts/check_fasim_gasal2_nvtx_trace_scaffold.sh
+
+.PHONY: check-fasim-gasal2-nvtx-trace-scaffold
+
+check-fasim-gasal2-nvtx-trace-smoke:
+	$(MAKE) build-fasim-gasal2-nvtx FASIM_GASAL2_NVTX_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_nvtx
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_nvtx WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_nvtx_trace_smoke) bash ./scripts/check_fasim_gasal2_nvtx_trace_smoke.sh
+
+.PHONY: check-fasim-gasal2-nvtx-trace-smoke
+
+check-fasim-gasal2-flush-two-slot-overlap-scaffold:
+	bash ./scripts/check_fasim_gasal2_flush_two_slot_overlap_scaffold.sh
+
+.PHONY: check-fasim-gasal2-flush-two-slot-overlap-scaffold
+
+check-fasim-gasal2-flush-two-slot-overlap-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_two_slot_overlap_smoke) bash ./scripts/check_fasim_gasal2_flush_two_slot_overlap_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-two-slot-overlap-smoke
+
+characterize-fasim-gasal2-flush-two-slot-overlap-chr22:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_flush_two_slot_overlap_chr22) bash ./scripts/characterize_fasim_gasal2_flush_two_slot_overlap_chr22.sh
+
+.PHONY: characterize-fasim-gasal2-flush-two-slot-overlap-chr22
+
+check-fasim-gasal2-flush-two-slot-overlap-chr22-result:
+	bash ./scripts/check_fasim_gasal2_flush_two_slot_overlap_chr22_result.sh
+
+.PHONY: check-fasim-gasal2-flush-two-slot-overlap-chr22-result
+
+characterize-fasim-gasal2-flush-two-slot-overlap-broader-matrix:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	$(MAKE) build-fasim-gasal2-nvtx FASIM_GASAL2_NVTX_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_nvtx
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct NVTX_BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_nvtx WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_flush_two_slot_overlap_broader_matrix_v2) bash ./scripts/characterize_fasim_gasal2_flush_two_slot_overlap_broader_matrix.sh
+
+.PHONY: characterize-fasim-gasal2-flush-two-slot-overlap-broader-matrix
+
+check-fasim-gasal2-flush-two-slot-overlap-broader-matrix-result:
+	bash ./scripts/check_fasim_gasal2_flush_two_slot_overlap_broader_matrix_result.sh
+
+.PHONY: check-fasim-gasal2-flush-two-slot-overlap-broader-matrix-result
+
+characterize-fasim-gasal2-flush-two-slot-multi-worker-2gpu:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_flush_two_slot_multi_worker_2gpu_v1) bash ./scripts/characterize_fasim_gasal2_flush_two_slot_multi_worker_2gpu.sh
+
+.PHONY: characterize-fasim-gasal2-flush-two-slot-multi-worker-2gpu
+
+check-fasim-gasal2-flush-two-slot-multi-worker-2gpu-result:
+	bash ./scripts/check_fasim_gasal2_flush_two_slot_multi_worker_2gpu_result.sh
+
+.PHONY: check-fasim-gasal2-flush-two-slot-multi-worker-2gpu-result
+
+check-fasim-gasal2-two-slot-low-density-guard:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_two_slot_low_density_guard) bash ./scripts/check_fasim_gasal2_two_slot_low_density_guard.sh
+
+.PHONY: check-fasim-gasal2-two-slot-low-density-guard
+
+check-fasim-gasal2-two-slot-recommended-runtime-readiness:
+	bash ./scripts/check_fasim_gasal2_two_slot_recommended_runtime_readiness.sh
+
+.PHONY: check-fasim-gasal2-two-slot-recommended-runtime-readiness
+
+check-fasim-gasal2-flush-result-boundary-scaffold:
+	bash ./scripts/check_fasim_gasal2_flush_result_boundary_scaffold.sh
+
+.PHONY: check-fasim-gasal2-flush-result-boundary-scaffold
+
+check-fasim-gasal2-flush-result-boundary-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_result_boundary_smoke) bash ./scripts/check_fasim_gasal2_flush_result_boundary_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-result-boundary-smoke
+
+check-fasim-gasal2-flush-pure-finalizer-scaffold:
+	bash ./scripts/check_fasim_gasal2_flush_pure_finalizer_scaffold.sh
+
+.PHONY: check-fasim-gasal2-flush-pure-finalizer-scaffold
+
+check-fasim-gasal2-flush-pure-finalizer-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_pure_finalizer_smoke) bash ./scripts/check_fasim_gasal2_flush_pure_finalizer_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-pure-finalizer-smoke
+
+check-fasim-gasal2-flush-ordered-commit-scaffold:
+	bash ./scripts/check_fasim_gasal2_flush_ordered_commit_scaffold.sh
+
+.PHONY: check-fasim-gasal2-flush-ordered-commit-scaffold
+
+check-fasim-gasal2-flush-ordered-commit-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_ordered_commit_smoke) bash ./scripts/check_fasim_gasal2_flush_ordered_commit_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-ordered-commit-smoke
+
+check-fasim-gasal2-flush-dual-finalizer-scaffold:
+	bash ./scripts/check_fasim_gasal2_flush_dual_finalizer_scaffold.sh
+
+.PHONY: check-fasim-gasal2-flush-dual-finalizer-scaffold
+
+check-fasim-gasal2-flush-dual-finalizer-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_dual_finalizer_smoke) bash ./scripts/check_fasim_gasal2_flush_dual_finalizer_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-dual-finalizer-smoke
+
+check-fasim-gasal2-flush-extracted-finalizer-scaffold:
+	bash ./scripts/check_fasim_gasal2_flush_extracted_finalizer_scaffold.sh
+
+.PHONY: check-fasim-gasal2-flush-extracted-finalizer-scaffold
+
+check-fasim-gasal2-flush-extracted-finalizer-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_flush_extracted_finalizer_smoke) bash ./scripts/check_fasim_gasal2_flush_extracted_finalizer_smoke.sh
+
+.PHONY: check-fasim-gasal2-flush-extracted-finalizer-smoke
+
+characterize-fasim-gasal2-flush-extracted-finalizer-chr22:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_flush_extracted_finalizer_chr22) bash ./scripts/characterize_fasim_gasal2_flush_extracted_finalizer_chr22.sh
+
+.PHONY: characterize-fasim-gasal2-flush-extracted-finalizer-chr22
+
+check-fasim-gasal2-flush-extracted-finalizer-chr22-result:
+	bash ./scripts/check_fasim_gasal2_flush_extracted_finalizer_chr22_result.sh
+
+.PHONY: check-fasim-gasal2-flush-extracted-finalizer-chr22-result
+
+check-fasim-gasal2-full-run-determinism-oracle-parser:
+	bash ./scripts/check_fasim_gasal2_full_run_determinism_oracle_parser.sh
+
+.PHONY: check-fasim-gasal2-full-run-determinism-oracle-parser
+
+characterize-fasim-gasal2-full-run-determinism-chr22:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_full_run_determinism_chr22) bash ./scripts/characterize_fasim_gasal2_full_run_determinism_chr22.sh
+
+.PHONY: characterize-fasim-gasal2-full-run-determinism-chr22
+
+check-fasim-gasal2-full-run-determinism-chr22-result:
+	bash ./scripts/check_fasim_gasal2_full_run_determinism_chr22_result.sh
+
+.PHONY: check-fasim-gasal2-full-run-determinism-chr22-result
+
+check-fasim-tfo-archive-integrity-parser:
+	bash ./scripts/check_fasim_tfo_archive_integrity_parser.sh
+
+.PHONY: check-fasim-tfo-archive-integrity-parser
+
+check-fasim-gasal2-archive-manifest-parser:
+	bash ./scripts/check_fasim_gasal2_archive_manifest_parser.sh
+
+.PHONY: check-fasim-gasal2-archive-manifest-parser
+
+check-fasim-gasal2-workload-matrix-parser:
+	bash ./scripts/check_fasim_gasal2_workload_matrix_parser.sh
+
+.PHONY: check-fasim-gasal2-workload-matrix-parser
+
+check-fasim-gasal2-workload-matrix:
+	python3 ./scripts/summarize_fasim_gasal2_workload_matrix.py --matrix ./docs/fasim_gasal2_workload_matrix.tsv
+
+.PHONY: check-fasim-gasal2-workload-matrix
+
+check-fasim-gasal2-goal-completion-decision:
+	bash ./scripts/check_fasim_gasal2_goal_completion_decision.sh
+
+.PHONY: check-fasim-gasal2-goal-completion-decision
+
+check-fasim-gasal2-roadmap-broad-restart-gate:
+	bash ./scripts/check_fasim_gasal2_roadmap_broad_restart_gate.sh
+
+.PHONY: check-fasim-gasal2-roadmap-broad-restart-gate
+
+check-fasim-gasal2-roadmap-phase-checklist:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase_checklist.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase-checklist
+
+check-fasim-gasal2-roadmap-gate-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_gate_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-gate-plan
+
+check-fasim-gasal2-roadmap-direct-phase-roadmap:
+	bash ./scripts/check_fasim_gasal2_roadmap_direct_phase_roadmap.sh
+
+.PHONY: check-fasim-gasal2-roadmap-direct-phase-roadmap
+
+check-fasim-gasal2-roadmap-phase-roadmap:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase_roadmap.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase-roadmap
+
+check-fasim-gasal2-roadmap-phase-execution-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase_execution_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase-execution-plan
+
+check-fasim-gasal2-roadmap-phase-to-completion-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase_to_completion_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase-to-completion-plan
+
+check-fasim-gasal2-roadmap-phase-driver:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase_driver.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase-driver
+
+check-fasim-gasal2-roadmap-canonical-phase-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_canonical_phase_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-canonical-phase-plan
+
+check-fasim-gasal2-roadmap-goal-closure-phase-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_goal_closure_phase_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-goal-closure-phase-plan
+
+check-fasim-gasal2-roadmap-close-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_close_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-close-plan
+
+check-fasim-gasal2-roadmap-finish-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_finish_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-finish-plan
+
+check-fasim-gasal2-roadmap-execution-ladder:
+	bash ./scripts/check_fasim_gasal2_roadmap_execution_ladder.sh
+
+.PHONY: check-fasim-gasal2-roadmap-execution-ladder
+
+check-fasim-gasal2-roadmap-scope-or-broad-design-decision:
+	bash ./scripts/check_fasim_gasal2_roadmap_scope_or_broad_design_decision.sh
+
+.PHONY: check-fasim-gasal2-roadmap-scope-or-broad-design-decision
+
+check-fasim-gasal2-roadmap-phase0-reproducibility:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase0_reproducibility.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase0-reproducibility
+
+check-fasim-gasal2-roadmap-phase1-scoped-contract:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase1_scoped_contract.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase1-scoped-contract
+
+check-fasim-gasal2-roadmap-phase1-scoped-product:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase1_scoped_product.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase1-scoped-product
+
+check-fasim-gasal2-roadmap-path-a-scoped-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scoped_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scoped-acceptance
+
+check-fasim-gasal2-roadmap-phase2-equivalence-first-convert:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase2_equivalence_first_convert.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase2-equivalence-first-convert
+
+check-fasim-gasal2-roadmap-phase3-preconvert-prune:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase3_preconvert_prune.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase3-preconvert-prune
+
+check-fasim-gasal2-roadmap-phase3-cigar-nt-prefilter-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase3_cigar_nt_prefilter_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase3-cigar-nt-prefilter-design
+
+check-fasim-gasal2-phase3-cigar-nt-prefilter-shadow:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase3_cigar_nt_prefilter_shadow.sh
+
+.PHONY: check-fasim-gasal2-phase3-cigar-nt-prefilter-shadow
+
+characterize-fasim-gasal2-phase3-cigar-nt-prefilter-full:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase3_cigar_nt_prefilter_full.sh
+
+.PHONY: characterize-fasim-gasal2-phase3-cigar-nt-prefilter-full
+
+check-fasim-gasal2-phase3-cigar-nt-prefilter-full-result:
+	bash ./scripts/check_fasim_gasal2_phase3_cigar_nt_prefilter_full_result.sh
+
+.PHONY: check-fasim-gasal2-phase3-cigar-nt-prefilter-full-result
+
+check-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase3_cigar_nt_prefilter_real_validate.sh
+
+.PHONY: check-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate
+
+characterize-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate-full:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase3_cigar_nt_prefilter_real_validate_full.sh
+
+.PHONY: characterize-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate-full
+
+check-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate-full-result:
+	bash ./scripts/check_fasim_gasal2_phase3_cigar_nt_prefilter_real_validate_full_result.sh
+
+.PHONY: check-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate-full-result
+
+check-fasim-gasal2-roadmap-phase4-sort-topn:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase4_sort_topn.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase4-sort-topn
+
+check-fasim-gasal2-roadmap-phase5-archive-artifact:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase5_archive_artifact.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase5-archive-artifact
+
+check-fasim-gasal2-roadmap-phase6-workload-matrix:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase6_workload_matrix.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase6-workload-matrix
+
+check-fasim-gasal2-roadmap-phase7-broad-restart:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart
+
+check-fasim-gasal2-roadmap-phase7-candidate-coverage:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_candidate_coverage.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-candidate-coverage
+
+check-fasim-gasal2-roadmap-phase7-candidate-coverage-stop:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_candidate_coverage_stop.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-candidate-coverage-stop
+
+check-fasim-gasal2-roadmap-phase7-next-reducer-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_next_reducer_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-next-reducer-design
+
+check-fasim-gasal2-roadmap-phase7-next-reducer-implementation-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_next_reducer_implementation_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-next-reducer-implementation-plan
+
+check-fasim-gasal2-phase7-next-reducer-env:
+	bash ./scripts/check_fasim_gasal2_phase7_next_reducer_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-next-reducer-env
+
+check-fasim-gasal2-phase7-frontier-log-env:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_log_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-log-env
+
+check-fasim-gasal2-phase7-frontier-log-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_frontier_log_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-log-runtime-smoke
+
+characterize-fasim-gasal2-phase7-frontier-replay:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_frontier_replay.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-frontier-replay
+
+check-fasim-gasal2-phase7-frontier-replay-result:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_replay_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-replay-result
+
+check-fasim-gasal2-phase7-next-reducer-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_next_reducer_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-next-reducer-runtime-smoke
+
+characterize-fasim-gasal2-phase7-next-reducer:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_next_reducer.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-next-reducer
+
+check-fasim-gasal2-phase7-next-reducer-result:
+	bash ./scripts/check_fasim_gasal2_phase7_next_reducer_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-next-reducer-result
+
+characterize-fasim-gasal2-phase7-next-reducer-broad-gate:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_next_reducer_broad_gate.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-next-reducer-broad-gate
+
+check-fasim-gasal2-phase7-next-reducer-broad-gate-result:
+	bash ./scripts/check_fasim_gasal2_phase7_next_reducer_broad_gate_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-next-reducer-broad-gate-result
+
+check-fasim-gasal2-roadmap-phase7-next-reducer-scaffold: check-fasim-gasal2-phase7-next-reducer-env check-fasim-gasal2-phase7-next-reducer-runtime-smoke characterize-fasim-gasal2-phase7-next-reducer check-fasim-gasal2-phase7-next-reducer-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_next_reducer_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-next-reducer-scaffold
+
+check-fasim-gasal2-roadmap-phase7-next-reducer-broad-gate: characterize-fasim-gasal2-phase7-next-reducer-broad-gate check-fasim-gasal2-phase7-next-reducer-broad-gate-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_next_reducer_broad_gate.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-next-reducer-broad-gate
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-design
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-log-scaffold: check-fasim-gasal2-phase7-frontier-log-env check-fasim-gasal2-phase7-frontier-log-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_log_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-log-scaffold
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-replay: characterize-fasim-gasal2-phase7-frontier-replay check-fasim-gasal2-phase7-frontier-replay-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_replay.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-replay
+
+characterize-fasim-gasal2-phase7-frontier-reducer:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_frontier_reducer.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-frontier-reducer
+
+check-fasim-gasal2-phase7-frontier-reducer-result:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_reducer_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-reducer-result
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-reducer: characterize-fasim-gasal2-phase7-frontier-reducer check-fasim-gasal2-phase7-frontier-reducer-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_reducer.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-reducer
+
+characterize-fasim-gasal2-phase7-frontier-predictor:
+	bash ./scripts/characterize_fasim_gasal2_phase7_frontier_predictor.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-frontier-predictor
+
+check-fasim-gasal2-phase7-frontier-predictor-result:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_predictor_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-predictor-result
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-predictor: characterize-fasim-gasal2-phase7-frontier-predictor check-fasim-gasal2-phase7-frontier-predictor-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_predictor.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-predictor
+
+characterize-fasim-gasal2-phase7-frontier-score-signal:
+	bash ./scripts/characterize_fasim_gasal2_phase7_frontier_score_signal.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-frontier-score-signal
+
+check-fasim-gasal2-phase7-frontier-score-signal-result:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_score_signal_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-score-signal-result
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-score-signal: characterize-fasim-gasal2-phase7-frontier-score-signal check-fasim-gasal2-phase7-frontier-score-signal-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_score_signal.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-score-signal
+
+characterize-fasim-gasal2-phase7-frontier-early-stop:
+	bash ./scripts/characterize_fasim_gasal2_phase7_frontier_early_stop.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-frontier-early-stop
+
+check-fasim-gasal2-phase7-frontier-early-stop-result:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_early_stop_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-early-stop-result
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop: characterize-fasim-gasal2-phase7-frontier-early-stop check-fasim-gasal2-phase7-frontier-early-stop-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_early_stop.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop
+
+check-fasim-gasal2-phase7-frontier-early-stop-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_frontier_early_stop_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-early-stop-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop-runtime: check-fasim-gasal2-phase7-frontier-early-stop-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_early_stop_runtime.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop-runtime
+
+characterize-fasim-gasal2-phase7-frontier-early-stop-runtime:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_frontier_early_stop_runtime.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-frontier-early-stop-runtime
+
+check-fasim-gasal2-phase7-frontier-early-stop-runtime-result:
+	bash ./scripts/check_fasim_gasal2_phase7_frontier_early_stop_runtime_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-frontier-early-stop-runtime-result
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop-runtime-first1: characterize-fasim-gasal2-phase7-frontier-early-stop-runtime check-fasim-gasal2-phase7-frontier-early-stop-runtime-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v2_frontier_early_stop_runtime_first1.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop-runtime-first1
+
+check-fasim-gasal2-roadmap-phase7-next-reducer-after-early-stop-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_next_reducer_after_early_stop_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-next-reducer-after-early-stop-design
+
+check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_all_attempt_early_stop_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-smoke
+
+characterize-fasim-gasal2-phase7-all-attempt-early-stop-runtime:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_all_attempt_early_stop_runtime.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-all-attempt-early-stop-runtime
+
+check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-result:
+	bash ./scripts/check_fasim_gasal2_phase7_all_attempt_early_stop_runtime_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-result
+
+check-fasim-gasal2-roadmap-phase7-all-attempt-early-stop-runtime-first1: characterize-fasim-gasal2-phase7-all-attempt-early-stop-runtime check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_all_attempt_early_stop_runtime_first1.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-all-attempt-early-stop-runtime-first1
+
+characterize-fasim-gasal2-phase7-all-attempt-early-stop-runtime-first64:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	WORK=$(CURDIR)/.tmp/characterize_fasim_gasal2_phase7_all_attempt_early_stop_runtime_first64 BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct RECORD_LIMIT=64 WORKLOAD_LABEL=neat1_first64 DECISION_LABEL=first64 bash ./scripts/characterize_fasim_gasal2_phase7_all_attempt_early_stop_runtime.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-all-attempt-early-stop-runtime-first64
+
+check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-first64-result:
+	bash ./scripts/check_fasim_gasal2_phase7_all_attempt_early_stop_runtime_first64_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-first64-result
+
+check-fasim-gasal2-roadmap-phase7-all-attempt-early-stop-runtime-first64: characterize-fasim-gasal2-phase7-all-attempt-early-stop-runtime-first64 check-fasim-gasal2-phase7-all-attempt-early-stop-runtime-first64-result
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_all_attempt_early_stop_runtime_first64.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-all-attempt-early-stop-runtime-first64
+
+check-fasim-gasal2-roadmap-phase7-gate-c-gpu-candidate-generator-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gate_c_gpu_candidate_generator_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gate-c-gpu-candidate-generator-design
+
+check-fasim-gasal2-roadmap-phase7-gate-c-implementation-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gate_c_implementation_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gate-c-implementation-plan
+
+check-fasim-gasal2-roadmap-phase7-gate-c-first1:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gate_c_first1.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gate-c-first1
+
+check-fasim-gasal2-roadmap-phase7-gate-c-stop-checkpoint:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gate_c_stop_checkpoint.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gate-c-stop-checkpoint
+
+check-fasim-gasal2-roadmap-phase7-current-broad-stop-decision:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_current_broad_stop_decision.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-current-broad-stop-decision
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-design
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-descriptor-source-smoke: check-fasim-gasal2-phase7-v3-descriptor-source-env check-fasim-gasal2-phase7-v3-descriptor-source-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_descriptor_source_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-descriptor-source-smoke
+
+check-fasim-gasal2-phase7-gate-c-env:
+	bash ./scripts/check_fasim_gasal2_phase7_gate_c_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-gate-c-env
+
+check-fasim-gasal2-phase7-v3-descriptor-source-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_descriptor_source_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-descriptor-source-env
+
+check-fasim-gasal2-phase7-v3-pre-scoreinfo-descriptor-source-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_pre_scoreinfo_descriptor_source_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-pre-scoreinfo-descriptor-source-env
+
+check-fasim-gasal2-phase7-v3-certificate-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_certificate_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-certificate-env
+
+check-fasim-gasal2-phase7-v3-all-column-certificate-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_all_column_certificate_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-all-column-certificate-env
+
+check-fasim-gasal2-phase7-v3-descriptor-source-runtime-smoke:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_descriptor_source_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-descriptor-source-runtime-smoke
+
+check-fasim-gasal2-phase7-v3-pre-scoreinfo-descriptor-source-runtime-smoke:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_pre_scoreinfo_descriptor_source_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-pre-scoreinfo-descriptor-source-runtime-smoke
+
+check-fasim-gasal2-phase7-v3-certificate-runtime-smoke:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_certificate_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-certificate-runtime-smoke
+
+check-fasim-gasal2-phase7-v3-all-column-certificate-runtime-smoke:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_all_column_certificate_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-all-column-certificate-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-pre-scoreinfo-descriptor-source-smoke: check-fasim-gasal2-phase7-v3-pre-scoreinfo-descriptor-source-env check-fasim-gasal2-phase7-v3-pre-scoreinfo-descriptor-source-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_pre_scoreinfo_descriptor_source_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-pre-scoreinfo-descriptor-source-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-certificate-smoke: check-fasim-gasal2-phase7-v3-certificate-env check-fasim-gasal2-phase7-v3-certificate-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_certificate_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-certificate-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-all-column-certificate-smoke: check-fasim-gasal2-phase7-v3-all-column-certificate-env check-fasim-gasal2-phase7-v3-all-column-certificate-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_all_column_certificate_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-all-column-certificate-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-all-column-replay-stop:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_all_column_replay_stop.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-all-column-replay-stop
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-narrow-certificate-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_narrow_certificate_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-narrow-certificate-design
+
+check-fasim-gasal2-phase7-v3-narrow-certificate-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v3_narrow_certificate_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-narrow-certificate-env
+
+check-fasim-gasal2-phase7-v3-narrow-certificate-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v3_narrow_certificate_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-narrow-certificate-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-narrow-certificate-smoke: check-fasim-gasal2-phase7-v3-narrow-certificate-env check-fasim-gasal2-phase7-v3-narrow-certificate-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_narrow_certificate_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-narrow-certificate-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-real-narrow-certificate-coverage-proof:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_real_narrow_certificate_coverage_proof.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-real-narrow-certificate-coverage-proof
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-next-source-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_next_source_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-next-source-design
+
+check-fasim-gasal2-phase7-v3-next-source-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v3_next_source_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-next-source-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-next-source-smoke: check-fasim-gasal2-phase7-v3-next-source-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_next_source_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-next-source-smoke
+
+check-fasim-gasal2-phase7-v3-strong-seed-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v3_strong_seed_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-strong-seed-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-strong-seed-smoke: check-fasim-gasal2-phase7-v3-strong-seed-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_strong_seed_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-strong-seed-smoke
+
+check-fasim-gasal2-phase7-v3-attempt-coverage-seed-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v3_attempt_coverage_seed_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-attempt-coverage-seed-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-attempt-coverage-seed-smoke: check-fasim-gasal2-phase7-v3-attempt-coverage-seed-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_attempt_coverage_seed_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-attempt-coverage-seed-smoke
+
+check-fasim-gasal2-phase7-v3-oracle-min-cover-replay-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v3_oracle_min_cover_replay_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v3-oracle-min-cover-replay-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-oracle-min-cover-replay-smoke: check-fasim-gasal2-phase7-v3-oracle-min-cover-replay-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_oracle_min_cover_replay_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-oracle-min-cover-replay-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v3-seed-path-stop:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v3_seed_path_stop.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v3-seed-path-stop
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v4-scoreinfo-native-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v4_scoreinfo_native_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v4-scoreinfo-native-design
+
+check-fasim-gasal2-phase7-v4-legacy-byte-scoreinfo-shadow-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v4_legacy_byte_scoreinfo_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v4-legacy-byte-scoreinfo-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v4-legacy-byte-scoreinfo-shadow-smoke: check-fasim-gasal2-phase7-v4-legacy-byte-scoreinfo-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v4_legacy_byte_scoreinfo_shadow_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v4-legacy-byte-scoreinfo-shadow-smoke
+
+check-fasim-gasal2-phase7-v4-gpu-legacy-byte-scoreinfo-shadow-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v4_gpu_legacy_byte_scoreinfo_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v4-gpu-legacy-byte-scoreinfo-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-shadow-smoke: check-fasim-gasal2-phase7-v4-gpu-legacy-byte-scoreinfo-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v4_gpu_legacy_byte_scoreinfo_shadow_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-shadow-smoke
+
+check-fasim-gasal2-phase7-v4-gpu-legacy-byte-scoreinfo-source-replay-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v4_gpu_legacy_byte_scoreinfo_source_replay_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v4-gpu-legacy-byte-scoreinfo-source-replay-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-source-replay-smoke: check-fasim-gasal2-phase7-v4-gpu-legacy-byte-scoreinfo-source-replay-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v4_gpu_legacy_byte_scoreinfo_source_replay_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-source-replay-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-source-first64-broad-gate:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v4_gpu_legacy_byte_scoreinfo_source_first64_broad_gate.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-source-first64-broad-gate
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-fused-scoreinfo-consumer-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_fused_scoreinfo_consumer_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-fused-scoreinfo-consumer-design
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-implementation-plan:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_implementation_plan.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-implementation-plan
+
+check-fasim-gasal2-phase7-v5-fused-scoreinfo-consumer-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-fused-scoreinfo-consumer-env
+
+check-fasim-gasal2-phase7-v5-true-pre-scoreinfo-descriptor-source-env:
+	bash ./scripts/check_fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-true-pre-scoreinfo-descriptor-source-env
+
+check-fasim-gasal2-phase7-v5-true-pre-scoreinfo-descriptor-source-env-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_env_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-true-pre-scoreinfo-descriptor-source-env-runtime-smoke
+
+check-fasim-gasal2-phase7-v5-true-pre-scoreinfo-descriptor-source-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-true-pre-scoreinfo-descriptor-source-runtime-smoke
+
+check-fasim-gasal2-phase7-v5-cpu-authority-replay-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v5_cpu_authority_replay_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-cpu-authority-replay-runtime-smoke
+
+characterize-fasim-gasal2-phase7-v5-cpu-authority-replay-first64:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_v5_cpu_authority_replay_first64.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-v5-cpu-authority-replay-first64
+
+check-fasim-gasal2-phase7-v5-cpu-authority-replay-first64-result:
+	bash ./scripts/check_fasim_gasal2_phase7_v5_cpu_authority_replay_first64_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-cpu-authority-replay-first64-result
+
+check-fasim-gasal2-phase7-v5-fused-scoreinfo-consumer-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-v5-fused-scoreinfo-consumer-runtime-smoke
+
+check-fasim-gasal2-phase7-post-v5-3-gpu-consumer-summary-env-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_gpu_consumer_summary_env_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-gpu-consumer-summary-env-runtime-smoke
+
+check-fasim-gasal2-phase7-post-v5-3-host-assisted-consumer-feasibility-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_host_assisted_consumer_feasibility_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-host-assisted-consumer-feasibility-runtime-smoke
+
+check-fasim-gasal2-phase7-post-v5-3-task-frontier-certificate-env-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_task_frontier_certificate_env_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-task-frontier-certificate-env-runtime-smoke
+
+check-fasim-gasal2-phase7-post-v5-3-task-frontier-certificate-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_task_frontier_certificate_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-task-frontier-certificate-runtime-smoke
+
+check-fasim-gasal2-phase7-post-v5-3-pre-d2h-proof-search-runtime-smoke:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_pre_d2h_proof_search_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-pre-d2h-proof-search-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-gpu-consumer-summary-env-scaffold:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_gpu_consumer_summary_env_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-gpu-consumer-summary-env-scaffold
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-fused-scoreinfo-consumer-runtime-smoke:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_fused_scoreinfo_consumer_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-fused-scoreinfo-consumer-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_true_pre_scoreinfo_descriptor_source_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-design
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-env-scaffold:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_true_pre_scoreinfo_descriptor_source_env_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-env-scaffold
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-runtime-smoke:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_true_pre_scoreinfo_descriptor_source_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cpu-authority-replay-smoke:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_cpu_authority_replay_smoke.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cpu-authority-replay-smoke
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cpu-authority-replay-first64-broad-gate:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_cpu_authority_replay_first64_broad_gate.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cpu-authority-replay-first64-broad-gate
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-architecture-decision:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_architecture_decision.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-architecture-decision
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-architecture-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_architecture_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-architecture-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-long-query-safe-consumer-summary-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_long_query_safe_consumer_summary_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-long-query-safe-consumer-summary-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-gpu-consumer-summary-first-attempt-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_gpu_consumer_summary_first_attempt_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-gpu-consumer-summary-first-attempt-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-consumer-summary-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_stronger_consumer_summary_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-consumer-summary-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-consumer-summary-prefix-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_stronger_consumer_summary_prefix_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-consumer-summary-prefix-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_task_frontier_certificate_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-env-scaffold:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_task_frontier_certificate_env_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-env-scaffold
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-first-attempt-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_task_frontier_certificate_first_attempt_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-first-attempt-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-task-frontier-certificate-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_stronger_task_frontier_certificate_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-task-frontier-certificate-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-task-frontier-certificate-feasibility-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_stronger_task_frontier_certificate_feasibility_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-task-frontier-certificate-feasibility-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-search-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_pre_d2h_output_inert_proof_search_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-search-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-search-first1-export:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_pre_d2h_output_inert_proof_search_first1_export.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-search-first1-export
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-acceptance-first1:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_pre_d2h_output_inert_proof_acceptance_first1.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-acceptance-first1
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-pre-d2h-proof-family-or-scope-decision:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_pre_d2h_proof_family_or_scope_decision.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-pre-d2h-proof-family-or-scope-decision
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-pre-d2h-proof-family-first1-feasibility-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_pre_d2h_proof_family_first1_feasibility_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-pre-d2h-proof-family-first1-feasibility-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-different-gpu-execution-design-or-scope-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_different_gpu_execution_design_or_scope_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-different-gpu-execution-design-or-scope-acceptance
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-design
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-spec-or-path-a-acceptance
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_first1_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-spec-or-path-a-acceptance
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-shadow-redirect:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_first1_shadow_redirect.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-shadow-redirect
+
+check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-first1-shadow-env:
+	bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_new_gpu_engine_first1_shadow_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-first1-shadow-env
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-shadow-scaffold: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-first1-shadow-env
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-certificate-cuda-api:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-certificate-cuda-api
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-certificate-producer-first1:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_certificate_producer_first1.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-certificate-producer-first1
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-reducing-runtime-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_first1_reducing_runtime_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-reducing-runtime-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-design-after-first1-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_design_after_first1_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-design-after-first1-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-first1-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_real_source_first1_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-first1-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-env:
+	bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_env.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-env
+
+check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-scaffold: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-env check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-scaffold
+
+check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-certificate-source-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-certificate-source-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-certificate-source: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-real-source-certificate-source-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-certificate-source
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-design
+
+check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-first1-shadow: check-fasim-gasal2-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-first1-shadow
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-consumer-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-v5-3-different-gpu-execution-design-after-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_v5_3_different_gpu_execution_design_after_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-v5-3-different-gpu-execution-design-after-consumer-no-go
+
+check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_consumer_gpu_scoreinfo_certificate_engine_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-scaffold: check-fasim-gasal2-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_post_consumer_gpu_scoreinfo_certificate_engine_first1_shadow_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-scoreinfo-cert-engine-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_different_gpu_execution_design_after_scoreinfo_cert_engine_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-scoreinfo-cert-engine-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-gpu-owned-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_different_gpu_execution_design_after_gpu_owned_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-gpu-owned-consumer-no-go
+
+check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-design-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gasal2_full_align_verifier_design_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-full-align-verifier-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_full_align_verifier_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-full-align-verifier-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-first1-shadow-scaffold: check-fasim-gasal2-phase7-full-align-verifier-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gasal2_full_align_verifier_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-first1-shadow-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gasal2_full_align_verifier_first1_shadow_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-full-align-verifier-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_different_gpu_execution_design_after_full_align_verifier_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-full-align-verifier-no-go
+
+check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-design-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_native_cuda_fasim_dp_engine_design_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-native-cuda-fasim-dp-engine-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-native-cuda-fasim-dp-engine-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-first1-shadow-scaffold: check-fasim-gasal2-phase7-native-cuda-fasim-dp-engine-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_native_cuda_fasim_dp_engine_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-first1-shadow-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_native_cuda_fasim_dp_engine_first1_shadow_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-native-cuda-fasim-dp-engine-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_different_gpu_execution_design_after_native_cuda_fasim_dp_engine_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-native-cuda-fasim-dp-engine-no-go
+
+check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-design-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_upper_bound_reject_certificate_design_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-gpu-upper-bound-reject-certificate-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_gpu_upper_bound_reject_certificate_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-gpu-upper-bound-reject-certificate-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-first1-shadow-scaffold: check-fasim-gasal2-phase7-gpu-upper-bound-reject-certificate-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_upper_bound_reject_certificate_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-first1-shadow-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_upper_bound_reject_certificate_first1_shadow_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-gpu-upper-bound-reject-certificate-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_different_gpu_execution_design_after_gpu_upper_bound_reject_certificate_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-gpu-upper-bound-reject-certificate-no-go
+
+check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-design-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_exact_work_unit_compaction_design_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-gpu-exact-work-unit-compaction-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-gpu-exact-work-unit-compaction-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-first1-shadow-scaffold: check-fasim-gasal2-phase7-gpu-exact-work-unit-compaction-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_exact_work_unit_compaction_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-first1-shadow-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_exact_work_unit_compaction_first1_shadow_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-exact-work-unit-compaction-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_different_gpu_execution_design_after_exact_work_unit_compaction_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-exact-work-unit-compaction-no-go
+
+check-fasim-gasal2-roadmap-new-gpu-execution-design-family-spec-or-path-a-acceptance-after-exact-work-unit-compaction-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_new_gpu_execution_design_family_spec_or_path_a_acceptance_after_exact_work_unit_compaction_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-new-gpu-execution-design-family-spec-or-path-a-acceptance-after-exact-work-unit-compaction-no-go
+
+check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-external-new-path-b-design-after-exact-work-unit-compaction-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_path_a_scope_acceptance_or_external_new_path_b_design_after_exact_work_unit_compaction_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-external-new-path-b-design-after-exact-work-unit-compaction-no-go
+
+check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-design-spec-or-path-a-acceptance:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_owned_scoreinfo_consumer_design_spec_or_path_a_acceptance.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-runtime-smoke
+
+check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-scaffold: check-fasim-gasal2-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-runtime-smoke
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scaffold.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-consumer-no-go:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_consumer_no_go.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cuda-descriptor-emission-design:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase7_broad_restart_v5_cuda_descriptor_emission_design.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cuda-descriptor-emission-design
+
+check-fasim-gasal2-phase7-gate-c-runtime-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_phase7_gate_c_runtime_smoke.sh
+
+.PHONY: check-fasim-gasal2-phase7-gate-c-runtime-smoke
+
+characterize-fasim-gasal2-phase7-gate-c-first1:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_phase7_gate_c_first1.sh
+
+.PHONY: characterize-fasim-gasal2-phase7-gate-c-first1
+
+check-fasim-gasal2-phase7-gate-c-first1-result:
+	bash ./scripts/check_fasim_gasal2_phase7_gate_c_first1_result.sh
+
+.PHONY: check-fasim-gasal2-phase7-gate-c-first1-result
+
+check-fasim-gasal2-roadmap-phase8-completion-decision:
+	bash ./scripts/check_fasim_gasal2_roadmap_phase8_completion_decision.sh
+
+.PHONY: check-fasim-gasal2-roadmap-phase8-completion-decision
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase-checklist check-fasim-gasal2-roadmap-gate-plan check-fasim-gasal2-roadmap-phase-roadmap check-fasim-gasal2-roadmap-phase-execution-plan check-fasim-gasal2-roadmap-phase-driver check-fasim-gasal2-roadmap-canonical-phase-plan check-fasim-gasal2-roadmap-goal-closure-phase-plan check-fasim-gasal2-roadmap-close-plan check-fasim-gasal2-roadmap-execution-ladder check-fasim-gasal2-roadmap-scope-or-broad-design-decision check-fasim-gasal2-roadmap-phase0-reproducibility check-fasim-gasal2-roadmap-phase1-scoped-product check-fasim-gasal2-roadmap-path-a-scoped-acceptance check-fasim-gasal2-roadmap-phase2-equivalence-first-convert check-fasim-gasal2-roadmap-phase3-preconvert-prune check-fasim-gasal2-roadmap-phase3-cigar-nt-prefilter-design check-fasim-gasal2-phase3-cigar-nt-prefilter-shadow check-fasim-gasal2-phase3-cigar-nt-prefilter-full-result check-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate check-fasim-gasal2-phase3-cigar-nt-prefilter-real-validate-full-result check-fasim-gasal2-roadmap-phase4-sort-topn check-fasim-gasal2-roadmap-phase5-archive-artifact check-fasim-gasal2-roadmap-phase6-workload-matrix check-fasim-gasal2-roadmap-phase7-broad-restart check-fasim-gasal2-roadmap-phase7-candidate-coverage check-fasim-gasal2-roadmap-phase7-candidate-coverage-stop check-fasim-gasal2-roadmap-phase7-next-reducer-design check-fasim-gasal2-roadmap-phase7-next-reducer-implementation-plan check-fasim-gasal2-roadmap-phase7-next-reducer-scaffold check-fasim-gasal2-roadmap-phase7-next-reducer-broad-gate check-fasim-gasal2-roadmap-phase7-broad-restart-v2-design check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-log-scaffold check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-replay check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-reducer check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-predictor check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-score-signal check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop-runtime check-fasim-gasal2-roadmap-phase7-broad-restart-v2-frontier-early-stop-runtime-first1 check-fasim-gasal2-roadmap-phase7-next-reducer-after-early-stop-design check-fasim-gasal2-roadmap-phase7-all-attempt-early-stop-runtime-first1 check-fasim-gasal2-roadmap-phase7-all-attempt-early-stop-runtime-first64 check-fasim-gasal2-roadmap-phase7-gate-c-gpu-candidate-generator-design check-fasim-gasal2-roadmap-phase7-gate-c-implementation-plan check-fasim-gasal2-roadmap-phase7-gate-c-first1 check-fasim-gasal2-roadmap-phase7-gate-c-stop-checkpoint check-fasim-gasal2-roadmap-phase7-current-broad-stop-decision check-fasim-gasal2-roadmap-phase7-broad-restart-v3-design check-fasim-gasal2-roadmap-phase7-broad-restart-v3-descriptor-source-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-pre-scoreinfo-descriptor-source-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-certificate-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-all-column-certificate-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-all-column-replay-stop check-fasim-gasal2-roadmap-phase7-broad-restart-v3-narrow-certificate-design check-fasim-gasal2-roadmap-phase7-broad-restart-v3-narrow-certificate-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-real-narrow-certificate-coverage-proof check-fasim-gasal2-roadmap-phase7-broad-restart-v3-next-source-design check-fasim-gasal2-roadmap-phase7-broad-restart-v3-next-source-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-strong-seed-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-attempt-coverage-seed-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-oracle-min-cover-replay-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v3-seed-path-stop check-fasim-gasal2-roadmap-phase7-broad-restart-v4-scoreinfo-native-design check-fasim-gasal2-roadmap-phase7-broad-restart-v4-legacy-byte-scoreinfo-shadow-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-shadow-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-source-replay-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v4-gpu-legacy-byte-scoreinfo-source-first64-broad-gate check-fasim-gasal2-roadmap-phase7-broad-restart-v5-fused-scoreinfo-consumer-design check-fasim-gasal2-roadmap-phase7-broad-restart-v5-implementation-plan check-fasim-gasal2-roadmap-phase7-broad-restart-v5-fused-scoreinfo-consumer-runtime-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-design check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-env-scaffold check-fasim-gasal2-roadmap-phase7-broad-restart-v5-true-pre-scoreinfo-descriptor-source-runtime-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cpu-authority-replay-smoke check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cpu-authority-replay-first64-broad-gate check-fasim-gasal2-roadmap-phase7-post-v5-3-architecture-decision check-fasim-gasal2-roadmap-phase7-post-v5-3-new-architecture-design check-fasim-gasal2-roadmap-phase7-post-v5-3-gpu-consumer-summary-first-attempt-no-go check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-consumer-summary-design check-fasim-gasal2-roadmap-phase7-post-v5-3-task-frontier-certificate-design check-fasim-gasal2-roadmap-phase7-post-v5-3-stronger-task-frontier-certificate-feasibility-no-go check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-search-design check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-search-first1-export check-fasim-gasal2-roadmap-phase7-post-v5-3-pre-d2h-output-inert-proof-acceptance-first1 check-fasim-gasal2-roadmap-phase7-post-v5-3-new-pre-d2h-proof-family-or-scope-decision check-fasim-gasal2-roadmap-phase7-post-v5-3-new-pre-d2h-proof-family-first1-feasibility-no-go check-fasim-gasal2-roadmap-phase7-post-v5-3-different-gpu-execution-design-or-scope-acceptance check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-design check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-shadow-redirect check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-certificate-cuda-api check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-certificate-producer-first1 check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-first1-reducing-runtime-no-go check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-design-after-first1-no-go check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-first1-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-real-source-certificate-source check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-design check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-first1-shadow check-fasim-gasal2-roadmap-phase7-post-v5-3-new-gpu-engine-pre-drop-work-drop-proof-consumer-no-go check-fasim-gasal2-roadmap-phase7-post-v5-3-different-gpu-execution-design-after-consumer-no-go check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-post-consumer-gpu-scoreinfo-certificate-engine-first1-shadow-consumer-no-go check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-scoreinfo-cert-engine-no-go check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-design-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-gpu-owned-scoreinfo-consumer-first1-shadow-consumer-no-go check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-gpu-owned-consumer-no-go check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-design-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-gasal2-full-align-verifier-first1-shadow-consumer-no-go check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-full-align-verifier-no-go check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-design-spec-or-path-a-acceptance check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-first1-shadow-scaffold check-fasim-gasal2-roadmap-phase7-broad-restart-v5-cuda-descriptor-emission-design check-fasim-gasal2-roadmap-phase8-completion-decision
+	bash ./scripts/check_fasim_gasal2_roadmap_current_state.sh
+
+.PHONY: check-fasim-gasal2-roadmap-current-state
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase7-native-cuda-fasim-dp-engine-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-native-cuda-fasim-dp-engine-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase7-gpu-upper-bound-reject-certificate-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-gpu-upper-bound-reject-certificate-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-design-spec-or-path-a-acceptance
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-first1-shadow-scaffold
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-phase7-gpu-exact-work-unit-compaction-first1-shadow-consumer-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-different-gpu-execution-design-after-exact-work-unit-compaction-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-new-gpu-execution-design-family-spec-or-path-a-acceptance-after-exact-work-unit-compaction-no-go
+
+check-fasim-gasal2-roadmap-current-state: check-fasim-gasal2-roadmap-path-a-scope-acceptance-or-external-new-path-b-design-after-exact-work-unit-compaction-no-go
+
 check-fasim-gasal2-equivalence-first-convert:
 	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
 	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_equivalence_first_convert) bash ./scripts/check_fasim_gasal2_equivalence_first_convert.sh
 
 .PHONY: check-fasim-gasal2-equivalence-first-convert
+
+characterize-fasim-gasal2-cpu-vs-gasal2-full-plain:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_cpu_vs_gasal2_full_plain_chr22) bash ./scripts/characterize_fasim_gasal2_cpu_vs_gasal2_full_plain.sh
+
+.PHONY: characterize-fasim-gasal2-cpu-vs-gasal2-full-plain
+
+check-fasim-gasal2-cpu-vs-gasal2-full-plain-result:
+	bash ./scripts/check_fasim_gasal2_cpu_vs_gasal2_full_plain_result.sh
+
+.PHONY: check-fasim-gasal2-cpu-vs-gasal2-full-plain-result
+
+check-fasim-gasal2-full-plain-optimization-opportunity:
+	bash ./scripts/check_fasim_gasal2_full_plain_optimization_opportunity.sh
+
+.PHONY: check-fasim-gasal2-full-plain-optimization-opportunity
+
+check-fasim-gasal2-limited-traceback-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_limited_traceback_smoke.sh
+
+.PHONY: check-fasim-gasal2-limited-traceback-smoke
+
+characterize-fasim-gasal2-limited-traceback-chr22:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_limited_traceback_chr22) bash ./scripts/characterize_fasim_gasal2_limited_traceback_chr22.sh
+
+.PHONY: characterize-fasim-gasal2-limited-traceback-chr22
+
+check-fasim-gasal2-limited-traceback-chr22-result:
+	bash ./scripts/check_fasim_gasal2_limited_traceback_chr22_result.sh
+
+.PHONY: check-fasim-gasal2-limited-traceback-chr22-result
+
+check-fasim-gasal2-limited-traceback-attempt-export-parser:
+	bash ./scripts/check_fasim_gasal2_limited_traceback_attempt_export_parser.sh
+
+.PHONY: check-fasim-gasal2-limited-traceback-attempt-export-parser
+
+check-fasim-gasal2-traceback-rejection-taxonomy-parser:
+	bash ./scripts/check_fasim_gasal2_traceback_rejection_taxonomy_parser.sh
+
+.PHONY: check-fasim-gasal2-traceback-rejection-taxonomy-parser
+
+check-fasim-gasal2-traceback-rejection-taxonomy-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_traceback_rejection_taxonomy_smoke.sh
+
+.PHONY: check-fasim-gasal2-traceback-rejection-taxonomy-smoke
+
+characterize-fasim-gasal2-traceback-min-prealign-score-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_traceback_min_prealign_score_smoke.sh
+
+.PHONY: characterize-fasim-gasal2-traceback-min-prealign-score-smoke
+
+characterize-fasim-gasal2-traceback-min-prealign-score-chr22:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_traceback_min_prealign_score_chr22.sh
+
+.PHONY: characterize-fasim-gasal2-traceback-min-prealign-score-chr22
+
+check-fasim-gasal2-traceback-min-prealign-score-chr22-result:
+	bash ./scripts/check_fasim_gasal2_traceback_min_prealign_score_chr22_result.sh
+
+.PHONY: check-fasim-gasal2-traceback-min-prealign-score-chr22-result
+
+check-fasim-gasal2-traceback-min-prealign-score-chr22-boundary-result:
+	bash ./scripts/check_fasim_gasal2_traceback_min_prealign_score_chr22_boundary_result.sh
+
+.PHONY: check-fasim-gasal2-traceback-min-prealign-score-chr22-boundary-result
+
+check-fasim-gasal2-traceback-min-prealign-score-chr21-chr22-result:
+	bash ./scripts/check_fasim_gasal2_traceback_min_prealign_score_chr21_chr22_result.sh
+
+.PHONY: check-fasim-gasal2-traceback-min-prealign-score-chr21-chr22-result
+
+check-fasim-gasal2-traceback-min-prealign-h19-calibration:
+	bash ./scripts/check_fasim_gasal2_traceback_min_prealign_h19_calibration.sh
+
+.PHONY: check-fasim-gasal2-traceback-min-prealign-h19-calibration
+
+check-fasim-gasal2-traceback-threshold-estimator:
+	bash ./scripts/check_fasim_gasal2_traceback_threshold_estimator.sh
+
+.PHONY: check-fasim-gasal2-traceback-threshold-estimator
+
+check-fasim-gasal2-traceback-threshold-calibration-preflight:
+	bash ./scripts/check_fasim_gasal2_traceback_threshold_calibration_preflight.sh
+
+.PHONY: check-fasim-gasal2-traceback-threshold-calibration-preflight
+
+check-fasim-gasal2-traceback-threshold-window-sampler:
+	bash ./scripts/check_fasim_gasal2_traceback_threshold_window_sampler.sh
+
+.PHONY: check-fasim-gasal2-traceback-threshold-window-sampler
+
+check-fasim-gasal2-traceback-guard-score-band-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_traceback_guard_score_band_smoke.sh
+
+.PHONY: check-fasim-gasal2-traceback-guard-score-band-smoke
+
+check-fasim-gasal2-stability-risk-attempts-parser:
+	bash ./scripts/check_fasim_gasal2_stability_risk_attempts_parser.sh
+
+.PHONY: check-fasim-gasal2-stability-risk-attempts-parser
+
+check-fasim-gasal2-stability-upper-bound-parser:
+	bash ./scripts/check_fasim_gasal2_stability_upper_bound_parser.sh
+
+.PHONY: check-fasim-gasal2-stability-upper-bound-parser
+
+check-fasim-gasal2-stability-proxy-rule-sweep-parser:
+	bash ./scripts/check_fasim_gasal2_stability_proxy_rule_sweep_parser.sh
+
+.PHONY: check-fasim-gasal2-stability-proxy-rule-sweep-parser
+
+check-fasim-gasal2-convert-funnel-parser:
+	bash ./scripts/check_fasim_gasal2_convert_funnel_parser.sh
+
+.PHONY: check-fasim-gasal2-convert-funnel-parser
+
+check-fasim-gasal2-preconvert-prune-shadow:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/check_fasim_gasal2_preconvert_prune_shadow.sh
+
+.PHONY: check-fasim-gasal2-preconvert-prune-shadow
+
+check-fasim-gasal2-prune-authority-diff-parser:
+	bash ./scripts/check_fasim_gasal2_prune_authority_diff_parser.sh
+
+.PHONY: check-fasim-gasal2-prune-authority-diff-parser
+
+check-fasim-gasal2-prune-frontier-safety-parser:
+	bash ./scripts/check_fasim_gasal2_prune_frontier_safety_parser.sh
+
+.PHONY: check-fasim-gasal2-prune-frontier-safety-parser
+
+check-fasim-gasal2-preconvert-prune-readiness:
+	bash ./scripts/check_fasim_gasal2_preconvert_prune_readiness.sh
+
+.PHONY: check-fasim-gasal2-preconvert-prune-readiness
+
+check-fasim-gasal2-task-frontier-proof-parser:
+	bash ./scripts/check_fasim_gasal2_task_frontier_proof_parser.sh
+
+.PHONY: check-fasim-gasal2-task-frontier-proof-parser
+
+check-fasim-gasal2-task-frontier-proof-export:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct BUILD_BIN=0 bash ./scripts/check_fasim_gasal2_task_frontier_proof_export.sh
+
+.PHONY: check-fasim-gasal2-task-frontier-proof-export
+
+check-fasim-gasal2-sort-topn-breakdown-parser:
+	bash ./scripts/check_fasim_gasal2_sort_topn_breakdown_parser.sh
+
+.PHONY: check-fasim-gasal2-sort-topn-breakdown-parser
 
 check-fasim-lite-full-equivalence:
 	python3 ./scripts/check_fasim_lite_full_equivalence.py

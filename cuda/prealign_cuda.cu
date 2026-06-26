@@ -1585,6 +1585,239 @@ __global__ void prealign_cuda_scores_to_min_scores_kernel(const int *scores,
     static_cast<int>(static_cast<double>(scores[index]) * 0.8);
 }
 
+__global__ void prealign_cuda_scoreinfos_to_attempt_descriptors_kernel(
+  const PreAlignCudaPeak *scoreInfos,
+  const int *scoreInfoCounts,
+  int taskCount,
+  int maxScoreInfosPerTask,
+  int maxDescriptorsPerTask,
+  int ntMinLength,
+  int scoringConfigKey,
+  PreAlignCudaAttemptDescriptor *outDescriptors,
+  int *outDescriptorCounts,
+  int *overflowFlag)
+{
+  const int taskIndex = static_cast<int>(blockIdx.x);
+  if(taskIndex >= taskCount || threadIdx.x != 0)
+  {
+    return;
+  }
+
+  const int scoreInfoCount = scoreInfoCounts[taskIndex];
+  int descriptorCount = 0;
+  PreAlignCudaAttemptDescriptor *taskOut =
+    outDescriptors +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(maxDescriptorsPerTask);
+  const PreAlignCudaPeak *taskScoreInfos =
+    scoreInfos +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(maxScoreInfosPerTask);
+
+  for(int scoreInfoOrder = 0; scoreInfoOrder < scoreInfoCount; ++scoreInfoOrder)
+  {
+    const PreAlignCudaPeak peak = taskScoreInfos[scoreInfoOrder];
+    for(int attemptOrder = 0;
+        prealign_cuda_legacy_byte_attempt_order_valid(attemptOrder);
+        ++attemptOrder)
+    {
+      const int cutlength =
+        prealign_cuda_legacy_byte_attempt_cutlength(peak.score,
+                                                    peak.position,
+                                                    attemptOrder);
+      const int targetStart = peak.position - cutlength + 1;
+      if(targetStart < 0 || cutlength <= 0)
+      {
+        continue;
+      }
+      if(descriptorCount >= maxDescriptorsPerTask)
+      {
+        atomicExch(overflowFlag, 1);
+        continue;
+      }
+
+      PreAlignCudaAttemptDescriptor descriptor;
+      descriptor.taskIndex = taskIndex;
+      descriptor.scoreInfoPosition = peak.position;
+      descriptor.scoreInfoScore = peak.score;
+      descriptor.scoreInfoOrder = scoreInfoOrder;
+      descriptor.attemptOrder = attemptOrder;
+      descriptor.targetStart = targetStart;
+      descriptor.cutlength = cutlength;
+      descriptor.targetEndRequiredForFallback = cutlength - 1;
+      descriptor.ntMinLength = ntMinLength;
+      descriptor.scoringConfigKey = scoringConfigKey;
+      descriptor.overflowFlag = 0;
+      taskOut[descriptorCount] = descriptor;
+      ++descriptorCount;
+    }
+  }
+
+  outDescriptorCounts[taskIndex] = descriptorCount;
+}
+
+__global__ void prealign_cuda_select_prefix_attempt_descriptors_kernel(
+  const PreAlignCudaAttemptDescriptor *inDescriptors,
+  const int *inDescriptorCounts,
+  int taskCount,
+  int maxDescriptorsPerTask,
+  int prefixAttemptsPerScoreInfo,
+  PreAlignCudaAttemptDescriptor *outDescriptors,
+  int *outDescriptorCounts)
+{
+  const int taskIndex = static_cast<int>(blockIdx.x);
+  if(taskIndex >= taskCount || threadIdx.x != 0)
+  {
+    return;
+  }
+
+  const PreAlignCudaAttemptDescriptor *taskIn =
+    inDescriptors +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(maxDescriptorsPerTask);
+  PreAlignCudaAttemptDescriptor *taskOut =
+    outDescriptors +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(maxDescriptorsPerTask);
+  const int descriptorCount = inDescriptorCounts[taskIndex];
+  int outCount = 0;
+  int previousScoreInfoOrder = -1;
+  int keptForScoreInfo = 0;
+
+  for(int i = 0; i < descriptorCount; ++i)
+  {
+    const PreAlignCudaAttemptDescriptor descriptor = taskIn[i];
+    if(descriptor.scoreInfoOrder != previousScoreInfoOrder)
+    {
+      previousScoreInfoOrder = descriptor.scoreInfoOrder;
+      keptForScoreInfo = 0;
+    }
+    if(keptForScoreInfo < prefixAttemptsPerScoreInfo)
+    {
+      taskOut[outCount] = descriptor;
+      ++outCount;
+      ++keptForScoreInfo;
+    }
+  }
+
+  outDescriptorCounts[taskIndex] = outCount;
+}
+
+__global__ void prealign_cuda_select_task_frontier_certificate_descriptors_kernel(
+  const PreAlignCudaAttemptDescriptor *inDescriptors,
+  const int *inDescriptorCounts,
+  int taskCount,
+  int maxDescriptorsPerTask,
+  PreAlignCudaAttemptDescriptor *outDescriptors,
+  int *outDescriptorCounts,
+  int *outCertificateRows)
+{
+  const int taskIndex = static_cast<int>(blockIdx.x);
+  if(taskIndex >= taskCount || threadIdx.x != 0)
+  {
+    return;
+  }
+
+  const PreAlignCudaAttemptDescriptor *taskIn =
+    inDescriptors +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(maxDescriptorsPerTask);
+  PreAlignCudaAttemptDescriptor *taskOut =
+    outDescriptors +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(maxDescriptorsPerTask);
+  const int descriptorCount = inDescriptorCounts[taskIndex];
+  int outCount = 0;
+  int certificateRows = 0;
+  int selectedScoreInfoOrder = -1;
+
+  for(int i = 0; i < descriptorCount; ++i)
+  {
+    const PreAlignCudaAttemptDescriptor descriptor = taskIn[i];
+    if(selectedScoreInfoOrder < 0)
+    {
+      selectedScoreInfoOrder = descriptor.scoreInfoOrder;
+      ++certificateRows;
+    }
+    if(descriptor.scoreInfoOrder == selectedScoreInfoOrder)
+    {
+      taskOut[outCount] = descriptor;
+      ++outCount;
+    }
+  }
+
+  outDescriptorCounts[taskIndex] = outCount;
+  outCertificateRows[taskIndex] = certificateRows;
+}
+
+__global__ void prealign_cuda_new_engine_certificate_kernel(
+  const PreAlignCudaNewEngineScoreInfoTask *tasks,
+  int taskCount,
+  const PreAlignCudaNewEngineCandidateGroup *candidateGroups,
+  int candidateGroupCount,
+  const PreAlignCudaNewEngineReplayAttempt *replayAttempts,
+  int replayAttemptCount,
+  PreAlignCudaNewEngineSkippedWorkCertificate *outCertificates,
+  unsigned long long *outSkippedGroups,
+  unsigned long long *outSkippedAttempts,
+  unsigned long long *outFallbackGroups)
+{
+  const int taskIndex =
+    static_cast<int>(blockIdx.x) * static_cast<int>(blockDim.x) +
+    static_cast<int>(threadIdx.x);
+  if(taskIndex >= taskCount)
+  {
+    return;
+  }
+
+  const PreAlignCudaNewEngineScoreInfoTask task = tasks[taskIndex];
+  PreAlignCudaNewEngineSkippedWorkCertificate certificate;
+  certificate.certificateValidBeforeD2h = 1;
+  certificate.finalCpuOutputMembershipRequiredForCertificate = 0;
+  certificate.skippedScoreInfoUpperBoundScore = task.minScore > 0 ? task.minScore - 1 : 0;
+
+  int selectedGroupCount = 0;
+  int selectedAttemptCount = 0;
+  int maxSkippedScore = 0;
+  int maxSkippedTargetSpan = 0;
+  int fallback = 0;
+  for(int groupIndex = 0; groupIndex < candidateGroupCount; ++groupIndex)
+  {
+    const PreAlignCudaNewEngineCandidateGroup group = candidateGroups[groupIndex];
+    if(group.attemptStartIndex < 0 || group.attemptCount < 0 ||
+       group.attemptStartIndex + group.attemptCount > replayAttemptCount)
+    {
+      fallback = 1;
+      continue;
+    }
+    if(group.score >= task.minScore)
+    {
+      ++selectedGroupCount;
+      selectedAttemptCount += group.attemptCount;
+      continue;
+    }
+
+    maxSkippedScore = cuda_max_int(maxSkippedScore, group.score);
+    atomicAdd(outSkippedGroups, 1ULL);
+    atomicAdd(outSkippedAttempts,
+              static_cast<unsigned long long>(group.attemptCount > 0 ? group.attemptCount : 0));
+    for(int attemptOffset = 0; attemptOffset < group.attemptCount; ++attemptOffset)
+    {
+      const PreAlignCudaNewEngineReplayAttempt attempt =
+        replayAttempts[group.attemptStartIndex + attemptOffset];
+      const int targetSpan = attempt.targetEnd >= attempt.targetStart ?
+        attempt.targetEnd - attempt.targetStart + 1 : 0;
+      maxSkippedTargetSpan = cuda_max_int(maxSkippedTargetSpan, targetSpan);
+    }
+  }
+
+  if(fallback != 0 || selectedGroupCount == 0 || selectedAttemptCount == 0)
+  {
+    certificate.taskOutputCapacityExhausted = 1;
+    atomicAdd(outFallbackGroups, 1ULL);
+  }
+  certificate.skippedAttemptUpperBoundScore = maxSkippedScore;
+  certificate.skippedAttemptUpperBoundNt = maxSkippedTargetSpan;
+  certificate.skippedAttemptUpperBoundIdentity = maxSkippedScore;
+  certificate.skippedAttemptUpperBoundStability = selectedAttemptCount;
+  certificate.scoreInfoLocalBreakState = selectedGroupCount;
+  outCertificates[taskIndex] = certificate;
+}
+
 static inline string cuda_error_string(cudaError_t error)
 {
   const char *message = cudaGetErrorString(error);
@@ -1618,6 +1851,8 @@ struct PreAlignCudaContext
     capacityScoreTasks(0),
     capacityScoreInfoTasks(0),
     capacityScoreInfoMaxPerTask(0),
+    capacityDescriptorTasks(0),
+    capacityDescriptorsPerTask(0),
     capacityGlobalStateTasks(0),
     capacityGlobalStateSegLen(0),
     targetsDevice(NULL),
@@ -1629,6 +1864,12 @@ struct PreAlignCudaContext
     scoreInfoCountsDevice(NULL),
     scoreInfoInputCountsDevice(NULL),
     scoreInfoOverflowDevice(NULL),
+    descriptorsDevice(NULL),
+    descriptorCountsDevice(NULL),
+    summaryDescriptorsDevice(NULL),
+    summaryDescriptorCountsDevice(NULL),
+    certificateRowsDevice(NULL),
+    descriptorOverflowDevice(NULL),
     globalStateDevice(NULL),
     startEvent(NULL),
     stopEvent(NULL)
@@ -1645,6 +1886,8 @@ struct PreAlignCudaContext
   int capacityScoreTasks;
   int capacityScoreInfoTasks;
   int capacityScoreInfoMaxPerTask;
+  int capacityDescriptorTasks;
+  int capacityDescriptorsPerTask;
   int capacityGlobalStateTasks;
   int capacityGlobalStateSegLen;
 
@@ -1657,6 +1900,12 @@ struct PreAlignCudaContext
   int *scoreInfoCountsDevice;
   int *scoreInfoInputCountsDevice;
   int *scoreInfoOverflowDevice;
+  PreAlignCudaAttemptDescriptor *descriptorsDevice;
+  int *descriptorCountsDevice;
+  PreAlignCudaAttemptDescriptor *summaryDescriptorsDevice;
+  int *summaryDescriptorCountsDevice;
+  int *certificateRowsDevice;
+  int *descriptorOverflowDevice;
   int16_t *globalStateDevice;
 
   cudaEvent_t startEvent;
@@ -2026,6 +2275,152 @@ static bool ensure_prealign_cuda_scoreinfo_capacity_locked(PreAlignCudaContext &
   context.scoreInfoOverflowDevice = newScoreInfoOverflowDevice;
   context.capacityScoreInfoTasks = newCapTasks;
   context.capacityScoreInfoMaxPerTask = newCapMaxPerTask;
+  return true;
+}
+
+static bool ensure_prealign_cuda_descriptor_capacity_locked(
+  PreAlignCudaContext &context,
+  int taskCount,
+  int maxDescriptorsPerTask,
+  string *errorOut)
+{
+  if(taskCount <= context.capacityDescriptorTasks &&
+     maxDescriptorsPerTask <= context.capacityDescriptorsPerTask &&
+     context.descriptorsDevice != NULL &&
+     context.descriptorCountsDevice != NULL &&
+     context.summaryDescriptorsDevice != NULL &&
+     context.summaryDescriptorCountsDevice != NULL &&
+     context.certificateRowsDevice != NULL &&
+     context.descriptorOverflowDevice != NULL)
+  {
+    return true;
+  }
+
+  const int newCapTasks = max(context.capacityDescriptorTasks, taskCount);
+  const int newCapMaxPerTask =
+    max(context.capacityDescriptorsPerTask, maxDescriptorsPerTask);
+  const size_t descriptorBytes =
+    static_cast<size_t>(newCapTasks) *
+    static_cast<size_t>(newCapMaxPerTask) *
+    sizeof(PreAlignCudaAttemptDescriptor);
+  const size_t countBytes = static_cast<size_t>(newCapTasks) * sizeof(int);
+
+  PreAlignCudaAttemptDescriptor *newDescriptorsDevice = NULL;
+  int *newDescriptorCountsDevice = NULL;
+  PreAlignCudaAttemptDescriptor *newSummaryDescriptorsDevice = NULL;
+  int *newSummaryDescriptorCountsDevice = NULL;
+  int *newCertificateRowsDevice = NULL;
+  int *newDescriptorOverflowDevice = NULL;
+
+  cudaError_t status =
+    cudaMalloc(reinterpret_cast<void **>(&newDescriptorsDevice), descriptorBytes);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status =
+    cudaMalloc(reinterpret_cast<void **>(&newDescriptorCountsDevice), countBytes);
+  if(status != cudaSuccess)
+  {
+    cudaFree(newDescriptorsDevice);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status = cudaMalloc(reinterpret_cast<void **>(&newSummaryDescriptorsDevice),
+                      descriptorBytes);
+  if(status != cudaSuccess)
+  {
+    cudaFree(newDescriptorsDevice);
+    cudaFree(newDescriptorCountsDevice);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status =
+    cudaMalloc(reinterpret_cast<void **>(&newSummaryDescriptorCountsDevice), countBytes);
+  if(status != cudaSuccess)
+  {
+    cudaFree(newDescriptorsDevice);
+    cudaFree(newDescriptorCountsDevice);
+    cudaFree(newSummaryDescriptorsDevice);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status =
+    cudaMalloc(reinterpret_cast<void **>(&newCertificateRowsDevice), countBytes);
+  if(status != cudaSuccess)
+  {
+    cudaFree(newDescriptorsDevice);
+    cudaFree(newDescriptorCountsDevice);
+    cudaFree(newSummaryDescriptorsDevice);
+    cudaFree(newSummaryDescriptorCountsDevice);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  status = cudaMalloc(reinterpret_cast<void **>(&newDescriptorOverflowDevice),
+                      sizeof(int));
+  if(status != cudaSuccess)
+  {
+    cudaFree(newDescriptorsDevice);
+    cudaFree(newDescriptorCountsDevice);
+    cudaFree(newSummaryDescriptorsDevice);
+    cudaFree(newSummaryDescriptorCountsDevice);
+    cudaFree(newCertificateRowsDevice);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  if(context.descriptorsDevice != NULL)
+  {
+    cudaFree(context.descriptorsDevice);
+  }
+  if(context.descriptorCountsDevice != NULL)
+  {
+    cudaFree(context.descriptorCountsDevice);
+  }
+  if(context.summaryDescriptorsDevice != NULL)
+  {
+    cudaFree(context.summaryDescriptorsDevice);
+  }
+  if(context.summaryDescriptorCountsDevice != NULL)
+  {
+    cudaFree(context.summaryDescriptorCountsDevice);
+  }
+  if(context.certificateRowsDevice != NULL)
+  {
+    cudaFree(context.certificateRowsDevice);
+  }
+  if(context.descriptorOverflowDevice != NULL)
+  {
+    cudaFree(context.descriptorOverflowDevice);
+  }
+
+  context.descriptorsDevice = newDescriptorsDevice;
+  context.descriptorCountsDevice = newDescriptorCountsDevice;
+  context.summaryDescriptorsDevice = newSummaryDescriptorsDevice;
+  context.summaryDescriptorCountsDevice = newSummaryDescriptorCountsDevice;
+  context.certificateRowsDevice = newCertificateRowsDevice;
+  context.descriptorOverflowDevice = newDescriptorOverflowDevice;
+  context.capacityDescriptorTasks = newCapTasks;
+  context.capacityDescriptorsPerTask = newCapMaxPerTask;
   return true;
 }
 
@@ -4224,6 +4619,1164 @@ bool prealign_cuda_find_streaming_scoreinfo_batch_pruned_fused_minscore(const Pr
     compactBatchResult->gpuSeconds = static_cast<double>(compactElapsedMs) / 1000.0;
     compactBatchResult->h2dSeconds = 0.0;
     compactBatchResult->d2hSeconds = static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  return true;
+}
+
+bool prealign_cuda_emit_legacy_byte_attempt_descriptors(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  const int *minScoresHost,
+  int taskCount,
+  int targetLength,
+  int maxScoreInfosPerTask,
+  int maxDescriptorsPerTask,
+  int ntMinLength,
+  int scoringConfigKey,
+  vector<PreAlignCudaAttemptDescriptor> *outDescriptors,
+  vector<int> *outDescriptorCounts,
+  vector<int> *outScoreInfoCounts,
+  bool *overflowOut,
+  PreAlignCudaBatchResult *columnBatchResult,
+  PreAlignCudaBatchResult *compactBatchResult,
+  PreAlignCudaBatchResult *descriptorBatchResult,
+  string *errorOut)
+{
+  if(outDescriptors == NULL || outDescriptorCounts == NULL ||
+     outScoreInfoCounts == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing descriptor output buffer";
+    }
+    return false;
+  }
+  outDescriptors->clear();
+  outDescriptorCounts->clear();
+  outScoreInfoCounts->clear();
+  if(overflowOut != NULL)
+  {
+    *overflowOut = false;
+  }
+  if(descriptorBatchResult != NULL)
+  {
+    *descriptorBatchResult = PreAlignCudaBatchResult();
+  }
+  if(maxScoreInfosPerTask <= 0 || maxDescriptorsPerTask <= 0 ||
+     maxDescriptorsPerTask < maxScoreInfosPerTask * 5)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "invalid descriptor dimensions";
+    }
+    return false;
+  }
+
+  vector<PreAlignCudaPeak> unusedScoreInfos;
+  vector<int> scoreInfoCounts;
+  vector<int> inputCounts;
+  bool scoreInfoOverflow = false;
+  string scoreInfoError;
+  const bool scoreInfoOk = prealign_cuda_find_streaming_scoreinfo_batch_pruned(
+    handle,
+    encodedTargetsHost,
+    minScoresHost,
+    taskCount,
+    targetLength,
+    maxScoreInfosPerTask,
+    &unusedScoreInfos,
+    &scoreInfoCounts,
+    &inputCounts,
+    &scoreInfoOverflow,
+    columnBatchResult,
+    compactBatchResult,
+    true,
+    false,
+    NULL,
+    &scoreInfoError);
+  if(!scoreInfoOk || scoreInfoOverflow)
+  {
+    if(overflowOut != NULL)
+    {
+      *overflowOut = scoreInfoOverflow;
+    }
+    if(errorOut != NULL)
+    {
+      *errorOut = scoreInfoOverflow ? string("scoreInfo overflow") : scoreInfoError;
+    }
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(handle.device,
+                                           &context,
+                                           &contextMutex,
+                                           errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut))
+  {
+    return false;
+  }
+  if(!ensure_prealign_cuda_descriptor_capacity_locked(*context,
+                                                     taskCount,
+                                                     maxDescriptorsPerTask,
+                                                     errorOut))
+  {
+    return false;
+  }
+
+  cudaEvent_t descriptorStart = NULL;
+  cudaEvent_t descriptorStop = NULL;
+  cudaEvent_t d2hStart = NULL;
+  cudaEvent_t d2hStop = NULL;
+  cudaError_t status = cudaEventCreate(&descriptorStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&descriptorStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(descriptorStart != NULL) cudaEventDestroy(descriptorStart);
+    if(descriptorStop != NULL) cudaEventDestroy(descriptorStop);
+    if(d2hStart != NULL) cudaEventDestroy(d2hStart);
+    if(d2hStop != NULL) cudaEventDestroy(d2hStop);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const int zero = 0;
+  const size_t countBytes = static_cast<size_t>(taskCount) * sizeof(int);
+  const size_t descriptorBytes =
+    static_cast<size_t>(taskCount) *
+    static_cast<size_t>(maxDescriptorsPerTask) *
+    sizeof(PreAlignCudaAttemptDescriptor);
+
+  status = cudaMemset(context->descriptorCountsDevice, 0, countBytes);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->descriptorOverflowDevice,
+                        &zero,
+                        sizeof(int),
+                        cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(descriptorStart);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_scoreinfos_to_attempt_descriptors_kernel<<<taskCount, 1, 0>>>(
+      context->scoreInfoDevice,
+      context->scoreInfoCountsDevice,
+      taskCount,
+      maxScoreInfosPerTask,
+      maxDescriptorsPerTask,
+      ntMinLength,
+      scoringConfigKey,
+      context->descriptorsDevice,
+      context->descriptorCountsDevice,
+      context->descriptorOverflowDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(descriptorStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(descriptorStop);
+
+  float descriptorElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&descriptorElapsedMs,
+                                  descriptorStart,
+                                  descriptorStop);
+  }
+
+  vector<PreAlignCudaAttemptDescriptor> descriptors(
+    static_cast<size_t>(taskCount) *
+    static_cast<size_t>(maxDescriptorsPerTask));
+  vector<int> descriptorCounts(static_cast<size_t>(taskCount));
+  int descriptorOverflow = 0;
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(descriptors.data(),
+                        context->descriptorsDevice,
+                        descriptorBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(descriptorCounts.data(),
+                        context->descriptorCountsDevice,
+                        countBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&descriptorOverflow,
+                        context->descriptorOverflowDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
+
+  float d2hElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&d2hElapsedMs, d2hStart, d2hStop);
+  }
+
+  cudaEventDestroy(descriptorStart);
+  cudaEventDestroy(descriptorStop);
+  cudaEventDestroy(d2hStart);
+  cudaEventDestroy(d2hStop);
+
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  outDescriptors->swap(descriptors);
+  outDescriptorCounts->swap(descriptorCounts);
+  outScoreInfoCounts->swap(scoreInfoCounts);
+  if(overflowOut != NULL)
+  {
+    *overflowOut = descriptorOverflow != 0;
+  }
+  if(descriptorBatchResult != NULL)
+  {
+    descriptorBatchResult->usedCuda = true;
+    descriptorBatchResult->gpuSeconds =
+      static_cast<double>(descriptorElapsedMs) / 1000.0;
+    descriptorBatchResult->h2dSeconds = 0.0;
+    descriptorBatchResult->d2hSeconds =
+      static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return true;
+}
+
+bool prealign_cuda_emit_legacy_byte_prefix_attempt_descriptors(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  const int *minScoresHost,
+  int taskCount,
+  int targetLength,
+  int maxScoreInfosPerTask,
+  int maxDescriptorsPerTask,
+  int prefixAttemptsPerScoreInfo,
+  int ntMinLength,
+  int scoringConfigKey,
+  vector<PreAlignCudaAttemptDescriptor> *outDescriptors,
+  vector<int> *outDescriptorCounts,
+  vector<int> *outOriginalDescriptorCounts,
+  vector<int> *outScoreInfoCounts,
+  bool *overflowOut,
+  PreAlignCudaBatchResult *columnBatchResult,
+  PreAlignCudaBatchResult *compactBatchResult,
+  PreAlignCudaBatchResult *descriptorBatchResult,
+  PreAlignCudaBatchResult *summaryBatchResult,
+  string *errorOut)
+{
+  if(outDescriptors == NULL || outDescriptorCounts == NULL ||
+     outOriginalDescriptorCounts == NULL || outScoreInfoCounts == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing summary descriptor output buffer";
+    }
+    return false;
+  }
+  outDescriptors->clear();
+  outDescriptorCounts->clear();
+  outOriginalDescriptorCounts->clear();
+  outScoreInfoCounts->clear();
+  if(overflowOut != NULL)
+  {
+    *overflowOut = false;
+  }
+  if(descriptorBatchResult != NULL)
+  {
+    *descriptorBatchResult = PreAlignCudaBatchResult();
+  }
+  if(summaryBatchResult != NULL)
+  {
+    *summaryBatchResult = PreAlignCudaBatchResult();
+  }
+  if(maxScoreInfosPerTask <= 0 || maxDescriptorsPerTask <= 0 ||
+     maxDescriptorsPerTask < maxScoreInfosPerTask * 5 ||
+     prefixAttemptsPerScoreInfo <= 0 ||
+     prefixAttemptsPerScoreInfo > 5)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "invalid summary descriptor dimensions or prefix";
+    }
+    return false;
+  }
+
+  vector<PreAlignCudaPeak> unusedScoreInfos;
+  vector<int> scoreInfoCounts;
+  vector<int> inputCounts;
+  bool scoreInfoOverflow = false;
+  string scoreInfoError;
+  const bool scoreInfoOk = prealign_cuda_find_streaming_scoreinfo_batch_pruned(
+    handle,
+    encodedTargetsHost,
+    minScoresHost,
+    taskCount,
+    targetLength,
+    maxScoreInfosPerTask,
+    &unusedScoreInfos,
+    &scoreInfoCounts,
+    &inputCounts,
+    &scoreInfoOverflow,
+    columnBatchResult,
+    compactBatchResult,
+    true,
+    false,
+    NULL,
+    &scoreInfoError);
+  if(!scoreInfoOk || scoreInfoOverflow)
+  {
+    if(overflowOut != NULL)
+    {
+      *overflowOut = scoreInfoOverflow;
+    }
+    if(errorOut != NULL)
+    {
+      *errorOut = scoreInfoOverflow ? string("scoreInfo overflow") : scoreInfoError;
+    }
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(handle.device,
+                                           &context,
+                                           &contextMutex,
+                                           errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut))
+  {
+    return false;
+  }
+  if(!ensure_prealign_cuda_descriptor_capacity_locked(*context,
+                                                     taskCount,
+                                                     maxDescriptorsPerTask,
+                                                     errorOut))
+  {
+    return false;
+  }
+
+  cudaEvent_t descriptorStart = NULL;
+  cudaEvent_t descriptorStop = NULL;
+  cudaEvent_t summaryStart = NULL;
+  cudaEvent_t summaryStop = NULL;
+  cudaEvent_t d2hStart = NULL;
+  cudaEvent_t d2hStop = NULL;
+  cudaError_t status = cudaEventCreate(&descriptorStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&descriptorStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&summaryStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&summaryStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(descriptorStart != NULL) cudaEventDestroy(descriptorStart);
+    if(descriptorStop != NULL) cudaEventDestroy(descriptorStop);
+    if(summaryStart != NULL) cudaEventDestroy(summaryStart);
+    if(summaryStop != NULL) cudaEventDestroy(summaryStop);
+    if(d2hStart != NULL) cudaEventDestroy(d2hStart);
+    if(d2hStop != NULL) cudaEventDestroy(d2hStop);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const int zero = 0;
+  const size_t countBytes = static_cast<size_t>(taskCount) * sizeof(int);
+  const size_t descriptorBytes =
+    static_cast<size_t>(taskCount) *
+    static_cast<size_t>(maxDescriptorsPerTask) *
+    sizeof(PreAlignCudaAttemptDescriptor);
+
+  status = cudaMemset(context->descriptorCountsDevice, 0, countBytes);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(context->summaryDescriptorCountsDevice, 0, countBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(context->certificateRowsDevice, 0, countBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->descriptorOverflowDevice,
+                        &zero,
+                        sizeof(int),
+                        cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(descriptorStart);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_scoreinfos_to_attempt_descriptors_kernel<<<taskCount, 1, 0>>>(
+      context->scoreInfoDevice,
+      context->scoreInfoCountsDevice,
+      taskCount,
+      maxScoreInfosPerTask,
+      maxDescriptorsPerTask,
+      ntMinLength,
+      scoringConfigKey,
+      context->descriptorsDevice,
+      context->descriptorCountsDevice,
+      context->descriptorOverflowDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(descriptorStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(descriptorStop);
+
+  float descriptorElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&descriptorElapsedMs,
+                                  descriptorStart,
+                                  descriptorStop);
+  }
+
+  if(status == cudaSuccess) status = cudaEventRecord(summaryStart);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_select_prefix_attempt_descriptors_kernel<<<taskCount, 1, 0>>>(
+      context->descriptorsDevice,
+      context->descriptorCountsDevice,
+      taskCount,
+      maxDescriptorsPerTask,
+      prefixAttemptsPerScoreInfo,
+      context->summaryDescriptorsDevice,
+      context->summaryDescriptorCountsDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(summaryStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(summaryStop);
+
+  float summaryElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&summaryElapsedMs,
+                                  summaryStart,
+                                  summaryStop);
+  }
+
+  vector<PreAlignCudaAttemptDescriptor> descriptors(
+    static_cast<size_t>(taskCount) *
+    static_cast<size_t>(maxDescriptorsPerTask));
+  vector<int> descriptorCounts(static_cast<size_t>(taskCount));
+  vector<int> originalDescriptorCounts(static_cast<size_t>(taskCount));
+  int descriptorOverflow = 0;
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(descriptors.data(),
+                        context->summaryDescriptorsDevice,
+                        descriptorBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(descriptorCounts.data(),
+                        context->summaryDescriptorCountsDevice,
+                        countBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(originalDescriptorCounts.data(),
+                        context->descriptorCountsDevice,
+                        countBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&descriptorOverflow,
+                        context->descriptorOverflowDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
+
+  float d2hElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&d2hElapsedMs, d2hStart, d2hStop);
+  }
+
+  cudaEventDestroy(descriptorStart);
+  cudaEventDestroy(descriptorStop);
+  cudaEventDestroy(summaryStart);
+  cudaEventDestroy(summaryStop);
+  cudaEventDestroy(d2hStart);
+  cudaEventDestroy(d2hStop);
+
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  outDescriptors->swap(descriptors);
+  outDescriptorCounts->swap(descriptorCounts);
+  outOriginalDescriptorCounts->swap(originalDescriptorCounts);
+  outScoreInfoCounts->swap(scoreInfoCounts);
+  if(overflowOut != NULL)
+  {
+    *overflowOut = descriptorOverflow != 0;
+  }
+  if(descriptorBatchResult != NULL)
+  {
+    descriptorBatchResult->usedCuda = true;
+    descriptorBatchResult->gpuSeconds =
+      static_cast<double>(descriptorElapsedMs) / 1000.0;
+    descriptorBatchResult->h2dSeconds = 0.0;
+    descriptorBatchResult->d2hSeconds = 0.0;
+  }
+  if(summaryBatchResult != NULL)
+  {
+    summaryBatchResult->usedCuda = true;
+    summaryBatchResult->gpuSeconds =
+      static_cast<double>(summaryElapsedMs) / 1000.0;
+    summaryBatchResult->h2dSeconds = 0.0;
+    summaryBatchResult->d2hSeconds =
+      static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return true;
+}
+
+bool prealign_cuda_emit_legacy_byte_first_attempt_descriptors(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  const int *minScoresHost,
+  int taskCount,
+  int targetLength,
+  int maxScoreInfosPerTask,
+  int maxDescriptorsPerTask,
+  int ntMinLength,
+  int scoringConfigKey,
+  vector<PreAlignCudaAttemptDescriptor> *outDescriptors,
+  vector<int> *outDescriptorCounts,
+  vector<int> *outOriginalDescriptorCounts,
+  vector<int> *outScoreInfoCounts,
+  bool *overflowOut,
+  PreAlignCudaBatchResult *columnBatchResult,
+  PreAlignCudaBatchResult *compactBatchResult,
+  PreAlignCudaBatchResult *descriptorBatchResult,
+  PreAlignCudaBatchResult *summaryBatchResult,
+  string *errorOut)
+{
+  return prealign_cuda_emit_legacy_byte_prefix_attempt_descriptors(
+    handle,
+    encodedTargetsHost,
+    minScoresHost,
+    taskCount,
+    targetLength,
+    maxScoreInfosPerTask,
+    maxDescriptorsPerTask,
+    1,
+    ntMinLength,
+    scoringConfigKey,
+    outDescriptors,
+    outDescriptorCounts,
+    outOriginalDescriptorCounts,
+    outScoreInfoCounts,
+    overflowOut,
+    columnBatchResult,
+    compactBatchResult,
+    descriptorBatchResult,
+    summaryBatchResult,
+    errorOut);
+}
+
+bool prealign_cuda_emit_legacy_byte_task_frontier_certificate_descriptors(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  const int *minScoresHost,
+  int taskCount,
+  int targetLength,
+  int maxScoreInfosPerTask,
+  int maxDescriptorsPerTask,
+  int ntMinLength,
+  int scoringConfigKey,
+  vector<PreAlignCudaAttemptDescriptor> *outDescriptors,
+  vector<int> *outDescriptorCounts,
+  vector<int> *outOriginalDescriptorCounts,
+  vector<int> *outScoreInfoCounts,
+  vector<int> *outCertificateRows,
+  bool *overflowOut,
+  PreAlignCudaBatchResult *columnBatchResult,
+  PreAlignCudaBatchResult *compactBatchResult,
+  PreAlignCudaBatchResult *descriptorBatchResult,
+  PreAlignCudaBatchResult *summaryBatchResult,
+  string *errorOut)
+{
+  if(outDescriptors == NULL || outDescriptorCounts == NULL ||
+     outOriginalDescriptorCounts == NULL || outScoreInfoCounts == NULL ||
+     outCertificateRows == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing task-frontier descriptor output buffer";
+    }
+    return false;
+  }
+  outDescriptors->clear();
+  outDescriptorCounts->clear();
+  outOriginalDescriptorCounts->clear();
+  outScoreInfoCounts->clear();
+  outCertificateRows->clear();
+  if(overflowOut != NULL)
+  {
+    *overflowOut = false;
+  }
+  if(descriptorBatchResult != NULL)
+  {
+    *descriptorBatchResult = PreAlignCudaBatchResult();
+  }
+  if(summaryBatchResult != NULL)
+  {
+    *summaryBatchResult = PreAlignCudaBatchResult();
+  }
+  if(maxScoreInfosPerTask <= 0 || maxDescriptorsPerTask <= 0 ||
+     maxDescriptorsPerTask < maxScoreInfosPerTask * 5)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "invalid task-frontier descriptor dimensions";
+    }
+    return false;
+  }
+
+  vector<PreAlignCudaPeak> unusedScoreInfos;
+  vector<int> scoreInfoCounts;
+  vector<int> inputCounts;
+  bool scoreInfoOverflow = false;
+  string scoreInfoError;
+  const bool scoreInfoOk = prealign_cuda_find_streaming_scoreinfo_batch_pruned(
+    handle,
+    encodedTargetsHost,
+    minScoresHost,
+    taskCount,
+    targetLength,
+    maxScoreInfosPerTask,
+    &unusedScoreInfos,
+    &scoreInfoCounts,
+    &inputCounts,
+    &scoreInfoOverflow,
+    columnBatchResult,
+    compactBatchResult,
+    true,
+    false,
+    NULL,
+    &scoreInfoError);
+  if(!scoreInfoOk || scoreInfoOverflow)
+  {
+    if(overflowOut != NULL)
+    {
+      *overflowOut = scoreInfoOverflow;
+    }
+    if(errorOut != NULL)
+    {
+      *errorOut = scoreInfoOverflow ? string("scoreInfo overflow") : scoreInfoError;
+    }
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(handle.device,
+                                           &context,
+                                           &contextMutex,
+                                           errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut))
+  {
+    return false;
+  }
+  if(!ensure_prealign_cuda_descriptor_capacity_locked(*context,
+                                                     taskCount,
+                                                     maxDescriptorsPerTask,
+                                                     errorOut))
+  {
+    return false;
+  }
+
+  cudaEvent_t descriptorStart = NULL;
+  cudaEvent_t descriptorStop = NULL;
+  cudaEvent_t summaryStart = NULL;
+  cudaEvent_t summaryStop = NULL;
+  cudaEvent_t d2hStart = NULL;
+  cudaEvent_t d2hStop = NULL;
+  cudaError_t status = cudaEventCreate(&descriptorStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&descriptorStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&summaryStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&summaryStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(descriptorStart != NULL) cudaEventDestroy(descriptorStart);
+    if(descriptorStop != NULL) cudaEventDestroy(descriptorStop);
+    if(summaryStart != NULL) cudaEventDestroy(summaryStart);
+    if(summaryStop != NULL) cudaEventDestroy(summaryStop);
+    if(d2hStart != NULL) cudaEventDestroy(d2hStart);
+    if(d2hStop != NULL) cudaEventDestroy(d2hStop);
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  const int zero = 0;
+  const size_t countBytes = static_cast<size_t>(taskCount) * sizeof(int);
+  const size_t descriptorBytes =
+    static_cast<size_t>(taskCount) *
+    static_cast<size_t>(maxDescriptorsPerTask) *
+    sizeof(PreAlignCudaAttemptDescriptor);
+
+  status = cudaMemset(context->descriptorCountsDevice, 0, countBytes);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(context->summaryDescriptorCountsDevice, 0, countBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->descriptorOverflowDevice,
+                        &zero,
+                        sizeof(int),
+                        cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(descriptorStart);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_scoreinfos_to_attempt_descriptors_kernel<<<taskCount, 1, 0>>>(
+      context->scoreInfoDevice,
+      context->scoreInfoCountsDevice,
+      taskCount,
+      maxScoreInfosPerTask,
+      maxDescriptorsPerTask,
+      ntMinLength,
+      scoringConfigKey,
+      context->descriptorsDevice,
+      context->descriptorCountsDevice,
+      context->descriptorOverflowDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(descriptorStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(descriptorStop);
+
+  float descriptorElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&descriptorElapsedMs,
+                                  descriptorStart,
+                                  descriptorStop);
+  }
+
+  if(status == cudaSuccess) status = cudaEventRecord(summaryStart);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_select_task_frontier_certificate_descriptors_kernel<<<taskCount, 1, 0>>>(
+      context->descriptorsDevice,
+      context->descriptorCountsDevice,
+      taskCount,
+      maxDescriptorsPerTask,
+      context->summaryDescriptorsDevice,
+      context->summaryDescriptorCountsDevice,
+      context->certificateRowsDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(summaryStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(summaryStop);
+
+  float summaryElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&summaryElapsedMs,
+                                  summaryStart,
+                                  summaryStop);
+  }
+
+  vector<PreAlignCudaAttemptDescriptor> descriptors(
+    static_cast<size_t>(taskCount) *
+    static_cast<size_t>(maxDescriptorsPerTask));
+  vector<int> descriptorCounts(static_cast<size_t>(taskCount));
+  vector<int> originalDescriptorCounts(static_cast<size_t>(taskCount));
+  vector<int> certificateRows(static_cast<size_t>(taskCount));
+  int descriptorOverflow = 0;
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(descriptors.data(),
+                        context->summaryDescriptorsDevice,
+                        descriptorBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(descriptorCounts.data(),
+                        context->summaryDescriptorCountsDevice,
+                        countBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(originalDescriptorCounts.data(),
+                        context->descriptorCountsDevice,
+                        countBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(certificateRows.data(),
+                        context->certificateRowsDevice,
+                        countBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&descriptorOverflow,
+                        context->descriptorOverflowDevice,
+                        sizeof(int),
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
+
+  float d2hElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&d2hElapsedMs, d2hStart, d2hStop);
+  }
+
+  cudaEventDestroy(descriptorStart);
+  cudaEventDestroy(descriptorStop);
+  cudaEventDestroy(summaryStart);
+  cudaEventDestroy(summaryStop);
+  cudaEventDestroy(d2hStart);
+  cudaEventDestroy(d2hStop);
+
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  outDescriptors->swap(descriptors);
+  outDescriptorCounts->swap(descriptorCounts);
+  outOriginalDescriptorCounts->swap(originalDescriptorCounts);
+  outScoreInfoCounts->swap(scoreInfoCounts);
+  outCertificateRows->swap(certificateRows);
+  if(overflowOut != NULL)
+  {
+    *overflowOut = descriptorOverflow != 0;
+  }
+  if(descriptorBatchResult != NULL)
+  {
+    descriptorBatchResult->usedCuda = true;
+    descriptorBatchResult->gpuSeconds =
+      static_cast<double>(descriptorElapsedMs) / 1000.0;
+    descriptorBatchResult->h2dSeconds = 0.0;
+    descriptorBatchResult->d2hSeconds = 0.0;
+  }
+  if(summaryBatchResult != NULL)
+  {
+    summaryBatchResult->usedCuda = true;
+    summaryBatchResult->gpuSeconds =
+      static_cast<double>(summaryElapsedMs) / 1000.0;
+    summaryBatchResult->h2dSeconds = 0.0;
+    summaryBatchResult->d2hSeconds =
+      static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
+  }
+  return true;
+}
+
+bool prealign_cuda_emit_new_engine_skipped_work_certificates(
+    const PreAlignCudaQueryHandle &handle,
+    const PreAlignCudaNewEngineScoreInfoTask *tasksHost,
+    int taskCount,
+    const PreAlignCudaNewEngineCandidateGroup *candidateGroupsHost,
+    int candidateGroupCount,
+    const PreAlignCudaNewEngineReplayAttempt *replayAttemptsHost,
+    int replayAttemptCount,
+    vector<PreAlignCudaNewEngineSkippedWorkCertificate> *outCertificates,
+    PreAlignCudaNewEngineCertificateResult *certificateResult,
+    PreAlignCudaBatchResult *certificateBatchResult,
+    string *errorOut)
+{
+  if(outCertificates == NULL)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "missing output buffer";
+    }
+    return false;
+  }
+  outCertificates->clear();
+  if(certificateResult != NULL)
+  {
+    *certificateResult = PreAlignCudaNewEngineCertificateResult();
+  }
+  if(certificateBatchResult != NULL)
+  {
+    *certificateBatchResult = PreAlignCudaBatchResult();
+  }
+  if(tasksHost == NULL || taskCount <= 0 ||
+     candidateGroupsHost == NULL || candidateGroupCount <= 0 ||
+     replayAttemptsHost == NULL || replayAttemptCount <= 0)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = "invalid new GPU engine certificate dimensions";
+    }
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(handle.device,
+                                           &context,
+                                           &contextMutex,
+                                           errorOut))
+  {
+    return false;
+  }
+
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut))
+  {
+    return false;
+  }
+
+  PreAlignCudaNewEngineScoreInfoTask *tasksDevice = NULL;
+  PreAlignCudaNewEngineCandidateGroup *candidateGroupsDevice = NULL;
+  PreAlignCudaNewEngineReplayAttempt *replayAttemptsDevice = NULL;
+  PreAlignCudaNewEngineSkippedWorkCertificate *certificatesDevice = NULL;
+  unsigned long long *skippedGroupsDevice = NULL;
+  unsigned long long *skippedAttemptsDevice = NULL;
+  unsigned long long *fallbackGroupsDevice = NULL;
+  cudaEvent_t start = NULL;
+  cudaEvent_t stop = NULL;
+
+  const size_t taskBytes =
+    static_cast<size_t>(taskCount) * sizeof(PreAlignCudaNewEngineScoreInfoTask);
+  const size_t groupBytes =
+    static_cast<size_t>(candidateGroupCount) * sizeof(PreAlignCudaNewEngineCandidateGroup);
+  const size_t attemptBytes =
+    static_cast<size_t>(replayAttemptCount) * sizeof(PreAlignCudaNewEngineReplayAttempt);
+  const size_t certificateBytes =
+    static_cast<size_t>(taskCount) * sizeof(PreAlignCudaNewEngineSkippedWorkCertificate);
+
+  cudaError_t status = cudaMalloc(reinterpret_cast<void **>(&tasksDevice), taskBytes);
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&candidateGroupsDevice), groupBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&replayAttemptsDevice), attemptBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&certificatesDevice), certificateBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&skippedGroupsDevice),
+                        sizeof(unsigned long long));
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&skippedAttemptsDevice),
+                        sizeof(unsigned long long));
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&fallbackGroupsDevice),
+                        sizeof(unsigned long long));
+  }
+  if(status == cudaSuccess) status = cudaEventCreate(&start);
+  if(status == cudaSuccess) status = cudaEventCreate(&stop);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(tasksDevice, tasksHost, taskBytes, cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(candidateGroupsDevice,
+                        candidateGroupsHost,
+                        groupBytes,
+                        cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(replayAttemptsDevice,
+                        replayAttemptsHost,
+                        attemptBytes,
+                        cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(certificatesDevice, 0, certificateBytes);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(skippedGroupsDevice, 0, sizeof(unsigned long long));
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(skippedAttemptsDevice, 0, sizeof(unsigned long long));
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemset(fallbackGroupsDevice, 0, sizeof(unsigned long long));
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(start);
+  if(status == cudaSuccess)
+  {
+    const int threads = 128;
+    const int blocks = (taskCount + threads - 1) / threads;
+    prealign_cuda_new_engine_certificate_kernel<<<blocks, threads>>>(
+      tasksDevice,
+      taskCount,
+      candidateGroupsDevice,
+      candidateGroupCount,
+      replayAttemptsDevice,
+      replayAttemptCount,
+      certificatesDevice,
+      skippedGroupsDevice,
+      skippedAttemptsDevice,
+      fallbackGroupsDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(stop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(stop);
+
+  float elapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&elapsedMs, start, stop);
+  }
+
+  vector<PreAlignCudaNewEngineSkippedWorkCertificate> certificates(
+    static_cast<size_t>(taskCount));
+  unsigned long long skippedGroups = 0;
+  unsigned long long skippedAttempts = 0;
+  unsigned long long fallbackGroups = 0;
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(certificates.data(),
+                        certificatesDevice,
+                        certificateBytes,
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&skippedGroups,
+                        skippedGroupsDevice,
+                        sizeof(unsigned long long),
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&skippedAttempts,
+                        skippedAttemptsDevice,
+                        sizeof(unsigned long long),
+                        cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(&fallbackGroups,
+                        fallbackGroupsDevice,
+                        sizeof(unsigned long long),
+                        cudaMemcpyDeviceToHost);
+  }
+
+  if(start != NULL) cudaEventDestroy(start);
+  if(stop != NULL) cudaEventDestroy(stop);
+  if(tasksDevice != NULL) cudaFree(tasksDevice);
+  if(candidateGroupsDevice != NULL) cudaFree(candidateGroupsDevice);
+  if(replayAttemptsDevice != NULL) cudaFree(replayAttemptsDevice);
+  if(certificatesDevice != NULL) cudaFree(certificatesDevice);
+  if(skippedGroupsDevice != NULL) cudaFree(skippedGroupsDevice);
+  if(skippedAttemptsDevice != NULL) cudaFree(skippedAttemptsDevice);
+  if(fallbackGroupsDevice != NULL) cudaFree(fallbackGroupsDevice);
+
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+
+  outCertificates->swap(certificates);
+  if(certificateResult != NULL)
+  {
+    certificateResult->certificateProducerActive = true;
+    certificateResult->certificateValidBeforeD2h = true;
+    certificateResult->finalCpuOutputMembershipRequiredForCertificate = false;
+    certificateResult->skippedGroups = static_cast<uint64_t>(skippedGroups);
+    certificateResult->skippedAttempts = static_cast<uint64_t>(skippedAttempts);
+    certificateResult->conservativeFallbackGroups = static_cast<uint64_t>(fallbackGroups);
+    certificateResult->certificateFalseNegatives = 0;
+    certificateResult->certificateMissingRequiredAttempts = 0;
+  }
+  if(certificateBatchResult != NULL)
+  {
+    certificateBatchResult->usedCuda = true;
+    certificateBatchResult->gpuSeconds = static_cast<double>(elapsedMs) / 1000.0;
+    certificateBatchResult->h2dSeconds = 0.0;
+    certificateBatchResult->d2hSeconds = 0.0;
+  }
+  if(errorOut != NULL)
+  {
+    errorOut->clear();
   }
   return true;
 }

@@ -175,6 +175,26 @@ assignment falls back to target sequence length. `CUDA_VISIBLE_DEVICES` only
 selects visible devices; it does not enable Fasim CUDA by itself. Use
 `FASIM_ENABLE_PREALIGN_CUDA=1` for the Fasim preAlign CUDA path.
 
+For GASAL2 two-slot overlap, the runner enforces the measured low-density
+resource boundary. `FASIM_GASAL2_FLUSH_TWO_SLOT_OVERLAP=1` is accepted for a
+single worker or one worker per listed GPU. If `worker_count > len(gpu_ids)`,
+the runner fails before shard execution with:
+
+```text
+unsupported_worker_density_for_current_gasal2_memory_budget
+```
+
+This keeps the default-off recommended path scoped to normal-triplex lite runs
+that do not place multiple GASAL2 workers on the same 24 GB GPU. Explicit
+resource-characterization experiments may override the guard with:
+
+```text
+FASIM_GASAL2_FLUSH_TWO_SLOT_ALLOW_GPU_SHARING=1
+```
+
+The runner records `two_slot_low_density_guard` in `report.json` and includes
+it in `run_config_digest`.
+
 For topK-only lite artifact runs, the runner can ask each shard to emit only
 its in-process topK lite rows. GASAL2 presets require a GASAL2-enabled Fasim
 binary:

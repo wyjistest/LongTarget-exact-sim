@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <sstream>
@@ -46,6 +47,7 @@ std::mutex g_mutex;
 FasimGasal2Stats g_stats;
 BridgeState g_score_state;
 BridgeState g_traceback_state;
+uint64_t g_limited_traceback_export_batch_id = 0;
 
 double seconds_since(const std::chrono::steady_clock::time_point &start)
 {
@@ -229,6 +231,57 @@ bool traceback_query_reuse_enabled_for_mode(bool top5Preset)
 bool nt_sum_span_prune_enabled()
 {
 	return env_enabled("FASIM_ALIGN_GASAL2_NT_SUM_SPAN_PRUNE");
+}
+
+int limited_traceback_max_scoreinfos()
+{
+	return env_int_or_zero("FASIM_TOP5_GASAL2_LIMITED_TRACEBACK_MAX_SCOREINFOS");
+}
+
+int limited_traceback_min_prealign_score()
+{
+	return env_int_or_zero("FASIM_TOP5_GASAL2_TRACEBACK_MIN_PREALIGN_SCORE");
+}
+
+int limited_traceback_guard_min_prealign_score()
+{
+	return env_int_or_zero("FASIM_TOP5_GASAL2_TRACEBACK_GUARD_MIN_PREALIGN_SCORE");
+}
+
+int limited_traceback_guard_max_prealign_score()
+{
+	return env_int_or_zero("FASIM_TOP5_GASAL2_TRACEBACK_GUARD_MAX_PREALIGN_SCORE");
+}
+
+int limited_traceback_guard_max_target_size()
+{
+	return env_int_or_zero("FASIM_TOP5_GASAL2_TRACEBACK_GUARD_MAX_TARGET_SIZE");
+}
+
+std::string limited_traceback_mode()
+{
+	const char *env = std::getenv("FASIM_TOP5_GASAL2_LIMITED_TRACEBACK_MODE");
+	if (env == NULL || env[0] == '\0')
+	{
+		return "score";
+	}
+	return std::string(env);
+}
+
+std::string limited_traceback_attempt_export_path()
+{
+	const char *env = std::getenv("FASIM_TOP5_GASAL2_LIMITED_TRACEBACK_ATTEMPT_EXPORT");
+	if (env == NULL || env[0] == '\0')
+	{
+		return "";
+	}
+	return std::string(env);
+}
+
+bool file_exists(const std::string &path)
+{
+	std::ifstream input(path.c_str());
+	return input.good();
 }
 
 size_t attempt_target_size(const FasimGasal2Attempt &attempt)
@@ -1014,6 +1067,247 @@ void select_cpu_traceback_candidates_from_scores(const std::vector<FasimGasal2At
 	g_stats.cpu_traceback_candidate_last += lastCandidateCount;
 }
 
+void export_limited_traceback_attempts(const std::vector<FasimGasal2Attempt> &attempts,
+                                       const std::vector<size_t> &selectedAttemptIndexes,
+                                       const std::vector<unsigned char> &keep)
+{
+	const std::string path = limited_traceback_attempt_export_path();
+	if (path.empty())
+	{
+		return;
+	}
+	const bool needsHeader = !file_exists(path);
+	std::ofstream output(path.c_str(), std::ios::out | std::ios::app);
+	if (!output)
+	{
+		return;
+	}
+	if (needsHeader)
+	{
+		output
+			<< "batch_id\tposition\tattempt_index\tdecision\tprealign_score\t"
+			<< "scoreinfo_index\tstart\tcutlength\ttarget_size\tnt_min_length\t"
+			<< "target_end_required_for_fallback\ttarget_offset\ttarget_length\t"
+			<< "target_global_start\ttarget_global_end\t"
+			<< "output_global_start\toutput_global_end\t"
+			<< "task_strand\ttask_para\ttask_rule\n";
+	}
+	const uint64_t batchId = g_limited_traceback_export_batch_id++;
+	for (size_t position = 0; position < selectedAttemptIndexes.size(); ++position)
+	{
+		const size_t attemptIndex = selectedAttemptIndexes[position];
+		if (attemptIndex >= attempts.size())
+		{
+			continue;
+		}
+		const FasimGasal2Attempt &attempt = attempts[attemptIndex];
+		output
+			<< batchId << "\t"
+			<< position << "\t"
+			<< attemptIndex << "\t"
+			<< (position < keep.size() && keep[position] != 0 ? "keep" : "skip") << "\t"
+			<< attempt.prealign_score << "\t"
+			<< attempt.scoreinfo_index << "\t"
+			<< attempt.start << "\t"
+			<< attempt.cutlength << "\t"
+			<< attempt.target_size() << "\t"
+			<< attempt.nt_min_length << "\t"
+			<< attempt.target_end_required_for_fallback << "\t"
+			<< attempt.target_offset << "\t"
+			<< attempt.target_length << "\t"
+			<< attempt.target_global_start << "\t"
+			<< (attempt.target_global_start >= 0 ?
+				    attempt.target_global_start + static_cast<int64_t>(attempt.target_size()) :
+				    static_cast<int64_t>(-1)) << "\t"
+			<< attempt.output_global_start << "\t"
+			<< attempt.output_global_end << "\t"
+			<< attempt.task_strand << "\t"
+			<< attempt.task_para << "\t"
+			<< attempt.task_rule << "\n";
+		++g_stats.limited_traceback_attempt_export_rows;
+	}
+}
+
+void apply_limited_traceback_scoreinfo_cap(const std::vector<FasimGasal2Attempt> &attempts,
+                                           int maxScoreInfos,
+                                           std::vector<size_t> *selectedAttemptIndexes)
+{
+	const int minPrealignScore = limited_traceback_min_prealign_score();
+	const int guardMinPrealignScore = limited_traceback_guard_min_prealign_score();
+	const int guardMaxPrealignScore = limited_traceback_guard_max_prealign_score();
+	const int guardMaxTargetSize = limited_traceback_guard_max_target_size();
+	if (selectedAttemptIndexes == NULL || (maxScoreInfos <= 0 && minPrealignScore <= 0))
+	{
+		return;
+	}
+	g_stats.limited_traceback_enabled = true;
+	g_stats.limited_traceback_max_scoreinfos =
+		maxScoreInfos > 0 ? static_cast<uint64_t>(maxScoreInfos) : 0;
+	g_stats.limited_traceback_min_prealign_score =
+		minPrealignScore > 0 ? static_cast<uint64_t>(minPrealignScore) : 0;
+	g_stats.limited_traceback_guard_min_prealign_score =
+		guardMinPrealignScore > 0 ? static_cast<uint64_t>(guardMinPrealignScore) : 0;
+	g_stats.limited_traceback_guard_max_prealign_score =
+		guardMaxPrealignScore > 0 ? static_cast<uint64_t>(guardMaxPrealignScore) : 0;
+	g_stats.limited_traceback_guard_max_target_size =
+		guardMaxTargetSize > 0 ? static_cast<uint64_t>(guardMaxTargetSize) : 0;
+	const size_t before = selectedAttemptIndexes->size();
+	g_stats.limited_traceback_before += static_cast<uint64_t>(before);
+	std::vector<unsigned char> keep(before, 1);
+
+	if (maxScoreInfos > 0 && before > static_cast<size_t>(maxScoreInfos))
+	{
+		const std::string mode = limited_traceback_mode();
+		std::vector<size_t> order(before);
+		for (size_t i = 0; i < before; ++i)
+		{
+			order[i] = i;
+		}
+		std::sort(order.begin(),
+		          order.end(),
+		          [&](size_t lhs, size_t rhs)
+		          {
+			          const size_t lhsAttemptIndex = (*selectedAttemptIndexes)[lhs];
+			          const size_t rhsAttemptIndex = (*selectedAttemptIndexes)[rhs];
+			          const FasimGasal2Attempt &a = attempts[lhsAttemptIndex];
+			          const FasimGasal2Attempt &b = attempts[rhsAttemptIndex];
+			          if (a.prealign_score != b.prealign_score)
+			          {
+				          return a.prealign_score > b.prealign_score;
+			          }
+			          if (a.scoreinfo_index != b.scoreinfo_index)
+			          {
+				          return a.scoreinfo_index < b.scoreinfo_index;
+			          }
+			          if (a.start != b.start)
+			          {
+				          return a.start < b.start;
+			          }
+			          return a.cutlength < b.cutlength;
+		          });
+
+		const size_t limit = static_cast<size_t>(maxScoreInfos);
+		if (mode == "score_spread")
+		{
+			std::vector<unsigned char> selected(before, 0);
+			std::vector<size_t> selectedOrder;
+			selectedOrder.reserve(limit);
+			auto add_position = [&](size_t position)
+			{
+				if (position >= before || selected[position] != 0 || selectedOrder.size() >= limit)
+				{
+					return false;
+				}
+				selected[position] = 1;
+				selectedOrder.push_back(position);
+				return true;
+			};
+
+			const size_t scoreQuota = std::max<size_t>(1, limit / 2);
+			for (size_t i = 0; i < order.size() && i < scoreQuota; ++i)
+			{
+				add_position(order[i]);
+			}
+			const size_t spreadSlots = limit - selectedOrder.size();
+			if (spreadSlots > 0)
+			{
+				for (size_t slot = 0; slot < spreadSlots && selectedOrder.size() < limit; ++slot)
+				{
+					const size_t denom = spreadSlots > 1 ? spreadSlots - 1 : 1;
+					const size_t target =
+						spreadSlots > 1 ?
+							(slot * (before - 1) + denom / 2) / denom :
+							before / 2;
+					for (size_t radius = 0; radius < before; ++radius)
+					{
+						bool added = false;
+						if (target >= radius)
+						{
+							added = add_position(target - radius);
+						}
+						if (!added && target + radius < before)
+						{
+							added = add_position(target + radius);
+						}
+						if (added)
+						{
+							break;
+						}
+					}
+				}
+			}
+			for (size_t i = 0; i < order.size() && selectedOrder.size() < limit; ++i)
+			{
+				add_position(order[i]);
+			}
+			order.swap(selectedOrder);
+		}
+		else
+		{
+			order.resize(limit);
+		}
+		std::sort(order.begin(), order.end());
+
+		std::fill(keep.begin(), keep.end(), 0);
+		for (size_t i = 0; i < order.size(); ++i)
+		{
+			if (order[i] < keep.size())
+			{
+				keep[order[i]] = 1;
+			}
+		}
+	}
+
+	uint64_t minPrealignScoreSkipped = 0;
+	uint64_t guardKept = 0;
+	if (minPrealignScore > 0)
+	{
+		for (size_t position = 0; position < selectedAttemptIndexes->size(); ++position)
+		{
+			const size_t attemptIndex = (*selectedAttemptIndexes)[position];
+			if (position < keep.size() && keep[position] != 0 &&
+			    attemptIndex < attempts.size() &&
+			    attempts[attemptIndex].prealign_score < minPrealignScore)
+			{
+				const FasimGasal2Attempt &attempt = attempts[attemptIndex];
+				const bool guarded =
+					guardMinPrealignScore > 0 &&
+					guardMaxTargetSize > 0 &&
+					attempt.prealign_score >= guardMinPrealignScore &&
+					(guardMaxPrealignScore <= 0 ||
+					 attempt.prealign_score <= guardMaxPrealignScore) &&
+					attempt.target_size() <= static_cast<size_t>(guardMaxTargetSize);
+				if (guarded)
+				{
+					++guardKept;
+				}
+				else
+				{
+					keep[position] = 0;
+					++minPrealignScoreSkipped;
+				}
+			}
+		}
+	}
+	g_stats.limited_traceback_min_prealign_score_skipped += minPrealignScoreSkipped;
+	g_stats.limited_traceback_guard_kept += guardKept;
+	export_limited_traceback_attempts(attempts, *selectedAttemptIndexes, keep);
+
+	std::vector<size_t> limited;
+	limited.reserve(before);
+	for (size_t position = 0; position < selectedAttemptIndexes->size(); ++position)
+	{
+		if (position < keep.size() && keep[position] != 0)
+		{
+			limited.push_back((*selectedAttemptIndexes)[position]);
+		}
+	}
+	selectedAttemptIndexes->swap(limited);
+	g_stats.limited_traceback_after += static_cast<uint64_t>(selectedAttemptIndexes->size());
+	g_stats.limited_traceback_skipped +=
+		static_cast<uint64_t>(before - selectedAttemptIndexes->size());
+}
+
 bool run_score_only(BridgeState *state,
                     const std::string &query,
                     const std::vector<FasimGasal2Attempt> &attempts,
@@ -1130,18 +1424,30 @@ bool run_score_only(BridgeState *state,
 		}
 		if (!launchedThisRound)
 		{
+			const double copyBefore = g_stats.score_result_copy_seconds;
 			const auto waitStart = std::chrono::steady_clock::now();
 			wait_for_all_score(state, streamCounts, streamStarts, attempts, *results, errorOut);
 			const double waited = seconds_since(waitStart);
 			g_stats.wait_seconds += waited;
 			g_stats.score_wait_seconds += waited;
+			const double copyDelta = g_stats.score_result_copy_seconds - copyBefore;
+			if (waited > copyDelta)
+			{
+				g_stats.score_poll_wait_seconds += waited - copyDelta;
+			}
 		}
 	}
+	const double copyBefore = g_stats.score_result_copy_seconds;
 	const auto waitStart = std::chrono::steady_clock::now();
 	wait_for_all_score(state, streamCounts, streamStarts, attempts, *results, errorOut);
 	const double waited = seconds_since(waitStart);
 	g_stats.wait_seconds += waited;
 	g_stats.score_wait_seconds += waited;
+	const double copyDelta = g_stats.score_result_copy_seconds - copyBefore;
+	if (waited > copyDelta)
+	{
+		g_stats.score_poll_wait_seconds += waited - copyDelta;
+	}
 	return true;
 }
 
@@ -1270,18 +1576,32 @@ bool run_traceback(BridgeState *state,
 		}
 		if (!launchedThisRound)
 		{
+			const double copyBefore = g_stats.traceback_result_copy_seconds;
 			const auto waitStart = std::chrono::steady_clock::now();
 			wait_for_all_traceback(state, streamCounts, streamStarts, attempts, *alignments, errorOut);
 			const double waited = seconds_since(waitStart);
 			g_stats.wait_seconds += waited;
 			g_stats.traceback_wait_seconds += waited;
+			const double copyDelta =
+				g_stats.traceback_result_copy_seconds - copyBefore;
+			if (waited > copyDelta)
+			{
+				g_stats.traceback_poll_wait_seconds += waited - copyDelta;
+			}
 		}
 	}
+	const double copyBefore = g_stats.traceback_result_copy_seconds;
 	const auto waitStart = std::chrono::steady_clock::now();
 	wait_for_all_traceback(state, streamCounts, streamStarts, attempts, *alignments, errorOut);
 	const double waited = seconds_since(waitStart);
 	g_stats.wait_seconds += waited;
 	g_stats.traceback_wait_seconds += waited;
+	const double copyDelta =
+		g_stats.traceback_result_copy_seconds - copyBefore;
+	if (waited > copyDelta)
+	{
+		g_stats.traceback_poll_wait_seconds += waited - copyDelta;
+	}
 	return true;
 }
 
@@ -1297,14 +1617,126 @@ bool fasim_gasal2_enabled()
 	return env_enabled("FASIM_ALIGN_GASAL2") ||
 	       env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO") ||
 	       env_enabled("FASIM_TOP5_GASAL2_LONG_QUERY_SEGMENTED_SHADOW") ||
-	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW");
+	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_HOST_ASSISTED_CONSUMER_FEASIBILITY") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_TASK_FRONTIER_CERTIFICATE") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_REAL_SOURCE_CERTIFICATE_SOURCE") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_PRE_DROP_WORK_DROP_PROOF_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_CONSUMER_GPU_SCOREINFO_CERT_ENGINE_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_GPU_OWNED_SCOREINFO_CONSUMER_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_FULL_ALIGN_VERIFIER_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_NATIVE_CUDA_FASIM_DP_ENGINE_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_GPU_EXACT_WORK_UNIT_COMPACTION_FIRST1_SHADOW");
 }
 
 bool fasim_gasal2_longtarget_bridge_enabled()
 {
 	return env_enabled("FASIM_ALIGN_GASAL2_LONGTARGET_BRIDGE") ||
 	       env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO") ||
-	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW");
+	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_HOST_ASSISTED_CONSUMER_FEASIBILITY") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_TASK_FRONTIER_CERTIFICATE") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_REAL_SOURCE_CERTIFICATE_SOURCE") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_PRE_DROP_WORK_DROP_PROOF_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_POST_CONSUMER_GPU_SCOREINFO_CERT_ENGINE_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_GPU_OWNED_SCOREINFO_CONSUMER_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_FULL_ALIGN_VERIFIER_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_NATIVE_CUDA_FASIM_DP_ENGINE_FIRST1_SHADOW") ||
+	       env_enabled("FASIM_GASAL2_PHASE7_GPU_EXACT_WORK_UNIT_COMPACTION_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_v5_fused_scoreinfo_consumer_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_V5_FUSED_SCOREINFO_CONSUMER");
+}
+
+bool fasim_gasal2_phase7_v5_true_pre_scoreinfo_descriptor_source_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_V5_TRUE_PRE_SCOREINFO_DESCRIPTOR_SOURCE");
+}
+
+bool fasim_gasal2_phase7_v5_cpu_authority_replay_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_V5_CPU_AUTHORITY_REPLAY");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_gpu_consumer_summary_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_GPU_CONSUMER_SUMMARY");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_host_assisted_consumer_feasibility_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_HOST_ASSISTED_CONSUMER_FEASIBILITY");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_task_frontier_certificate_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_TASK_FRONTIER_CERTIFICATE");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_pre_d2h_proof_search_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_PRE_D2H_PROOF_SEARCH");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_new_gpu_engine_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_CERTIFICATE_CUDA_API");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_REAL_SOURCE_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_REAL_SOURCE_CERTIFICATE_SOURCE");
+}
+
+bool fasim_gasal2_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime()
+{
+	return env_enabled(
+		"FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_PRE_DROP_WORK_DROP_PROOF_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime()
+{
+	return env_enabled(
+		"FASIM_GASAL2_PHASE7_POST_CONSUMER_GPU_SCOREINFO_CERT_ENGINE_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_GPU_OWNED_SCOREINFO_CONSUMER_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_full_align_verifier_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_FULL_ALIGN_VERIFIER_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_NATIVE_CUDA_FASIM_DP_ENGINE_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_gpu_upper_bound_reject_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_GPU_UPPER_BOUND_REJECT_FIRST1_SHADOW");
+}
+
+bool fasim_gasal2_phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime()
+{
+	return env_enabled("FASIM_GASAL2_PHASE7_GPU_EXACT_WORK_UNIT_COMPACTION_FIRST1_SHADOW");
 }
 
 std::vector<FasimGasal2LongQuerySegment>
@@ -1392,6 +1824,19 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_nt_sum_span_prune_enabled=" << (stats.nt_sum_span_prune_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_gasal2_nt_sum_span_pruned_attempts=" << stats.nt_sum_span_pruned_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_nt_sum_span_pruned_groups=" << stats.nt_sum_span_pruned_groups << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_enabled=" << (stats.limited_traceback_enabled ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_max_scoreinfos=" << stats.limited_traceback_max_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_min_prealign_score=" << stats.limited_traceback_min_prealign_score << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_guard_min_prealign_score=" << stats.limited_traceback_guard_min_prealign_score << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_guard_max_prealign_score=" << stats.limited_traceback_guard_max_prealign_score << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_guard_max_target_size=" << stats.limited_traceback_guard_max_target_size << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_mode=" << limited_traceback_mode() << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_before=" << stats.limited_traceback_before << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_after=" << stats.limited_traceback_after << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_skipped=" << stats.limited_traceback_skipped << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_min_prealign_score_skipped=" << stats.limited_traceback_min_prealign_score_skipped << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_guard_kept=" << stats.limited_traceback_guard_kept << "\n";
+	std::cerr << "benchmark.fasim_gasal2_limited_traceback_attempt_export_rows=" << stats.limited_traceback_attempt_export_rows << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_replay_attempts=" << stats.cpu_traceback_replay_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_selected_attempts=" << stats.cpu_traceback_selected_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_cpu_traceback_align_calls=" << stats.cpu_traceback_align_calls << "\n";
@@ -1452,6 +1897,90 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_fallbacks=" << stats.emission_only_consumer_shadow_fallbacks << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_digest_match=" << stats.emission_only_consumer_shadow_digest_match << "\n";
 	std::cerr << "benchmark.fasim_gasal2_emission_only_consumer_shadow_full_rows_equal=" << stats.emission_only_consumer_shadow_full_rows_equal << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_requested=" << stats.phase7_next_reducer_requested << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_active=" << stats.phase7_next_reducer_active << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_tasks=" << stats.phase7_next_reducer_tasks << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_scoreinfos=" << stats.phase7_next_reducer_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_reference_attempts=" << stats.phase7_next_reducer_reference_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_candidate_attempts=" << stats.phase7_next_reducer_candidate_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_candidate_align_attempts=" << stats.phase7_next_reducer_candidate_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_reference_align_attempts=" << stats.phase7_next_reducer_reference_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_false_negative_scoreinfos=" << stats.phase7_next_reducer_false_negative_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_triplex_mismatches=" << stats.phase7_next_reducer_triplex_mismatches << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_missing_triplexes=" << stats.phase7_next_reducer_missing_triplexes << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_extra_triplexes=" << stats.phase7_next_reducer_extra_triplexes << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_digest_match=" << stats.phase7_next_reducer_digest_match << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_full_rows_equal=" << stats.phase7_next_reducer_full_rows_equal << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_baseline_wall_seconds=" << stats.phase7_next_reducer_baseline_wall_seconds << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_candidate_wall_seconds=" << stats.phase7_next_reducer_candidate_wall_seconds << "\n";
+	std::cerr << "benchmark.fasim_long_query_streaming_scoreinfo_gpu_shadow_phase7_next_reducer_candidate_vs_baseline=" << stats.phase7_next_reducer_candidate_vs_baseline << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_requested=" << stats.phase7_frontier_log_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_active=" << stats.phase7_frontier_log_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_tasks=" << stats.phase7_frontier_log_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_scoreinfos=" << stats.phase7_frontier_log_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_align_attempts=" << stats.phase7_frontier_log_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_triplexes=" << stats.phase7_frontier_log_triplexes << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_path=" << stats.phase7_frontier_log_path << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_log_digest=" << stats.phase7_frontier_log_digest << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_requested=" << stats.phase7_frontier_early_stop_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_active=" << stats.phase7_frontier_early_stop_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_tasks=" << stats.phase7_frontier_early_stop_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_scoreinfos=" << stats.phase7_frontier_early_stop_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_reference_align_attempts=" << stats.phase7_frontier_early_stop_reference_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_candidate_align_attempts=" << stats.phase7_frontier_early_stop_candidate_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_skipped_attempts=" << stats.phase7_frontier_early_stop_skipped_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_emitted_groups=" << stats.phase7_frontier_early_stop_emitted_groups << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_frontier_early_stop_fallback_groups=" << stats.phase7_frontier_early_stop_fallback_groups << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_requested=" << stats.phase7_all_attempt_early_stop_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_active=" << stats.phase7_all_attempt_early_stop_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_tasks=" << stats.phase7_all_attempt_early_stop_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_scoreinfos=" << stats.phase7_all_attempt_early_stop_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_reference_align_attempts=" << stats.phase7_all_attempt_early_stop_reference_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_candidate_align_attempts=" << stats.phase7_all_attempt_early_stop_candidate_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_skipped_attempts=" << stats.phase7_all_attempt_early_stop_skipped_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_emitted_groups=" << stats.phase7_all_attempt_early_stop_emitted_groups << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_all_attempt_early_stop_fallback_groups=" << stats.phase7_all_attempt_early_stop_fallback_groups << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_requested=" << stats.phase7_gate_c_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_active=" << stats.phase7_gate_c_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_tasks=" << stats.phase7_gate_c_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_oracle_scoreinfos=" << stats.phase7_gate_c_oracle_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_oracle_attempts=" << stats.phase7_gate_c_oracle_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_gpu_candidate_scoreinfos=" << stats.phase7_gate_c_gpu_candidate_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_gpu_candidate_attempts=" << stats.phase7_gate_c_gpu_candidate_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_false_negative_scoreinfos=" << stats.phase7_gate_c_false_negative_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_missing_required_attempts=" << stats.phase7_gate_c_missing_required_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_extra_candidate_attempts=" << stats.phase7_gate_c_extra_candidate_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_candidate_align_attempts=" << stats.phase7_gate_c_candidate_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_gate_b_candidate_align_attempts=" << stats.phase7_gate_c_gate_b_candidate_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_scoreinfo_cpu_seconds=" << stats.phase7_gate_c_scoreinfo_cpu_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_gpu_candidate_seconds=" << stats.phase7_gate_c_gpu_candidate_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_cpu_replay_seconds=" << stats.phase7_gate_c_cpu_replay_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_total_seconds=" << stats.phase7_gate_c_total_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_digest_match=" << stats.phase7_gate_c_digest_match << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_gate_c_full_rows_equal=" << stats.phase7_gate_c_full_rows_equal << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_requested=" << stats.phase7_v3_descriptor_source_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_active=" << stats.phase7_v3_descriptor_source_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_tasks=" << stats.phase7_v3_descriptor_source_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_reference_scoreinfos=" << stats.phase7_v3_descriptor_source_reference_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_reference_attempts=" << stats.phase7_v3_descriptor_source_reference_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_candidate_scoreinfos=" << stats.phase7_v3_descriptor_source_candidate_scoreinfos << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_candidate_attempts=" << stats.phase7_v3_descriptor_source_candidate_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_candidate_min_cover_positions=" << stats.phase7_v3_descriptor_source_candidate_min_cover_positions << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_cpu_scoreinfo_calls=" << stats.phase7_v3_descriptor_source_cpu_scoreinfo_calls << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_baseline_cpu_scoreinfo_calls=" << stats.phase7_v3_descriptor_source_baseline_cpu_scoreinfo_calls << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_cpu_scoreinfo_reduced=" << stats.phase7_v3_descriptor_source_cpu_scoreinfo_reduced << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_candidate_certificate_checked=" << stats.phase7_v3_descriptor_source_candidate_certificate_checked << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_candidate_certificate_false_negatives=" << stats.phase7_v3_descriptor_source_candidate_certificate_false_negatives << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_missing_required_attempts=" << stats.phase7_v3_descriptor_source_missing_required_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_pre_scoreinfo_source=" << stats.phase7_v3_descriptor_source_pre_scoreinfo_source << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_descriptor_source_after_cpu_scoreinfo_source=" << stats.phase7_v3_descriptor_source_after_cpu_scoreinfo_source << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_requested=" << stats.phase7_v3_oracle_min_cover_replay_requested << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_active=" << stats.phase7_v3_oracle_min_cover_replay_active << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_tasks=" << stats.phase7_v3_oracle_min_cover_replay_tasks << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_reference_align_attempts=" << stats.phase7_v3_oracle_min_cover_replay_reference_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_candidate_align_attempts=" << stats.phase7_v3_oracle_min_cover_replay_candidate_align_attempts << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_candidate_min_cover_positions=" << stats.phase7_v3_oracle_min_cover_replay_candidate_min_cover_positions << "\n";
+	std::cerr << "benchmark.fasim_gasal2_phase7_v3_oracle_min_cover_replay_skipped_attempts=" << stats.phase7_v3_oracle_min_cover_replay_skipped_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batches=" << stats.longtarget_task_batches << "\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batch_tasks=" << stats.longtarget_task_batch_tasks << "\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batch_scoreinfos=" << stats.longtarget_task_batch_scoreinfos << "\n";
@@ -1473,6 +2002,8 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_wait_seconds=" << stats.wait_seconds << "\n";
 	std::cerr << "benchmark.fasim_gasal2_score_wait_seconds=" << stats.score_wait_seconds << "\n";
 	std::cerr << "benchmark.fasim_gasal2_traceback_wait_seconds=" << stats.traceback_wait_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_score_poll_wait_seconds=" << stats.score_poll_wait_seconds << "\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_poll_wait_seconds=" << stats.traceback_poll_wait_seconds << "\n";
 	std::cerr << "benchmark.fasim_gasal2_score_result_copy_seconds=" << stats.score_result_copy_seconds << "\n";
 	std::cerr << "benchmark.fasim_gasal2_traceback_result_copy_seconds=" << stats.traceback_result_copy_seconds << "\n";
 	std::cerr << "benchmark.fasim_gasal2_traceback_cigar_vector_seconds=" << stats.traceback_cigar_vector_seconds << "\n";
@@ -1574,6 +2105,9 @@ bool fasim_gasal2_align_attempts(const std::string &query,
 
 		select_attempts_from_scores(attempts, scoreResults, &selectedAttemptIndexes);
 	}
+	apply_limited_traceback_scoreinfo_cap(attempts,
+	                                      limited_traceback_max_scoreinfos(),
+	                                      &selectedAttemptIndexes);
 	if (selectedAttemptIndexes.empty())
 	{
 		g_stats.total_seconds += seconds_since(totalStart);
@@ -1907,6 +2441,1592 @@ void fasim_gasal2_record_emission_only_consumer_shadow_comparison(
 	{
 		g_stats.emission_only_consumer_shadow_decision = decision;
 	}
+}
+
+void fasim_gasal2_record_phase7_next_reducer_request(
+	uint64_t tasks,
+	uint64_t scoreInfos,
+	uint64_t candidateAttempts,
+	bool active)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_next_reducer_requested = 1;
+	g_stats.phase7_next_reducer_active = active ? 1 : 0;
+	g_stats.phase7_next_reducer_tasks += tasks;
+	g_stats.phase7_next_reducer_scoreinfos += scoreInfos;
+	g_stats.phase7_next_reducer_candidate_attempts += candidateAttempts;
+	g_stats.phase7_next_reducer_reference_attempts += candidateAttempts;
+	g_stats.phase7_next_reducer_reference_align_attempts += candidateAttempts;
+}
+
+void fasim_gasal2_record_phase7_next_reducer_result(
+	uint64_t candidateAlignAttempts,
+	uint64_t referenceAlignAttempts,
+	uint64_t falseNegativeScoreInfos,
+	uint64_t triplexMismatches,
+	uint64_t missingTriplexes,
+	uint64_t extraTriplexes)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	if (g_stats.phase7_next_reducer_reference_align_attempts < referenceAlignAttempts)
+	{
+		g_stats.phase7_next_reducer_reference_align_attempts = referenceAlignAttempts;
+	}
+	g_stats.phase7_next_reducer_candidate_align_attempts += candidateAlignAttempts;
+	g_stats.phase7_next_reducer_false_negative_scoreinfos += falseNegativeScoreInfos;
+	g_stats.phase7_next_reducer_triplex_mismatches += triplexMismatches;
+	g_stats.phase7_next_reducer_missing_triplexes += missingTriplexes;
+	g_stats.phase7_next_reducer_extra_triplexes += extraTriplexes;
+}
+
+void fasim_gasal2_record_phase7_frontier_log_request(
+	uint64_t tasks,
+	uint64_t scoreInfos,
+	uint64_t alignAttempts,
+	uint64_t triplexes,
+	bool active,
+	const char *path,
+	const char *digest)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_frontier_log_requested = 1;
+	g_stats.phase7_frontier_log_active = active ? 1 : 0;
+	g_stats.phase7_frontier_log_tasks += tasks;
+	g_stats.phase7_frontier_log_scoreinfos += scoreInfos;
+	g_stats.phase7_frontier_log_align_attempts += alignAttempts;
+	g_stats.phase7_frontier_log_triplexes += triplexes;
+	if (path != NULL)
+	{
+		g_stats.phase7_frontier_log_path = path;
+	}
+	if (digest != NULL)
+	{
+		g_stats.phase7_frontier_log_digest = digest;
+	}
+}
+
+void fasim_gasal2_record_phase7_frontier_early_stop(
+	uint64_t tasks,
+	uint64_t scoreInfos,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t skippedAttempts,
+	uint64_t emittedGroups,
+	uint64_t fallbackGroups,
+	bool active)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_frontier_early_stop_requested = 1;
+	g_stats.phase7_frontier_early_stop_active = active ? 1 : 0;
+	g_stats.phase7_frontier_early_stop_tasks += tasks;
+	g_stats.phase7_frontier_early_stop_scoreinfos += scoreInfos;
+	g_stats.phase7_frontier_early_stop_reference_align_attempts +=
+		referenceAlignAttempts;
+	g_stats.phase7_frontier_early_stop_candidate_align_attempts +=
+		candidateAlignAttempts;
+	g_stats.phase7_frontier_early_stop_skipped_attempts += skippedAttempts;
+	g_stats.phase7_frontier_early_stop_emitted_groups += emittedGroups;
+	g_stats.phase7_frontier_early_stop_fallback_groups += fallbackGroups;
+}
+
+void fasim_gasal2_record_phase7_all_attempt_early_stop(
+	uint64_t tasks,
+	uint64_t scoreInfos,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t skippedAttempts,
+	uint64_t emittedGroups,
+	uint64_t fallbackGroups,
+	bool active)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_all_attempt_early_stop_requested = 1;
+	g_stats.phase7_all_attempt_early_stop_active = active ? 1 : 0;
+	g_stats.phase7_all_attempt_early_stop_tasks += tasks;
+	g_stats.phase7_all_attempt_early_stop_scoreinfos += scoreInfos;
+	g_stats.phase7_all_attempt_early_stop_reference_align_attempts +=
+		referenceAlignAttempts;
+	g_stats.phase7_all_attempt_early_stop_candidate_align_attempts +=
+		candidateAlignAttempts;
+	g_stats.phase7_all_attempt_early_stop_skipped_attempts += skippedAttempts;
+	g_stats.phase7_all_attempt_early_stop_emitted_groups += emittedGroups;
+	g_stats.phase7_all_attempt_early_stop_fallback_groups += fallbackGroups;
+}
+
+void fasim_gasal2_record_phase7_gate_c(
+	uint64_t tasks,
+	uint64_t oracleScoreInfos,
+	uint64_t oracleAttempts,
+	uint64_t gpuCandidateScoreInfos,
+	uint64_t gpuCandidateAttempts,
+	uint64_t falseNegativeScoreInfos,
+	uint64_t missingRequiredAttempts,
+	uint64_t extraCandidateAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t gateBCandidateAlignAttempts,
+	double scoreInfoCpuSeconds,
+	double gpuCandidateSeconds,
+	double cpuReplaySeconds,
+	double totalSeconds,
+	uint64_t digestMatch,
+	uint64_t fullRowsEqual,
+	bool active)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gate_c_requested = 1;
+	g_stats.phase7_gate_c_active = active ? 1 : 0;
+	g_stats.phase7_gate_c_tasks += tasks;
+	g_stats.phase7_gate_c_oracle_scoreinfos += oracleScoreInfos;
+	g_stats.phase7_gate_c_oracle_attempts += oracleAttempts;
+	g_stats.phase7_gate_c_gpu_candidate_scoreinfos += gpuCandidateScoreInfos;
+	g_stats.phase7_gate_c_gpu_candidate_attempts += gpuCandidateAttempts;
+	g_stats.phase7_gate_c_false_negative_scoreinfos += falseNegativeScoreInfos;
+	g_stats.phase7_gate_c_missing_required_attempts += missingRequiredAttempts;
+	g_stats.phase7_gate_c_extra_candidate_attempts += extraCandidateAttempts;
+	g_stats.phase7_gate_c_candidate_align_attempts += candidateAlignAttempts;
+	g_stats.phase7_gate_c_gate_b_candidate_align_attempts +=
+		gateBCandidateAlignAttempts;
+	g_stats.phase7_gate_c_scoreinfo_cpu_seconds += scoreInfoCpuSeconds;
+	g_stats.phase7_gate_c_gpu_candidate_seconds += gpuCandidateSeconds;
+	g_stats.phase7_gate_c_cpu_replay_seconds += cpuReplaySeconds;
+	g_stats.phase7_gate_c_total_seconds += totalSeconds;
+	g_stats.phase7_gate_c_digest_match = digestMatch;
+	g_stats.phase7_gate_c_full_rows_equal = fullRowsEqual;
+}
+
+void fasim_gasal2_record_phase7_v3_descriptor_source(
+	uint64_t tasks,
+	uint64_t referenceScoreInfos,
+	uint64_t referenceAttempts,
+	uint64_t candidateScoreInfos,
+	uint64_t candidateAttempts,
+	uint64_t candidateMinCoverPositions,
+	uint64_t cpuScoreInfoCalls,
+	uint64_t baselineCpuScoreInfoCalls,
+	bool cpuScoreInfoReduced,
+	bool candidateCertificateChecked,
+	uint64_t candidateCertificateFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool preScoreInfoSource,
+	bool afterCpuScoreInfoSource,
+	bool active)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_v3_descriptor_source_requested = 1;
+	g_stats.phase7_v3_descriptor_source_active =
+		(g_stats.phase7_v3_descriptor_source_active || active) ? 1 : 0;
+	g_stats.phase7_v3_descriptor_source_tasks += tasks;
+	g_stats.phase7_v3_descriptor_source_reference_scoreinfos += referenceScoreInfos;
+	g_stats.phase7_v3_descriptor_source_reference_attempts += referenceAttempts;
+	g_stats.phase7_v3_descriptor_source_candidate_scoreinfos += candidateScoreInfos;
+	g_stats.phase7_v3_descriptor_source_candidate_attempts += candidateAttempts;
+	g_stats.phase7_v3_descriptor_source_candidate_min_cover_positions +=
+		candidateMinCoverPositions;
+	g_stats.phase7_v3_descriptor_source_cpu_scoreinfo_calls += cpuScoreInfoCalls;
+	g_stats.phase7_v3_descriptor_source_baseline_cpu_scoreinfo_calls +=
+		baselineCpuScoreInfoCalls;
+	g_stats.phase7_v3_descriptor_source_cpu_scoreinfo_reduced =
+		(g_stats.phase7_v3_descriptor_source_cpu_scoreinfo_reduced ||
+		 cpuScoreInfoReduced) ? 1 : 0;
+	g_stats.phase7_v3_descriptor_source_candidate_certificate_checked =
+		(g_stats.phase7_v3_descriptor_source_candidate_certificate_checked ||
+		 candidateCertificateChecked) ? 1 : 0;
+	g_stats.phase7_v3_descriptor_source_candidate_certificate_false_negatives +=
+		candidateCertificateFalseNegatives;
+	g_stats.phase7_v3_descriptor_source_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_v3_descriptor_source_pre_scoreinfo_source =
+		(g_stats.phase7_v3_descriptor_source_pre_scoreinfo_source ||
+		 preScoreInfoSource) ? 1 : 0;
+	g_stats.phase7_v3_descriptor_source_after_cpu_scoreinfo_source =
+		(g_stats.phase7_v3_descriptor_source_after_cpu_scoreinfo_source ||
+		 afterCpuScoreInfoSource) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_v3_oracle_min_cover_replay(
+	uint64_t tasks,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t candidateMinCoverPositions,
+	bool active)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_v3_oracle_min_cover_replay_requested = 1;
+	g_stats.phase7_v3_oracle_min_cover_replay_active =
+		(g_stats.phase7_v3_oracle_min_cover_replay_active || active) ? 1 : 0;
+	g_stats.phase7_v3_oracle_min_cover_replay_tasks += tasks;
+	g_stats.phase7_v3_oracle_min_cover_replay_reference_align_attempts +=
+		referenceAlignAttempts;
+	g_stats.phase7_v3_oracle_min_cover_replay_candidate_align_attempts +=
+		candidateAlignAttempts;
+	g_stats.phase7_v3_oracle_min_cover_replay_candidate_min_cover_positions +=
+		candidateMinCoverPositions;
+	g_stats.phase7_v3_oracle_min_cover_replay_skipped_attempts +=
+		referenceAlignAttempts > candidateAlignAttempts ?
+			referenceAlignAttempts - candidateAlignAttempts :
+			0;
+}
+
+void fasim_gasal2_record_phase7_v5_fused_scoreinfo_consumer(
+	uint64_t tasks,
+	uint64_t referenceScoreInfos,
+	uint64_t referenceAttempts,
+	uint64_t gpuDescriptorScoreInfos,
+	uint64_t gpuDescriptorAttempts,
+	uint64_t falseNegatives,
+	uint64_t missingRequiredAttempts,
+	uint64_t extraDescriptorAttempts,
+	bool scoreInfoPrealignReduced,
+	bool cpuAlignAuthority,
+	bool gateV51Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_v5_fused_scoreinfo_consumer_requested = 1;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_active =
+		(g_stats.phase7_v5_fused_scoreinfo_consumer_active ||
+		 gpuDescriptorAttempts > 0 || gateV51Pass) ? 1 : 0;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_tasks += tasks;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_reference_scoreinfos +=
+		referenceScoreInfos;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_reference_attempts +=
+		referenceAttempts;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_gpu_descriptor_scoreinfos +=
+		gpuDescriptorScoreInfos;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_gpu_descriptor_attempts +=
+		gpuDescriptorAttempts;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_descriptor_false_negatives +=
+		falseNegatives;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_extra_descriptor_attempts +=
+		extraDescriptorAttempts;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_scoreinfo_prealign_reduced =
+		(g_stats.phase7_v5_fused_scoreinfo_consumer_scoreinfo_prealign_reduced ||
+		 scoreInfoPrealignReduced) ? 1 : 0;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_cpu_align_authority =
+		(g_stats.phase7_v5_fused_scoreinfo_consumer_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_v5_fused_scoreinfo_consumer_gate_v5_1_pass =
+		(g_stats.phase7_v5_fused_scoreinfo_consumer_gate_v5_1_pass ||
+		 gateV51Pass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_v5_true_pre_scoreinfo_descriptor_source(
+	uint64_t tasks,
+	uint64_t referenceScoreInfos,
+	uint64_t referenceAttempts,
+	uint64_t gpuDescriptorScoreInfos,
+	uint64_t gpuDescriptorAttempts,
+	bool sourceIsPreScoreInfo,
+	bool scoreInfoPrealignReduced,
+	uint64_t falseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool candidateAttemptsBelowAllColumnReplayScale,
+	bool cpuAlignAuthority,
+	bool gateV51Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_requested = 1;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_active =
+		(g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_active ||
+		 gpuDescriptorAttempts > 0 || gateV51Pass) ? 1 : 0;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_tasks += tasks;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_reference_scoreinfos +=
+		referenceScoreInfos;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_reference_attempts +=
+		referenceAttempts;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gpu_descriptor_scoreinfos +=
+		gpuDescriptorScoreInfos;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gpu_descriptor_attempts +=
+		gpuDescriptorAttempts;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_source_is_pre_scoreinfo =
+		(g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_source_is_pre_scoreinfo ||
+		 sourceIsPreScoreInfo) ? 1 : 0;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_scoreinfo_prealign_reduced =
+		(g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_scoreinfo_prealign_reduced ||
+		 scoreInfoPrealignReduced) ? 1 : 0;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_descriptor_false_negatives +=
+		falseNegatives;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_candidate_attempts_below_all_column_replay_scale =
+		(g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_candidate_attempts_below_all_column_replay_scale ||
+		 candidateAttemptsBelowAllColumnReplayScale) ? 1 : 0;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_cpu_align_authority =
+		(g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gate_v5_1_pass =
+		(g_stats.phase7_v5_true_pre_scoreinfo_descriptor_source_gate_v5_1_pass ||
+		 gateV51Pass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_v5_cpu_authority_replay(
+	uint64_t tasks,
+	uint64_t gpuDescriptorScoreInfos,
+	uint64_t gpuDescriptorAttempts,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	bool sourceIsPreScoreInfo,
+	bool scoreInfoPrealignReduced,
+	uint64_t falseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool cpuAlignAuthority,
+	bool fullRowsEqual,
+	bool digestMatch,
+	uint64_t missingRows,
+	uint64_t extraRows,
+	uint64_t triplexMismatches,
+	bool gateV52Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_v5_cpu_authority_replay_requested = 1;
+	g_stats.phase7_v5_cpu_authority_replay_active =
+		(g_stats.phase7_v5_cpu_authority_replay_active ||
+		 candidateAlignAttempts > 0 || gateV52Pass) ? 1 : 0;
+	g_stats.phase7_v5_cpu_authority_replay_tasks += tasks;
+	g_stats.phase7_v5_cpu_authority_replay_gpu_descriptor_scoreinfos +=
+		gpuDescriptorScoreInfos;
+	g_stats.phase7_v5_cpu_authority_replay_gpu_descriptor_attempts +=
+		gpuDescriptorAttempts;
+	g_stats.phase7_v5_cpu_authority_replay_reference_align_attempts +=
+		referenceAlignAttempts;
+	g_stats.phase7_v5_cpu_authority_replay_candidate_align_attempts +=
+		candidateAlignAttempts;
+	g_stats.phase7_v5_cpu_authority_replay_source_is_pre_scoreinfo =
+		(g_stats.phase7_v5_cpu_authority_replay_source_is_pre_scoreinfo ||
+		 sourceIsPreScoreInfo) ? 1 : 0;
+	g_stats.phase7_v5_cpu_authority_replay_scoreinfo_prealign_reduced =
+		(g_stats.phase7_v5_cpu_authority_replay_scoreinfo_prealign_reduced ||
+		 scoreInfoPrealignReduced) ? 1 : 0;
+	g_stats.phase7_v5_cpu_authority_replay_descriptor_false_negatives +=
+		falseNegatives;
+	g_stats.phase7_v5_cpu_authority_replay_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_v5_cpu_authority_replay_cpu_align_authority =
+		(g_stats.phase7_v5_cpu_authority_replay_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_v5_cpu_authority_replay_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_v5_cpu_authority_replay_full_rows_equal =
+		(g_stats.phase7_v5_cpu_authority_replay_full_rows_equal ||
+		 fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_v5_cpu_authority_replay_digest_match =
+		(g_stats.phase7_v5_cpu_authority_replay_digest_match ||
+		 digestMatch) ? 1 : 0;
+	g_stats.phase7_v5_cpu_authority_replay_missing_rows += missingRows;
+	g_stats.phase7_v5_cpu_authority_replay_extra_rows += extraRows;
+	g_stats.phase7_v5_cpu_authority_replay_triplex_mismatches += triplexMismatches;
+	g_stats.phase7_v5_cpu_authority_replay_gate_v5_2_pass =
+		(g_stats.phase7_v5_cpu_authority_replay_gate_v5_2_pass ||
+		 gateV52Pass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_gpu_consumer_summary(
+	uint64_t tasks,
+	bool sourceIsPreScoreInfo,
+	uint64_t gpuConsumerSummaryRows,
+	bool gpuConsumerReducesBeforeHostTransfer,
+	bool usesPrefixBoundaryOrEquivalentReplayProof,
+	bool arbitrarySparseSubset,
+	bool firstDescriptorPerScoreInfo,
+	uint64_t gpuSelectedAttempts,
+	uint64_t selectedPrefixAttempts,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t v5CandidateAlignAttempts,
+	bool scoreInfoPrealignReduced,
+	bool alignSideReduced,
+	uint64_t descriptorFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool fallbackAccountingClean,
+	bool cpuAlignAuthority,
+	bool digestMatch,
+	bool fullRowsEqual,
+	uint64_t missingRows,
+	uint64_t extraRows,
+	uint64_t triplexMismatches,
+	bool gateFirst1Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_gpu_consumer_summary_requested = 1;
+	g_stats.phase7_post_v5_3_gpu_consumer_summary_active =
+		(g_stats.phase7_post_v5_3_gpu_consumer_summary_active ||
+		 gpuConsumerSummaryRows > 0 || gateFirst1Pass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_gpu_consumer_summary_tasks += tasks;
+	g_stats.phase7_post_v5_3_gpu_consumer_summary_source_is_pre_scoreinfo =
+		(g_stats.phase7_post_v5_3_gpu_consumer_summary_source_is_pre_scoreinfo ||
+		 sourceIsPreScoreInfo) ? 1 : 0;
+	g_stats.phase7_post_v5_3_gpu_consumer_summary_rows +=
+		gpuConsumerSummaryRows;
+	g_stats.phase7_post_v5_3_gpu_consumer_reduces_before_host_transfer =
+		(g_stats.phase7_post_v5_3_gpu_consumer_reduces_before_host_transfer ||
+		 gpuConsumerReducesBeforeHostTransfer) ? 1 : 0;
+	g_stats.phase7_post_v5_3_uses_prefix_boundary_or_equivalent_replay_proof =
+		(g_stats.phase7_post_v5_3_uses_prefix_boundary_or_equivalent_replay_proof ||
+		 usesPrefixBoundaryOrEquivalentReplayProof) ? 1 : 0;
+	g_stats.phase7_post_v5_3_arbitrary_sparse_subset =
+		(g_stats.phase7_post_v5_3_arbitrary_sparse_subset ||
+		 arbitrarySparseSubset) ? 1 : 0;
+	g_stats.phase7_post_v5_3_first_descriptor_per_scoreinfo =
+		(g_stats.phase7_post_v5_3_first_descriptor_per_scoreinfo ||
+		 firstDescriptorPerScoreInfo) ? 1 : 0;
+	g_stats.phase7_post_v5_3_gpu_selected_attempts += gpuSelectedAttempts;
+	g_stats.phase7_post_v5_3_selected_prefix_attempts += selectedPrefixAttempts;
+	g_stats.phase7_post_v5_3_reference_align_attempts += referenceAlignAttempts;
+	g_stats.phase7_post_v5_3_candidate_align_attempts += candidateAlignAttempts;
+	g_stats.phase7_post_v5_3_v5_candidate_align_attempts +=
+		v5CandidateAlignAttempts;
+	g_stats.phase7_post_v5_3_scoreinfo_prealign_reduced =
+		(g_stats.phase7_post_v5_3_scoreinfo_prealign_reduced ||
+		 scoreInfoPrealignReduced) ? 1 : 0;
+	g_stats.phase7_post_v5_3_align_side_reduced =
+		(g_stats.phase7_post_v5_3_align_side_reduced ||
+		 alignSideReduced) ? 1 : 0;
+	g_stats.phase7_post_v5_3_descriptor_false_negatives +=
+		descriptorFalseNegatives;
+	g_stats.phase7_post_v5_3_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_post_v5_3_fallback_accounting_clean =
+		(g_stats.phase7_post_v5_3_fallback_accounting_clean ||
+		 fallbackAccountingClean) ? 1 : 0;
+	g_stats.phase7_post_v5_3_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_digest_match =
+		(g_stats.phase7_post_v5_3_digest_match || digestMatch) ? 1 : 0;
+	g_stats.phase7_post_v5_3_full_rows_equal =
+		(g_stats.phase7_post_v5_3_full_rows_equal || fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_post_v5_3_missing_rows += missingRows;
+	g_stats.phase7_post_v5_3_extra_rows += extraRows;
+	g_stats.phase7_post_v5_3_triplex_mismatches += triplexMismatches;
+	g_stats.phase7_post_v5_3_gate_first1_pass =
+		(g_stats.phase7_post_v5_3_gate_first1_pass || gateFirst1Pass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_task_frontier_certificate_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_task_frontier_certificate_requested = 1;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_active = 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_gpu_endpoint_cigar_traceback_output_authority = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_task_frontier_certificate(
+	uint64_t tasks,
+	bool active,
+	bool sourceIsPreScoreInfo,
+	bool sourceIsLegacyByteCuda,
+	bool gasal2ScoreOnlyLongQueryDependency,
+	bool usesTaskFrontierCertificate,
+	bool usesPrefixBoundaryOnly,
+	bool arbitrarySparseSubset,
+	bool firstDescriptorPerScoreInfo,
+	bool fixedPrefixPerScoreInfo,
+	bool gpuConsumerReducesBeforeHostTransfer,
+	uint64_t taskFrontierCertificateRows,
+	uint64_t gpuSelectedAttempts,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t v5CandidateAlignAttempts,
+	uint64_t descriptorFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool fallbackAccountingClean,
+	bool cpuAlignAuthority,
+	bool digestMatch,
+	bool fullRowsEqual,
+	uint64_t missingRows,
+	uint64_t extraRows,
+	uint64_t triplexMismatches,
+	bool gateFirst1Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_task_frontier_certificate_requested = 1;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_active =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_active ||
+		 active || taskFrontierCertificateRows > 0 || gateFirst1Pass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_tasks += tasks;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_source_is_pre_scoreinfo =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_source_is_pre_scoreinfo ||
+		 sourceIsPreScoreInfo) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_source_is_legacy_byte_cuda =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_source_is_legacy_byte_cuda ||
+		 sourceIsLegacyByteCuda) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_gasal2_score_only_long_query_dependency =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_gasal2_score_only_long_query_dependency ||
+		 gasal2ScoreOnlyLongQueryDependency) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_uses_task_frontier_certificate =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_uses_task_frontier_certificate ||
+		 usesTaskFrontierCertificate) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_uses_prefix_boundary_only =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_uses_prefix_boundary_only ||
+		 usesPrefixBoundaryOnly) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_arbitrary_sparse_subset =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_arbitrary_sparse_subset ||
+		 arbitrarySparseSubset) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_first_descriptor_per_scoreinfo =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_first_descriptor_per_scoreinfo ||
+		 firstDescriptorPerScoreInfo) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_fixed_prefix_per_scoreinfo =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_fixed_prefix_per_scoreinfo ||
+		 fixedPrefixPerScoreInfo) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_gpu_consumer_reduces_before_host_transfer =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_gpu_consumer_reduces_before_host_transfer ||
+		 gpuConsumerReducesBeforeHostTransfer) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_rows +=
+		taskFrontierCertificateRows;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_gpu_selected_attempts +=
+		gpuSelectedAttempts;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_reference_align_attempts +=
+		referenceAlignAttempts;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_candidate_align_attempts +=
+		candidateAlignAttempts;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_v5_candidate_align_attempts +=
+		v5CandidateAlignAttempts;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_descriptor_false_negatives +=
+		descriptorFalseNegatives;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_fallback_accounting_clean =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_fallback_accounting_clean ||
+		 fallbackAccountingClean) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_digest_match =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_digest_match ||
+		 digestMatch) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_full_rows_equal =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_full_rows_equal ||
+		 fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_missing_rows +=
+		missingRows;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_extra_rows +=
+		extraRows;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_triplex_mismatches +=
+		triplexMismatches;
+	g_stats.phase7_post_v5_3_task_frontier_certificate_gate_first1_pass =
+		(g_stats.phase7_post_v5_3_task_frontier_certificate_gate_first1_pass ||
+		 gateFirst1Pass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_pre_d2h_proof_search_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_requested = 1;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_active = 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_gpu_output_authority = 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_runtime_reduction_enabled = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_pre_d2h_proof_search(
+	uint64_t tasks,
+	bool active,
+	bool sourceIsPreScoreInfo,
+	bool sourceIsLegacyByteCuda,
+	uint64_t proofSearchRows,
+	uint64_t scoreInfoCount,
+	uint64_t attemptCount,
+	bool cpuAlignAuthority,
+	bool labelSourceCpuAuthorityExternalOutput,
+	bool gateFirst1ExportPass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_requested = 1;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_active =
+		(g_stats.phase7_post_v5_3_pre_d2h_proof_search_active ||
+		 active || proofSearchRows > 0 || gateFirst1ExportPass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_source_is_pre_scoreinfo =
+		(g_stats.phase7_post_v5_3_pre_d2h_proof_search_source_is_pre_scoreinfo ||
+		 sourceIsPreScoreInfo) ? 1 : 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_source_is_legacy_byte_cuda =
+		(g_stats.phase7_post_v5_3_pre_d2h_proof_search_source_is_legacy_byte_cuda ||
+		 sourceIsLegacyByteCuda) ? 1 : 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_pre_d2h_proof_search_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_gpu_output_authority = 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_proof_search_rows +=
+		proofSearchRows;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_task_count += tasks;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_scoreinfo_count +=
+		scoreInfoCount;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_attempt_count +=
+		attemptCount;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_label_source_cpu_authority_external_output =
+		(g_stats.phase7_post_v5_3_pre_d2h_proof_search_label_source_cpu_authority_external_output ||
+		 labelSourceCpuAuthorityExternalOutput) ? 1 : 0;
+	g_stats.phase7_post_v5_3_pre_d2h_proof_search_gate_first1_export_pass =
+		(g_stats.phase7_post_v5_3_pre_d2h_proof_search_gate_first1_export_pass ||
+		 gateFirst1ExportPass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_active = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_certificate_producer = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_certificate_valid_before_d2h = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_final_cpu_output_membership_required_for_certificate = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_on_missing_bound = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_first1_shadow(
+	uint64_t gpuScoreInfoTasks,
+	uint64_t gpuCandidateGroups,
+	uint64_t gpuReplayAttempts,
+	uint64_t gpuSkippedGroups,
+	uint64_t gpuSkippedAttempts,
+	uint64_t cpuReplayAttempts,
+	uint64_t baselineCpuAttempts,
+	bool missingCertificateProducer,
+	bool certificateValidBeforeD2h,
+	bool finalCpuOutputMembershipRequiredForCertificate,
+	bool fallbackOnMissingBound,
+	bool fallbackToFullCpuReplay,
+	uint64_t certificateFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool scoreInfoPrealignReduced,
+	bool alignSideReduced,
+	bool fallbackAccountingClean,
+	bool cpuAlignAuthority,
+	bool fullRowsEqual,
+	bool digestMatch,
+	uint64_t missingRows,
+	uint64_t extraRows,
+	uint64_t triplexMismatches,
+	bool gateFirst1Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_active =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_active ||
+		 (!missingCertificateProducer && certificateValidBeforeD2h) ||
+		 gateFirst1Pass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_scoreinfo_tasks +=
+		gpuScoreInfoTasks;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_candidate_groups +=
+		gpuCandidateGroups;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_replay_attempts +=
+		gpuReplayAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_skipped_groups +=
+		gpuSkippedGroups;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_skipped_attempts +=
+		gpuSkippedAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_cpu_replay_attempts +=
+		cpuReplayAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_baseline_cpu_attempts +=
+		baselineCpuAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_certificate_producer =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_certificate_producer ||
+		 missingCertificateProducer) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_certificate_valid_before_d2h =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_certificate_valid_before_d2h ||
+		 certificateValidBeforeD2h) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_final_cpu_output_membership_required_for_certificate =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_final_cpu_output_membership_required_for_certificate ||
+		 finalCpuOutputMembershipRequiredForCertificate) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_on_missing_bound =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_on_missing_bound ||
+		 fallbackOnMissingBound) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_to_full_cpu_replay =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_to_full_cpu_replay ||
+		 fallbackToFullCpuReplay) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_certificate_false_negatives +=
+		certificateFalseNegatives;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_scoreinfo_prealign_reduced =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_scoreinfo_prealign_reduced ||
+		 scoreInfoPrealignReduced) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_align_side_reduced =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_align_side_reduced ||
+		 alignSideReduced) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_accounting_clean =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_fallback_accounting_clean ||
+		 fallbackAccountingClean) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_full_rows_equal =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_full_rows_equal ||
+		 fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_digest_match =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_digest_match ||
+		 digestMatch) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_missing_rows +=
+		missingRows;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_extra_rows +=
+		extraRows;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_triplex_mismatches +=
+		triplexMismatches;
+	g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gate_first1_pass =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_first1_shadow_gate_first1_pass ||
+		 gateFirst1Pass) ? 1 : 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_active = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_real_certificate_source = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_real_work_drop_path = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_runtime_certificate_is_synthetic = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_missing_certificate = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_active = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_certificate_source = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_work_drop_path = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_certificate_is_synthetic = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_pre_drop = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_legacy_byte_cuda = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_final_cpu_output_membership_required = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_missing_certificate = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_align_side_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_accounting_clean = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_source_pass = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_real_source_certificate_source(
+	uint64_t sourceTaskCount,
+	uint64_t sourceScoreInfoCount,
+	uint64_t sourceAttemptCount,
+	uint64_t referenceScoreInfoCount,
+	uint64_t referenceAttemptCount,
+	uint64_t certificateFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool realCertificateSource,
+	bool sourceIsPreDrop,
+	bool sourceIsLegacyByteCuda,
+	bool fallbackAccountingClean,
+	bool cpuAlignAuthority,
+	bool gateFirst1SourcePass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_active =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_active ||
+		 sourceAttemptCount > 0 || gateFirst1SourcePass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_certificate_source =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_certificate_source ||
+		 realCertificateSource) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_real_work_drop_path = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_certificate_is_synthetic = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_pre_drop =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_pre_drop ||
+		 sourceIsPreDrop) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_legacy_byte_cuda =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_is_legacy_byte_cuda ||
+		 sourceIsLegacyByteCuda) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_final_cpu_output_membership_required = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_task_count +=
+		sourceTaskCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_scoreinfo_count +=
+		sourceScoreInfoCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_source_attempt_count +=
+		sourceAttemptCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_reference_scoreinfo_count +=
+		referenceScoreInfoCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_reference_attempt_count +=
+		referenceAttemptCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_missing_certificate =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_missing_certificate ||
+		 !realCertificateSource) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_align_side_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_accounting_clean =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_fallback_accounting_clean ||
+		 fallbackAccountingClean) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_certificate_false_negatives +=
+		certificateFalseNegatives;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_full_rows_equal = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_digest_match = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_source_pass =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_source_pass ||
+		 gateFirst1SourcePass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_real_source_certificate_source_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_active = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_certificate_source = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_uses_pre_drop_output_inert_proof = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_work_drop_path = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_final_cpu_output_membership_required = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_not_top5_only_contract = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_complete_row_set_contract = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_digest_match = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gate_first1_proof_pass = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow(
+	uint64_t sourceTaskCount,
+	uint64_t sourceScoreInfoCount,
+	uint64_t sourceAttemptCount,
+	uint64_t referenceScoreInfoCount,
+	uint64_t referenceAttemptCount,
+	uint64_t candidateProofFalseNegatives,
+	uint64_t candidateProofMissingRequiredAttempts,
+	bool realCertificateSource,
+	bool proofMustNotUseTop5OnlyContract,
+	bool proofMustCoverCompleteRowSet,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_active =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_active ||
+		 realCertificateSource || sourceAttemptCount > 0) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_certificate_source =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_certificate_source ||
+		 realCertificateSource) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_uses_pre_drop_output_inert_proof = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_real_work_drop_path = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_final_cpu_output_membership_required = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_not_top5_only_contract =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_not_top5_only_contract ||
+		 proofMustNotUseTop5OnlyContract) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_complete_row_set_contract =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_complete_row_set_contract ||
+		 proofMustCoverCompleteRowSet) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_source_task_count +=
+		sourceTaskCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_source_scoreinfo_count +=
+		sourceScoreInfoCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_source_attempt_count +=
+		sourceAttemptCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_reference_scoreinfo_count +=
+		referenceScoreInfoCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_reference_attempt_count +=
+		referenceAttemptCount;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_candidate_proof_false_negatives +=
+		candidateProofFalseNegatives;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_candidate_proof_missing_required_attempts +=
+		candidateProofMissingRequiredAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_digest_match = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gate_first1_proof_pass = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_pre_drop_work_drop_proof_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_active = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_scoreinfo_cert_engine_first1_shadow = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_real_certificate_source = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_valid_before_work_drop = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_valid_before_d2h = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_skipped_scoreinfo_groups = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_skipped_attempts = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_digest_match = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_missing_rows = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_extra_rows = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_triplex_mismatches = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow(
+	uint64_t gpuScoreInfoGroups,
+	uint64_t gpuAttemptFrontierAttempts,
+	uint64_t gpuSelectedReplayAttempts,
+	uint64_t cpuReplayAttempts,
+	uint64_t baselineCpuAttempts,
+	uint64_t certificateFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool realCertificateSource,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_requested = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_active =
+		(g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_active ||
+		 realCertificateSource || gpuAttemptFrontierAttempts > 0) ? 1 : 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_scoreinfo_cert_engine_first1_shadow = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_real_certificate_source =
+		(g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_real_certificate_source ||
+		 realCertificateSource) ? 1 : 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_valid_before_work_drop = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_valid_before_d2h = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_scoreinfo_groups +=
+		gpuScoreInfoGroups;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_attempt_frontier_attempts +=
+		gpuAttemptFrontierAttempts;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_selected_replay_attempts +=
+		gpuSelectedReplayAttempts;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_skipped_scoreinfo_groups = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_skipped_attempts = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_cpu_replay_attempts +=
+		cpuReplayAttempts;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_baseline_cpu_attempts +=
+		baselineCpuAttempts;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_certificate_false_negatives +=
+		certificateFalseNegatives;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_digest_match = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_missing_rows = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_extra_rows = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_triplex_mismatches = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_post_consumer_gpu_scoreinfo_cert_engine_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_active = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_requested = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_active = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_skipped_scoreinfo_groups = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_skipped_attempts = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_produced_before_work_drop = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_consumed_before_cpu_replay_selection = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_digest_match = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_missing_rows = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_extra_rows = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_triplex_mismatches = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_gpu_owned_scoreinfo_consumer_first1_shadow(
+	uint64_t gpuOwnedScoreInfoStates,
+	uint64_t gpuOwnedAttemptFrontierAttempts,
+	uint64_t gpuOwnedReplayFrontierAttempts,
+	uint64_t cpuReplayAttempts,
+	uint64_t baselineCpuAttempts,
+	uint64_t certificateFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool active,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_requested = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_active =
+		(g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_active ||
+		 active || gpuOwnedAttemptFrontierAttempts > 0) ? 1 : 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_requested = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_active =
+		(g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_consumer_active ||
+		 active || gpuOwnedScoreInfoStates > 0) ? 1 : 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_scoreinfo_states +=
+		gpuOwnedScoreInfoStates;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_attempt_frontier_attempts +=
+		gpuOwnedAttemptFrontierAttempts;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_replay_frontier_attempts +=
+		gpuOwnedReplayFrontierAttempts;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_skipped_scoreinfo_groups = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_owned_skipped_attempts = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_cpu_replay_attempts +=
+		cpuReplayAttempts;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_baseline_cpu_attempts +=
+		baselineCpuAttempts;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_produced_before_work_drop = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_consumed_before_cpu_replay_selection = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_certificate_false_negatives +=
+		certificateFalseNegatives;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_digest_match = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_missing_rows = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_extra_rows = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_triplex_mismatches = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_gpu_owned_scoreinfo_consumer_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_full_align_verifier_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_full_align_verifier_first1_shadow_requested = 1;
+	g_stats.phase7_full_align_verifier_first1_shadow_active = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_descriptors = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_proposals = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_proposal_failures = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_verifier_pass = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_verifier_fail = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_cpu_align_fallbacks = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_score_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_endpoint_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_cigar_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_full_row_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_digest_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_digest_match = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_missing_rows = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_extra_rows = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_triplex_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_full_align_verifier_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_full_align_verifier_first1_shadow_gate_first1_shadow_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_full_align_verifier_first1_shadow(
+	uint64_t descriptors,
+	uint64_t proposals,
+	uint64_t proposalFailures,
+	uint64_t verifierPass,
+	uint64_t verifierFail,
+	uint64_t cpuAlignFallbacks,
+	uint64_t scoreMismatches,
+	uint64_t endpointMismatches,
+	uint64_t cigarMismatches,
+	uint64_t fullRowMismatches,
+	uint64_t digestMismatches,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_full_align_verifier_first1_shadow_requested = 1;
+	g_stats.phase7_full_align_verifier_first1_shadow_active =
+		(g_stats.phase7_full_align_verifier_first1_shadow_active ||
+		 descriptors > 0 || proposals > 0 || verifierPass > 0 || verifierFail > 0) ? 1 : 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_descriptors += descriptors;
+	g_stats.phase7_full_align_verifier_first1_shadow_proposals += proposals;
+	g_stats.phase7_full_align_verifier_first1_shadow_proposal_failures += proposalFailures;
+	g_stats.phase7_full_align_verifier_first1_shadow_verifier_pass += verifierPass;
+	g_stats.phase7_full_align_verifier_first1_shadow_verifier_fail += verifierFail;
+	g_stats.phase7_full_align_verifier_first1_shadow_cpu_align_fallbacks += cpuAlignFallbacks;
+	g_stats.phase7_full_align_verifier_first1_shadow_score_mismatches += scoreMismatches;
+	g_stats.phase7_full_align_verifier_first1_shadow_endpoint_mismatches += endpointMismatches;
+	g_stats.phase7_full_align_verifier_first1_shadow_cigar_mismatches += cigarMismatches;
+	g_stats.phase7_full_align_verifier_first1_shadow_full_row_mismatches += fullRowMismatches;
+	g_stats.phase7_full_align_verifier_first1_shadow_digest_mismatches += digestMismatches;
+	g_stats.phase7_full_align_verifier_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_digest_match = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_missing_rows = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_extra_rows = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_triplex_mismatches = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_full_align_verifier_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_full_align_verifier_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_full_align_verifier_first1_shadow_gate_first1_shadow_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_native_cuda_fasim_dp_engine_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_requested = 1;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_active = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_native_scoreinfo_tiles = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_forward_endpoint_witnesses = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_reverse_start_witnesses = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_traceback_cigar_witnesses = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_certificates = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_certificate_false_negatives = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_missing_required_attempts = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_scoreinfo_byte_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_endpoint_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_reverse_start_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cigar_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_full_row_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_digest_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_digest_match = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_fallbacks = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_score_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_endpoint_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_cigar_traceback_output_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_native_cuda_fasim_dp_engine_first1_shadow(
+	uint64_t nativeScoreInfoTiles,
+	uint64_t forwardEndpointWitnesses,
+	uint64_t reverseStartWitnesses,
+	uint64_t tracebackCigarWitnesses,
+	uint64_t certificates,
+	uint64_t certificateFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	uint64_t cpuAlignFallbacks,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_requested = 1;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_active =
+		(g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_active ||
+		 nativeScoreInfoTiles > 0 || forwardEndpointWitnesses > 0 ||
+		 reverseStartWitnesses > 0 || tracebackCigarWitnesses > 0 ||
+		 certificates > 0) ? 1 : 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_native_scoreinfo_tiles += nativeScoreInfoTiles;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_forward_endpoint_witnesses += forwardEndpointWitnesses;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_reverse_start_witnesses += reverseStartWitnesses;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_traceback_cigar_witnesses += tracebackCigarWitnesses;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_certificates += certificates;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_certificate_false_negatives += certificateFalseNegatives;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_missing_required_attempts += missingRequiredAttempts;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_scoreinfo_byte_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_endpoint_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_reverse_start_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cigar_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_full_row_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_digest_mismatches = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_digest_match = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_fallbacks += cpuAlignFallbacks;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_fallback_accounting_clean = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_score_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_endpoint_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_cigar_traceback_output_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_native_cuda_fasim_dp_engine_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_gpu_upper_bound_reject_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_requested = 1;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_active = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_upper_bound_descriptors = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_upper_bound_certificates = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_reject_candidates_shadow = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_would_reject_scoreinfo_groups = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_would_reject_align_attempts = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_certificate_false_negatives = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_baseline_rows_in_rejected_groups = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_baseline_rows_in_rejected_attempts = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_unsupported_descriptors = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_digest_match = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_score_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_endpoint_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_cigar_traceback_output_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_gpu_upper_bound_reject_first1_shadow(
+	uint64_t upperBoundDescriptors,
+	uint64_t upperBoundCertificates,
+	uint64_t rejectCandidatesShadow,
+	uint64_t wouldRejectScoreInfoGroups,
+	uint64_t wouldRejectAlignAttempts,
+	uint64_t certificateFalseNegatives,
+	uint64_t baselineRowsInRejectedGroups,
+	uint64_t baselineRowsInRejectedAttempts,
+	uint64_t unsupportedDescriptors,
+	bool fullRowsEqual,
+	bool digestMatch,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_requested = 1;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_active =
+		(g_stats.phase7_gpu_upper_bound_reject_first1_shadow_active ||
+		 upperBoundDescriptors > 0 || upperBoundCertificates > 0) ? 1 : 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_upper_bound_descriptors += upperBoundDescriptors;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_upper_bound_certificates += upperBoundCertificates;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_reject_candidates_shadow += rejectCandidatesShadow;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_would_reject_scoreinfo_groups += wouldRejectScoreInfoGroups;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_would_reject_align_attempts += wouldRejectAlignAttempts;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_certificate_false_negatives += certificateFalseNegatives;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_baseline_rows_in_rejected_groups += baselineRowsInRejectedGroups;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_baseline_rows_in_rejected_attempts += baselineRowsInRejectedAttempts;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_unsupported_descriptors += unsupportedDescriptors;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_full_rows_equal =
+		(g_stats.phase7_gpu_upper_bound_reject_first1_shadow_full_rows_equal ||
+		 fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_digest_match =
+		(g_stats.phase7_gpu_upper_bound_reject_first1_shadow_digest_match ||
+		 digestMatch) ? 1 : 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_gpu_upper_bound_reject_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_score_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_endpoint_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_cigar_traceback_output_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gate_first1_shadow_pass =
+		upperBoundDescriptors > 0 && upperBoundCertificates > 0 &&
+		certificateFalseNegatives == 0 && baselineRowsInRejectedGroups == 0 &&
+		baselineRowsInRejectedAttempts == 0 && unsupportedDescriptors == 0 &&
+		fullRowsEqual && digestMatch ? 1 : 0;
+	g_stats.phase7_gpu_upper_bound_reject_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_gpu_exact_work_unit_compaction_first1_shadow_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_requested = 1;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_active = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_key_descriptors = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_unique_keys = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_duplicate_units = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_key_descriptors = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_unique_keys = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_duplicate_attempts = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_key_collisions = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_key_validation_mismatches = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_unsupported_key_descriptors = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_full_rows_equal = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_digest_match = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_align_authority = 1;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_score_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_endpoint_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_cigar_traceback_output_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gate_first1_shadow_pass = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_gpu_exact_work_unit_compaction_first1_shadow(
+	uint64_t scoreInfoKeyDescriptors,
+	uint64_t scoreInfoUniqueKeys,
+	uint64_t scoreInfoDuplicateUnits,
+	uint64_t alignKeyDescriptors,
+	uint64_t alignUniqueKeys,
+	uint64_t alignDuplicateAttempts,
+	uint64_t keyCollisions,
+	uint64_t cpuKeyValidationMismatches,
+	uint64_t unsupportedKeyDescriptors,
+	bool fullRowsEqual,
+	bool digestMatch,
+	bool cpuAlignAuthority)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_requested = 1;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_active =
+		(g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_active ||
+		 scoreInfoKeyDescriptors > 0 || alignKeyDescriptors > 0) ? 1 : 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_key_descriptors +=
+		scoreInfoKeyDescriptors;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_unique_keys +=
+		scoreInfoUniqueKeys;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_duplicate_units +=
+		scoreInfoDuplicateUnits;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_key_descriptors +=
+		alignKeyDescriptors;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_unique_keys +=
+		alignUniqueKeys;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_duplicate_attempts +=
+		alignDuplicateAttempts;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_key_collisions +=
+		keyCollisions;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_key_validation_mismatches +=
+		cpuKeyValidationMismatches;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_unsupported_key_descriptors +=
+		unsupportedKeyDescriptors;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_fallback_to_full_cpu_replay = 1;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_scoreinfo_prealign_reduced = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_align_side_reduced = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_full_rows_equal =
+		(g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_full_rows_equal ||
+		 fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_digest_match =
+		(g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_digest_match ||
+		 digestMatch) ? 1 : 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_reduction_enabled = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_runtime_work_drop_enabled = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_align_authority =
+		(g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_score_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_endpoint_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_cigar_traceback_output_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gpu_output_digest_authority = 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gate_first1_shadow_pass =
+		scoreInfoKeyDescriptors > 0 && alignKeyDescriptors > 0 &&
+		keyCollisions == 0 && cpuKeyValidationMismatches == 0 &&
+		unsupportedKeyDescriptors == 0 && fullRowsEqual && digestMatch ? 1 : 0;
+	g_stats.phase7_gpu_exact_work_unit_compaction_first1_shadow_gate_first1_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested()
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_active = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_producer_active = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_valid_before_d2h = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_final_cpu_output_membership_required_for_certificate = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_groups = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempts = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_conservative_fallback_groups = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_false_negatives = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_missing_required_attempts = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_scoreinfo_upper_bound_score = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_score = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_nt = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_identity = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_stability = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_task_output_capacity_exhausted = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_scoreinfo_local_break_state = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_cuda_api_gate_pass = 0;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_producer_first1_pass(
+	uint64_t skippedGroups,
+	uint64_t skippedAttempts,
+	uint64_t conservativeFallbackGroups,
+	uint64_t skippedScoreInfoUpperBoundScore,
+	uint64_t skippedAttemptUpperBoundScore,
+	uint64_t skippedAttemptUpperBoundNt,
+	uint64_t skippedAttemptUpperBoundIdentity,
+	uint64_t skippedAttemptUpperBoundStability,
+	uint64_t taskOutputCapacityExhausted,
+	uint64_t scoreInfoLocalBreakState)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_requested = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_active = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_producer_active = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_valid_before_d2h = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_final_cpu_output_membership_required_for_certificate = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_groups = skippedGroups;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempts = skippedAttempts;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_conservative_fallback_groups = conservativeFallbackGroups;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_false_negatives = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_missing_required_attempts = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_scoreinfo_upper_bound_score =
+		skippedScoreInfoUpperBoundScore;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_score =
+		skippedAttemptUpperBoundScore;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_nt =
+		skippedAttemptUpperBoundNt;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_identity =
+		skippedAttemptUpperBoundIdentity;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_skipped_attempt_upper_bound_stability =
+		skippedAttemptUpperBoundStability;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_task_output_capacity_exhausted =
+		taskOutputCapacityExhausted;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_scoreinfo_local_break_state =
+		scoreInfoLocalBreakState;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_runtime_reduction_enabled = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_cpu_align_authority = 1;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_cuda_api_gate_pass = 1;
+}
+
+void fasim_gasal2_record_phase7_post_v5_3_host_assisted_consumer_feasibility(
+	uint64_t tasks,
+	bool active,
+	bool hostAssisted,
+	bool sourceIsV5Descriptors,
+	bool gpuConsumerReducesBeforeHostTransfer,
+	uint64_t hostSelectedAttempts,
+	uint64_t prefixDescriptorAttempts,
+	uint64_t referenceAlignAttempts,
+	uint64_t candidateAlignAttempts,
+	uint64_t v5CandidateAlignAttempts,
+	bool candidateAlignAttemptsLessThanV5,
+	uint64_t descriptorFalseNegatives,
+	uint64_t missingRequiredAttempts,
+	bool fallbackAccountingClean,
+	bool cpuAlignAuthority,
+	bool digestMatch,
+	bool fullRowsEqual,
+	uint64_t missingRows,
+	uint64_t extraRows,
+	uint64_t triplexMismatches,
+	bool gateFirst1Pass)
+{
+	std::lock_guard<std::mutex> lock(g_mutex);
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_requested = 1;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_active =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_active ||
+		 active || gateFirst1Pass) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_tasks += tasks;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_host_assisted =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_host_assisted ||
+		 hostAssisted) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_source_is_v5_descriptors =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_source_is_v5_descriptors ||
+		 sourceIsV5Descriptors) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gpu_consumer_reduces_before_host_transfer =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gpu_consumer_reduces_before_host_transfer ||
+		 gpuConsumerReducesBeforeHostTransfer) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_host_selected_attempts +=
+		hostSelectedAttempts;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_prefix_descriptor_attempts +=
+		prefixDescriptorAttempts;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_reference_align_attempts +=
+		referenceAlignAttempts;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_candidate_align_attempts +=
+		candidateAlignAttempts;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_v5_candidate_align_attempts +=
+		v5CandidateAlignAttempts;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_candidate_align_attempts_less_than_v5 =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_candidate_align_attempts_less_than_v5 ||
+		 candidateAlignAttemptsLessThanV5) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_descriptor_false_negatives +=
+		descriptorFalseNegatives;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_missing_required_attempts +=
+		missingRequiredAttempts;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_fallback_accounting_clean =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_fallback_accounting_clean ||
+		 fallbackAccountingClean) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_cpu_align_authority =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_cpu_align_authority ||
+		 cpuAlignAuthority) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gpu_endpoint_cigar_traceback_output_authority = 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_digest_match =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_digest_match ||
+		 digestMatch) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_full_rows_equal =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_full_rows_equal ||
+		 fullRowsEqual) ? 1 : 0;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_missing_rows +=
+		missingRows;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_extra_rows +=
+		extraRows;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_triplex_mismatches +=
+		triplexMismatches;
+	g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gate_first1_pass =
+		(g_stats.phase7_post_v5_3_host_assisted_consumer_feasibility_gate_first1_pass ||
+		 gateFirst1Pass) ? 1 : 0;
 }
 
 bool select_attempts_impl(const std::string &query,

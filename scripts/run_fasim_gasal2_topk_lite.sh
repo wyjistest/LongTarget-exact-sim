@@ -18,6 +18,16 @@ RESUME="${RESUME:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 LEGACY_DIRECT="${LEGACY_DIRECT:-0}"
 GROUP_TARGET_RECORDS="${GROUP_TARGET_RECORDS:-}"
+TRACEBACK_THRESHOLD_CALIBRATE="${TRACEBACK_THRESHOLD_CALIBRATE:-0}"
+TRACEBACK_THRESHOLD_CALIBRATION_THRESHOLDS="${TRACEBACK_THRESHOLD_CALIBRATION_THRESHOLDS:-80 90 100 110 115 116 117 118 120}"
+TRACEBACK_THRESHOLD_CALIBRATION_MAX_RECORDS="${TRACEBACK_THRESHOLD_CALIBRATION_MAX_RECORDS:-1}"
+TRACEBACK_THRESHOLD_CALIBRATION_MAX_BASES="${TRACEBACK_THRESHOLD_CALIBRATION_MAX_BASES:-2000000}"
+TRACEBACK_THRESHOLD_CALIBRATION_WINDOWS="${TRACEBACK_THRESHOLD_CALIBRATION_WINDOWS:-8}"
+TRACEBACK_THRESHOLD_CALIBRATION_MIN_TRACEBACK_REQUESTS="${TRACEBACK_THRESHOLD_CALIBRATION_MIN_TRACEBACK_REQUESTS:-1}"
+TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_TSV="${TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_TSV:-}"
+TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_WINDOW_BASES="${TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_WINDOW_BASES:-250000}"
+TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_MAX_WINDOWS="${TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_MAX_WINDOWS:-0}"
+TRACEBACK_THRESHOLD_CALIBRATION_REQUIRE_BOUNDARY="${TRACEBACK_THRESHOLD_CALIBRATION_REQUIRE_BOUNDARY:-1}"
 
 # Legacy direct Fasim mode is retained only for historical diagnostics.
 PRUNE_MAX_PER_TASK="${PRUNE_MAX_PER_TASK:-16}"
@@ -125,6 +135,60 @@ PY
 }
 
 run_formal_runner() {
+  local traceback_threshold=""
+  if [[ "$TRACEBACK_THRESHOLD_CALIBRATE" == "1" ]]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+      echo "TRACEBACK_THRESHOLD_CALIBRATE=1"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_THRESHOLDS=$TRACEBACK_THRESHOLD_CALIBRATION_THRESHOLDS"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_MAX_RECORDS=$TRACEBACK_THRESHOLD_CALIBRATION_MAX_RECORDS"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_MAX_BASES=$TRACEBACK_THRESHOLD_CALIBRATION_MAX_BASES"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_WINDOWS=$TRACEBACK_THRESHOLD_CALIBRATION_WINDOWS"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_MIN_TRACEBACK_REQUESTS=$TRACEBACK_THRESHOLD_CALIBRATION_MIN_TRACEBACK_REQUESTS"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_TSV=$TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_TSV"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_WINDOW_BASES=$TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_WINDOW_BASES"
+      echo "TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_MAX_WINDOWS=$TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_MAX_WINDOWS"
+    else
+      local calibration_dir="${OUT}.traceback_threshold_calibration"
+      local calibration_status
+      rm -rf "$calibration_dir"
+      mkdir -p "$calibration_dir"
+      set +e
+      BIN="$BIN" \
+      DNA="$DNA" \
+      RNA="$RNA" \
+      RULE="$RULE" \
+      WORK="$calibration_dir" \
+      THRESHOLDS="$TRACEBACK_THRESHOLD_CALIBRATION_THRESHOLDS" \
+      MAX_RECORDS="$TRACEBACK_THRESHOLD_CALIBRATION_MAX_RECORDS" \
+      MAX_BASES="$TRACEBACK_THRESHOLD_CALIBRATION_MAX_BASES" \
+      WINDOWS="$TRACEBACK_THRESHOLD_CALIBRATION_WINDOWS" \
+      MIN_TRACEBACK_REQUESTS="$TRACEBACK_THRESHOLD_CALIBRATION_MIN_TRACEBACK_REQUESTS" \
+      ANCHOR_TSV="$TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_TSV" \
+      ANCHOR_WINDOW_BASES="$TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_WINDOW_BASES" \
+      ANCHOR_MAX_WINDOWS="$TRACEBACK_THRESHOLD_CALIBRATION_ANCHOR_MAX_WINDOWS" \
+      ESTIMATOR_REQUIRE_FAILING_BOUNDARY="$TRACEBACK_THRESHOLD_CALIBRATION_REQUIRE_BOUNDARY" \
+        bash "$ROOT/scripts/calibrate_fasim_gasal2_traceback_threshold.sh" \
+        >"$calibration_dir.stdout" 2>"$calibration_dir.stderr"
+      calibration_status=$?
+      set -e
+      if [[ "$calibration_status" -ne 0 && ! -s "$calibration_dir/estimate.txt" ]]; then
+        echo "traceback threshold calibration failed before writing an estimate" >&2
+        exit "$calibration_status"
+      fi
+      local calibration_decision
+      calibration_decision="$(awk -F= '/^decision=/{print $2}' "$calibration_dir/estimate.txt")"
+      traceback_threshold="$(awk -F= '/^recommended_threshold=/{print $2}' "$calibration_dir/estimate.txt")"
+      if [[ -n "$traceback_threshold" && "$traceback_threshold" != "NA" ]] \
+          && [[ "$calibration_decision" == "query_specific_threshold_candidate" \
+                || "$TRACEBACK_THRESHOLD_CALIBRATION_REQUIRE_BOUNDARY" != "1" ]]; then
+        echo "traceback threshold calibration selected $traceback_threshold ($calibration_decision)" >&2
+      else
+        echo "traceback threshold calibration did not produce a bounded usable threshold; continuing without traceback threshold" >&2
+        traceback_threshold=""
+      fi
+    fi
+  fi
+
   local runner_cmd=(
     python3 "$ROOT/scripts/fasim_sharded_runner.py"
     --fasim-bin "$BIN"
@@ -137,6 +201,9 @@ run_formal_runner() {
     --gasal2-top5-column-pruned-scoreinfo
     --workers "$WORKERS"
   )
+  if [[ -n "$traceback_threshold" ]]; then
+    runner_cmd+=(--env "FASIM_TOP5_GASAL2_TRACEBACK_MIN_PREALIGN_SCORE=$traceback_threshold")
+  fi
   if [[ -n "$GPU_IDS" ]]; then
     runner_cmd+=(--gpu-ids "$GPU_IDS")
   fi
