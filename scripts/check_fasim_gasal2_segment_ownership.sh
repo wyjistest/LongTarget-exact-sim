@@ -99,12 +99,11 @@ if grep -Fq 'Phase 2 is `no_go`' "$DOC" && \
 fi
 
 goal_consistent=0
-if grep -Fq 'active_phase = 3' "$GOAL" && \
-   grep -Fq 'phase_2_status = no_go' "$GOAL" && \
-   grep -Fq 'last_completed_phase = 2' "$GOAL" && \
-   grep -Fq 'last_decision = phase_2_segment_ownership_no_go' "$GOAL" && \
-   grep -Fq 'last_evidence_doc = docs/fasim_gasal2_segment_ownership.md' "$GOAL" && \
-   grep -Fq 'last_test_command = make check-fasim-gasal2-segment-ownership' "$GOAL"; then
+active_phase="$(awk -F' = ' '$1 == "active_phase" {print $2; exit}' "$GOAL")"
+last_completed_phase="$(awk -F' = ' '$1 == "last_completed_phase" {print $2; exit}' "$GOAL")"
+if grep -Fq 'phase_2_status = no_go' "$GOAL" && \
+   [[ "$active_phase" =~ ^[0-9]+$ ]] && (( active_phase >= 3 )) && \
+   [[ "$last_completed_phase" =~ ^[0-9]+$ ]] && (( last_completed_phase >= 2 )); then
   goal_consistent=1
 fi
 

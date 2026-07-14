@@ -1273,6 +1273,12 @@ check-fasim-gasal2-segment-ownership:
 
 .PHONY: characterize-fasim-gasal2-segment-ownership-h19 check-fasim-gasal2-segment-ownership
 
+check-fasim-gasal2-multi-segment-context-phase3:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_multi_segment_context_phase3) \
+	bash ./scripts/check_fasim_gasal2_multi_segment_context_phase3.sh
+
+.PHONY: check-fasim-gasal2-multi-segment-context-phase3
+
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
 
