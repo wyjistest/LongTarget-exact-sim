@@ -48,10 +48,10 @@ blocked
 Codex 每完成一个 phase，必须更新此块；不得提前把后续 phase 标为 `pass`。
 
 ```text
-active_phase = 1
+active_phase = 2
 
 phase_0_status = pass
-phase_1_status = pending
+phase_1_status = pass
 phase_2_status = pending
 phase_3_status = pending
 phase_4_status = pending
@@ -60,11 +60,11 @@ phase_6_status = pending
 phase_7_status = pending
 phase_8_status = pending
 
-last_completed_phase = 0
-last_decision = phase_0_baseline_frozen
-last_evidence_doc = docs/fasim_gasal2_long_query_architecture_baseline.md
-last_test_command = make check-fasim-gasal2-long-query-phase0
-last_commit = docs/test: freeze long-query GASAL2 architecture baseline
+last_completed_phase = 1
+last_decision = phase_1_segmented_archive_first_pass
+last_evidence_doc = docs/fasim_gasal2_segmented_archive_first.md
+last_test_command = make check-fasim-gasal2-segmented-archive-first
+last_commit = fasim: add archive-first streaming merge for segmented queries
 ```
 
 ### Phase 依赖

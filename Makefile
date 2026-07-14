@@ -1253,6 +1253,13 @@ check-fasim-gasal2-long-query-phase0:
 
 .PHONY: check-fasim-gasal2-long-query-phase0
 
+check-fasim-gasal2-segmented-archive-first:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_segmented_archive_first) \
+	bash ./scripts/check_fasim_gasal2_segmented_archive_first.sh
+
+.PHONY: check-fasim-gasal2-segmented-archive-first
+
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
 

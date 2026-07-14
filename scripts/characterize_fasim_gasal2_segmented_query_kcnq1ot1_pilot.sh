@@ -15,6 +15,9 @@ MAX_SEGMENTS="${MAX_SEGMENTS:-4}"
 PRUNE_MAX_PER_TASK="${PRUNE_MAX_PER_TASK:-256}"
 GASAL2_STREAMS="${GASAL2_STREAMS:-3}"
 GASAL2_BATCH="${GASAL2_BATCH:-20000}"
+MERGE_DEDUP_BACKEND="${MERGE_DEDUP_BACKEND:-sqlite}"
+KEEP_DEDUP_DB="${KEEP_DEDUP_DB:-0}"
+CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE="${CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE:-0}"
 
 MERGE_SCRIPT="$ROOT/scripts/merge_fasim_segmented_tfosorted.py"
 CLUSTER_COMPARE="$ROOT/scripts/compare_fasim_lite_offline_cluster_topk.py"
@@ -48,9 +51,22 @@ if (( SEGMENT_LEN > 2812 )); then
   echo "SEGMENT_LEN exceeds current verified GASAL2 query contract" >&2
   exit 1
 fi
+if [[ "$MERGE_DEDUP_BACKEND" != "memory" && "$MERGE_DEDUP_BACKEND" != "sqlite" ]]; then
+  echo "MERGE_DEDUP_BACKEND must be memory or sqlite" >&2
+  exit 1
+fi
+if [[ "$KEEP_DEDUP_DB" != "0" && "$KEEP_DEDUP_DB" != "1" ]]; then
+  echo "KEEP_DEDUP_DB must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "$CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE" != "0" && "$CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE" != "1" ]]; then
+  echo "CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE must be 0 or 1" >&2
+  exit 1
+fi
 
 rm -rf "$WORK"
 mkdir -p "$WORK/grids"
+pipeline_start="$(date +%s.%N)"
 
 now_seconds() {
   python3 - <<'PY'
@@ -66,9 +82,40 @@ print(f"{float(sys.argv[2]) - float(sys.argv[1]):.6f}")
 PY
 }
 
-find_tfosorted_output() {
+find_unique_archive_output() {
   local dir="$1"
-  find "$dir" -maxdepth 1 -type f -name '*-TFOsorted' | sort | head -n 1
+  local -a archives=()
+  mapfile -t archives < <(find "$dir" -maxdepth 1 -type f -name '*.archive-first.tfoa' | sort)
+  if (( ${#archives[@]} != 1 )); then
+    echo "expected exactly one segment archive-first artifact in $dir; found ${#archives[@]}" >&2
+    return 1
+  fi
+  printf '%s\n' "${archives[0]}"
+}
+
+reject_full_tfosorted_output() {
+  local dir="$1"
+  local -a outputs=()
+  mapfile -t outputs < <(find "$dir" -maxdepth 1 -type f -name '*-TFOsorted' | sort)
+  if (( ${#outputs[@]} != 0 )); then
+    echo "archive-first run emitted full segment TFOsorted in $dir: ${outputs[*]}" >&2
+    return 1
+  fi
+}
+
+sha256_file() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+required_stderr_metric() {
+  local file="$1"
+  local key="$2"
+  local value
+  value="$(awk -F= -v key="$key" '$1 == key {print $2; found=1} END {if (!found) exit 1}' "$file")" || {
+    echo "missing required runtime metric $key in $file" >&2
+    return 1
+  }
+  printf '%s\n' "$value"
 }
 
 run_gasal2_tfosorted() {
@@ -83,6 +130,7 @@ run_gasal2_tfosorted() {
     FASIM_TOP5_GASAL2_SCOREINFO_PRUNE_MAX_PER_TASK="$PRUNE_MAX_PER_TASK" \
     FASIM_ALIGN_GASAL2_STREAMS="$GASAL2_STREAMS" \
     FASIM_ALIGN_GASAL2_BATCH="$GASAL2_BATCH" \
+    FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT=1 \
     "$BIN" -f1 "$TARGET" -f2 "$query" -r "$RULE" -O "$out_dir" \
     >"$out_dir/stdout.log" 2>"$out_dir/stderr.log"
 }
@@ -157,7 +205,7 @@ for shift in grid_shifts:
     manifest = grid_dir / "segments.tsv"
     with manifest.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(["segment_id", "global_start", "global_end", "query_len", "fasta", "tfosorted"])
+        writer.writerow(["segment_id", "global_start", "global_end", "query_len", "fasta"])
         for idx, start in enumerate(starts):
             end = min(start + segment_len, query_len)
             seq = sequence[start:end]
@@ -169,7 +217,7 @@ for shift in grid_shifts:
                 )
                 for pos in range(0, len(seq), 80):
                     out.write(seq[pos:pos + 80] + "\n")
-            writer.writerow([idx, start, end, len(seq), fasta, ""])
+            writer.writerow([idx, start, end, len(seq), fasta])
     grid_ranges.append((min(starts), max(start + segment_len for start in starts)))
     print(f"grid_shift_{shift}_segment_count={len(starts)}")
     print(f"grid_shift_{shift}_range_start={min(starts)}")
@@ -195,39 +243,67 @@ common_query_start="$(awk -F= '$1=="common_query_start"{print $2}' "$WORK/window
 common_query_end="$(awk -F= '$1=="common_query_end"{print $2}' "$WORK/window_summary.txt")"
 merged_outputs=()
 all_stderr_files=()
+all_archive_files=()
+merge_summary_files=()
+target_sha256="$(sha256_file "$TARGET")"
+per_segment_full_text_emitted=0
 
 for shift in "${grid_shifts[@]}"; do
   grid_dir="$WORK/grids/shift_${shift}"
   segments_manifest="$grid_dir/segments.tsv"
   outputs_manifest="$grid_dir/segment_outputs.tsv"
   {
-    IFS=$'\t' read -r header_segment_id header_start header_end header_len header_fasta header_tfosorted
-    printf '%s\t%s\t%s\t%s\n' "segment_id" "global_start" "global_end" "tfosorted"
-    while IFS=$'\t' read -r segment_id global_start global_end query_len fasta ignored_tfosorted; do
+    IFS=$'\t' read -r header_segment_id header_start header_end header_len header_fasta
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "segment_id" "global_start" "global_end" "artifact_kind" "artifact_path" \
+      "query_fasta" "query_fasta_sha256" "target_fasta" "target_fasta_sha256"
+    while IFS=$'\t' read -r segment_id global_start global_end query_len fasta; do
       out_dir="$grid_dir/run_${segment_id}"
       mkdir -p "$out_dir"
       segment_start="$(now_seconds)"
       run_gasal2_tfosorted "$fasta" "$out_dir"
       segment_end="$(now_seconds)"
       elapsed_seconds "$segment_start" "$segment_end" >"$out_dir/wall_seconds.txt"
-      tfosorted="$(find_tfosorted_output "$out_dir")"
-      if [[ -z "$tfosorted" || ! -s "$tfosorted" ]]; then
-        echo "missing segment TFOsorted output for shift $shift segment $segment_id" >&2
+      archive="$(find_unique_archive_output "$out_dir")"
+      if [[ ! -s "$archive" ]]; then
+        echo "empty segment archive-first artifact for shift $shift segment $segment_id: $archive" >&2
         exit 1
       fi
-      printf '%s\t%s\t%s\t%s\n' "$segment_id" "$global_start" "$global_end" "$tfosorted"
+      reject_full_tfosorted_output "$out_dir"
+      archive_requested="$(required_stderr_metric "$out_dir/stderr.log" benchmark.fasim_gasal2_archive_first_output_requested)"
+      archive_active="$(required_stderr_metric "$out_dir/stderr.log" benchmark.fasim_gasal2_archive_first_output_active)"
+      archive_decision="$(required_stderr_metric "$out_dir/stderr.log" benchmark.fasim_gasal2_archive_first_output_decision)"
+      if [[ "$archive_requested" != "1" || "$archive_active" != "1" || "$archive_decision" != "active" ]]; then
+        echo "archive-first runtime inactive for shift $shift segment $segment_id: requested=$archive_requested active=$archive_active decision=$archive_decision" >&2
+        exit 1
+      fi
+      query_sha256="$(sha256_file "$fasta")"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$segment_id" "$global_start" "$global_end" "archive_first_tfoa" "$archive" \
+        "$fasta" "$query_sha256" "$TARGET" "$target_sha256"
       all_stderr_files+=("$out_dir/stderr.log")
+      all_archive_files+=("$archive")
     done
   } <"$segments_manifest" >"$outputs_manifest"
 
   merged="$grid_dir/merged-common-TFOsorted"
-  python3 "$MERGE_SCRIPT" \
+  merge_command=(
+    python3 "$MERGE_SCRIPT"
     --segments "$outputs_manifest" \
     --query-min "$common_query_start" \
     --query-max "$common_query_end" \
-    --output "$merged" \
-    >"$grid_dir/merge_summary.txt"
+    --output "$merged"
+    --dedup-backend "$MERGE_DEDUP_BACKEND"
+  )
+  if [[ "$MERGE_DEDUP_BACKEND" == "sqlite" ]]; then
+    merge_command+=(--dedup-db "$grid_dir/merge-dedup.sqlite")
+    if [[ "$KEEP_DEDUP_DB" == "1" ]]; then
+      merge_command+=(--keep-dedup-db)
+    fi
+  fi
+  "${merge_command[@]}" >"$grid_dir/merge_summary.txt"
   merged_outputs+=("$merged")
+  merge_summary_files+=("$grid_dir/merge_summary.txt")
 done
 
 if (( ${#merged_outputs[@]} < 2 )); then
@@ -241,6 +317,12 @@ python3 "$CLUSTER_COMPARE" \
   --k 5 \
   --details "$WORK/offline_cluster_grid_compare_details.tsv" \
   >"$WORK/offline_cluster_grid_compare.txt" || true
+
+if [[ "$CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE" == "1" ]]; then
+  for archive in "${all_archive_files[@]}"; do
+    rm -f -- "$archive"
+  done
+fi
 
 metric_or_default() {
   local file="$1"
@@ -261,12 +343,53 @@ sum_stderr_metric() {
   ' "$@"
 }
 
+sum_summary_metric() {
+  local key="$1"
+  shift
+  awk -F= -v key="$key" '
+    $1 == key && $2 ~ /^[0-9]+([.][0-9]+)?$/ {sum += $2; found=1}
+    END {if (found) printf "%.6f", sum; else print "unavailable"}
+  ' "$@"
+}
+
+sum_summary_integer() {
+  local key="$1"
+  shift
+  awk -F= -v key="$key" '
+    $1 == key && $2 ~ /^[0-9]+$/ {sum += $2; found=1}
+    END {if (found) printf "%.0f", sum; else print "unavailable"}
+  ' "$@"
+}
+
+max_summary_integer() {
+  local key="$1"
+  shift
+  awk -F= -v key="$key" '
+    $1 == key && $2 ~ /^[0-9]+$/ {if (!found || $2 > max) max=$2; found=1}
+    END {if (found) printf "%.0f", max; else print "unavailable"}
+  ' "$@"
+}
+
 gasal2_requests="$(sum_stderr_metric benchmark.fasim_gasal2_requests "${all_stderr_files[@]}")"
 gasal2_traceback_requests="$(sum_stderr_metric benchmark.fasim_gasal2_traceback_requests "${all_stderr_files[@]}")"
 gasal2_fallbacks="$(sum_stderr_metric benchmark.fasim_gasal2_fallbacks "${all_stderr_files[@]}")"
 length_guard_fallbacks="$(sum_stderr_metric benchmark.fasim_gasal2_length_guard_fallbacks "${all_stderr_files[@]}")"
 cluster_equal="$(metric_or_default "$WORK/offline_cluster_grid_compare.txt" top5_offline_cluster_equal false)"
 cluster_overlap="$(metric_or_default "$WORK/offline_cluster_grid_compare.txt" top5_offline_cluster_overlap 0)"
+segment_run_wall_seconds="$(awk '{sum += $1} END {printf "%.6f", sum}' "$WORK"/grids/shift_*/run_*/wall_seconds.txt)"
+archive_input_bytes="$(sum_summary_integer archive_input_bytes "${merge_summary_files[@]}")"
+segment_archives_retained=0
+for archive in "${all_archive_files[@]}"; do
+  if [[ -f "$archive" ]]; then
+    segment_archives_retained=$((segment_archives_retained + 1))
+  fi
+done
+bounded_memory_backend_active=0
+if [[ "$MERGE_DEDUP_BACKEND" == "sqlite" ]]; then
+  bounded_memory_backend_active=1
+fi
+pipeline_end="$(now_seconds)"
+pipeline_wall_seconds="$(elapsed_seconds "$pipeline_start" "$pipeline_end")"
 
 decision="segmented_query_kcnq1ot1_pilot_incomplete"
 if [[ "$cluster_equal" == "true" && "$gasal2_fallbacks" == "0" && "$length_guard_fallbacks" == "0" ]]; then
@@ -278,6 +401,25 @@ fi
   for shift in "${grid_shifts[@]}"; do
     sed "s/^/shift_${shift}_/" "$WORK/grids/shift_${shift}/merge_summary.txt"
   done
+  printf 'artifact_kind_counts=archive_first_tfoa:%s\n' "${#all_archive_files[@]}"
+  printf 'archive_input_bytes=%s\n' "$archive_input_bytes"
+  printf 'text_input_bytes=0\n'
+  printf 'input_rows=%s\n' "$(sum_summary_integer input_rows "${merge_summary_files[@]}")"
+  printf 'output_rows=%s\n' "$(sum_summary_integer output_rows "${merge_summary_files[@]}")"
+  printf 'duplicate_rows=%s\n' "$(sum_summary_integer duplicate_rows "${merge_summary_files[@]}")"
+  printf 'filtered_rows=%s\n' "$(sum_summary_integer filtered_rows "${merge_summary_files[@]}")"
+  printf 'dedup_backend=%s\n' "$MERGE_DEDUP_BACKEND"
+  printf 'dedup_db_bytes=%s\n' "$(sum_summary_integer dedup_db_bytes "${merge_summary_files[@]}")"
+  printf 'merge_wall_seconds=%s\n' "$(sum_summary_metric merge_wall_seconds "${merge_summary_files[@]}")"
+  printf 'restore_wall_seconds=%s\n' "$(sum_summary_metric restore_wall_seconds "${merge_summary_files[@]}")"
+  printf 'dedup_wall_seconds=%s\n' "$(sum_summary_metric dedup_wall_seconds "${merge_summary_files[@]}")"
+  printf 'write_wall_seconds=%s\n' "$(sum_summary_metric write_wall_seconds "${merge_summary_files[@]}")"
+  printf 'peak_rss_kb=%s\n' "$(max_summary_integer peak_rss_kb "${merge_summary_files[@]}")"
+  printf 'segment_run_wall_seconds=%s\n' "$segment_run_wall_seconds"
+  printf 'pipeline_wall_seconds=%s\n' "$pipeline_wall_seconds"
+  printf 'per_segment_full_text_emitted=%s\n' "$per_segment_full_text_emitted"
+  printf 'bounded_memory_backend_active=%s\n' "$bounded_memory_backend_active"
+  printf 'segment_archives_retained=%s\n' "$segment_archives_retained"
   printf 'gasal2_requests=%s\n' "$gasal2_requests"
   printf 'gasal2_traceback_requests=%s\n' "$gasal2_traceback_requests"
   printf 'gasal2_fallbacks=%s\n' "$gasal2_fallbacks"
