@@ -233,8 +233,11 @@ struct FasimTop5PhaseTimingStats
 		exact_scoreinfo_gpu_column_pruned_output_enabled(false),
 		exact_scoreinfo_gpu_batches(0),
 		exact_scoreinfo_gpu_tasks(0),
+		exact_scoreinfo_gpu_cells(0),
 		exact_scoreinfo_gpu_overflow_batches(0),
 		exact_scoreinfo_gpu_fallback_batches(0),
+		exact_scoreinfo_gpu_validation_tasks(0),
+		exact_scoreinfo_gpu_validation_mismatches(0),
 		exact_scoreinfo_gpu_pruned_output_batches(0),
 		exact_scoreinfo_gpu_pruned_output_input_groups(0),
 		exact_scoreinfo_gpu_pruned_output_kept_groups(0),
@@ -243,6 +246,17 @@ struct FasimTop5PhaseTimingStats
 		exact_column_batches(0),
 		exact_column_tasks(0),
 		exact_column_cells(0),
+		exact_task_shadow_requested(false),
+		exact_task_shadow_active(false),
+		exact_task_shadow_batches(0),
+		exact_tasks_before(0),
+		exact_tasks_after(0),
+		exact_tasks_dropped_identical(0),
+		exact_task_shadow_candidate_tasks_after(0),
+		exact_task_shadow_candidate_tasks_dropped_identical(0),
+		exact_cells_before(0),
+		exact_cells_after(0),
+		exact_task_shadow_candidate_cells_after(0),
 		exact_scoreinfo_groups(0),
 		scoreinfo_prune_enabled(false),
 		scoreinfo_prune_max_per_task(0),
@@ -381,8 +395,11 @@ struct FasimTop5PhaseTimingStats
 	bool exact_scoreinfo_gpu_column_pruned_output_enabled;
 	uint64_t exact_scoreinfo_gpu_batches;
 	uint64_t exact_scoreinfo_gpu_tasks;
+	uint64_t exact_scoreinfo_gpu_cells;
 	uint64_t exact_scoreinfo_gpu_overflow_batches;
 	uint64_t exact_scoreinfo_gpu_fallback_batches;
+	uint64_t exact_scoreinfo_gpu_validation_tasks;
+	uint64_t exact_scoreinfo_gpu_validation_mismatches;
 	uint64_t exact_scoreinfo_gpu_pruned_output_batches;
 	uint64_t exact_scoreinfo_gpu_pruned_output_input_groups;
 	uint64_t exact_scoreinfo_gpu_pruned_output_kept_groups;
@@ -391,6 +408,17 @@ struct FasimTop5PhaseTimingStats
 	uint64_t exact_column_batches;
 	uint64_t exact_column_tasks;
 	uint64_t exact_column_cells;
+	bool exact_task_shadow_requested;
+	bool exact_task_shadow_active;
+	uint64_t exact_task_shadow_batches;
+	uint64_t exact_tasks_before;
+	uint64_t exact_tasks_after;
+	uint64_t exact_tasks_dropped_identical;
+	uint64_t exact_task_shadow_candidate_tasks_after;
+	uint64_t exact_task_shadow_candidate_tasks_dropped_identical;
+	uint64_t exact_cells_before;
+	uint64_t exact_cells_after;
+	uint64_t exact_task_shadow_candidate_cells_after;
 	uint64_t exact_scoreinfo_groups;
 	bool scoreinfo_prune_enabled;
 	int scoreinfo_prune_max_per_task;
@@ -3753,6 +3781,11 @@ static inline bool fasim_exact_column_extend_batch_debug_columns_runtime()
     return fasim_env_flag_enabled("FASIM_EXACT_COLUMN_EXTEND_BATCH_DEBUG_COLUMNS");
 }
 
+static inline bool fasim_gasal2_exact_task_compaction_shadow_enabled_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_EXACT_TASK_COMPACTION_SHADOW");
+}
+
 static inline bool fasim_long_query_streaming_scoreinfo_debug_columns_runtime()
 {
 	return fasim_env_flag_enabled(
@@ -6326,8 +6359,11 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_column_pruned_output_enabled=" << (stats.exact_scoreinfo_gpu_column_pruned_output_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_batches=" << stats.exact_scoreinfo_gpu_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_tasks=" << stats.exact_scoreinfo_gpu_tasks << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_cells=" << stats.exact_scoreinfo_gpu_cells << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_overflow_batches=" << stats.exact_scoreinfo_gpu_overflow_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_fallback_batches=" << stats.exact_scoreinfo_gpu_fallback_batches << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_validation_tasks=" << stats.exact_scoreinfo_gpu_validation_tasks << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_validation_mismatches=" << stats.exact_scoreinfo_gpu_validation_mismatches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_batches=" << stats.exact_scoreinfo_gpu_pruned_output_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_input_groups=" << stats.exact_scoreinfo_gpu_pruned_output_input_groups << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_kept_groups=" << stats.exact_scoreinfo_gpu_pruned_output_kept_groups << "\n";
@@ -6336,6 +6372,18 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_column_batches=" << stats.exact_column_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_column_tasks=" << stats.exact_column_tasks << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_column_cells=" << stats.exact_column_cells << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_requested=" << (stats.exact_task_shadow_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_active=" << (stats.exact_task_shadow_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_batches=" << stats.exact_task_shadow_batches << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_tasks_before=" << stats.exact_tasks_before << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_tasks_after=" << stats.exact_tasks_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_tasks_dropped_identical=" << stats.exact_tasks_dropped_identical << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_candidate_tasks_after=" << stats.exact_task_shadow_candidate_tasks_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_candidate_tasks_dropped_identical=" << stats.exact_task_shadow_candidate_tasks_dropped_identical << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_cells_before=" << stats.exact_cells_before << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_cells_after=" << stats.exact_cells_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_candidate_cells_after=" << stats.exact_task_shadow_candidate_cells_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_runtime_work_dropped=0\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_groups=" << stats.exact_scoreinfo_groups << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_scoreinfo_prune_enabled=" << (stats.scoreinfo_prune_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_scoreinfo_prune_max_per_task=" << stats.scoreinfo_prune_max_per_task << "\n";
@@ -10780,6 +10828,52 @@ int main(int argc, char* const* argv)
 			bool minScoreReady;
 		};
 
+		auto exact_task_unique_sequence_count =
+			[](const std::vector<StreamTask> &batchTasks) -> size_t
+			{
+				std::vector< std::pair<uint64_t, size_t> > keyed;
+				keyed.reserve(batchTasks.size());
+				for (size_t i = 0; i < batchTasks.size(); ++i)
+				{
+					keyed.push_back(std::make_pair(
+						fasim_fnv1a_update(1469598103934665603ULL, batchTasks[i].seq2),
+						i));
+				}
+				std::sort(keyed.begin(), keyed.end());
+
+				size_t uniqueCount = 0;
+				for (size_t begin = 0; begin < keyed.size();)
+				{
+					size_t end = begin + 1;
+					while (end < keyed.size() && keyed[end].first == keyed[begin].first)
+					{
+						++end;
+					}
+					std::vector<size_t> representatives;
+					for (size_t i = begin; i < end; ++i)
+					{
+						const size_t candidate = keyed[i].second;
+						bool seen = false;
+						for (size_t r = 0; r < representatives.size(); ++r)
+						{
+							if (batchTasks[candidate].seq2 ==
+							    batchTasks[representatives[r]].seq2)
+							{
+								seen = true;
+								break;
+							}
+						}
+						if (!seen)
+						{
+							representatives.push_back(candidate);
+							++uniqueCount;
+						}
+					}
+					begin = end;
+				}
+				return uniqueCount;
+			};
+
 		auto annotate_gasal2_attempt_task =
 			[](FasimGasal2Attempt &attempt, const StreamTask &task)
 		{
@@ -11366,6 +11460,9 @@ int main(int argc, char* const* argv)
 			const bool exactColumnBatchRequested = fasim_exact_column_extend_batch_enabled_runtime();
 			const bool exactColumnBatchValidate = fasim_exact_column_extend_batch_validate_enabled_runtime();
 			const bool exactColumnBatchDebugColumns = fasim_exact_column_extend_batch_debug_columns_runtime();
+			const bool exactTaskCompactionShadowRequested =
+				fasim_gasal2_exact_task_compaction_shadow_enabled_runtime();
+			phaseTiming.exact_task_shadow_requested = exactTaskCompactionShadowRequested;
 			const bool exactScoreInfoGpuRequested = fasim_exact_column_scoreinfo_gpu_enabled_runtime();
 			phaseTiming.exact_scoreinfo_gpu_enabled = exactScoreInfoGpuRequested;
 			const bool singlePassTopNRequested =
@@ -20813,6 +20910,28 @@ int main(int argc, char* const* argv)
 							gpuDpColumnModeActive &&
 							!singlePassTopNRequested &&
 							cudaDeviceCount == 1;
+						if (exactBatchCanRun)
+						{
+							const uint64_t before = static_cast<uint64_t>(tasks.size());
+							const uint64_t targetLength =
+								static_cast<uint64_t>(currentTargetLength);
+							phaseTiming.exact_tasks_before += before;
+							phaseTiming.exact_tasks_after += before;
+							phaseTiming.exact_cells_before += before * targetLength;
+							phaseTiming.exact_cells_after += before * targetLength;
+							if (exactTaskCompactionShadowRequested)
+							{
+								const uint64_t after = static_cast<uint64_t>(
+									exact_task_unique_sequence_count(tasks));
+								phaseTiming.exact_task_shadow_active = true;
+								++phaseTiming.exact_task_shadow_batches;
+								phaseTiming.exact_task_shadow_candidate_tasks_after += after;
+								phaseTiming.exact_task_shadow_candidate_tasks_dropped_identical +=
+									before - after;
+								phaseTiming.exact_task_shadow_candidate_cells_after +=
+									after * targetLength;
+							}
+						}
 						const bool deferTopkForExactGasal2 =
 							exactBatchCanRun &&
 							gasal2LongtargetBatch &&
@@ -21025,6 +21144,9 @@ int main(int argc, char* const* argv)
 										++phaseTiming.exact_scoreinfo_gpu_batches;
 										phaseTiming.exact_scoreinfo_gpu_tasks +=
 											static_cast<uint64_t>(tasks.size());
+										phaseTiming.exact_scoreinfo_gpu_cells +=
+											static_cast<uint64_t>(tasks.size()) *
+											static_cast<uint64_t>(currentTargetLength);
 										phaseTiming.exact_scoreinfo_gpu_wall_seconds +=
 											fasim_seconds_since(compactStart) -
 											(columnResult.gpuSeconds + columnResult.h2dSeconds + columnResult.d2hSeconds);
@@ -21141,11 +21263,14 @@ int main(int argc, char* const* argv)
 															&compactResult,
 															&compactError);
 												}
-												if (phaseTimingEnabled)
-												{
-													++phaseTiming.exact_scoreinfo_gpu_batches;
-													phaseTiming.exact_scoreinfo_gpu_tasks +=
-														static_cast<uint64_t>(tasks.size());
+											if (phaseTimingEnabled)
+											{
+												++phaseTiming.exact_scoreinfo_gpu_batches;
+												phaseTiming.exact_scoreinfo_gpu_tasks +=
+													static_cast<uint64_t>(tasks.size());
+												phaseTiming.exact_scoreinfo_gpu_cells +=
+													static_cast<uint64_t>(tasks.size()) *
+													static_cast<uint64_t>(currentTargetLength);
 												phaseTiming.exact_scoreinfo_gpu_wall_seconds +=
 													fasim_seconds_since(compactStart);
 												phaseTiming.exact_scoreinfo_gpu_kernel_seconds +=
@@ -21187,52 +21312,60 @@ int main(int argc, char* const* argv)
 												}
 											}
 										}
-											if (compactValid && exactColumnBatchValidate)
+										if (compactValid && exactColumnBatchValidate)
+										{
+											for (size_t t = 0; t < tasks.size(); ++t)
 											{
-												for (size_t t = 0; t < tasks.size(); ++t)
+												if (phaseTimingEnabled)
 												{
-													const StreamTask &task = tasks[t];
-													std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
-													std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfoExpected;
-													StripedSmithWaterman::Aligner cpuAligner;
-													StripedSmithWaterman::Filter cpuFilter;
-													StripedSmithWaterman::Alignment cpuAlignment;
-													cpuAligner.preAlign(lncSeq.c_str(),
-													                    task.seq2.c_str(),
+													++phaseTiming.exact_scoreinfo_gpu_validation_tasks;
+												}
+												const StreamTask &task = tasks[t];
+												std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+												std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfoExpected;
+												StripedSmithWaterman::Aligner cpuAligner;
+												StripedSmithWaterman::Filter cpuFilter;
+												StripedSmithWaterman::Alignment cpuAlignment;
+												cpuAligner.preAlign(lncSeq.c_str(),
+												                    task.seq2.c_str(),
 												                    static_cast<int>(task.seq2.size()),
 												                    cpuFilter,
 												                    &cpuAlignment,
 												                    15,
 												                    minScores[t],
-													                    cpuScoreInfo,
-													                    5,
-													                    -4);
-													if (exactScoreInfoGpuPrunedOutputRequested)
+												                    cpuScoreInfo,
+												                    5,
+												                    -4);
+												if (exactScoreInfoGpuPrunedOutputRequested)
+												{
+													prune_scoreinfo_for_gasal2_top5(cpuScoreInfo,
+													                                gasal2ScoreInfoPruneMaxPerTask,
+													                                cpuScoreInfoExpected);
+												}
+												else
+												{
+													cpuScoreInfoExpected = cpuScoreInfo;
+												}
+												if (!scoreinfo_equal(compactBatchScoreInfos[t], cpuScoreInfoExpected))
+												{
+													compactValid = false;
+													if (phaseTimingEnabled)
 													{
-														prune_scoreinfo_for_gasal2_top5(cpuScoreInfo,
-														                                gasal2ScoreInfoPruneMaxPerTask,
-														                                cpuScoreInfoExpected);
+														++phaseTiming.exact_scoreinfo_gpu_validation_mismatches;
 													}
-													else
+													if (debugCuda)
 													{
-														cpuScoreInfoExpected = cpuScoreInfo;
+														cerr << "[fasim.cuda.scoreinfo_gpu] validate mismatch"
+														     << " task=" << t
+														     << " gpu_count=" << compactBatchScoreInfos[t].size()
+														     << " cpu_count=" << cpuScoreInfoExpected.size()
+														     << " cpu_input_count=" << cpuScoreInfo.size()
+														     << endl;
 													}
-													if (!scoreinfo_equal(compactBatchScoreInfos[t], cpuScoreInfoExpected))
-													{
-														compactValid = false;
-														if (debugCuda)
-														{
-															cerr << "[fasim.cuda.scoreinfo_gpu] validate mismatch"
-															     << " task=" << t
-															     << " gpu_count=" << compactBatchScoreInfos[t].size()
-															     << " cpu_count=" << cpuScoreInfoExpected.size()
-															     << " cpu_input_count=" << cpuScoreInfo.size()
-															     << endl;
-														}
-														break;
-													}
+													break;
 												}
 											}
+										}
 											if (compactValid)
 											{
 												if (phaseTimingEnabled &&

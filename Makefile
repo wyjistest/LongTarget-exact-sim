@@ -1279,6 +1279,31 @@ check-fasim-gasal2-multi-segment-context-phase3:
 
 .PHONY: check-fasim-gasal2-multi-segment-context-phase3
 
+check-fasim-gasal2-exact-task-compaction-shadow:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_task_compaction_shadow) \
+	bash ./scripts/check_fasim_gasal2_exact_task_compaction_shadow.sh
+
+check-fasim-gasal2-exact-scoreinfo-pruned-full-output:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_scoreinfo_pruned_full_output) \
+	bash ./scripts/check_fasim_gasal2_exact_scoreinfo_pruned_full_output.sh
+
+characterize-fasim-gasal2-exact-column-long-query:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_exact_column_long_query_exact_pruned) \
+	bash ./scripts/characterize_fasim_gasal2_exact_column_long_query.sh
+
+check-fasim-gasal2-exact-column-phase5:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_column_phase5) \
+	bash ./scripts/check_fasim_gasal2_exact_column_phase5.sh
+
+.PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
+	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
+	characterize-fasim-gasal2-exact-column-long-query \
+	check-fasim-gasal2-exact-column-phase5
+
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
 

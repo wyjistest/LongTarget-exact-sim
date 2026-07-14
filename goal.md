@@ -48,23 +48,23 @@ blocked
 Codex 每完成一个 phase，必须更新此块；不得提前把后续 phase 标为 `pass`。
 
 ```text
-active_phase = 5
+active_phase = 6
 
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = no_go
 phase_3_status = no_go
 phase_4_status = blocked
-phase_5_status = pending
+phase_5_status = pass
 phase_6_status = pending
 phase_7_status = pending
 phase_8_status = pending
 
-last_completed_phase = 3
-last_decision = phase_3_persistent_target_context_no_go_phase_4_blocked
-last_evidence_doc = docs/fasim_gasal2_multi_segment_target_reuse.md
-last_test_command = make check-fasim-gasal2-multi-segment-context-phase3
-last_commit = fasim: characterize persistent multi-segment context boundary
+last_completed_phase = 5
+last_decision = phase_5_exact_scoreinfo_pruned_strong_go
+last_evidence_doc = docs/fasim_gasal2_exact_column_long_query.md
+last_test_command = make check-fasim-gasal2-exact-column-phase5
+last_commit = fasim: reduce and optimize exact-column work for segmented queries
 ```
 
 ### Phase 依赖

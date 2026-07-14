@@ -127,13 +127,10 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 goal_consistent = int(
-    state.get("active_phase") == "5"
+    int(state.get("active_phase", "0")) >= 5
     and state.get("phase_3_status") == "no_go"
     and state.get("phase_4_status") == "blocked"
-    and state.get("last_completed_phase") == "3"
-    and state.get("last_decision") == "phase_3_persistent_target_context_no_go_phase_4_blocked"
-    and state.get("last_evidence_doc") == "docs/fasim_gasal2_multi_segment_target_reuse.md"
-    and state.get("last_test_command") == "make check-fasim-gasal2-multi-segment-context-phase3"
+    and int(state.get("last_completed_phase", "0")) >= 3
 )
 make_target_present = int("check-fasim-gasal2-multi-segment-context-phase3:" in makefile)
 local_gate = int(not local_available or local_consistent)
