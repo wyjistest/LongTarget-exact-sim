@@ -111,7 +111,8 @@ no_runtime_scaffold = int(
 
 required_doc = [
     "Phase 3 is an evidence-complete `no_go`",
-    "Phase 4 is `blocked`",
+    "Phase 4 is",
+    "dependency `no_go`",
     "nonflush_wall_percent=6.61",
     "host_setup_observed_percent=5.28",
     "gasal2_target_batch_bytes=4987491329",
@@ -127,9 +128,9 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 goal_consistent = int(
-    int(state.get("active_phase", "0")) >= 5
+    (state.get("active_phase") == "complete" or int(state.get("active_phase", "0")) >= 5)
     and state.get("phase_3_status") == "no_go"
-    and state.get("phase_4_status") == "blocked"
+    and state.get("phase_4_status") == "no_go"
     and int(state.get("last_completed_phase", "0")) >= 3
 )
 make_target_present = int("check-fasim-gasal2-multi-segment-context-phase3:" in makefile)
@@ -169,7 +170,7 @@ print(f"local_profile_consistent={local_consistent}")
 print(f"doc_consistent={doc_consistent}")
 print(f"goal_consistent={goal_consistent}")
 print(f"make_target_present={make_target_present}")
-print("phase4_status=blocked")
+print("phase4_status=no_go")
 print(f"phase3_gate={phase3_gate}")
 if phase3_gate != "no_go":
     raise SystemExit("Phase 3 persistent target/context evidence gate failed")

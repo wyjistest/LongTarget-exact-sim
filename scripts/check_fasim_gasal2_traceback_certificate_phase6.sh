@@ -23,7 +23,8 @@ python3 "$ROOT/tests/check_analyze_fasim_gasal2_traceback_long_query.py" \
   >"$WORK/analyzer_tests.log" 2>&1
 python3 "$ROOT/tests/check_summarize_fasim_gasal2_traceback_certificate.py" \
   >"$WORK/summarizer_tests.log" 2>&1
-bash "$ROOT/scripts/check_fasim_gasal2_traceback_certificate_unit.sh" \
+WORK="$WORK/certificate_unit_work" \
+  bash "$ROOT/scripts/check_fasim_gasal2_traceback_certificate_unit.sh" \
   >"$WORK/certificate_unit.log" 2>&1
 
 make -C "$ROOT" build-fasim-gasal2 FASIM_GASAL2_TARGET="$BIN" \
@@ -31,6 +32,18 @@ make -C "$ROOT" build-fasim-gasal2 FASIM_GASAL2_TARGET="$BIN" \
 BUILD_BIN=0 BIN="$BIN" WORK="$WORK/shadow_smoke" \
   bash "$ROOT/scripts/check_fasim_gasal2_traceback_certificate_shadow_smoke.sh" \
   >"$WORK/shadow_smoke.log" 2>&1
+
+for log in \
+  analyzer_tests.log \
+  summarizer_tests.log \
+  certificate_unit.log \
+  build.log \
+  shadow_smoke.log; do
+  if [[ ! -s "$WORK/$log" ]]; then
+    echo "missing Phase 6 audit log: $WORK/$log" >&2
+    exit 1
+  fi
+done
 
 python3 - "$TIMING" "$MATRIX" "$DOC" "$GOAL" \
   "$ROOT/fasim/gasal2_align_bridge.cpp" <<'PY'
@@ -194,7 +207,7 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 if (
-    int(state.get("active_phase", "0")) < 7
+    (state.get("active_phase") != "complete" and int(state.get("active_phase", "0")) < 7)
     or state.get("phase_6_status") != "no_go"
     or int(state.get("last_completed_phase", "0")) < 6
 ):

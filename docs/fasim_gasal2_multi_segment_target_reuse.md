@@ -2,9 +2,10 @@
 
 ## Decision
 
-Phase 3 is an evidence-complete `no_go`. Phase 4 is `blocked` because its
-microbatch design depends on a valid persistent target/context boundary.
-Execution proceeds to the independent Phase 5 exact-column optimization.
+Phase 3 is an evidence-complete `no_go`. During Phase 8 closure, Phase 4 is
+classified as dependency `no_go` because its microbatch design requires the
+persistent target/context boundary that Phase 3 proved unavailable. Execution
+proceeded to the independent Phase 5 exact-column optimization.
 
 No persistent runtime mode was added. The existing per-segment process path
 and all defaults remain unchanged.
@@ -161,12 +162,17 @@ The correct decision is `no_go`, not a broad refactor labeled as reuse.
 
 ```text
 phase_3_status=no_go
-phase_4_status=blocked
+phase_4_status=no_go
 production_defaults=unchanged
 multi_segment_context_active=0
 ownership_work_drop=0
 next_active_phase=5
 ```
+
+This final Phase 4 classification does not claim that a microbatch candidate
+was implemented. It records that the specified Phase 4 architecture cannot be
+entered without violating its hard prerequisite; it is no longer an unresolved
+external blocker.
 
 Phase 5 is independent and can optimize exact-column traceback/CIGAR work
 without requiring persistent multi-segment state.

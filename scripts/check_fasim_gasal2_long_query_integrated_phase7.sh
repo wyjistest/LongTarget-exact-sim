@@ -122,7 +122,7 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 if (
-    int(state.get("active_phase", "0")) < 8
+    (state.get("active_phase") != "complete" and int(state.get("active_phase", "0")) < 8)
     or state.get("phase_7_status") != "no_go"
     or int(state.get("last_completed_phase", "0")) < 7
 ):

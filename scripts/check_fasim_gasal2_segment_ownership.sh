@@ -101,8 +101,13 @@ fi
 goal_consistent=0
 active_phase="$(awk -F' = ' '$1 == "active_phase" {print $2; exit}' "$GOAL")"
 last_completed_phase="$(awk -F' = ' '$1 == "last_completed_phase" {print $2; exit}' "$GOAL")"
+active_phase_complete=0
+if [[ "$active_phase" == "complete" ]]; then
+  active_phase_complete=1
+fi
 if grep -Fq 'phase_2_status = no_go' "$GOAL" && \
-   [[ "$active_phase" =~ ^[0-9]+$ ]] && (( active_phase >= 3 )) && \
+   { [[ "$active_phase_complete" == "1" ]] || \
+     { [[ "$active_phase" =~ ^[0-9]+$ ]] && (( active_phase >= 3 )); }; } && \
    [[ "$last_completed_phase" =~ ^[0-9]+$ ]] && (( last_completed_phase >= 2 )); then
   goal_consistent=1
 fi

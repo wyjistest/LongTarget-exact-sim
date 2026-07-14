@@ -207,7 +207,7 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 goal_consistent = int(
-    int(state.get("active_phase", "0")) >= 6
+    (state.get("active_phase") == "complete" or int(state.get("active_phase", "0")) >= 6)
     and state.get("phase_5_status") == "pass"
     and int(state.get("last_completed_phase", "0")) >= 5
 )

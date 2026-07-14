@@ -48,23 +48,23 @@ blocked
 Codex 每完成一个 phase，必须更新此块；不得提前把后续 phase 标为 `pass`。
 
 ```text
-active_phase = 8
+active_phase = complete
 
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = no_go
 phase_3_status = no_go
-phase_4_status = blocked
+phase_4_status = no_go
 phase_5_status = pass
 phase_6_status = no_go
 phase_7_status = no_go
-phase_8_status = pending
+phase_8_status = pass
 
-last_completed_phase = 7
-last_decision = phase_7_integrated_runtime_no_go_below_full_run_gate
-last_evidence_doc = docs/fasim_gasal2_long_query_integrated_result.md
-last_test_command = make check-fasim-gasal2-long-query-integrated-phase7
-last_commit = bench: validate integrated GASAL2 long-query architecture
+last_completed_phase = 8
+last_decision = long_query_architecture_no_go_with_complete_evidence
+last_evidence_doc = docs/fasim_gasal2_long_query_final_decision.md
+last_test_command = make check-fasim-gasal2-long-query-final
+last_commit = docs: close the scoped GASAL2 long-query architecture decision
 ```
 
 ### Phase 依赖

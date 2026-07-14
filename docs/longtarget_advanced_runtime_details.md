@@ -357,6 +357,19 @@ workers before any two-slot-specific conclusion. Use
 `FASIM_GASAL2_FLUSH_TWO_SLOT_ALLOW_GPU_SHARING=1` only for explicit resource
 experiments.
 
+There is no promoted GASAL2 preset for full-length segmented long queries.
+The checked archive-first plus GPU pruned-scoreInfo candidate remained
+default-off: on bounded KCNQ1OT1 max8 x chr22 it preserved the paired full
+merged outputs and all three top5/cluster contracts, but its two-run median was
+only `1.089028x` (`8.175018%` wall reduction). This was below the full-run and
+runtime-promotion gates, so full segmented KCNQ1OT1 x chr22 was not run under
+the integrated candidate. Use
+`characterize-fasim-gasal2-long-query-integrated-phase7` only to reproduce the
+bounded characterization; it is not a production recommendation. Keep one
+worker per GPU, `FASIM_GASAL2_TRACEBACK_CERTIFICATE_SHADOW=0`, and all new
+long-query paths default-off. See
+`docs/fasim_gasal2_long_query_final_decision.md` for the final scope.
+
 For GASAL2 top5-only traceback reduction,
 `FASIM_TOP5_GASAL2_TRACEBACK_MIN_PREALIGN_SCORE=116` is only an H19 calibration
 artifact, not a general runtime recommendation. It preserves the checked
