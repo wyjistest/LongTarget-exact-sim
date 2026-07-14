@@ -163,12 +163,11 @@ if [[ "$real_dedup_backend" == "sqlite" && "$real_dedup_db_bytes" =~ ^[1-9][0-9]
 fi
 
 goal_state_consistent=0
-if grep -Fq 'active_phase = 2' "$GOAL" && \
-   grep -Fq 'phase_1_status = pass' "$GOAL" && \
-   grep -Fq 'last_completed_phase = 1' "$GOAL" && \
-   grep -Fq 'last_decision = phase_1_segmented_archive_first_pass' "$GOAL" && \
-   grep -Fq 'last_evidence_doc = docs/fasim_gasal2_segmented_archive_first.md' "$GOAL" && \
-   grep -Fq 'last_test_command = make check-fasim-gasal2-segmented-archive-first' "$GOAL"; then
+active_phase="$(awk -F' = ' '$1 == "active_phase" {print $2; exit}' "$GOAL")"
+last_completed_phase="$(awk -F' = ' '$1 == "last_completed_phase" {print $2; exit}' "$GOAL")"
+if grep -Fq 'phase_1_status = pass' "$GOAL" && \
+   [[ "$active_phase" =~ ^[0-9]+$ ]] && (( active_phase >= 2 )) && \
+   [[ "$last_completed_phase" =~ ^[0-9]+$ ]] && (( last_completed_phase >= 1 )); then
   goal_state_consistent=1
 fi
 

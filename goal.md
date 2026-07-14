@@ -48,11 +48,11 @@ blocked
 Codex 每完成一个 phase，必须更新此块；不得提前把后续 phase 标为 `pass`。
 
 ```text
-active_phase = 2
+active_phase = 3
 
 phase_0_status = pass
 phase_1_status = pass
-phase_2_status = pending
+phase_2_status = no_go
 phase_3_status = pending
 phase_4_status = pending
 phase_5_status = pending
@@ -60,11 +60,11 @@ phase_6_status = pending
 phase_7_status = pending
 phase_8_status = pending
 
-last_completed_phase = 1
-last_decision = phase_1_segmented_archive_first_pass
-last_evidence_doc = docs/fasim_gasal2_segmented_archive_first.md
-last_test_command = make check-fasim-gasal2-segmented-archive-first
-last_commit = fasim: add archive-first streaming merge for segmented queries
+last_completed_phase = 2
+last_decision = phase_2_segment_ownership_no_go
+last_evidence_doc = docs/fasim_gasal2_segment_ownership.md
+last_test_command = make check-fasim-gasal2-segment-ownership
+last_commit = fasim: prove segmented query ownership before work reduction
 ```
 
 ### Phase 依赖

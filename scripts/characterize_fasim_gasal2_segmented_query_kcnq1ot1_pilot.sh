@@ -18,9 +18,11 @@ GASAL2_BATCH="${GASAL2_BATCH:-20000}"
 MERGE_DEDUP_BACKEND="${MERGE_DEDUP_BACKEND:-sqlite}"
 KEEP_DEDUP_DB="${KEEP_DEDUP_DB:-0}"
 CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE="${CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE:-0}"
+FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW="${FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW:-0}"
 
 MERGE_SCRIPT="$ROOT/scripts/merge_fasim_segmented_tfosorted.py"
 CLUSTER_COMPARE="$ROOT/scripts/compare_fasim_lite_offline_cluster_topk.py"
+OWNERSHIP_SCRIPT="$ROOT/scripts/fasim_segment_ownership.py"
 
 if [[ ! -x "$BIN" ]]; then
   (
@@ -32,7 +34,7 @@ if [[ ! -x "$BIN" ]]; then
   )
 fi
 
-for path in "$BIN" "$TARGET" "$RNA" "$MERGE_SCRIPT" "$CLUSTER_COMPARE"; do
+for path in "$BIN" "$TARGET" "$RNA" "$MERGE_SCRIPT" "$CLUSTER_COMPARE" "$OWNERSHIP_SCRIPT"; do
   if [[ ! -e "$path" ]]; then
     echo "missing dependency: $path" >&2
     exit 1
@@ -61,6 +63,10 @@ if [[ "$KEEP_DEDUP_DB" != "0" && "$KEEP_DEDUP_DB" != "1" ]]; then
 fi
 if [[ "$CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE" != "0" && "$CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE" != "1" ]]; then
   echo "CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "$FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW" != "0" && "$FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW" != "1" ]]; then
+  echo "FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW must be 0 or 1" >&2
   exit 1
 fi
 
@@ -241,10 +247,12 @@ PY
 mapfile -t grid_shifts < <(printf '%s\n' $GRID_SHIFTS)
 common_query_start="$(awk -F= '$1=="common_query_start"{print $2}' "$WORK/window_summary.txt")"
 common_query_end="$(awk -F= '$1=="common_query_end"{print $2}' "$WORK/window_summary.txt")"
+query_length="$(awk -F= '$1=="query_len"{print $2}' "$WORK/window_summary.txt")"
 merged_outputs=()
 all_stderr_files=()
 all_archive_files=()
 merge_summary_files=()
+ownership_summary_files=()
 target_sha256="$(sha256_file "$TARGET")"
 per_segment_full_text_emitted=0
 
@@ -304,6 +312,22 @@ for shift in "${grid_shifts[@]}"; do
   "${merge_command[@]}" >"$grid_dir/merge_summary.txt"
   merged_outputs+=("$merged")
   merge_summary_files+=("$grid_dir/merge_summary.txt")
+
+  if [[ "$FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW" == "1" ]]; then
+    python3 "$OWNERSHIP_SCRIPT" derive \
+      --segments "$outputs_manifest" \
+      --grid-shift "$shift" \
+      --query-length "$query_length" \
+      --output "$grid_dir/ownership-descriptors.tsv"
+    python3 "$OWNERSHIP_SCRIPT" shadow \
+      --segments "$outputs_manifest" \
+      --descriptors "$grid_dir/ownership-descriptors.tsv" \
+      --output "$grid_dir/ownership-shadow-TFOsorted" \
+      --db "$grid_dir/ownership-shadow.sqlite" \
+      --summary "$grid_dir/ownership-shadow-summary.txt" \
+      >"$grid_dir/ownership-shadow-stdout.txt"
+    ownership_summary_files+=("$grid_dir/ownership-shadow-summary.txt")
+  fi
 done
 
 if (( ${#merged_outputs[@]} < 2 )); then
@@ -388,6 +412,26 @@ bounded_memory_backend_active=0
 if [[ "$MERGE_DEDUP_BACKEND" == "sqlite" ]]; then
   bounded_memory_backend_active=1
 fi
+segment_ownership_shadow_active=0
+segment_ownership_rows_total="unavailable"
+segment_ownership_rows_owned="unavailable"
+segment_ownership_rows_non_owner_duplicate="unavailable"
+segment_ownership_rows_no_owner="unavailable"
+segment_ownership_rows_multi_owner_before_tiebreak="unavailable"
+segment_ownership_rows_owner_mismatch_vs_authority="unavailable"
+if [[ "$FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW" == "1" ]]; then
+  if (( ${#ownership_summary_files[@]} != ${#grid_shifts[@]} )); then
+    echo "ownership shadow summary count does not match grid count" >&2
+    exit 1
+  fi
+  segment_ownership_shadow_active=1
+  segment_ownership_rows_total="$(sum_summary_integer rows_total "${ownership_summary_files[@]}")"
+  segment_ownership_rows_owned="$(sum_summary_integer rows_owned "${ownership_summary_files[@]}")"
+  segment_ownership_rows_non_owner_duplicate="$(sum_summary_integer rows_non_owner_duplicate "${ownership_summary_files[@]}")"
+  segment_ownership_rows_no_owner="$(sum_summary_integer rows_no_owner "${ownership_summary_files[@]}")"
+  segment_ownership_rows_multi_owner_before_tiebreak="$(sum_summary_integer rows_multi_owner_before_tiebreak "${ownership_summary_files[@]}")"
+  segment_ownership_rows_owner_mismatch_vs_authority="$(sum_summary_integer rows_owner_mismatch_vs_authority "${ownership_summary_files[@]}")"
+fi
 pipeline_end="$(now_seconds)"
 pipeline_wall_seconds="$(elapsed_seconds "$pipeline_start" "$pipeline_end")"
 
@@ -420,6 +464,17 @@ fi
   printf 'per_segment_full_text_emitted=%s\n' "$per_segment_full_text_emitted"
   printf 'bounded_memory_backend_active=%s\n' "$bounded_memory_backend_active"
   printf 'segment_archives_retained=%s\n' "$segment_archives_retained"
+  printf 'segment_ownership_shadow_requested=%s\n' "$FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW"
+  printf 'segment_ownership_shadow_active=%s\n' "$segment_ownership_shadow_active"
+  printf 'segment_ownership_rows_total=%s\n' "$segment_ownership_rows_total"
+  printf 'segment_ownership_rows_owned=%s\n' "$segment_ownership_rows_owned"
+  printf 'segment_ownership_rows_non_owner_duplicate=%s\n' "$segment_ownership_rows_non_owner_duplicate"
+  printf 'segment_ownership_rows_no_owner=%s\n' "$segment_ownership_rows_no_owner"
+  printf 'segment_ownership_rows_multi_owner_before_tiebreak=%s\n' "$segment_ownership_rows_multi_owner_before_tiebreak"
+  printf 'segment_ownership_rows_owner_mismatch_vs_authority=%s\n' "$segment_ownership_rows_owner_mismatch_vs_authority"
+  printf 'segment_ownership_potential_exact_tasks_removed=unavailable\n'
+  printf 'segment_ownership_potential_tracebacks_removed=unavailable\n'
+  printf 'segment_ownership_runtime_work_dropped=0\n'
   printf 'gasal2_requests=%s\n' "$gasal2_requests"
   printf 'gasal2_traceback_requests=%s\n' "$gasal2_traceback_requests"
   printf 'gasal2_fallbacks=%s\n' "$gasal2_fallbacks"

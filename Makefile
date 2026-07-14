@@ -1260,6 +1260,19 @@ check-fasim-gasal2-segmented-archive-first:
 
 .PHONY: check-fasim-gasal2-segmented-archive-first
 
+characterize-fasim-gasal2-segment-ownership-h19:
+	FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW=1 \
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_segment_ownership_h19) \
+	python3 ./scripts/characterize_fasim_segment_ownership_h19.py
+
+check-fasim-gasal2-segment-ownership:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_segment_ownership) \
+	bash ./scripts/check_fasim_gasal2_segment_ownership.sh
+
+.PHONY: characterize-fasim-gasal2-segment-ownership-h19 check-fasim-gasal2-segment-ownership
+
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
 

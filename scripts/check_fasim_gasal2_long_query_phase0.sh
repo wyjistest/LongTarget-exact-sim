@@ -79,17 +79,22 @@ if missing_doc:
     raise SystemExit("Phase 0 baseline doc missing phrases: " + ", ".join(missing_doc))
 
 goal = goal_path.read_text(encoding="utf-8")
-goal_required = [
-    "active_phase = 1",
-    "phase_0_status = pass",
-    "last_completed_phase = 0",
-    "last_decision = phase_0_baseline_frozen",
-    "last_evidence_doc = docs/fasim_gasal2_long_query_architecture_baseline.md",
-    "last_test_command = make check-fasim-gasal2-long-query-phase0",
-]
-missing_goal = [phrase for phrase in goal_required if phrase not in goal]
-if missing_goal:
-    raise SystemExit("goal.md Phase 0 status missing phrases: " + ", ".join(missing_goal))
+goal_state = {}
+for raw_line in goal.splitlines():
+    if " = " in raw_line:
+        key, value = raw_line.split(" = ", 1)
+        goal_state.setdefault(key, value)
+try:
+    active_phase = int(goal_state.get("active_phase", "-1"))
+    last_completed_phase = int(goal_state.get("last_completed_phase", "-1"))
+except ValueError as exc:
+    raise SystemExit("goal.md Phase 0 status contains a non-integer phase") from exc
+if (
+    goal_state.get("phase_0_status") != "pass"
+    or active_phase < 1
+    or last_completed_phase < 0
+):
+    raise SystemExit("goal.md Phase 0 status is missing or has regressed")
 
 makefile = makefile_path.read_text(encoding="utf-8")
 make_required = [

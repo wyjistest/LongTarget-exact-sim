@@ -84,6 +84,7 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
         duplicate_archive: bool = False,
         emit_full_text: bool = False,
         clean_archives: bool = False,
+        ownership_shadow: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], Path]:
         run_work = self.work / label
         environment = os.environ.copy()
@@ -101,6 +102,7 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
                 "FAKE_DUPLICATE_ARCHIVE": "1" if duplicate_archive else "0",
                 "FAKE_EMIT_FULL_TEXT": "1" if emit_full_text else "0",
                 "CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE": "1" if clean_archives else "0",
+                "FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW": "1" if ownership_shadow else "0",
             }
         )
         result = subprocess.run(
@@ -154,7 +156,28 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
         self.assertEqual(metrics["gasal2_fallbacks"], "0")
         self.assertEqual(metrics["shift_0_dedup_backend"], "sqlite")
         self.assertEqual(metrics["shift_4_dedup_backend"], "sqlite")
+        self.assertEqual(metrics["segment_ownership_shadow_requested"], "0")
+        self.assertEqual(metrics["segment_ownership_shadow_active"], "0")
+        self.assertEqual(metrics["segment_ownership_runtime_work_dropped"], "0")
+        self.assertEqual(list(run_work.glob("grids/shift_*/ownership-*")), [])
         self.assertIn("pipeline_wall_seconds", metrics)
+
+    def test_explicit_ownership_shadow_is_bounded_and_does_not_replace_merged_output(self) -> None:
+        result, run_work = self.run_runner("ownership", ownership_shadow=True)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        metrics = parse_metrics(run_work / "summary.txt")
+        self.assertEqual(metrics["segment_ownership_shadow_requested"], "1")
+        self.assertEqual(metrics["segment_ownership_shadow_active"], "1")
+        self.assertEqual(metrics["segment_ownership_runtime_work_dropped"], "0")
+        self.assertEqual(metrics["segment_ownership_potential_exact_tasks_removed"], "unavailable")
+        self.assertEqual(metrics["segment_ownership_potential_tracebacks_removed"], "unavailable")
+        for shift in (0, 4):
+            grid = run_work / "grids" / f"shift_{shift}"
+            self.assertTrue((grid / "ownership-descriptors.tsv").is_file())
+            self.assertTrue((grid / "ownership-shadow.sqlite").is_file())
+            self.assertTrue((grid / "ownership-shadow-TFOsorted").is_file())
+            self.assertTrue((grid / "ownership-shadow-summary.txt").is_file())
+            self.assertTrue((grid / "merged-common-TFOsorted").is_file())
 
     def test_runner_rejects_multiple_archives(self) -> None:
         result, _run_work = self.run_runner("duplicate", duplicate_archive=True)
