@@ -48,7 +48,7 @@ blocked
 Codex 每完成一个 phase，必须更新此块；不得提前把后续 phase 标为 `pass`。
 
 ```text
-active_phase = 7
+active_phase = 8
 
 phase_0_status = pass
 phase_1_status = pass
@@ -57,14 +57,14 @@ phase_3_status = no_go
 phase_4_status = blocked
 phase_5_status = pass
 phase_6_status = no_go
-phase_7_status = pending
+phase_7_status = no_go
 phase_8_status = pending
 
-last_completed_phase = 6
-last_decision = phase_6_traceback_certificate_no_go_below_request_gate
-last_evidence_doc = docs/fasim_gasal2_traceback_certificate_long_query.md
-last_test_command = make check-fasim-gasal2-traceback-certificate-phase6
-last_commit = fasim: gate traceback reduction with pre-drop exact certificates
+last_completed_phase = 7
+last_decision = phase_7_integrated_runtime_no_go_below_full_run_gate
+last_evidence_doc = docs/fasim_gasal2_long_query_integrated_result.md
+last_test_command = make check-fasim-gasal2-long-query-integrated-phase7
+last_commit = bench: validate integrated GASAL2 long-query architecture
 ```
 
 ### Phase 依赖

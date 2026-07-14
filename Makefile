@@ -1316,6 +1316,20 @@ check-fasim-gasal2-traceback-certificate-phase6:
 	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_traceback_certificate_phase6) \
 	bash ./scripts/check_fasim_gasal2_traceback_certificate_phase6.sh
 
+characterize-fasim-gasal2-long-query-integrated-phase7:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/phase7_gasal2_long_query_integrated) \
+	bash ./scripts/characterize_fasim_gasal2_long_query_integrated_phase7.sh
+
+check-fasim-gasal2-long-query-integrated-unit:
+	python3 ./tests/check_characterize_fasim_gasal2_segmented_archive_first_runner.py
+	python3 ./tests/check_compare_fasim_gasal2_long_query_integrated.py
+	python3 ./tests/check_summarize_fasim_gasal2_long_query_integrated.py
+
+check-fasim-gasal2-long-query-integrated-phase7:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_long_query_integrated_phase7) \
+	bash ./scripts/check_fasim_gasal2_long_query_integrated_phase7.sh
+
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
 	characterize-fasim-gasal2-exact-column-long-query \
@@ -1323,7 +1337,10 @@ check-fasim-gasal2-traceback-certificate-phase6:
 	characterize-fasim-gasal2-traceback-certificate-phase6 \
 	check-fasim-gasal2-traceback-certificate-unit \
 	check-fasim-gasal2-traceback-certificate-shadow-smoke \
-	check-fasim-gasal2-traceback-certificate-phase6
+	check-fasim-gasal2-traceback-certificate-phase6 \
+	characterize-fasim-gasal2-long-query-integrated-phase7 \
+	check-fasim-gasal2-long-query-integrated-unit \
+	check-fasim-gasal2-long-query-integrated-phase7
 
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh

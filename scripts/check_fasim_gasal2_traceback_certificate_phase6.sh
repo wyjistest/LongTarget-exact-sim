@@ -188,17 +188,17 @@ for forbidden in (
     if forbidden in doc or forbidden in bridge:
         raise SystemExit(f"Phase 6 contains forbidden claim/path: {forbidden}")
 
-required_goal = (
-    "active_phase = 7",
-    "phase_6_status = no_go",
-    "last_completed_phase = 6",
-    "last_decision = phase_6_traceback_certificate_no_go_below_request_gate",
-    "last_evidence_doc = docs/fasim_gasal2_traceback_certificate_long_query.md",
-    "last_commit = fasim: gate traceback reduction with pre-drop exact certificates",
-)
-for phrase in required_goal:
-    if phrase not in goal:
-        raise SystemExit(f"goal state missing: {phrase}")
+state: dict[str, str] = {}
+for raw in goal.splitlines():
+    if " = " in raw:
+        key, value = raw.split(" = ", 1)
+        state.setdefault(key, value)
+if (
+    int(state.get("active_phase", "0")) < 7
+    or state.get("phase_6_status") != "no_go"
+    or int(state.get("last_completed_phase", "0")) < 6
+):
+    raise SystemExit(f"Phase 6 goal state is inconsistent: {state}")
 
 print("ok")
 PY

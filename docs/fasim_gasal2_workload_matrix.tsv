@@ -6,3 +6,5 @@ meg3_group32_top5	gasal2_top5_column_pruned_scoreinfo_artifact_v1	claimed	pass	N
 neat1_first64	long_query_boundary	unclaimed	fallback	NA	true	1.009	0	false	false	query_len 22767 exceeds GASAL2 max query; top5 clean but GPU path inactive
 malat1_first8	long_query_boundary	blocked	fail	false	true	0.702	3091	false	false	top5 clean but full/broad path not recommended
 malat1_first64_two_contract	long_query_two_contract_experimental	unclaimed	pass	NA	true	1.031	0	true	false	experimental two-contract trust; not broad aligner replacement
+kcnq1ot1_max8_integrated	segmented_archive_first_exact_scoreinfo_v1	bounded_dual_grid	no_go	true	true	1.089028	0	true	false	2-repeat median; full merged output byte-equal per grid; below 1.10x runtime gate; full transcript not run
+h19_short_integrated	segmented_archive_first_exact_scoreinfo_v1	short_control	pass	true	true	1.074793	0	true	false	one paired run; no short-query regression; not a universal short-query performance claim

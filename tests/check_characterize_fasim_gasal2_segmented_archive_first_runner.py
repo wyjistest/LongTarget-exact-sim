@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import subprocess
 import tempfile
@@ -42,6 +43,14 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
                 set -euo pipefail
                 [[ "${FASIM_OUTPUT_MODE:-}" == "tfosorted" ]]
                 [[ "${FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT:-}" == "1" ]]
+                if [[ "${FAKE_EXPECT_EXACT:-0}" == "1" ]]; then
+                  [[ "${FASIM_EXACT_COLUMN_SCOREINFO_GPU:-}" == "1" ]]
+                  [[ "${FASIM_EXACT_COLUMN_SCOREINFO_GPU_MAX_PER_TASK:-}" == "512" ]]
+                  [[ "${FASIM_EXACT_COLUMN_SCOREINFO_GPU_PRUNED_OUTPUT:-}" == "1" ]]
+                  [[ "${FASIM_EXACT_COLUMN_SCOREINFO_GPU_COLUMN_PRUNED_OUTPUT:-}" == "0" ]]
+                  [[ "${FASIM_GASAL2_TRACEBACK_CERTIFICATE_SHADOW:-}" == "0" ]]
+                fi
+                printf 'run\\n' >>"${FAKE_INVOCATION_LOG:?}"
                 out_dir=""
                 while (($#)); do
                   case "$1" in
@@ -60,6 +69,15 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
                   printf 'QueryStart\\tQueryEnd\\tStartInSeq\\tEndInSeq\\tDirection\\tChr\\tStartInGenome\\tEndInGenome\\tMeanStability\\tMeanIdentity(%%)\\tStrand\\tRule\\tScore\\tNt(bp)\\tClass\\tMidPoint\\tCenter\\tTFO sequence\\tTTS sequence\\n' \
                     >"$out_dir/segment-TFOsorted"
                 fi
+                exact_enabled="${FASIM_EXACT_COLUMN_SCOREINFO_GPU:-0}"
+                column_tasks=$((10 * (1 - exact_enabled)))
+                scoreinfo_tasks=$((10 * exact_enabled))
+                column_wall=0.2
+                scoreinfo_wall=0.0
+                if [[ "$exact_enabled" == "1" ]]; then
+                  column_wall=0.0
+                  scoreinfo_wall=0.1
+                fi
                 printf '%s\\n' \
                   'benchmark.fasim_gasal2_archive_first_output_requested=1' \
                   'benchmark.fasim_gasal2_archive_first_output_active=1' \
@@ -67,7 +85,21 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
                   'benchmark.fasim_gasal2_requests=0' \
                   'benchmark.fasim_gasal2_traceback_requests=0' \
                   'benchmark.fasim_gasal2_fallbacks=0' \
-                  'benchmark.fasim_gasal2_length_guard_fallbacks=0' >&2
+                  'benchmark.fasim_gasal2_length_guard_fallbacks=0' \
+                  "benchmark.fasim_top5_gasal2_phase_exact_column_tasks=$column_tasks" \
+                  "benchmark.fasim_top5_gasal2_phase_exact_column_cells=$((column_tasks * 100))" \
+                  "benchmark.fasim_top5_gasal2_phase_exact_column_wall_seconds=$column_wall" \
+                  "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_tasks=$scoreinfo_tasks" \
+                  "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_cells=$((scoreinfo_tasks * 100))" \
+                  "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_wall_seconds=$scoreinfo_wall" \
+                  "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_enabled=$exact_enabled" \
+                  'benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_column_pruned_output_enabled=0' \
+                  'benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_overflow_batches=0' \
+                  'benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_fallback_batches=0' \
+                  'benchmark.fasim_gasal2_traceback_fill_seconds=0.1' \
+                  'benchmark.fasim_gasal2_traceback_submit_seconds=0.01' \
+                  'benchmark.fasim_gasal2_traceback_wait_seconds=0.2' \
+                  'benchmark.fasim_gasal2_cpu_traceback_convert_seconds=0.3' >&2
                 """
             ),
             encoding="utf-8",
@@ -85,8 +117,12 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
         emit_full_text: bool = False,
         clean_archives: bool = False,
         ownership_shadow: bool = False,
+        resume: bool = False,
+        exact_scoreinfo_pruned: bool = False,
+        gasal2_batch: int = 20000,
     ) -> tuple[subprocess.CompletedProcess[str], Path]:
         run_work = self.work / label
+        invocation_log = self.work / f"{label}-invocations.log"
         environment = os.environ.copy()
         environment.update(
             {
@@ -103,6 +139,11 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
                 "FAKE_EMIT_FULL_TEXT": "1" if emit_full_text else "0",
                 "CLEAN_SEGMENT_ARCHIVES_AFTER_MERGE": "1" if clean_archives else "0",
                 "FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW": "1" if ownership_shadow else "0",
+                "RESUME": "1" if resume else "0",
+                "EXACT_SCOREINFO_PRUNED": "1" if exact_scoreinfo_pruned else "0",
+                "GASAL2_BATCH": str(gasal2_batch),
+                "FAKE_EXPECT_EXACT": "1" if exact_scoreinfo_pruned else "0",
+                "FAKE_INVOCATION_LOG": str(invocation_log),
             }
         )
         result = subprocess.run(
@@ -159,6 +200,11 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
         self.assertEqual(metrics["segment_ownership_shadow_requested"], "0")
         self.assertEqual(metrics["segment_ownership_shadow_active"], "0")
         self.assertEqual(metrics["segment_ownership_runtime_work_dropped"], "0")
+        self.assertEqual(metrics["exact_scoreinfo_gpu_pruned_output_enabled"], "0")
+        self.assertEqual(metrics["exact_work_tasks"], "40")
+        self.assertEqual(metrics["exact_work_cells"], "4000")
+        self.assertEqual(metrics["exact_stage_seconds"], "0.800000")
+        self.assertEqual(metrics["traceback_host_observed_stage_seconds"], "2.440000")
         self.assertEqual(list(run_work.glob("grids/shift_*/ownership-*")), [])
         self.assertIn("pipeline_wall_seconds", metrics)
 
@@ -196,6 +242,74 @@ class SegmentedArchiveRunnerTest(unittest.TestCase):
         metrics = parse_metrics(run_work / "summary.txt")
         self.assertEqual(metrics["segment_archives_retained"], "0")
         self.assertGreater(int(metrics["archive_input_bytes"]), 0)
+
+    def test_resume_uses_config_digest_and_does_not_repeat_completed_segments(self) -> None:
+        first, run_work = self.run_runner(
+            "resume", resume=True, exact_scoreinfo_pruned=True
+        )
+        segment_stderr = "\n".join(
+            path.read_text(encoding="utf-8", errors="replace")
+            for path in run_work.glob("grids/shift_*/run_*/stderr.log")
+        )
+        self.assertEqual(
+            first.returncode,
+            0,
+            msg=(
+                f"stdout:\n{first.stdout}\nstderr:\n{first.stderr}"
+                f"\nsegment stderr:\n{segment_stderr}"
+            ),
+        )
+        invocation_log = self.work / "resume-invocations.log"
+        self.assertEqual(invocation_log.read_text(encoding="utf-8").splitlines(), ["run"] * 4)
+
+        config = json.loads((run_work / "run-config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["schema_version"], 1)
+        self.assertEqual(config["archive_first"], True)
+        self.assertEqual(config["exact_column_variant"], "gpu_pruned_scoreinfo_v1")
+        self.assertEqual(config["traceback_certificate_mode"], "disabled")
+        self.assertEqual(config["grid_mode"], "dual_grid")
+        self.assertEqual(config["worker_count"], 1)
+        self.assertEqual(config["keep_dedup_db"], False)
+        self.assertEqual(config["clean_segment_archives_after_merge"], False)
+        self.assertEqual(len(config["binary_sha256"]), 64)
+        self.assertEqual(len(config["query_sha256"]), 64)
+        self.assertEqual(len(config["target_sha256"]), 64)
+        self.assertEqual(len(config["config_digest_sha256"]), 64)
+        self.assertTrue((run_work / "run-complete.json").is_file())
+        self.assertEqual(
+            len(list(run_work.glob("grids/shift_*/run_*/segment-complete.json"))),
+            4,
+        )
+        summary = parse_metrics(run_work / "summary.txt")
+        self.assertEqual(summary["exact_scoreinfo_gpu_pruned_output_enabled"], "1")
+        self.assertEqual(summary["exact_work_tasks"], "40")
+        self.assertEqual(summary["exact_work_cells"], "4000")
+        self.assertEqual(summary["exact_stage_seconds"], "0.400000")
+
+        second, _ = self.run_runner(
+            "resume", resume=True, exact_scoreinfo_pruned=True
+        )
+        self.assertEqual(second.returncode, 0, msg=second.stderr)
+        self.assertEqual(invocation_log.read_text(encoding="utf-8").splitlines(), ["run"] * 4)
+        self.assertIn("resume_complete=1", second.stdout)
+
+        merged = run_work / "grids" / "shift_0" / "merged-common-TFOsorted"
+        merged.unlink()
+        rebuilt, _ = self.run_runner(
+            "resume", resume=True, exact_scoreinfo_pruned=True
+        )
+        self.assertEqual(rebuilt.returncode, 0, msg=rebuilt.stderr)
+        self.assertTrue(merged.is_file())
+        self.assertEqual(invocation_log.read_text(encoding="utf-8").splitlines(), ["run"] * 4)
+
+        mismatch, _ = self.run_runner(
+            "resume",
+            resume=True,
+            exact_scoreinfo_pruned=True,
+            gasal2_batch=12345,
+        )
+        self.assertNotEqual(mismatch.returncode, 0)
+        self.assertIn("config digest mismatch", mismatch.stderr.lower())
 
 
 if __name__ == "__main__":
