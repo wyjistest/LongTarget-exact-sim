@@ -1236,6 +1236,23 @@ check-fasim-gasal2-formal-preset-examples:
 check-fasim-gasal2-reproducible-setup:
 	bash ./scripts/check_fasim_gasal2_reproducible_setup.sh
 
+check-fasim-gasal2-long-query-phase0:
+	$(MAKE) check-fasim-gasal2-reproducible-setup
+	$(MAKE) check-sample
+	$(MAKE) check-fasim-tfo-archive-integrity-parser
+	$(MAKE) check-fasim-gasal2-archive-manifest-parser
+	$(MAKE) check-fasim-lite-full-equivalence
+	$(MAKE) check-fasim-gasal2-top5-output-contract
+	$(MAKE) check-fasim-gasal2-short-query-top5-tfo-contract
+	$(MAKE) check-fasim-gasal2-archive-first-output \
+		WORK=$(CURDIR)/.tmp/check_fasim_gasal2_long_query_phase0_archive \
+		TARGET=$(CURDIR)/.tmp/fasim_gasal2_chr22_slice_10m_12m.fa \
+		RNA=$(CURDIR)/H19.fa
+	PHASE0_ARCHIVE_SUMMARY=$(CURDIR)/.tmp/check_fasim_gasal2_long_query_phase0_archive/summary.txt \
+		bash ./scripts/check_fasim_gasal2_long_query_phase0.sh
+
+.PHONY: check-fasim-gasal2-long-query-phase0
+
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
 
