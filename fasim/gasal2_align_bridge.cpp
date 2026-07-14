@@ -1,4 +1,5 @@
 #include "gasal2_align_bridge.h"
+#include "gasal2_traceback_certificate.h"
 
 #include "gasal_header.h"
 #include "ssw.h"
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <set>
 #include <sstream>
 
 namespace
@@ -231,6 +233,11 @@ bool traceback_query_reuse_enabled_for_mode(bool top5Preset)
 bool nt_sum_span_prune_enabled()
 {
 	return env_enabled("FASIM_ALIGN_GASAL2_NT_SUM_SPAN_PRUNE");
+}
+
+bool traceback_certificate_shadow_enabled()
+{
+	return env_enabled("FASIM_GASAL2_TRACEBACK_CERTIFICATE_SHADOW");
 }
 
 int limited_traceback_max_scoreinfos()
@@ -1824,6 +1831,49 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_nt_sum_span_prune_enabled=" << (stats.nt_sum_span_prune_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_gasal2_nt_sum_span_pruned_attempts=" << stats.nt_sum_span_pruned_attempts << "\n";
 	std::cerr << "benchmark.fasim_gasal2_nt_sum_span_pruned_groups=" << stats.nt_sum_span_pruned_groups << "\n";
+	const char *certificatePrefix =
+		"benchmark.fasim_gasal2_traceback_certificate_shadow_";
+	std::cerr << certificatePrefix << "requested="
+	          << (stats.traceback_certificate_shadow_requested ? 1 : 0) << "\n";
+	std::cerr << certificatePrefix << "active="
+	          << (stats.traceback_certificate_shadow_active ? 1 : 0) << "\n";
+	std::cerr << certificatePrefix << "real_skip_enabled="
+	          << (stats.traceback_certificate_real_skip_enabled ? 1 : 0) << "\n";
+	std::cerr << certificatePrefix << "pre_drop_proof_available="
+	          << (stats.traceback_certificate_pre_drop_proof_available ? 1 : 0)
+	          << "\n";
+	std::cerr << certificatePrefix << "proof_version=phase6_exact_v1\n";
+	std::cerr << certificatePrefix << "candidates_considered="
+	          << stats.traceback_certificate_candidates_considered << "\n";
+	std::cerr << certificatePrefix << "certified_skips="
+	          << stats.traceback_certificate_certified_skips << "\n";
+	std::cerr << certificatePrefix << "uncertified_candidates="
+	          << stats.traceback_certificate_uncertified_candidates << "\n";
+	std::cerr << certificatePrefix << "exact_descriptor_duplicate_skips="
+	          << stats.traceback_certificate_exact_descriptor_duplicate_skips
+	          << "\n";
+	std::cerr << certificatePrefix << "static_span_skips="
+	          << stats.traceback_certificate_static_span_skips << "\n";
+	std::cerr << certificatePrefix << "score_endpoint_span_skips="
+	          << stats.traceback_certificate_score_endpoint_span_skips << "\n";
+	std::cerr << certificatePrefix << "shadow_false_rejects="
+	          << stats.traceback_certificate_shadow_false_rejects << "\n";
+	std::cerr << certificatePrefix << "score_frontier_skips="
+	          << stats.traceback_certificate_score_frontier_skips << "\n";
+	std::cerr << certificatePrefix << "stability_frontier_skips="
+	          << stats.traceback_certificate_stability_frontier_skips << "\n";
+	std::cerr << certificatePrefix << "nt_frontier_skips="
+	          << stats.traceback_certificate_nt_frontier_skips << "\n";
+	std::cerr << certificatePrefix << "tie_rescues="
+	          << stats.traceback_certificate_tie_rescues << "\n";
+	std::cerr << certificatePrefix << "rank_aware_supported="
+	          << (stats.traceback_certificate_rank_aware_supported ? 1 : 0) << "\n";
+	std::cerr << certificatePrefix << "probe_requests="
+	          << stats.traceback_certificate_probe_requests << "\n";
+	std::cerr << certificatePrefix << "probe_seconds="
+	          << stats.traceback_certificate_probe_seconds << "\n";
+	std::cerr << certificatePrefix << "fallbacks="
+	          << stats.traceback_certificate_fallbacks << "\n";
 	std::cerr << "benchmark.fasim_gasal2_limited_traceback_enabled=" << (stats.limited_traceback_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_gasal2_limited_traceback_max_scoreinfos=" << stats.limited_traceback_max_scoreinfos << "\n";
 	std::cerr << "benchmark.fasim_gasal2_limited_traceback_min_prealign_score=" << stats.limited_traceback_min_prealign_score << "\n";
@@ -2057,6 +2107,9 @@ bool fasim_gasal2_align_attempts(const std::string &query,
 	const bool longtargetBridge = fasim_gasal2_longtarget_bridge_enabled();
 	const bool top5Preset = env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO");
 	const bool scorePrepass = score_prepass_enabled_for_mode(longtargetBridge, top5Preset);
+	const bool certificateShadow = traceback_certificate_shadow_enabled();
+	g_stats.traceback_certificate_shadow_requested =
+		g_stats.traceback_certificate_shadow_requested || certificateShadow;
 	g_stats.score_prepass_enabled = g_stats.score_prepass_enabled || scorePrepass;
 	for (size_t i = 0; i < attempts.size(); ++i)
 	{
@@ -2120,12 +2173,102 @@ bool fasim_gasal2_align_attempts(const std::string &query,
 	{
 		tracebackAttempts.push_back(attempts[selectedAttemptIndexes[i]]);
 	}
+	std::vector<FasimGasal2TracebackCertificateKind> certificateKinds(
+		tracebackAttempts.size(),
+		FasimGasal2TracebackCertificateKind::None);
+	if (certificateShadow)
+	{
+		std::vector<ScoreOnlyResult> certificateScores;
+		std::string certificateError;
+		const auto certificateStart = std::chrono::steady_clock::now();
+		const bool certificateScoreOk =
+			run_score_only(&g_score_state,
+			               query,
+			               tracebackAttempts,
+			               batchSize,
+			               &certificateScores,
+			               &certificateError);
+		g_stats.traceback_certificate_probe_seconds +=
+			seconds_since(certificateStart);
+		if (!certificateScoreOk ||
+		    certificateScores.size() != tracebackAttempts.size())
+		{
+			++g_stats.traceback_certificate_fallbacks;
+		}
+		else
+		{
+			g_stats.traceback_certificate_shadow_active = true;
+			g_stats.traceback_certificate_pre_drop_proof_available = true;
+			g_stats.traceback_certificate_probe_requests +=
+				static_cast<uint64_t>(tracebackAttempts.size());
+			g_stats.traceback_certificate_candidates_considered +=
+				static_cast<uint64_t>(tracebackAttempts.size());
+			std::set<size_t> seenAttemptIndexes;
+			for (size_t i = 0; i < tracebackAttempts.size(); ++i)
+			{
+				FasimGasal2TracebackCertificateInput input;
+				input.query_length = query.size();
+				input.target_length = tracebackAttempts[i].target_size();
+				input.nt_min_length = tracebackAttempts[i].nt_min_length;
+				input.target_start = tracebackAttempts[i].start;
+				input.score_query_end = certificateScores[i].query_end;
+				input.score_ref_end = certificateScores[i].ref_end;
+				input.exact_descriptor_duplicate =
+					!seenAttemptIndexes.insert(selectedAttemptIndexes[i]).second;
+				certificateKinds[i] =
+					fasim_gasal2_traceback_certificate_kind(input);
+				switch (certificateKinds[i])
+				{
+				case FasimGasal2TracebackCertificateKind::ExactDescriptorDuplicate:
+					++g_stats
+						.traceback_certificate_exact_descriptor_duplicate_skips;
+					break;
+				case FasimGasal2TracebackCertificateKind::StaticSpan:
+					++g_stats.traceback_certificate_static_span_skips;
+					break;
+				case FasimGasal2TracebackCertificateKind::ScoreEndpointSpan:
+					++g_stats.traceback_certificate_score_endpoint_span_skips;
+					break;
+				case FasimGasal2TracebackCertificateKind::None:
+					++g_stats.traceback_certificate_uncertified_candidates;
+					break;
+				}
+				if (certificateKinds[i] !=
+				    FasimGasal2TracebackCertificateKind::None)
+				{
+					++g_stats.traceback_certificate_certified_skips;
+				}
+			}
+		}
+	}
 
 	std::vector<StripedSmithWaterman::Alignment> tracebackAlignments;
 	if (!run_traceback(&g_traceback_state, query, tracebackAttempts, batchSize, &tracebackAlignments, errorOut))
 	{
 		++g_stats.fallbacks;
 		return false;
+	}
+	if (certificateShadow && g_stats.traceback_certificate_shadow_active)
+	{
+		for (size_t i = 0; i < tracebackAttempts.size(); ++i)
+		{
+			if (certificateKinds[i] != FasimGasal2TracebackCertificateKind::StaticSpan &&
+			    certificateKinds[i] !=
+			        FasimGasal2TracebackCertificateKind::ScoreEndpointSpan)
+			{
+				continue;
+			}
+			const StripedSmithWaterman::Alignment &alignment = tracebackAlignments[i];
+			if (!fasim_gasal2_traceback_actual_span_is_invalid(
+			        alignment.query_begin,
+			        alignment.query_end,
+			        alignment.ref_begin,
+			        alignment.ref_end,
+			        tracebackAttempts[i].nt_min_length))
+			{
+				++g_stats.traceback_certificate_shadow_false_rejects;
+			}
+		}
 	}
 
 	selected->clear();

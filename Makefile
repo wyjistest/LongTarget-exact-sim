@@ -1299,10 +1299,31 @@ check-fasim-gasal2-exact-column-phase5:
 	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_column_phase5) \
 	bash ./scripts/check_fasim_gasal2_exact_column_phase5.sh
 
+characterize-fasim-gasal2-traceback-certificate-phase6:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/phase6_traceback_certificate) \
+	bash ./scripts/characterize_fasim_gasal2_traceback_certificate_phase6.sh
+
+check-fasim-gasal2-traceback-certificate-unit:
+	bash ./scripts/check_fasim_gasal2_traceback_certificate_unit.sh
+
+check-fasim-gasal2-traceback-certificate-shadow-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct BUILD_BIN=0 \
+	bash ./scripts/check_fasim_gasal2_traceback_certificate_shadow_smoke.sh
+
+check-fasim-gasal2-traceback-certificate-phase6:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_traceback_certificate_phase6) \
+	bash ./scripts/check_fasim_gasal2_traceback_certificate_phase6.sh
+
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
 	characterize-fasim-gasal2-exact-column-long-query \
-	check-fasim-gasal2-exact-column-phase5
+	check-fasim-gasal2-exact-column-phase5 \
+	characterize-fasim-gasal2-traceback-certificate-phase6 \
+	check-fasim-gasal2-traceback-certificate-unit \
+	check-fasim-gasal2-traceback-certificate-shadow-smoke \
+	check-fasim-gasal2-traceback-certificate-phase6
 
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh

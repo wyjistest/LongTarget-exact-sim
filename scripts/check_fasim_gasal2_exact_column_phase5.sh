@@ -207,12 +207,9 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 goal_consistent = int(
-    state.get("active_phase") == "6"
+    int(state.get("active_phase", "0")) >= 6
     and state.get("phase_5_status") == "pass"
-    and state.get("last_completed_phase") == "5"
-    and state.get("last_decision") == "phase_5_exact_scoreinfo_pruned_strong_go"
-    and state.get("last_evidence_doc") == "docs/fasim_gasal2_exact_column_long_query.md"
-    and state.get("last_test_command") == "make check-fasim-gasal2-exact-column-phase5"
+    and int(state.get("last_completed_phase", "0")) >= 5
 )
 make_target_present = int("check-fasim-gasal2-exact-column-phase5:" in makefile)
 local_consistent = int(

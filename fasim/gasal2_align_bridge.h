@@ -48,6 +48,25 @@ struct FasimGasal2Stats
 		nt_sum_span_prune_enabled(false),
 		nt_sum_span_pruned_attempts(0),
 		nt_sum_span_pruned_groups(0),
+		traceback_certificate_shadow_requested(false),
+		traceback_certificate_shadow_active(false),
+		traceback_certificate_real_skip_enabled(false),
+		traceback_certificate_pre_drop_proof_available(false),
+		traceback_certificate_candidates_considered(0),
+		traceback_certificate_certified_skips(0),
+		traceback_certificate_uncertified_candidates(0),
+		traceback_certificate_exact_descriptor_duplicate_skips(0),
+		traceback_certificate_static_span_skips(0),
+		traceback_certificate_score_endpoint_span_skips(0),
+		traceback_certificate_shadow_false_rejects(0),
+		traceback_certificate_score_frontier_skips(0),
+		traceback_certificate_stability_frontier_skips(0),
+		traceback_certificate_nt_frontier_skips(0),
+		traceback_certificate_tie_rescues(0),
+		traceback_certificate_rank_aware_supported(false),
+		traceback_certificate_probe_requests(0),
+		traceback_certificate_probe_seconds(0.0),
+		traceback_certificate_fallbacks(0),
 		limited_traceback_enabled(false),
 		limited_traceback_max_scoreinfos(0),
 		limited_traceback_min_prealign_score(0),
@@ -719,6 +738,25 @@ struct FasimGasal2Stats
 	bool nt_sum_span_prune_enabled;
 	uint64_t nt_sum_span_pruned_attempts;
 	uint64_t nt_sum_span_pruned_groups;
+	bool traceback_certificate_shadow_requested;
+	bool traceback_certificate_shadow_active;
+	bool traceback_certificate_real_skip_enabled;
+	bool traceback_certificate_pre_drop_proof_available;
+	uint64_t traceback_certificate_candidates_considered;
+	uint64_t traceback_certificate_certified_skips;
+	uint64_t traceback_certificate_uncertified_candidates;
+	uint64_t traceback_certificate_exact_descriptor_duplicate_skips;
+	uint64_t traceback_certificate_static_span_skips;
+	uint64_t traceback_certificate_score_endpoint_span_skips;
+	uint64_t traceback_certificate_shadow_false_rejects;
+	uint64_t traceback_certificate_score_frontier_skips;
+	uint64_t traceback_certificate_stability_frontier_skips;
+	uint64_t traceback_certificate_nt_frontier_skips;
+	uint64_t traceback_certificate_tie_rescues;
+	bool traceback_certificate_rank_aware_supported;
+	uint64_t traceback_certificate_probe_requests;
+	double traceback_certificate_probe_seconds;
+	uint64_t traceback_certificate_fallbacks;
 	bool limited_traceback_enabled;
 	uint64_t limited_traceback_max_scoreinfos;
 	uint64_t limited_traceback_min_prealign_score;
