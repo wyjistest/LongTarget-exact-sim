@@ -1,0 +1,62 @@
+# GASAL2-LongTarget paper evidence package
+
+This directory is the auditable handoff for paper preparation. It is not the
+manuscript and it does not promote a new runtime.
+
+```text
+paper_runtime_epoch = 0
+paper_runtime_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
+authoritative execution state = goal-final.md
+```
+
+Phase 0 freezes scope and inventories existing evidence. Historical values are
+starting evidence only. The paper estimates will be recomputed from the paired,
+preregistered runs collected by later phases.
+
+## Layout
+
+```text
+paper/scope_and_claims.md       allowed and prohibited claim language
+paper/claim_evidence.tsv        C1-C7 claim/evidence ledger
+paper/artifact_inventory.tsv    immutable file metadata and provenance
+paper/gap_register.tsv          open evidence and reporting gaps
+paper/runtime_epoch_log.tsv     runtime freeze history
+paper/source_data/              Phase 3-5 machine-readable run data
+paper/figures/                  Phase 6 generated vector figures
+paper/tables/                   Phase 6 generated tables
+paper/supplementary/            Phase 6 supplementary outputs
+```
+
+Large raw artifacts are not committed to Git. Later phases freeze them under:
+
+```text
+.paper-artifacts/<data_freeze_id>/
+```
+
+The inventory records path, size, SHA-256, runtime commit and source class.
+An existing `.tmp` file is not treated as permanently archived merely because
+it is available in the current workspace.
+
+## Source classes
+
+Only the source classes defined in `goal-final.md` are used:
+
+```text
+reproduced_current_epoch
+reused_digest_verified
+committed_historical_artifact
+user_provided_external_result
+unavailable
+```
+
+Unknown author, affiliation, funding, citation, input provenance or external
+archive metadata remains in `paper/gap_register.tsv`; it is never guessed.
+
+## Phase 0 check
+
+```bash
+make check-fasim-gasal2-paper-phase0
+```
+
+This composes the completed long-query final gate with the paper scope,
+provenance, runtime-freeze and claim-language checks.

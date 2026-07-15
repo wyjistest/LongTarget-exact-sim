@@ -1334,6 +1334,10 @@ check-fasim-gasal2-long-query-final:
 	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_long_query_final) \
 	bash ./scripts/check_fasim_gasal2_long_query_final.sh
 
+check-fasim-gasal2-paper-phase0:
+	$(MAKE) check-fasim-gasal2-long-query-final
+	bash ./scripts/check_fasim_gasal2_paper_phase0.sh
+
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
 	characterize-fasim-gasal2-exact-column-long-query \
@@ -1345,7 +1349,8 @@ check-fasim-gasal2-long-query-final:
 	characterize-fasim-gasal2-long-query-integrated-phase7 \
 	check-fasim-gasal2-long-query-integrated-unit \
 	check-fasim-gasal2-long-query-integrated-phase7 \
-	check-fasim-gasal2-long-query-final
+	check-fasim-gasal2-long-query-final \
+	check-fasim-gasal2-paper-phase0
 
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
