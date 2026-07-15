@@ -64,10 +64,10 @@ paper_runtime_epoch = 0
 paper_runtime_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
 data_freeze_id = unset
 
-active_phase = 1
+active_phase = 2
 
 phase_0_status = pass
-phase_1_status = pending
+phase_1_status = pass
 phase_2_status = pending
 phase_3_status = pending
 phase_4_status = pending
@@ -77,11 +77,11 @@ phase_7_status = pending
 phase_8_status = pending
 phase_9_status = pending
 
-last_completed_phase = 0
-last_decision = paper_scope_and_evidence_inventory_frozen
-last_evidence_doc = paper/claim_evidence.tsv
-last_test_command = make check-fasim-gasal2-paper-phase0
-last_commit = docs: freeze GASAL2-LongTarget paper scope and evidence ledger
+last_completed_phase = 1
+last_decision = paper_benchmark_protocol_and_manifest_frozen
+last_evidence_doc = paper/benchmark_protocol.md
+last_test_command = make check-fasim-gasal2-paper-phase1
+last_commit = bench: preregister paper workloads and add digest-aware harness
 ```
 
 ### Phase 依赖
