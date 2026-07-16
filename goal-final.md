@@ -81,7 +81,7 @@ last_completed_phase = 9
 last_decision = paper_preparation_ready_with_declared_limitations
 last_evidence_doc = paper/PAPER_PREP_STATUS.md
 last_test_command = make check-fasim-gasal2-paper-prep
-last_commit = docs: close GASAL2-LongTarget paper preparation
+last_commit = docs: certify goal-final completion audit
 ```
 
 ### Phase 依赖
@@ -2053,31 +2053,31 @@ docs: close GASAL2-LongTarget paper preparation
 Codex 在 Phase 9 必须逐项核对：
 
 ```text
-[ ] paper scope and claims frozen
-[ ] runtime commit/epoch frozen
-[ ] workload manifest preregistered
-[ ] core paired repeats complete
-[ ] generalization panel complete, including mismatches
-[ ] negative controls recorded
-[ ] ablation/resource/archive evidence complete
-[ ] raw artifacts immutable and digested
-[ ] exclusions explicit
-[ ] source data frozen
-[ ] statistics reproducible
-[ ] vector figures generated
-[ ] 600 DPI PNG directly exported
-[ ] tables generated from source data
-[ ] captions include scope, n and contracts
-[ ] reproduction package passes from clean checkout
-[ ] methods notes complete
-[ ] results claim map complete
-[ ] limitations complete
-[ ] bibliography metadata verified
-[ ] author/funding placeholders not invented
-[ ] long-query no-go preserved
-[ ] full 121-segment and hg38 runs not performed
-[ ] final aggregate check passes
-[ ] PAPER_PREP_STATUS.md written
+[x] paper scope and claims frozen
+[x] runtime commit/epoch frozen
+[x] workload manifest preregistered
+[x] core paired repeats complete
+[x] generalization panel complete, including mismatches
+[x] negative controls recorded
+[x] ablation/resource/archive evidence complete
+[x] raw artifacts immutable and digested
+[x] exclusions explicit
+[x] source data frozen
+[x] statistics reproducible
+[x] vector figures generated
+[x] 600 DPI PNG directly exported
+[x] tables generated from source data
+[x] captions include scope, n and contracts
+[x] reproduction package passes from clean checkout
+[x] methods notes complete
+[x] results claim map complete
+[x] limitations complete
+[x] bibliography metadata verified
+[x] author/funding placeholders not invented
+[x] long-query no-go preserved
+[x] full 121-segment and hg38 runs not performed
+[x] final aggregate check passes
+[x] PAPER_PREP_STATUS.md written
 ```
 
 ---

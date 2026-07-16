@@ -70,6 +70,7 @@ paper/results_claims.md         generated C1-C7 result source sheet
 paper/related_work_inventory.tsv verified PubMed/DOI metadata
 paper/references.bib            matching checked bibliography
 paper/independent_arithmetic_audit.tsv independent ratio/median audit
+paper/completion_audit.tsv       Phase 0-9 and final checklist evidence map
 paper/PAPER_PREP_STATUS.md      final scoped paper-preparation decision
 ```
 

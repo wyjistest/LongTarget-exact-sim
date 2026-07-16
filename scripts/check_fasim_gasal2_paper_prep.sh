@@ -7,6 +7,7 @@ RUNTIME_COMMIT="0d11aa2d61b7ccda59b462ab8e0750dad17ee18f"
 
 for relative in \
   goal-final.md paper/PAPER_PREP_STATUS.md \
+  paper/completion_audit.tsv \
   paper/independent_arithmetic_audit.tsv paper/claim_evidence.tsv \
   paper/source_data/correctness.tsv paper/source_data/exclusions.tsv \
   reproduce/audit_paper_results.py reproduce/audit_claim_language.py \
@@ -63,7 +64,8 @@ def read_tsv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
 
 
 state: dict[str, str] = {}
-for raw in (root / "goal-final.md").read_text(encoding="utf-8").splitlines():
+goal_text = (root / "goal-final.md").read_text(encoding="utf-8")
+for raw in goal_text.splitlines():
     if " = " in raw:
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
@@ -75,6 +77,30 @@ if state.get("paper_runtime_epoch") != "0" or state.get("paper_runtime_commit") 
     raise SystemExit("paper runtime freeze drifted")
 if state.get("data_freeze_id") != freeze_id or state.get("last_decision") != decision:
     raise SystemExit("data freeze or final decision drifted")
+checklist = re.findall(r"^\[([ x])\] (.+)$", goal_text, flags=re.MULTILINE)
+if len(checklist) != 25 or any(mark != "x" for mark, _ in checklist):
+    raise SystemExit("goal-final.md final paper-ready checklist is not fully checked")
+
+audit_fields, completion_audit = read_tsv(paper / "completion_audit.tsv")
+expected_audit_fields = [
+    "audit_id", "requirement", "authoritative_evidence", "verifier", "status",
+]
+expected_audit_ids = [f"P{index}" for index in range(10)] + [f"F{index:02d}" for index in range(1, 26)]
+if audit_fields != expected_audit_fields or [row["audit_id"] for row in completion_audit] != expected_audit_ids:
+    raise SystemExit("completion audit schema or ordered requirement IDs drifted")
+if [row["requirement"] for row in completion_audit[10:]] != [item for _, item in checklist]:
+    raise SystemExit("completion audit final requirements drifted from goal-final.md checklist")
+makefile_text = (root / "Makefile").read_text(encoding="utf-8")
+for row in completion_audit:
+    if row["status"] != "pass" or not row["requirement"]:
+        raise SystemExit(f"completion audit is not pass: {row['audit_id']}")
+    for relative in row["authoritative_evidence"].split(";"):
+        evidence = root / relative
+        if not evidence.is_file() or evidence.stat().st_size == 0:
+            raise SystemExit(f"completion evidence missing: {row['audit_id']} {relative}")
+    for verifier in row["verifier"].split(";"):
+        if not re.search(rf"^{re.escape(verifier)}\s*:", makefile_text, flags=re.MULTILINE):
+            raise SystemExit(f"completion verifier target missing: {row['audit_id']} {verifier}")
 
 _, claims = read_tsv(paper / "claim_evidence.tsv")
 if [row["claim_id"] for row in claims] != [f"C{index}" for index in range(1, 8)]:
@@ -130,6 +156,7 @@ for row in runs:
 status = (paper / "PAPER_PREP_STATUS.md").read_text(encoding="utf-8")
 for phrase in (
     decision, runtime_commit, freeze_id, "make check-fasim-gasal2-paper-prep",
+    "paper/completion_audit.tsv", "All 35 rows are `pass`",
     "38.320882x", "10 of 13", "54 of 61", "Full 121-segment KCNQ1OT1 and full hg38 were not run",
     "No release, DOI or tag was created automatically",
 ):
@@ -161,6 +188,7 @@ print("paired_clean=54")
 print("paired_mismatch_retained=7")
 print("guarded_full_length_queries=3")
 print("independent_arithmetic_rows=50")
+print("completion_audit_rows=35")
 PY
 
 if [[ -n "$(git -C "$ROOT" ls-files -o --exclude-standard -- paper/source_data)" ]]; then

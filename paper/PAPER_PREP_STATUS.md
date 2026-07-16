@@ -40,6 +40,13 @@ The generated wording and exact source filters are in
 `paper/results_claims.md`; the independent arithmetic receipt is
 `paper/independent_arithmetic_audit.tsv`.
 
+## Completion Audit
+
+`paper/completion_audit.tsv` maps all ten phase gates and all 25 final
+`goal-final.md` checklist items to authoritative evidence and executable Make
+verifiers. All 35 rows are `pass`; the aggregate gate rejects missing evidence,
+unknown verifier targets, unchecked final items, or a non-clean audit status.
+
 ## Correctness Summary
 
 - Score-, stability-, and Nt-ranked clustered TFO1-TFO5 are separate gates.
