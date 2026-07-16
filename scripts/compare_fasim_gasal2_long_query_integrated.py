@@ -153,7 +153,9 @@ def grid_outputs(root: Path) -> dict[str, Path]:
 
 
 def require_equal_config(
-    baseline: dict[str, object], candidate: dict[str, object]
+    baseline: dict[str, object],
+    candidate: dict[str, object],
+    allow_relocated_input_paths: bool = False,
 ) -> None:
     if baseline.get("exact_column_variant") != "legacy_authority_scoreinfo":
         raise CompareError("baseline config has unexpected exact-column variant")
@@ -173,6 +175,22 @@ def require_equal_config(
     for payload in (baseline_comparable, candidate_comparable):
         payload.pop("config_digest_sha256", None)
         payload.pop("exact_column_variant", None)
+    if allow_relocated_input_paths:
+        for path_key, digest_key in (
+            ("query", "query_sha256"),
+            ("target", "target_sha256"),
+        ):
+            if baseline_comparable.get(path_key) == candidate_comparable.get(path_key):
+                continue
+            baseline_digest = baseline_comparable.get(digest_key)
+            candidate_digest = candidate_comparable.get(digest_key)
+            if not baseline_digest or baseline_digest != candidate_digest:
+                raise CompareError(
+                    f"relocated {path_key} digest mismatch: "
+                    f"{baseline_digest!r} != {candidate_digest!r}"
+                )
+            baseline_comparable.pop(path_key, None)
+            candidate_comparable.pop(path_key, None)
     if baseline_comparable != candidate_comparable:
         differing = sorted(
             key
@@ -192,11 +210,16 @@ def main() -> int:
     parser.add_argument("--candidate-root", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--allow-relocated-input-paths", action="store_true")
     args = parser.parse_args()
 
     baseline_config = load_config(args.baseline_root)
     candidate_config = load_config(args.candidate_root)
-    require_equal_config(baseline_config, candidate_config)
+    require_equal_config(
+        baseline_config,
+        candidate_config,
+        allow_relocated_input_paths=args.allow_relocated_input_paths,
+    )
     baseline_summary = load_summary(args.baseline_root, baseline_config)
     candidate_summary = load_summary(args.candidate_root, candidate_config)
     baseline_source = args.baseline_root / "summary.txt"

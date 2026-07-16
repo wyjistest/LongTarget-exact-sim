@@ -13,6 +13,12 @@ Phase 0 freezes scope and inventories existing evidence. Historical values are
 starting evidence only. The paper estimates will be recomputed from the paired,
 preregistered runs collected by later phases.
 
+Phase 2 core paired receipts are exported without machine-specific absolute
+paths to `paper/source_data/*_pre_freeze.tsv`. Their raw authority remains under
+`.paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core`, with every file
+covered by `paper/phase2_artifact_manifest.tsv`. These tables are pre-freeze
+inputs; Phase 5 assigns the final data-freeze ID and bootstrap intervals.
+
 ## Layout
 
 ```text
@@ -21,6 +27,8 @@ paper/claim_evidence.tsv        C1-C7 claim/evidence ledger
 paper/artifact_inventory.tsv    immutable file metadata and provenance
 paper/gap_register.tsv          open evidence and reporting gaps
 paper/runtime_epoch_log.tsv     runtime freeze history
+paper/core_benchmark_report.md  Phase 2 paired benchmark report
+paper/phase2_artifact_manifest.tsv  Phase 2 raw/derived digest inventory
 paper/source_data/              Phase 3-5 machine-readable run data
 paper/figures/                  Phase 6 generated vector figures
 paper/tables/                   Phase 6 generated tables

@@ -404,34 +404,51 @@ for gap_id in (
     if gap_status.get(gap_id) != "resolved_phase1":
         raise SystemExit(f"Phase 1 gap is not resolved: {gap_id}")
 
-_, claim_rows = read_tsv(claims_path)
-claims = {row["claim_id"]: row for row in claim_rows}
-for claim_id in ("C2", "C3"):
-    gap = claims[claim_id]["gap"]
-    if "manifest" not in gap.lower() or "frozen" not in gap.lower() or "run" not in gap.lower():
-        raise SystemExit(f"{claim_id}: gap text does not separate manifest freeze from pending runs")
-
 goal = goal_path.read_text(encoding="utf-8")
 state: dict[str, str] = {}
 for raw in goal.splitlines():
     if " = " in raw:
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
+try:
+    active_phase = int(state.get("active_phase", "-1"))
+    last_completed_phase = int(state.get("last_completed_phase", "-1"))
+except ValueError as exc:
+    raise SystemExit("goal phase state is not numeric") from exc
+if active_phase < 2 or last_completed_phase < 1:
+    raise SystemExit("goal state has regressed before completed Phase 1")
+
+_, claim_rows = read_tsv(claims_path)
+claims = {row["claim_id"]: row for row in claim_rows}
+if active_phase == 2:
+    for claim_id in ("C2", "C3"):
+        gap = claims[claim_id]["gap"]
+        if "manifest" not in gap.lower() or "frozen" not in gap.lower() or "run" not in gap.lower():
+            raise SystemExit(f"{claim_id}: gap text does not separate manifest freeze from pending runs")
+
 expected_state = {
     "paper_runtime_epoch": "0",
     "paper_runtime_commit": baseline,
-    "active_phase": "2",
     "phase_0_status": "pass",
     "phase_1_status": "pass",
-    "last_completed_phase": "1",
-    "last_decision": "paper_benchmark_protocol_and_manifest_frozen",
-    "last_evidence_doc": "paper/benchmark_protocol.md",
-    "last_test_command": "make check-fasim-gasal2-paper-phase1",
-    "last_commit": "bench: preregister paper workloads and add digest-aware harness",
 }
 for key, expected in expected_state.items():
     if state.get(key) != expected:
         raise SystemExit(f"goal state mismatch for {key}: {state.get(key)!r} != {expected!r}")
+if active_phase == 2:
+    phase1_terminal_state = {
+        "last_completed_phase": "1",
+        "last_decision": "paper_benchmark_protocol_and_manifest_frozen",
+        "last_evidence_doc": "paper/benchmark_protocol.md",
+        "last_test_command": "make check-fasim-gasal2-paper-phase1",
+        "last_commit": "bench: preregister paper workloads and add digest-aware harness",
+    }
+    for key, expected in phase1_terminal_state.items():
+        if state.get(key) != expected:
+            raise SystemExit(
+                f"goal Phase 1 terminal state mismatch for {key}: "
+                f"{state.get(key)!r} != {expected!r}"
+            )
 
 makefile = makefile_path.read_text(encoding="utf-8")
 if "check-fasim-gasal2-paper-phase1:" not in makefile:

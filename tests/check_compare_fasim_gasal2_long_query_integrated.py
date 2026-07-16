@@ -148,10 +148,9 @@ class IntegratedPairComparatorTests(unittest.TestCase):
         return root
 
     def run_compare(
-        self, baseline: Path, candidate: Path
+        self, baseline: Path, candidate: Path, allow_relocated_inputs: bool = False
     ) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
+        command = [
                 "python3",
                 str(COMPARE),
                 "--workload",
@@ -166,7 +165,11 @@ class IntegratedPairComparatorTests(unittest.TestCase):
                 str(self.root / "compare"),
                 "--output",
                 str(self.root / "pair.tsv"),
-            ],
+            ]
+        if allow_relocated_inputs:
+            command.append("--allow-relocated-input-paths")
+        return subprocess.run(
+            command,
             cwd=ROOT,
             text=True,
             capture_output=True,
@@ -219,6 +222,32 @@ class IntegratedPairComparatorTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("byte", result.stderr.lower())
+
+    def test_allows_relocated_query_only_when_digest_is_equal(self) -> None:
+        baseline = self.make_run("baseline", "legacy_authority_scoreinfo", 100.0)
+        candidate = self.make_run("candidate", "gpu_pruned_scoreinfo_v1", 80.0)
+        config_path = candidate / "run-config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["query"] = "/different/materialized/path/query.fa"
+        canonical_payload = dict(config)
+        canonical_payload.pop("config_digest_sha256")
+        canonical = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"))
+        config["config_digest_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+        config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
+        summary_path = candidate / "summary.txt"
+        summary = summary_path.read_text(encoding="utf-8")
+        summary = summary.replace(
+            next(line for line in summary.splitlines() if line.startswith("config_digest_sha256=")),
+            f"config_digest_sha256={config['config_digest_sha256']}",
+        )
+        summary_path.write_text(summary, encoding="utf-8")
+
+        strict = self.run_compare(baseline, candidate)
+        relocated = self.run_compare(baseline, candidate, allow_relocated_inputs=True)
+
+        self.assertNotEqual(strict.returncode, 0)
+        self.assertIn("query", strict.stderr)
+        self.assertEqual(relocated.returncode, 0, relocated.stderr)
 
 
 if __name__ == "__main__":
