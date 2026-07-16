@@ -35,6 +35,11 @@ bounded reproduction commands and a CUDA user-space container definition. Its
 clean-checkout gate rebuilds the frozen statistics, tables and figures without
 accessing raw `.paper-artifacts` or rerunning a GPU benchmark.
 
+Phase 8 provides a claim-mapped outline, checked Methods notes, generated result
+source sheet, explicit limitations, verified related-work inventory, BibTeX and
+author-owned reporting placeholders. It remains source material rather than a
+generated manuscript.
+
 ## Layout
 
 ```text
@@ -57,6 +62,9 @@ reproduce/input_manifest.tsv    input provenance and reconstruction commands
 reproduce/environment.md        captured environment and protocol limitations
 reproduce/benchmark_commands.sh tiered bounded reproduction entry point
 paper/clean_checkout_validation.log  expected quick-reproduction receipt
+paper/results_claims.md         generated C1-C7 result source sheet
+paper/related_work_inventory.tsv verified PubMed/DOI metadata
+paper/references.bib            matching checked bibliography
 ```
 
 Large raw artifacts are not committed to Git. Later phases freeze them under:
@@ -100,6 +108,7 @@ make check-fasim-gasal2-paper-phase2
 make check-fasim-gasal2-paper-phase3
 make check-fasim-gasal2-paper-phase4
 make check-fasim-gasal2-paper-phase7
+make check-fasim-gasal2-paper-phase8
 ```
 
 The Phase 2-4 checks regenerate tracked reports and pre-freeze source tables

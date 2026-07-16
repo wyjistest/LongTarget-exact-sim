@@ -1,7 +1,7 @@
 gap_id	category	description	affects_claims	severity	resolution_phase	evidence_path	status
 archive_merge_repeats	archive_characterization	Large synthetic exact merge now has three paper-protocol timing and RSS repetitions with byte-identical outputs	C5	core	4	paper/ablation_resource_report.md	resolved_phase4
 ablation_same_workload_triad	ablation_scope	Authority-to-GASAL2 and sync-to-two-slot contrasts use different target scopes; no same-workload A/B/C speedup is constructed	C1,C4	limitation	9	paper/ablation_resource_report.md	open
-citation_metadata_gaps	citation_metadata	DOI PMID version and access-date metadata have not been inventoried; no citation may be fabricated	C1,C2,C3,C4,C5,C6,C7	core	8	paper/README.md	open
+citation_metadata_gaps	citation_metadata	Seven core and related works have PubMed and DOI primary-source metadata with a recorded verification date and matching BibTeX entries	C1,C2,C3,C4,C5,C6,C7	core	8	paper/related_work_inventory.tsv	resolved_phase8
 container_reproduction_gaps	container_reproduction	CUDA user-space container definition and staged-tree clean-checkout quick reproduction are documented and validated; host driver and GPU reruns remain external	C1,C2,C3,C4,C5,C6,C7	core	7	paper/clean_checkout_validation.log	resolved_phase7
 core_repeat_gaps	core_repeats	C1 now has five epoch-0 pairs C4 has five pairs per chromosome and C7 max8 has three pairs; all Phase 2 core repeat gates are clean	C1,C4,C7	core	2	paper/core_benchmark_report.md	resolved_phase2
 generalization_preregistration	generalization_protocol	Historical non-H19 rows were not frozen under the paper preregistration protocol and have one run per row	C2,C3	core	1	paper/workload_manifest.tsv	resolved_phase1
