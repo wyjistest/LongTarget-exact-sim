@@ -142,7 +142,8 @@ for raw in goal.splitlines():
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
 try:
-    active_phase = int(state.get("active_phase", "-1"))
+    active_raw = state.get("active_phase", "-1")
+    active_phase = 10 if active_raw == "complete" else int(active_raw)
     last_completed_phase = int(state.get("last_completed_phase", "-1"))
 except ValueError as exc:
     raise SystemExit("goal phase state is not numeric") from exc

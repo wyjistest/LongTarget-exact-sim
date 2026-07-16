@@ -83,7 +83,8 @@ for raw in goal_path.read_text(encoding="utf-8").splitlines():
     if " = " in raw:
         key, value = raw.split(" = ", 1)
         state.setdefault(key, value)
-active = int(state.get("active_phase", "-1"))
+active_raw = state.get("active_phase", "-1")
+active = 10 if active_raw == "complete" else int(active_raw)
 completed = int(state.get("last_completed_phase", "-1"))
 if active < 7 or completed < 6 or state.get("phase_6_status") != "pass":
     raise SystemExit("goal state has not completed paper Phase 6")

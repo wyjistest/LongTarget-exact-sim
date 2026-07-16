@@ -40,6 +40,10 @@ source sheet, explicit limitations, verified related-work inventory, BibTeX and
 author-owned reporting placeholders. It remains source material rather than a
 generated manuscript.
 
+Phase 9 independently rechecks pair, storage and exact-stage arithmetic, scans
+claim language, composes all lightweight gates and records the final scoped
+decision in `paper/PAPER_PREP_STATUS.md`.
+
 ## Layout
 
 ```text
@@ -65,6 +69,8 @@ paper/clean_checkout_validation.log  expected quick-reproduction receipt
 paper/results_claims.md         generated C1-C7 result source sheet
 paper/related_work_inventory.tsv verified PubMed/DOI metadata
 paper/references.bib            matching checked bibliography
+paper/independent_arithmetic_audit.tsv independent ratio/median audit
+paper/PAPER_PREP_STATUS.md      final scoped paper-preparation decision
 ```
 
 Large raw artifacts are not committed to Git. Later phases freeze them under:
@@ -109,6 +115,7 @@ make check-fasim-gasal2-paper-phase3
 make check-fasim-gasal2-paper-phase4
 make check-fasim-gasal2-paper-phase7
 make check-fasim-gasal2-paper-phase8
+make check-fasim-gasal2-paper-prep
 ```
 
 The Phase 2-4 checks regenerate tracked reports and pre-freeze source tables

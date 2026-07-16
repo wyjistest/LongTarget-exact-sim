@@ -64,7 +64,7 @@ paper_runtime_epoch = 0
 paper_runtime_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
 data_freeze_id = paper-data-v1-dccfd49-20260716
 
-active_phase = 9
+active_phase = complete
 
 phase_0_status = pass
 phase_1_status = pass
@@ -75,13 +75,13 @@ phase_5_status = pass
 phase_6_status = pass
 phase_7_status = pass
 phase_8_status = pass
-phase_9_status = pending
+phase_9_status = pass
 
-last_completed_phase = 8
-last_decision = manuscript_source_kit_and_citations_verified
-last_evidence_doc = paper/results_claims.md
-last_test_command = make check-fasim-gasal2-paper-phase8
-last_commit = docs: assemble GASAL2-LongTarget manuscript source kit
+last_completed_phase = 9
+last_decision = paper_preparation_ready_with_declared_limitations
+last_evidence_doc = paper/PAPER_PREP_STATUS.md
+last_test_command = make check-fasim-gasal2-paper-prep
+last_commit = docs: close GASAL2-LongTarget paper preparation
 ```
 
 ### Phase 依赖
