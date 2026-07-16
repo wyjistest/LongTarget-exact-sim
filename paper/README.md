@@ -25,6 +25,11 @@ repeat-consistent mismatches remain in the source data. The raw authority is
 under `.paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization`, with
 every collected file covered by `paper/phase3_artifact_manifest.tsv`.
 
+Phase 4 adds three current-epoch pairs for each frozen archive and exact-column
+workload. It keeps archive run, restore, merge, exact-stage, end-to-end, RSS and
+device-memory measurements separate. Existing high-density multi-worker OOM
+evidence is reused by digest rather than rerun.
+
 ## Layout
 
 ```text
@@ -37,6 +42,8 @@ paper/core_benchmark_report.md  Phase 2 paired benchmark report
 paper/phase2_artifact_manifest.tsv  Phase 2 raw/derived digest inventory
 paper/generalization_report.md  Phase 3 generalization and guard report
 paper/phase3_artifact_manifest.tsv  Phase 3 raw/derived digest inventory
+paper/ablation_resource_report.md  Phase 4 ablation/archive/resource report
+paper/phase4_artifact_manifest.tsv  Phase 4 raw/derived digest inventory
 paper/source_data/              Phase 2-5 machine-readable run data
 paper/figures/                  Phase 6 generated vector figures
 paper/tables/                   Phase 6 generated tables
@@ -82,7 +89,8 @@ provenance, runtime-freeze and claim-language checks.
 ```bash
 make check-fasim-gasal2-paper-phase2
 make check-fasim-gasal2-paper-phase3
+make check-fasim-gasal2-paper-phase4
 ```
 
-The Phase 2 and Phase 3 checks regenerate tracked reports and pre-freeze source
-tables from digest-covered local artifacts. They do not rerun the GPU workloads.
+The Phase 2-4 checks regenerate tracked reports and pre-freeze source tables
+from digest-covered local artifacts. They do not rerun the GPU workloads.

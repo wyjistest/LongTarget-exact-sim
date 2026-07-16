@@ -162,17 +162,34 @@ if sha256(manifest_path) != manifest_digest:
     raise SystemExit("Phase 1 workload manifest digest drifted")
 
 goal = goal_path.read_text(encoding="utf-8")
-for phrase in (
-    "active_phase = 4",
-    "phase_3_status = pass",
-    "last_completed_phase = 3",
-    "last_decision = generalization_supported",
-    "last_evidence_doc = paper/generalization_report.md",
-    "last_test_command = make check-fasim-gasal2-paper-phase3",
-    "last_commit = bench: complete preregistered short-query generalization panel",
-):
-    if phrase not in goal:
-        raise SystemExit(f"goal-final Phase 3 state missing: {phrase}")
+state: dict[str, str] = {}
+for raw in goal.splitlines():
+    if " = " in raw:
+        key, value = raw.split(" = ", 1)
+        state.setdefault(key, value)
+try:
+    active_phase = int(state.get("active_phase", "-1"))
+    last_completed_phase = int(state.get("last_completed_phase", "-1"))
+except ValueError as exc:
+    raise SystemExit("goal phase state is not numeric") from exc
+if active_phase < 4 or last_completed_phase < 3:
+    raise SystemExit("goal state has regressed before completed Phase 3")
+if state.get("phase_3_status") != "pass":
+    raise SystemExit("goal-final.md does not record phase_3_status = pass")
+if active_phase == 4:
+    phase3_terminal_state = {
+        "last_completed_phase": "3",
+        "last_decision": "generalization_supported",
+        "last_evidence_doc": "paper/generalization_report.md",
+        "last_test_command": "make check-fasim-gasal2-paper-phase3",
+        "last_commit": "bench: complete preregistered short-query generalization panel",
+    }
+    for key, expected in phase3_terminal_state.items():
+        if state.get(key) != expected:
+            raise SystemExit(
+                f"goal Phase 3 terminal state mismatch for {key}: "
+                f"{state.get(key)!r} != {expected!r}"
+            )
 
 pair_fields, pairs = read_tsv(pairs_path)
 required_pair_fields = {

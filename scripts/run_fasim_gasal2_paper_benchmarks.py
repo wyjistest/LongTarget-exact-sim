@@ -412,7 +412,51 @@ def adapter_command(
             environment,
             ["bash", str(ROOT / "scripts/characterize_fasim_gasal2_segmented_query_kcnq1ot1_pilot.sh")],
         )
-    if adapter in {"historical_descriptive", "archive_pair", "exact_column_pair"}:
+    if adapter == "archive_pair":
+        if row["workload_id"] == "c5_archive_large_synthetic":
+            backend = "memory" if mode == "baseline" else "sqlite"
+            return [
+                sys.executable,
+                str(ROOT / "scripts/run_fasim_gasal2_paper_archive_merge.py"),
+                "--backend",
+                backend,
+                "--rows",
+                "150000",
+                "--output",
+                str(output / "synthetic-merged-TFOsorted"),
+            ]
+        environment = base_gasal2_env()
+        environment.update(
+            {
+                "FASIM_OUTPUT_MODE": "tfosorted",
+                "FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT": "0" if mode == "baseline" else "1",
+            }
+        )
+        return env_command(
+            environment,
+            [str(binary), "-f1", str(target), "-f2", str(query), "-r", row["rule"], "-O", str(output)],
+        )
+    if adapter == "exact_column_pair":
+        environment = base_gasal2_env()
+        environment.update(
+            {
+                "FASIM_OUTPUT_MODE": "tfosorted",
+                "FASIM_GASAL2_ARCHIVE_FIRST_OUTPUT": "1",
+            }
+        )
+        if mode == "candidate":
+            environment.update(
+                {
+                    "FASIM_EXACT_COLUMN_SCOREINFO_GPU": "1",
+                    "FASIM_EXACT_COLUMN_SCOREINFO_GPU_MAX_PER_TASK": "512",
+                    "FASIM_EXACT_COLUMN_SCOREINFO_GPU_PRUNED_OUTPUT": "1",
+                }
+            )
+        return env_command(
+            environment,
+            [str(binary), "-f1", str(target), "-f2", str(query), "-r", row["rule"], "-O", str(output)],
+        )
+    if adapter == "historical_descriptive":
         raise SystemExit(f"adapter {adapter} is preregistered for a phase-specific paired driver")
     raise SystemExit(f"unknown paper benchmark adapter: {adapter}")
 

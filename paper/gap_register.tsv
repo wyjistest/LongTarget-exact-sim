@@ -1,5 +1,6 @@
 gap_id	category	description	affects_claims	severity	resolution_phase	evidence_path	status
-archive_merge_repeats	archive_characterization	Large synthetic or real archive merge has fewer than three paper-protocol timing and RSS repetitions	C5	core	4	docs/fasim_gasal2_segmented_archive_first.md	open
+archive_merge_repeats	archive_characterization	Large synthetic exact merge now has three paper-protocol timing and RSS repetitions with byte-identical outputs	C5	core	4	paper/ablation_resource_report.md	resolved_phase4
+ablation_same_workload_triad	ablation_scope	Authority-to-GASAL2 and sync-to-two-slot contrasts use different target scopes; no same-workload A/B/C speedup is constructed	C1,C4	limitation	9	paper/ablation_resource_report.md	open
 citation_metadata_gaps	citation_metadata	DOI PMID version and access-date metadata have not been inventoried; no citation may be fabricated	C1,C2,C3,C4,C5,C6,C7	core	8	paper/README.md	open
 container_reproduction_gaps	container_reproduction	No frozen container or equivalent build definition has passed clean-checkout reproduction	C1,C2,C3,C4,C5,C6,C7	core	7	docs/fasim_gasal2_long_query_architecture_baseline.md	open
 core_repeat_gaps	core_repeats	C1 now has five epoch-0 pairs C4 has five pairs per chromosome and C7 max8 has three pairs; all Phase 2 core repeat gates are clean	C1,C4,C7	core	2	paper/core_benchmark_report.md	resolved_phase2
