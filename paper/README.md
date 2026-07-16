@@ -30,6 +30,11 @@ workload. It keeps archive run, restore, merge, exact-stage, end-to-end, RSS and
 device-memory measurements separate. Existing high-density multi-worker OOM
 evidence is reused by digest rather than rerun.
 
+Phase 7 adds a digest-aware input manifest, normalized benchmark environment,
+bounded reproduction commands and a CUDA user-space container definition. Its
+clean-checkout gate rebuilds the frozen statistics, tables and figures without
+accessing raw `.paper-artifacts` or rerunning a GPU benchmark.
+
 ## Layout
 
 ```text
@@ -48,6 +53,10 @@ paper/source_data/              Phase 2-5 machine-readable run data
 paper/figures/                  Phase 6 generated vector figures
 paper/tables/                   Phase 6 generated tables
 paper/supplementary/            Phase 6 supplementary outputs
+reproduce/input_manifest.tsv    input provenance and reconstruction commands
+reproduce/environment.md        captured environment and protocol limitations
+reproduce/benchmark_commands.sh tiered bounded reproduction entry point
+paper/clean_checkout_validation.log  expected quick-reproduction receipt
 ```
 
 Large raw artifacts are not committed to Git. Later phases freeze them under:
@@ -90,7 +99,11 @@ provenance, runtime-freeze and claim-language checks.
 make check-fasim-gasal2-paper-phase2
 make check-fasim-gasal2-paper-phase3
 make check-fasim-gasal2-paper-phase4
+make check-fasim-gasal2-paper-phase7
 ```
 
 The Phase 2-4 checks regenerate tracked reports and pre-freeze source tables
 from digest-covered local artifacts. They do not rerun the GPU workloads.
+The Phase 7 gate additionally archives the staged tree to a clean temporary
+directory and regenerates the frozen statistical summaries and all paper
+figures/tables there.

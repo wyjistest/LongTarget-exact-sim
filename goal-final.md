@@ -64,7 +64,7 @@ paper_runtime_epoch = 0
 paper_runtime_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
 data_freeze_id = paper-data-v1-dccfd49-20260716
 
-active_phase = 7
+active_phase = 8
 
 phase_0_status = pass
 phase_1_status = pass
@@ -73,15 +73,15 @@ phase_3_status = pass
 phase_4_status = pass
 phase_5_status = pass
 phase_6_status = pass
-phase_7_status = pending
+phase_7_status = pass
 phase_8_status = pending
 phase_9_status = pending
 
-last_completed_phase = 6
-last_decision = paper_figures_tables_generated
-last_evidence_doc = paper/captions.md
-last_test_command = make check-fasim-gasal2-paper-phase6
-last_commit = figures: generate paper-ready GASAL2-LongTarget figures and tables
+last_completed_phase = 7
+last_decision = paper_reproduction_package_clean_checkout_validated
+last_evidence_doc = paper/clean_checkout_validation.log
+last_test_command = make check-fasim-gasal2-paper-phase7
+last_commit = repro: add clean-checkout paper reproduction package
 ```
 
 ### Phase 依赖
