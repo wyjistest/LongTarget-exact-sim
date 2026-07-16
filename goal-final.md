@@ -62,26 +62,26 @@ Codex 每完成一个 phase，必须更新此块；不得提前把后续 phase �
 paper_baseline_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
 paper_runtime_epoch = 0
 paper_runtime_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
-data_freeze_id = unset
+data_freeze_id = paper-data-v1-dccfd49-20260716
 
-active_phase = 5
+active_phase = 6
 
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
 phase_3_status = pass
 phase_4_status = pass
-phase_5_status = pending
+phase_5_status = pass
 phase_6_status = pending
 phase_7_status = pending
 phase_8_status = pending
 phase_9_status = pending
 
-last_completed_phase = 4
-last_decision = paper_ablation_resource_archive_characterized
-last_evidence_doc = paper/ablation_resource_report.md
-last_test_command = make check-fasim-gasal2-paper-phase4
-last_commit = bench: add paper ablation, resource and archive characterization
+last_completed_phase = 5
+last_decision = paper_source_data_frozen
+last_evidence_doc = paper/source_data/DATA_FREEZE.md
+last_test_command = make check-fasim-gasal2-paper-phase5
+last_commit = analysis: freeze GASAL2-LongTarget paper source data
 ```
 
 ### Phase 依赖

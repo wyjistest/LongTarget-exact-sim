@@ -1,0 +1,17 @@
+data_freeze_id	row_type	workload_id	query_id	query_length_nt	fragment_position	target_id	target_region	role	valid_pairs	median_paired_speedup	clustered_score_all_equal	clustered_stability_all_equal	clustered_nt_all_equal	boundary_ties_all_equal	fallbacks_total	oom_total	supported	guard_reason	gpu_fast_path_executed	status
+paper-data-v1-dccfd49-20260716	supported_query	g01_malat1_5p_1024_chr11	MALAT1	1024	5p	chr11_center_2mb	slice:66543311-68543311	generalization_core	3	11.92444177991023	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g02_malat1_mid_2048_chr21	MALAT1	2048	mid	chr21_center_2mb	slice:22354991-24354991	generalization_core	3	16.23597776237592	1	0	1	1	0	0				mismatch
+paper-data-v1-dccfd49-20260716	supported_query	g03_malat1_3p_2812_chr22	MALAT1	2812	3p	chr22_center_2mb	slice:24409234-26409234	generalization_core	3	17.420779318120164	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g04_neat1_5p_2048_chr22	NEAT1	2048	5p	chr22_center_2mb	slice:24409234-26409234	generalization_core	3	17.07350261031964	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g05_neat1_mid_2812_chr11	NEAT1	2812	mid	chr11_center_2mb	slice:66543311-68543311	generalization_core	3	17.721833539339485	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g06_neat1_3p_1024_chr21	NEAT1	1024	3p	chr21_center_2mb	slice:22354991-24354991	generalization_core	3	13.877246180636925	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g07_kcnq1ot1_5p_2812_chr21	KCNQ1OT1	2812	5p	chr21_center_2mb	slice:22354991-24354991	generalization_core	3	23.044488821290503	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g08_kcnq1ot1_mid_1024_chr22	KCNQ1OT1	1024	mid	chr22_center_2mb	slice:24409234-26409234	generalization_core	3	13.9757269282732	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g09_kcnq1ot1_3p_2048_chr11	KCNQ1OT1	2048	3p	chr11_center_2mb	slice:66543311-68543311	generalization_core	3	20.362261402926546	1	1	0	1	0	0				mismatch
+paper-data-v1-dccfd49-20260716	supported_query	g10_h19_full_chr11	H19	2812	full	chr11_center_2mb	slice:66543311-68543311	breadth	1	19.893861332648594	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g11_h19_full_chr21	H19	2812	full	chr21_center_2mb	slice:22354991-24354991	breadth	1	20.438586753734846	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	supported_query	g12_h19_full_chr22	H19	2812	full	chr22_center_2mb	slice:24409234-26409234	breadth	1	20.366779856289504	1	0	1	1	0	0				mismatch
+paper-data-v1-dccfd49-20260716	supported_query	g13_meg3_full_chr11	MEG3	1582	full	chr11_center_2mb	slice:66543311-68543311	breadth	1	15.528138681399216	1	1	1	1	0	0				clean
+paper-data-v1-dccfd49-20260716	full_length_guard	n01_malat1_full_guard	MALAT1	8708		malat1_dna		negative_control	0	NA	NA	NA	NA	NA	0	0	0	query_length_contract	0	guarded
+paper-data-v1-dccfd49-20260716	full_length_guard	n02_neat1_full_guard	NEAT1	22767		neat1_dna		negative_control	0	NA	NA	NA	NA	NA	0	0	0	query_length_contract	0	guarded
+paper-data-v1-dccfd49-20260716	full_length_guard	n03_kcnq1ot1_full_guard	KCNQ1OT1	91667		chr22_full		negative_control	0	NA	NA	NA	NA	NA	0	0	0	query_length_contract	0	guarded

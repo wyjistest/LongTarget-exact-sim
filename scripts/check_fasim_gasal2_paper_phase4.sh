@@ -136,17 +136,34 @@ def canonical_config_digest(payload: dict[str, object]) -> str:
 
 
 goal = goal_path.read_text(encoding="utf-8")
-for phrase in (
-    "active_phase = 5",
-    "phase_4_status = pass",
-    "last_completed_phase = 4",
-    "last_decision = paper_ablation_resource_archive_characterized",
-    "last_evidence_doc = paper/ablation_resource_report.md",
-    "last_test_command = make check-fasim-gasal2-paper-phase4",
-    "last_commit = bench: add paper ablation, resource and archive characterization",
-):
-    if phrase not in goal:
-        raise SystemExit(f"goal-final Phase 4 state missing: {phrase}")
+state: dict[str, str] = {}
+for raw in goal.splitlines():
+    if " = " in raw:
+        key, value = raw.split(" = ", 1)
+        state.setdefault(key, value)
+try:
+    active_phase = int(state.get("active_phase", "-1"))
+    last_completed_phase = int(state.get("last_completed_phase", "-1"))
+except ValueError as exc:
+    raise SystemExit("goal phase state is not numeric") from exc
+if active_phase < 5 or last_completed_phase < 4:
+    raise SystemExit("goal state has regressed before completed Phase 4")
+if state.get("phase_4_status") != "pass":
+    raise SystemExit("goal-final.md does not record phase_4_status = pass")
+if active_phase == 5:
+    phase4_terminal_state = {
+        "last_completed_phase": "4",
+        "last_decision": "paper_ablation_resource_archive_characterized",
+        "last_evidence_doc": "paper/ablation_resource_report.md",
+        "last_test_command": "make check-fasim-gasal2-paper-phase4",
+        "last_commit": "bench: add paper ablation, resource and archive characterization",
+    }
+    for key, expected in phase4_terminal_state.items():
+        if state.get(key) != expected:
+            raise SystemExit(
+                f"goal Phase 4 terminal state mismatch for {key}: "
+                f"{state.get(key)!r} != {expected!r}"
+            )
 
 pair_fields, pairs = read_tsv(pairs_path)
 required_pair_fields = {
@@ -313,9 +330,12 @@ for phrase in (
 
 _, claims = read_tsv(claims_path)
 claims_map = {row["claim_id"]: row for row in claims}
-if claims_map["C5"]["status"] != "phase4_archive_clean" or claims_map["C6"]["status"] != "phase4_component_clean":
+if claims_map["C5"]["status"] not in {"phase4_archive_clean", "frozen_clean"} or claims_map["C6"]["status"] not in {"phase4_component_clean", "frozen_clean"}:
     raise SystemExit("C5/C6 claim ledger was not updated from Phase 4 evidence")
-if claims_map["C5"]["current_evidence_path"] != "paper/ablation_resource_report.md":
+if claims_map["C5"]["current_evidence_path"] not in {
+    "paper/ablation_resource_report.md",
+    "paper/source_data/archive_first.tsv",
+}:
     raise SystemExit("C5 evidence path drifted")
 
 _, inventory = read_tsv(inventory_path)

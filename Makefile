@@ -1354,6 +1354,15 @@ check-fasim-gasal2-paper-phase4:
 	$(MAKE) check-fasim-gasal2-paper-phase3
 	bash ./scripts/check_fasim_gasal2_paper_phase4.sh
 
+paper-source-data:
+	python3 ./reproduce/collect_results.py
+	python3 ./reproduce/analyze_results.py
+	python3 ./reproduce/freeze_results.py
+
+check-fasim-gasal2-paper-phase5:
+	$(MAKE) check-fasim-gasal2-paper-phase4
+	bash ./scripts/check_fasim_gasal2_paper_phase5.sh
+
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
 	characterize-fasim-gasal2-exact-column-long-query \
@@ -1370,7 +1379,9 @@ check-fasim-gasal2-paper-phase4:
 	check-fasim-gasal2-paper-phase1 \
 	check-fasim-gasal2-paper-phase2 \
 	check-fasim-gasal2-paper-phase3 \
-	check-fasim-gasal2-paper-phase4
+	check-fasim-gasal2-paper-phase4 \
+	check-fasim-gasal2-paper-phase5 \
+	paper-source-data
 
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh

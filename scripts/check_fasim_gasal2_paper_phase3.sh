@@ -349,9 +349,19 @@ for phrase in (
 
 _, claims = read_tsv(claims_path)
 claim_map = {row["claim_id"]: row for row in claims}
-for claim_id in ("C2", "C3"):
+phase3_claim_states = {
+    "C2": {
+        ("paper/generalization_report.md", "supported"),
+        ("paper/source_data/generalization.tsv", "frozen_with_mismatches"),
+    },
+    "C3": {
+        ("paper/generalization_report.md", "supported"),
+        ("paper/source_data/correctness.tsv", "frozen_with_mismatches"),
+    },
+}
+for claim_id, allowed in phase3_claim_states.items():
     row = claim_map[claim_id]
-    if row["current_evidence_path"] != "paper/generalization_report.md" or row["status"] != "supported":
+    if (row["current_evidence_path"], row["status"]) not in allowed:
         raise SystemExit(f"claim ledger not promoted from Phase 3 evidence: {claim_id}")
 
 _, inventory = read_tsv(inventory_path)

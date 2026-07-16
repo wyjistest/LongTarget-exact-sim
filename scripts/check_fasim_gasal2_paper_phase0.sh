@@ -58,6 +58,7 @@ allowed_sources = {
     "reused_digest_verified",
     "committed_historical_artifact",
     "user_provided_external_result",
+    "frozen_source_data",
     "unavailable",
 }
 
@@ -160,7 +161,13 @@ expected_claim_header = [
     "gap",
     "status",
 ]
-if claim_header != expected_claim_header:
+phase5_claim_header = [
+    "final_interval_or_range",
+    "correctness_status",
+    "source_data_filter",
+    "allowed_manuscript_wording",
+]
+if claim_header != expected_claim_header and claim_header != expected_claim_header + phase5_claim_header:
     raise SystemExit(f"claim ledger schema mismatch: {claim_header}")
 claim_ids = [row["claim_id"] for row in claim_rows]
 if claim_ids != [f"C{index}" for index in range(1, 8)]:
