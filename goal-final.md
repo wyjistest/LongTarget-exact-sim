@@ -64,12 +64,12 @@ paper_runtime_epoch = 0
 paper_runtime_commit = 0d11aa2d61b7ccda59b462ab8e0750dad17ee18f
 data_freeze_id = unset
 
-active_phase = 3
+active_phase = 4
 
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
-phase_3_status = pending
+phase_3_status = pass
 phase_4_status = pending
 phase_5_status = pending
 phase_6_status = pending
@@ -77,11 +77,11 @@ phase_7_status = pending
 phase_8_status = pending
 phase_9_status = pending
 
-last_completed_phase = 2
-last_decision = paper_core_paired_benchmarks_collected
-last_evidence_doc = paper/core_benchmark_report.md
-last_test_command = make check-fasim-gasal2-paper-phase2
-last_commit = bench: collect paired paper benchmarks for core GASAL2 claims
+last_completed_phase = 3
+last_decision = generalization_supported
+last_evidence_doc = paper/generalization_report.md
+last_test_command = make check-fasim-gasal2-paper-phase3
+last_commit = bench: complete preregistered short-query generalization panel
 ```
 
 ### Phase 依赖

@@ -19,6 +19,12 @@ paths to `paper/source_data/*_pre_freeze.tsv`. Their raw authority remains under
 covered by `paper/phase2_artifact_manifest.tsv`. These tables are pre-freeze
 inputs; Phase 5 assigns the final data-freeze ID and bootstrap intervals.
 
+Phase 3 retains all 13 preregistered supported-query workloads and three
+full-length guards. Ten workloads are clustered tri-ranking clean and three
+repeat-consistent mismatches remain in the source data. The raw authority is
+under `.paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization`, with
+every collected file covered by `paper/phase3_artifact_manifest.tsv`.
+
 ## Layout
 
 ```text
@@ -29,7 +35,9 @@ paper/gap_register.tsv          open evidence and reporting gaps
 paper/runtime_epoch_log.tsv     runtime freeze history
 paper/core_benchmark_report.md  Phase 2 paired benchmark report
 paper/phase2_artifact_manifest.tsv  Phase 2 raw/derived digest inventory
-paper/source_data/              Phase 3-5 machine-readable run data
+paper/generalization_report.md  Phase 3 generalization and guard report
+paper/phase3_artifact_manifest.tsv  Phase 3 raw/derived digest inventory
+paper/source_data/              Phase 2-5 machine-readable run data
 paper/figures/                  Phase 6 generated vector figures
 paper/tables/                   Phase 6 generated tables
 paper/supplementary/            Phase 6 supplementary outputs
@@ -68,3 +76,13 @@ make check-fasim-gasal2-paper-phase0
 
 This composes the completed long-query final gate with the paper scope,
 provenance, runtime-freeze and claim-language checks.
+
+## Current phase checks
+
+```bash
+make check-fasim-gasal2-paper-phase2
+make check-fasim-gasal2-paper-phase3
+```
+
+The Phase 2 and Phase 3 checks regenerate tracked reports and pre-freeze source
+tables from digest-covered local artifacts. They do not rerun the GPU workloads.

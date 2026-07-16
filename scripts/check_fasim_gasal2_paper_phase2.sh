@@ -141,17 +141,34 @@ if sha256(manifest_path) != manifest_digest:
     raise SystemExit("Phase 1 workload manifest digest drifted")
 
 goal = goal_path.read_text(encoding="utf-8")
-for phrase in (
-    "active_phase = 3",
-    "phase_2_status = pass",
-    "last_completed_phase = 2",
-    "last_decision = paper_core_paired_benchmarks_collected",
-    "last_evidence_doc = paper/core_benchmark_report.md",
-    "last_test_command = make check-fasim-gasal2-paper-phase2",
-    "last_commit = bench: collect paired paper benchmarks for core GASAL2 claims",
-):
-    if phrase not in goal:
-        raise SystemExit(f"goal-final Phase 2 state missing: {phrase}")
+state: dict[str, str] = {}
+for raw in goal.splitlines():
+    if " = " in raw:
+        key, value = raw.split(" = ", 1)
+        state.setdefault(key, value)
+try:
+    active_phase = int(state.get("active_phase", "-1"))
+    last_completed_phase = int(state.get("last_completed_phase", "-1"))
+except ValueError as exc:
+    raise SystemExit("goal phase state is not numeric") from exc
+if active_phase < 3 or last_completed_phase < 2:
+    raise SystemExit("goal state has regressed before completed Phase 2")
+if state.get("phase_2_status") != "pass":
+    raise SystemExit("goal-final.md does not record phase_2_status = pass")
+if active_phase == 3:
+    phase2_terminal_state = {
+        "last_completed_phase": "2",
+        "last_decision": "paper_core_paired_benchmarks_collected",
+        "last_evidence_doc": "paper/core_benchmark_report.md",
+        "last_test_command": "make check-fasim-gasal2-paper-phase2",
+        "last_commit": "bench: collect paired paper benchmarks for core GASAL2 claims",
+    }
+    for key, expected in phase2_terminal_state.items():
+        if state.get(key) != expected:
+            raise SystemExit(
+                f"goal Phase 2 terminal state mismatch for {key}: "
+                f"{state.get(key)!r} != {expected!r}"
+            )
 
 pair_fields, pairs = read_tsv(pairs_path)
 required_pair_fields = {

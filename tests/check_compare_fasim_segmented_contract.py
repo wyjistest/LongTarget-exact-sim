@@ -81,9 +81,10 @@ class SegmentedContractComparatorTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def compare(self, baseline: Path, candidate: Path) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
+    def compare(
+        self, baseline: Path, candidate: Path, details: Path | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        command = [
                 sys.executable,
                 str(COMPARE),
                 "--baseline",
@@ -92,7 +93,11 @@ class SegmentedContractComparatorTest(unittest.TestCase):
                 str(candidate),
                 "--k",
                 "5",
-            ],
+            ]
+        if details is not None:
+            command.extend(["--details", str(details)])
+        return subprocess.run(
+            command,
             cwd=ROOT,
             check=False,
             text=True,
@@ -116,6 +121,29 @@ class SegmentedContractComparatorTest(unittest.TestCase):
         self.assertEqual(values["all_three_top5_equal"], "1")
         self.assertEqual(values["boundary_ties_equal"], "1")
         self.assertGreater(int(values["representative_conflict_clusters"]), 0)
+
+    def test_details_capture_raw_and_clustered_representatives_for_each_side(self) -> None:
+        baseline = self.work / "baseline.tsv"
+        candidate = self.work / "candidate.tsv"
+        details = self.work / "details.tsv"
+        write_rows(baseline, self.rows)
+        write_rows(candidate, list(reversed(self.rows)))
+
+        result = self.compare(baseline, candidate, details)
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        with details.open(newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            rows = list(reader)
+        self.assertEqual(
+            reader.fieldnames,
+            ["side", "kind", "mode", "rank", "cluster_id", *TFOSORTED_COLUMNS],
+        )
+        self.assertEqual({row["side"] for row in rows}, {"baseline", "candidate"})
+        self.assertEqual({row["kind"] for row in rows}, {"raw", "clustered"})
+        self.assertEqual({row["mode"] for row in rows}, {"score", "stability", "nt"})
+        self.assertTrue(all(row["cluster_id"] == "NA" for row in rows if row["kind"] == "raw"))
+        self.assertTrue(all(row["cluster_id"] != "NA" for row in rows if row["kind"] == "clustered"))
 
     def test_missing_boundary_tie_is_reported(self) -> None:
         baseline = self.work / "baseline.tsv"

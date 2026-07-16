@@ -21,6 +21,8 @@ class ContractSide:
     row_keys: set[tuple[str, ...]]
     raw_top: dict[str, tuple[tuple[str, ...], ...]]
     clustered_top: dict[str, tuple[tuple[str, ...], ...]]
+    raw_top_rows: dict[str, tuple[dict[str, str], ...]]
+    clustered_top_rows: dict[str, tuple[tuple[int, dict[str, str]], ...]]
     tie_groups: set[tuple[str, tuple[tuple[str, ...], ...]]]
     representative_conflict_clusters: int
 
@@ -89,11 +91,12 @@ def _analyze(path: Path, k: int, cluster_distance: int, cluster_length: int) -> 
     input_rows = _read_rows(path)
     unique_by_key = {_full_key(row): row for row in input_rows}
     rows = [unique_by_key[key] for key in sorted(unique_by_key)]
+    raw_top_rows = {
+        mode: tuple(sorted(rows, key=lambda row: _rank_key(row, mode), reverse=True)[:k])
+        for mode in RANKING_MODES
+    }
     raw_top = {
-        mode: tuple(
-            _full_key(row)
-            for row in sorted(rows, key=lambda row: _rank_key(row, mode), reverse=True)[:k]
-        )
+        mode: tuple(_full_key(row) for row in raw_top_rows[mode])
         for mode in RANKING_MODES
     }
 
@@ -111,15 +114,18 @@ def _analyze(path: Path, k: int, cluster_distance: int, cluster_length: int) -> 
         }
         for mode in RANKING_MODES
     }
-    clustered_top = {
+    clustered_top_rows = {
         mode: tuple(
-            _full_key(row)
-            for row in sorted(
-                representatives[mode].values(),
-                key=lambda row: _rank_key(row, mode),
+            sorted(
+                representatives[mode].items(),
+                key=lambda item: _rank_key(item[1], mode),
                 reverse=True,
             )[:k]
         )
+        for mode in RANKING_MODES
+    }
+    clustered_top = {
+        mode: tuple(_full_key(row) for _, row in clustered_top_rows[mode])
         for mode in RANKING_MODES
     }
 
@@ -146,9 +152,54 @@ def _analyze(path: Path, k: int, cluster_distance: int, cluster_length: int) -> 
         row_keys=set(unique_by_key),
         raw_top=raw_top,
         clustered_top=clustered_top,
+        raw_top_rows=raw_top_rows,
+        clustered_top_rows=clustered_top_rows,
         tie_groups=tie_groups,
         representative_conflict_clusters=representative_conflicts,
     )
+
+
+def _write_details(
+    path: Path,
+    baseline: ContractSide,
+    candidate: ContractSide,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = ["side", "kind", "mode", "rank", "cluster_id", *TFOSORTED_COLUMNS]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=fieldnames,
+            delimiter="\t",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        for side, contract in (("baseline", baseline), ("candidate", candidate)):
+            for mode in RANKING_MODES:
+                for rank, row in enumerate(contract.raw_top_rows[mode], 1):
+                    writer.writerow(
+                        {
+                            "side": side,
+                            "kind": "raw",
+                            "mode": mode,
+                            "rank": rank,
+                            "cluster_id": "NA",
+                            **row,
+                        }
+                    )
+                for rank, (cluster_id, row) in enumerate(
+                    contract.clustered_top_rows[mode], 1
+                ):
+                    writer.writerow(
+                        {
+                            "side": side,
+                            "kind": "clustered",
+                            "mode": mode,
+                            "rank": rank,
+                            "cluster_id": cluster_id,
+                            **row,
+                        }
+                    )
 
 
 def main() -> int:
@@ -160,12 +211,15 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--cluster-distance", type=int, default=15)
     parser.add_argument("--cluster-length", type=int, default=50)
+    parser.add_argument("--details", type=Path)
     args = parser.parse_args()
     if args.k <= 0:
         parser.error("--k must be positive")
 
     baseline = _analyze(args.baseline, args.k, args.cluster_distance, args.cluster_length)
     candidate = _analyze(args.candidate, args.k, args.cluster_distance, args.cluster_length)
+    if args.details:
+        _write_details(args.details, baseline, candidate)
     missing = baseline.row_keys - candidate.row_keys
     extra = candidate.row_keys - baseline.row_keys
 
