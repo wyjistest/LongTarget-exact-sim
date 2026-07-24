@@ -1,0 +1,8 @@
+artifact_id	path	phase	artifact_class	authority	freeze_or_epoch	required	status
+S0001	paper/bioinformatics/README.md	0	scope_receipt	repository_and_git_history	submission_software_epoch_1	1	pass
+S0002	paper/bioinformatics/journal_requirements.md	0	journal_requirements	official_urls_and_owner_execution_spec	checked_2026-07-24	1	pass
+S0003	paper/bioinformatics/claim_evidence.tsv	0	claim_ledger	goal-bioinformatics.md	submission_scope_v1	1	pass
+S0004	paper/bioinformatics/gap_register.tsv	0	gap_register	current_repository_audit	submission_scope_v1	1	pass
+S0005	paper/bioinformatics/owner_metadata_needed.md	0	owner_action_register	goal-bioinformatics.md	owner_controlled	1	pass
+S0006	paper/bioinformatics/submission_manifest.tsv	0	submission_manifest	current_repository_audit	submission_scope_v1	1	pass
+S0007	scripts/check_bioinformatics_phase0.sh	0	phase_checker	goal-bioinformatics.md	submission_software_epoch_1	1	pass
