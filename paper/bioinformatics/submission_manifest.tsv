@@ -27,3 +27,12 @@ S0210	reproduce/bioinformatics/fetch_holdout_inputs.sh	2	holdout_fetcher	holdout
 S0211	tests/check_build_bioinformatics_holdout_panel.py	2	holdout_builder_tests	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
 S0212	tests/check_bioinformatics_phase2_freeze.py	2	holdout_freeze_tests	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
 S0213	scripts/check_bioinformatics_phase2_freeze.sh	2	preexecution_phase_gate	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0214	paper/bioinformatics/frozen_contract_matrix.tsv	2	frozen_contract_matrix	analyze_frozen_contracts.py	paper-data-v1-dccfd49-20260716	1	pass
+S0215	paper/bioinformatics/mismatch_feature_matrix.tsv	2	mismatch_feature_matrix	analyze_frozen_contracts.py	paper-data-v1-dccfd49-20260716	1	pass
+S0216	paper/bioinformatics/mismatch_analysis.md	2	mismatch_analysis	analyze_frozen_contracts.py	paper-data-v1-dccfd49-20260716	1	pass
+S0217	reproduce/bioinformatics/analyze_frozen_contracts.py	2	frozen_contract_analyzer	frozen_phase1_source_data	paper-data-v1-dccfd49-20260716	1	pass
+S0218	tests/check_analyze_bioinformatics_frozen_contracts.py	2	frozen_contract_analysis_tests	goal-bioinformatics.md	paper-data-v1-dccfd49-20260716	1	pass
+S0219	paper/bioinformatics/holdout_execution_protocol.md	2	holdout_execution_protocol	holdout_protocol.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0220	reproduce/bioinformatics/run_holdout.py	2	holdout_execution_runner	holdout_execution_protocol.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0221	tests/check_run_bioinformatics_holdout.py	2	holdout_execution_tests	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0222	scripts/check_bioinformatics_phase2_preexecution.sh	2	preexecution_phase_gate	holdout_execution_protocol.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
