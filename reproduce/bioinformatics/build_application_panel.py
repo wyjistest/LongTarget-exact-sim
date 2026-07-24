@@ -12,6 +12,7 @@ import os
 import stat
 import sys
 import threading
+import zlib
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -145,8 +146,204 @@ TARGET_SELECTION_RULE = (
     "canonical ACGT"
 )
 FREEZE_ID_PREFIX = "bioinformatics-phase3-application-v1-"
+APPLICATION_SOURCE_FIELDS = (
+    "source_id",
+    "role",
+    "provider",
+    "release",
+    "assembly",
+    "url",
+    "upstream_md5",
+    "compressed_size_bytes",
+    "compressed_sha256",
+    "decompressed_size_bytes",
+    "decompressed_sha256",
+    "local_source_path",
+    "license_or_terms",
+    "redistribution_note",
+    "download_command",
+    "status",
+)
+SOURCE_SPEC_FIELDS = APPLICATION_SOURCE_FIELDS[:-1]
 _PUBLICATION_LOCK = threading.RLock()
 _ROLLBACK_DESCRIPTOR_RESERVE_COUNT = 8
+
+
+@dataclass(frozen=True)
+class SourceSpec:
+    source_id: str
+    role: str
+    provider: str
+    release: str
+    assembly: str
+    url: str
+    upstream_md5: str
+    compressed_size_bytes: int
+    compressed_sha256: str
+    decompressed_size_bytes: int
+    decompressed_sha256: str
+    local_source_path: str
+    license_or_terms: str
+    redistribution_note: str
+    download_command: str
+
+
+SOURCE_SPECS = (
+    SourceSpec(
+        source_id="gencode_v49_lncrna",
+        role="lncRNA transcript sequences",
+        provider="GENCODE",
+        release="v49",
+        assembly="GRCh38.p14",
+        url=(
+            "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/"
+            "gencode.v49.lncRNA_transcripts.fa.gz"
+        ),
+        upstream_md5="6d52ea2c72933c864e46a560fe0b5d4c",
+        compressed_size_bytes=37870043,
+        compressed_sha256=(
+            "1f04e509309fa74b694ef3cc1e52c1c8173bb0e679f8a22785fa43ecadd28ef4"
+        ),
+        decompressed_size_bytes=223740848,
+        decompressed_sha256=(
+            "4c632018e0198d76fe76471baa5511a1c07af86bf7bab6ce6747edb8d5add5ae"
+        ),
+        local_source_path=(
+            ".tmp/bioinformatics_application_sources/"
+            "gencode.v49.lncRNA_transcripts.fa.gz"
+        ),
+        license_or_terms="GENCODE project data are open access",
+        redistribution_note=(
+            "Selected small transcript FASTAs are retained with source attribution; "
+            "final redistribution approval remains owner-controlled"
+        ),
+        download_command=(
+            "curl -fL --retry 3 --output "
+            ".tmp/bioinformatics_application_sources/"
+            "gencode.v49.lncRNA_transcripts.fa.gz.partial.$$ "
+            "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/"
+            "gencode.v49.lncRNA_transcripts.fa.gz"
+        ),
+    ),
+    SourceSpec(
+        source_id="gencode_v49_gtf",
+        role="gene and transcript annotation",
+        provider="GENCODE",
+        release="v49",
+        assembly="GRCh38.p14",
+        url=(
+            "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/"
+            "gencode.v49.annotation.gtf.gz"
+        ),
+        upstream_md5="0ef4a024ea2d35b1b88c12447b0b70b9",
+        compressed_size_bytes=93374019,
+        compressed_sha256=(
+            "d6e6fe0515c95b2a8cd36a853c1989cee9115c736c60237c56ae92b9daaaf7c4"
+        ),
+        decompressed_size_bytes=3323462848,
+        decompressed_sha256=(
+            "ff32fd55c6799b3b94fe10aa17b2b5d4da952fa1de12fe44afadf32e949ec914"
+        ),
+        local_source_path=(
+            ".tmp/bioinformatics_application_sources/gencode.v49.annotation.gtf.gz"
+        ),
+        license_or_terms="GENCODE project data are open access",
+        redistribution_note=(
+            "Annotation is downloaded for reconstruction and is not redistributed "
+            "in this repository"
+        ),
+        download_command=(
+            "curl -fL --retry 3 --output "
+            ".tmp/bioinformatics_application_sources/"
+            "gencode.v49.annotation.gtf.gz.partial.$$ "
+            "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/"
+            "gencode.v49.annotation.gtf.gz"
+        ),
+    ),
+    SourceSpec(
+        source_id="ucsc_hg38_chr21",
+        role="forward genomic reference sequence",
+        provider="UCSC Genome Browser / Genome Reference Consortium",
+        release="hg38 2014-01-23",
+        assembly="GRCh38",
+        url=(
+            "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz"
+        ),
+        upstream_md5="184df2bd9b812b6e6b6da16c6021369e",
+        compressed_size_bytes=12709705,
+        compressed_sha256=(
+            "c979ca1e5065c2521a50773473e0d0cc018fd6f3e9bb3aa90493fe7b45d57d1b"
+        ),
+        decompressed_size_bytes=47644190,
+        decompressed_sha256=(
+            "35c71b68436d1a278ecb6a1e875af3ba4020738a028a7feac769a6d62790ae1f"
+        ),
+        local_source_path=".tmp/bioinformatics_application_sources/chr21.fa.gz",
+        license_or_terms=(
+            "UCSC data-use conditions and Genome Reference Consortium attribution apply"
+        ),
+        redistribution_note=(
+            "Only selected promoter sequences are retained; final redistribution "
+            "approval remains owner-controlled"
+        ),
+        download_command=(
+            "curl -fL --retry 3 --output "
+            ".tmp/bioinformatics_application_sources/chr21.fa.gz.partial.$$ "
+            "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz"
+        ),
+    ),
+    SourceSpec(
+        source_id="ucsc_hg38_chr22",
+        role="forward genomic reference sequence",
+        provider="UCSC Genome Browser / Genome Reference Consortium",
+        release="hg38 2014-01-23",
+        assembly="GRCh38",
+        url=(
+            "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr22.fa.gz"
+        ),
+        upstream_md5="41b47ce1cc21b558409c19b892e1c0d1",
+        compressed_size_bytes=12255678,
+        compressed_sha256=(
+            "05f9d97d6fbfd08a44ca45b50837ca2ae9c471f35ba79dffec04d2cb5eaaf695"
+        ),
+        decompressed_size_bytes=51834845,
+        decompressed_sha256=(
+            "ce3ee1ca39356238f7aee438a40a88b4f1b9d80b316b263e16fb12402212d10f"
+        ),
+        local_source_path=".tmp/bioinformatics_application_sources/chr22.fa.gz",
+        license_or_terms=(
+            "UCSC data-use conditions and Genome Reference Consortium attribution apply"
+        ),
+        redistribution_note=(
+            "Only selected promoter sequences are retained; final redistribution "
+            "approval remains owner-controlled"
+        ),
+        download_command=(
+            "curl -fL --retry 3 --output "
+            ".tmp/bioinformatics_application_sources/chr22.fa.gz.partial.$$ "
+            "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr22.fa.gz"
+        ),
+    ),
+)
+_BIOLOGICAL_SOURCE_BINDINGS = (
+    ("gencode_v49_lncrna", "lncrna_fasta", "lncRNA transcript sequences"),
+    ("gencode_v49_gtf", "annotation_gtf", "gene and transcript annotation"),
+    (
+        "ucsc_hg38_chr21",
+        "chr21_fasta",
+        "forward genomic reference sequence",
+    ),
+    (
+        "ucsc_hg38_chr22",
+        "chr22_fasta",
+        "forward genomic reference sequence",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class _VerifiedSourceSpecs:
+    specs: tuple[SourceSpec, ...]
 
 
 @dataclass(frozen=True)
@@ -157,6 +354,7 @@ class SourceInputs:
     chr22_fasta: Path
     development_exclusions: Path
     holdout_manifest: Path
+    source_specs: tuple[SourceSpec, ...]
 
 
 @dataclass(frozen=True)
@@ -166,6 +364,7 @@ class FreezePaths:
     application_inputs: Path
     manifest: Path
     manifest_checksum: Path
+    source_ledger: Path
     input_summary: Path
 
 
@@ -189,6 +388,7 @@ class _SourceSnapshot:
     descriptor: int | None
     identity: tuple[int, int, int, int, int]
     component_chain: tuple[tuple[int, int], ...]
+    md5: str
     sha256: str
     size_bytes: int
 
@@ -1013,6 +1213,7 @@ class _FreezeModel:
     selection_receipt_bytes: bytes
     manifest_bytes: bytes
     manifest_checksum_bytes: bytes
+    source_ledger_bytes: bytes
     input_summary_bytes: bytes
     result: dict[str, object]
 
@@ -1036,6 +1237,29 @@ def _tsv_bytes(
     writer.writeheader()
     writer.writerows(rows)
     return buffer.getvalue().encode("utf-8")
+
+
+def _source_spec_rows(
+    source_specs: tuple[SourceSpec, ...],
+) -> list[dict[str, object]]:
+    return [
+        {
+            field_name: getattr(source, field_name)
+            for field_name in SOURCE_SPEC_FIELDS
+        }
+        for source in source_specs
+    ]
+
+
+def _verified_application_source_rows(
+    verified_sources: _VerifiedSourceSpecs,
+) -> list[dict[str, object]]:
+    if not isinstance(verified_sources, _VerifiedSourceSpecs):
+        raise ValueError("application source ledger requires verified source specs")
+    return [
+        {**row, "status": "verified"}
+        for row in _source_spec_rows(verified_sources.specs)
+    ]
 
 
 def _fasta_bytes(header: str, sequence: str) -> bytes:
@@ -1206,6 +1430,7 @@ def _validate_freeze_paths(outputs: FreezePaths) -> None:
         "application input tree": outputs.application_inputs,
         "manifest": outputs.manifest,
         "manifest checksum": outputs.manifest_checksum,
+        "source ledger": outputs.source_ledger,
         "input summary": outputs.input_summary,
     }
     normalized: dict[str, Path] = {}
@@ -1238,6 +1463,7 @@ def _validate_freeze_paths(outputs: FreezePaths) -> None:
         "application input tree": root / "reproduce/bioinformatics/application_inputs",
         "manifest": root / "paper/bioinformatics/application_manifest.tsv",
         "manifest checksum": root / "paper/bioinformatics/application_manifest.sha256",
+        "source ledger": root / "paper/bioinformatics/application_sources.tsv",
         "input summary": root / "paper/bioinformatics/application_input_summary.tsv",
     }
     for label, canonical in canonical_paths.items():
@@ -1245,9 +1471,73 @@ def _validate_freeze_paths(outputs: FreezePaths) -> None:
             raise ValueError(f"{label} must use canonical output path: {canonical}")
 
 
+def _validate_source_specs(
+    source_specs: tuple[SourceSpec, ...],
+) -> tuple[SourceSpec, ...]:
+    if not isinstance(source_specs, tuple) or len(source_specs) != len(
+        _BIOLOGICAL_SOURCE_BINDINGS
+    ):
+        raise ValueError("source inputs require exactly four biological source specs")
+    if any(not isinstance(source, SourceSpec) for source in source_specs):
+        raise ValueError("biological source specs must be SourceSpec instances")
+    expected_ids = tuple(binding[0] for binding in _BIOLOGICAL_SOURCE_BINDINGS)
+    actual_ids = tuple(source.source_id for source in source_specs)
+    if actual_ids != expected_ids:
+        raise ValueError("biological source specs have wrong source IDs and order")
+    for source, (_source_id, _snapshot_name, expected_role) in zip(
+        source_specs,
+        _BIOLOGICAL_SOURCE_BINDINGS,
+        strict=True,
+    ):
+        if source.role != expected_role:
+            raise ValueError(f"biological source role mismatch: {source.source_id}")
+        if (
+            not isinstance(source.compressed_size_bytes, int)
+            or isinstance(source.compressed_size_bytes, bool)
+            or source.compressed_size_bytes <= 0
+            or not isinstance(source.decompressed_size_bytes, int)
+            or isinstance(source.decompressed_size_bytes, bool)
+            or source.decompressed_size_bytes <= 0
+        ):
+            raise ValueError(f"biological source size is invalid: {source.source_id}")
+        if (
+            not isinstance(source.upstream_md5, str)
+            or len(source.upstream_md5) != 32
+            or set(source.upstream_md5) - set("0123456789abcdef")
+        ):
+            raise ValueError(f"biological source MD5 is invalid: {source.source_id}")
+        if not _is_sha256(source.compressed_sha256) or not _is_sha256(
+            source.decompressed_sha256
+        ):
+            raise ValueError(f"biological source SHA-256 is invalid: {source.source_id}")
+        for field_name in (
+            "provider",
+            "release",
+            "assembly",
+            "url",
+            "local_source_path",
+            "license_or_terms",
+            "redistribution_note",
+            "download_command",
+        ):
+            value = getattr(source, field_name)
+            if (
+                not isinstance(value, str)
+                or not value
+                or any(character in value for character in "\r\n\t")
+            ):
+                raise ValueError(
+                    f"biological source metadata is invalid: {source.source_id} {field_name}"
+                )
+        if not source.url.startswith("https://"):
+            raise ValueError(f"biological source URL is invalid: {source.source_id}")
+    return source_specs
+
+
 def _validate_source_inputs(inputs: SourceInputs) -> None:
     if not isinstance(inputs, SourceInputs):
         raise ValueError("inputs must be a SourceInputs instance")
+    _validate_source_specs(inputs.source_specs)
     paths = {
         "lncRNA FASTA": inputs.lncrna_fasta,
         "annotation GTF": inputs.annotation_gtf,
@@ -1288,10 +1578,12 @@ def _snapshot_source(path: Path) -> _SourceSnapshot:
             raise ValueError(f"source is not a regular file: {path}")
         before_identity = _file_identity(before)
         os.lseek(descriptor, 0, os.SEEK_SET)
-        digest = hashlib.sha256()
+        md5_digest = hashlib.md5()
+        sha256_digest = hashlib.sha256()
         size_bytes = 0
         while block := os.read(descriptor, 1024 * 1024):
-            digest.update(block)
+            md5_digest.update(block)
+            sha256_digest.update(block)
             size_bytes += len(block)
         after = os.fstat(descriptor)
         if _file_identity(after) != before_identity or size_bytes != before.st_size:
@@ -1308,7 +1600,8 @@ def _snapshot_source(path: Path) -> _SourceSnapshot:
             descriptor=descriptor,
             identity=before_identity,
             component_chain=retained_chain,
-            sha256=digest.hexdigest(),
+            md5=md5_digest.hexdigest(),
+            sha256=sha256_digest.hexdigest(),
             size_bytes=size_bytes,
         )
         retained = True
@@ -1365,6 +1658,87 @@ def _close_source_snapshots(snapshots: dict[str, _SourceSnapshot]) -> None:
             errors.append(error)
     if errors and any(snapshot.descriptor is not None for snapshot in snapshots.values()):
         raise RuntimeError("; ".join(str(error) for error in errors))
+
+
+def _decompressed_source_identity(
+    snapshot: _SourceSnapshot,
+) -> tuple[int, str]:
+    descriptor = snapshot.verify_descriptor()
+    _verify_source_snapshot_path(snapshot)
+    if snapshot.path.suffix != ".gz":
+        snapshot.verify_descriptor()
+        _verify_source_snapshot_path(snapshot)
+        return snapshot.size_bytes, snapshot.sha256
+
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    duplicate = os.dup(descriptor)
+    try:
+        binary = os.fdopen(duplicate, "rb", closefd=True)
+    except BaseException:
+        os.close(duplicate)
+        raise
+    digest = hashlib.sha256()
+    size_bytes = 0
+    try:
+        try:
+            with binary:
+                with gzip.GzipFile(fileobj=binary, mode="rb") as compressed:
+                    while block := compressed.read(1024 * 1024):
+                        digest.update(block)
+                        size_bytes += len(block)
+        except (EOFError, OSError, zlib.error) as error:
+            raise ValueError(
+                f"cannot decompress biological source: {snapshot.path}"
+            ) from error
+    finally:
+        snapshot.verify_descriptor()
+        _verify_source_snapshot_path(snapshot)
+    return size_bytes, digest.hexdigest()
+
+
+def _bind_verified_biological_sources(
+    snapshots: dict[str, _SourceSnapshot],
+    source_specs: tuple[SourceSpec, ...],
+) -> _VerifiedSourceSpecs:
+    validated_specs = _validate_source_specs(source_specs)
+    _verify_source_snapshots(snapshots)
+    for source, (_source_id, snapshot_name, _expected_role) in zip(
+        validated_specs,
+        _BIOLOGICAL_SOURCE_BINDINGS,
+        strict=True,
+    ):
+        try:
+            snapshot = snapshots[snapshot_name]
+        except KeyError as error:
+            raise ValueError(
+                f"biological source snapshot is missing: {source.source_id}"
+            ) from error
+        if (
+            snapshot.size_bytes != source.compressed_size_bytes
+            or snapshot.md5 != source.upstream_md5
+            or snapshot.sha256 != source.compressed_sha256
+        ):
+            raise ValueError(
+                "biological source identity mismatch for "
+                f"{source.source_id}: expected size={source.compressed_size_bytes} "
+                f"md5={source.upstream_md5} sha256={source.compressed_sha256}; "
+                f"actual size={snapshot.size_bytes} md5={snapshot.md5} "
+                f"sha256={snapshot.sha256}"
+            )
+        decompressed_size, decompressed_sha256 = _decompressed_source_identity(
+            snapshot
+        )
+        if (
+            decompressed_size != source.decompressed_size_bytes
+            or decompressed_sha256 != source.decompressed_sha256
+        ):
+            raise ValueError(
+                "decompressed biological source identity mismatch for "
+                f"{source.source_id}: expected size={source.decompressed_size_bytes} "
+                f"sha256={source.decompressed_sha256}; actual size={decompressed_size} "
+                f"sha256={decompressed_sha256}"
+            )
+    return _VerifiedSourceSpecs(validated_specs)
 
 
 def _source_identities(
@@ -1598,6 +1972,7 @@ def _validate_materialized_records(
 def _prepare_freeze_from_snapshots(
     snapshots: dict[str, _SourceSnapshot],
     outputs: FreezePaths,
+    verified_sources: _VerifiedSourceSpecs,
 ) -> _FreezeModel:
     transcripts = parse_gtf(snapshots["annotation_gtf"])
     development_exclusions = read_development_exclusions(
@@ -1637,6 +2012,10 @@ def _prepare_freeze_from_snapshots(
     }
     summary_bytes = _tsv_bytes(SUMMARY_FIELDS, [result])
     checksum_bytes = f"{manifest_sha256}  {outputs.manifest.name}\n".encode("ascii")
+    source_ledger_bytes = _tsv_bytes(
+        APPLICATION_SOURCE_FIELDS,
+        _verified_application_source_rows(verified_sources),
+    )
     _verify_source_snapshots(snapshots)
     receipt = {
         "annotation_release": ANNOTATION_RELEASE,
@@ -1659,6 +2038,7 @@ def _prepare_freeze_from_snapshots(
         selection_receipt_bytes=_canonical_json_bytes(receipt),
         manifest_bytes=manifest_bytes,
         manifest_checksum_bytes=checksum_bytes,
+        source_ledger_bytes=source_ledger_bytes,
         input_summary_bytes=summary_bytes,
         result=result,
     )
@@ -1669,7 +2049,15 @@ def _prepare_freeze(inputs: SourceInputs, outputs: FreezePaths) -> _FreezeModel:
     _validate_freeze_paths(outputs)
     snapshots = _snapshot_sources(inputs)
     try:
-        return _prepare_freeze_from_snapshots(snapshots, outputs)
+        verified_sources = _bind_verified_biological_sources(
+            snapshots,
+            inputs.source_specs,
+        )
+        return _prepare_freeze_from_snapshots(
+            snapshots,
+            outputs,
+            verified_sources,
+        )
     finally:
         _close_source_snapshots(snapshots)
 
@@ -2040,6 +2428,12 @@ def _preflight_existing(
             model.manifest_checksum_bytes,
         ),
         (
+            "source ledger",
+            outputs.source_ledger,
+            ("paper", "bioinformatics", "application_sources.tsv"),
+            model.source_ledger_bytes,
+        ),
+        (
             "input summary",
             outputs.input_summary,
             ("paper", "bioinformatics", "application_input_summary.tsv"),
@@ -2281,6 +2675,7 @@ def _stage_freeze(
         "selection receipt": ("application_selection.json",),
         "manifest": ("application_manifest.tsv",),
         "manifest checksum": ("application_manifest.sha256",),
+        "source ledger": ("application_sources.tsv",),
         "input summary": ("application_input_summary.tsv",),
     }
     _write_staged_file(
@@ -2293,6 +2688,11 @@ def _stage_freeze(
         stage,
         staged["manifest checksum"],
         model.manifest_checksum_bytes,
+    )
+    _write_staged_file(
+        stage,
+        staged["source ledger"],
+        model.source_ledger_bytes,
     )
     _write_staged_file(stage, staged["input summary"], model.input_summary_bytes)
     for relative in (
@@ -2502,6 +2902,23 @@ def _validate_complete_stage(
         expected_checksum = f"{manifest_sha256}  {outputs.manifest.name}\n".encode("ascii")
         if checksum != expected_checksum:
             raise ValueError("staged manifest checksum is inconsistent")
+        source_ledger = _read_staged_file(
+            stage,
+            staged["source ledger"],
+            "staged source ledger",
+            seen_inodes,
+        )
+        source_rows = _parse_staged_tsv(
+            source_ledger,
+            APPLICATION_SOURCE_FIELDS,
+            "source ledger",
+        )
+        expected_source_ids = [binding[0] for binding in _BIOLOGICAL_SOURCE_BINDINGS]
+        if (
+            [row["source_id"] for row in source_rows] != expected_source_ids
+            or any(row["status"] != "verified" for row in source_rows)
+        ):
+            raise ValueError("staged source ledger is not a verified four-source ledger")
         receipt_bytes = _read_staged_file(
             stage,
             staged["selection receipt"],
@@ -2526,6 +2943,8 @@ def _validate_complete_stage(
             raise ValueError("staged selection receipt differs from reconstructed source selection")
         if checksum != model.manifest_checksum_bytes:
             raise ValueError("staged checksum differs from reconstructed source selection")
+        if source_ledger != model.source_ledger_bytes:
+            raise ValueError("staged source ledger differs from reconstructed source ledger")
         if summary_bytes != model.input_summary_bytes:
             raise ValueError("staged summary differs from reconstructed source selection")
         if application_files != model.application_files:
@@ -2537,6 +2956,49 @@ def _validate_complete_stage(
 def _descriptor_identity(descriptor: int) -> tuple[int, int]:
     metadata = os.fstat(descriptor)
     return metadata.st_dev, metadata.st_ino
+
+
+def _remove_owned_cache_entry(
+    cache_descriptor: int,
+    entry_name: str,
+    expected_identity: tuple[int, int],
+) -> bool:
+    if not isinstance(cache_descriptor, int) or isinstance(cache_descriptor, bool):
+        raise ValueError("cache descriptor must be an integer")
+    if (
+        not isinstance(entry_name, str)
+        or not entry_name
+        or entry_name in {".", ".."}
+        or "/" in entry_name
+        or "\x00" in entry_name
+    ):
+        raise ValueError("cache entry name must be one path component")
+    if (
+        not isinstance(expected_identity, tuple)
+        or len(expected_identity) != 2
+        or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in expected_identity
+        )
+    ):
+        raise ValueError("cache entry identity must be a device/inode pair")
+    if not stat.S_ISDIR(os.fstat(cache_descriptor).st_mode):
+        raise ValueError("cache descriptor is not a directory")
+    try:
+        metadata = os.stat(
+            entry_name,
+            dir_fd=cache_descriptor,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        return False
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or (metadata.st_dev, metadata.st_ino) != expected_identity
+    ):
+        return False
+    os.unlink(entry_name, dir_fd=cache_descriptor)
+    return True
 
 
 def _fsync_descriptor(descriptor: int) -> None:
@@ -3769,6 +4231,27 @@ def build_freeze(
     return _publish_prepared_freeze(model, outputs, after_publish)
 
 
+def verify_freeze(
+    inputs: SourceInputs,
+    outputs: FreezePaths,
+    selection: Path,
+) -> dict[str, object]:
+    model = _prepare_freeze(inputs, outputs)
+    with _publication_guard(outputs.repository_root) as repository_descriptor:
+        _validate_freeze_paths(outputs)
+        _compare_selection_receipt(model.selection_receipt_bytes, selection)
+        missing = _preflight_existing(repository_descriptor, outputs, model)
+        if missing:
+            labels = ", ".join(label for label, _path, _content in missing)
+            raise ValueError(f"existing freeze is incomplete: {labels}")
+        _compare_selection_receipt(model.selection_receipt_bytes, selection)
+        _verify_repository_path_binding(
+            outputs.repository_root,
+            repository_descriptor,
+        )
+    return dict(model.result)
+
+
 def select_freeze(
     inputs: SourceInputs,
     outputs: FreezePaths,
@@ -3891,6 +4374,7 @@ def _add_common_cli_arguments(command: argparse.ArgumentParser) -> None:
     command.add_argument("--application-inputs", type=Path, required=True)
     command.add_argument("--manifest", type=Path, required=True)
     command.add_argument("--manifest-checksum", type=Path, required=True)
+    command.add_argument("--source-ledger", type=Path, required=True)
     command.add_argument("--input-summary", type=Path, required=True)
 
 
@@ -3899,11 +4383,34 @@ def parser() -> argparse.ArgumentParser:
         description="Select and materialize the preregistered Phase 3 application panel."
     )
     subparsers = result.add_subparsers(dest="command", required=True)
+    cleanup_cache_entry = subparsers.add_parser(
+        "cleanup-cache-entry",
+        help="Remove one retained-cache entry only when its inode still matches.",
+    )
+    cleanup_cache_entry.add_argument("--cache-directory-fd", type=int, required=True)
+    cleanup_cache_entry.add_argument("--entry-name", required=True)
+    cleanup_cache_entry.add_argument("--expected-device", type=int, required=True)
+    cleanup_cache_entry.add_argument("--expected-inode", type=int, required=True)
+    subparsers.add_parser(
+        "sources",
+        help="Emit the canonical pinned upstream source specifications.",
+    )
     select = subparsers.add_parser(
         "select",
         help="Reconstruct selection and publish its canonical receipt.",
     )
     _add_common_cli_arguments(select)
+    verify = subparsers.add_parser(
+        "verify",
+        help="Verify the complete immutable input freeze without publishing.",
+    )
+    _add_common_cli_arguments(verify)
+    verify.add_argument(
+        "--selection",
+        type=Path,
+        required=True,
+        help="Receipt whose exact reconstructed bytes must match.",
+    )
     materialize = subparsers.add_parser(
         "materialize",
         help="Reconstruct selection and publish the immutable input freeze.",
@@ -3926,6 +4433,7 @@ def _paths_from_arguments(args: argparse.Namespace) -> tuple[SourceInputs, Freez
             chr22_fasta=args.chr22_fasta,
             development_exclusions=args.development_exclusions,
             holdout_manifest=args.holdout_manifest,
+            source_specs=SOURCE_SPECS,
         ),
         FreezePaths(
             repository_root=args.repository_root,
@@ -3933,6 +4441,7 @@ def _paths_from_arguments(args: argparse.Namespace) -> tuple[SourceInputs, Freez
             application_inputs=args.application_inputs,
             manifest=args.manifest,
             manifest_checksum=args.manifest_checksum,
+            source_ledger=args.source_ledger,
             input_summary=args.input_summary,
         ),
     )
@@ -3940,10 +4449,31 @@ def _paths_from_arguments(args: argparse.Namespace) -> tuple[SourceInputs, Freez
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == "cleanup-cache-entry":
+        try:
+            _remove_owned_cache_entry(
+                args.cache_directory_fd,
+                args.entry_name,
+                (args.expected_device, args.expected_inode),
+            )
+        except (OSError, ValueError) as error:
+            print(f"cache cleanup failed: {error}", file=sys.stderr)
+            return 2
+        return 0
+    if args.command == "sources":
+        sys.stdout.write(
+            _tsv_bytes(
+                SOURCE_SPEC_FIELDS,
+                _source_spec_rows(SOURCE_SPECS),
+            ).decode("utf-8")
+        )
+        return 0
     inputs, outputs = _paths_from_arguments(args)
     try:
         if args.command == "select":
             result = select_freeze(inputs, outputs)
+        elif args.command == "verify":
+            result = verify_freeze(inputs, outputs, args.selection)
         else:
             model = _prepare_freeze(inputs, outputs)
             if args.selection is not None:

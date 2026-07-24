@@ -11,9 +11,11 @@ import io
 import json
 import multiprocessing
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import contextmanager, nullcontext
 from dataclasses import FrozenInstanceError, fields, replace
@@ -23,6 +25,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "reproduce/bioinformatics/build_application_panel.py"
+FETCHER = ROOT / "reproduce/bioinformatics/fetch_application_inputs.sh"
 HOLDOUT_MANIFEST_FIELDS = (
     "workload_id",
     "query_id",
@@ -237,6 +240,306 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             writer.writeheader()
             writer.writerows(rows)
         return path
+
+    def prepare_fetch_harness(
+        self,
+        *,
+        committed_outputs: bool,
+        valid_cache: bool,
+    ) -> dict[str, object]:
+        self.assertTrue(FETCHER.is_file(), f"application fetcher is missing: {FETCHER}")
+        repository = Path(
+            tempfile.mkdtemp(
+                prefix=f"fetch-{int(committed_outputs)}-{int(valid_cache)}-",
+                dir=self.work,
+            )
+        )
+        script_directory = repository / "reproduce/bioinformatics"
+        paper_directory = repository / "paper/bioinformatics"
+        source_directory = repository / ".tmp/bioinformatics_application_sources"
+        download_directory = repository / "download-fixtures"
+        temporary_directory = repository / "temporary"
+        fake_bin = repository / "fake-bin"
+        for directory in (
+            script_directory,
+            paper_directory,
+            source_directory,
+            download_directory,
+            temporary_directory,
+            fake_bin,
+        ):
+            directory.mkdir(parents=True, exist_ok=True)
+
+        fetch_text = FETCHER.read_text(encoding="utf-8", errors="strict")
+        source_rows: list[dict[str, object]] = []
+        for index, source in enumerate(self.module.SOURCE_SPECS, start=1):
+            decompressed = (
+                f">fixture_{index}_{source.source_id}\n"
+                f"{'ACGT' * (index + 1)}\n"
+            ).encode("ascii")
+            compressed = gzip.compress(decompressed, mtime=0)
+            row = {
+                field: getattr(source, field)
+                for field in self.module.SOURCE_SPEC_FIELDS
+            }
+            row.update(
+                {
+                    "upstream_md5": hashlib.md5(compressed).hexdigest(),
+                    "compressed_size_bytes": len(compressed),
+                    "compressed_sha256": hashlib.sha256(compressed).hexdigest(),
+                    "decompressed_size_bytes": len(decompressed),
+                    "decompressed_sha256": hashlib.sha256(decompressed).hexdigest(),
+                }
+            )
+            source_rows.append(row)
+            (download_directory / Path(source.local_source_path).name).write_bytes(
+                compressed
+            )
+            if valid_cache:
+                destination = source_directory / Path(source.local_source_path).name
+                destination.write_bytes(compressed)
+
+        fetcher = script_directory / FETCHER.name
+        fetcher.write_text(fetch_text, encoding="utf-8", newline="")
+        fetcher.chmod(0o755)
+        (script_directory / BUILDER.name).write_text(
+            "raise AssertionError('real builder must not run in shell boundary tests')\n",
+            encoding="ascii",
+        )
+        (paper_directory / "development_query_exclusions.tsv").write_text(
+            "fixture\n",
+            encoding="ascii",
+        )
+        (paper_directory / "holdout_manifest.tsv").write_text(
+            "fixture\n",
+            encoding="ascii",
+        )
+        source_specs = repository / "fixture-application-sources.tsv"
+        with source_specs.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=self.module.SOURCE_SPEC_FIELDS,
+                delimiter="\t",
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(source_rows)
+
+        output_paths = {
+            "selection_receipt": paper_directory / "application_selection.json",
+            "application_inputs": script_directory / "application_inputs",
+            "manifest": paper_directory / "application_manifest.tsv",
+            "manifest_checksum": paper_directory / "application_manifest.sha256",
+            "source_ledger": paper_directory / "application_sources.tsv",
+            "input_summary": paper_directory / "application_input_summary.tsv",
+        }
+        if committed_outputs:
+            Path(output_paths["application_inputs"]).mkdir()
+            for label, path in output_paths.items():
+                if label == "application_inputs":
+                    continue
+                content = "fixture-selection\n" if label == "selection_receipt" else f"{label}\n"
+                Path(path).write_text(content, encoding="ascii")
+
+        curl_log = repository / "curl.log"
+        python_log = repository / "python.log"
+        fake_curl = fake_bin / "curl"
+        fake_curl.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "printf '%s\\n' \"$*\" >>\"$FETCH_CURL_LOG\"\n"
+            "output=''\n"
+            "url=''\n"
+            "while (($#)); do\n"
+            "  if [[ \"$1\" == '--output' || \"$1\" == '-o' ]]; then\n"
+            "    output=\"$2\"\n"
+            "    shift 2\n"
+            "  else\n"
+            "    url=\"$1\"\n"
+            "    shift\n"
+            "  fi\n"
+            "done\n"
+            "[[ -n \"$output\" ]]\n"
+            "if [[ \"${FETCH_CURL_MODE:-partial}\" == 'valid' ]]; then\n"
+            "  cat -- \"$FETCH_DOWNLOAD_DIR/${url##*/}\" >\"$output\"\n"
+            "else\n"
+            "  printf 'incomplete-download' >\"$output\"\n"
+            "fi\n"
+            "exit \"${FETCH_CURL_STATUS:-23}\"\n",
+            encoding="ascii",
+        )
+        fake_curl.chmod(0o755)
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "builder=\"$1\"\n"
+            "command_name=\"$2\"\n"
+            "shift 2\n"
+            "if [[ \"$command_name\" == 'cleanup-cache-entry' ]]; then\n"
+            "  cache_directory_fd=''\n"
+            "  entry_name=''\n"
+            "  expected_device=''\n"
+            "  expected_inode=''\n"
+            "  while (($#)); do\n"
+            "    key=\"$1\"\n"
+            "    value=\"$2\"\n"
+            "    case \"$key\" in\n"
+            "      --cache-directory-fd) cache_directory_fd=\"$value\" ;;\n"
+            "      --entry-name) entry_name=\"$value\" ;;\n"
+            "      --expected-device) expected_device=\"$value\" ;;\n"
+            "      --expected-inode) expected_inode=\"$value\" ;;\n"
+            "    esac\n"
+            "    shift 2\n"
+            "  done\n"
+            "  entry=\"/proc/self/fd/$cache_directory_fd/$entry_name\"\n"
+            "  actual_identity=\"$("
+            "stat -Lc '%d:%i' -- \"$entry\" 2>/dev/null || true)\"\n"
+            "  if [[ \"$actual_identity\" == "
+            "\"$expected_device:$expected_inode\" && ! -L \"$entry\" ]]; then\n"
+            "    rm -f -- \"$entry\"\n"
+            "  fi\n"
+            "  exit 0\n"
+            "fi\n"
+            "printf '%s\\n' \"$command_name\" >>\"$FETCH_PYTHON_LOG\"\n"
+            "if [[ \"$command_name\" == 'sources' ]]; then\n"
+            "  cat -- \"$FETCH_SOURCE_SPECS\"\n"
+            "  if [[ -n \"${FETCH_REMOVE_DURING_SOURCES:-}\" ]]; then\n"
+            "    rm -f -- \"$FETCH_REMOVE_DURING_SOURCES\"\n"
+            "  fi\n"
+            "  if [[ -n \"${FETCH_SWAP_CACHE_PARENT_DURING_SOURCES:-}\" ]]; then\n"
+            "    \"$FETCH_REAL_MV\" -- \"$FETCH_SWAP_CACHE_PARENT_DURING_SOURCES\" "
+            "\"$FETCH_PARKED_CACHE_PARENT\"\n"
+            "    \"$FETCH_REAL_LN\" -s -- \"$FETCH_OUTSIDE_CACHE_PARENT\" "
+            "\"$FETCH_SWAP_CACHE_PARENT_DURING_SOURCES\"\n"
+            "  fi\n"
+            "  if [[ -n \"${FETCH_PAUSE_DURING_SOURCES:-}\" ]]; then\n"
+            "    : >\"$FETCH_SOURCES_ENTERED\"\n"
+            "    while [[ ! -e \"$FETCH_SOURCES_RELEASE\" ]]; do\n"
+            "      \"$FETCH_REAL_SLEEP\" 0.01\n"
+            "    done\n"
+            "  fi\n"
+            "  exit 0\n"
+            "fi\n"
+            "selection_receipt=''\n"
+            "application_inputs=''\n"
+            "manifest=''\n"
+            "manifest_checksum=''\n"
+            "source_ledger=''\n"
+            "input_summary=''\n"
+            "selection=''\n"
+            "repository_root=''\n"
+            "while (($#)); do\n"
+            "  key=\"$1\"\n"
+            "  value=\"$2\"\n"
+            "  case \"$key\" in\n"
+            "    --selection-receipt) selection_receipt=\"$value\" ;;\n"
+            "    --application-inputs) application_inputs=\"$value\" ;;\n"
+            "    --manifest) manifest=\"$value\" ;;\n"
+            "    --manifest-checksum) manifest_checksum=\"$value\" ;;\n"
+            "    --source-ledger) source_ledger=\"$value\" ;;\n"
+            "    --input-summary) input_summary=\"$value\" ;;\n"
+            "    --selection) selection=\"$value\" ;;\n"
+            "    --repository-root) repository_root=\"$value\" ;;\n"
+            "  esac\n"
+            "  shift 2\n"
+            "done\n"
+            "publish_file() {\n"
+            "  local path=\"$1\"\n"
+            "  local content=\"$2\"\n"
+            "  if [[ ! -e \"$path\" ]]; then\n"
+            "    mkdir -p -- \"${path%/*}\"\n"
+            "    printf '%s\\n' \"$content\" >\"$path\"\n"
+            "  fi\n"
+            "}\n"
+            "case \"$command_name\" in\n"
+            "  select)\n"
+            "    if [[ -n \"${FETCH_CHECK_SELECTION_PARENT:-}\" ]]; then\n"
+            "      printf '%s\\n' \"$repository_root\" "
+            ">\"$FETCH_SELECTION_REPOSITORY_LOG\"\n"
+            "      \"$FETCH_REAL_PYTHON\" -c 'import importlib.util, os, pathlib, "
+            "sys; builder_path = pathlib.Path(sys.argv[1]); repository_root = "
+            "pathlib.Path(sys.argv[2]); spec = importlib.util.spec_from_file_location("
+            "\"selection_parent_builder\", builder_path); module = "
+            "importlib.util.module_from_spec(spec); sys.modules[spec.name] = module; "
+            "spec.loader.exec_module(module); descriptor = "
+            "module._open_output_directory(repository_root.parent, "
+            "\"staging parent\"); os.close(descriptor); assert "
+            "os.stat(repository_root.parent).st_uid == os.geteuid()' "
+            "\"$FETCH_REAL_BUILDER\" \"$repository_root\"\n"
+            "    fi\n"
+            "    publish_file \"$selection_receipt\" 'fixture-selection'\n"
+            "    ;;\n"
+            "  verify)\n"
+            "    [[ -d \"$application_inputs\" ]]\n"
+            "    [[ \"$(cat -- \"$selection_receipt\")\" == 'fixture-selection' ]]\n"
+            "    [[ \"$(cat -- \"$selection\")\" == 'fixture-selection' ]]\n"
+            "    [[ -f \"$manifest\" ]]\n"
+            "    [[ -f \"$manifest_checksum\" ]]\n"
+            "    [[ -f \"$source_ledger\" ]]\n"
+            "    [[ -f \"$input_summary\" ]]\n"
+            "    ;;\n"
+            "  materialize)\n"
+            "    mkdir -p -- \"$application_inputs\"\n"
+            "    publish_file \"$selection_receipt\" 'fixture-selection'\n"
+            "    publish_file \"$manifest\" 'manifest'\n"
+            "    publish_file \"$manifest_checksum\" 'manifest_checksum'\n"
+            "    publish_file \"$source_ledger\" 'source_ledger'\n"
+            "    publish_file \"$input_summary\" 'input_summary'\n"
+            "    ;;\n"
+            "  *) exit 91 ;;\n"
+            "esac\n"
+            "if [[ \"$command_name\" == "
+            "\"${FETCH_SWAP_CACHE_PARENT_AFTER_COMMAND:-}\" ]]; then\n"
+            "  \"$FETCH_REAL_MV\" -- \"$FETCH_SWAP_CACHE_PARENT\" "
+            "\"$FETCH_PARKED_CACHE_PARENT\"\n"
+            "  \"$FETCH_REAL_LN\" -s -- \"$FETCH_OUTSIDE_CACHE_PARENT\" "
+            "\"$FETCH_SWAP_CACHE_PARENT\"\n"
+            "fi\n",
+            encoding="ascii",
+        )
+        fake_python.chmod(0o755)
+
+        environment = os.environ.copy()
+        environment.pop("SOURCE_DIR", None)
+        environment.update(
+            {
+                "PATH": f"{fake_bin}:{environment['PATH']}",
+                "TMPDIR": str(temporary_directory),
+                "FETCH_CURL_LOG": str(curl_log),
+                "FETCH_DOWNLOAD_DIR": str(download_directory),
+                "FETCH_PYTHON_LOG": str(python_log),
+                "FETCH_SOURCE_SPECS": str(source_specs),
+            }
+        )
+        return {
+            "repository": repository,
+            "fetcher": fetcher,
+            "source_directory": source_directory,
+            "download_directory": download_directory,
+            "temporary_directory": temporary_directory,
+            "fake_bin": fake_bin,
+            "environment": environment,
+            "curl_log": curl_log,
+            "python_log": python_log,
+            "output_paths": output_paths,
+        }
+
+    def run_fetch_harness(
+        self,
+        harness: dict[str, object],
+        *arguments: str,
+        environment: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["/bin/bash", str(harness["fetcher"]), *arguments],
+            cwd=Path(harness["repository"]),
+            env=dict(harness["environment"]) if environment is None else environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
     @staticmethod
     def unique_query_sequence(index: int, length: int = 700) -> str:
@@ -555,6 +858,20 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 )
             )
 
+        biological_paths = (
+            lnc_rna_fasta,
+            annotation_gtf,
+            chr21_fasta,
+            chr22_fasta,
+        )
+        fixture_source_specs = tuple(
+            self.fixture_source_spec(template, path)
+            for template, path in zip(
+                self.module.SOURCE_SPECS,
+                biological_paths,
+                strict=True,
+            )
+        )
         self.synthetic_inputs = self.module.SourceInputs(
             lncrna_fasta=lnc_rna_fasta,
             annotation_gtf=annotation_gtf,
@@ -562,9 +879,47 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             chr22_fasta=chr22_fasta,
             development_exclusions=development_exclusions,
             holdout_manifest=holdout_manifest,
+            source_specs=fixture_source_specs,
         )
         self.output_paths = self.freeze_paths_for_repository("repository")
         self.sandbox = self.output_paths.repository_root
+
+    def fixture_source_spec(self, template: object, path: Path) -> object:
+        md5_digest = hashlib.md5()
+        sha256_digest = hashlib.sha256()
+        size_bytes = 0
+        with path.open("rb") as handle:
+            while block := handle.read(1024 * 1024):
+                md5_digest.update(block)
+                sha256_digest.update(block)
+                size_bytes += len(block)
+        sha256 = sha256_digest.hexdigest()
+        decompressed_size_bytes = size_bytes
+        decompressed_sha256 = sha256
+        if path.suffix == ".gz":
+            decompressed_digest = hashlib.sha256()
+            decompressed_size_bytes = 0
+            with gzip.open(path, "rb") as handle:
+                while block := handle.read(1024 * 1024):
+                    decompressed_digest.update(block)
+                    decompressed_size_bytes += len(block)
+            decompressed_sha256 = decompressed_digest.hexdigest()
+        return replace(
+            template,
+            provider="synthetic unit fixture",
+            release="test-only",
+            assembly="synthetic",
+            url=f"https://fixtures.invalid/{template.source_id}/{path.name}",
+            upstream_md5=md5_digest.hexdigest(),
+            compressed_size_bytes=size_bytes,
+            compressed_sha256=sha256,
+            decompressed_size_bytes=decompressed_size_bytes,
+            decompressed_sha256=decompressed_sha256,
+            local_source_path=f"synthetic/{template.source_id}/{path.name}",
+            license_or_terms="synthetic test fixture",
+            redistribution_note="not for redistribution",
+            download_command="fixture supplied directly by the unit test",
+        )
 
     def freeze_paths_for_repository(
         self,
@@ -585,6 +940,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             ),
             manifest=paper / "application_manifest.tsv",
             manifest_checksum=paper / "application_manifest.sha256",
+            source_ledger=paper / "application_sources.tsv",
             input_summary=paper / "application_input_summary.tsv",
         )
 
@@ -612,6 +968,8 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             str(self.output_paths.manifest),
             "--manifest-checksum",
             str(self.output_paths.manifest_checksum),
+            "--source-ledger",
+            str(self.output_paths.source_ledger),
             "--input-summary",
             str(self.output_paths.input_summary),
         ]
@@ -653,6 +1011,323 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         )
         self.assertTrue(all(row["status"] == "preregistered_not_run" for row in rows))
         self.assertEqual(result["pair_count"], 50 * result["target_count"])
+
+    def test_source_ledger_is_transaction_owned_and_byte_exact(self) -> None:
+        self.prepare_freeze_fixture()
+        self.module.build_freeze(self.synthetic_inputs, self.output_paths)
+
+        rows = read_tsv(self.output_paths.source_ledger)
+        self.assertEqual(tuple(rows[0]), self.module.APPLICATION_SOURCE_FIELDS)
+        self.assertEqual(
+            [row["source_id"] for row in rows],
+            [source.source_id for source in self.synthetic_inputs.source_specs],
+        )
+        for source, row in zip(self.synthetic_inputs.source_specs, rows, strict=True):
+            with self.subTest(source_id=source.source_id):
+                self.assertEqual(
+                    row,
+                    {
+                        field: str(getattr(source, field))
+                        if field != "status"
+                        else "verified"
+                        for field in self.module.APPLICATION_SOURCE_FIELDS
+                    },
+                )
+
+        self.assertNotEqual(
+            rows[0]["compressed_sha256"],
+            self.module.SOURCE_SPECS[0].compressed_sha256,
+        )
+
+        rollback_outputs = self.freeze_paths_for_repository("source-ledger-rollback")
+        before = fingerprint_tree_no_follow(rollback_outputs.repository_root)
+
+        def fail_after_source_ledger(_step: int, path: Path) -> None:
+            if path == rollback_outputs.source_ledger:
+                raise RuntimeError("injected source ledger publication failure")
+
+        with self.assertRaisesRegex(RuntimeError, "source ledger publication failure"):
+            self.module.build_freeze(
+                self.synthetic_inputs,
+                rollback_outputs,
+                after_publish=fail_after_source_ledger,
+            )
+        self.assertEqual(
+            fingerprint_tree_no_follow(rollback_outputs.repository_root),
+            before,
+        )
+
+        self.output_paths.source_ledger.write_text("drift\n", encoding="ascii")
+        drifted = fingerprint_tree_no_follow(self.output_paths.repository_root)
+        with self.assertRaisesRegex(ValueError, "existing source ledger drift"):
+            self.module.build_freeze(self.synthetic_inputs, self.output_paths)
+        self.assertEqual(
+            fingerprint_tree_no_follow(self.output_paths.repository_root),
+            drifted,
+        )
+
+    def test_mismatched_biological_source_identity_cannot_publish_verified_ledger(
+        self,
+    ) -> None:
+        self.prepare_freeze_fixture()
+        mismatched = replace(
+            self.synthetic_inputs,
+            source_specs=self.module.SOURCE_SPECS,
+        )
+        before = fingerprint_tree_no_follow(self.output_paths.repository_root)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "biological source identity mismatch.*gencode_v49_lncrna",
+        ):
+            self.module.build_freeze(mismatched, self.output_paths)
+
+        self.assertEqual(
+            fingerprint_tree_no_follow(self.output_paths.repository_root),
+            before,
+        )
+        self.assertFalse(self.output_paths.source_ledger.exists())
+
+    def test_gzip_decompressed_identity_is_bound_to_parser_consumed_stream(
+        self,
+    ) -> None:
+        self.prepare_freeze_fixture()
+        original_bytes = self.synthetic_inputs.lncrna_fasta.read_bytes()
+        compressed_path = self.work / "lncrna-fixture.fa.gz"
+        with compressed_path.open("wb") as raw:
+            with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as compressed:
+                compressed.write(original_bytes)
+        compressed_spec = self.fixture_source_spec(
+            self.synthetic_inputs.source_specs[0],
+            compressed_path,
+        )
+        correct_specs = (
+            compressed_spec,
+            *self.synthetic_inputs.source_specs[1:],
+        )
+        correct_inputs = replace(
+            self.synthetic_inputs,
+            lncrna_fasta=compressed_path,
+            source_specs=correct_specs,
+        )
+        descriptor_directory = Path("/proc/self/fd")
+        descriptors_before = (
+            len(os.listdir(descriptor_directory))
+            if descriptor_directory.is_dir()
+            else None
+        )
+
+        cases = (
+            (
+                replace(compressed_spec, decompressed_size_bytes=1),
+                "decompressed size",
+            ),
+            (
+                replace(compressed_spec, decompressed_sha256="0" * 64),
+                "decompressed sha256",
+            ),
+        )
+        for index, (bad_spec, label) in enumerate(cases):
+            with self.subTest(label=label):
+                outputs = self.freeze_paths_for_repository(f"bad-decompressed-{index}")
+                before = fingerprint_tree_no_follow(outputs.repository_root)
+                bad_inputs = replace(
+                    correct_inputs,
+                    source_specs=(bad_spec, *correct_specs[1:]),
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "decompressed biological source identity mismatch.*"
+                    "gencode_v49_lncrna",
+                ):
+                    self.module.build_freeze(bad_inputs, outputs)
+                self.assertEqual(
+                    fingerprint_tree_no_follow(outputs.repository_root),
+                    before,
+                )
+                self.assertFalse(outputs.source_ledger.exists())
+
+        outputs = self.freeze_paths_for_repository("valid-decompressed")
+        result = self.module.build_freeze(correct_inputs, outputs)
+        source_rows = read_tsv(outputs.source_ledger)
+        self.assertEqual(result["freeze_id"], "bioinformatics-phase3-application-v1-06dbae75")
+        self.assertEqual(
+            source_rows[0]["decompressed_size_bytes"],
+            str(len(original_bytes)),
+        )
+        self.assertEqual(
+            source_rows[0]["decompressed_sha256"],
+            hashlib.sha256(original_bytes).hexdigest(),
+        )
+        self.assertEqual(
+            self.module.parse_fasta(compressed_path),
+            self.module.parse_fasta(self.synthetic_inputs.lncrna_fasta),
+        )
+        if descriptors_before is not None:
+            self.assertEqual(
+                len(os.listdir(descriptor_directory)),
+                descriptors_before,
+            )
+
+    def test_gzip_stream_validation_rejects_truncation_and_accepts_members(
+        self,
+    ) -> None:
+        self.prepare_freeze_fixture()
+        original_bytes = self.synthetic_inputs.lncrna_fasta.read_bytes()
+        template = self.synthetic_inputs.source_specs[0]
+        valid_path = self.work / "valid-gzip-source.fa.gz"
+        valid_path.write_bytes(gzip.compress(original_bytes, mtime=0))
+        valid_spec = self.fixture_source_spec(template, valid_path)
+
+        with self.subTest(stream="corrupt_deflate_payload"):
+            corrupt_path = self.work / "corrupt-gzip-source.fa.gz"
+            corrupt_bytes = bytearray(valid_path.read_bytes())
+            corrupt_bytes[10] = (corrupt_bytes[10] & ~0x06) | 0x06
+            corrupt_path.write_bytes(corrupt_bytes)
+            corrupt_spec = replace(
+                valid_spec,
+                upstream_md5=hashlib.md5(corrupt_bytes).hexdigest(),
+                compressed_size_bytes=len(corrupt_bytes),
+                compressed_sha256=hashlib.sha256(corrupt_bytes).hexdigest(),
+                local_source_path=(
+                    f"synthetic/{template.source_id}/{corrupt_path.name}"
+                ),
+            )
+            corrupt_specs = (
+                corrupt_spec,
+                *self.synthetic_inputs.source_specs[1:],
+            )
+            arguments = self.freeze_cli_arguments()
+            arguments[arguments.index("--lncrna-fasta") + 1] = str(corrupt_path)
+            before = fingerprint_tree_no_follow(self.output_paths.repository_root)
+            standard_error = io.StringIO()
+            standard_output = io.StringIO()
+            caught: BaseException | None = None
+            result: int | None = None
+            try:
+                with mock.patch.object(
+                    self.module,
+                    "SOURCE_SPECS",
+                    corrupt_specs,
+                ), mock.patch("sys.stderr", standard_error), mock.patch(
+                    "sys.stdout",
+                    standard_output,
+                ):
+                    result = self.module.main(["materialize", *arguments])
+            except BaseException as error:
+                caught = error
+            self.assertIsNone(caught, f"corrupt gzip escaped CLI handling: {caught}")
+            self.assertEqual(result, 2)
+            self.assertIn(
+                "cannot decompress biological source",
+                standard_error.getvalue(),
+            )
+            self.assertEqual(
+                fingerprint_tree_no_follow(self.output_paths.repository_root),
+                before,
+            )
+
+        with self.subTest(stream="truncated"):
+            truncated_path = self.work / "truncated-gzip-source.fa.gz"
+            truncated_bytes = valid_path.read_bytes()[:-8]
+            truncated_path.write_bytes(truncated_bytes)
+            truncated_spec = replace(
+                valid_spec,
+                upstream_md5=hashlib.md5(truncated_bytes).hexdigest(),
+                compressed_size_bytes=len(truncated_bytes),
+                compressed_sha256=hashlib.sha256(truncated_bytes).hexdigest(),
+                local_source_path=(
+                    f"synthetic/{template.source_id}/{truncated_path.name}"
+                ),
+            )
+            truncated_inputs = replace(
+                self.synthetic_inputs,
+                lncrna_fasta=truncated_path,
+                source_specs=(
+                    truncated_spec,
+                    *self.synthetic_inputs.source_specs[1:],
+                ),
+            )
+            outputs = self.freeze_paths_for_repository("truncated-gzip")
+            before = fingerprint_tree_no_follow(outputs.repository_root)
+            caught: BaseException | None = None
+            try:
+                self.module.build_freeze(truncated_inputs, outputs)
+            except BaseException as error:
+                caught = error
+            self.assertIsInstance(caught, ValueError)
+            self.assertRegex(
+                str(caught),
+                "cannot decompress biological source.*truncated-gzip-source",
+            )
+            self.assertEqual(
+                fingerprint_tree_no_follow(outputs.repository_root),
+                before,
+            )
+
+        with self.subTest(stream="concatenated_members"):
+            multiple_path = self.work / "multiple-member-source.fa.gz"
+            midpoint = len(original_bytes) // 2
+            with multiple_path.open("wb") as raw:
+                for chunk in (
+                    original_bytes[:midpoint],
+                    original_bytes[midpoint:],
+                ):
+                    with gzip.GzipFile(
+                        fileobj=raw,
+                        mode="wb",
+                        mtime=0,
+                    ) as compressed:
+                        compressed.write(chunk)
+            multiple_spec = self.fixture_source_spec(template, multiple_path)
+            multiple_inputs = replace(
+                self.synthetic_inputs,
+                lncrna_fasta=multiple_path,
+                source_specs=(
+                    multiple_spec,
+                    *self.synthetic_inputs.source_specs[1:],
+                ),
+            )
+            outputs = self.freeze_paths_for_repository("multiple-member-gzip")
+            self.module.build_freeze(multiple_inputs, outputs)
+            source_rows = read_tsv(outputs.source_ledger)
+            self.assertEqual(
+                source_rows[0]["decompressed_size_bytes"],
+                str(len(original_bytes)),
+            )
+            self.assertEqual(
+                source_rows[0]["decompressed_sha256"],
+                hashlib.sha256(original_bytes).hexdigest(),
+            )
+            self.assertEqual(
+                self.module.parse_fasta(multiple_path),
+                self.module.parse_fasta(self.synthetic_inputs.lncrna_fasta),
+            )
+
+    def test_biological_source_specs_require_exact_ids_and_roles(self) -> None:
+        self.prepare_freeze_fixture()
+        specs = self.synthetic_inputs.source_specs
+        cases = (
+            (specs[:-1], "exactly four biological source specs"),
+            ((specs[0], specs[0], specs[2], specs[3]), "source IDs and order"),
+            (
+                (replace(specs[0], role="wrong role"), *specs[1:]),
+                "source role mismatch",
+            ),
+        )
+        for index, (source_specs, message) in enumerate(cases):
+            with self.subTest(index=index):
+                outputs = self.freeze_paths_for_repository(f"bad-source-spec-{index}")
+                before = fingerprint_tree_no_follow(outputs.repository_root)
+                with self.assertRaisesRegex(ValueError, message):
+                    self.module.build_freeze(
+                        replace(self.synthetic_inputs, source_specs=source_specs),
+                        outputs,
+                    )
+                self.assertEqual(
+                    fingerprint_tree_no_follow(outputs.repository_root),
+                    before,
+                )
 
     def test_existing_different_freeze_is_rejected_without_mutation(self) -> None:
         self.prepare_freeze_fixture()
@@ -986,7 +1661,11 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         )
 
         standard_output = io.StringIO()
-        with mock.patch("sys.stdout", standard_output):
+        with mock.patch.object(
+            self.module,
+            "SOURCE_SPECS",
+            self.synthetic_inputs.source_specs,
+        ), mock.patch("sys.stdout", standard_output):
             self.assertEqual(
                 self.module.main(["select", *self.freeze_cli_arguments()]),
                 0,
@@ -1012,7 +1691,11 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         )
         before = fingerprint_tree_no_follow(self.sandbox)
         standard_error = io.StringIO()
-        with mock.patch("sys.stderr", standard_error):
+        with mock.patch.object(
+            self.module,
+            "SOURCE_SPECS",
+            self.synthetic_inputs.source_specs,
+        ), mock.patch("sys.stderr", standard_error):
             self.assertEqual(
                 self.module.main(
                     [
@@ -1028,7 +1711,11 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         self.assertEqual(fingerprint_tree_no_follow(self.sandbox), before)
 
         standard_output = io.StringIO()
-        with mock.patch("sys.stdout", standard_output):
+        with mock.patch.object(
+            self.module,
+            "SOURCE_SPECS",
+            self.synthetic_inputs.source_specs,
+        ), mock.patch("sys.stdout", standard_output):
             self.assertEqual(
                 self.module.main(
                     [
@@ -1045,6 +1732,171 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         self.assertTrue(self.output_paths.manifest.is_file())
         self.assertIn("selected_queries=50", standard_output.getvalue())
         self.assertNotIn("subprocess", inspect.getsource(self.module))
+
+    def test_verify_freeze_requires_complete_exact_outputs_without_mutation(
+        self,
+    ) -> None:
+        self.prepare_freeze_fixture()
+        expected = self.module.build_freeze(
+            self.synthetic_inputs,
+            self.output_paths,
+        )
+        verify_freeze = getattr(self.module, "verify_freeze", None)
+        self.assertIsNotNone(verify_freeze, "verify_freeze is missing")
+        self.assertEqual(
+            tuple(inspect.signature(verify_freeze).parameters),
+            ("inputs", "outputs", "selection"),
+        )
+
+        before = fingerprint_tree_no_follow(self.output_paths.repository_root)
+        self.assertEqual(
+            verify_freeze(
+                self.synthetic_inputs,
+                self.output_paths,
+                self.output_paths.selection_receipt,
+            ),
+            expected,
+        )
+        self.assertEqual(
+            fingerprint_tree_no_follow(self.output_paths.repository_root),
+            before,
+        )
+
+        stale_selection = self.work / "stale-verify-selection.json"
+        stale_selection.write_text("{}\n", encoding="ascii")
+        before_stale = fingerprint_tree_no_follow(self.output_paths.repository_root)
+        with self.assertRaisesRegex(ValueError, "selection receipt drift"):
+            verify_freeze(
+                self.synthetic_inputs,
+                self.output_paths,
+                stale_selection,
+            )
+        self.assertEqual(
+            fingerprint_tree_no_follow(self.output_paths.repository_root),
+            before_stale,
+        )
+
+        self.output_paths.source_ledger.unlink()
+        before_missing = fingerprint_tree_no_follow(self.output_paths.repository_root)
+        with self.assertRaisesRegex(
+            ValueError,
+            "existing freeze is incomplete: source ledger",
+        ):
+            verify_freeze(
+                self.synthetic_inputs,
+                self.output_paths,
+                self.output_paths.selection_receipt,
+            )
+        self.assertEqual(
+            fingerprint_tree_no_follow(self.output_paths.repository_root),
+            before_missing,
+        )
+        self.assertFalse(self.output_paths.source_ledger.exists())
+
+    def test_cache_cleanup_helper_unlinks_only_the_expected_inode(self) -> None:
+        cleanup_entry = getattr(self.module, "_remove_owned_cache_entry", None)
+        self.assertIsNotNone(cleanup_entry, "cache cleanup helper is missing")
+        self.assertEqual(
+            tuple(inspect.signature(cleanup_entry).parameters),
+            ("cache_descriptor", "entry_name", "expected_identity"),
+        )
+        cache = self.work / "cleanup-cache"
+        cache.mkdir()
+        descriptor = os.open(
+            cache,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            owned = cache / "owned.cache"
+            owned.write_bytes(b"owned")
+            owned_metadata = owned.stat()
+            self.assertTrue(
+                cleanup_entry(
+                    descriptor,
+                    owned.name,
+                    (owned_metadata.st_dev, owned_metadata.st_ino),
+                )
+            )
+            self.assertFalse(owned.exists())
+
+            replaced = cache / "replaced.cache"
+            replaced.write_bytes(b"original-owned")
+            original_metadata = replaced.stat()
+            parked = cache / "parked-owned.cache"
+            replaced.rename(parked)
+            replaced.write_bytes(b"unowned-replacement")
+            self.assertFalse(
+                cleanup_entry(
+                    descriptor,
+                    replaced.name,
+                    (original_metadata.st_dev, original_metadata.st_ino),
+                )
+            )
+            self.assertEqual(replaced.read_bytes(), b"unowned-replacement")
+            self.assertEqual(parked.read_bytes(), b"original-owned")
+        finally:
+            os.close(descriptor)
+
+    def test_cache_cleanup_cli_uses_inherited_directory_descriptor(self) -> None:
+        cache = self.work / "cleanup-cache-cli"
+        cache.mkdir()
+        entry = cache / "owned.cache"
+        entry.write_bytes(b"owned-by-cli")
+        metadata = entry.stat()
+        completed = subprocess.run(
+            [
+                "/bin/bash",
+                "-c",
+                (
+                    "set -euo pipefail\n"
+                    "cache=$1\n"
+                    "builder=$2\n"
+                    "entry_name=$3\n"
+                    "expected_device=$4\n"
+                    "expected_inode=$5\n"
+                    "exec {cache_fd}<\"$cache\"\n"
+                    "python3 \"$builder\" cleanup-cache-entry "
+                    "--cache-directory-fd \"$cache_fd\" "
+                    "--entry-name \"$entry_name\" "
+                    "--expected-device \"$expected_device\" "
+                    "--expected-inode \"$expected_inode\"\n"
+                ),
+                "cleanup-cache-cli",
+                str(cache),
+                str(BUILDER),
+                entry.name,
+                str(metadata.st_dev),
+                str(metadata.st_ino),
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8"))
+        self.assertEqual(completed.stdout, b"")
+        self.assertEqual(completed.stderr, b"")
+        self.assertFalse(entry.exists())
+
+    def test_cli_select_always_binds_canonical_source_specs(self) -> None:
+        self.prepare_freeze_fixture()
+        before = fingerprint_tree_no_follow(self.output_paths.repository_root)
+        standard_error = io.StringIO()
+
+        with mock.patch("sys.stderr", standard_error):
+            self.assertEqual(
+                self.module.main(["select", *self.freeze_cli_arguments()]),
+                2,
+            )
+
+        self.assertIn(
+            "biological source identity mismatch for gencode_v49_lncrna",
+            standard_error.getvalue(),
+        )
+        self.assertEqual(
+            fingerprint_tree_no_follow(self.output_paths.repository_root),
+            before,
+        )
 
     def test_select_publication_is_create_or_byte_identical(self) -> None:
         self.prepare_freeze_fixture()
@@ -1075,7 +1927,8 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 (2, self.output_paths.selection_receipt),
                 (3, self.output_paths.manifest),
                 (4, self.output_paths.manifest_checksum),
-                (5, self.output_paths.input_summary),
+                (5, self.output_paths.source_ledger),
+                (6, self.output_paths.input_summary),
             ],
         )
         before = fingerprint_tree_no_follow(self.sandbox)
@@ -1103,6 +1956,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             self.output_paths.selection_receipt,
             self.output_paths.manifest,
             self.output_paths.manifest_checksum,
+            self.output_paths.source_ledger,
             self.output_paths.input_summary,
         ]
         old_time = 946684800_000_000_000
@@ -1160,6 +2014,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             "selection_receipt",
             "manifest",
             "manifest_checksum",
+            "source_ledger",
             "input_summary",
         )
         for artifact_name in artifact_names:
@@ -1220,6 +2075,12 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 "build",
                 True,
                 Path("paper/bioinformatics/application_manifest.sha256"),
+            ),
+            (
+                "source ledger",
+                "build",
+                True,
+                Path("paper/bioinformatics/application_sources.tsv"),
             ),
             (
                 "input summary",
@@ -1287,10 +2148,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             self.output_paths,
             after_publish=lambda step, _path: baseline_steps.append(step),
         )
-        self.assertEqual(baseline_steps, [1, 2, 3, 4, 5])
+        self.assertEqual(baseline_steps, [1, 2, 3, 4, 5, 6])
         receipt_bytes = self.output_paths.selection_receipt.read_bytes()
 
-        for preexisting_receipt, expected_steps in ((False, 5), (True, 4)):
+        for preexisting_receipt, expected_steps in ((False, 6), (True, 5)):
             for failure_step in range(1, expected_steps + 1):
                 with self.subTest(
                     preexisting_receipt=preexisting_receipt,
@@ -1369,6 +2230,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             self.output_paths.selection_receipt,
             self.output_paths.manifest,
             self.output_paths.manifest_checksum,
+            self.output_paths.source_ledger,
             self.output_paths.input_summary,
         ):
             self.assertFalse(os.path.lexists(path))
@@ -2348,10 +3210,15 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 def prepare_or_fail(
                     snapshots: object,
                     freeze_outputs: object,
+                    verified_sources: object,
                 ) -> object:
                     if outcome == "failure":
                         raise RuntimeError("injected preparation failure with retained sources")
-                    return original_prepare(snapshots, freeze_outputs)
+                    return original_prepare(
+                        snapshots,
+                        freeze_outputs,
+                        verified_sources,
+                    )
 
                 descriptors_before = len(os.listdir(descriptor_directory))
                 captured_error: BaseException | None = None
@@ -2640,6 +3507,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 self.output_paths,
                 manifest=self.output_paths.application_inputs / "nested.tsv",
             ),
+            replace(
+                self.output_paths,
+                source_ledger=self.output_paths.manifest,
+            ),
         )
         for outputs in invalid_outputs:
             with self.subTest(outputs=outputs):
@@ -2673,6 +3544,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             "checksum": lambda outputs: replace(
                 outputs,
                 manifest_checksum=outputs.repository_root / "application_manifest.sha256",
+            ),
+            "sources": lambda outputs: replace(
+                outputs,
+                source_ledger=outputs.source_ledger.with_name("sources.tsv"),
             ),
             "summary": lambda outputs: replace(
                 outputs,
@@ -3079,7 +3954,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             results = [future.result(timeout=20) for future in futures]
 
         self.assertEqual(results[0], results[1])
-        self.assertEqual([step for step, _path in callback_steps], [1, 2, 3, 4, 5])
+        self.assertEqual(
+            [step for step, _path in callback_steps],
+            [1, 2, 3, 4, 5, 6],
+        )
         self.assertEqual(len(read_tsv(self.output_paths.manifest)), 350)
         self.assertEqual(
             len(list(self.output_paths.application_inputs.rglob("*.fa"))),
@@ -3149,6 +4027,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         self.assertTrue(self.output_paths.selection_receipt.is_file())
         self.assertTrue(self.output_paths.manifest.is_file())
         self.assertTrue(self.output_paths.manifest_checksum.is_file())
+        self.assertTrue(self.output_paths.source_ledger.is_file())
         self.assertTrue(self.output_paths.input_summary.is_file())
         self.assertEqual(len(read_tsv(self.output_paths.manifest)), 350)
 
@@ -3174,6 +4053,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             self.module,
             "_prepare_freeze",
             side_effect=prepare_then_mutate,
+        ), mock.patch.object(
+            self.module,
+            "SOURCE_SPECS",
+            self.synthetic_inputs.source_specs,
         ), mock.patch("sys.stdout", io.StringIO()):
             self.assertEqual(
                 self.module.main(
@@ -3412,6 +4295,798 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             ),
         )
 
+    def test_exact_upstream_source_identities(self) -> None:
+        expected_fields = (
+            "source_id",
+            "role",
+            "provider",
+            "release",
+            "assembly",
+            "url",
+            "upstream_md5",
+            "compressed_size_bytes",
+            "compressed_sha256",
+            "decompressed_size_bytes",
+            "decompressed_sha256",
+            "local_source_path",
+            "license_or_terms",
+            "redistribution_note",
+            "download_command",
+            "status",
+        )
+        self.assertEqual(self.module.APPLICATION_SOURCE_FIELDS, expected_fields)
+        self.assertEqual(self.module.SOURCE_SPEC_FIELDS, expected_fields[:-1])
+        self.assertEqual(
+            tuple(field.name for field in fields(self.module.SourceSpec)),
+            expected_fields[:-1],
+        )
+        expected = {
+            "gencode_v49_lncrna": {
+                "url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/gencode.v49.lncRNA_transcripts.fa.gz",
+                "upstream_md5": "6d52ea2c72933c864e46a560fe0b5d4c",
+                "compressed_size_bytes": 37870043,
+                "compressed_sha256": "1f04e509309fa74b694ef3cc1e52c1c8173bb0e679f8a22785fa43ecadd28ef4",
+                "decompressed_size_bytes": 223740848,
+                "decompressed_sha256": "4c632018e0198d76fe76471baa5511a1c07af86bf7bab6ce6747edb8d5add5ae",
+            },
+            "gencode_v49_gtf": {
+                "url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/gencode.v49.annotation.gtf.gz",
+                "upstream_md5": "0ef4a024ea2d35b1b88c12447b0b70b9",
+                "compressed_size_bytes": 93374019,
+                "compressed_sha256": "d6e6fe0515c95b2a8cd36a853c1989cee9115c736c60237c56ae92b9daaaf7c4",
+                "decompressed_size_bytes": 3323462848,
+                "decompressed_sha256": "ff32fd55c6799b3b94fe10aa17b2b5d4da952fa1de12fe44afadf32e949ec914",
+            },
+            "ucsc_hg38_chr21": {
+                "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz",
+                "upstream_md5": "184df2bd9b812b6e6b6da16c6021369e",
+                "compressed_size_bytes": 12709705,
+                "compressed_sha256": "c979ca1e5065c2521a50773473e0d0cc018fd6f3e9bb3aa90493fe7b45d57d1b",
+                "decompressed_size_bytes": 47644190,
+                "decompressed_sha256": "35c71b68436d1a278ecb6a1e875af3ba4020738a028a7feac769a6d62790ae1f",
+            },
+            "ucsc_hg38_chr22": {
+                "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr22.fa.gz",
+                "upstream_md5": "41b47ce1cc21b558409c19b892e1c0d1",
+                "compressed_size_bytes": 12255678,
+                "compressed_sha256": "05f9d97d6fbfd08a44ca45b50837ca2ae9c471f35ba79dffec04d2cb5eaaf695",
+                "decompressed_size_bytes": 51834845,
+                "decompressed_sha256": "ce3ee1ca39356238f7aee438a40a88b4f1b9d80b316b263e16fb12402212d10f",
+            },
+        }
+        actual = {
+            source.source_id: {
+                field: getattr(source, field)
+                for field in (
+                    "url",
+                    "upstream_md5",
+                    "compressed_size_bytes",
+                    "compressed_sha256",
+                    "decompressed_size_bytes",
+                    "decompressed_sha256",
+                )
+            }
+            for source in self.module.SOURCE_SPECS
+        }
+        self.assertEqual(actual, expected)
+        expected_local_paths = (
+            ".tmp/bioinformatics_application_sources/gencode.v49.lncRNA_transcripts.fa.gz",
+            ".tmp/bioinformatics_application_sources/gencode.v49.annotation.gtf.gz",
+            ".tmp/bioinformatics_application_sources/chr21.fa.gz",
+            ".tmp/bioinformatics_application_sources/chr22.fa.gz",
+        )
+        self.assertEqual(
+            tuple(source.local_source_path for source in self.module.SOURCE_SPECS),
+            expected_local_paths,
+        )
+        for source in self.module.SOURCE_SPECS:
+            with self.subTest(source_command=source.source_id):
+                self.assertTrue(
+                    source.download_command.startswith("curl -fL --retry 3 --output ")
+                )
+                self.assertIn(source.url, source.download_command)
+                self.assertIn(source.local_source_path, source.download_command)
+                for forbidden in (
+                    "gasal2_longtarget.py",
+                    "run_application.py",
+                    "run_holdout.py",
+                    "Fasim",
+                    "GASAL2",
+                    ".paper-artifacts",
+                ):
+                    self.assertNotIn(forbidden, source.download_command)
+        with self.assertRaises(FrozenInstanceError):
+            self.module.SOURCE_SPECS[0].source_id = "drift"
+
+    def test_source_specs_cli_emits_only_canonical_tsv(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(BUILDER), "sources"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8"))
+        self.assertEqual(completed.stderr, b"")
+        self.assertEqual(
+            completed.stdout,
+            self.module._tsv_bytes(
+                self.module.SOURCE_SPEC_FIELDS,
+                self.module._source_spec_rows(self.module.SOURCE_SPECS),
+            ),
+        )
+
+    def test_fetch_script_has_no_execution_command(self) -> None:
+        self.assertTrue(FETCHER.is_file(), f"application fetcher is missing: {FETCHER}")
+        text = FETCHER.read_text(encoding="utf-8", errors="strict")
+        self.assertIn("set -euo pipefail", text)
+        self.assertIn("curl -fL --retry 3", text)
+        self.assertIn("--create-freeze", text)
+        self.assertIn(".partial.$$", text)
+        self.assertIn("trap ", text)
+        self.assertIn('flock -x "$source_directory_fd"', text)
+        self.assertIn('cleanup-cache-entry', text)
+        self.assertIn('python3 "$BUILDER" sources', text)
+        self.assertIn('python3 "$BUILDER" select', text)
+        self.assertIn('python3 "$BUILDER" verify', text)
+        self.assertIn('python3 "$BUILDER" materialize', text)
+        self.assertIn(
+            'SOURCE_DIR="$ROOT/.tmp/bioinformatics_application_sources"',
+            text,
+        )
+        self.assertNotIn('${SOURCE_DIR:-', text)
+        self.assertNotIn("eval ", text)
+        for source in self.module.SOURCE_SPECS:
+            self.assertNotIn(source.compressed_sha256, text)
+            self.assertNotIn(source.decompressed_sha256, text)
+        for forbidden in (
+            "gasal2_longtarget.py",
+            "run_application.py",
+            "run_holdout.py",
+            "Fasim",
+            "GASAL2",
+            ".paper-artifacts",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, text)
+
+    def test_fetch_default_requires_all_committed_outputs_without_network(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        completed = self.run_fetch_harness(harness)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("committed application freeze output is missing", completed.stderr)
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertFalse(Path(harness["python_log"]).exists())
+
+    def test_fetch_rejects_source_directory_override_before_acquisition(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=True,
+        )
+        redirected = Path(harness["repository"]) / "redirected-source-cache"
+        environment = dict(harness["environment"])
+        environment["SOURCE_DIR"] = str(redirected)
+
+        completed = self.run_fetch_harness(
+            harness,
+            "--create-freeze",
+            environment=environment,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("SOURCE_DIR override is not supported", completed.stderr)
+        self.assertFalse(redirected.exists())
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertFalse(Path(harness["python_log"]).exists())
+
+    def test_fetch_rejects_unsafe_cache_parent_before_sources_or_curl(self) -> None:
+        for component in ("temporary_parent", "source_cache"):
+            for entry_kind in ("symlink", "regular_file"):
+                with self.subTest(component=component, entry_kind=entry_kind):
+                    harness = self.prepare_fetch_harness(
+                        committed_outputs=False,
+                        valid_cache=False,
+                    )
+                    repository = Path(harness["repository"])
+                    unsafe_entry = (
+                        repository / ".tmp"
+                        if component == "temporary_parent"
+                        else Path(harness["source_directory"])
+                    )
+                    shutil.rmtree(unsafe_entry)
+                    outside = self.work / f"outside-{component}-{entry_kind}"
+                    if entry_kind == "symlink":
+                        outside.mkdir()
+                        unsafe_entry.symlink_to(outside, target_is_directory=True)
+                    else:
+                        unsafe_entry.write_text("not a directory\n", encoding="ascii")
+                    environment = dict(harness["environment"])
+                    environment.update(
+                        {
+                            "FETCH_CURL_MODE": "valid",
+                            "FETCH_CURL_STATUS": "0",
+                        }
+                    )
+
+                    completed = self.run_fetch_harness(
+                        harness,
+                        "--create-freeze",
+                        environment=environment,
+                    )
+
+                    self.assertNotEqual(completed.returncode, 0)
+                    expected_error = (
+                        "source cache parent is unsafe"
+                        if component == "temporary_parent"
+                        else "source cache is unsafe"
+                    )
+                    self.assertIn(expected_error, completed.stderr)
+                    self.assertFalse(Path(harness["curl_log"]).exists())
+                    self.assertFalse(Path(harness["python_log"]).exists())
+                    if entry_kind == "symlink":
+                        self.assertEqual(tuple(outside.iterdir()), ())
+
+    def test_fetch_rejects_cache_parent_replacement_after_sources(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        repository = Path(harness["repository"])
+        outside = self.work / "outside-cache-parent-after-sources"
+        outside.mkdir()
+        parked = self.work / "parked-cache-parent-after-sources"
+        environment = dict(harness["environment"])
+        environment.update(
+            {
+                "FETCH_CURL_MODE": "valid",
+                "FETCH_CURL_STATUS": "0",
+                "FETCH_SWAP_CACHE_PARENT_DURING_SOURCES": str(repository / ".tmp"),
+                "FETCH_PARKED_CACHE_PARENT": str(parked),
+                "FETCH_OUTSIDE_CACHE_PARENT": str(outside),
+                "FETCH_REAL_MV": str(shutil.which("mv")),
+                "FETCH_REAL_LN": str(shutil.which("ln")),
+            }
+        )
+
+        completed = self.run_fetch_harness(
+            harness,
+            "--create-freeze",
+            environment=environment,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("source cache binding changed", completed.stderr)
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources"],
+        )
+        self.assertEqual(tuple(outside.iterdir()), ())
+
+    def test_fetch_rechecks_cache_binding_after_final_verification(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=True,
+            valid_cache=True,
+        )
+        repository = Path(harness["repository"])
+        outside = self.work / "outside-cache-parent-after-verify"
+        outside.mkdir()
+        parked = self.work / "parked-cache-parent-after-verify"
+        environment = dict(harness["environment"])
+        environment.update(
+            {
+                "FETCH_SWAP_CACHE_PARENT_AFTER_COMMAND": "verify",
+                "FETCH_SWAP_CACHE_PARENT": str(repository / ".tmp"),
+                "FETCH_PARKED_CACHE_PARENT": str(parked),
+                "FETCH_OUTSIDE_CACHE_PARENT": str(outside),
+                "FETCH_REAL_MV": str(shutil.which("mv")),
+                "FETCH_REAL_LN": str(shutil.which("ln")),
+            }
+        )
+
+        completed = self.run_fetch_harness(harness, environment=environment)
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("source cache binding changed after reconstruction", completed.stderr)
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "select", "verify"],
+        )
+        self.assertEqual(tuple(outside.iterdir()), ())
+
+    def test_fetch_serializes_cache_users_with_retained_directory_lock(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        entered = Path(harness["repository"]) / "sources-entered"
+        release = Path(harness["repository"]) / "sources-release"
+        environment = dict(harness["environment"])
+        environment.update(
+            {
+                "FETCH_PAUSE_DURING_SOURCES": "1",
+                "FETCH_SOURCES_ENTERED": str(entered),
+                "FETCH_SOURCES_RELEASE": str(release),
+                "FETCH_REAL_SLEEP": str(shutil.which("sleep")),
+            }
+        )
+        command = [
+            "/bin/bash",
+            str(harness["fetcher"]),
+            "--create-freeze",
+        ]
+        first: subprocess.Popen[str] | None = None
+        second: subprocess.Popen[str] | None = None
+        first_result: tuple[str, str] | None = None
+        second_result: tuple[str, str] | None = None
+        try:
+            first = subprocess.Popen(
+                command,
+                cwd=Path(harness["repository"]),
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            deadline = time.monotonic() + 5
+            while not entered.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(entered.exists(), "first fetch never entered sources")
+
+            second = subprocess.Popen(
+                command,
+                cwd=Path(harness["repository"]),
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            with self.assertRaises(subprocess.TimeoutExpired):
+                second.wait(timeout=0.3)
+            self.assertEqual(
+                Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+                ["sources"],
+            )
+        finally:
+            release.touch()
+            for process_name, process in (("first", first), ("second", second)):
+                if process is None:
+                    continue
+                try:
+                    result = process.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    result = process.communicate(timeout=5)
+                if process_name == "first":
+                    first_result = result
+                else:
+                    second_result = result
+
+        self.assertIsNotNone(first_result)
+        self.assertIsNotNone(second_result)
+        self.assertNotEqual(first.returncode, 0)
+        self.assertNotEqual(second.returncode, 0)
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "sources"],
+        )
+
+    def test_fetch_default_reuses_valid_cache_and_verifies_only(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=True,
+            valid_cache=True,
+        )
+        completed = self.run_fetch_harness(harness)
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "select", "verify"],
+        )
+        self.assertEqual(tuple(Path(harness["temporary_directory"]).iterdir()), ())
+
+    def test_fetch_default_selection_repository_has_owned_staging_parent(
+        self,
+    ) -> None:
+        self.assertNotEqual(os.stat("/tmp").st_uid, os.geteuid())
+        harness = self.prepare_fetch_harness(
+            committed_outputs=True,
+            valid_cache=True,
+        )
+        output_paths = {
+            label: Path(path)
+            for label, path in dict(harness["output_paths"]).items()
+        }
+        outputs_before = {
+            label: fingerprint_tree_no_follow(path)
+            for label, path in output_paths.items()
+        }
+        source_directory = Path(harness["source_directory"])
+        cache_before = fingerprint_tree_no_follow(source_directory)
+        temporary_patterns = (
+            "bioinformatics-application-selection.*",
+            "bioinformatics-application-sources.*.tsv",
+        )
+
+        def temporary_entries() -> set[Path]:
+            return {
+                path
+                for pattern in temporary_patterns
+                for path in Path("/tmp").glob(pattern)
+            }
+
+        temporary_before = temporary_entries()
+        selection_repository_log = (
+            Path(harness["repository"]) / "selection-repository.log"
+        )
+        environment = dict(harness["environment"])
+        environment.pop("TMPDIR", None)
+        environment.update(
+            {
+                "FETCH_CHECK_SELECTION_PARENT": "1",
+                "FETCH_REAL_BUILDER": str(BUILDER),
+                "FETCH_REAL_PYTHON": sys.executable,
+                "FETCH_SELECTION_REPOSITORY_LOG": str(selection_repository_log),
+            }
+        )
+
+        completed = self.run_fetch_harness(harness, environment=environment)
+
+        self.assertTrue(selection_repository_log.is_file())
+        selection_repository = Path(
+            selection_repository_log.read_text(encoding="ascii").strip()
+        )
+        self.assertFalse(selection_repository.exists())
+        self.assertEqual(temporary_entries(), temporary_before)
+        self.assertEqual(
+            {
+                label: fingerprint_tree_no_follow(path)
+                for label, path in output_paths.items()
+            },
+            outputs_before,
+        )
+        self.assertEqual(
+            fingerprint_tree_no_follow(source_directory),
+            cache_before,
+        )
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "select", "verify"],
+        )
+
+    def test_fetch_default_never_recreates_output_removed_after_precheck(
+        self,
+    ) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=True,
+            valid_cache=True,
+        )
+        source_ledger = Path(dict(harness["output_paths"])["source_ledger"])
+        environment = dict(harness["environment"])
+        environment["FETCH_REMOVE_DURING_SOURCES"] = str(source_ledger)
+
+        completed = self.run_fetch_harness(harness, environment=environment)
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertFalse(source_ledger.exists())
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "select", "verify"],
+        )
+
+    def test_fetch_default_rejects_committed_selection_drift_before_verify(
+        self,
+    ) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=True,
+            valid_cache=True,
+        )
+        selection = dict(harness["output_paths"])["selection_receipt"]
+        Path(selection).write_text("drift\n", encoding="ascii")
+        completed = self.run_fetch_harness(harness)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("committed application selection receipt drift", completed.stderr)
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "select"],
+        )
+
+    def test_fetch_cleans_pid_partial_after_curl_failure(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        completed = self.run_fetch_harness(harness, "--create-freeze")
+        self.assertNotEqual(completed.returncode, 0)
+        curl_log = Path(harness["curl_log"])
+        self.assertTrue(curl_log.is_file())
+        self.assertIn("-fL --retry 3 --output", curl_log.read_text(encoding="ascii"))
+        self.assertFalse(
+            tuple(Path(harness["source_directory"]).glob("*.partial.*")),
+        )
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources"],
+        )
+        self.assertEqual(tuple(Path(harness["temporary_directory"]).iterdir()), ())
+
+    def test_fetch_cleans_new_cache_after_post_move_verification_failure(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        real_sha256sum = shutil.which("sha256sum")
+        self.assertIsNotNone(real_sha256sum)
+        first_source = self.module.SOURCE_SPECS[0]
+        destination = Path(harness["source_directory"]) / Path(
+            first_source.local_source_path
+        ).name
+        fake_sha256sum = Path(harness["fake_bin"]) / "sha256sum"
+        fake_sha256sum.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "actual_path=''\n"
+            "if (($#)); then actual_path=\"${!#}\"; fi\n"
+            "if [[ \"${actual_path##*/}\" == \"$FAIL_SHA256_NAME\" ]]; then\n"
+            "  printf '%064d  %s\\n' 0 \"${!#}\"\n"
+            "  exit 0\n"
+            "fi\n"
+            "exec \"$REAL_SHA256SUM\" \"$@\"\n",
+            encoding="ascii",
+        )
+        fake_sha256sum.chmod(0o755)
+        environment = dict(harness["environment"])
+        environment.update(
+            {
+                "FETCH_CURL_MODE": "valid",
+                "FETCH_CURL_STATUS": "0",
+                "REAL_SHA256SUM": str(real_sha256sum),
+                "FAIL_SHA256_NAME": destination.name,
+            }
+        )
+
+        completed = self.run_fetch_harness(
+            harness,
+            "--create-freeze",
+            environment=environment,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("published source cache identity mismatch", completed.stderr)
+        self.assertFalse(destination.exists())
+        self.assertFalse(
+            tuple(Path(harness["source_directory"]).glob("*.partial.*")),
+        )
+        self.assertEqual(tuple(Path(harness["temporary_directory"]).iterdir()), ())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources"],
+        )
+
+    def test_fetch_never_overwrites_concurrent_cache_destination(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        first_source = self.module.SOURCE_SPECS[0]
+        destination = Path(harness["source_directory"]) / Path(
+            first_source.local_source_path
+        ).name
+        race_marker = Path(harness["repository"]) / "mv-race-injected"
+        fake_mv = Path(harness["fake_bin"]) / "mv"
+        fake_mv.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "destination=\"${!#}\"\n"
+            "if [[ ! -e \"$FETCH_MV_RACE_MARKER\" ]]; then\n"
+            "  printf 'concurrent-destination\\n' >\"$destination\"\n"
+            "  : >\"$FETCH_MV_RACE_MARKER\"\n"
+            "fi\n"
+            "exec \"$REAL_MV\" \"$@\"\n",
+            encoding="ascii",
+        )
+        fake_mv.chmod(0o755)
+        environment = dict(harness["environment"])
+        environment.update(
+            {
+                "FETCH_CURL_MODE": "valid",
+                "FETCH_CURL_STATUS": "0",
+                "FETCH_MV_RACE_MARKER": str(race_marker),
+                "REAL_MV": str(shutil.which("mv")),
+            }
+        )
+
+        completed = self.run_fetch_harness(
+            harness,
+            "--create-freeze",
+            environment=environment,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("source destination appeared during publication", completed.stderr)
+        self.assertEqual(destination.read_text(encoding="ascii"), "concurrent-destination\n")
+        self.assertFalse(
+            tuple(Path(harness["source_directory"]).glob("*.partial.*")),
+        )
+
+    def test_fetch_signal_after_cache_publication_cleans_owned_inode(self) -> None:
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=False,
+        )
+        first_source = self.module.SOURCE_SPECS[0]
+        destination = Path(harness["source_directory"]) / Path(
+            first_source.local_source_path
+        ).name
+        signal_marker = Path(harness["repository"]) / "mv-signal-injected"
+        fake_mv = Path(harness["fake_bin"]) / "mv"
+        fake_mv.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "destination=\"${!#}\"\n"
+            "\"$REAL_MV\" \"$@\"\n"
+            "if [[ ! -e \"$FETCH_MV_SIGNAL_MARKER\" ]]; then\n"
+            "  printf 'corrupt-after-publication\\n' >\"$destination\"\n"
+            "  : >\"$FETCH_MV_SIGNAL_MARKER\"\n"
+            "  kill -TERM \"$PPID\"\n"
+            "fi\n",
+            encoding="ascii",
+        )
+        fake_mv.chmod(0o755)
+        environment = dict(harness["environment"])
+        environment.update(
+            {
+                "FETCH_CURL_MODE": "valid",
+                "FETCH_CURL_STATUS": "0",
+                "FETCH_MV_SIGNAL_MARKER": str(signal_marker),
+                "REAL_MV": str(shutil.which("mv")),
+            }
+        )
+
+        interrupted = self.run_fetch_harness(
+            harness,
+            "--create-freeze",
+            environment=environment,
+        )
+
+        self.assertNotEqual(interrupted.returncode, 0)
+        self.assertFalse(destination.exists())
+        self.assertFalse(
+            tuple(Path(harness["source_directory"]).glob("*.partial.*")),
+        )
+
+        retried = self.run_fetch_harness(
+            harness,
+            "--create-freeze",
+            environment=environment,
+        )
+        self.assertEqual(
+            retried.returncode,
+            0,
+            f"stdout:\n{retried.stdout}\nstderr:\n{retried.stderr}",
+        )
+        self.assertTrue(destination.is_file())
+
+    def test_fetch_rejects_symlinked_committed_output_and_cache(self) -> None:
+        committed = self.prepare_fetch_harness(
+            committed_outputs=True,
+            valid_cache=True,
+        )
+        manifest = Path(dict(committed["output_paths"])["manifest"])
+        outside_manifest = Path(committed["repository"]) / "outside-manifest.tsv"
+        outside_manifest.write_text("outside\n", encoding="ascii")
+        manifest.unlink()
+        manifest.symlink_to(outside_manifest)
+        completed = self.run_fetch_harness(committed)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("committed application freeze output is unsafe", completed.stderr)
+        self.assertEqual(outside_manifest.read_text(encoding="ascii"), "outside\n")
+        self.assertFalse(Path(committed["curl_log"]).exists())
+        self.assertFalse(Path(committed["python_log"]).exists())
+
+        cache = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=True,
+        )
+        first_source = self.module.SOURCE_SPECS[0]
+        cached_source = Path(cache["source_directory"]) / Path(
+            first_source.local_source_path
+        ).name
+        outside_cache = Path(cache["repository"]) / "outside-source.fa.gz"
+        outside_cache.write_bytes(cached_source.read_bytes())
+        cached_source.unlink()
+        cached_source.symlink_to(outside_cache)
+        completed = self.run_fetch_harness(cache, "--create-freeze")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("cached source identity mismatch", completed.stderr)
+        self.assertTrue(cached_source.is_symlink())
+        self.assertTrue(outside_cache.is_file())
+        self.assertFalse(Path(cache["curl_log"]).exists())
+        self.assertEqual(
+            Path(cache["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources"],
+        )
+
+    def test_fetch_create_flag_is_unique_and_publishes_only_missing_outputs(self) -> None:
+        for arguments in (("--unknown",), ("--create-freeze", "--create-freeze")):
+            with self.subTest(arguments=arguments):
+                rejected = self.prepare_fetch_harness(
+                    committed_outputs=False,
+                    valid_cache=True,
+                )
+                completed = self.run_fetch_harness(rejected, *arguments)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertFalse(Path(rejected["curl_log"]).exists())
+                self.assertFalse(Path(rejected["python_log"]).exists())
+
+        harness = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=True,
+        )
+        completed = self.run_fetch_harness(harness, "--create-freeze")
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+        self.assertFalse(Path(harness["curl_log"]).exists())
+        self.assertEqual(
+            Path(harness["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources", "select", "materialize"],
+        )
+        for output in dict(harness["output_paths"]).values():
+            self.assertTrue(Path(output).exists(), output)
+        self.assertEqual(tuple(Path(harness["temporary_directory"]).iterdir()), ())
+
+    def test_fetch_rejects_wrong_cache_and_missing_tools(self) -> None:
+        corrupt = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=True,
+        )
+        first_source = self.module.SOURCE_SPECS[0]
+        bad_cache = Path(corrupt["source_directory"]) / Path(
+            first_source.local_source_path
+        ).name
+        bad_cache.write_bytes(b"wrong-cache-bytes")
+        completed = self.run_fetch_harness(corrupt, "--create-freeze")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("cached source identity mismatch", completed.stderr)
+        self.assertFalse(Path(corrupt["curl_log"]).exists())
+        self.assertEqual(
+            Path(corrupt["python_log"]).read_text(encoding="ascii").splitlines(),
+            ["sources"],
+        )
+
+        missing_tool = self.prepare_fetch_harness(
+            committed_outputs=False,
+            valid_cache=True,
+        )
+        environment = dict(missing_tool["environment"])
+        environment["PATH"] = str(missing_tool["fake_bin"])
+        completed = self.run_fetch_harness(
+            missing_tool,
+            "--create-freeze",
+            environment=environment,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("required command not found", completed.stderr)
+        self.assertFalse(Path(missing_tool["curl_log"]).exists())
+        self.assertFalse(Path(missing_tool["python_log"]).exists())
+
     def test_freeze_path_records_are_frozen_and_public_signatures_are_explicit(self) -> None:
         self.prepare_freeze_fixture()
         self.assertEqual(
@@ -3423,6 +5098,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 "chr22_fasta",
                 "development_exclusions",
                 "holdout_manifest",
+                "source_specs",
             ),
         )
         self.assertEqual(
@@ -3433,6 +5109,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 "application_inputs",
                 "manifest",
                 "manifest_checksum",
+                "source_ledger",
                 "input_summary",
             ),
         )
@@ -4951,6 +6628,15 @@ def _resource_probe_payload(scenario: str) -> dict[str, object]:
                     handle.write("\n")
             del sequence
             lncrna_size_bytes = case.synthetic_inputs.lncrna_fasta.stat().st_size
+            updated_specs = list(case.synthetic_inputs.source_specs)
+            updated_specs[0] = case.fixture_source_spec(
+                updated_specs[0],
+                case.synthetic_inputs.lncrna_fasta,
+            )
+            case.synthetic_inputs = replace(
+                case.synthetic_inputs,
+                source_specs=tuple(updated_specs),
+            )
 
         before = fingerprint_tree_no_follow(case.output_paths.repository_root)
         if scenario == "fd-valid":
