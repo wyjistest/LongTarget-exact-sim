@@ -206,7 +206,7 @@ if multi_report["result_status"] != "invalid_input":
     raise SystemExit("real-binary multi-query preflight did not report invalid_input")
 
 print("Bioinformatics Phase 1 checks OK")
-print("cli_contract_tests=31")
+print("cli_contract_tests=32")
 print("cpu_authority_smoke=pass")
 print("multi_query_fail_closed=1")
 print("default_mode_fail_closed=1")

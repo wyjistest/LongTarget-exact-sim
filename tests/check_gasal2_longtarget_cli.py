@@ -19,7 +19,12 @@ CLI = ROOT / "scripts/gasal2_longtarget.py"
 SCHEMA = ROOT / "schemas/gasal2_longtarget_run_report.schema.json"
 ORACLE = ROOT / "tests/oracle/hg19-H19-testDNA-TFOsorted"
 sys.path.insert(0, str(ROOT / "scripts"))
-from gasal2_longtarget import TFOSORTED_COLUMNS, WorkflowError, validate_report  # noqa: E402
+from gasal2_longtarget import (  # noqa: E402
+    TFOSORTED_COLUMNS,
+    WorkflowError,
+    validate_report,
+    validate_schema_value,
+)
 
 
 def sha256(path: Path) -> str:
@@ -452,6 +457,35 @@ class Gasal2LongTargetCliTests(unittest.TestCase):
                 with self.assertRaises(WorkflowError):
                     validate_report(report)
 
+    def test_shared_schema_validator_enforces_supported_safety_keywords(self) -> None:
+        schema = {
+            "type": "object",
+            "required": ["name", "values", "count"],
+            "additionalProperties": False,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "values": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "count": {"type": "integer", "minimum": 1, "maximum": 3},
+            },
+        }
+        validate_schema_value(schema, {"name": "safe", "values": ["8.9"], "count": 2}, "fixture")
+        invalid_values = [
+            {"name": "safe", "values": ["8.9"], "count": 2, "extra": True},
+            {"name": "", "values": ["8.9"], "count": 2},
+            {"name": "safe", "values": [], "count": 2},
+            {"name": "safe", "values": ["8.9", "8.9"], "count": 2},
+            {"name": "safe", "values": ["8.9"], "count": 0},
+            {"name": "safe", "values": ["8.9"], "count": 4},
+        ]
+        for value in invalid_values:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_schema_value(schema, value, "fixture")
+
     def test_comparator_abnormal_exit_with_clean_metrics_publishes_authority(self) -> None:
         comparator = self.make_comparator("abnormal-comparator", returncode=9)
         result = self.run_cli("--mode", "verified", "--comparator", str(comparator))
@@ -697,6 +731,7 @@ class Gasal2LongTargetCliTests(unittest.TestCase):
         self.assertIn('RUN_WORK="$(mktemp -d "$WORK_ROOT/run.XXXXXX")"', checker)
         self.assertIn('rm -rf -- "$RUN_WORK"', checker)
         self.assertNotIn('rm -rf "$WORK"', checker)
+        self.assertIn('print("cli_contract_tests=32")', checker)
 
 
 if __name__ == "__main__":

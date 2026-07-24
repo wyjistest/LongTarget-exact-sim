@@ -16,7 +16,7 @@ Command:
 python3 tests/check_gasal2_longtarget_cli.py
 ```
 
-Result: 31 tests passed. The suite covers CPU authority, default safe routing,
+Result: 32 tests passed. The suite covers CPU authority, default safe routing,
 no-GPU authority selection, verified clean publication, mismatch fallback,
 candidate OOM/failure fallback, explicit experimental warning, query-length
 guard, multi-record rejection, malformed and non-UTF-8 FASTA, unsupported

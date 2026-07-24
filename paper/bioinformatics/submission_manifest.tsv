@@ -14,3 +14,16 @@ S0105	examples/gasal2_longtarget/README.md	1	example_documentation	goal-bioinfor
 S0106	README.md	1	quick_start	goal-bioinformatics.md	submission_software_epoch_1	1	pass
 S0107	paper/bioinformatics/phase1_validation.md	1	validation_receipt	phase1_tests_and_smokes	submission_software_epoch_1	1	pass
 S0108	scripts/check_bioinformatics_phase1.sh	1	phase_checker	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0201	config/gasal2_longtarget_contracts.json	2	contract_registry	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0202	schemas/gasal2_longtarget_contracts.schema.json	2	contract_registry_schema	goal-bioinformatics.md	schema_1.0.0	1	pass
+S0203	paper/bioinformatics/development_query_exclusions.tsv	2	development_exclusion_ledger	frozen_development_inputs	paper-data-v1-dccfd49-20260716	1	pass
+S0204	paper/bioinformatics/holdout_selection.json	2	holdout_selection	build_holdout_panel.py	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0205	paper/bioinformatics/holdout_manifest.tsv	2	holdout_manifest	holdout_protocol.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0206	paper/bioinformatics/holdout_manifest.sha256	2	holdout_manifest_checksum	holdout_manifest.tsv	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0207	paper/bioinformatics/holdout_sources.tsv	2	holdout_source_ledger	provider_checksums_and_local_sha256	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0208	paper/bioinformatics/holdout_protocol.md	2	holdout_protocol	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0209	reproduce/bioinformatics/build_holdout_panel.py	2	holdout_builder	holdout_protocol.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0210	reproduce/bioinformatics/fetch_holdout_inputs.sh	2	holdout_fetcher	holdout_sources.tsv	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0211	tests/check_build_bioinformatics_holdout_panel.py	2	holdout_builder_tests	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0212	tests/check_bioinformatics_phase2_freeze.py	2	holdout_freeze_tests	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0213	scripts/check_bioinformatics_phase2_freeze.sh	2	preexecution_phase_gate	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass

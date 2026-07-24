@@ -1,0 +1,224 @@
+{
+  "contracts": [
+    {
+      "authority_definition": {
+        "backend": "fasim_longtarget_x86",
+        "cluster_distance": 15,
+        "cluster_length": 50,
+        "comparator": "scripts/compare_fasim_segmented_contract.py",
+        "runtime_commit": "0d11aa2d61b7ccda59b462ab8e0750dad17ee18f"
+      },
+      "clean_mismatch_counts": {
+        "development": {
+          "clean": 13,
+          "mismatch": 0,
+          "rank_counts": {
+            "nt": {"clean": 12, "mismatch": 1},
+            "score": {"clean": 13, "mismatch": 0},
+            "stability": {"clean": 11, "mismatch": 2}
+          }
+        },
+        "holdout": {
+          "clean": null,
+          "mismatch": null,
+          "rank_counts": {
+            "nt": {"clean": null, "mismatch": null},
+            "score": {"clean": null, "mismatch": null},
+            "stability": {"clean": null, "mismatch": null}
+          }
+        }
+      },
+      "contract_id": "score_top5_v1",
+      "input_guards": {
+        "canonical_acgt": true,
+        "query_length_max_nt": 2812,
+        "query_record_count": 1,
+        "target_record_count": 1
+      },
+      "known_limitations": [
+        "No GPU-only safe path is enabled before the independent holdout decision.",
+        "The contract covers score-ranked clustered TFO1-TFO5 and boundary ties only.",
+        "Stability, Nt and full-row equality are not implied by this contract."
+      ],
+      "output_definition": "Score-ranked clustered TFO1-TFO5 representatives plus boundary-tie equality under comparator version 1.",
+      "required_preset": {
+        "output_mode": "tfosorted",
+        "rule": 0,
+        "top_k": 5,
+        "triplex_preset": "normal"
+      },
+      "runtime_guards": {
+        "compute_capability": ["8.9"],
+        "fallback_on_unknown_state": true,
+        "minimum_gpu_memory_mib": 24000,
+        "worker_density": 1
+      },
+      "status": "experimental",
+      "validation_datasets": [
+        {
+          "dataset_id": "paper-data-v1-dccfd49-20260716",
+          "query_count": 5,
+          "role": "development",
+          "status": "complete",
+          "workload_count": 13
+        },
+        {
+          "dataset_id": "bioinformatics-phase2-holdout-v1-9e293b2c",
+          "query_count": 12,
+          "role": "independent_holdout",
+          "status": "preregistered_not_run",
+          "workload_count": 24
+        }
+      ]
+    },
+    {
+      "authority_definition": {
+        "backend": "fasim_longtarget_x86",
+        "cluster_distance": 15,
+        "cluster_length": 50,
+        "comparator": "scripts/compare_fasim_segmented_contract.py",
+        "runtime_commit": "0d11aa2d61b7ccda59b462ab8e0750dad17ee18f"
+      },
+      "clean_mismatch_counts": {
+        "development": {
+          "clean": 10,
+          "mismatch": 3,
+          "rank_counts": {
+            "nt": {"clean": 12, "mismatch": 1},
+            "score": {"clean": 13, "mismatch": 0},
+            "stability": {"clean": 11, "mismatch": 2}
+          }
+        },
+        "holdout": {
+          "clean": null,
+          "mismatch": null,
+          "rank_counts": {
+            "nt": {"clean": null, "mismatch": null},
+            "score": {"clean": null, "mismatch": null},
+            "stability": {"clean": null, "mismatch": null}
+          }
+        }
+      },
+      "contract_id": "all_ranked_top5_v1",
+      "input_guards": {
+        "canonical_acgt": true,
+        "query_length_max_nt": 2812,
+        "query_record_count": 1,
+        "target_record_count": 1
+      },
+      "known_limitations": [
+        "Three of 13 development workloads mismatch in stability or Nt ranking.",
+        "Static eligibility is not a correctness proof and safe mode remains verified-or-authority.",
+        "Full TFOsorted row equality is outside this contract."
+      ],
+      "output_definition": "Score-, stability- and Nt-ranked clustered TFO1-TFO5 representatives plus boundary-tie equality under comparator version 1.",
+      "required_preset": {
+        "output_mode": "tfosorted",
+        "rule": 0,
+        "top_k": 5,
+        "triplex_preset": "normal"
+      },
+      "runtime_guards": {
+        "compute_capability": ["8.9"],
+        "fallback_on_unknown_state": true,
+        "minimum_gpu_memory_mib": 24000,
+        "worker_density": 1
+      },
+      "status": "experimental",
+      "validation_datasets": [
+        {
+          "dataset_id": "paper-data-v1-dccfd49-20260716",
+          "query_count": 5,
+          "role": "development",
+          "status": "complete",
+          "workload_count": 13
+        },
+        {
+          "dataset_id": "bioinformatics-phase2-holdout-v1-9e293b2c",
+          "query_count": 12,
+          "role": "independent_holdout",
+          "status": "preregistered_not_run",
+          "workload_count": 24
+        }
+      ]
+    },
+    {
+      "authority_definition": {
+        "backend": "fasim_longtarget_x86",
+        "cluster_distance": 15,
+        "cluster_length": 50,
+        "comparator": "scripts/compare_fasim_segmented_contract.py",
+        "runtime_commit": "0d11aa2d61b7ccda59b462ab8e0750dad17ee18f"
+      },
+      "clean_mismatch_counts": {
+        "development": {
+          "clean": 0,
+          "mismatch": 13,
+          "rank_counts": {
+            "nt": {"clean": 12, "mismatch": 1},
+            "score": {"clean": 13, "mismatch": 0},
+            "stability": {"clean": 11, "mismatch": 2}
+          }
+        },
+        "holdout": {
+          "clean": null,
+          "mismatch": null,
+          "rank_counts": {
+            "nt": {"clean": null, "mismatch": null},
+            "score": {"clean": null, "mismatch": null},
+            "stability": {"clean": null, "mismatch": null}
+          }
+        }
+      },
+      "contract_id": "full_output_v1",
+      "input_guards": {
+        "canonical_acgt": true,
+        "query_length_max_nt": 2812,
+        "query_record_count": 1,
+        "target_record_count": 1
+      },
+      "known_limitations": [
+        "Full-row equality is not a Phase 2 promotion target.",
+        "All 13 development workloads contain full-row missing or extra diagnostics.",
+        "Safe mode routes full-output requests to authority."
+      ],
+      "output_definition": "Exact current 19-column TFOsorted row-set equality against the frozen Fasim authority.",
+      "required_preset": {
+        "output_mode": "tfosorted",
+        "rule": 0,
+        "top_k": 5,
+        "triplex_preset": "normal"
+      },
+      "runtime_guards": {
+        "compute_capability": ["8.9"],
+        "fallback_on_unknown_state": true,
+        "minimum_gpu_memory_mib": 24000,
+        "worker_density": 1
+      },
+      "status": "experimental",
+      "validation_datasets": [
+        {
+          "dataset_id": "paper-data-v1-dccfd49-20260716",
+          "query_count": 5,
+          "role": "development",
+          "status": "complete",
+          "workload_count": 13
+        },
+        {
+          "dataset_id": "bioinformatics-phase2-holdout-v1-9e293b2c",
+          "query_count": 12,
+          "role": "independent_holdout",
+          "status": "preregistered_not_run",
+          "workload_count": 24
+        }
+      ]
+    }
+  ],
+  "holdout_freeze_id": "bioinformatics-phase2-holdout-v1-9e293b2c",
+  "paper_data_freeze": "paper-data-v1-dccfd49-20260716",
+  "paper_runtime_commit": "0d11aa2d61b7ccda59b462ab8e0750dad17ee18f",
+  "registry_state": "pre_holdout_freeze",
+  "registry_version": "1.0.0-pre-holdout",
+  "schema_version": "1.0.0",
+  "submission_software_epoch": 1
+}

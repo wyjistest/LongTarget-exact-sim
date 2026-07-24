@@ -799,16 +799,44 @@ def validate_schema_value(schema: dict[str, Any], value: Any, path: str) -> None
 
         if not any(matches(name) for name in names):
             raise ValueError(f"{path} has the wrong JSON type")
+    if "minLength" in schema:
+        if isinstance(value, str) and len(value) < schema["minLength"]:
+            raise ValueError(f"{path} is shorter than minLength {schema['minLength']}")
+    if "minimum" in schema:
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value < schema["minimum"]
+        ):
+            raise ValueError(f"{path} is below minimum {schema['minimum']}")
+    if "maximum" in schema:
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > schema["maximum"]
+        ):
+            raise ValueError(f"{path} is above maximum {schema['maximum']}")
     if isinstance(value, dict):
         for field in schema.get("required", []):
             if field not in value:
                 raise ValueError(f"{path}.{field} is required")
+        if schema.get("additionalProperties") is False:
+            unexpected = sorted(set(value) - set(schema.get("properties", {})))
+            if unexpected:
+                raise ValueError(f"{path} has unexpected properties: {', '.join(unexpected)}")
         for field, child_schema in schema.get("properties", {}).items():
             if field in value:
                 validate_schema_value(child_schema, value[field], f"{path}.{field}")
-    if isinstance(value, list) and "items" in schema:
-        for index, item in enumerate(value):
-            validate_schema_value(schema["items"], item, f"{path}[{index}]")
+    if isinstance(value, list):
+        if len(value) < schema.get("minItems", 0):
+            raise ValueError(f"{path} has fewer than minItems {schema['minItems']}")
+        if schema.get("uniqueItems") is True:
+            for index, item in enumerate(value):
+                if any(item == previous for previous in value[:index]):
+                    raise ValueError(f"{path}[{index}] duplicates an earlier item")
+        if "items" in schema:
+            for index, item in enumerate(value):
+                validate_schema_value(schema["items"], item, f"{path}[{index}]")
 
 
 def validate_report(report: dict[str, Any]) -> None:
