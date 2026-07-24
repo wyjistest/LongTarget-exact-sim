@@ -29,7 +29,7 @@ select explicit builds when needed.
 
 | Mode | Behavior |
 | --- | --- |
-| `safe` | Default. Before Phase 2 promotion, uses `verified` only when every static environment guard passes; otherwise selects CPU authority before execution. `full-output` always selects authority. |
+| `safe` | Default verified-only routing. Uses `verified` for an eligible named contract; otherwise selects CPU authority before execution. `full-output` always selects authority. |
 | `verified` | Runs candidate and authority in separate temporary directories. Publishes candidate only when the declared comparator contract is clean; mismatch, candidate failure, OOM or unknown comparator state publishes authority. |
 | `fast-experimental` | Explicit opt-in GPU-only native-output path. Writes an `EXPERIMENTAL` stderr warning and `experimental_unverified` report status. It accepts only `--contract auto`, resolves to `experimental-native`, and emits a receipt that says no product contract was satisfied. |
 | `cpu-authority` | Runs the existing CPU Fasim authority and publishes its output. |
@@ -39,8 +39,8 @@ exactly one query and one target FASTA record per invocation; batch
 orchestration must split records into separately reported calls. It also checks
 canonical A/C/G/T FASTA, query length at most 2812, one process per GPU, at
 least 24000 MiB device memory, compute capability 8.9, executable binaries and
-writable non-colliding destinations. Before contract promotion, final safety
-still comes from verification or authority.
+writable non-colliding destinations. Static eligibility does not permit
+GPU-only publication; final safety comes from verified comparison or CPU authority.
 
 ## Contracts
 
@@ -56,8 +56,9 @@ Named product contracts are rejected in `fast-experimental`; raw unverified
 candidate rows are never labelled as `score-top5`, `all-ranked-top5` or
 `full-output`.
 
-Phase 2 may introduce a machine-readable promoted contract registry. Until
-then, `safe` never treats static eligibility as permission for GPU-only output.
+The post-holdout machine-readable registry records
+`verified_only_contract`. All fast contracts remain experimental. `safe`
+never treats static eligibility as permission for GPU-only output.
 
 ## Usage
 

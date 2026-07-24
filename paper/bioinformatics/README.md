@@ -66,3 +66,26 @@ invalidate affected historical benchmark claims until rerun.
 - No holdout, application, external-tool or performance benchmark was started.
 - Phase 1 may build the user workflow. Holdout and application execution remain
   prohibited until their manifests are frozen in Phases 2 and 3.
+
+## Phase 2 receipt
+
+```text
+checked_at = 2026-07-24
+freeze_id = bioinformatics-phase2-holdout-v1-9e293b2c
+manifest_sha256 = 9e293b2c3e8d0462e399fe64ff6f684e9c53f7dd428e9c88265b510909cee8c6
+formal_attempts = 36/36
+formal_workloads = 24/24
+scientific_mismatches = 2
+technical_failures = 0
+verified_fallbacks = 3
+phase2_decision = verified_only_contract
+gpu_only_contract_promoted = 0
+safe_resolution = verified_or_authority
+```
+
+The fixed pilot receipt was validated and excluded from formal source data.
+All formal rows, including the two scientific mismatches and four full-row
+diagnostics, remain represented. Safe mode continues to verify eligible named
+contracts and publish authority on mismatch or comparator failure; full-output
+and ineligible requests use CPU authority. Fast-only output remains explicit
+experimental opt-in.

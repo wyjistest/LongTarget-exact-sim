@@ -1,6 +1,8 @@
 # GASAL2-LongTarget Small Example
 
 The repository root includes the small `H19.fa` query and `testDNA.fa` target.
+Safe mode uses the final verified-only routing decision: verified comparison
+for eligible named contracts and CPU authority otherwise.
 From the repository root, run a no-execution preflight:
 
 ```bash

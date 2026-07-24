@@ -267,7 +267,7 @@ class Gasal2LongTargetCliTests(unittest.TestCase):
         self.assertEqual(report["inputs"]["query"]["sha256"], sha256(self.query))
         self.assertTrue(report["published_outputs"])
 
-    def test_default_safe_uses_verified_before_contract_promotion(self) -> None:
+    def test_default_safe_uses_verified_for_eligible_named_contract(self) -> None:
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_published_by("candidate")
@@ -276,6 +276,15 @@ class Gasal2LongTargetCliTests(unittest.TestCase):
         self.assertEqual(report["resolved_execution"], "verified")
         self.assertEqual(report["result_status"], "candidate_clean")
         self.assertTrue(report["comparators"]["all_ranked_top5_equal"])
+
+    def test_safe_full_output_remains_authority_routed(self) -> None:
+        result = self.run_cli("--contract", "full-output")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_published_by("authority")
+        report = self.load_report()
+        self.assertEqual(report["mode"], "safe")
+        self.assertEqual(report["resolved_execution"], "cpu-authority")
+        self.assertEqual(report["resolved_contract"], "full-output")
 
     def test_safe_without_gpu_falls_back_before_candidate_execution(self) -> None:
         candidate_marker = self.work / "candidate-started"

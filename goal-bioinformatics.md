@@ -80,10 +80,10 @@ submission_baseline_commit = a98d80d44d4418cdb8a67dc8d83ee41b8e599023
 submission_release_candidate_commit = UNSET
 submission_data_freeze = UNSET
 
-active_phase = 2
+active_phase = 3
 phase_0_status = pass
 phase_1_status = pass
-phase_2_status = pending
+phase_2_status = pass
 phase_3_status = pending
 phase_4_status = pending
 phase_5_status = pending
@@ -91,11 +91,11 @@ phase_6_status = pending
 phase_7_status = pending
 phase_8_status = pending
 
-last_completed_phase = 1
-last_decision = contract_aware_cli_fail_closed
-last_evidence_doc = paper/bioinformatics/phase1_validation.md
-last_test_command = make check-bioinformatics-phase1
-last_commit = feat: add contract-aware GASAL2-LongTarget user workflow
+last_completed_phase = 2
+last_decision = verified_only_contract
+last_evidence_doc = paper/bioinformatics/phase2_decision.md
+last_test_command = make check-bioinformatics-phase2
+last_commit = analysis: validate a promotable GASAL2-LongTarget output contract
 ```
 
 ### Phase 依赖

@@ -34,9 +34,9 @@ make check-matrix
 ## Contract-Aware GASAL2 Workflow
 
 Build the Fasim authority and GASAL2 candidate, then use the fail-closed `safe`
-mode. Before a contract is promoted by independent holdout validation, `safe`
-runs verified candidate/authority comparison when the checked GPU environment
-is eligible and otherwise selects CPU authority before execution.
+mode. The final Phase 2 decision is verified-only: `safe` runs verified
+candidate/authority comparison for an eligible named contract and otherwise
+selects CPU authority before execution. No GPU-only contract is promoted.
 
 ```bash
 make build-fasim build-fasim-gasal2
