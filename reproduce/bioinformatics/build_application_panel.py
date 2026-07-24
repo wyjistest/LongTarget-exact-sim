@@ -82,6 +82,7 @@ HOLDOUT_QUERY_FIELDS = (
     "query_path",
 )
 QUERY_COUNT = 50
+MIN_TARGET_COUNT = 300
 MIN_QUERY_LENGTH = 500
 MAX_QUERY_LENGTH = 2812
 CANONICAL_BASES = frozenset("ACGT")
@@ -216,6 +217,20 @@ def parse_fasta(path: Path) -> list[tuple[str, str]]:
     return records
 
 
+def read_chromosome_fasta(path: Path, requested_chromosome: str) -> str:
+    if requested_chromosome not in TARGET_CHROMOSOMES:
+        raise ValueError(f"unsupported requested target chromosome {requested_chromosome!r}")
+    records = parse_fasta(path)
+    if len(records) != 1:
+        raise ValueError(f"chromosome source must contain exactly one FASTA record: {path}")
+    header, sequence = records[0]
+    if header != requested_chromosome:
+        raise ValueError(
+            f"chromosome FASTA record must be named exactly {requested_chromosome!r}: {path}"
+        )
+    return sequence
+
+
 def _required_attribute(
     attributes: dict[str, tuple[str, ...]],
     name: str,
@@ -270,7 +285,7 @@ def parse_gtf(path: Path) -> dict[str, Transcript]:
             level_values = attributes.get("level", ())
             if not level_values:
                 level = 99
-            elif len(level_values) != 1 or not level_values[0].isdigit():
+            elif len(level_values) != 1 or level_values[0] not in {"1", "2", "3"}:
                 raise ValueError(f"invalid GTF level at row {line_number} in {path}")
             else:
                 level = int(level_values[0])
@@ -398,6 +413,218 @@ def read_holdout_exclusions(path: Path) -> tuple[set[str], set[str]]:
     if row_count == 0:
         raise ValueError(f"holdout manifest has no rows: {path}")
     return gene_ids, sequence_digests
+
+
+def target_representative_key(tx: Transcript) -> tuple[object, ...]:
+    tags = tx.tags
+    return (
+        0 if "MANE_Select" in tags else 1,
+        0 if "Ensembl_canonical" in tags else 1,
+        0 if "appris_principal_1" in tags else 1,
+        0 if any(tag.startswith("appris_principal") for tag in tags) else 1,
+        0 if "basic" in tags else 1,
+        tx.level,
+        -(tx.end - tx.start + 1),
+        tx.transcript_id,
+    )
+
+
+def choose_target_representative(transcripts: Iterable[Transcript]) -> Transcript:
+    try:
+        iterator = iter(transcripts)
+        representative = next(iterator)
+    except StopIteration as error:
+        raise ValueError("no target candidates for stable gene") from error
+    representative_key = target_representative_key(representative)
+    for transcript in iterator:
+        key = target_representative_key(transcript)
+        if key < representative_key:
+            representative = transcript
+            representative_key = key
+    return representative
+
+
+def promoter_bounds(tx: Transcript, chromosome_length: int) -> tuple[int, int, int]:
+    tss = tx.start if tx.strand == "+" else tx.end
+    start = max(1, tss - (2000 if tx.strand == "+" else 500))
+    end = min(chromosome_length, tss + (500 if tx.strand == "+" else 2000))
+    return tss, start, end
+
+
+def materialize_promoter(
+    tx: Transcript,
+    chromosome_sequence: str,
+) -> dict[str, object]:
+    tss, start, end = promoter_bounds(tx, len(chromosome_sequence))
+    if 1 <= tss <= len(chromosome_sequence):
+        sequence = chromosome_sequence[start - 1 : end]
+    else:
+        start = 0
+        end = 0
+        sequence = ""
+    return {
+        "transcript_id": tx.transcript_id,
+        "gene_id": tx.gene_id,
+        "gene_name": tx.gene_name,
+        "chromosome": tx.chromosome,
+        "strand": tx.strand,
+        "tss": tss,
+        "region_start": start,
+        "region_end": end,
+        "sequence_length": len(sequence),
+        "sequence": sequence,
+    }
+
+
+def _validated_target_candidates(
+    transcripts: dict[str, Transcript],
+) -> dict[str, list[Transcript]]:
+    if not isinstance(transcripts, dict):
+        raise ValueError("transcripts must be a mapping keyed by full transcript ID")
+
+    candidates_by_gene: dict[str, list[Transcript]] = {}
+    stable_transcript_ids: set[str] = set()
+    gene_identities: dict[str, tuple[str, str, str, str, str]] = {}
+    for mapping_key, tx in transcripts.items():
+        if not isinstance(tx, Transcript):
+            raise ValueError(f"transcript mapping value for {mapping_key!r} is not a Transcript")
+        if mapping_key != tx.transcript_id:
+            raise ValueError(
+                f"transcript mapping key {mapping_key!r} does not match {tx.transcript_id!r}"
+            )
+        identity_values = (
+            tx.transcript_id,
+            tx.gene_id,
+            tx.gene_name,
+            tx.gene_type,
+            tx.chromosome,
+        )
+        if any(
+            not isinstance(value, str) or not value or value != value.strip()
+            for value in identity_values
+        ):
+            raise ValueError(f"malformed transcript identity for {mapping_key!r}")
+        if type(tx.strand) is not str or tx.strand not in {"+", "-"}:
+            raise ValueError("target transcript strand must be '+' or '-'")
+        if type(tx.level) is not int or tx.level not in {1, 2, 3, 99}:
+            raise ValueError("target transcript level must be one of 1, 2, 3, 99")
+        if (
+            type(tx.start) is not int
+            or type(tx.end) is not int
+            or tx.start <= 0
+            or tx.end < tx.start
+            or not isinstance(tx.tags, frozenset)
+            or any(
+                not isinstance(tag, str) or not tag or tag != tag.strip()
+                for tag in tx.tags
+            )
+        ):
+            raise ValueError(f"malformed transcript metadata for {mapping_key!r}")
+
+        stable_transcript_id = stable_id(tx.transcript_id)
+        stable_gene_id = stable_id(tx.gene_id)
+        if not stable_transcript_id or not stable_gene_id:
+            raise ValueError(f"blank stable identifier for {mapping_key!r}")
+        if stable_transcript_id in stable_transcript_ids:
+            raise ValueError(f"duplicate stable transcript ID {stable_transcript_id!r}")
+        stable_transcript_ids.add(stable_transcript_id)
+
+        gene_identity = (
+            tx.gene_id,
+            tx.gene_name,
+            tx.gene_type,
+            tx.chromosome,
+            tx.strand,
+        )
+        existing_identity = gene_identities.get(stable_gene_id)
+        if existing_identity is not None and existing_identity != gene_identity:
+            raise ValueError(
+                f"stable gene ID {stable_gene_id!r} has conflicting identity"
+            )
+        gene_identities[stable_gene_id] = gene_identity
+
+        if tx.gene_type == "protein_coding" and tx.chromosome in TARGET_CHROMOSOMES:
+            candidates_by_gene.setdefault(stable_gene_id, []).append(tx)
+    return candidates_by_gene
+
+
+def select_targets(
+    *,
+    transcripts: dict[str, Transcript],
+    chromosome_sequences: dict[str, str],
+) -> tuple[list[dict[str, object]], dict[str, int]]:
+    if not isinstance(chromosome_sequences, dict) or set(chromosome_sequences) != set(
+        TARGET_CHROMOSOMES
+    ):
+        raise ValueError("chromosome sequences must contain exactly chr21 and chr22")
+    for chromosome in TARGET_CHROMOSOMES:
+        sequence = chromosome_sequences[chromosome]
+        if not isinstance(sequence, str) or not sequence:
+            raise ValueError(f"{chromosome} chromosome sequence must be a non-empty string")
+
+    candidates_by_gene = _validated_target_candidates(transcripts)
+    representatives = [
+        choose_target_representative(candidates)
+        for candidates in candidates_by_gene.values()
+    ]
+    counts = {
+        "annotation_target_candidate_count": len(representatives),
+        "retained_target_count": 0,
+        "excluded_target_count": 0,
+        "excluded_empty_promoter_count": 0,
+        "excluded_noncanonical_promoter_count": 0,
+        "chr21_annotation_target_candidate_count": 0,
+        "chr22_annotation_target_candidate_count": 0,
+        "chr21_retained_target_count": 0,
+        "chr22_retained_target_count": 0,
+        "chr21_excluded_target_count": 0,
+        "chr22_excluded_target_count": 0,
+    }
+    retained: list[dict[str, object]] = []
+    for tx in representatives:
+        chromosome = tx.chromosome
+        counts[f"{chromosome}_annotation_target_candidate_count"] += 1
+        target = materialize_promoter(tx, chromosome_sequences[chromosome])
+        sequence = str(target["sequence"])
+        if not sequence:
+            counts["excluded_empty_promoter_count"] += 1
+            counts[f"{chromosome}_excluded_target_count"] += 1
+            continue
+        if set(sequence) - CANONICAL_BASES:
+            counts["excluded_noncanonical_promoter_count"] += 1
+            counts[f"{chromosome}_excluded_target_count"] += 1
+            continue
+        target["sequence_sha256"] = sequence_sha256(sequence)
+        retained.append(target)
+        counts[f"{chromosome}_retained_target_count"] += 1
+
+    counts["retained_target_count"] = len(retained)
+    counts["excluded_target_count"] = (
+        counts["excluded_empty_promoter_count"]
+        + counts["excluded_noncanonical_promoter_count"]
+    )
+    if len(retained) < MIN_TARGET_COUNT:
+        raise ValueError(
+            f"only {len(retained)} retained targets; {MIN_TARGET_COUNT} required"
+        )
+    for chromosome in TARGET_CHROMOSOMES:
+        if counts[f"{chromosome}_retained_target_count"] == 0:
+            raise ValueError(f"no retained target on {chromosome}")
+
+    retained.sort(
+        key=lambda row: (
+            int(str(row["chromosome"])[3:]),
+            int(row["tss"]),
+            stable_id(str(row["gene_id"])),
+            str(row["transcript_id"]),
+        )
+    )
+    stable_target_gene_ids = {stable_id(str(row["gene_id"])) for row in retained}
+    if len(stable_target_gene_ids) != len(retained):
+        raise ValueError("retained targets must contain unique stable genes")
+    for index, target in enumerate(retained, 1):
+        target["target_id"] = f"at{index:04d}"
+    return retained, counts
 
 
 def query_representative_key(row: dict[str, object]) -> tuple[object, ...]:

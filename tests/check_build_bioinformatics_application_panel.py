@@ -10,7 +10,7 @@ import io
 import sys
 import tempfile
 import unittest
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
 
@@ -78,6 +78,57 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="bioinformatics-application-builder-")
         self.work = Path(self.temp.name)
+        self.chromosome_sequence = "ACGT" * 7500
+        self.plus_transcript = self.target_transcript(
+            transcript_id="ENST_PLUS.1",
+            gene_id="ENSG_PLUS.1",
+            start=10000,
+            end=11000,
+            strand="+",
+        )
+        self.minus_transcript = self.target_transcript(
+            transcript_id="ENST_MINUS.1",
+            gene_id="ENSG_MINUS.1",
+            start=9000,
+            end=10000,
+            strand="-",
+        )
+        self.near_start_transcript = self.target_transcript(
+            transcript_id="ENST_NEAR_START.1",
+            gene_id="ENSG_NEAR_START.1",
+            start=100,
+            end=900,
+            strand="+",
+        )
+        self.near_end_transcript = self.target_transcript(
+            transcript_id="ENST_NEAR_END.1",
+            gene_id="ENSG_NEAR_END.1",
+            start=29000,
+            end=29900,
+            strand="-",
+        )
+        priority_specs = (
+            ("ENST_MANE.1", frozenset({"MANE_Select"}), 3, 101),
+            ("ENST_CANONICAL.1", frozenset({"Ensembl_canonical"}), 1, 3001),
+            ("ENST_APPRIS_1.1", frozenset({"appris_principal_1"}), 1, 3001),
+            ("ENST_APPRIS_2.1", frozenset({"appris_principal_2"}), 1, 3001),
+            ("ENST_BASIC.1", frozenset({"basic"}), 1, 3001),
+            ("ENST_LEVEL_1.1", frozenset(), 1, 101),
+            ("ENST_LONG.1", frozenset(), 2, 2001),
+            ("ENST_ID_A.2", frozenset(), 2, 1001),
+            ("ENST_ID_Z.1", frozenset(), 2, 1001),
+        )
+        self.same_target_gene = [
+            self.target_transcript(
+                transcript_id=transcript_id,
+                gene_id="ENSG_PRIORITY.7",
+                start=10000,
+                end=10000 + span - 1,
+                tags=tags,
+                level=level,
+            )
+            for transcript_id, tags, level, span in reversed(priority_specs)
+        ]
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -247,6 +298,65 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             f"{attribute_text}\n"
         )
 
+    def target_transcript(
+        self,
+        *,
+        transcript_id: str,
+        gene_id: str,
+        chromosome: str = "chr21",
+        start: int = 10000,
+        end: int = 10800,
+        strand: str = "+",
+        gene_name: str | None = None,
+        gene_type: str = "protein_coding",
+        level: int = 2,
+        tags: frozenset[str] = frozenset(),
+    ) -> object:
+        return self.module.Transcript(
+            transcript_id=transcript_id,
+            gene_id=gene_id,
+            gene_name=gene_name or self.module.stable_id(gene_id),
+            gene_type=gene_type,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            strand=strand,
+            level=level,
+            tags=tags,
+        )
+
+    def target_selection_fixture(
+        self,
+        count: int = 300,
+        chr21_count: int = 150,
+    ) -> tuple[dict[str, object], dict[str, str]]:
+        if not 0 <= chr21_count <= count:
+            raise AssertionError("invalid synthetic chromosome split")
+        transcripts: dict[str, object] = {}
+        for index in range(1, count + 1):
+            chromosome = "chr21" if index <= chr21_count else "chr22"
+            base_tss = 10000 if chromosome == "chr21" else 15000
+            tss = base_tss + index % 3 * 1000
+            strand = "+" if index % 2 else "-"
+            start = tss if strand == "+" else tss - 800
+            end = tss + 800 if strand == "+" else tss
+            transcript = self.target_transcript(
+                transcript_id=f"ENST_TARGET_{index:04d}.1",
+                gene_id=f"ENSG_TARGET_{index:04d}.7",
+                gene_name=f"TARGET_{index:04d}",
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                strand=strand,
+                level=2,
+                tags=frozenset({"basic"}),
+            )
+            transcripts[transcript.transcript_id] = transcript
+        return transcripts, {
+            "chr21": self.chromosome_sequence,
+            "chr22": self.chromosome_sequence,
+        }
+
     def test_source_contract_is_fixed(self) -> None:
         self.assertEqual(
             self.module.SELECTION_SEED,
@@ -353,6 +463,43 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             transcripts["ENSTT.1"].tags,
             frozenset({"MANE_Select", "Ensembl_canonical"}),
         )
+
+    def test_gtf_parser_level_domain_is_exact(self) -> None:
+        for level in ("1", "2", "3"):
+            with self.subTest(valid_level=level):
+                attributes = (
+                    'gene_id "ENSGQ.1"; transcript_id "ENSTQ.1"; gene_name "QUERY"; '
+                    f'gene_type "lncRNA"; level {level};'
+                )
+                gtf = self.write_text(
+                    f"level-{level}.gtf",
+                    self.transcript_row(attributes=attributes),
+                )
+                self.assertEqual(self.module.parse_gtf(gtf)["ENSTQ.1"].level, int(level))
+
+        missing_level = self.write_text(
+            "missing-level.gtf",
+            self.transcript_row(
+                attributes=(
+                    'gene_id "ENSGQ.1"; transcript_id "ENSTQ.1"; '
+                    'gene_name "QUERY"; gene_type "lncRNA";'
+                )
+            ),
+        )
+        self.assertEqual(self.module.parse_gtf(missing_level)["ENSTQ.1"].level, 99)
+
+        for level in ("0", "4", "99", "-1", "01", "+1", "1.0"):
+            with self.subTest(invalid_level=level):
+                attributes = (
+                    'gene_id "ENSGQ.1"; transcript_id "ENSTQ.1"; gene_name "QUERY"; '
+                    f'gene_type "lncRNA"; level {level};'
+                )
+                gtf = self.write_text(
+                    f"invalid-level-{level.replace('+', 'plus')}.gtf",
+                    self.transcript_row(attributes=attributes),
+                )
+                with self.assertRaisesRegex(ValueError, "invalid GTF level"):
+                    self.module.parse_gtf(gtf)
 
     def test_fasta_parser_uppercases_records_deterministically(self) -> None:
         fasta = self.write_gzip(
@@ -1333,6 +1480,398 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 development_exclusions=self.no_development_exclusions(),
                 holdout_gene_ids=set(),
                 holdout_sequence_sha256=set(),
+            )
+
+    def test_target_representative_priority_is_exact(self) -> None:
+        chosen = self.module.choose_target_representative(self.same_target_gene)
+        self.assertEqual(chosen.transcript_id, "ENST_MANE.1")
+        ordered = sorted(self.same_target_gene, key=self.module.target_representative_key)
+        self.assertEqual(
+            [transcript.transcript_id for transcript in ordered],
+            [
+                "ENST_MANE.1",
+                "ENST_CANONICAL.1",
+                "ENST_APPRIS_1.1",
+                "ENST_APPRIS_2.1",
+                "ENST_BASIC.1",
+                "ENST_LEVEL_1.1",
+                "ENST_LONG.1",
+                "ENST_ID_A.2",
+                "ENST_ID_Z.1",
+            ],
+        )
+        self.assertEqual(
+            self.module.target_representative_key(chosen),
+            (0, 1, 1, 1, 1, 3, -101, "ENST_MANE.1"),
+        )
+        self.assertEqual(
+            self.module.choose_target_representative(reversed(self.same_target_gene)),
+            chosen,
+        )
+        with self.assertRaisesRegex(ValueError, "no target candidates"):
+            self.module.choose_target_representative([])
+
+    def test_promoter_is_strand_aware_clipped_and_forward_genomic(self) -> None:
+        plus = self.module.materialize_promoter(self.plus_transcript, "ACGT" * 7500)
+        minus = self.module.materialize_promoter(self.minus_transcript, "ACGT" * 7500)
+        clipped = self.module.materialize_promoter(
+            self.near_start_transcript, "ACGT" * 7500
+        )
+        self.assertEqual((plus["region_start"], plus["region_end"]), (8000, 10500))
+        self.assertEqual((minus["region_start"], minus["region_end"]), (9500, 12000))
+        self.assertEqual(clipped["region_start"], 1)
+        self.assertEqual(plus["sequence"], ("ACGT" * 7500)[7999:10500])
+        self.assertEqual((plus["tss"], minus["tss"]), (10000, 10000))
+        self.assertEqual(len(plus["sequence"]), 2501)
+        self.assertEqual(minus["sequence"], ("ACGT" * 7500)[9499:12000])
+        self.assertEqual(
+            self.module.promoter_bounds(self.near_end_transcript, 30000),
+            (29900, 29400, 30000),
+        )
+
+        directional_sequence = "A" * 10000 + "C" * 10000 + "G" * 10000
+        directional_minus = self.module.materialize_promoter(
+            self.minus_transcript, directional_sequence
+        )
+        reverse_complement = directional_minus["sequence"].translate(
+            str.maketrans("ACGT", "TGCA")
+        )[::-1]
+        self.assertEqual(directional_minus["sequence"], directional_sequence[9499:12000])
+        self.assertNotEqual(directional_minus["sequence"], reverse_complement)
+
+    def test_out_of_range_promoter_uses_explicit_empty_sentinel(self) -> None:
+        outside = self.target_transcript(
+            transcript_id="ENST_OUTSIDE.1",
+            gene_id="ENSG_OUTSIDE.1",
+            start=11,
+            end=11,
+            strand="+",
+        )
+        materialized = self.module.materialize_promoter(outside, "ACGTACGTAC")
+        self.assertEqual(
+            materialized,
+            {
+                "transcript_id": "ENST_OUTSIDE.1",
+                "gene_id": "ENSG_OUTSIDE.1",
+                "gene_name": "ENSG_OUTSIDE",
+                "chromosome": "chr21",
+                "strand": "+",
+                "tss": 11,
+                "region_start": 0,
+                "region_end": 0,
+                "sequence_length": 0,
+                "sequence": "",
+            },
+        )
+
+    def test_target_selection_public_signatures_are_explicit(self) -> None:
+        expected_parameters = {
+            "read_chromosome_fasta": ("path", "requested_chromosome"),
+            "target_representative_key": ("tx",),
+            "choose_target_representative": ("transcripts",),
+            "promoter_bounds": ("tx", "chromosome_length"),
+            "materialize_promoter": ("tx", "chromosome_sequence"),
+            "select_targets": ("transcripts", "chromosome_sequences"),
+        }
+        for name, parameters in expected_parameters.items():
+            with self.subTest(name=name):
+                signature = inspect.signature(getattr(self.module, name))
+                self.assertEqual(tuple(signature.parameters), parameters)
+        select_signature = inspect.signature(self.module.select_targets)
+        self.assertTrue(
+            all(
+                parameter.kind is inspect.Parameter.KEYWORD_ONLY
+                for parameter in select_signature.parameters.values()
+            )
+        )
+
+    def test_chromosome_fasta_reader_requires_one_exact_requested_record(self) -> None:
+        chr21 = self.write_text("chr21.fa", ">chr21\nacgt\n")
+        chr22 = self.write_gzip("chr22.fa.gz", ">chr22\ntgca\n")
+        self.assertEqual(self.module.read_chromosome_fasta(chr21, "chr21"), "ACGT")
+        self.assertEqual(self.module.read_chromosome_fasta(chr22, "chr22"), "TGCA")
+
+        invalid_sources = {
+            "wrong-header.fa": (">chr22\nACGT\n", "named exactly 'chr21'"),
+            "padded-header.fa": (">chr21 description\nACGT\n", "named exactly 'chr21'"),
+            "multiple.fa": (">chr21\nACGT\n>chr22\nTGCA\n", "exactly one FASTA record"),
+            "marker-not-first.fa": (" >chr21\nACGT\n", "sequence before FASTA header"),
+        }
+        for name, (content, message) in invalid_sources.items():
+            with self.subTest(name=name):
+                path = self.write_text(name, content)
+                with self.assertRaisesRegex(ValueError, message):
+                    self.module.read_chromosome_fasta(path, "chr21")
+        with self.assertRaisesRegex(ValueError, "requested target chromosome"):
+            self.module.read_chromosome_fasta(chr21, "chr20")
+
+    def test_target_selection_retains_unique_canonical_genes_and_counts_exclusions(
+        self,
+    ) -> None:
+        transcripts, chromosome_sequences = self.target_selection_fixture()
+        duplicate = self.target_transcript(
+            transcript_id="ENST_TARGET_DUPLICATE.1",
+            gene_id="ENSG_TARGET_0001.7",
+            gene_name="TARGET_0001",
+            chromosome="chr21",
+            start=11000,
+            end=11900,
+            tags=frozenset({"MANE_Select"}),
+        )
+        transcripts[duplicate.transcript_id] = duplicate
+        noncanonical = self.target_transcript(
+            transcript_id="ENST_TARGET_NONCANONICAL.1",
+            gene_id="ENSG_TARGET_NONCANONICAL.1",
+            chromosome="chr21",
+            start=25000,
+            end=25800,
+        )
+        empty = self.target_transcript(
+            transcript_id="ENST_TARGET_EMPTY.1",
+            gene_id="ENSG_TARGET_EMPTY.1",
+            chromosome="chr22",
+            start=30001,
+            end=30801,
+        )
+        ignored_type = self.target_transcript(
+            transcript_id="ENST_TARGET_LNCRNA.1",
+            gene_id="ENSG_TARGET_LNCRNA.1",
+            gene_type="lncRNA",
+        )
+        ignored_chromosome = self.target_transcript(
+            transcript_id="ENST_TARGET_CHR20.1",
+            gene_id="ENSG_TARGET_CHR20.1",
+            chromosome="chr20",
+        )
+        for transcript in (noncanonical, empty, ignored_type, ignored_chromosome):
+            transcripts[transcript.transcript_id] = transcript
+        chr21 = list(chromosome_sequences["chr21"])
+        chr21[24999] = "N"
+        chromosome_sequences["chr21"] = "".join(chr21)
+
+        selected, counts = self.module.select_targets(
+            transcripts=transcripts,
+            chromosome_sequences=chromosome_sequences,
+        )
+
+        self.assertEqual(len(selected), 300)
+        stable_gene_ids = [self.module.stable_id(str(row["gene_id"])) for row in selected]
+        self.assertEqual(len(set(stable_gene_ids)), 300)
+        self.assertEqual(
+            next(
+                row["transcript_id"]
+                for row in selected
+                if self.module.stable_id(str(row["gene_id"])) == "ENSG_TARGET_0001"
+            ),
+            "ENST_TARGET_DUPLICATE.1",
+        )
+        self.assertTrue(all(row["chromosome"] in {"chr21", "chr22"} for row in selected))
+        self.assertTrue(
+            all(row["sequence"] and not (set(str(row["sequence"])) - set("ACGT")) for row in selected)
+        )
+        self.assertEqual(
+            [row["target_id"] for row in selected],
+            [f"at{index:04d}" for index in range(1, 301)],
+        )
+        ordering = [
+            (
+                int(str(row["chromosome"])[3:]),
+                int(row["tss"]),
+                self.module.stable_id(str(row["gene_id"])),
+                str(row["transcript_id"]),
+            )
+            for row in selected
+        ]
+        self.assertEqual(ordering, sorted(ordering))
+        self.assertEqual(
+            counts,
+            {
+                "annotation_target_candidate_count": 302,
+                "retained_target_count": 300,
+                "excluded_target_count": 2,
+                "excluded_empty_promoter_count": 1,
+                "excluded_noncanonical_promoter_count": 1,
+                "chr21_annotation_target_candidate_count": 151,
+                "chr22_annotation_target_candidate_count": 151,
+                "chr21_retained_target_count": 150,
+                "chr22_retained_target_count": 150,
+                "chr21_excluded_target_count": 1,
+                "chr22_excluded_target_count": 1,
+            },
+        )
+
+    def test_target_selection_counts_non_ascii_promoter_before_hashing(self) -> None:
+        transcripts, chromosome_sequences = self.target_selection_fixture()
+        non_ascii = self.target_transcript(
+            transcript_id="ENST_TARGET_NON_ASCII.1",
+            gene_id="ENSG_TARGET_NON_ASCII.1",
+            chromosome="chr21",
+            start=25000,
+            end=25800,
+        )
+        transcripts[non_ascii.transcript_id] = non_ascii
+        chr21 = list(chromosome_sequences["chr21"])
+        chr21[24999] = "é"
+        chromosome_sequences["chr21"] = "".join(chr21)
+
+        materialized = self.module.materialize_promoter(
+            non_ascii,
+            chromosome_sequences["chr21"],
+        )
+        self.assertNotIn("sequence_sha256", materialized)
+        selected, counts = self.module.select_targets(
+            transcripts=transcripts,
+            chromosome_sequences=chromosome_sequences,
+        )
+
+        self.assertEqual(len(selected), 300)
+        self.assertEqual(counts["annotation_target_candidate_count"], 301)
+        self.assertEqual(counts["retained_target_count"], 300)
+        self.assertEqual(counts["excluded_target_count"], 1)
+        self.assertEqual(counts["excluded_noncanonical_promoter_count"], 1)
+        self.assertEqual(counts["excluded_empty_promoter_count"], 0)
+        self.assertEqual(counts["chr21_excluded_target_count"], 1)
+        self.assertTrue(
+            all(
+                row["sequence_sha256"]
+                == self.module.sequence_sha256(str(row["sequence"]))
+                for row in selected
+            )
+        )
+
+    def test_target_selection_is_deterministic_under_mapping_reversal(self) -> None:
+        transcripts, chromosome_sequences = self.target_selection_fixture()
+        expected = self.module.select_targets(
+            transcripts=transcripts,
+            chromosome_sequences=chromosome_sequences,
+        )
+        reversed_transcripts = dict(reversed(tuple(transcripts.items())))
+        reversed_chromosomes = dict(reversed(tuple(chromosome_sequences.items())))
+        actual = self.module.select_targets(
+            transcripts=reversed_transcripts,
+            chromosome_sequences=reversed_chromosomes,
+        )
+        self.assertEqual(actual, expected)
+
+    def test_target_selection_requires_minimum_and_both_chromosomes(self) -> None:
+        too_few, chromosome_sequences = self.target_selection_fixture(299, 149)
+        with self.assertRaisesRegex(ValueError, "only 299 retained targets; 300 required"):
+            self.module.select_targets(
+                transcripts=too_few,
+                chromosome_sequences=chromosome_sequences,
+            )
+
+        one_chromosome, chromosome_sequences = self.target_selection_fixture(300, 300)
+        with self.assertRaisesRegex(ValueError, "no retained target on chr22"):
+            self.module.select_targets(
+                transcripts=one_chromosome,
+                chromosome_sequences=chromosome_sequences,
+            )
+
+    def test_target_selection_rejects_malformed_mappings_and_aliases(self) -> None:
+        transcript = self.target_transcript(
+            transcript_id="ENST_MAPPING.1",
+            gene_id="ENSG_MAPPING.1",
+        )
+        chromosome_sequences = {
+            "chr21": self.chromosome_sequence,
+            "chr22": self.chromosome_sequence,
+        }
+        with self.assertRaisesRegex(ValueError, "chromosome sequences must contain exactly"):
+            self.module.select_targets(
+                transcripts={transcript.transcript_id: transcript},
+                chromosome_sequences={"chr21": self.chromosome_sequence},
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            self.module.select_targets(
+                transcripts={transcript.transcript_id: transcript},
+                chromosome_sequences={"chr21": "", "chr22": self.chromosome_sequence},
+            )
+        with self.assertRaisesRegex(ValueError, "transcript mapping key"):
+            self.module.select_targets(
+                transcripts={"ENST_ALIAS_KEY.1": transcript},
+                chromosome_sequences=chromosome_sequences,
+            )
+
+        stable_transcript_aliases = {
+            "ENST_STABLE_ALIAS.1": self.target_transcript(
+                transcript_id="ENST_STABLE_ALIAS.1",
+                gene_id="ENSG_ALIAS_ONE.1",
+            ),
+            "ENST_STABLE_ALIAS.2": self.target_transcript(
+                transcript_id="ENST_STABLE_ALIAS.2",
+                gene_id="ENSG_ALIAS_TWO.1",
+            ),
+        }
+        with self.assertRaisesRegex(ValueError, "duplicate stable transcript ID"):
+            self.module.select_targets(
+                transcripts=stable_transcript_aliases,
+                chromosome_sequences=chromosome_sequences,
+            )
+
+        stable_gene_aliases = {
+            "ENST_GENE_ALIAS_ONE.1": self.target_transcript(
+                transcript_id="ENST_GENE_ALIAS_ONE.1",
+                gene_id="ENSG_GENE_ALIAS.1",
+                gene_name="GENE_ALIAS",
+            ),
+            "ENST_GENE_ALIAS_TWO.1": self.target_transcript(
+                transcript_id="ENST_GENE_ALIAS_TWO.1",
+                gene_id="ENSG_GENE_ALIAS.2",
+                gene_name="GENE_ALIAS",
+            ),
+        }
+        with self.assertRaisesRegex(ValueError, "stable gene ID.*conflicting identity"):
+            self.module.select_targets(
+                transcripts=stable_gene_aliases,
+                chromosome_sequences=chromosome_sequences,
+            )
+
+    def test_target_selection_rejects_out_of_domain_levels(self) -> None:
+        valid_transcripts, chromosome_sequences = self.target_selection_fixture()
+        for (transcript_id, transcript), level in zip(
+            tuple(valid_transcripts.items())[:4],
+            (1, 2, 3, 99),
+            strict=True,
+        ):
+            valid_transcripts[transcript_id] = replace(transcript, level=level)
+        selected, _ = self.module.select_targets(
+            transcripts=valid_transcripts,
+            chromosome_sequences=chromosome_sequences,
+        )
+        self.assertEqual(len(selected), 300)
+
+        for invalid_level in (0, -1, 4, 98, 100):
+            with self.subTest(invalid_level=invalid_level):
+                transcripts, chromosome_sequences = self.target_selection_fixture()
+                transcript_id = next(iter(transcripts))
+                transcripts[transcript_id] = replace(
+                    transcripts[transcript_id],
+                    level=invalid_level,
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "target transcript level must be one of 1, 2, 3, 99",
+                ):
+                    self.module.select_targets(
+                        transcripts=transcripts,
+                        chromosome_sequences=chromosome_sequences,
+                    )
+
+    def test_target_selection_rejects_unhashable_strand_with_value_error(self) -> None:
+        transcripts, chromosome_sequences = self.target_selection_fixture()
+        transcript_id = next(iter(transcripts))
+        transcripts[transcript_id] = replace(
+            transcripts[transcript_id],
+            strand=[],
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "target transcript strand",
+        ):
+            self.module.select_targets(
+                transcripts=transcripts,
+                chromosome_sequences=chromosome_sequences,
             )
 
 
