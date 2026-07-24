@@ -1399,6 +1399,10 @@ check-bioinformatics-phase0:
 	$(MAKE) check-fasim-gasal2-paper-prep
 	bash ./scripts/check_bioinformatics_phase0.sh
 
+check-bioinformatics-phase1: check-bioinformatics-phase0 build-fasim
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase1) \
+	bash ./scripts/check_bioinformatics_phase1.sh
+
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
 	characterize-fasim-gasal2-exact-column-long-query \
@@ -1424,6 +1428,7 @@ check-bioinformatics-phase0:
 	check-fasim-gasal2-paper-phase9 \
 	check-fasim-gasal2-paper-prep \
 	check-bioinformatics-phase0 \
+	check-bioinformatics-phase1 \
 	paper-source-data \
 	paper-figures \
 	paper-manuscript-kit \

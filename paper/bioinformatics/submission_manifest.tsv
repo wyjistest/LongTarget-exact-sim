@@ -6,3 +6,11 @@ S0004	paper/bioinformatics/gap_register.tsv	0	gap_register	current_repository_au
 S0005	paper/bioinformatics/owner_metadata_needed.md	0	owner_action_register	goal-bioinformatics.md	owner_controlled	1	pass
 S0006	paper/bioinformatics/submission_manifest.tsv	0	submission_manifest	current_repository_audit	submission_scope_v1	1	pass
 S0007	scripts/check_bioinformatics_phase0.sh	0	phase_checker	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0101	scripts/gasal2_longtarget.py	1	user_cli	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0102	schemas/gasal2_longtarget_run_report.schema.json	1	run_report_schema	goal-bioinformatics.md	schema_1.0.0	1	pass
+S0103	tests/check_gasal2_longtarget_cli.py	1	cli_contract_tests	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0104	docs/gasal2_longtarget_cli.md	1	user_documentation	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0105	examples/gasal2_longtarget/README.md	1	example_documentation	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0106	README.md	1	quick_start	goal-bioinformatics.md	submission_software_epoch_1	1	pass
+S0107	paper/bioinformatics/phase1_validation.md	1	validation_receipt	phase1_tests_and_smokes	submission_software_epoch_1	1	pass
+S0108	scripts/check_bioinformatics_phase1.sh	1	phase_checker	goal-bioinformatics.md	submission_software_epoch_1	1	pass

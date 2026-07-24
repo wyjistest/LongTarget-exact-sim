@@ -31,6 +31,39 @@ make check-sample
 make check-matrix
 ```
 
+## Contract-Aware GASAL2 Workflow
+
+Build the Fasim authority and GASAL2 candidate, then use the fail-closed `safe`
+mode. Before a contract is promoted by independent holdout validation, `safe`
+runs verified candidate/authority comparison when the checked GPU environment
+is eligible and otherwise selects CPU authority before execution.
+
+```bash
+make build-fasim build-fasim-gasal2
+python3 scripts/gasal2_longtarget.py \
+  --mode safe \
+  --query H19.fa \
+  --target testDNA.fa \
+  --output /tmp/gasal2-longtarget-output \
+  --report /tmp/gasal2-longtarget-report.json
+```
+
+The CPU-only authority path needs only `make build-fasim`:
+
+```bash
+python3 scripts/gasal2_longtarget.py \
+  --mode cpu-authority \
+  --query H19.fa \
+  --target testDNA.fa \
+  --output /tmp/fasim-authority-output \
+  --report /tmp/fasim-authority-report.json
+```
+
+Use `--dry-run` for input and environment preflight without executing either
+backend. `fast-experimental` is explicit opt-in and never produces a verified
+or safe status. See [the CLI contract](docs/gasal2_longtarget_cli.md) for mode,
+report, output and exit-code details.
+
 For a manual build without the Makefile:
 
 ```bash
@@ -133,6 +166,9 @@ advanced runtime notes.
 - [Advanced Runtime Details](docs/longtarget_advanced_runtime_details.md):
   CUDA/SIM/Fasim/two-stage knobs, benchmark telemetry, and longer workflow
   notes moved out of this README.
+- [Contract-Aware GASAL2-LongTarget CLI](docs/gasal2_longtarget_cli.md):
+  fail-closed modes, input guards, atomic publication, report schema and exit
+  codes for the user workflow.
 - [Fasim Sharded Runner](docs/fasim_sharded_runner.md): contig-level
   process sharding, deterministic merge, digest validation, and resumable
   run manifests.

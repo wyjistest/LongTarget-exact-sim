@@ -56,12 +56,7 @@ goal = require_phrases(
     root / "goal-bioinformatics.md",
     (
         f"submission_baseline_commit = {historical_completion}",
-        "active_phase = 1",
         "phase_0_status = pass",
-        "last_completed_phase = 0",
-        "last_decision = bioinformatics_phase0_scope_frozen",
-        "last_evidence_doc = paper/bioinformatics/README.md",
-        "last_test_command = make check-bioinformatics-phase0",
     ),
 )
 state: dict[str, str] = {}
@@ -75,6 +70,12 @@ if state.get("historical_paper_runtime_epoch") != "0":
     raise SystemExit("historical paper runtime epoch drifted")
 if state.get("submission_software_epoch") != "1":
     raise SystemExit("submission software epoch must start at 1")
+active = state.get("active_phase", "")
+if active != "complete" and (not active.isdigit() or int(active) < 1):
+    raise SystemExit(f"Bioinformatics Phase 0 is not complete: active_phase={active!r}")
+last_completed = state.get("last_completed_phase", "")
+if not last_completed.isdigit() or int(last_completed) < 0:
+    raise SystemExit("Bioinformatics last_completed_phase has regressed below Phase 0")
 
 if subprocess.run(
     ["git", "-C", str(root), "merge-base", "--is-ancestor", historical_completion, "HEAD"],
