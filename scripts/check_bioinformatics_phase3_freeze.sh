@@ -478,12 +478,20 @@ def projected_physical_path(path: Path) -> Path:
     return Path(os.path.normpath(physical))
 
 
+source_cache = projected_physical_path(
+    root / ".tmp/bioinformatics_application_sources"
+)
+
+
 def require_allowed_location(path: Path) -> None:
     repository_temporary = root / ".tmp"
+    if within(path, source_cache):
+        fail("work base overlaps Phase 3 source cache")
     if within(path, root) and not within(path, repository_temporary):
         fail("Phase 3 checker work base overlaps protected repository paths")
 
 
+require_allowed_location(projected_physical_path(base))
 if os.path.lexists(base):
     initial = os.lstat(base)
     if stat.S_ISLNK(initial.st_mode):
@@ -491,7 +499,6 @@ if os.path.lexists(base):
     if not stat.S_ISDIR(initial.st_mode):
         fail("work base is not a directory")
 else:
-    require_allowed_location(projected_physical_path(base))
     try:
         os.makedirs(base, mode=0o700, exist_ok=False)
     except FileExistsError:
@@ -751,6 +758,7 @@ SELECTION_SHA256 = "de7248b64bd534367204ad436e7911e1047702df23de84f0f41e347e5c76
 SUBMISSION_PREFIX_SHA256 = "db7f0aba2508ce9693a770f2ceea68ff71047c874b71729e35c08b92f21cc7ee"
 SUBMISSION_SHA256 = "af95263e2076aa9c4f0443cb4047bb7eb8fe2f22aafb7562652d824c32e772db"
 PROTOCOL_SHA256 = "494fdd5d255a02932a9a43187bdc74a6a9100a0fd73a0e260e72421190161c51"
+README_SHA256 = "c84a6f24857556c87d40bc569857e3f45ff22fda377444092e2fa162eb4daca8"
 QUERY_SELECTION_RULE = (
     "GENCODE v49 lncRNA transcript on chr1-chr22 or chrX; canonical ACGT; "
     "500-2812 nt; exclude development and Phase 2 holdout gene/sequence "
@@ -1766,7 +1774,11 @@ require(
     "submission manifest checksum drift",
 )
 
-readme = read_bytes(root / "paper/bioinformatics/README.md", "Bioinformatics README").decode("utf-8")
+readme_bytes = read_bytes(
+    root / "paper/bioinformatics/README.md",
+    "Bioinformatics README",
+)
+readme = readme_bytes.decode("utf-8")
 marker = "## Phase 3 input freeze receipt\n"
 require(marker in readme, "README Phase 3 receipt missing")
 receipt = readme.split(marker, 1)[1].split("\n## ", 1)[0]
@@ -1780,6 +1792,10 @@ for required_text in (
 ):
     require(required_text in receipt, f"README receipt missing: {required_text}")
 require(not re.search(r"\b(?:completed|decision|results?|speedup|no_go)\b", receipt.lower()), "README contains result wording")
+require(
+    hashlib.sha256(readme_bytes).hexdigest() == README_SHA256,
+    "README checksum drift",
+)
 protocol_bytes = read_bytes(
     root / "paper/bioinformatics/application_protocol.md",
     "application protocol",
@@ -2572,11 +2588,22 @@ try:
     os.close(guard_fd)
     guard_fd = retained_guard_fd
 
+    original_path = os.environ.get("PATH", "")
+    environment = {
+        "LC_ALL": "C",
+        "PATH": (
+            str(offline_directory)
+            if not original_path
+            else f"{offline_directory}{os.pathsep}{original_path}"
+        ),
+        "PYTHONNOUSERSITE": "1",
+    }
     verify_trusted_bash()
     verify_offline_tree()
     self_test = subprocess.run(
         [str(offline_directory / guard_name)],
         check=False,
+        env=environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -2589,13 +2616,6 @@ try:
     verify_trusted_bash()
     verify_offline_tree()
 
-    environment = os.environ.copy()
-    original_path = environment.get("PATH", "")
-    environment["PATH"] = (
-        str(offline_directory)
-        if not original_path
-        else f"{offline_directory}{os.pathsep}{original_path}"
-    )
     verify_trusted_bash()
     verify_offline_tree()
     completed = subprocess.run([trusted_bash, fetcher], env=environment, check=False)

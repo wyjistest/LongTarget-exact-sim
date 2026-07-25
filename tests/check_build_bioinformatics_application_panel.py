@@ -11,6 +11,7 @@ import io
 import json
 import multiprocessing
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -354,6 +355,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         *,
         temporary_root: Path,
         fetcher: Path,
+        pre_invocation_source: str = "",
     ) -> subprocess.CompletedProcess[str]:
         source, requires_invocation = self.offline_reconstruction_source()
         work = temporary_root / "authenticated-run"
@@ -376,6 +378,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             "stream_cached_sources=0\n"
             "reconstruction_status=not-set\n"
             f"{source}\n"
+            f"{pre_invocation_source}"
             f"{invocation}"
             'printf "reconstruction_status=%s\\n" "$reconstruction_status"\n'
         )
@@ -485,6 +488,51 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("work base final component is a symlink", rejected.stderr)
 
+    def test_workspace_rejects_source_cache_aliases_without_mutation(self) -> None:
+        source = self.workspace_setup_source()
+        scenarios = ("direct", "intermediate-alias", "final-alias")
+        for scenario in scenarios:
+            with self.subTest(work=scenario), tempfile.TemporaryDirectory(
+                prefix=f"phase3-work-cache-{scenario}-"
+            ) as temporary_name:
+                temporary = Path(temporary_name)
+                repository = temporary / "repository"
+                repository.mkdir()
+                cache = self.create_source_cache(repository, complete=True)
+                before = fingerprint_tree_no_follow(cache)
+
+                if scenario == "direct":
+                    work = cache
+                elif scenario == "intermediate-alias":
+                    alias = temporary / "cache-alias"
+                    alias.symlink_to(cache, target_is_directory=True)
+                    work = alias / "nested-work"
+                else:
+                    alias = temporary / "cache-final-alias"
+                    alias.symlink_to(cache, target_is_directory=True)
+                    work = alias
+
+                completed = subprocess.run(
+                    [sys.executable, "-c", source, str(repository), str(work)],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=15,
+                    check=False,
+                )
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(
+                    "work base overlaps Phase 3 source cache",
+                    completed.stderr,
+                )
+                self.assertEqual(fingerprint_tree_no_follow(cache), before)
+                self.assertFalse(
+                    any(
+                        path.name.startswith("bioinformatics-phase3-freeze.")
+                        for path in cache.rglob("*")
+                    )
+                )
+
     def test_offline_reconstruction_rejects_injected_command_directory(self) -> None:
         with tempfile.TemporaryDirectory(prefix="phase3-offline-injected-") as temporary:
             temporary_root = Path(temporary)
@@ -528,13 +576,15 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="phase3-offline-clean-") as temporary:
             temporary_root = Path(temporary)
             fetch_marker = temporary_root / "fetcher-ran"
+            expected_offline = temporary_root / "authenticated-run/offline-bin"
             fake_fetcher = temporary_root / "fake-fetcher.sh"
             fake_fetcher.write_text(
                 "#!/bin/bash\n"
                 "set -euo pipefail\n"
                 'offline="${PATH%%:*}"\n'
-                '[[ "$offline" == "$EXPECTED_OFFLINE" ]]\n'
-                '"$HARNESS_PYTHON" - "$offline/curl" "$EXPECTED_GUARD_HEX" <<\'PY\'\n'
+                f'[[ "$offline" == {shlex.quote(str(expected_offline))} ]]\n'
+                f"{shlex.quote(sys.executable)} - \"$offline/curl\" "
+                f"{expected_guard.hex()} <<'PY'\n"
                 "import os\n"
                 "import stat\n"
                 "import sys\n"
@@ -547,42 +597,67 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                 "assert stat.S_IMODE(metadata.st_mode) == 0o500\n"
                 "assert guard.read_bytes() == expected\n"
                 "PY\n"
-                'printf "ran\\n" >"$FETCH_MARKER"\n',
+                f"printf 'ran\\n' >{shlex.quote(str(fetch_marker))}\n",
                 encoding="ascii",
             )
             fake_fetcher.chmod(0o700)
-            previous = {
-                name: os.environ.get(name)
-                for name in (
-                    "EXPECTED_OFFLINE",
-                    "EXPECTED_GUARD_HEX",
-                    "FETCH_MARKER",
-                    "HARNESS_PYTHON",
-                )
-            }
-            os.environ.update(
-                {
-                    "EXPECTED_OFFLINE": str(
-                        temporary_root / "authenticated-run/offline-bin"
-                    ),
-                    "EXPECTED_GUARD_HEX": expected_guard.hex(),
-                    "FETCH_MARKER": str(fetch_marker),
-                    "HARNESS_PYTHON": sys.executable,
-                }
+            completed = self.run_offline_reconstruction_harness(
+                temporary_root=temporary_root,
+                fetcher=fake_fetcher,
             )
-            try:
-                completed = self.run_offline_reconstruction_harness(
-                    temporary_root=temporary_root,
-                    fetcher=fake_fetcher,
-                )
-            finally:
-                for name, value in previous.items():
-                    if value is None:
-                        os.environ.pop(name, None)
-                    else:
-                        os.environ[name] = value
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertTrue(fetch_marker.is_file())
+            self.assertFalse(
+                (temporary_root / "authenticated-run/offline-bin").exists()
+            )
+
+    def test_offline_reconstruction_sanitizes_shell_environment(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="phase3-offline-shell-env-") as temporary:
+            temporary_root = Path(temporary)
+            bash_env_marker = temporary_root / "bash-env-sourced"
+            function_marker = temporary_root / "exported-curl-function-ran"
+            bash_env = temporary_root / "hostile-bash-env.sh"
+            bash_env.write_text(
+                f"printf 'sourced\\n' >{shlex.quote(str(bash_env_marker))}\n",
+                encoding="ascii",
+            )
+            fake_fetcher = temporary_root / "fake-fetcher.sh"
+            fake_fetcher.write_text(
+                "#!/bin/bash\n"
+                "set -euo pipefail\n"
+                "set +e\n"
+                'guard_output="$(curl 2>&1)"\n'
+                "guard_status=$?\n"
+                "set -e\n"
+                '[[ "$guard_output" == '
+                '"Phase 3 freeze reconstruction attempted network access" ]]\n'
+                '[[ "$guard_status" -eq 97 ]]\n',
+                encoding="ascii",
+            )
+            fake_fetcher.chmod(0o700)
+            pre_invocation_source = (
+                f"BASH_ENV={shlex.quote(str(bash_env))}\n"
+                "export BASH_ENV\n"
+                "curl() {\n"
+                f"  printf 'ran\\n' >{shlex.quote(str(function_marker))}\n"
+                "  return 0\n"
+                "}\n"
+                "export -f curl\n"
+            )
+
+            completed = self.run_offline_reconstruction_harness(
+                temporary_root=temporary_root,
+                fetcher=fake_fetcher,
+                pre_invocation_source=pre_invocation_source,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse(bash_env_marker.exists())
+            self.assertFalse(function_marker.exists())
+            self.assertIn(
+                "reconstruction_status=verified_from_complete_cache",
+                completed.stdout,
+            )
             self.assertFalse(
                 (temporary_root / "authenticated-run/offline-bin").exists()
             )
@@ -1092,6 +1167,48 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                 completed = self.run_semantic_validator(repository)
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertIn(expected_error, completed.stderr)
+
+    def test_semantic_validator_binds_entire_readme_bytes(self) -> None:
+        def add_contradictory_execution_flag(repository: Path) -> None:
+            path = repository / "paper/bioinformatics/README.md"
+            readme = path.read_text(encoding="utf-8", errors="strict")
+            marker = "application_execution_started = 0\n"
+            self.assertEqual(readme.count(marker), 1)
+            path.write_text(
+                readme.replace(
+                    marker,
+                    marker + "application_execution_started = 1\n",
+                    1,
+                ),
+                encoding="utf-8",
+                errors="strict",
+            )
+
+        def append_completed_results_section(repository: Path) -> None:
+            path = repository / "paper/bioinformatics/README.md"
+            with path.open("a", encoding="utf-8", errors="strict") as handle:
+                handle.write(
+                    "\n## Phase 3 execution completed results\n\n"
+                    "application_execution_started = 1\n"
+                    "record_status = completed\n"
+                    "results = published\n"
+                )
+
+        scenarios = (
+            ("contradictory-execution-flag", add_contradictory_execution_flag),
+            ("appended-completed-results", append_completed_results_section),
+        )
+        for label, mutate in scenarios:
+            with self.subTest(readme_mutation=label), tempfile.TemporaryDirectory(
+                prefix=f"phase3-readme-{label}-"
+            ) as temporary_name:
+                repository = self.create_semantic_validator_repository(
+                    Path(temporary_name)
+                )
+                mutate(repository)
+                completed = self.run_semantic_validator(repository)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("README checksum drift", completed.stderr)
 
     def test_source_ledger_provenance_fields_are_exact_authority_bound(self) -> None:
         validator = self.semantic_validator_source()
