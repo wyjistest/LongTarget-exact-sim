@@ -5,6 +5,7 @@ import csv
 import concurrent.futures
 import gzip
 import hashlib
+import importlib.machinery
 import importlib.util
 import inspect
 import io
@@ -26,8 +27,53 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILDER = ROOT / "reproduce/bioinformatics/build_application_panel.py"
-FETCHER = ROOT / "reproduce/bioinformatics/fetch_application_inputs.sh"
+BUILDER_NAME = "build_application_panel.py"
+FETCHER_NAME = "fetch_application_inputs.sh"
+_AUTHENTICATED_DEPENDENCY_VARIABLES = {
+    "builder": "PHASE3_AUTHENTICATED_BUILDER",
+    "checker": "PHASE3_AUTHENTICATED_CHECKER",
+    "fetcher": "PHASE3_AUTHENTICATED_FETCHER",
+    "test": "PHASE3_AUTHENTICATED_TEST",
+}
+_authenticated_values = {
+    name: os.environ.get(variable, "")
+    for name, variable in _AUTHENTICATED_DEPENDENCY_VARIABLES.items()
+}
+if any(_authenticated_values.values()) and not all(_authenticated_values.values()):
+    raise RuntimeError("incomplete Phase 3 authenticated dependency environment")
+AUTHENTICATED_DEPENDENCY_FDS: tuple[int, ...] = ()
+if all(_authenticated_values.values()):
+    authenticated_fds: list[int] = []
+    for name, value in _authenticated_values.items():
+        prefix = "/proc/self/fd/"
+        if not value.startswith(prefix) or not value[len(prefix) :].isdigit():
+            raise RuntimeError(f"unsafe Phase 3 authenticated {name} dependency")
+        descriptor = int(value[len(prefix) :])
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            raise RuntimeError(f"unsafe Phase 3 authenticated {name} dependency")
+        authenticated_fds.append(descriptor)
+    AUTHENTICATED_DEPENDENCY_FDS = tuple(sorted(set(authenticated_fds)))
+
+
+def authenticated_path(name: str, fallback: Path) -> Path:
+    value = _authenticated_values[name]
+    return Path(value) if value else fallback
+
+
+BUILDER = authenticated_path(
+    "builder",
+    ROOT / "reproduce/bioinformatics" / BUILDER_NAME,
+)
+FETCHER = authenticated_path(
+    "fetcher",
+    ROOT / "reproduce/bioinformatics" / FETCHER_NAME,
+)
+CHECKER = authenticated_path(
+    "checker",
+    ROOT / "scripts/check_bioinformatics_phase3_freeze.sh",
+)
+TEST_MODULE = authenticated_path("test", Path(__file__).resolve())
 MANIFEST_FIELDS = (
     "record_id",
     "record_role",
@@ -189,7 +235,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             checker = scripts / "check_bioinformatics_phase3_freeze.sh"
             shutil.copy2(
-                ROOT / "scripts/check_bioinformatics_phase3_freeze.sh",
+                CHECKER,
                 checker,
             )
             checker.chmod(0o755)
@@ -218,7 +264,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             checker = scripts / "check_bioinformatics_phase3_freeze.sh"
             shutil.copy2(
-                ROOT / "scripts/check_bioinformatics_phase3_freeze.sh",
+                CHECKER,
                 checker,
             )
             checker.chmod(0o755)
@@ -237,9 +283,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             )
 
     def workspace_setup_source(self) -> str:
-        checker = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        checker = CHECKER.read_text(encoding="utf-8", errors="strict")
         marker = 'workspace_receipt="$(python3 - "$ROOT" "$WORK" <<\'PY_WORKSPACE\'\n'
         self.assertEqual(checker.count(marker), 1)
         start = checker.index(marker) + len(marker)
@@ -247,9 +291,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         return checker[start:end]
 
     def offline_reconstruction_source(self) -> tuple[str, bool]:
-        checker = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        checker = CHECKER.read_text(encoding="utf-8", errors="strict")
         begin = "# BEGIN_PHASE3_OFFLINE_RECONSTRUCTION\n"
         end = "# END_PHASE3_OFFLINE_RECONSTRUCTION\n"
         if begin in checker:
@@ -267,10 +309,167 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         end_offset = checker.index(end_marker, start)
         return checker[start:end_offset], False
 
+    def preexecution_dependency_source(self) -> str:
+        checker = CHECKER.read_text(encoding="utf-8", errors="strict")
+        begin = "# BEGIN_PHASE3_PREEXECUTION_DEPENDENCIES\n"
+        end = "# END_PHASE3_PREEXECUTION_DEPENDENCIES\n"
+        if begin in checker:
+            self.assertEqual(checker.count(begin), 1)
+            self.assertEqual(checker.count(end), 1)
+            return checker.split(begin, 1)[1].split(end, 1)[0]
+        legacy_begin = "for relative in \\\n  paper/bioinformatics/README.md \\\n"
+        legacy_end = 'git -C "$ROOT" diff --cached --check\n'
+        self.assertEqual(checker.count(legacy_begin), 1)
+        start = checker.index(legacy_begin)
+        finish = checker.index(legacy_end, start) + len(legacy_end)
+        return checker[start:finish]
+
+    def create_preexecution_dependency_repository(
+        self,
+        temporary: Path,
+        marker: Path,
+    ) -> tuple[Path, str]:
+        repository = temporary / "repository"
+        required_files = (
+            "paper/bioinformatics/README.md",
+            "paper/bioinformatics/application_input_summary.tsv",
+            "paper/bioinformatics/application_manifest.tsv",
+            "paper/bioinformatics/application_protocol.md",
+            "paper/bioinformatics/application_selection.json",
+            "paper/bioinformatics/application_sources.tsv",
+            "paper/bioinformatics/claim_evidence.tsv",
+            "paper/bioinformatics/development_query_exclusions.tsv",
+            "paper/bioinformatics/holdout_manifest.tsv",
+            "paper/bioinformatics/submission_manifest.tsv",
+        )
+        for relative in required_files:
+            path = repository / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "{}\n" if path.suffix == ".json" else "fixture\n",
+                encoding="ascii",
+            )
+        manifest = repository / "paper/bioinformatics/application_manifest.tsv"
+        manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+        (repository / "paper/bioinformatics/application_manifest.sha256").write_text(
+            f"{manifest_digest}  application_manifest.tsv\n",
+            encoding="ascii",
+        )
+        (repository / "reproduce/bioinformatics/application_inputs").mkdir(
+            parents=True
+        )
+        builder = repository / "reproduce/bioinformatics/build_application_panel.py"
+        builder.write_text("pass\n", encoding="ascii")
+        fetcher = repository / "reproduce/bioinformatics/fetch_application_inputs.sh"
+        fetcher.write_text("#!/bin/bash\nexit 0\n", encoding="ascii")
+        fetcher.chmod(0o755)
+        checker = repository / "scripts/check_bioinformatics_phase3_freeze.sh"
+        checker.parent.mkdir(parents=True)
+        checker.write_text("#!/bin/bash\nexit 0\n", encoding="ascii")
+        checker.chmod(0o755)
+        for relative in (
+            "config/gasal2_longtarget_contracts.json",
+            "schemas/gasal2_longtarget_contracts.schema.json",
+            "schemas/gasal2_longtarget_run_report.schema.json",
+        ):
+            path = repository / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}\n", encoding="ascii")
+        test_dependency = (
+            repository / "tests/check_build_bioinformatics_application_panel.py"
+        )
+        test_dependency.parent.mkdir(parents=True)
+        test_dependency.write_text(
+            "from pathlib import Path\n"
+            f"marker = Path({str(marker)!r})\n"
+            "count = int(marker.read_text(encoding='ascii')) if marker.exists() else 0\n"
+            "marker.write_text(str(count + 1), encoding='ascii')\n",
+            encoding="ascii",
+        )
+        subprocess.run(
+            ["git", "init", "-q", str(repository)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository),
+                "config",
+                "user.email",
+                "phase3@test.invalid",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository),
+                "config",
+                "user.name",
+                "Phase 3 Test",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repository), "add", "--all"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repository), "commit", "-qm", "fixture"],
+            check=True,
+        )
+        baseline = subprocess.run(
+            ["git", "-C", str(repository), "rev-parse", "HEAD"],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
+        return repository, baseline
+
+    def run_preexecution_dependency_harness(
+        self,
+        repository: Path,
+        baseline: str,
+    ) -> subprocess.CompletedProcess[str]:
+        trusted_bash = Path(os.environ.get("BASH", "/bin/bash")).resolve()
+        trusted_metadata = os.lstat(trusted_bash)
+        script = (
+            "set -euo pipefail\n"
+            'ROOT="$HARNESS_ROOT"\n'
+            'BASELINE="$HARNESS_BASELINE"\n'
+            'FETCHER="$ROOT/reproduce/bioinformatics/fetch_application_inputs.sh"\n'
+            'TRUSTED_BASH="$HARNESS_TRUSTED_BASH"\n'
+            'TRUSTED_BASH_DEVICE="$HARNESS_BASH_DEVICE"\n'
+            'TRUSTED_BASH_INODE="$HARNESS_BASH_INODE"\n'
+            f"{self.preexecution_dependency_source()}"
+        )
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "HARNESS_ROOT": str(repository),
+                "HARNESS_BASELINE": baseline,
+                "HARNESS_TRUSTED_BASH": str(trusted_bash),
+                "HARNESS_BASH_DEVICE": str(trusted_metadata.st_dev),
+                "HARNESS_BASH_INODE": str(trusted_metadata.st_ino),
+            }
+        )
+        return subprocess.run(
+            [str(trusted_bash), "-c", script],
+            cwd=repository,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+
     def source_cache_binding_source(self) -> str:
-        checker = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        checker = CHECKER.read_text(encoding="utf-8", errors="strict")
         begin = "# BEGIN_PHASE3_SOURCE_CACHE_BINDING\n"
         end = "# END_PHASE3_SOURCE_CACHE_BINDING\n"
         if begin in checker:
@@ -533,6 +732,62 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                     )
                 )
 
+    def test_preexecution_dependencies_are_retained_before_repository_code(
+        self,
+    ) -> None:
+        scenarios = (
+            (
+                "intermediate-parent-alias",
+                "unsafe parent directory: tests",
+            ),
+            (
+                "external-hardlink",
+                "dependency has a hardlink alias: "
+                "tests/check_build_bioinformatics_application_panel.py",
+            ),
+            ("valid", None),
+        )
+        for scenario, expected_error in scenarios:
+            with self.subTest(dependency=scenario), tempfile.TemporaryDirectory(
+                prefix=f"phase3-preexecution-{scenario}-"
+            ) as temporary_name:
+                temporary = Path(temporary_name)
+                marker = temporary / "repository-code-ran"
+                repository, baseline = self.create_preexecution_dependency_repository(
+                    temporary,
+                    marker,
+                )
+                test_dependency = (
+                    repository / "tests/check_build_bioinformatics_application_panel.py"
+                )
+                if scenario == "intermediate-parent-alias":
+                    outside = temporary / "outside-tests"
+                    test_dependency.parent.rename(outside)
+                    test_dependency.parent.symlink_to(outside, target_is_directory=True)
+                elif scenario == "external-hardlink":
+                    outside = temporary / "outside-test.py"
+                    test_dependency.rename(outside)
+                    os.link(outside, test_dependency)
+
+                completed = self.run_preexecution_dependency_harness(
+                    repository,
+                    baseline,
+                )
+
+                if expected_error is None:
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    self.assertEqual(marker.read_text(encoding="ascii"), "1")
+                else:
+                    self.assertFalse(
+                        marker.exists(),
+                        "unsafe repository dependency executed before validation",
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertIn(
+                        "Phase 3 preexecution dependency failed: " + expected_error,
+                        completed.stderr,
+                    )
+
     def test_offline_reconstruction_rejects_injected_command_directory(self) -> None:
         with tempfile.TemporaryDirectory(prefix="phase3-offline-injected-") as temporary:
             temporary_root = Path(temporary)
@@ -654,6 +909,59 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertFalse(bash_env_marker.exists())
             self.assertFalse(function_marker.exists())
+            self.assertIn(
+                "reconstruction_status=verified_from_complete_cache",
+                completed.stdout,
+            )
+            self.assertFalse(
+                (temporary_root / "authenticated-run/offline-bin").exists()
+            )
+
+    def test_offline_reconstruction_ignores_inherited_path_commands(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="phase3-offline-path-") as temporary:
+            temporary_root = Path(temporary)
+            untrusted_bin = temporary_root / "untrusted-bin"
+            untrusted_bin.mkdir()
+            fake_tool_marker = temporary_root / "untrusted-stat-ran"
+            fake_stat = untrusted_bin / "stat"
+            fake_stat.write_text(
+                "#!/bin/sh\n"
+                f"printf 'ran\\n' >{shlex.quote(str(fake_tool_marker))}\n"
+                "exec /usr/bin/stat \"$@\"\n",
+                encoding="ascii",
+            )
+            fake_stat.chmod(0o700)
+            fake_fetcher = temporary_root / "fake-fetcher.sh"
+            fake_fetcher.write_text(
+                "#!/bin/bash\n"
+                "set -euo pipefail\n"
+                "stat -c %s -- \"$0\" >/dev/null\n"
+                "set +e\n"
+                'guard_output="$(curl 2>&1)"\n'
+                "guard_status=$?\n"
+                "set -e\n"
+                '[[ "$guard_output" == '
+                '"Phase 3 freeze reconstruction attempted network access" ]]\n'
+                '[[ "$guard_status" -eq 97 ]]\n',
+                encoding="ascii",
+            )
+            fake_fetcher.chmod(0o700)
+            pre_invocation_source = (
+                f"PATH={shlex.quote(str(untrusted_bin))}:$PATH\n"
+                "export PATH\n"
+            )
+
+            completed = self.run_offline_reconstruction_harness(
+                temporary_root=temporary_root,
+                fetcher=fake_fetcher,
+                pre_invocation_source=pre_invocation_source,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertFalse(
+                fake_tool_marker.exists(),
+                "offline reconstruction selected a command from inherited PATH",
+            )
             self.assertIn(
                 "reconstruction_status=verified_from_complete_cache",
                 completed.stdout,
@@ -858,9 +1166,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                 )
 
     def semantic_validator_source(self) -> str:
-        checker = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        checker = CHECKER.read_text(encoding="utf-8", errors="strict")
         marker = 'python3 - "$ROOT" "$BASELINE" <<\'PY\'\n'
         self.assertEqual(checker.count(marker), 1)
         start = checker.index(marker) + len(marker)
@@ -868,9 +1174,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         return checker[start:end]
 
     def application_snapshot_source(self) -> str:
-        checker = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        checker = CHECKER.read_text(encoding="utf-8", errors="strict")
         function_marker = "write_application_snapshot() {\n"
         self.assertEqual(checker.count(function_marker), 1)
         function = checker.split(function_marker, 1)[1]
@@ -1440,14 +1744,14 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         )
 
     def test_freeze_checker_exists_and_embodies_offline_boundaries(self) -> None:
-        checker = ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        checker = CHECKER
         self.assertTrue(checker.is_file(), f"Phase 3 freeze checker is missing: {checker}")
         self.assertTrue(os.access(checker, os.X_OK), "Phase 3 freeze checker is not executable")
         text = checker.read_text(encoding="utf-8", errors="strict")
         for required in (
-            'python3 "$ROOT/tests/check_build_bioinformatics_application_panel.py"',
-            "python3 -m py_compile",
-            "bash -n",
+            "PHASE3_AUTHENTICATED_TEST",
+            "compile_python_dependency",
+            '[bash_path, "-n", retained_path(dependency)]',
             "python3 -m json.tool",
             'git -C "$ROOT" diff --check',
             'git -C "$ROOT" diff --cached --check',
@@ -1473,9 +1777,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         )
 
     def test_freeze_checker_declares_full_independent_validation_contract(self) -> None:
-        text = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        text = CHECKER.read_text(encoding="utf-8", errors="strict")
         for required in (
             "MANIFEST_FIELDS = (",
             "SOURCE_AUTHORITIES = (",
@@ -1494,9 +1796,7 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             self.assertIn(required, text)
 
     def test_freeze_checker_snapshots_and_reconstructs_without_network(self) -> None:
-        text = (
-            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
-        ).read_text(encoding="utf-8", errors="strict")
+        text = CHECKER.read_text(encoding="utf-8", errors="strict")
         for required in (
             "os.lstat",
             "metadata.st_nlink == 1",
@@ -1522,7 +1822,11 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         if not BUILDER.is_file():
             raise AssertionError(f"application builder is missing: {BUILDER}")
-        spec = importlib.util.spec_from_file_location("build_application_panel", BUILDER)
+        loader = importlib.machinery.SourceFileLoader(
+            "build_application_panel",
+            str(BUILDER),
+        )
+        spec = importlib.util.spec_from_loader("build_application_panel", loader)
         if spec is None or spec.loader is None:
             raise AssertionError("cannot load application builder")
         cls.module = importlib.util.module_from_spec(spec)
@@ -1683,10 +1987,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 destination = source_directory / Path(source.local_source_path).name
                 destination.write_bytes(compressed)
 
-        fetcher = script_directory / FETCHER.name
+        fetcher = script_directory / FETCHER_NAME
         fetcher.write_text(fetch_text, encoding="utf-8", newline="")
         fetcher.chmod(0o755)
-        (script_directory / BUILDER.name).write_text(
+        (script_directory / BUILDER_NAME).write_text(
             "raise AssertionError('real builder must not run in shell boundary tests')\n",
             encoding="ascii",
         )
@@ -1841,10 +2145,12 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             "    if [[ -n \"${FETCH_CHECK_SELECTION_PARENT:-}\" ]]; then\n"
             "      printf '%s\\n' \"$repository_root\" "
             ">\"$FETCH_SELECTION_REPOSITORY_LOG\"\n"
-            "      \"$FETCH_REAL_PYTHON\" -c 'import importlib.util, os, pathlib, "
-            "sys; builder_path = pathlib.Path(sys.argv[1]); repository_root = "
-            "pathlib.Path(sys.argv[2]); spec = importlib.util.spec_from_file_location("
-            "\"selection_parent_builder\", builder_path); module = "
+            "      \"$FETCH_REAL_PYTHON\" -c 'import importlib.machinery, "
+            "importlib.util, os, pathlib, sys; builder_path = pathlib.Path("
+            "sys.argv[1]); repository_root = pathlib.Path(sys.argv[2]); loader = "
+            "importlib.machinery.SourceFileLoader(\"selection_parent_builder\", "
+            "str(builder_path)); spec = importlib.util.spec_from_loader("
+            "\"selection_parent_builder\", loader); module = "
             "importlib.util.module_from_spec(spec); sys.modules[spec.name] = module; "
             "spec.loader.exec_module(module); descriptor = "
             "module._open_output_directory(repository_root.parent, "
@@ -1919,6 +2225,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
             ["/bin/bash", str(harness["fetcher"]), *arguments],
             cwd=Path(harness["repository"]),
             env=dict(harness["environment"]) if environment is None else environment,
+            pass_fds=AUTHENTICATED_DEPENDENCY_FDS,
             check=False,
             capture_output=True,
             text=True,
@@ -2362,9 +2669,10 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         environment = os.environ.copy()
         environment["APPLICATION_PANEL_RESOURCE_PROBE"] = scenario
         completed = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve())],
+            [sys.executable, str(TEST_MODULE)],
             cwd=ROOT,
             env=environment,
+            pass_fds=AUTHENTICATED_DEPENDENCY_FDS,
             check=False,
             capture_output=True,
             text=True,
@@ -3253,6 +3561,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
                 str(metadata.st_ino),
             ],
             cwd=ROOT,
+            pass_fds=AUTHENTICATED_DEPENDENCY_FDS,
             check=False,
             capture_output=True,
             timeout=10,
@@ -5786,6 +6095,7 @@ class ApplicationPanelBuilderTests(unittest.TestCase):
         completed = subprocess.run(
             [sys.executable, str(BUILDER), "sources"],
             cwd=ROOT,
+            pass_fds=AUTHENTICATED_DEPENDENCY_FDS,
             check=False,
             capture_output=True,
             timeout=10,

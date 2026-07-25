@@ -663,22 +663,590 @@ for relative in \
   paper/bioinformatics/development_query_exclusions.tsv \
   paper/bioinformatics/holdout_manifest.tsv \
   paper/bioinformatics/submission_manifest.tsv \
-  reproduce/bioinformatics/application_inputs \
-  reproduce/bioinformatics/build_application_panel.py \
-  reproduce/bioinformatics/fetch_application_inputs.sh \
-  tests/check_build_bioinformatics_application_panel.py; do
+  reproduce/bioinformatics/application_inputs; do
   if [[ ! -e "$ROOT/$relative" || -L "$ROOT/$relative" ]]; then
     echo "missing or unsafe Bioinformatics Phase 3 freeze dependency: $relative" >&2
     exit 1
   fi
 done
 
-python3 "$ROOT/tests/check_build_bioinformatics_application_panel.py"
-python3 -m py_compile \
-  "$ROOT/reproduce/bioinformatics/build_application_panel.py" \
-  "$ROOT/tests/check_build_bioinformatics_application_panel.py"
-bash -n "$FETCHER"
-bash -n "$ROOT/scripts/check_bioinformatics_phase3_freeze.sh"
+# BEGIN_PHASE3_PREEXECUTION_DEPENDENCIES
+python3 - \
+  "$ROOT" "$BASELINE" \
+  "$TRUSTED_BASH" "$TRUSTED_BASH_DEVICE" "$TRUSTED_BASH_INODE" \
+  <<'PY_PREEXECUTION_DEPENDENCIES'
+from __future__ import annotations
+
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath
+
+
+root = Path(sys.argv[1])
+baseline = sys.argv[2]
+trusted_bash = sys.argv[3]
+expected_bash_identity = (int(sys.argv[4]), int(sys.argv[5]))
+dependency_relatives = (
+    "reproduce/bioinformatics/build_application_panel.py",
+    "reproduce/bioinformatics/fetch_application_inputs.sh",
+    "scripts/check_bioinformatics_phase3_freeze.sh",
+    "tests/check_build_bioinformatics_application_panel.py",
+)
+test_relative = "tests/check_build_bioinformatics_application_panel.py"
+directory_flags = (
+    os.O_RDONLY
+    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_DIRECTORY", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+)
+file_flags = (
+    os.O_RDONLY
+    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+)
+
+
+class PreexecutionDependencyError(Exception):
+    def __init__(self, message: str, status: int = 1) -> None:
+        super().__init__(message)
+        self.status = status if 0 < status < 256 else 1
+
+
+class ParentBinding:
+    def __init__(
+        self,
+        parent_fd: int,
+        name: str,
+        descriptor: int,
+        signature: tuple[int, int, int, int, int, int],
+        relative: str,
+    ) -> None:
+        self.parent_fd = parent_fd
+        self.name = name
+        self.descriptor = descriptor
+        self.signature = signature
+        self.relative = relative
+
+
+class RetainedDependency:
+    def __init__(
+        self,
+        relative: str,
+        parent_fd: int,
+        name: str,
+        descriptor: int,
+        signature: tuple[int, int, int, int, int, int],
+        parents: list[ParentBinding],
+    ) -> None:
+        self.relative = relative
+        self.parent_fd = parent_fd
+        self.name = name
+        self.descriptor = descriptor
+        self.signature = signature
+        self.parents = parents
+
+
+def fail(message: str, status: int = 1) -> None:
+    raise PreexecutionDependencyError(message, status)
+
+
+def metadata_signature(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+    )
+
+
+root_fd: int | None = None
+root_signature: tuple[int, int, int, int, int, int] | None = None
+bash_fd: int | None = None
+dependencies: list[RetainedDependency] = []
+failure: PreexecutionDependencyError | None = None
+
+
+def verify_root() -> None:
+    if root_fd is None or root_signature is None:
+        fail("repository root descriptor is unavailable")
+    try:
+        named = os.lstat(root)
+        retained = os.fstat(root_fd)
+    except OSError as error:
+        fail(f"repository root identity changed: {error}")
+    if (
+        not stat.S_ISDIR(named.st_mode)
+        or not stat.S_ISDIR(retained.st_mode)
+        or metadata_signature(named) != root_signature
+        or metadata_signature(retained) != root_signature
+    ):
+        fail("repository root identity changed")
+
+
+def close_parent_bindings(bindings: list[ParentBinding]) -> None:
+    for binding in reversed(bindings):
+        os.close(binding.descriptor)
+
+
+def open_dependency(relative: str) -> RetainedDependency:
+    if root_fd is None:
+        fail("repository root descriptor is unavailable")
+    path = PurePosixPath(relative)
+    parts = path.parts
+    if path.is_absolute() or not parts or any(
+        part in {"", ".", ".."} for part in parts
+    ):
+        fail(f"unsafe dependency path: {relative}")
+    verify_root()
+    current_fd = root_fd
+    parents: list[ParentBinding] = []
+    dependency_fd: int | None = None
+    try:
+        for index, name in enumerate(parts[:-1]):
+            traversed = "/".join(parts[: index + 1])
+            try:
+                named = os.stat(name, dir_fd=current_fd, follow_symlinks=False)
+            except OSError:
+                fail(f"unsafe parent directory: {traversed}")
+            if not stat.S_ISDIR(named.st_mode):
+                fail(f"unsafe parent directory: {traversed}")
+            try:
+                descriptor = os.open(name, directory_flags, dir_fd=current_fd)
+            except OSError:
+                fail(f"unsafe parent directory: {traversed}")
+            try:
+                retained = os.fstat(descriptor)
+            except OSError:
+                os.close(descriptor)
+                fail(f"parent directory identity changed: {traversed}")
+            signature = metadata_signature(named)
+            if (
+                not stat.S_ISDIR(retained.st_mode)
+                or metadata_signature(retained) != signature
+            ):
+                os.close(descriptor)
+                fail(f"parent directory identity changed: {traversed}")
+            parents.append(
+                ParentBinding(current_fd, name, descriptor, signature, traversed)
+            )
+            current_fd = descriptor
+        name = parts[-1]
+        try:
+            named_dependency = os.stat(
+                name,
+                dir_fd=current_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            fail(f"missing dependency: {relative}")
+        except OSError:
+            fail(f"unsafe dependency: {relative}")
+        if not stat.S_ISREG(named_dependency.st_mode):
+            fail(f"dependency is not a regular file: {relative}")
+        if named_dependency.st_nlink != 1:
+            fail(f"dependency has a hardlink alias: {relative}")
+        try:
+            dependency_fd = os.open(name, file_flags, dir_fd=current_fd)
+        except OSError:
+            fail(f"cannot retain dependency: {relative}")
+        retained_dependency = os.fstat(dependency_fd)
+        signature = metadata_signature(named_dependency)
+        if (
+            not stat.S_ISREG(retained_dependency.st_mode)
+            or retained_dependency.st_nlink != 1
+            or metadata_signature(retained_dependency) != signature
+        ):
+            fail(f"dependency identity changed while opening: {relative}")
+        result = RetainedDependency(
+            relative,
+            current_fd,
+            name,
+            dependency_fd,
+            signature,
+            parents,
+        )
+        dependency_fd = None
+        parents = []
+        return result
+    finally:
+        if dependency_fd is not None:
+            os.close(dependency_fd)
+        close_parent_bindings(parents)
+
+
+def verify_dependency(dependency: RetainedDependency) -> None:
+    verify_root()
+    for binding in dependency.parents:
+        try:
+            named = os.stat(
+                binding.name,
+                dir_fd=binding.parent_fd,
+                follow_symlinks=False,
+            )
+            retained = os.fstat(binding.descriptor)
+        except OSError:
+            fail(f"parent directory identity changed: {binding.relative}")
+        if (
+            not stat.S_ISDIR(named.st_mode)
+            or not stat.S_ISDIR(retained.st_mode)
+            or metadata_signature(named) != binding.signature
+            or metadata_signature(retained) != binding.signature
+        ):
+            fail(f"parent directory identity changed: {binding.relative}")
+    try:
+        named_dependency = os.stat(
+            dependency.name,
+            dir_fd=dependency.parent_fd,
+            follow_symlinks=False,
+        )
+        retained_dependency = os.fstat(dependency.descriptor)
+    except OSError:
+        fail(f"dependency bound name changed: {dependency.relative}")
+    if (
+        not stat.S_ISREG(named_dependency.st_mode)
+        or not stat.S_ISREG(retained_dependency.st_mode)
+        or named_dependency.st_nlink != 1
+        or retained_dependency.st_nlink != 1
+        or metadata_signature(named_dependency) != dependency.signature
+        or metadata_signature(retained_dependency) != dependency.signature
+    ):
+        fail(f"dependency identity changed: {dependency.relative}")
+
+
+def verify_dependencies() -> None:
+    for dependency in dependencies:
+        verify_dependency(dependency)
+
+
+def verify_trusted_bash() -> None:
+    if bash_fd is None:
+        fail("trusted Bash descriptor is unavailable")
+    try:
+        named = os.lstat(trusted_bash)
+        retained = os.fstat(bash_fd)
+    except OSError as error:
+        fail(f"trusted Bash identity changed: {error}")
+    if (
+        not os.path.isabs(trusted_bash)
+        or os.path.realpath(trusted_bash) != trusted_bash
+        or not stat.S_ISREG(named.st_mode)
+        or not stat.S_ISREG(retained.st_mode)
+        or (named.st_dev, named.st_ino) != expected_bash_identity
+        or (retained.st_dev, retained.st_ino) != expected_bash_identity
+        or not retained.st_mode & 0o111
+    ):
+        fail("trusted Bash identity changed")
+
+
+def retained_path(dependency: RetainedDependency) -> str:
+    return f"/proc/self/fd/{dependency.descriptor}"
+
+
+def run_git(arguments: list[str], *, allowed_statuses: set[int] = {0}):
+    git_path = next(
+        (path for path in ("/usr/bin/git", "/bin/git") if os.access(path, os.X_OK)),
+        None,
+    )
+    if git_path is None:
+        fail("trusted Git executable is unavailable")
+    environment = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "HOME": "/nonexistent",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+    }
+    completed = subprocess.run(
+        [
+            git_path,
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            str(root),
+            *arguments,
+        ],
+        env=environment,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode not in allowed_statuses:
+        fail(
+            "Git preexecution check failed: "
+            + completed.stderr.decode("utf-8", errors="replace").strip()
+        )
+    return completed
+
+
+def verify_git_scope() -> None:
+    core_scope = (
+        "paper/bioinformatics",
+        ":(exclude)paper/bioinformatics/README.md",
+        ":(exclude)paper/bioinformatics/submission_manifest.tsv",
+        ":(exclude)paper/bioinformatics/application_*",
+        "reproduce/bioinformatics",
+        ":(exclude)reproduce/bioinformatics/build_application_panel.py",
+        ":(exclude)reproduce/bioinformatics/fetch_application_inputs.sh",
+        ":(exclude)reproduce/bioinformatics/application_inputs/**",
+        "scripts",
+        ":(exclude)scripts/check_bioinformatics_phase3_freeze.sh",
+        "tests",
+        ":(exclude)tests/check_build_bioinformatics_application_panel.py",
+        "config",
+        "schemas",
+        "fasim",
+        "cuda",
+        "longtarget.cpp",
+        "exact_sim.h",
+        "sim.h",
+        "stats.h",
+        "rules.h",
+    )
+    core_diff = run_git(
+        [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--quiet",
+            baseline,
+            "--",
+            *core_scope,
+        ],
+        allowed_statuses={0, 1},
+    )
+    if core_diff.returncode == 1:
+        fail("Phase 2 or core runtime path changed from bf94dc7")
+
+    allowed_exact = {
+        "Makefile",
+        "docs/superpowers/plans/2026-07-24-bioinformatics-phase3-application-freeze.md",
+        "docs/superpowers/specs/2026-07-24-bioinformatics-phase3-application-design.md",
+        "paper/bioinformatics/README.md",
+        "paper/bioinformatics/application_input_summary.tsv",
+        "paper/bioinformatics/application_manifest.sha256",
+        "paper/bioinformatics/application_manifest.tsv",
+        "paper/bioinformatics/application_protocol.md",
+        "paper/bioinformatics/application_selection.json",
+        "paper/bioinformatics/application_sources.tsv",
+        "paper/bioinformatics/submission_manifest.tsv",
+        "reproduce/bioinformatics/build_application_panel.py",
+        "reproduce/bioinformatics/fetch_application_inputs.sh",
+        "scripts/check_bioinformatics_phase3_freeze.sh",
+        "tests/check_build_bioinformatics_application_panel.py",
+    }
+
+    def allowed_checkpoint_path(path: str) -> bool:
+        return path in allowed_exact or path.startswith(
+            "reproduce/bioinformatics/application_inputs/"
+        )
+
+    changed = run_git(
+        [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-only",
+            "-z",
+            baseline,
+            "--",
+        ]
+    ).stdout
+    changed_paths = [
+        value.decode("utf-8", errors="strict")
+        for value in changed.split(b"\0")
+        if value
+    ]
+    disallowed_changed = [
+        path for path in changed_paths if not allowed_checkpoint_path(path)
+    ]
+    if disallowed_changed:
+        fail(
+            "Phase 2 or core runtime path changed from bf94dc7: "
+            + ", ".join(disallowed_changed)
+        )
+
+    status = run_git(
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"]
+    ).stdout
+    parts = status.split(b"\0")
+    status_paths: list[str] = []
+    index = 0
+    while index < len(parts) and parts[index]:
+        entry = parts[index].decode("utf-8", errors="strict")
+        if len(entry) < 4 or entry[2] != " ":
+            fail(f"cannot parse git status entry: {entry!r}")
+        code = entry[:2]
+        status_paths.append(entry[3:])
+        index += 1
+        if "R" in code or "C" in code:
+            if index >= len(parts) or not parts[index]:
+                fail("truncated rename in git status")
+            status_paths.append(parts[index].decode("utf-8", errors="strict"))
+            index += 1
+    disallowed_status = [
+        path for path in status_paths if not allowed_checkpoint_path(path)
+    ]
+    if disallowed_status:
+        fail(
+            "working tree path outside Phase 3 checkpoint: "
+            + ", ".join(disallowed_status)
+        )
+    run_git(["diff", "--no-ext-diff", "--no-textconv", "--check"])
+    run_git(
+        ["diff", "--cached", "--no-ext-diff", "--no-textconv", "--check"]
+    )
+
+
+def compile_python_dependency(dependency: RetainedDependency) -> None:
+    verify_dependency(dependency)
+    os.lseek(dependency.descriptor, 0, os.SEEK_SET)
+    blocks: list[bytes] = []
+    while block := os.read(dependency.descriptor, 1024 * 1024):
+        blocks.append(block)
+    verify_dependency(dependency)
+    try:
+        compile(b"".join(blocks), dependency.relative, "exec")
+    except (SyntaxError, ValueError) as error:
+        fail(f"Python syntax check failed: {dependency.relative}: {error}")
+
+
+try:
+    if (
+        not root.is_absolute()
+        or os.path.realpath(root) != str(root)
+        or not os.path.isdir("/proc/self/fd")
+    ):
+        fail("supported Linux repository root or /proc/self/fd is unavailable")
+    try:
+        named_root = os.lstat(root)
+        root_fd = os.open(root, directory_flags)
+    except OSError as error:
+        fail(f"cannot retain repository root: {error}")
+    retained_root = os.fstat(root_fd)
+    root_signature = metadata_signature(named_root)
+    if (
+        not stat.S_ISDIR(named_root.st_mode)
+        or not stat.S_ISDIR(retained_root.st_mode)
+        or metadata_signature(retained_root) != root_signature
+    ):
+        fail("repository root identity changed while opening")
+
+    for relative in dependency_relatives:
+        dependencies.append(open_dependency(relative))
+    verify_dependencies()
+
+    try:
+        named_bash = os.lstat(trusted_bash)
+        bash_fd = os.open(trusted_bash, file_flags)
+    except OSError as error:
+        fail(f"cannot retain trusted Bash: {error}")
+    retained_bash = os.fstat(bash_fd)
+    if (
+        not stat.S_ISREG(named_bash.st_mode)
+        or not stat.S_ISREG(retained_bash.st_mode)
+        or (named_bash.st_dev, named_bash.st_ino) != expected_bash_identity
+        or (retained_bash.st_dev, retained_bash.st_ino) != expected_bash_identity
+    ):
+        fail("trusted Bash identity changed while opening")
+    verify_trusted_bash()
+
+    verify_git_scope()
+    verify_dependencies()
+    verify_trusted_bash()
+
+    by_relative = {
+        dependency.relative: dependency for dependency in dependencies
+    }
+    for relative in (
+        "reproduce/bioinformatics/build_application_panel.py",
+        test_relative,
+    ):
+        compile_python_dependency(by_relative[relative])
+
+    inherited_fds = tuple(
+        [dependency.descriptor for dependency in dependencies] + [bash_fd]
+    )
+    bash_path = f"/proc/self/fd/{bash_fd}"
+    for relative in (
+        "reproduce/bioinformatics/fetch_application_inputs.sh",
+        "scripts/check_bioinformatics_phase3_freeze.sh",
+    ):
+        dependency = by_relative[relative]
+        verify_dependencies()
+        verify_trusted_bash()
+        syntax = subprocess.run(
+            [bash_path, "-n", retained_path(dependency)],
+            pass_fds=inherited_fds,
+            check=False,
+        )
+        if syntax.returncode != 0:
+            fail(
+                f"Bash syntax check failed: {relative}",
+                syntax.returncode,
+            )
+
+    verify_dependencies()
+    verify_trusted_bash()
+    child_environment = os.environ.copy()
+    child_environment.update(
+        {
+            "PHASE3_AUTHENTICATED_BUILDER": retained_path(
+                by_relative["reproduce/bioinformatics/build_application_panel.py"]
+            ),
+            "PHASE3_AUTHENTICATED_CHECKER": retained_path(
+                by_relative["scripts/check_bioinformatics_phase3_freeze.sh"]
+            ),
+            "PHASE3_AUTHENTICATED_FETCHER": retained_path(
+                by_relative["reproduce/bioinformatics/fetch_application_inputs.sh"]
+            ),
+            "PHASE3_AUTHENTICATED_TEST": retained_path(by_relative[test_relative]),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    executed = subprocess.run(
+        [sys.executable, retained_path(by_relative[test_relative])],
+        cwd=root,
+        env=child_environment,
+        pass_fds=inherited_fds,
+        check=False,
+    )
+    if executed.returncode != 0:
+        fail("application builder tests failed", executed.returncode)
+    verify_dependencies()
+    verify_trusted_bash()
+except PreexecutionDependencyError as error:
+    failure = error
+except OSError as error:
+    failure = PreexecutionDependencyError(f"operating-system error: {error}")
+except UnicodeError as error:
+    failure = PreexecutionDependencyError(f"invalid Git path encoding: {error}")
+finally:
+    if bash_fd is not None:
+        os.close(bash_fd)
+    for dependency in reversed(dependencies):
+        os.close(dependency.descriptor)
+        close_parent_bindings(dependency.parents)
+    if root_fd is not None:
+        os.close(root_fd)
+
+if failure is not None:
+    print(
+        f"Phase 3 preexecution dependency failed: {failure}",
+        file=sys.stderr,
+    )
+    raise SystemExit(failure.status)
+PY_PREEXECUTION_DEPENDENCIES
+# END_PHASE3_PREEXECUTION_DEPENDENCIES
+
 python3 -m json.tool "$ROOT/paper/bioinformatics/application_selection.json" >/dev/null
 python3 -m json.tool "$ROOT/config/gasal2_longtarget_contracts.json" >/dev/null
 python3 -m json.tool "$ROOT/schemas/gasal2_longtarget_contracts.schema.json" >/dev/null
@@ -2588,14 +3156,42 @@ try:
     os.close(guard_fd)
     guard_fd = retained_guard_fd
 
-    original_path = os.environ.get("PATH", "")
+    system_tool_directories = (Path("/usr/bin"), Path("/bin"))
+    required_system_commands = (
+        "cmp",
+        "flock",
+        "gzip",
+        "md5sum",
+        "mkdir",
+        "mktemp",
+        "mv",
+        "python3",
+        "rm",
+        "sha256sum",
+        "stat",
+        "wc",
+    )
+    tool_path_entries = (offline_directory, *system_tool_directories)
+    if any(
+        not str(directory)
+        or not directory.is_absolute()
+        or not directory.is_dir()
+        for directory in tool_path_entries
+    ):
+        fail("offline tool path contains an unsafe directory")
+    for command in required_system_commands:
+        if not any(
+            (directory / command).is_file()
+            and os.access(directory / command, os.X_OK)
+            for directory in system_tool_directories
+        ):
+            fail(f"offline tool path is missing required command: {command}")
+    trusted_path = os.pathsep.join(str(directory) for directory in tool_path_entries)
+    if not trusted_path:
+        fail("offline tool path is empty")
     environment = {
         "LC_ALL": "C",
-        "PATH": (
-            str(offline_directory)
-            if not original_path
-            else f"{offline_directory}{os.pathsep}{original_path}"
-        ),
+        "PATH": trusted_path,
         "PYTHONNOUSERSITE": "1",
     }
     verify_trusted_bash()
