@@ -1,0 +1,2 @@
+freeze_id	manifest_sha256	query_count	target_count	pair_count	query_total_bp	target_total_bp	chr21_target_count	chr22_target_count	min_query_length	max_query_length	annotation_target_candidate_count	excluded_target_count
+bioinformatics-phase3-application-v1-e8c5441c	e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc	50	668	33400	56381	1670668	221	447	513	2709	668	0

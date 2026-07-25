@@ -26,6 +26,28 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "reproduce/bioinformatics/build_application_panel.py"
 FETCHER = ROOT / "reproduce/bioinformatics/fetch_application_inputs.sh"
+MANIFEST_FIELDS = (
+    "record_id",
+    "record_role",
+    "source_release",
+    "assembly",
+    "original_gene_id",
+    "original_gene_name",
+    "original_transcript_id",
+    "selection_rule",
+    "sequence_length",
+    "chromosome",
+    "strand",
+    "tss",
+    "region_start",
+    "region_end",
+    "sequence_sha256",
+    "file_sha256",
+    "path",
+    "license_note",
+    "split",
+    "status",
+)
 HOLDOUT_MANIFEST_FIELDS = (
     "workload_id",
     "query_id",
@@ -72,6 +94,15 @@ HOLDOUT_QUERY_FIELDS = (
 def read_tsv(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", errors="strict", newline="") as handle:
         return list(csv.DictReader(handle, delimiter="\t"))
+
+
+def read_manifest() -> list[dict[str, str]]:
+    path = ROOT / "paper/bioinformatics/application_manifest.tsv"
+    with path.open("r", encoding="utf-8", errors="strict", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if tuple(reader.fieldnames or ()) != MANIFEST_FIELDS:
+            raise AssertionError("application manifest schema drift")
+        return list(reader)
 
 
 def fingerprint_tree_no_follow(root: Path) -> tuple[tuple[object, ...], ...]:
@@ -131,6 +162,243 @@ def build_freeze_process(
         results.put(("ok", result["freeze_id"]))
     finally:
         done.set()
+
+
+class Phase3FreezeCheckpointTests(unittest.TestCase):
+    FREEZE_ID = "bioinformatics-phase3-application-v1-e8c5441c"
+    MANIFEST_SHA256 = (
+        "e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc"
+    )
+
+    def test_phase3_freeze_has_no_execution_artifacts(self) -> None:
+        forbidden = (
+            ROOT / "reproduce/bioinformatics/run_application.py",
+            ROOT / "reproduce/bioinformatics/application_backend.py",
+            ROOT / "reproduce/bioinformatics/application_raw",
+            ROOT / "reproduce/bioinformatics/application_outputs",
+            ROOT / "paper/bioinformatics/source_data",
+            ROOT / "paper/bioinformatics/application_attempt_results.tsv",
+            ROOT / "paper/bioinformatics/application_workload_results.tsv",
+            ROOT / "paper/bioinformatics/application_rank_results.tsv",
+            ROOT / "paper/bioinformatics/application_mode_results.tsv",
+            ROOT / "paper/bioinformatics/application_raw_artifacts.tsv",
+            ROOT / "paper/bioinformatics/application_results.tsv",
+            ROOT / "paper/bioinformatics/application_summary.json",
+            ROOT / "paper/bioinformatics/application_retry_ledger.tsv",
+            ROOT / "paper/bioinformatics/application_exclusion_ledger.tsv",
+            ROOT / "paper/bioinformatics/phase3_decision.md",
+        )
+        self.assertEqual([path for path in forbidden if path.exists()], [])
+        self.assertEqual(
+            list((ROOT / ".paper-artifacts").glob("bioinformatics-phase3-*")),
+            [],
+        )
+        rows = read_manifest()
+        self.assertEqual(len(rows), 718)
+        self.assertTrue(
+            all(row["status"] == "preregistered_not_run" for row in rows)
+        )
+
+    def test_make_target_invokes_exact_offline_freeze_checker(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8", errors="strict")
+        expected = (
+            "check-bioinformatics-phase3-freeze:\n"
+            "\tWORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase3_freeze) "
+            "bash ./scripts/check_bioinformatics_phase3_freeze.sh\n"
+        )
+        self.assertIn(expected, makefile)
+        phony_lines = "\n".join(
+            line.strip(" \\")
+            for line in makefile.splitlines()
+            if "check-bioinformatics" in line
+        )
+        self.assertIn("check-bioinformatics-phase3-freeze", phony_lines)
+
+    def test_submission_manifest_has_exact_phase3_freeze_rows(self) -> None:
+        rows = read_tsv(ROOT / "paper/bioinformatics/submission_manifest.tsv")
+        phase3 = [row for row in rows if row["artifact_id"].startswith("S03")]
+        expected = (
+            (
+                "S0301",
+                "paper/bioinformatics/application_selection.json",
+                "application_selection",
+                "build_application_panel.py",
+            ),
+            (
+                "S0302",
+                "paper/bioinformatics/application_manifest.tsv",
+                "application_manifest",
+                "application_protocol.md",
+            ),
+            (
+                "S0303",
+                "paper/bioinformatics/application_manifest.sha256",
+                "application_manifest_checksum",
+                "application_manifest.tsv",
+            ),
+            (
+                "S0304",
+                "paper/bioinformatics/application_sources.tsv",
+                "application_source_ledger",
+                "provider_checksums_and_local_sha256",
+            ),
+            (
+                "S0305",
+                "paper/bioinformatics/application_protocol.md",
+                "application_protocol",
+                "goal-bioinformatics.md",
+            ),
+            (
+                "S0306",
+                "paper/bioinformatics/application_input_summary.tsv",
+                "application_input_summary",
+                "application_manifest.tsv",
+            ),
+            (
+                "S0307",
+                "reproduce/bioinformatics/build_application_panel.py",
+                "application_builder",
+                "application_protocol.md",
+            ),
+            (
+                "S0308",
+                "reproduce/bioinformatics/fetch_application_inputs.sh",
+                "application_fetcher",
+                "application_sources.tsv",
+            ),
+            (
+                "S0309",
+                "tests/check_build_bioinformatics_application_panel.py",
+                "application_builder_tests",
+                "goal-bioinformatics.md",
+            ),
+            (
+                "S0310",
+                "scripts/check_bioinformatics_phase3_freeze.sh",
+                "preexecution_phase_gate",
+                "goal-bioinformatics.md",
+            ),
+        )
+        self.assertEqual(
+            [
+                (
+                    row["artifact_id"],
+                    row["path"],
+                    row["artifact_class"],
+                    row["authority"],
+                )
+                for row in phase3
+            ],
+            list(expected),
+        )
+        self.assertTrue(
+            all(
+                row["phase"] == "3"
+                and row["freeze_or_epoch"] == self.FREEZE_ID
+                and row["required"] == "1"
+                and row["status"] == "pass"
+                for row in phase3
+            )
+        )
+
+    def test_readme_records_exact_pending_nonexecution_receipt(self) -> None:
+        readme = (ROOT / "paper/bioinformatics/README.md").read_text(
+            encoding="utf-8", errors="strict"
+        )
+        marker = "## Phase 3 input freeze receipt\n"
+        self.assertIn(marker, readme)
+        section = readme.split(marker, 1)[1].split("\n## ", 1)[0]
+        for line in (
+            f"freeze_id = {self.FREEZE_ID}",
+            f"manifest_sha256 = {self.MANIFEST_SHA256}",
+            "query_count = 50",
+            "target_count = 668",
+            "pair_count = 33400",
+            "query_total_nt = 56381",
+            "target_total_bp = 1670668",
+            "chr21_target_count = 221",
+            "chr22_target_count = 447",
+            "fasta_file_count = 718",
+            "record_status = preregistered_not_run",
+            "application_execution_started = 0",
+            "Phase 3 and claim B3 remain pending.",
+        ):
+            self.assertIn(line, section)
+        self.assertNotRegex(
+            section.lower(),
+            r"\b(?:completed|decision|results?|speedup|no_go)\b",
+        )
+
+    def test_freeze_checker_exists_and_embodies_offline_boundaries(self) -> None:
+        checker = ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        self.assertTrue(checker.is_file(), f"Phase 3 freeze checker is missing: {checker}")
+        self.assertTrue(os.access(checker, os.X_OK), "Phase 3 freeze checker is not executable")
+        text = checker.read_text(encoding="utf-8", errors="strict")
+        for required in (
+            'python3 "$ROOT/tests/check_build_bioinformatics_application_panel.py"',
+            "python3 -m py_compile",
+            "bash -n",
+            "python3 -m json.tool",
+            'git -C "$ROOT" diff --check',
+            'git -C "$ROOT" diff --cached --check',
+            "bf94dc75c5fe3e996472a1e90d242f582da361bf",
+            ".paper-artifacts/bioinformatics-phase3-",
+            "cached_source_count",
+            "fetch_application_inputs.sh",
+            "run_application.py",
+            "application_backend",
+            "application_execution_started=0",
+        ):
+            self.assertIn(required, text)
+        for forbidden in (
+            "--create-freeze",
+            "check_bioinformatics_phase2_preexecution",
+        ):
+            self.assertNotIn(forbidden, text)
+        self.assertNotRegex(
+            text,
+            r"(?m)^\s*(?:exec\s+|env\s+)?(?:python3|bash|sh|make)\b[^\n]*"
+            r"(?:run_application\.py|application_backend|gasal2_longtarget\.py|"
+            r"Fasim-LongTarget|fasim_longtarget|GASAL2)",
+        )
+
+    def test_freeze_checker_declares_full_independent_validation_contract(self) -> None:
+        text = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        for required in (
+            "MANIFEST_FIELDS = (",
+            "SOURCE_AUTHORITIES = (",
+            "expected 718 manifest records",
+            "pair_count == 33400 and pair_count >= 15000",
+            'chromosome_counts == {"chr21": 221, "chr22": 447}',
+            "query sequence digests are not unique",
+            "duplicate target digest does not share exact coordinates",
+            "application query overlaps development identities",
+            "application query overlaps Phase 2 holdout identities",
+            'row["status"] == "preregistered_not_run"',
+            "claim B3 is not pending",
+            "allowed_checkpoint_path",
+            "Phase 2 or core runtime path changed from bf94dc7",
+        ):
+            self.assertIn(required, text)
+
+    def test_freeze_checker_snapshots_and_reconstructs_without_network(self) -> None:
+        text = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        for required in (
+            "os.lstat",
+            "metadata.st_nlink == 1",
+            "application-freeze.before.json",
+            "application-freeze.after.json",
+            'cmp -- "$before_snapshot" "$after_snapshot"',
+            "stream_cached_sources",
+            'offline_bin="$WORK/offline-bin"',
+            'PATH="$offline_bin:$PATH" bash "$FETCHER"',
+            'reconstruction_status="skipped_incomplete_cache"',
+        ):
+            self.assertIn(required, text)
 
 
 class ApplicationPanelBuilderTests(unittest.TestCase):

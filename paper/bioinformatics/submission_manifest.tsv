@@ -48,3 +48,13 @@ S0231	paper/bioinformatics/holdout_summary.json	2	holdout_summary	analyze_holdou
 S0232	paper/bioinformatics/phase2_decision.md	2	phase_decision	holdout_summary.json	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
 S0233	tests/check_bioinformatics_phase2.py	2	phase_checkpoint_tests	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
 S0234	scripts/check_bioinformatics_phase2.sh	2	postexecution_phase_gate	goal-bioinformatics.md	bioinformatics-phase2-holdout-v1-9e293b2c	1	pass
+S0301	paper/bioinformatics/application_selection.json	3	application_selection	build_application_panel.py	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0302	paper/bioinformatics/application_manifest.tsv	3	application_manifest	application_protocol.md	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0303	paper/bioinformatics/application_manifest.sha256	3	application_manifest_checksum	application_manifest.tsv	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0304	paper/bioinformatics/application_sources.tsv	3	application_source_ledger	provider_checksums_and_local_sha256	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0305	paper/bioinformatics/application_protocol.md	3	application_protocol	goal-bioinformatics.md	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0306	paper/bioinformatics/application_input_summary.tsv	3	application_input_summary	application_manifest.tsv	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0307	reproduce/bioinformatics/build_application_panel.py	3	application_builder	application_protocol.md	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0308	reproduce/bioinformatics/fetch_application_inputs.sh	3	application_fetcher	application_sources.tsv	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0309	tests/check_build_bioinformatics_application_panel.py	3	application_builder_tests	goal-bioinformatics.md	bioinformatics-phase3-application-v1-e8c5441c	1	pass
+S0310	scripts/check_bioinformatics_phase3_freeze.sh	3	preexecution_phase_gate	goal-bioinformatics.md	bioinformatics-phase3-application-v1-e8c5441c	1	pass

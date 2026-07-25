@@ -89,3 +89,24 @@ diagnostics, remain represented. Safe mode continues to verify eligible named
 contracts and publish authority on mismatch or comparator failure; full-output
 and ineligible requests use CPU authority. Fast-only output remains explicit
 experimental opt-in.
+
+## Phase 3 input freeze receipt
+
+```text
+freeze_id = bioinformatics-phase3-application-v1-e8c5441c
+manifest_sha256 = e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc
+query_count = 50
+target_count = 668
+pair_count = 33400
+query_total_nt = 56381
+target_total_bp = 1670668
+chr21_target_count = 221
+chr22_target_count = 447
+fasta_file_count = 718
+record_status = preregistered_not_run
+application_execution_started = 0
+```
+
+The biological application panel is frozen at the identity above.
+Phase 3 and claim B3 remain pending. No Phase 3 runner, backend, pilot,
+benchmark, report, figure, raw root, or source-data receipt was created.
