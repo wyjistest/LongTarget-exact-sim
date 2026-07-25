@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+if [[ "${PHASE3_FREEZE_CLEAN_BOOTSTRAP+x}" != "x" \
+      || "${PHASE3_FREEZE_CLEAN_BOOTSTRAP-}" != "phase3-freeze-v1" ]]; then
+  printf '%s\n' \
+    "Phase 3 checker clean bootstrap failed: missing or malformed contract" >&2
+  exit 2
+fi
+unset PHASE3_FREEZE_CLEAN_BOOTSTRAP
+
+checker_source="${BASH_SOURCE[0]}"
+if [[ "$checker_source" == */* ]]; then
+  checker_directory="${checker_source%/*}"
+else
+  checker_directory="."
+fi
+ROOT="$(cd -- "$checker_directory/.." && pwd -P)"
+unset checker_source checker_directory
 BASELINE="bf94dc75c5fe3e996472a1e90d242f582da361bf"
 FETCHER="$ROOT/reproduce/bioinformatics/fetch_application_inputs.sh"
 WORK="${WORK:-$ROOT/.tmp/check_bioinformatics_phase3_freeze}"
@@ -2500,12 +2515,28 @@ destination = Path(sys.argv[2])
 run_directory = Path(sys.argv[3])
 expected_run_identity = (int(sys.argv[4]), int(sys.argv[5]))
 metadata_paths = (
+    "Makefile",
+    "goal-bioinformatics.md",
+    "docs/superpowers/plans/2026-07-24-bioinformatics-phase3-application-freeze.md",
+    "docs/superpowers/specs/2026-07-24-bioinformatics-phase3-application-design.md",
+    "paper/bioinformatics/README.md",
     "paper/bioinformatics/application_input_summary.tsv",
     "paper/bioinformatics/application_manifest.sha256",
     "paper/bioinformatics/application_manifest.tsv",
     "paper/bioinformatics/application_protocol.md",
     "paper/bioinformatics/application_selection.json",
     "paper/bioinformatics/application_sources.tsv",
+    "paper/bioinformatics/claim_evidence.tsv",
+    "paper/bioinformatics/development_query_exclusions.tsv",
+    "paper/bioinformatics/holdout_manifest.tsv",
+    "paper/bioinformatics/submission_manifest.tsv",
+    "reproduce/bioinformatics/build_application_panel.py",
+    "reproduce/bioinformatics/fetch_application_inputs.sh",
+    "scripts/check_bioinformatics_phase3_freeze.sh",
+    "tests/check_build_bioinformatics_application_panel.py",
+    "config/gasal2_longtarget_contracts.json",
+    "schemas/gasal2_longtarget_contracts.schema.json",
+    "schemas/gasal2_longtarget_run_report.schema.json",
 )
 entries: list[dict[str, object]] = []
 seen_inodes: set[tuple[int, int]] = set()
@@ -2871,9 +2902,10 @@ run_offline_reconstruction() {
   python3 - \
     "$WORK" "$WORK_DEVICE" "$WORK_INODE" "$offline_bin" \
     "$TRUSTED_BASH" "$TRUSTED_BASH_DEVICE" "$TRUSTED_BASH_INODE" \
-    "$FETCHER" <<'PY_OFFLINE_RECONSTRUCTION'
+    "$ROOT" <<'PY_OFFLINE_RECONSTRUCTION'
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import stat
 import subprocess
@@ -2886,7 +2918,10 @@ expected_run_identity = (int(sys.argv[2]), int(sys.argv[3]))
 offline_directory = Path(sys.argv[4])
 trusted_bash = sys.argv[5]
 expected_bash_identity = (int(sys.argv[6]), int(sys.argv[7]))
-fetcher = sys.argv[8]
+repository_root = Path(sys.argv[8])
+fetcher_relative = "reproduce/bioinformatics/fetch_application_inputs.sh"
+builder_relative = "reproduce/bioinformatics/build_application_panel.py"
+dependency_relatives = (fetcher_relative, builder_relative)
 offline_name = "offline-bin"
 guard_name = "curl"
 guard_bytes = (
@@ -2918,10 +2953,34 @@ bash_flags = (
     | getattr(os, "O_CLOEXEC", 0)
     | getattr(os, "O_NOFOLLOW", 0)
 )
+dependency_file_flags = (
+    os.O_RDONLY
+    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+)
 
 
 class OfflineReconstructionError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class ParentBinding:
+    parent_fd: int
+    name: str
+    descriptor: int
+    signature: tuple[int, int, int, int, int, int, int]
+    relative: str
+
+
+@dataclass(frozen=True)
+class RetainedDependency:
+    relative: str
+    parent_fd: int
+    name: str
+    descriptor: int
+    signature: tuple[int, int, int, int, int, int, int]
+    parents: tuple[ParentBinding, ...]
 
 
 def fail(message: str) -> None:
@@ -2932,6 +2991,20 @@ def identity(metadata: os.stat_result) -> tuple[int, int]:
     return metadata.st_dev, metadata.st_ino
 
 
+def metadata_signature(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
 def read_retained_file(descriptor: int) -> bytes:
     os.lseek(descriptor, 0, os.SEEK_SET)
     blocks: list[bytes] = []
@@ -2940,7 +3013,173 @@ def read_retained_file(descriptor: int) -> bytes:
     return b"".join(blocks)
 
 
+def close_parent_bindings(bindings: tuple[ParentBinding, ...]) -> None:
+    for binding in reversed(bindings):
+        os.close(binding.descriptor)
+
+
+def verify_repository_root() -> None:
+    if root_fd is None or root_signature is None:
+        fail("repository root descriptor is unavailable")
+    try:
+        named = os.lstat(repository_root)
+        retained = os.fstat(root_fd)
+    except OSError as error:
+        fail(f"repository root identity changed: {error}")
+    if (
+        not stat.S_ISDIR(named.st_mode)
+        or not stat.S_ISDIR(retained.st_mode)
+        or metadata_signature(named) != root_signature
+        or metadata_signature(retained) != root_signature
+    ):
+        fail("repository root identity changed")
+
+
+def open_dependency(relative: str) -> RetainedDependency:
+    if root_fd is None:
+        fail("repository root descriptor is unavailable")
+    parts = relative.split("/")
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        fail(f"unsafe dependency path: {relative}")
+    verify_repository_root()
+    current_fd = root_fd
+    parents: list[ParentBinding] = []
+    dependency_fd: int | None = None
+    try:
+        for index, name in enumerate(parts[:-1]):
+            traversed = "/".join(parts[: index + 1])
+            try:
+                named = os.stat(name, dir_fd=current_fd, follow_symlinks=False)
+            except OSError:
+                fail(f"unsafe parent directory: {traversed}")
+            if not stat.S_ISDIR(named.st_mode):
+                fail(f"unsafe parent directory: {traversed}")
+            try:
+                descriptor = os.open(
+                    name,
+                    directory_flags,
+                    dir_fd=current_fd,
+                )
+                retained = os.fstat(descriptor)
+            except OSError:
+                fail(f"cannot retain parent directory: {traversed}")
+            signature = metadata_signature(named)
+            if (
+                not stat.S_ISDIR(retained.st_mode)
+                or metadata_signature(retained) != signature
+            ):
+                os.close(descriptor)
+                fail(f"parent directory identity changed: {traversed}")
+            parents.append(
+                ParentBinding(current_fd, name, descriptor, signature, traversed)
+            )
+            current_fd = descriptor
+
+        name = parts[-1]
+        try:
+            named_dependency = os.stat(
+                name,
+                dir_fd=current_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            fail(f"missing dependency: {relative}")
+        except OSError:
+            fail(f"unsafe dependency: {relative}")
+        if not stat.S_ISREG(named_dependency.st_mode):
+            fail(f"dependency is not a regular file: {relative}")
+        if named_dependency.st_nlink != 1:
+            fail(f"dependency has a hardlink alias: {relative}")
+        if relative == fetcher_relative and not named_dependency.st_mode & 0o111:
+            fail(f"dependency is not executable: {relative}")
+        try:
+            dependency_fd = os.open(
+                name,
+                dependency_file_flags,
+                dir_fd=current_fd,
+            )
+            retained_dependency = os.fstat(dependency_fd)
+        except OSError:
+            fail(f"cannot retain dependency: {relative}")
+        signature = metadata_signature(named_dependency)
+        if (
+            not stat.S_ISREG(retained_dependency.st_mode)
+            or retained_dependency.st_nlink != 1
+            or metadata_signature(retained_dependency) != signature
+        ):
+            fail(f"dependency identity changed while opening: {relative}")
+        result = RetainedDependency(
+            relative,
+            current_fd,
+            name,
+            dependency_fd,
+            signature,
+            tuple(parents),
+        )
+        dependency_fd = None
+        parents = []
+        return result
+    finally:
+        if dependency_fd is not None:
+            os.close(dependency_fd)
+        close_parent_bindings(tuple(parents))
+
+
+def verify_dependency_file(dependency: RetainedDependency) -> None:
+    try:
+        named = os.stat(
+            dependency.name,
+            dir_fd=dependency.parent_fd,
+            follow_symlinks=False,
+        )
+        retained = os.fstat(dependency.descriptor)
+    except OSError:
+        fail(f"dependency identity changed: {dependency.relative}")
+    if (
+        not stat.S_ISREG(named.st_mode)
+        or not stat.S_ISREG(retained.st_mode)
+        or named.st_nlink != 1
+        or retained.st_nlink != 1
+        or metadata_signature(named) != dependency.signature
+        or metadata_signature(retained) != dependency.signature
+    ):
+        fail(f"dependency identity changed: {dependency.relative}")
+
+
+def verify_dependency_parents(dependency: RetainedDependency) -> None:
+    for binding in dependency.parents:
+        try:
+            named = os.stat(
+                binding.name,
+                dir_fd=binding.parent_fd,
+                follow_symlinks=False,
+            )
+            retained = os.fstat(binding.descriptor)
+        except OSError:
+            fail(f"parent directory identity changed: {binding.relative}")
+        if (
+            not stat.S_ISDIR(named.st_mode)
+            or not stat.S_ISDIR(retained.st_mode)
+            or metadata_signature(named) != binding.signature
+            or metadata_signature(retained) != binding.signature
+        ):
+            fail(f"parent directory identity changed: {binding.relative}")
+
+
+def verify_dependencies() -> None:
+    verify_repository_root()
+    for dependency in dependencies:
+        verify_dependency_file(dependency)
+    for dependency in dependencies:
+        verify_dependency_parents(dependency)
+
+
+def retained_path(dependency: RetainedDependency) -> str:
+    return f"/proc/self/fd/{dependency.descriptor}"
+
+
 run_fd: int | None = None
+root_fd: int | None = None
 offline_fd: int | None = None
 guard_fd: int | None = None
 bash_fd: int | None = None
@@ -2951,6 +3190,8 @@ owned_guard = False
 failure: str | None = None
 cleanup_failures: list[str] = []
 fetcher_status: int | None = None
+root_signature: tuple[int, int, int, int, int, int, int] | None = None
+dependencies: list[RetainedDependency] = []
 
 
 def verify_run_directory() -> None:
@@ -3072,6 +3313,29 @@ try:
         fail("run directory identity changed while opening")
     verify_run_directory()
 
+    if (
+        not repository_root.is_absolute()
+        or os.path.realpath(repository_root) != str(repository_root)
+        or not os.path.isdir("/proc/self/fd")
+    ):
+        fail("supported Linux repository root or /proc/self/fd is unavailable")
+    try:
+        named_root = os.lstat(repository_root)
+        root_fd = os.open(repository_root, directory_flags)
+        retained_root = os.fstat(root_fd)
+    except OSError as error:
+        fail(f"cannot retain repository root: {error}")
+    root_signature = metadata_signature(named_root)
+    if (
+        not stat.S_ISDIR(named_root.st_mode)
+        or not stat.S_ISDIR(retained_root.st_mode)
+        or metadata_signature(retained_root) != root_signature
+    ):
+        fail("repository root identity changed while opening")
+    for relative in dependency_relatives:
+        dependencies.append(open_dependency(relative))
+    verify_dependencies()
+
     trusted_path = Path(trusted_bash)
     if not trusted_path.is_absolute() or os.path.realpath(trusted_path) != trusted_bash:
         fail("trusted Bash is not a physical absolute path")
@@ -3192,11 +3456,40 @@ try:
     trusted_path = os.pathsep.join(str(directory) for directory in tool_path_entries)
     if not trusted_path:
         fail("offline tool path is empty")
+    by_relative = {
+        dependency.relative: dependency for dependency in dependencies
+    }
     environment = {
         "LC_ALL": "C",
         "PATH": trusted_path,
+        "PHASE3_AUTHENTICATED_RECONSTRUCTION": "phase3-offline-v1",
+        "PHASE3_AUTHENTICATED_RECONSTRUCTION_BUILDER": retained_path(
+            by_relative[builder_relative]
+        ),
+        "PHASE3_AUTHENTICATED_RECONSTRUCTION_FETCHER": retained_path(
+            by_relative[fetcher_relative]
+        ),
+        "PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT": str(repository_root),
+        "PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT_DESCRIPTOR": (
+            f"/proc/self/fd/{root_fd}"
+        ),
         "PYTHONNOUSERSITE": "1",
     }
+    inherited_fds = tuple(
+        sorted(
+            {
+                root_fd,
+                bash_fd,
+                *(dependency.descriptor for dependency in dependencies),
+                *(
+                    binding.descriptor
+                    for dependency in dependencies
+                    for binding in dependency.parents
+                ),
+            }
+        )
+    )
+    bash_path = f"/proc/self/fd/{bash_fd}"
     verify_trusted_bash()
     verify_offline_tree()
     self_test = subprocess.run(
@@ -3217,9 +3510,15 @@ try:
 
     verify_trusted_bash()
     verify_offline_tree()
-    completed = subprocess.run([trusted_bash, fetcher], env=environment, check=False)
+    completed = subprocess.run(
+        [bash_path, retained_path(by_relative[fetcher_relative])],
+        env=environment,
+        pass_fds=inherited_fds,
+        check=False,
+    )
     fetcher_status = completed.returncode
     verify_trusted_bash()
+    verify_dependencies()
     verify_offline_tree()
 except OfflineReconstructionError as error:
     failure = str(error)
@@ -3276,6 +3575,11 @@ finally:
         os.close(offline_fd)
     if bash_fd is not None:
         os.close(bash_fd)
+    for dependency in reversed(dependencies):
+        os.close(dependency.descriptor)
+        close_parent_bindings(dependency.parents)
+    if root_fd is not None:
+        os.close(root_fd)
     if run_fd is not None:
         os.close(run_fd)
 

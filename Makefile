@@ -1,5 +1,13 @@
+PHASE3_FREEZE_TARGET := check-bioinformatics-phase3-freeze
+PHASE3_FREEZE_ONLY_GOAL := $(if $(filter $(PHASE3_FREEZE_TARGET),$(MAKECMDGOALS)),$(if $(filter-out $(PHASE3_FREEZE_TARGET),$(MAKECMDGOALS)),,1))
+
+ifeq ($(PHASE3_FREEZE_ONLY_GOAL),1)
+UNAME_S :=
+UNAME_M :=
+else
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
+endif
 
 CXX ?= clang++
 CXXFLAGS ?= -O2 -std=c++11
@@ -28,7 +36,11 @@ ifeq ($(UNAME_S),Darwin)
   endif
 endif
 
+ifeq ($(PHASE3_FREEZE_ONLY_GOAL),1)
+OPENMP_AUTODETECT_FLAGS :=
+else
 OPENMP_AUTODETECT_FLAGS := $(strip $(shell TMP_BASE=$$(mktemp /tmp/longtarget-omp-XXXXXX); TMP_OBJ=$${TMP_BASE}.o; TMP_BIN=$${TMP_BASE}.bin; if $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) -x c++ /dev/null -c -fopenmp -o $$TMP_OBJ >/dev/null 2>&1 && $(CXX) $(ARCH_FLAGS) -fopenmp $$TMP_OBJ -o $$TMP_BIN >/dev/null 2>&1; then printf '%s' '-fopenmp'; fi; rm -f $$TMP_BASE $$TMP_OBJ $$TMP_BIN))
+endif
 ifneq ($(strip $(OPENMP_FLAGS)),)
   OPENMP_AVAILABLE := 1
 else ifneq ($(strip $(OPENMP_AUTODETECT_FLAGS)),)
@@ -1413,8 +1425,15 @@ check-bioinformatics-phase2:
 	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase2) \
 	bash ./scripts/check_bioinformatics_phase2.sh
 
+check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:
-	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase3_freeze) bash ./scripts/check_bioinformatics_phase3_freeze.sh
+	/usr/bin/env -i \
+		LC_ALL=C \
+		PATH=/usr/bin:/bin \
+		PHASE3_FREEZE_CLEAN_BOOTSTRAP=phase3-freeze-v1 \
+		WORK="$${WORK:-$(CURDIR)/.tmp/check_bioinformatics_phase3_freeze}" \
+		/usr/bin/bash --noprofile --norc \
+		./scripts/check_bioinformatics_phase3_freeze.sh
 
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \

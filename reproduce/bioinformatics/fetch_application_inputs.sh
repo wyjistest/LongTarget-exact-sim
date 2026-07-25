@@ -22,13 +22,72 @@ case "$#" in
     ;;
 esac
 
-ROOT="$(cd -- "${BASH_SOURCE[0]%/*}/../.." && pwd -P)"
+die() {
+  printf 'application input fetch failed: %s\n' "$1" >&2
+  exit 2
+}
+
+authenticated_reconstruction=0
+authenticated_contract_count=0
+for authenticated_name in \
+  PHASE3_AUTHENTICATED_RECONSTRUCTION \
+  PHASE3_AUTHENTICATED_RECONSTRUCTION_BUILDER \
+  PHASE3_AUTHENTICATED_RECONSTRUCTION_FETCHER \
+  PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT \
+  PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT_DESCRIPTOR
+do
+  if [[ -n "${!authenticated_name+x}" ]]; then
+    ((authenticated_contract_count += 1))
+  fi
+done
+
+if ((authenticated_contract_count != 0 && authenticated_contract_count != 5)); then
+  die "incomplete authenticated reconstruction contract"
+fi
+if ((authenticated_contract_count == 5)); then
+  [[ "$PHASE3_AUTHENTICATED_RECONSTRUCTION" == "phase3-offline-v1" ]] || \
+    die "malformed authenticated reconstruction contract"
+  for authenticated_descriptor in \
+    "$PHASE3_AUTHENTICATED_RECONSTRUCTION_BUILDER" \
+    "$PHASE3_AUTHENTICATED_RECONSTRUCTION_FETCHER" \
+    "$PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT_DESCRIPTOR"
+  do
+    [[ "$authenticated_descriptor" =~ ^/proc/self/fd/[0-9]+$ ]] || \
+      die "malformed authenticated reconstruction descriptor"
+  done
+  ROOT="$PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT"
+  BUILDER="$PHASE3_AUTHENTICATED_RECONSTRUCTION_BUILDER"
+  authenticated_fetcher="$PHASE3_AUTHENTICATED_RECONSTRUCTION_FETCHER"
+  authenticated_root_descriptor="$PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT_DESCRIPTOR"
+  [[ "$ROOT" == /* && -d "$ROOT" && ! -L "$ROOT" ]] || \
+    die "unsafe authenticated repository root"
+  physical_root="$(cd -- "$ROOT" && pwd -P)" || \
+    die "cannot resolve authenticated repository root"
+  [[ "$physical_root" == "$ROOT" && "$ROOT" -ef "$authenticated_root_descriptor" ]] || \
+    die "authenticated repository root identity mismatch"
+  [[ -f "$BUILDER" ]] || die "unsafe authenticated builder descriptor"
+  [[ -f "$authenticated_fetcher" \
+        && "${BASH_SOURCE[0]}" -ef "$authenticated_fetcher" ]] || \
+    die "authenticated fetcher identity mismatch"
+  root_directory_fd="${authenticated_root_descriptor##*/}"
+  root_directory_anchor="$authenticated_root_descriptor"
+  authenticated_reconstruction=1
+  unset \
+    PHASE3_AUTHENTICATED_RECONSTRUCTION \
+    PHASE3_AUTHENTICATED_RECONSTRUCTION_BUILDER \
+    PHASE3_AUTHENTICATED_RECONSTRUCTION_FETCHER \
+    PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT \
+    PHASE3_AUTHENTICATED_RECONSTRUCTION_ROOT_DESCRIPTOR \
+    authenticated_descriptor authenticated_fetcher authenticated_name physical_root
+else
+  ROOT="$(cd -- "${BASH_SOURCE[0]%/*}/../.." && pwd -P)"
+  BUILDER="$ROOT/reproduce/bioinformatics/build_application_panel.py"
+fi
 if [[ -n "${SOURCE_DIR+x}" ]]; then
   printf 'application input fetch failed: SOURCE_DIR override is not supported\n' >&2
   exit 2
 fi
 SOURCE_DIR="$ROOT/.tmp/bioinformatics_application_sources"
-BUILDER="$ROOT/reproduce/bioinformatics/build_application_panel.py"
 DEVELOPMENT_EXCLUSIONS="$ROOT/paper/bioinformatics/development_query_exclusions.tsv"
 HOLDOUT_MANIFEST="$ROOT/paper/bioinformatics/holdout_manifest.tsv"
 SELECTION_RECEIPT="$ROOT/paper/bioinformatics/application_selection.json"
@@ -38,18 +97,15 @@ MANIFEST_CHECKSUM="$ROOT/paper/bioinformatics/application_manifest.sha256"
 SOURCE_LEDGER="$ROOT/paper/bioinformatics/application_sources.tsv"
 INPUT_SUMMARY="$ROOT/paper/bioinformatics/application_input_summary.tsv"
 
-die() {
-  printf 'application input fetch failed: %s\n' "$1" >&2
-  exit 2
-}
-
-root_directory_fd=""
+if ((authenticated_reconstruction == 0)); then
+  root_directory_fd=""
+  root_directory_anchor=""
+fi
 temporary_directory_fd=""
 source_directory_fd=""
 root_directory_identity=""
 temporary_directory_identity=""
 source_directory_identity=""
-root_directory_anchor=""
 temporary_directory_anchor=""
 source_directory_anchor=""
 
@@ -120,7 +176,14 @@ do
     die "required command not found: $required_command"
 done
 
-for required_input in "$BUILDER" "$DEVELOPMENT_EXCLUSIONS" "$HOLDOUT_MANIFEST"; do
+if ((authenticated_reconstruction)); then
+  [[ -f "$BUILDER" ]] || \
+    die "required reconstruction input is missing or unsafe: $BUILDER"
+else
+  [[ -f "$BUILDER" && ! -L "$BUILDER" ]] || \
+    die "required reconstruction input is missing or unsafe: $BUILDER"
+fi
+for required_input in "$DEVELOPMENT_EXCLUSIONS" "$HOLDOUT_MANIFEST"; do
   [[ -f "$required_input" && ! -L "$required_input" ]] || \
     die "required reconstruction input is missing or unsafe: $required_input"
 done
@@ -143,10 +206,14 @@ if ((create_freeze == 0)); then
   done
 fi
 
-exec {root_directory_fd}<"$ROOT" || die "cannot retain repository root directory"
-root_directory_anchor="/proc/self/fd/$root_directory_fd"
+if ((authenticated_reconstruction == 0)); then
+  exec {root_directory_fd}<"$ROOT" || die "cannot retain repository root directory"
+  root_directory_anchor="/proc/self/fd/$root_directory_fd"
+fi
 root_directory_identity="$(directory_identity "$root_directory_anchor")" || \
   die "cannot identify repository root directory"
+[[ "$(directory_identity "$ROOT")" == "$root_directory_identity" ]] || \
+  die "repository root changed during setup"
 
 temporary_entry="$root_directory_anchor/.tmp"
 if [[ -L "$temporary_entry" ]]; then
