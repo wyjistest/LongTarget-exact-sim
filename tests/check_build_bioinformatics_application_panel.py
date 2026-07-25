@@ -12,6 +12,7 @@ import json
 import multiprocessing
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -205,6 +206,387 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                 check=False,
             )
 
+    def run_checker_work_preflight(
+        self,
+        work_path: object,
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(prefix="phase3-work-preflight-") as temporary:
+            temporary_root = Path(temporary)
+            repository = temporary_root / "repository"
+            scripts = repository / "scripts"
+            scripts.mkdir(parents=True)
+            checker = scripts / "check_bioinformatics_phase3_freeze.sh"
+            shutil.copy2(
+                ROOT / "scripts/check_bioinformatics_phase3_freeze.sh",
+                checker,
+            )
+            checker.chmod(0o755)
+            selected_work = work_path(repository, temporary_root)
+            environment = os.environ.copy()
+            environment["WORK"] = str(selected_work)
+            return subprocess.run(
+                ["bash", str(checker)],
+                cwd=repository,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+                check=False,
+            )
+
+    def workspace_setup_source(self) -> str:
+        checker = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        marker = 'workspace_receipt="$(python3 - "$ROOT" "$WORK" <<\'PY_WORKSPACE\'\n'
+        self.assertEqual(checker.count(marker), 1)
+        start = checker.index(marker) + len(marker)
+        end = checker.index("\nPY_WORKSPACE\n)\"", start)
+        return checker[start:end]
+
+    def offline_reconstruction_source(self) -> tuple[str, bool]:
+        checker = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        begin = "# BEGIN_PHASE3_OFFLINE_RECONSTRUCTION\n"
+        end = "# END_PHASE3_OFFLINE_RECONSTRUCTION\n"
+        if begin in checker:
+            self.assertEqual(checker.count(begin), 1)
+            self.assertEqual(checker.count(end), 1)
+            return checker.split(begin, 1)[1].split(end, 1)[0], True
+        start_marker = "if ((cached_source_count == 4)); then\n"
+        end_marker = (
+            "\nelse\n"
+            '  reconstruction_status="skipped_incomplete_cache"\n'
+            "fi"
+        )
+        self.assertEqual(checker.count(start_marker), 1)
+        start = checker.index(start_marker) + len(start_marker)
+        end_offset = checker.index(end_marker, start)
+        return checker[start:end_offset], False
+
+    def source_cache_binding_source(self) -> str:
+        checker = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        begin = "# BEGIN_PHASE3_SOURCE_CACHE_BINDING\n"
+        end = "# END_PHASE3_SOURCE_CACHE_BINDING\n"
+        if begin in checker:
+            self.assertEqual(checker.count(begin), 1)
+            self.assertEqual(checker.count(end), 1)
+            return checker.split(begin, 1)[1].split(end, 1)[0]
+        legacy_begin = 'cached_source_count="$(python3 - "$ROOT" <<\'PY\'\n'
+        self.assertEqual(checker.count(legacy_begin), 1)
+        start = checker.index(legacy_begin) + len(legacy_begin)
+        finish = checker.index("\nPY\n)\"", start)
+        legacy_python = checker[start:finish]
+        return (
+            "capture_source_cache_binding() {\n"
+            "  python3 - \"$ROOT\" <<'PY_LEGACY_SOURCE_CACHE'\n"
+            f"{legacy_python}\n"
+            "PY_LEGACY_SOURCE_CACHE\n"
+            "}\n"
+            "require_source_cache_binding() {\n"
+            "  local expected=\"$1\"\n"
+            "  local current\n"
+            "  if ! current=\"$(capture_source_cache_binding)\"; then\n"
+            "    echo \"Bioinformatics Phase 3 cache binding changed: "
+            "fresh inspection failed\" >&2\n"
+            "    return 1\n"
+            "  fi\n"
+            "  if [[ \"$current\" != \"$expected\" ]]; then\n"
+            "    echo \"Bioinformatics Phase 3 cache binding changed: "
+            "structural receipt differs\" >&2\n"
+            "    return 1\n"
+            "  fi\n"
+            "}\n"
+        )
+
+    def run_source_cache_binding_harness(
+        self,
+        repository: Path,
+        *,
+        expected_binding: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        source = self.source_cache_binding_source()
+        if expected_binding is None:
+            invocation = "capture_source_cache_binding\n"
+        else:
+            invocation = (
+                'require_source_cache_binding "$HARNESS_EXPECTED_BINDING"\n'
+            )
+        script = (
+            "set -euo pipefail\n"
+            'ROOT="$HARNESS_ROOT"\n'
+            f"{source}\n"
+            f"{invocation}"
+        )
+        trusted_bash = Path(os.environ.get("BASH", "/bin/bash")).resolve()
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "HARNESS_ROOT": str(repository),
+                "HARNESS_EXPECTED_BINDING": expected_binding or "",
+            }
+        )
+        return subprocess.run(
+            [str(trusted_bash), "-c", script],
+            cwd=repository,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            check=False,
+        )
+
+    def create_source_cache(self, repository: Path, *, complete: bool) -> Path:
+        cache = repository / ".tmp/bioinformatics_application_sources"
+        cache.mkdir(parents=True)
+        if complete:
+            for index, name in enumerate(self.SOURCE_ARCHIVE_NAMES, start=1):
+                (cache / name).write_bytes(f"archive-{index}\n".encode("ascii"))
+        return cache
+
+    def run_offline_reconstruction_harness(
+        self,
+        *,
+        temporary_root: Path,
+        fetcher: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        source, requires_invocation = self.offline_reconstruction_source()
+        work = temporary_root / "authenticated-run"
+        work.mkdir(mode=0o700, exist_ok=True)
+        work.chmod(0o700)
+        work_metadata = os.lstat(work)
+        trusted_bash = Path(os.environ.get("BASH", "/bin/bash")).resolve()
+        trusted_metadata = os.lstat(trusted_bash)
+        invocation = "run_offline_reconstruction\n" if requires_invocation else ""
+        script = (
+            "set -euo pipefail\n"
+            'WORK="$HARNESS_WORK"\n'
+            'FETCHER="$HARNESS_FETCHER"\n'
+            'TRUSTED_BASH="$HARNESS_TRUSTED_BASH"\n'
+            'WORK_DEVICE="$HARNESS_WORK_DEVICE"\n'
+            'WORK_INODE="$HARNESS_WORK_INODE"\n'
+            'TRUSTED_BASH_DEVICE="$HARNESS_BASH_DEVICE"\n'
+            'TRUSTED_BASH_INODE="$HARNESS_BASH_INODE"\n'
+            "validate_workspace_identity() { :; }\n"
+            "stream_cached_sources=0\n"
+            "reconstruction_status=not-set\n"
+            f"{source}\n"
+            f"{invocation}"
+            'printf "reconstruction_status=%s\\n" "$reconstruction_status"\n'
+        )
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "HARNESS_WORK": str(work),
+                "HARNESS_FETCHER": str(fetcher),
+                "HARNESS_TRUSTED_BASH": str(trusted_bash),
+                "HARNESS_WORK_DEVICE": str(work_metadata.st_dev),
+                "HARNESS_WORK_INODE": str(work_metadata.st_ino),
+                "HARNESS_BASH_DEVICE": str(trusted_metadata.st_dev),
+                "HARNESS_BASH_INODE": str(trusted_metadata.st_ino),
+            }
+        )
+        return subprocess.run(
+            [str(trusted_bash), "-c", script],
+            cwd=temporary_root,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            check=False,
+        )
+
+    def test_work_base_rejects_protected_repository_overlap_before_dependencies(
+        self,
+    ) -> None:
+        def repository_root(repository: Path, _temporary: Path) -> Path:
+            return repository
+
+        def paper_directory(repository: Path, _temporary: Path) -> Path:
+            path = repository / "paper/bioinformatics"
+            path.mkdir(parents=True)
+            return path
+
+        def input_directory(repository: Path, _temporary: Path) -> Path:
+            path = repository / "reproduce/bioinformatics/application_inputs"
+            path.mkdir(parents=True)
+            return path
+
+        def intermediate_symlink(repository: Path, temporary: Path) -> Path:
+            protected = repository / "paper/bioinformatics"
+            protected.mkdir(parents=True)
+            alias = temporary / "repository-alias"
+            alias.symlink_to(repository, target_is_directory=True)
+            return alias / "paper/bioinformatics"
+
+        for label, select_work in (
+            ("repository-root", repository_root),
+            ("paper-directory", paper_directory),
+            ("input-directory", input_directory),
+            ("intermediate-symlink", intermediate_symlink),
+        ):
+            with self.subTest(work=label):
+                completed = self.run_checker_work_preflight(select_work)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(
+                    "Phase 3 checker work base overlaps protected repository paths",
+                    completed.stderr,
+                )
+                self.assertNotIn("missing or unsafe Bioinformatics", completed.stderr)
+
+    def test_workspace_setup_uses_exclusive_child_and_preserves_base_sentinel(
+        self,
+    ) -> None:
+        source = self.workspace_setup_source()
+        with tempfile.TemporaryDirectory(prefix="phase3-workspace-setup-") as temporary:
+            temporary_root = Path(temporary)
+            repository = temporary_root / "repository"
+            repository.mkdir()
+            work_base = temporary_root / "external-work"
+            work_base.mkdir()
+            sentinel = work_base / "application-freeze.before.json"
+            sentinel.write_text("owner-sentinel\n", encoding="ascii")
+            completed = subprocess.run(
+                [sys.executable, "-c", source, str(repository), str(work_base)],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            receipt = completed.stdout.strip().split("\t")
+            self.assertEqual(len(receipt), 6)
+            run_directory = Path(receipt[0])
+            self.assertEqual(Path(receipt[1]), work_base.resolve())
+            self.assertEqual(run_directory.parent, work_base.resolve())
+            self.assertNotEqual(run_directory, work_base.resolve())
+            self.assertTrue(run_directory.name.startswith("bioinformatics-phase3-freeze."))
+            self.assertEqual(stat.S_IMODE(os.lstat(run_directory).st_mode), 0o700)
+            self.assertEqual(sentinel.read_text(encoding="ascii"), "owner-sentinel\n")
+            self.assertFalse((run_directory / sentinel.name).exists())
+
+            symlink_base = temporary_root / "symlink-work"
+            symlink_base.symlink_to(work_base, target_is_directory=True)
+            rejected = subprocess.run(
+                [sys.executable, "-c", source, str(repository), str(symlink_base)],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+                check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("work base final component is a symlink", rejected.stderr)
+
+    def test_offline_reconstruction_rejects_injected_command_directory(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="phase3-offline-injected-") as temporary:
+            temporary_root = Path(temporary)
+            work = temporary_root / "authenticated-run"
+            offline = work / "offline-bin"
+            offline.mkdir(parents=True)
+            fake_marker = temporary_root / "fake-bash-invoked"
+            fake_bash = offline / "bash"
+            fake_bash.write_text(
+                "#!/bin/sh\n"
+                'printf "invoked\\n" >"$FAKE_BASH_MARKER"\n'
+                "exit 0\n",
+                encoding="ascii",
+            )
+            fake_bash.chmod(0o700)
+            environment_marker = os.environ.get("FAKE_BASH_MARKER")
+            os.environ["FAKE_BASH_MARKER"] = str(fake_marker)
+            try:
+                completed = self.run_offline_reconstruction_harness(
+                    temporary_root=temporary_root,
+                    fetcher=temporary_root / "nonexistent-fetcher.sh",
+                )
+            finally:
+                if environment_marker is None:
+                    os.environ.pop("FAKE_BASH_MARKER", None)
+                else:
+                    os.environ["FAKE_BASH_MARKER"] = environment_marker
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertFalse(fake_marker.exists())
+            self.assertNotIn("verified_from_complete_cache", completed.stdout)
+            self.assertTrue(fake_bash.is_file())
+
+    def test_offline_reconstruction_uses_exact_guard_and_cleans_owned_entries(
+        self,
+    ) -> None:
+        expected_guard = (
+            b"#!/bin/sh\n"
+            b"printf '%s\\n' 'Phase 3 freeze reconstruction attempted network access' >&2\n"
+            b"exit 97\n"
+        )
+        with tempfile.TemporaryDirectory(prefix="phase3-offline-clean-") as temporary:
+            temporary_root = Path(temporary)
+            fetch_marker = temporary_root / "fetcher-ran"
+            fake_fetcher = temporary_root / "fake-fetcher.sh"
+            fake_fetcher.write_text(
+                "#!/bin/bash\n"
+                "set -euo pipefail\n"
+                'offline="${PATH%%:*}"\n'
+                '[[ "$offline" == "$EXPECTED_OFFLINE" ]]\n'
+                '"$HARNESS_PYTHON" - "$offline/curl" "$EXPECTED_GUARD_HEX" <<\'PY\'\n'
+                "import os\n"
+                "import stat\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "guard = Path(sys.argv[1])\n"
+                "expected = bytes.fromhex(sys.argv[2])\n"
+                "assert sorted(path.name for path in guard.parent.iterdir()) == ['curl']\n"
+                "metadata = os.lstat(guard)\n"
+                "assert stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1\n"
+                "assert stat.S_IMODE(metadata.st_mode) == 0o500\n"
+                "assert guard.read_bytes() == expected\n"
+                "PY\n"
+                'printf "ran\\n" >"$FETCH_MARKER"\n',
+                encoding="ascii",
+            )
+            fake_fetcher.chmod(0o700)
+            previous = {
+                name: os.environ.get(name)
+                for name in (
+                    "EXPECTED_OFFLINE",
+                    "EXPECTED_GUARD_HEX",
+                    "FETCH_MARKER",
+                    "HARNESS_PYTHON",
+                )
+            }
+            os.environ.update(
+                {
+                    "EXPECTED_OFFLINE": str(
+                        temporary_root / "authenticated-run/offline-bin"
+                    ),
+                    "EXPECTED_GUARD_HEX": expected_guard.hex(),
+                    "FETCH_MARKER": str(fetch_marker),
+                    "HARNESS_PYTHON": sys.executable,
+                }
+            )
+            try:
+                completed = self.run_offline_reconstruction_harness(
+                    temporary_root=temporary_root,
+                    fetcher=fake_fetcher,
+                )
+            finally:
+                for name, value in previous.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertTrue(fetch_marker.is_file())
+            self.assertFalse(
+                (temporary_root / "authenticated-run/offline-bin").exists()
+            )
+
     def test_source_cache_preflight_rejects_unsafe_layouts_before_dependencies(
         self,
     ) -> None:
@@ -263,6 +645,143 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertIn(expected_error, completed.stderr)
 
+    def test_source_cache_binding_receipt_is_structural_and_stable(self) -> None:
+        for expected_count in (0, 4):
+            with self.subTest(source_count=expected_count), tempfile.TemporaryDirectory(
+                prefix="phase3-cache-binding-stable-"
+            ) as temporary:
+                repository = Path(temporary) / "repository"
+                repository.mkdir()
+                cache = self.create_source_cache(
+                    repository,
+                    complete=expected_count == 4,
+                )
+                first = self.run_source_cache_binding_harness(repository)
+                second = self.run_source_cache_binding_harness(repository)
+                self.assertEqual(first.returncode, 0, first.stderr)
+                self.assertEqual(second.returncode, 0, second.stderr)
+                self.assertEqual(first.stdout, second.stdout)
+                receipt = json.loads(first.stdout)
+                self.assertIsInstance(receipt, dict)
+                self.assertEqual(
+                    set(receipt),
+                    {"archives", "cache", "count", "schema_version", "temporary"},
+                )
+                self.assertEqual(receipt["schema_version"], 1)
+                self.assertEqual(receipt["count"], expected_count)
+                temporary_metadata = os.lstat(repository / ".tmp")
+                cache_metadata = os.lstat(cache)
+                self.assertEqual(
+                    receipt["temporary"],
+                    {
+                        "device": temporary_metadata.st_dev,
+                        "inode": temporary_metadata.st_ino,
+                        "present": True,
+                    },
+                )
+                self.assertEqual(
+                    receipt["cache"],
+                    {
+                        "device": cache_metadata.st_dev,
+                        "inode": cache_metadata.st_ino,
+                        "present": True,
+                    },
+                )
+                self.assertEqual(len(receipt["archives"]), expected_count)
+                for archive, name in zip(
+                    receipt["archives"],
+                    self.SOURCE_ARCHIVE_NAMES if expected_count == 4 else (),
+                    strict=True,
+                ):
+                    metadata = os.lstat(cache / name)
+                    self.assertEqual(
+                        archive,
+                        {
+                            "device": metadata.st_dev,
+                            "inode": metadata.st_ino,
+                            "mode": metadata.st_mode,
+                            "mtime_ns": metadata.st_mtime_ns,
+                            "name": name,
+                            "nlink": metadata.st_nlink,
+                            "size": metadata.st_size,
+                            "type": "regular",
+                        },
+                    )
+                self.assertNotIn("atime", first.stdout.lower())
+                rechecked = self.run_source_cache_binding_harness(
+                    repository,
+                    expected_binding=first.stdout.strip(),
+                )
+                self.assertEqual(rechecked.returncode, 0, rechecked.stderr)
+
+    def test_source_cache_binding_recheck_rejects_structural_drift(self) -> None:
+        def add_partial(repository: Path, cache: Path, temporary: Path) -> None:
+            del repository, temporary
+            (cache / self.SOURCE_ARCHIVE_NAMES[0]).write_bytes(b"partial\n")
+
+        def replace_empty_cache(
+            repository: Path,
+            cache: Path,
+            temporary: Path,
+        ) -> None:
+            del repository
+            cache.rename(temporary / "parked-empty-cache")
+            cache.mkdir()
+
+        def add_extra(repository: Path, cache: Path, temporary: Path) -> None:
+            del repository, temporary
+            (cache / "unexpected.gz").write_bytes(b"extra\n")
+
+        def replace_archive(
+            repository: Path,
+            cache: Path,
+            temporary: Path,
+        ) -> None:
+            del repository
+            archive = cache / self.SOURCE_ARCHIVE_NAMES[0]
+            metadata = os.lstat(archive)
+            contents = archive.read_bytes()
+            archive.rename(temporary / "parked-canonical-archive.gz")
+            archive.write_bytes(contents)
+            archive.chmod(stat.S_IMODE(metadata.st_mode))
+            os.utime(
+                archive,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns),
+                follow_symlinks=False,
+            )
+            replacement = os.lstat(archive)
+            self.assertNotEqual(replacement.st_ino, metadata.st_ino)
+            self.assertEqual(replacement.st_mode, metadata.st_mode)
+            self.assertEqual(replacement.st_size, metadata.st_size)
+            self.assertEqual(replacement.st_mtime_ns, metadata.st_mtime_ns)
+
+        scenarios = (
+            ("empty-add-partial", False, add_partial),
+            ("empty-replace-cache", False, replace_empty_cache),
+            ("complete-add-extra", True, add_extra),
+            ("complete-replace-archive", True, replace_archive),
+        )
+        for label, complete, mutate in scenarios:
+            with self.subTest(mutation=label), tempfile.TemporaryDirectory(
+                prefix=f"phase3-cache-binding-{label}-"
+            ) as temporary_name:
+                temporary = Path(temporary_name)
+                repository = temporary / "repository"
+                repository.mkdir()
+                cache = self.create_source_cache(repository, complete=complete)
+                captured = self.run_source_cache_binding_harness(repository)
+                self.assertEqual(captured.returncode, 0, captured.stderr)
+                mutate(repository, cache, temporary)
+                rechecked = self.run_source_cache_binding_harness(
+                    repository,
+                    expected_binding=captured.stdout.strip(),
+                )
+                self.assertNotEqual(rechecked.returncode, 0)
+                self.assertIn(
+                    "Bioinformatics Phase 3 cache binding changed",
+                    rechecked.stderr,
+                )
+
     def semantic_validator_source(self) -> str:
         checker = (
             ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
@@ -272,6 +791,307 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         start = checker.index(marker) + len(marker)
         end = checker.index("\nPY\n", start)
         return checker[start:end]
+
+    def application_snapshot_source(self) -> str:
+        checker = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        function_marker = "write_application_snapshot() {\n"
+        self.assertEqual(checker.count(function_marker), 1)
+        function = checker.split(function_marker, 1)[1]
+        heredoc_marker = "<<'PY'\n"
+        self.assertEqual(function.count(heredoc_marker), 1)
+        start = function.index(heredoc_marker) + len(heredoc_marker)
+        end = function.index("\nPY\n}", start)
+        return function[start:end]
+
+    def create_semantic_validator_repository(self, temporary: Path) -> Path:
+        repository = temporary / "repository"
+        shutil.copytree(
+            ROOT / "paper/bioinformatics",
+            repository / "paper/bioinformatics",
+        )
+        application_parent = repository / "reproduce/bioinformatics"
+        application_parent.mkdir(parents=True)
+        shutil.copytree(
+            ROOT / "reproduce/bioinformatics/application_inputs",
+            application_parent / "application_inputs",
+        )
+        return repository
+
+    def run_semantic_validator(
+        self,
+        repository: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                self.semantic_validator_source(),
+                str(repository),
+                "bf94dc75c5fe3e996472a1e90d242f582da361bf",
+            ],
+            cwd=repository,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+
+    def test_semantic_validator_rejects_intermediate_symlink_parent(self) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix="phase3-semantic-parent-symlink-"
+        ) as temporary_name:
+            temporary = Path(temporary_name)
+            repository = self.create_semantic_validator_repository(temporary)
+            paper_directory = repository / "paper/bioinformatics"
+            outside = temporary / "outside-bioinformatics"
+            shutil.copytree(paper_directory, outside)
+            paper_directory.rename(temporary / "parked-bioinformatics")
+            paper_directory.symlink_to(outside, target_is_directory=True)
+            completed = self.run_semantic_validator(repository)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("no-follow repository path failed", completed.stderr)
+            self.assertNotIn("CalledProcessError", completed.stderr)
+
+    def test_snapshot_rejects_directory_swap_during_retained_file_hash(
+        self,
+    ) -> None:
+        if not Path("/proc/self/fd").is_dir():
+            self.skipTest("snapshot descriptor observation requires /proc")
+        with tempfile.TemporaryDirectory(
+            prefix="phase3-snapshot-directory-swap-"
+        ) as temporary_name:
+            temporary = Path(temporary_name)
+            repository = temporary / "repository"
+            metadata_paths = (
+                "application_input_summary.tsv",
+                "application_manifest.sha256",
+                "application_manifest.tsv",
+                "application_protocol.md",
+                "application_selection.json",
+                "application_sources.tsv",
+            )
+            paper = repository / "paper/bioinformatics"
+            paper.mkdir(parents=True)
+            for name in metadata_paths:
+                (paper / name).write_text(f"{name}\n", encoding="ascii")
+            inputs = repository / "reproduce/bioinformatics/application_inputs"
+            queries = inputs / "queries"
+            targets = inputs / "targets"
+            queries.mkdir(parents=True)
+            targets.mkdir()
+            slow = queries / "slow.fa"
+            with slow.open("wb") as handle:
+                handle.truncate(512 * 1024 * 1024)
+            (targets / "original.fa").write_text("original\n", encoding="ascii")
+
+            work = temporary / "authenticated-run"
+            work.mkdir(mode=0o700)
+            work.chmod(0o700)
+            work_metadata = os.lstat(work)
+            destination = work / "application-freeze.before.json"
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    self.application_snapshot_source(),
+                    str(repository),
+                    str(destination),
+                    str(work),
+                    str(work_metadata.st_dev),
+                    str(work_metadata.st_ino),
+                ],
+                cwd=temporary,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                descriptor_root = Path(f"/proc/{process.pid}/fd")
+                deadline = time.monotonic() + 10
+                observed = False
+                while time.monotonic() < deadline and process.poll() is None:
+                    try:
+                        descriptors = list(descriptor_root.iterdir())
+                    except FileNotFoundError:
+                        break
+                    for descriptor in descriptors:
+                        try:
+                            target = os.readlink(descriptor)
+                        except OSError:
+                            continue
+                        if target == str(slow):
+                            observed = True
+                            break
+                    if observed:
+                        break
+                    time.sleep(0.001)
+                self.assertTrue(observed, "did not observe retained slow.fa descriptor")
+
+                targets.rename(temporary / "parked-targets")
+                targets.mkdir()
+                (targets / "replacement.fa").write_text(
+                    "replacement\n",
+                    encoding="ascii",
+                )
+                stdout, stderr = process.communicate(timeout=30)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+            self.assertNotEqual(process.returncode, 0, stdout)
+            self.assertIn("frozen directory child identity changed", stderr)
+            self.assertFalse(destination.exists())
+
+    def test_semantic_validator_binds_complete_phase3_receipts(self) -> None:
+        def mutate_selection(
+            repository: Path,
+            update: object,
+            *,
+            indent: int = 2,
+        ) -> None:
+            path = repository / "paper/bioinformatics/application_selection.json"
+            with path.open("r", encoding="utf-8", errors="strict") as handle:
+                selection = json.load(handle)
+            update(selection)
+            with path.open("w", encoding="utf-8", errors="strict") as handle:
+                json.dump(selection, handle, ensure_ascii=True, indent=indent, sort_keys=True)
+                handle.write("\n")
+
+        def query_rule(repository: Path) -> None:
+            mutate_selection(
+                repository,
+                lambda selection: selection.__setitem__(
+                    "query_selection_rule",
+                    "coherently mutated query selection rule",
+                ),
+            )
+
+        def target_rule(repository: Path) -> None:
+            mutate_selection(
+                repository,
+                lambda selection: selection.__setitem__(
+                    "target_selection_rule",
+                    "coherently mutated target selection rule",
+                ),
+            )
+
+        def representative_query_count(repository: Path) -> None:
+            def update(selection: dict[str, object]) -> None:
+                counts = selection["query_counts"]
+                assert isinstance(counts, dict)
+                counts["representative_query_count"] = 27126
+
+            mutate_selection(repository, update)
+
+        def chromosome_target_counts(repository: Path) -> None:
+            def update(selection: dict[str, object]) -> None:
+                counts = selection["target_counts"]
+                assert isinstance(counts, dict)
+                counts["chr21_retained_target_count"] = 220
+                counts["chr21_excluded_target_count"] = 1
+
+            mutate_selection(repository, update)
+
+        def duplicate_nested_json_key(repository: Path) -> None:
+            path = repository / "paper/bioinformatics/application_selection.json"
+            original = path.read_bytes()
+            marker = b'  "query_counts": {\n'
+            self.assertEqual(original.count(marker), 1)
+            mutated = original.replace(
+                marker,
+                marker + b'    "representative_query_count": -1,\n',
+                1,
+            )
+            path.write_bytes(mutated)
+
+        def appended_phase9_application_row(repository: Path) -> None:
+            path = repository / "paper/bioinformatics/submission_manifest.tsv"
+            fields = (
+                "artifact_id",
+                "path",
+                "phase",
+                "artifact_class",
+                "authority",
+                "freeze_or_epoch",
+                "required",
+                "status",
+            )
+            with path.open(
+                "a",
+                encoding="utf-8",
+                errors="strict",
+                newline="",
+            ) as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=fields,
+                    delimiter="\t",
+                    lineterminator="\n",
+                )
+                writer.writerow(
+                    {
+                        "artifact_id": "S0901",
+                        "path": "paper/bioinformatics/application_results.tsv",
+                        "phase": "9",
+                        "artifact_class": "source_data",
+                        "authority": "candidate_only_output",
+                        "freeze_or_epoch": "postfreeze",
+                        "required": "0",
+                        "status": "pass",
+                    }
+                )
+
+        def candidate_only_protocol_contradiction(repository: Path) -> None:
+            path = repository / "paper/bioinformatics/application_protocol.md"
+            with path.open("a", encoding="utf-8", errors="strict") as handle:
+                handle.write(
+                    "\nCandidate-only B speedup establishes the B3 biological "
+                    "superiority claim.\n"
+                )
+
+        scenarios = (
+            ("query-rule", query_rule, "selection query rule drifted"),
+            ("target-rule", target_rule, "selection target rule drifted"),
+            (
+                "representative-query-count",
+                representative_query_count,
+                "selection query counts drifted",
+            ),
+            (
+                "chromosome-target-counts",
+                chromosome_target_counts,
+                "selection target counts drifted",
+            ),
+            (
+                "duplicate-nested-json-key",
+                duplicate_nested_json_key,
+                "application selection contains duplicate JSON key",
+            ),
+            (
+                "phase9-application-row",
+                appended_phase9_application_row,
+                "submission manifest contains application row outside Phase 3 suffix",
+            ),
+            (
+                "candidate-only-protocol-contradiction",
+                candidate_only_protocol_contradiction,
+                "application protocol checksum drift",
+            ),
+        )
+        for label, mutate, expected_error in scenarios:
+            with self.subTest(receipt_mutation=label), tempfile.TemporaryDirectory(
+                prefix=f"phase3-semantic-{label}-"
+            ) as temporary_name:
+                repository = self.create_semantic_validator_repository(
+                    Path(temporary_name)
+                )
+                mutate(repository)
+                completed = self.run_semantic_validator(repository)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(expected_error, completed.stderr)
 
     def test_source_ledger_provenance_fields_are_exact_authority_bound(self) -> None:
         validator = self.semantic_validator_source()
@@ -568,10 +1388,16 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             'cmp -- "$before_snapshot" "$after_snapshot"',
             "stream_cached_sources",
             'offline_bin="$WORK/offline-bin"',
-            'PATH="$offline_bin:$PATH" bash "$FETCHER"',
+            "TRUSTED_BASH_DEVICE",
+            "TRUSTED_BASH_INODE",
+            "os.O_CREAT",
+            "os.O_EXCL",
+            "os.O_NOFOLLOW",
+            "subprocess.run([trusted_bash, fetcher], env=environment, check=False)",
             'reconstruction_status="skipped_incomplete_cache"',
         ):
             self.assertIn(required, text)
+        self.assertNotIn('PATH="$offline_bin:$PATH" bash "$FETCHER"', text)
 
 
 class ApplicationPanelBuilderTests(unittest.TestCase):
