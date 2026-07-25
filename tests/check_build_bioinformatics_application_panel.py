@@ -169,6 +169,179 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
     MANIFEST_SHA256 = (
         "e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc"
     )
+    SOURCE_ARCHIVE_NAMES = (
+        "gencode.v49.lncRNA_transcripts.fa.gz",
+        "gencode.v49.annotation.gtf.gz",
+        "chr21.fa.gz",
+        "chr22.fa.gz",
+    )
+
+    def run_checker_cache_preflight(
+        self,
+        configure: object,
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(prefix="phase3-cache-preflight-") as temporary:
+            temporary_root = Path(temporary)
+            repository = temporary_root / "repository"
+            scripts = repository / "scripts"
+            scripts.mkdir(parents=True)
+            checker = scripts / "check_bioinformatics_phase3_freeze.sh"
+            shutil.copy2(
+                ROOT / "scripts/check_bioinformatics_phase3_freeze.sh",
+                checker,
+            )
+            checker.chmod(0o755)
+            configure(repository, temporary_root)
+            environment = os.environ.copy()
+            environment["WORK"] = str(temporary_root / "checker-work")
+            return subprocess.run(
+                ["bash", str(checker)],
+                cwd=repository,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+                check=False,
+            )
+
+    def test_source_cache_preflight_rejects_unsafe_layouts_before_dependencies(
+        self,
+    ) -> None:
+        def cache_directory(repository: Path) -> Path:
+            cache = repository / ".tmp/bioinformatics_application_sources"
+            cache.mkdir(parents=True)
+            return cache
+
+        def extra_entry(repository: Path, _temporary: Path) -> None:
+            (cache_directory(repository) / "unexpected.gz").write_bytes(b"extra")
+
+        def partial_set(repository: Path, _temporary: Path) -> None:
+            cache = cache_directory(repository)
+            (cache / self.SOURCE_ARCHIVE_NAMES[0]).write_bytes(b"partial")
+
+        def symlinked_cache(repository: Path, temporary: Path) -> None:
+            temporary_parent = repository / ".tmp"
+            temporary_parent.mkdir()
+            outside = temporary / "outside-cache"
+            outside.mkdir()
+            (temporary_parent / "bioinformatics_application_sources").symlink_to(
+                outside,
+                target_is_directory=True,
+            )
+
+        def symlinked_temporary_parent(repository: Path, temporary: Path) -> None:
+            outside = temporary / "outside-temporary-parent"
+            outside.mkdir()
+            (repository / ".tmp").symlink_to(outside, target_is_directory=True)
+
+        def hardlinked_archive(repository: Path, temporary: Path) -> None:
+            cache = cache_directory(repository)
+            external = temporary / "external-archive.gz"
+            external.write_bytes(b"hardlinked")
+            os.link(external, cache / self.SOURCE_ARCHIVE_NAMES[0])
+            for name in self.SOURCE_ARCHIVE_NAMES[1:]:
+                (cache / name).write_bytes(name.encode("ascii"))
+
+        def special_archive(repository: Path, _temporary: Path) -> None:
+            cache = cache_directory(repository)
+            os.mkfifo(cache / self.SOURCE_ARCHIVE_NAMES[0])
+            for name in self.SOURCE_ARCHIVE_NAMES[1:]:
+                (cache / name).write_bytes(name.encode("ascii"))
+
+        scenarios = (
+            ("extra", extra_entry, "unexpected Phase 3 source-cache entry"),
+            ("partial", partial_set, "zero or exactly four canonical archives"),
+            ("cache-symlink", symlinked_cache, "unsafe Phase 3 source-cache directory"),
+            ("tmp-symlink", symlinked_temporary_parent, "unsafe Phase 3 source-cache parent"),
+            ("hardlink", hardlinked_archive, "source-cache archive has a hardlink alias"),
+            ("special", special_archive, "source-cache entry is not a regular file"),
+        )
+        for label, configure, expected_error in scenarios:
+            with self.subTest(layout=label):
+                completed = self.run_checker_cache_preflight(configure)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(expected_error, completed.stderr)
+
+    def semantic_validator_source(self) -> str:
+        checker = (
+            ROOT / "scripts/check_bioinformatics_phase3_freeze.sh"
+        ).read_text(encoding="utf-8", errors="strict")
+        marker = 'python3 - "$ROOT" "$BASELINE" <<\'PY\'\n'
+        self.assertEqual(checker.count(marker), 1)
+        start = checker.index(marker) + len(marker)
+        end = checker.index("\nPY\n", start)
+        return checker[start:end]
+
+    def test_source_ledger_provenance_fields_are_exact_authority_bound(self) -> None:
+        validator = self.semantic_validator_source()
+        for field in (
+            "license_or_terms",
+            "redistribution_note",
+            "download_command",
+        ):
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory(
+                    prefix=f"phase3-source-{field}-"
+                ) as temporary:
+                    repository = Path(temporary) / "repository"
+                    shutil.copytree(
+                        ROOT / "paper/bioinformatics",
+                        repository / "paper/bioinformatics",
+                    )
+                    application_parent = repository / "reproduce/bioinformatics"
+                    application_parent.mkdir(parents=True)
+                    shutil.copytree(
+                        ROOT / "reproduce/bioinformatics/application_inputs",
+                        application_parent / "application_inputs",
+                    )
+                    ledger = repository / "paper/bioinformatics/application_sources.tsv"
+                    with ledger.open(
+                        "r",
+                        encoding="utf-8",
+                        errors="strict",
+                        newline="",
+                    ) as handle:
+                        reader = csv.DictReader(handle, delimiter="\t")
+                        fieldnames = reader.fieldnames
+                        rows = list(reader)
+                    self.assertIsNotNone(fieldnames)
+                    self.assertIn(field, fieldnames or ())
+                    rows[0][field] = f"coherently-mutated-{field}"
+                    with ledger.open(
+                        "w",
+                        encoding="utf-8",
+                        errors="strict",
+                        newline="",
+                    ) as handle:
+                        writer = csv.DictWriter(
+                            handle,
+                            fieldnames=fieldnames,
+                            delimiter="\t",
+                            lineterminator="\n",
+                        )
+                        writer.writeheader()
+                        writer.writerows(rows)
+                    completed = subprocess.run(
+                        [
+                            sys.executable,
+                            "-c",
+                            validator,
+                            str(repository),
+                            "bf94dc75c5fe3e996472a1e90d242f582da361bf",
+                        ],
+                        cwd=repository,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=30,
+                        check=False,
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertIn(
+                        f"source authority drifted: gencode_v49_lncrna {field}",
+                        completed.stderr,
+                    )
 
     def test_phase3_freeze_has_no_execution_artifacts(self) -> None:
         forbidden = (

@@ -6,6 +6,163 @@ BASELINE="bf94dc75c5fe3e996472a1e90d242f582da361bf"
 FETCHER="$ROOT/reproduce/bioinformatics/fetch_application_inputs.sh"
 WORK="${WORK:-$ROOT/.tmp/check_bioinformatics_phase3_freeze}"
 
+cached_source_count="$(python3 - "$ROOT" <<'PY'
+from __future__ import annotations
+
+import os
+import stat
+import sys
+from pathlib import Path
+
+
+root = Path(sys.argv[1])
+temporary_name = ".tmp"
+cache_name = "bioinformatics_application_sources"
+expected_names = {
+    "gencode.v49.lncRNA_transcripts.fa.gz",
+    "gencode.v49.annotation.gtf.gz",
+    "chr21.fa.gz",
+    "chr22.fa.gz",
+}
+directory_flags = (
+    os.O_RDONLY
+    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_DIRECTORY", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+)
+file_flags = (
+    os.O_RDONLY
+    | getattr(os, "O_CLOEXEC", 0)
+    | getattr(os, "O_NOFOLLOW", 0)
+)
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"Bioinformatics Phase 3 cache preflight failed: {message}")
+
+
+def retained_directory(
+    name: str,
+    *,
+    parent_fd: int,
+    unsafe_message: str,
+) -> tuple[int, os.stat_result]:
+    try:
+        named = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        raise
+    if not stat.S_ISDIR(named.st_mode):
+        fail(unsafe_message)
+    try:
+        descriptor = os.open(name, directory_flags, dir_fd=parent_fd)
+    except OSError:
+        fail(unsafe_message)
+    retained = os.fstat(descriptor)
+    if not stat.S_ISDIR(retained.st_mode) or (
+        retained.st_dev,
+        retained.st_ino,
+    ) != (named.st_dev, named.st_ino):
+        os.close(descriptor)
+        fail(unsafe_message)
+    return descriptor, retained
+
+
+try:
+    root_named = os.lstat(root)
+    if not stat.S_ISDIR(root_named.st_mode):
+        fail("repository root is unsafe")
+    root_fd = os.open(root, directory_flags)
+except OSError:
+    fail("repository root is unsafe")
+try:
+    root_retained = os.fstat(root_fd)
+    if (root_retained.st_dev, root_retained.st_ino) != (
+        root_named.st_dev,
+        root_named.st_ino,
+    ):
+        fail("repository root changed during preflight")
+    try:
+        temporary_fd, temporary_identity = retained_directory(
+            temporary_name,
+            parent_fd=root_fd,
+            unsafe_message="unsafe Phase 3 source-cache parent",
+        )
+    except FileNotFoundError:
+        print(0)
+        raise SystemExit(0)
+    try:
+        try:
+            cache_fd, cache_identity = retained_directory(
+                cache_name,
+                parent_fd=temporary_fd,
+                unsafe_message="unsafe Phase 3 source-cache directory",
+            )
+        except FileNotFoundError:
+            print(0)
+            raise SystemExit(0)
+        try:
+            names = set(os.listdir(cache_fd))
+            unexpected = sorted(names - expected_names)
+            if unexpected:
+                fail(
+                    "unexpected Phase 3 source-cache entry: "
+                    + ", ".join(unexpected)
+                )
+            if names and names != expected_names:
+                fail("source cache must contain zero or exactly four canonical archives")
+            if not names:
+                print(0)
+                raise SystemExit(0)
+
+            seen_inodes: set[tuple[int, int]] = set()
+            for name in sorted(expected_names):
+                try:
+                    named = os.stat(name, dir_fd=cache_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    fail("source cache changed during archive validation")
+                if not stat.S_ISREG(named.st_mode):
+                    fail(f"source-cache entry is not a regular file: {name}")
+                if named.st_nlink != 1:
+                    fail(f"source-cache archive has a hardlink alias: {name}")
+                inode = (named.st_dev, named.st_ino)
+                if inode in seen_inodes:
+                    fail(f"source-cache archives share an inode: {name}")
+                seen_inodes.add(inode)
+                try:
+                    descriptor = os.open(name, file_flags, dir_fd=cache_fd)
+                except OSError:
+                    fail(f"source-cache archive changed while opening: {name}")
+                try:
+                    opened = os.fstat(descriptor)
+                    if (
+                        not stat.S_ISREG(opened.st_mode)
+                        or opened.st_nlink != 1
+                        or (opened.st_dev, opened.st_ino) != inode
+                    ):
+                        fail(f"source-cache archive changed while opening: {name}")
+                finally:
+                    os.close(descriptor)
+
+            cache_current = os.stat(
+                cache_name,
+                dir_fd=temporary_fd,
+                follow_symlinks=False,
+            )
+            if (cache_current.st_dev, cache_current.st_ino) != (
+                cache_identity.st_dev,
+                cache_identity.st_ino,
+            ):
+                fail("source-cache directory changed during preflight")
+            print(4)
+        finally:
+            os.close(cache_fd)
+    finally:
+        os.close(temporary_fd)
+finally:
+    os.close(root_fd)
+PY
+)"
+
 if [[ -L "$WORK" || ( -e "$WORK" && ! -d "$WORK" ) ]]; then
   echo "unsafe Phase 3 checker work directory: $WORK" >&2
   exit 1
@@ -100,23 +257,6 @@ if ! git -C "$ROOT" diff --quiet "$BASELINE" -- \
   exit 1
 fi
 
-cached_source_count=0
-for source_path in \
-  "$ROOT/.tmp/bioinformatics_application_sources/gencode.v49.lncRNA_transcripts.fa.gz" \
-  "$ROOT/.tmp/bioinformatics_application_sources/gencode.v49.annotation.gtf.gz" \
-  "$ROOT/.tmp/bioinformatics_application_sources/chr21.fa.gz" \
-  "$ROOT/.tmp/bioinformatics_application_sources/chr22.fa.gz"; do
-  if [[ -L "$source_path" || ( -e "$source_path" && ! -f "$source_path" ) ]]; then
-    echo "unsafe Phase 3 source-cache entry: $source_path" >&2
-    exit 1
-  fi
-  [[ ! -f "$source_path" ]] || ((cached_source_count += 1))
-done
-if ((cached_source_count != 0 && cached_source_count != 4)); then
-  echo "Phase 3 source cache must contain either zero or all four archives" >&2
-  exit 1
-fi
-
 python3 - "$ROOT" "$BASELINE" <<'PY'
 from __future__ import annotations
 
@@ -179,6 +319,10 @@ SOURCE_AUTHORITIES = (
         "decompressed_size_bytes": "223740848",
         "decompressed_sha256": "4c632018e0198d76fe76471baa5511a1c07af86bf7bab6ce6747edb8d5add5ae",
         "local_source_path": ".tmp/bioinformatics_application_sources/gencode.v49.lncRNA_transcripts.fa.gz",
+        "license_or_terms": "GENCODE project data are open access",
+        "redistribution_note": "Selected small transcript FASTAs are retained with source attribution; final redistribution approval remains owner-controlled",
+        "download_command": "curl -fL --retry 3 --output .tmp/bioinformatics_application_sources/gencode.v49.lncRNA_transcripts.fa.gz.partial.$$ https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/gencode.v49.lncRNA_transcripts.fa.gz",
+        "status": "verified",
     },
     {
         "source_id": "gencode_v49_gtf", "role": "gene and transcript annotation",
@@ -190,6 +334,10 @@ SOURCE_AUTHORITIES = (
         "decompressed_size_bytes": "3323462848",
         "decompressed_sha256": "ff32fd55c6799b3b94fe10aa17b2b5d4da952fa1de12fe44afadf32e949ec914",
         "local_source_path": ".tmp/bioinformatics_application_sources/gencode.v49.annotation.gtf.gz",
+        "license_or_terms": "GENCODE project data are open access",
+        "redistribution_note": "Annotation is downloaded for reconstruction and is not redistributed in this repository",
+        "download_command": "curl -fL --retry 3 --output .tmp/bioinformatics_application_sources/gencode.v49.annotation.gtf.gz.partial.$$ https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/gencode.v49.annotation.gtf.gz",
+        "status": "verified",
     },
     {
         "source_id": "ucsc_hg38_chr21", "role": "forward genomic reference sequence",
@@ -202,6 +350,10 @@ SOURCE_AUTHORITIES = (
         "decompressed_size_bytes": "47644190",
         "decompressed_sha256": "35c71b68436d1a278ecb6a1e875af3ba4020738a028a7feac769a6d62790ae1f",
         "local_source_path": ".tmp/bioinformatics_application_sources/chr21.fa.gz",
+        "license_or_terms": "UCSC data-use conditions and Genome Reference Consortium attribution apply",
+        "redistribution_note": "Only selected promoter sequences are retained; final redistribution approval remains owner-controlled",
+        "download_command": "curl -fL --retry 3 --output .tmp/bioinformatics_application_sources/chr21.fa.gz.partial.$$ https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz",
+        "status": "verified",
     },
     {
         "source_id": "ucsc_hg38_chr22", "role": "forward genomic reference sequence",
@@ -214,6 +366,10 @@ SOURCE_AUTHORITIES = (
         "decompressed_size_bytes": "51834845",
         "decompressed_sha256": "ce3ee1ca39356238f7aee438a40a88b4f1b9d80b316b263e16fb12402212d10f",
         "local_source_path": ".tmp/bioinformatics_application_sources/chr22.fa.gz",
+        "license_or_terms": "UCSC data-use conditions and Genome Reference Consortium attribution apply",
+        "redistribution_note": "Only selected promoter sequences are retained; final redistribution approval remains owner-controlled",
+        "download_command": "curl -fL --retry 3 --output .tmp/bioinformatics_application_sources/chr22.fa.gz.partial.$$ https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr22.fa.gz",
+        "status": "verified",
     },
 )
 
@@ -601,15 +757,16 @@ source_rows = read_tsv(
     "application source ledger",
 )
 require(len(source_rows) == 4, f"expected four source rows, found {len(source_rows)}")
+require(
+    all(tuple(authority) == SOURCE_FIELDS for authority in SOURCE_AUTHORITIES),
+    "source authority constant schema drifted",
+)
 for row, authority in zip(source_rows, SOURCE_AUTHORITIES, strict=True):
-    for field, value in authority.items():
-        require(row[field] == value, f"source authority drifted: {authority['source_id']} {field}")
-    require(row["status"] == "verified", f"source status is not verified: {authority['source_id']}")
-    require(
-        row["license_or_terms"].strip() and row["redistribution_note"].strip()
-        and row["download_command"].strip(),
-        f"source terms or command missing: {authority['source_id']}",
-    )
+    for field in SOURCE_FIELDS:
+        require(
+            row[field] == authority[field],
+            f"source authority drifted: {authority['source_id']} {field}",
+        )
 
 authorities = {row["source_id"]: row for row in SOURCE_AUTHORITIES}
 expected_source_identities = {
