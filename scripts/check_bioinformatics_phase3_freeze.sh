@@ -671,7 +671,7 @@ for relative in \
 done
 
 # BEGIN_PHASE3_PREEXECUTION_DEPENDENCIES
-python3 - \
+/usr/bin/python3 -I - \
   "$ROOT" "$BASELINE" \
   "$TRUSTED_BASH" "$TRUSTED_BASH_DEVICE" "$TRUSTED_BASH_INODE" \
   <<'PY_PREEXECUTION_DEPENDENCIES'
@@ -1188,6 +1188,8 @@ try:
             pass_fds=inherited_fds,
             check=False,
         )
+        verify_dependencies()
+        verify_trusted_bash()
         if syntax.returncode != 0:
             fail(
                 f"Bash syntax check failed: {relative}",
@@ -1196,33 +1198,34 @@ try:
 
     verify_dependencies()
     verify_trusted_bash()
-    child_environment = os.environ.copy()
-    child_environment.update(
-        {
-            "PHASE3_AUTHENTICATED_BUILDER": retained_path(
-                by_relative["reproduce/bioinformatics/build_application_panel.py"]
-            ),
-            "PHASE3_AUTHENTICATED_CHECKER": retained_path(
-                by_relative["scripts/check_bioinformatics_phase3_freeze.sh"]
-            ),
-            "PHASE3_AUTHENTICATED_FETCHER": retained_path(
-                by_relative["reproduce/bioinformatics/fetch_application_inputs.sh"]
-            ),
-            "PHASE3_AUTHENTICATED_TEST": retained_path(by_relative[test_relative]),
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-    )
+    child_environment = {
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+        "PHASE3_AUTHENTICATED_BUILDER": retained_path(
+            by_relative["reproduce/bioinformatics/build_application_panel.py"]
+        ),
+        "PHASE3_AUTHENTICATED_CHECKER": retained_path(
+            by_relative["scripts/check_bioinformatics_phase3_freeze.sh"]
+        ),
+        "PHASE3_AUTHENTICATED_FETCHER": retained_path(
+            by_relative["reproduce/bioinformatics/fetch_application_inputs.sh"]
+        ),
+        "PHASE3_AUTHENTICATED_TEST": retained_path(by_relative[test_relative]),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONSAFEPATH": "1",
+    }
     executed = subprocess.run(
-        [sys.executable, retained_path(by_relative[test_relative])],
+        [sys.executable, "-I", retained_path(by_relative[test_relative])],
         cwd=root,
         env=child_environment,
         pass_fds=inherited_fds,
         check=False,
     )
-    if executed.returncode != 0:
-        fail("application builder tests failed", executed.returncode)
     verify_dependencies()
     verify_trusted_bash()
+    if executed.returncode != 0:
+        fail("application builder tests failed", executed.returncode)
 except PreexecutionDependencyError as error:
     failure = error
 except OSError as error:

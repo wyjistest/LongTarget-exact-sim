@@ -328,6 +328,8 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         self,
         temporary: Path,
         marker: Path,
+        *,
+        test_dependency_source: str | None = None,
     ) -> tuple[Path, str]:
         repository = temporary / "repository"
         required_files = (
@@ -379,13 +381,15 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
             repository / "tests/check_build_bioinformatics_application_panel.py"
         )
         test_dependency.parent.mkdir(parents=True)
-        test_dependency.write_text(
-            "from pathlib import Path\n"
-            f"marker = Path({str(marker)!r})\n"
-            "count = int(marker.read_text(encoding='ascii')) if marker.exists() else 0\n"
-            "marker.write_text(str(count + 1), encoding='ascii')\n",
-            encoding="ascii",
-        )
+        if test_dependency_source is None:
+            test_dependency_source = (
+                "from pathlib import Path\n"
+                f"marker = Path({str(marker)!r})\n"
+                "count = int(marker.read_text(encoding='ascii')) "
+                "if marker.exists() else 0\n"
+                "marker.write_text(str(count + 1), encoding='ascii')\n"
+            )
+        test_dependency.write_text(test_dependency_source, encoding="ascii")
         subprocess.run(
             ["git", "init", "-q", str(repository)],
             check=True,
@@ -434,6 +438,8 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
         self,
         repository: Path,
         baseline: str,
+        *,
+        environment_overrides: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         trusted_bash = Path(os.environ.get("BASH", "/bin/bash")).resolve()
         trusted_metadata = os.lstat(trusted_bash)
@@ -457,6 +463,8 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                 "HARNESS_BASH_INODE": str(trusted_metadata.st_ino),
             }
         )
+        if environment_overrides is not None:
+            environment.update(environment_overrides)
         return subprocess.run(
             [str(trusted_bash), "-c", script],
             cwd=repository,
@@ -787,6 +795,112 @@ class Phase3FreezeCheckpointTests(unittest.TestCase):
                         "Phase 3 preexecution dependency failed: " + expected_error,
                         completed.stderr,
                     )
+
+    def test_preexecution_runner_isolates_python_startup_and_caller_control(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix="phase3-preexecution-python-env-"
+        ) as temporary_name:
+            temporary = Path(temporary_name)
+            normal_marker = temporary / "normal-test-path-ran"
+            control_marker = temporary / "caller-control-path-ran"
+            startup_marker = temporary / "python-startup-hook-ran"
+            startup_directory = temporary / "python-startup"
+            startup_directory.mkdir()
+            (startup_directory / "sitecustomize.py").write_text(
+                "from pathlib import Path\n"
+                f"marker = Path({str(startup_marker)!r})\n"
+                "marker.write_text('ran', encoding='ascii')\n",
+                encoding="ascii",
+            )
+            test_dependency_source = (
+                "import os\n"
+                "from pathlib import Path\n"
+                f"normal = Path({str(normal_marker)!r})\n"
+                f"controlled = Path({str(control_marker)!r})\n"
+                "if os.environ.get('APPLICATION_PANEL_RESOURCE_PROBE'):\n"
+                "    controlled.write_text('ran', encoding='ascii')\n"
+                "else:\n"
+                "    count = int(normal.read_text(encoding='ascii')) "
+                "if normal.exists() else 0\n"
+                "    normal.write_text(str(count + 1), encoding='ascii')\n"
+            )
+            repository, baseline = self.create_preexecution_dependency_repository(
+                temporary,
+                normal_marker,
+                test_dependency_source=test_dependency_source,
+            )
+
+            completed = self.run_preexecution_dependency_harness(
+                repository,
+                baseline,
+                environment_overrides={
+                    "APPLICATION_PANEL_RESOURCE_PROBE": "caller-controlled",
+                    "PYTHONPATH": str(startup_directory),
+                },
+            )
+
+            normal_count = (
+                normal_marker.read_text(encoding="ascii")
+                if normal_marker.exists()
+                else None
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(
+                (
+                    startup_marker.exists(),
+                    control_marker.exists(),
+                    normal_count,
+                ),
+                (False, False, "1"),
+            )
+
+    def test_preexecution_revalidates_identity_before_child_failure(self) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix="phase3-preexecution-child-failure-"
+        ) as temporary_name:
+            temporary = Path(temporary_name)
+            marker = temporary / "unused-normal-marker"
+            repository = temporary / "repository"
+            builder = (
+                repository / "reproduce/bioinformatics/build_application_panel.py"
+            )
+            parked_builder = temporary / "parked-builder.py"
+            test_dependency_source = (
+                "import os\n"
+                "from pathlib import Path\n"
+                f"builder = Path({str(builder)!r})\n"
+                f"parked = Path({str(parked_builder)!r})\n"
+                "parent = builder.parent\n"
+                "parent_metadata = parent.stat()\n"
+                "builder.rename(parked)\n"
+                "builder.write_text('replacement\\n', encoding='ascii')\n"
+                "os.utime(parent, ns=(parent_metadata.st_atime_ns, "
+                "parent_metadata.st_mtime_ns))\n"
+                "raise SystemExit(23)\n"
+            )
+            created_repository, baseline = (
+                self.create_preexecution_dependency_repository(
+                    temporary,
+                    marker,
+                    test_dependency_source=test_dependency_source,
+                )
+            )
+            self.assertEqual(created_repository, repository)
+
+            completed = self.run_preexecution_dependency_harness(
+                repository,
+                baseline,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "Phase 3 preexecution dependency failed: dependency identity "
+                "changed: reproduce/bioinformatics/build_application_panel.py",
+                completed.stderr,
+            )
+            self.assertNotIn("application builder tests failed", completed.stderr)
 
     def test_offline_reconstruction_rejects_injected_command_directory(self) -> None:
         with tempfile.TemporaryDirectory(prefix="phase3-offline-injected-") as temporary:
