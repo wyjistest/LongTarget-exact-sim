@@ -12,6 +12,25 @@
 #include <vector>
 
 namespace {
+	class AuthorityProfileScope {
+	public:
+		explicit AuthorityProfileScope(fasim_authority_profile_stage stage_value) :
+			stage(stage_value), active(fasim_authority_profile_enabled() != 0) {
+			if (active) {
+				fasim_authority_profile_enter(static_cast<uint8_t>(stage));
+			}
+		}
+
+		~AuthorityProfileScope() {
+			if (active) {
+				fasim_authority_profile_leave(static_cast<uint8_t>(stage));
+			}
+		}
+
+	private:
+		fasim_authority_profile_stage stage;
+		bool active;
+	};
 
 	struct SswProfileCacheEntry {
 		SswProfileCacheEntry()
@@ -484,6 +503,8 @@ namespace StripedSmithWaterman {
 	bool Aligner::Align(const char* query, const Filter& filter,
 		Alignment* alignment, const int32_t maskLen) const
 	{
+		AuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
 		if (!translation_matrix_) return false;
 		if (reference_length_ == 0) return false;
 
@@ -535,6 +556,7 @@ namespace StripedSmithWaterman {
 		const Filter& filter, Alignment* alignment, const int32_t maskLen,
 		int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch) const
 	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_PRE_ALIGN);
 		if (!translation_matrix_) return false;
 
 		int query_len = strlen(query);
@@ -728,6 +750,7 @@ namespace StripedSmithWaterman {
 		const Filter& filter, const int32_t maskLen, int threshold,
 		std::vector<int> &columnScores) const
 	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_PRE_ALIGN);
 		columnScores.clear();
 		if (!translation_matrix_) return false;
 
@@ -784,6 +807,8 @@ namespace StripedSmithWaterman {
 	bool Aligner::Align(const char* query, const char* ref, const int& ref_len,
 		const Filter& filter, Alignment* alignment, const int32_t maskLen) const
 	{
+		AuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
 		if (!translation_matrix_) return false;
 
 		int query_len = strlen(query);

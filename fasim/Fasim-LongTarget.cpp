@@ -195,6 +195,91 @@ struct FasimScopedSeconds
 	std::chrono::steady_clock::time_point start;
 };
 
+struct FasimSswCudaPhase1ProfileReporter
+{
+	FasimSswCudaPhase1ProfileReporter() :
+		enabled(false),
+		start(std::chrono::steady_clock::now())
+	{
+		const char *value = getenv("FASIM_SSW_CUDA_PHASE1_PROFILE");
+		enabled = value != NULL && value[0] != '\0' && value[0] != '0';
+		if (enabled)
+		{
+			fasim_authority_profile_reset();
+			fasim_authority_profile_set_enabled(1);
+		}
+	}
+
+	~FasimSswCudaPhase1ProfileReporter()
+	{
+		if (!enabled)
+		{
+			return;
+		}
+		const uint64_t totalNanoseconds = static_cast<uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - start).count());
+		const fasim_authority_profile_snapshot snapshot =
+			fasim_authority_profile_get_snapshot();
+		fasim_authority_profile_set_enabled(0);
+
+		static const char *stageNames[FASIM_AUTHORITY_STAGE_COUNT] = {
+			"pre_align",
+			"selection",
+			"forward_alignment",
+			"reverse_alignment",
+			"banded_traceback",
+			"backend_bridge",
+			"downstream_triplex_conversion",
+			"stability_identity_nt",
+			"clustering_ranking_sort",
+			"serialization_io"
+		};
+		uint64_t stageSumNanoseconds = 0;
+		for (int stage = 0; stage < FASIM_AUTHORITY_STAGE_COUNT; ++stage)
+		{
+			stageSumNanoseconds += snapshot.stage_nanoseconds[stage];
+		}
+		const uint64_t wrapperOtherNanoseconds =
+			totalNanoseconds >= stageSumNanoseconds ?
+				totalNanoseconds - stageSumNanoseconds : 0;
+
+		const std::ios::fmtflags previousFlags = cerr.flags();
+		const std::streamsize previousPrecision = cerr.precision();
+		cerr << std::fixed << std::setprecision(9);
+		cerr << "benchmark.ssw_cuda_phase1.schema_version=1\n";
+		cerr << "benchmark.ssw_cuda_phase1.profile_enabled=1\n";
+		cerr << "benchmark.ssw_cuda_phase1.timer=steady_clock\n";
+		cerr << "benchmark.ssw_cuda_phase1.total_seconds="
+		     << static_cast<double>(totalNanoseconds) / 1000000000.0 << "\n";
+		for (int stage = 0; stage < FASIM_AUTHORITY_STAGE_COUNT; ++stage)
+		{
+			cerr << "benchmark.ssw_cuda_phase1." << stageNames[stage]
+			     << "_seconds="
+			     << static_cast<double>(snapshot.stage_nanoseconds[stage]) /
+					1000000000.0 << "\n";
+			cerr << "benchmark.ssw_cuda_phase1." << stageNames[stage]
+			     << "_entries=" << snapshot.stage_entries[stage] << "\n";
+		}
+		cerr << "benchmark.ssw_cuda_phase1.stage_sum_seconds="
+		     << static_cast<double>(stageSumNanoseconds) / 1000000000.0 << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.wrapper_other_seconds="
+		     << static_cast<double>(wrapperOtherNanoseconds) / 1000000000.0
+		     << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.stack_errors="
+		     << snapshot.stack_errors << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.max_depth="
+		     << snapshot.max_depth << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.active_depth="
+		     << snapshot.active_depth << "\n";
+		cerr.flags(previousFlags);
+		cerr.precision(previousPrecision);
+	}
+
+	bool enabled;
+	std::chrono::steady_clock::time_point start;
+};
+
 static inline uint64_t fasim_fnv1a_update(uint64_t digest, const std::string &text)
 {
 	for (size_t i = 0; i < text.size(); ++i)
@@ -4276,6 +4361,8 @@ static inline bool fasim_read_next_fasta_record(std::ifstream &in,
                                                 std::string &pendingHeader,
                                                 FasimFastaRecord &out)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
     out.header.clear();
     out.sequence.clear();
 
@@ -10745,6 +10832,7 @@ fasim_observe_gpu_dp_column_auto_workload(ifstream &dnaIn,
 
 int main(int argc, char* const* argv)
 {
+	FasimSswCudaPhase1ProfileReporter phase1ProfileReporter;
 	struct para paraList;
 	vector<struct	lgInfo>	lgList;
 	initEnv(argc, argv, paraList);
@@ -11286,6 +11374,8 @@ int main(int argc, char* const* argv)
 
 			auto ensure_output_opened = [&](const string &speciesValue)
 			{
+				FasimAuthorityProfileScope authorityIoScope(
+					FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 				FasimScopedSeconds scoped(phaseTimingEnabled, &phaseTiming.output_open_seconds);
 				if (outOpened)
 				{
@@ -12652,6 +12742,8 @@ int main(int argc, char* const* argv)
 
 			auto write_task_triplexes = [&](const StreamTask &task)
 			{
+			FasimAuthorityProfileScope authorityIoScope(
+				FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 			if (broadReplacementConsumerEnabled &&
 			    broadScoreInfoConsumerShadowStats.broad_path_active != 0)
 			{
@@ -27519,6 +27611,8 @@ int main(int argc, char* const* argv)
 			two_slot_drain_pipeline();
 			if (outOpened)
 			{
+				FasimAuthorityProfileScope authorityIoScope(
+					FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 				FasimScopedSeconds scoped(phaseTimingEnabled,
 				                          &phaseTiming.output_close_seconds);
 				if (writeFull)
@@ -27936,6 +28030,8 @@ int main(int argc, char* const* argv)
 
 string readRna(string rnaFileName, string &lncName)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 	ifstream rnaFile;
 	string tmpRNA;
 	string tmpStr;
@@ -27965,6 +28061,8 @@ string readRna(string rnaFileName, string &lncName)
 
 void readDna(string dnaFileName, vector<string> &speciess, vector<string> &chroTags,vector<long> &startGenomes,vector<string> &dnaSeqs)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 	ifstream dnaFile(dnaFileName.c_str());
 	if (!dnaFile.is_open())
 	{
@@ -28843,6 +28941,8 @@ void print_cluster(int c_level, map<size_t, size_t> class1[], int start_genome, 
 
 void printResult(string &species, struct para paraList, string &lncName, string &dnaFile, vector<struct triplex> &sort_triplex_list, string &chroTag, string &dnaSequence, int start_genome, string &c_tmp_dd, string &c_tmp_length, string &resultDir,string lncSeq)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 	vector<struct tmp_class> w_tmp_class;
 	string pre_file2 = resultDir + "/" + species + "-" + lncName;
 	string pre_file1=dnaFile;
@@ -28861,6 +28961,8 @@ void printResult(string &species, struct para paraList, string &lncName, string 
 	int class_level = 5;
 	if (doCluster)
 	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
 		cluster_triplex(paraList.cDistance, paraList.cLength, sort_triplex_list, class1, class1a, class1b, class_level);
 		sort(sort_triplex_list.begin(), sort_triplex_list.end(), comp);
 	}

@@ -141,6 +141,7 @@ FASIM_SIMD_FLAGS ?= -msse2
 FASIM_TARGET ?= fasim_longtarget_x86
 FASIM_CUDA_TARGET ?= fasim_longtarget_cuda
 FASIM_GASAL2_TARGET ?= fasim_longtarget_gasal2
+SSW_CUDA_PHASE1_PROFILE_BIN ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/phase1/fasim_authority_profile
 FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
 GASAL2_DIR ?= .tmp/GASAL2
@@ -156,6 +157,13 @@ GASAL2_BUILD_STAMP := $(GASAL2_DIR)/.fasim_gasal2.$(GASAL2_GPU_SM_ARCH).$(GASAL2
 build-fasim: $(FASIM_TARGET)
 
 $(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-ssw-cuda-phase1-profile
+build-ssw-cuda-phase1-profile: $(SSW_CUDA_PHASE1_PROFILE_BIN)
+
+$(SSW_CUDA_PHASE1_PROFILE_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	@mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
 
 build-fasim-cuda: $(FASIM_CUDA_TARGET)
@@ -1456,6 +1464,15 @@ check-bioinformatics-canonical-hybrid-v2-performance:
 .PHONY: check-ssw-cuda-phase0
 check-ssw-cuda-phase0:
 	bash ./scripts/check_ssw_cuda_phase0.sh
+
+.PHONY: check-ssw-cuda-phase1-preflight check-ssw-cuda-phase1
+check-ssw-cuda-phase1-preflight: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --preflight
+
+check-ssw-cuda-phase1: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --final
 
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:

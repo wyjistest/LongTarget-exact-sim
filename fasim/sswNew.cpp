@@ -239,6 +239,20 @@ const uint8_t encoded_ops[] = {
 static thread_local ssw_align_internal_stats g_ssw_align_internal_stats = {0};
 static thread_local uint8_t g_ssw_align_internal_stats_enabled = 0;
 
+struct fasim_authority_profile_state {
+	uint64_t stage_nanoseconds[FASIM_AUTHORITY_STAGE_COUNT];
+	uint64_t stage_entries[FASIM_AUTHORITY_STAGE_COUNT];
+	int current_stage;
+	int parent_stack[64];
+	uint64_t depth;
+	uint64_t max_depth;
+	uint64_t stack_errors;
+	uint64_t last_transition_nanoseconds;
+	uint8_t enabled;
+};
+
+static thread_local fasim_authority_profile_state g_fasim_authority_profile = {{0}, {0}, -1, {0}, 0, 0, 0, 0, 0};
+
 static uint64_t ssw_now_nanoseconds(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -263,6 +277,115 @@ void ssw_align_internal_stats_set_enabled(uint8_t enabled) {
 uint8_t ssw_align_internal_stats_enabled(void) {
 	return g_ssw_align_internal_stats_enabled;
 }
+
+static void fasim_authority_profile_charge_current(uint64_t now) {
+	if (g_fasim_authority_profile.current_stage >= 0 &&
+	    g_fasim_authority_profile.current_stage < FASIM_AUTHORITY_STAGE_COUNT) {
+		g_fasim_authority_profile.stage_nanoseconds[
+			g_fasim_authority_profile.current_stage] +=
+			now - g_fasim_authority_profile.last_transition_nanoseconds;
+	}
+	g_fasim_authority_profile.last_transition_nanoseconds = now;
+}
+
+void fasim_authority_profile_reset(void) {
+	memset(&g_fasim_authority_profile, 0, sizeof(g_fasim_authority_profile));
+	g_fasim_authority_profile.current_stage = -1;
+}
+
+void fasim_authority_profile_set_enabled(uint8_t enabled) {
+	if (enabled != 0) {
+		if (!g_fasim_authority_profile.enabled) {
+			g_fasim_authority_profile.last_transition_nanoseconds =
+				ssw_now_nanoseconds();
+		}
+		g_fasim_authority_profile.enabled = 1;
+		return;
+	}
+	if (g_fasim_authority_profile.enabled) {
+		fasim_authority_profile_charge_current(ssw_now_nanoseconds());
+	}
+	g_fasim_authority_profile.enabled = 0;
+}
+
+uint8_t fasim_authority_profile_enabled(void) {
+	return g_fasim_authority_profile.enabled;
+}
+
+void fasim_authority_profile_enter(uint8_t stage) {
+	if (!g_fasim_authority_profile.enabled) {
+		return;
+	}
+	const uint64_t now = ssw_now_nanoseconds();
+	fasim_authority_profile_charge_current(now);
+	if (stage >= FASIM_AUTHORITY_STAGE_COUNT ||
+	    g_fasim_authority_profile.depth >=
+			sizeof(g_fasim_authority_profile.parent_stack) /
+			sizeof(g_fasim_authority_profile.parent_stack[0])) {
+		++g_fasim_authority_profile.stack_errors;
+		return;
+	}
+	g_fasim_authority_profile.parent_stack[g_fasim_authority_profile.depth++] =
+		g_fasim_authority_profile.current_stage;
+	g_fasim_authority_profile.current_stage = static_cast<int>(stage);
+	++g_fasim_authority_profile.stage_entries[stage];
+	if (g_fasim_authority_profile.depth > g_fasim_authority_profile.max_depth) {
+		g_fasim_authority_profile.max_depth = g_fasim_authority_profile.depth;
+	}
+}
+
+void fasim_authority_profile_leave(uint8_t stage) {
+	if (!g_fasim_authority_profile.enabled) {
+		return;
+	}
+	const uint64_t now = ssw_now_nanoseconds();
+	fasim_authority_profile_charge_current(now);
+	if (stage >= FASIM_AUTHORITY_STAGE_COUNT ||
+	    g_fasim_authority_profile.depth == 0 ||
+	    g_fasim_authority_profile.current_stage != static_cast<int>(stage)) {
+		++g_fasim_authority_profile.stack_errors;
+		return;
+	}
+	g_fasim_authority_profile.current_stage =
+		g_fasim_authority_profile.parent_stack[--g_fasim_authority_profile.depth];
+}
+
+fasim_authority_profile_snapshot fasim_authority_profile_get_snapshot(void) {
+	if (g_fasim_authority_profile.enabled) {
+		fasim_authority_profile_charge_current(ssw_now_nanoseconds());
+	}
+	fasim_authority_profile_snapshot result;
+	memset(&result, 0, sizeof(result));
+	for (int i = 0; i < FASIM_AUTHORITY_STAGE_COUNT; ++i) {
+		result.stage_nanoseconds[i] =
+			g_fasim_authority_profile.stage_nanoseconds[i];
+		result.stage_entries[i] = g_fasim_authority_profile.stage_entries[i];
+	}
+	result.stack_errors = g_fasim_authority_profile.stack_errors;
+	result.max_depth = g_fasim_authority_profile.max_depth;
+	result.active_depth = g_fasim_authority_profile.depth;
+	return result;
+}
+
+class FasimAuthorityProfileScope {
+public:
+	explicit FasimAuthorityProfileScope(fasim_authority_profile_stage stage_value) :
+		stage(stage_value), active(fasim_authority_profile_enabled() != 0) {
+		if (active) {
+			fasim_authority_profile_enter(static_cast<uint8_t>(stage));
+		}
+	}
+
+	~FasimAuthorityProfileScope() {
+		if (active) {
+			fasim_authority_profile_leave(static_cast<uint8_t>(stage));
+		}
+	}
+
+private:
+	fasim_authority_profile_stage stage;
+	bool active;
+};
 
 /* Generate query profile rearrange query sequence & calculate the weight of match/mismatch. */
 static __m128i* qP_byte(const int8_t* read_num,
@@ -2011,6 +2134,9 @@ s_align* ssw_align(const s_profile* prof,
 		++g_ssw_align_internal_stats.forward_calls;
 	}
 	const uint64_t forward_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_FORWARD_ALIGNMENT);
 	if (prof->profile_byte) {
 		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
@@ -2081,6 +2207,7 @@ s_align* ssw_align(const s_profile* prof,
 		return NULL;
 	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.forward_score_end_nanoseconds, forward_start);
+	}
 	const uint64_t endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	r->score1 = bests[0].score;
 	r->ref_end1 = bests[0].ref;
@@ -2102,6 +2229,9 @@ s_align* ssw_align(const s_profile* prof,
 		++g_ssw_align_internal_stats.reverse_calls;
 	}
 	reverse_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_REVERSE_ALIGNMENT);
 	read_reverse = seq_reverse(prof->read, r->read_end1);
 	if (word == 0) {
 #if defined(__AVX2__)
@@ -2172,6 +2302,7 @@ s_align* ssw_align(const s_profile* prof,
 	free(read_reverse);
 	free(bests);
 	ssw_add_elapsed(&g_ssw_align_internal_stats.reverse_start_nanoseconds, reverse_start);
+	}
 	if ((7 & flag) == 0 || ((2 & flag) != 0 && r->score1 < filters) || ((4 & flag) != 0 && (r->ref_end1 - r->ref_begin1 > filterd || r->read_end1 - r->read_begin1 > filterd))) goto end;
 
 	// Generate cigar.
@@ -2186,7 +2317,11 @@ s_align* ssw_align(const s_profile* prof,
 		++g_ssw_align_internal_stats.banded_sw_calls;
 	}
 	banded_sw_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-	path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK);
+		path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds, banded_sw_start);
 	if (path == 0) {
 		free(r);

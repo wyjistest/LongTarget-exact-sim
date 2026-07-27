@@ -146,6 +146,35 @@ extern "C" {
 	void ssw_align_internal_stats_set_enabled(uint8_t enabled);
 	uint8_t ssw_align_internal_stats_enabled(void);
 
+	typedef enum {
+		FASIM_AUTHORITY_STAGE_PRE_ALIGN = 0,
+		FASIM_AUTHORITY_STAGE_SELECTION = 1,
+		FASIM_AUTHORITY_STAGE_FORWARD_ALIGNMENT = 2,
+		FASIM_AUTHORITY_STAGE_REVERSE_ALIGNMENT = 3,
+		FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK = 4,
+		FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE = 5,
+		FASIM_AUTHORITY_STAGE_TRIPLEX_CONVERSION = 6,
+		FASIM_AUTHORITY_STAGE_STABILITY_IDENTITY_NT = 7,
+		FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT = 8,
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO = 9,
+		FASIM_AUTHORITY_STAGE_COUNT = 10
+	} fasim_authority_profile_stage;
+
+	typedef struct {
+		uint64_t stage_nanoseconds[FASIM_AUTHORITY_STAGE_COUNT];
+		uint64_t stage_entries[FASIM_AUTHORITY_STAGE_COUNT];
+		uint64_t stack_errors;
+		uint64_t max_depth;
+		uint64_t active_depth;
+	} fasim_authority_profile_snapshot;
+
+	void fasim_authority_profile_reset(void);
+	void fasim_authority_profile_set_enabled(uint8_t enabled);
+	uint8_t fasim_authority_profile_enabled(void);
+	void fasim_authority_profile_enter(uint8_t stage);
+	void fasim_authority_profile_leave(uint8_t stage);
+	fasim_authority_profile_snapshot fasim_authority_profile_get_snapshot(void);
+
 	int * ssw_pre_align(const s_profile* prof,
 		const int8_t* ref,
 		int32_t refLen,

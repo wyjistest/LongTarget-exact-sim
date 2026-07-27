@@ -213,7 +213,7 @@ l8_contract_status = diagnostic_only
 
 active_phase = 1
 phase_0_status = pass
-phase_1_status = pending
+phase_1_status = in_progress
 phase_2_status = pending
 phase_3_status = pending
 phase_4_status = pending
@@ -231,7 +231,7 @@ last_completed_phase = 0
 last_decision = phase0_evidence_frozen
 last_evidence_doc = paper/ssw_cuda/historical_evidence_receipt.json
 last_test_command = make check-ssw-cuda-phase0
-last_commit = PENDING_PHASE0_COMMIT
+last_commit = 5cc133d
 ```
 
 ### 2.1 Phase 依赖

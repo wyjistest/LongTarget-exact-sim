@@ -5,11 +5,11 @@
   "execution_branch": "gasal2-kcnq1ot1-focused-review",
   "execution_start_head": "9f87aace6d96cf8142e3816299f04defae5710e4",
   "l8_contract_status": "diagnostic_only",
-  "last_decision": "phase0_evidence_frozen",
+  "last_decision": "phase1_cpu_profile_in_progress",
   "last_evidence": "paper/ssw_cuda/historical_evidence_receipt.json",
   "phase_status": {
     "0": "pass",
-    "1": "pending",
+    "1": "in_progress",
     "10": "pending",
     "11": "pending",
     "12": "pending",

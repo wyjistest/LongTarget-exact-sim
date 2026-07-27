@@ -17,6 +17,31 @@ using std::cout;
 using std::endl;
 using std::ifstream;
 
+class FasimAuthorityProfileScope
+{
+public:
+	explicit FasimAuthorityProfileScope(fasim_authority_profile_stage stageValue) :
+		stage(stageValue), active(fasim_authority_profile_enabled() != 0)
+	{
+		if (active)
+		{
+			fasim_authority_profile_enter(static_cast<uint8_t>(stage));
+		}
+	}
+
+	~FasimAuthorityProfileScope()
+	{
+		if (active)
+		{
+			fasim_authority_profile_leave(static_cast<uint8_t>(stage));
+		}
+	}
+
+private:
+	fasim_authority_profile_stage stage;
+	bool active;
+};
+
 inline bool fasim_prealign_cuda_enabled_runtime()
 {
 	static const bool enabled = []()
@@ -1179,6 +1204,8 @@ void fastSIM(string& strA, string& strB, string& strSrc,
 	int penaltyC, struct para paraList,
 	bool materializeAlignmentStrings = true)
 {
+	FasimAuthorityProfileScope authoritySelectionScope(
+		FASIM_AUTHORITY_STAGE_SELECTION);
 	int32_t maskLen = 15;
 	StripedSmithWaterman::Aligner aligner;
 	StripedSmithWaterman::Filter filter;
@@ -1474,11 +1501,15 @@ inline void fastSIM_extend_from_attempt_descriptors(
 
 	const std::chrono::steady_clock::time_point sortStart =
 		std::chrono::steady_clock::now();
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
 	if (timing != NULL)
 	{
 		timing->sort_seconds +=
@@ -1840,11 +1871,15 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					                 materializeAlignmentStrings);
 				}
 			}
-			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+			{
+				FasimAuthorityProfileScope authoritySortScope(
+					FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+				std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+				myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+				std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+				myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+				std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+			}
 			for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 			{
 				triplex atr = myTriplexList[i];
@@ -1980,11 +2015,15 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		}
 		const std::chrono::steady_clock::time_point sortStart =
 			std::chrono::steady_clock::now();
-		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+		{
+			FasimAuthorityProfileScope authoritySortScope(
+				FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+		}
 		if (timing != NULL)
 		{
 			timing->sort_seconds +=
@@ -2462,11 +2501,15 @@ inline bool fasim_shadow_attempt_consumer_from_scoreinfo(
 	}
 	flush_scoreinfo();
 
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
 	for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 	{
 		triplex atr = myTriplexList[i];
@@ -3235,11 +3278,15 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			std::chrono::steady_clock::now() - convertStart).count();
 	}
 
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
 	for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 	{
 		triplex atr = myTriplexList[i];
@@ -3281,6 +3328,8 @@ inline void fasim_calc_identity_and_triscore_from_cigar(const StripedSmithWaterm
                                                         float &triScoreOut,
                                                         int &ntOut)
 {
+	FasimAuthorityProfileScope authorityStabilityScope(
+		FASIM_AUTHORITY_STAGE_STABILITY_IDENTITY_NT);
 	int match = 0;
 	int mis_match = 0;
 	int nt = 0;
@@ -3390,6 +3439,8 @@ bool buildConvertedTriplexRecord(const StripedSmithWaterman::Alignment &alignmen
 	int ntMax,
 	const FasimConvertMaterializationPolicy &policy)
 {
+	FasimAuthorityProfileScope authorityConversionScope(
+		FASIM_AUTHORITY_STAGE_TRIPLEX_CONVERSION);
 	int nt = 0;
 	float identity = 0.0f;
 	float tri_score = 0.0f;
