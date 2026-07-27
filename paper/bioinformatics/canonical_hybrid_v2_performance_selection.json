@@ -1,0 +1,75 @@
+{
+  "correctness_results_or_timings_read": false,
+  "input_partition_rule": "exclude the frozen v1 pilot ordinal prefix and all ordinals already allocated to the fresh correctness split, independent of their outcomes",
+  "matrix": {
+    "arms_per_validation": [
+      "A",
+      "H"
+    ],
+    "attempts": 36,
+    "repeats_per_workload": 3,
+    "validation_instances": 18,
+    "workloads": 6
+  },
+  "prohibited_selection_input_used": false,
+  "schema_version": 1,
+  "selected_queries": [
+    {
+      "ordinal_selection_hash": "0bdac027800b80e50703b613cac413a26166be89babd2f3ff3f991484de94069",
+      "record_id": "aq005",
+      "sequence_length": 746,
+      "source_ordinal": 5,
+      "stratum": "short_500_800"
+    },
+    {
+      "ordinal_selection_hash": "01d5bb923e228344c73908cc481db63250fb01646f25c095f27b548b134479c5",
+      "record_id": "aq006",
+      "sequence_length": 1216,
+      "source_ordinal": 6,
+      "stratum": "medium_801_1600"
+    },
+    {
+      "ordinal_selection_hash": "1742b221b40e146bf75e2af2b0897ea46c46d595c5a9b1b323d5157045c8ec4a",
+      "record_id": "aq036",
+      "sequence_length": 1687,
+      "source_ordinal": 36,
+      "stratum": "long_1601_2812"
+    }
+  ],
+  "selected_targets": [
+    {
+      "chromosome": "chr21",
+      "ordinal_selection_hash": "02008509414e2525e45c58c7125778b229d120760735512fe4751b246df2323a",
+      "record_id": "at0199",
+      "source_ordinal": 199
+    },
+    {
+      "chromosome": "chr22",
+      "ordinal_selection_hash": "01324e0f02400f93bd8a7bccb7de7973533b3278a37bb6f7ec39c4c2e877ecdc",
+      "record_id": "at0432",
+      "source_ordinal": 432
+    }
+  ],
+  "selection_key_definition": "SHA256(seed|kind|coverage_group|source-ordinal-N)",
+  "selection_key_prohibited_inputs": [
+    "query or gene name",
+    "target or gene name",
+    "sequence or file digest",
+    "correctness output or timing",
+    "runtime",
+    "mismatch",
+    "fallback",
+    "result-based blacklist",
+    "result-based allowlist"
+  ],
+  "selection_key_uses_only": [
+    "frozen role-local source ordinal",
+    "query length stratum",
+    "target chromosome coverage group"
+  ],
+  "selection_seed": "canonical-hybrid-v2-performance-pilot-ordinal-v1-20260727",
+  "source_application_manifest_sha256": "e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc",
+  "source_correctness_selection_sha256": "c211d5b82ed6d518f3f6bc345b05138edfb2a15c7a37f2afb4023db099e540e5",
+  "stage": "performance-pilot",
+  "status": "preregistered_not_run"
+}
