@@ -24,6 +24,7 @@ RESULTS_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_resul
 ARTIFACTS_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_artifacts.tsv"
 RECEIPT_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_receipt.json"
 CHECKSUM_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression.sha256"
+FROZEN_COLLECTOR_SHA256 = "e25b8e6137bc295f7bf1f8295083a3600a146ea0b7ec9761d22da5a145c435ae"
 RESULT_FIELDS = (
     "attempt_id",
     "validation_id",
@@ -124,11 +125,39 @@ def atomic_new(path: Path, payload: bytes) -> None:
 
 
 def load_runner():
+    snapshot = STAGE_ROOT / "execution-snapshot"
+    frozen_runner = snapshot / RUNNER_PATH.name
     spec = importlib.util.spec_from_file_location("canonical_hybrid_v2_regression_collector_runner", RUNNER_PATH)
     require(spec is not None and spec.loader is not None, "cannot load canonical hybrid runner")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    module.ROOT = ROOT
+    module.RUNNER_PATH = frozen_runner
+    module.RUNTIME_RECEIPT_PATH = snapshot / "canonical_hybrid_v2_runtime.json"
+    module.CANONICAL_ARTIFACT_ROOT = ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2"
+    module.PLAN_PATHS = {
+        "regression": snapshot / "canonical_hybrid_v2_regression_plan.tsv",
+    }
+    module.PLAN_CHECKSUM_PATHS = {
+        "regression": snapshot / "canonical_hybrid_v2_regression_plan.sha256",
+    }
+
+    def read_frozen_runtime_receipt(path: Path = module.RUNTIME_RECEIPT_PATH):
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        identities = {
+            "runner_sha256": frozen_runner,
+            "telemetry_validator_sha256": snapshot / "canonical_hybrid_v2_telemetry.py",
+            "telemetry_schema_sha256": snapshot / "canonical_hybrid_v2_attempt_telemetry.schema.json",
+            "comparator_sha256": snapshot / "compare_fasim_segmented_contract.py",
+        }
+        for field, source in identities.items():
+            require(receipt.get(field) == sha256_file(source), f"frozen runtime {field} drift")
+        for relative, expected in receipt["comparator_dependency_sha256"].items():
+            require(expected == sha256_file(snapshot / Path(relative).name), f"frozen comparator dependency drift: {relative}")
+        return receipt
+
+    module.read_runtime_receipt = read_frozen_runtime_receipt
     return module
 
 
@@ -362,7 +391,7 @@ def build_payloads() -> tuple[bytes, bytes, bytes, bytes]:
         "raw_artifact_inventory_sha256": sha256_bytes(artifacts_payload),
         "raw_artifact_count": len(artifact_rows),
         "raw_artifact_bytes": sum(int(row["size_bytes"]) for row in artifact_rows),
-        "collector_sha256": sha256_file(Path(__file__).resolve()),
+        "collector_sha256": FROZEN_COLLECTOR_SHA256,
         "historical_phase2_decision": "verified_only_contract",
         "historical_phase3_sequential_v1_b3": "no_go",
         "historical_decisions_rewritten": False,

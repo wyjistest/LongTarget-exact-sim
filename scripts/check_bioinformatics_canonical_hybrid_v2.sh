@@ -27,8 +27,9 @@ cp \
   "$ROOT/scripts/fasim_tfo_archive.py" \
   "$WORK/comparator-snapshot/"
 env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
-  python3 "$WORK/comparator-snapshot/compare_fasim_segmented_contract.py" --help \
+  python3 -B "$WORK/comparator-snapshot/compare_fasim_segmented_contract.py" --help \
   >/dev/null
+test ! -e "$WORK/comparator-snapshot/__pycache__"
 
 make -C "$ROOT" build-fasim FASIM_TARGET="$CPU_BIN"
 make -C "$ROOT" build-fasim-gasal2 FASIM_GASAL2_TARGET="$HYBRID_BIN"

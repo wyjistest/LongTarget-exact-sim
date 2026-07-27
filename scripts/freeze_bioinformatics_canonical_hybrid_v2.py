@@ -23,6 +23,8 @@ RUNNER_PATH = ROOT / "reproduce/bioinformatics/run_canonical_hybrid_v2.py"
 RUNTIME_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_runtime.json"
 REGRESSION_PLAN_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_plan.tsv"
 REGRESSION_RECEIPT_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_plan_receipt.json"
+REGRESSION_RESULT_RECEIPT_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_receipt.json"
+REGRESSION_DECISION_PATH = ROOT / "paper/bioinformatics/canonical_hybrid_v2_regression_decision.md"
 HOLDOUT_MANIFEST_PATH = ROOT / "paper/bioinformatics/holdout_manifest.tsv"
 HOLDOUT_RESULTS_PATH = ROOT / "paper/bioinformatics/holdout_attempt_results.tsv"
 OLD_ARTIFACT_ROOT = ROOT / ".paper-artifacts/bioinformatics-phase2-holdout-v1"
@@ -164,17 +166,28 @@ def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
     commit = require_clean_checkout()
     previous = None
     previous_sha256 = None
+    post_regression_runner_only = False
     if RUNTIME_PATH.exists():
         require(args.supersede_runtime_sha256 is not None, "existing runtime receipt requires explicit supersession")
         previous_sha256 = sha256_file(RUNTIME_PATH)
         require(previous_sha256 == args.supersede_runtime_sha256, "runtime supersession digest drift")
-        require(
-            not (ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2/regression").exists(),
-            "runtime cannot be superseded after regression execution starts",
-        )
         previous = json.loads(RUNTIME_PATH.read_text(encoding="utf-8"))
+        regression_started = (ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2/regression").exists()
+        if regression_started:
+            require(args.post_regression_runner_only, "post-regression supersession must be runner-only")
+            require(
+                args.supersession_reason == "post_regression_python_bytecode_isolation",
+                "invalid post-regression supersession reason",
+            )
+            for path in (REGRESSION_RESULT_RECEIPT_PATH, REGRESSION_DECISION_PATH):
+                require(path.is_file() and not path.is_symlink(), f"missing frozen regression evidence: {path}")
+            post_regression_runner_only = True
+        else:
+            require(not args.post_regression_runner_only, "runner-only flag requires completed regression evidence")
     else:
         require(args.supersede_runtime_sha256 is None, "no runtime receipt exists to supersede")
+        require(not args.post_regression_runner_only, "runner-only flag requires a superseded runtime")
+        require(args.supersession_reason is None, "initial runtime freeze cannot have a supersession reason")
     hybrid = args.hybrid_binary.resolve()
     authority = args.authority_binary.resolve()
     for label, binary in (("hybrid", hybrid), ("authority", authority)):
@@ -194,9 +207,17 @@ def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
     if previous is not None:
         require(previous["hybrid_binary_sha256"] == sha256_file(hybrid), "supersession changed hybrid binary")
         require(previous["authority_binary_sha256"] == sha256_file(authority), "supersession changed authority binary")
+    if post_regression_runner_only:
+        previous_sources = previous.get("implementation_source_sha256")
+        require(isinstance(previous_sources, dict), "previous implementation source identity is missing")
+        runner_relative = RUNNER_PATH.relative_to(ROOT).as_posix()
+        for relative, digest in source_files.items():
+            if relative != runner_relative:
+                require(previous_sources.get(relative) == digest, f"runner-only supersession changed {relative}")
     receipt = {
         "schema_version": 1,
         "runtime_epoch": 1,
+        "runtime_revision": int(previous.get("runtime_revision", 1)) + 1 if previous is not None else 1,
         "contract": "canonical-hybrid-v2",
         "runtime_commit": runtime_commit,
         "runner_commit": commit,
@@ -287,7 +308,12 @@ def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
     }
     if previous_sha256 is not None:
         receipt["supersedes_runtime_receipt_sha256"] = previous_sha256
-        receipt["supersession_reason"] = "preexecution_snapshot_comparator_dependency_closure"
+        receipt["supersession_reason"] = args.supersession_reason or "preexecution_snapshot_comparator_dependency_closure"
+    if post_regression_runner_only:
+        receipt["scientific_runtime_changed"] = False
+        receipt["runner_change_scope"] = "comparator_bytecode_isolation_and_snapshot_integrity_only"
+        receipt["regression_result_receipt_sha256"] = sha256_file(REGRESSION_RESULT_RECEIPT_PATH)
+        receipt["regression_decision_sha256"] = sha256_file(REGRESSION_DECISION_PATH)
     atomic_bytes(RUNTIME_PATH, json_bytes(receipt), previous_sha256)
     return receipt
 
@@ -413,6 +439,8 @@ def parse_args() -> argparse.Namespace:
     runtime.add_argument("--hybrid-binary", type=Path, required=True)
     runtime.add_argument("--authority-binary", type=Path, required=True)
     runtime.add_argument("--supersede-runtime-sha256")
+    runtime.add_argument("--supersession-reason")
+    runtime.add_argument("--post-regression-runner-only", action="store_true")
     regression = subparsers.add_parser("regression-plan")
     regression.add_argument("--supersede-plan-sha256")
     return parser.parse_args()

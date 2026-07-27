@@ -11,6 +11,7 @@ python3 - "$ROOT" <<'PY'
 import csv
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,6 +42,20 @@ if len(receipt["snapshot_postfreeze_extra_files"]) != 2:
     raise SystemExit("snapshot bytecode-cache file count drift")
 if receipt["b3_speedup_threshold"] != 10.0 or receipt["b3_speedup_threshold_changed"]:
     raise SystemExit("B3 threshold drift")
+
+frozen_collector = subprocess.run(
+    [
+        "git",
+        "-C",
+        str(root),
+        "show",
+        "5d0c833a8dad7e2e081346951b89c56d3ad0183b:scripts/collect_bioinformatics_canonical_hybrid_v2_regression.py",
+    ],
+    check=True,
+    stdout=subprocess.PIPE,
+).stdout
+if hashlib.sha256(frozen_collector).hexdigest() != receipt["collector_sha256"]:
+    raise SystemExit("frozen regression collector identity drift")
 
 required_decision_text = (
     "decision = regression_pass_not_promotion",

@@ -229,6 +229,65 @@ class CanonicalHybridRunnerTests(unittest.TestCase):
         )
         self.assertTrue(result["declared_contract_clean"])
 
+    def test_comparator_is_bytecode_isolated_and_snapshot_remains_exact(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            snapshot = root / "execution-snapshot"
+            artifacts = root / "attempt"
+            snapshot.mkdir()
+            artifacts.mkdir()
+            helper = snapshot / "local_helper.py"
+            comparator = snapshot / "comparator.py"
+            helper.write_text("VALUE = 1\n", encoding="utf-8")
+            comparator.write_text(
+                "import argparse\n"
+                "import local_helper\n"
+                "parser = argparse.ArgumentParser()\n"
+                "parser.add_argument('--baseline')\n"
+                "parser.add_argument('--candidate')\n"
+                "parser.add_argument('--k')\n"
+                "parser.add_argument('--cluster-distance')\n"
+                "parser.add_argument('--cluster-length')\n"
+                "parser.add_argument('--details')\n"
+                "args = parser.parse_args()\n"
+                "open(args.details, 'w', encoding='utf-8').write('clean\\n')\n"
+                "names = ('baseline_rows', 'candidate_rows', 'full_missing_rows', "
+                "'full_extra_rows', 'clustered_score_top5_equal', "
+                "'clustered_stability_top5_equal', 'clustered_nt_top5_equal', "
+                "'all_three_top5_equal', 'boundary_ties_equal')\n"
+                "for name in names:\n"
+                "    print(f'{name}={0 if name in (\"full_missing_rows\", \"full_extra_rows\") else 1}')\n",
+                encoding="utf-8",
+            )
+            files = {
+                path.name: {
+                    "sha256": self.runner.sha256_file(path),
+                    "size_bytes": path.stat().st_size,
+                }
+                for path in (comparator, helper)
+            }
+            (snapshot / "snapshot.json").write_text(
+                json.dumps({"schema_version": 1, "files": files}, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            baseline = root / "authority.tsv"
+            candidate = root / "hybrid.tsv"
+            baseline.write_text("header\n", encoding="utf-8")
+            candidate.write_text("header\n", encoding="utf-8")
+            result = self.runner.execute_comparator(
+                comparator,
+                baseline,
+                candidate,
+                artifacts / "details.tsv",
+                artifacts,
+            )
+            self.assertEqual(result["command"][1], "-B")
+            self.assertEqual(result["explicit_environment"]["PYTHONDONTWRITEBYTECODE"], "1")
+            self.assertFalse((snapshot / "__pycache__").exists())
+            (snapshot / "unexpected.txt").write_text("drift\n", encoding="utf-8")
+            with self.assertRaisesRegex(self.runner.RunnerError, "snapshot file set drift"):
+                self.runner.validate_snapshot_contents(snapshot)
+
     def test_partial_attempt_cannot_be_retried(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             stage_root = Path(temporary)

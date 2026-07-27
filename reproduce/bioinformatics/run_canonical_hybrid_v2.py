@@ -424,6 +424,80 @@ def parse_comparator(stdout: str, returncode: int) -> dict[str, object]:
     return {"returncode": returncode, "declared_contract_clean": declared_clean, "metrics": values}
 
 
+def validate_snapshot_contents(snapshot: Path) -> dict[str, object]:
+    require(snapshot.is_dir() and not snapshot.is_symlink(), "execution snapshot is missing or unsafe")
+    metadata_path = snapshot / "snapshot.json"
+    require(metadata_path.is_file() and not metadata_path.is_symlink(), "incomplete stage execution snapshot")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    files = metadata.get("files")
+    require(isinstance(files, dict) and files, "snapshot file manifest is missing")
+    observed_files: set[str] = set()
+    for path in sorted(snapshot.rglob("*")):
+        require(not path.is_symlink(), f"snapshot contains a symlink: {path}")
+        if path.is_file():
+            observed_files.add(path.relative_to(snapshot).as_posix())
+    require(observed_files == set(files) | {"snapshot.json"}, "snapshot file set drift")
+    for relative, identity in files.items():
+        require(isinstance(relative, str) and isinstance(identity, dict), "malformed snapshot identity")
+        path = snapshot / relative
+        require(path.is_file() and not path.is_symlink(), f"missing snapshot file: {relative}")
+        require(path.stat().st_size == identity.get("size_bytes"), f"snapshot size drift: {relative}")
+        require(sha256_file(path) == identity.get("sha256"), f"snapshot digest drift: {relative}")
+    return metadata
+
+
+def execute_comparator(
+    comparator: Path,
+    authority_reference: Path,
+    candidate: Path,
+    details: Path,
+    artifact_root: Path,
+) -> dict[str, object]:
+    snapshot = comparator.parent
+    validate_snapshot_contents(snapshot)
+    command = [
+        sys.executable,
+        "-B",
+        str(comparator),
+        "--baseline",
+        str(authority_reference),
+        "--candidate",
+        str(candidate),
+        "--k",
+        "5",
+        "--cluster-distance",
+        "15",
+        "--cluster-length",
+        "50",
+        "--details",
+        str(details),
+    ]
+    environment = {
+        "LC_ALL": "C",
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+    }
+    compared = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    atomic_bytes(artifact_root / "comparator-stdout.log", compared.stdout.encode("utf-8"))
+    atomic_bytes(artifact_root / "comparator-stderr.log", compared.stderr.encode("utf-8"))
+    comparison = {
+        "command": command,
+        "explicit_environment": environment,
+        **parse_comparator(compared.stdout, compared.returncode),
+    }
+    validate_snapshot_contents(snapshot)
+    return comparison
+
+
 def resolve_authority_reference(
     row: dict[str, str], stage_root: Path
 ) -> Path | None:
@@ -740,26 +814,13 @@ def execute_attempt(
     comparison = None
     if authority_reference is not None:
         details = partial / "comparison-details.tsv"
-        compare_command = [
-            sys.executable,
-            str(tools.comparator),
-            "--baseline",
-            str(authority_reference),
-            "--candidate",
-            str(output),
-            "--k",
-            "5",
-            "--cluster-distance",
-            "15",
-            "--cluster-length",
-            "50",
-            "--details",
-            str(details),
-        ]
-        compared = subprocess.run(compare_command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=120)
-        atomic_bytes(partial / "comparator-stdout.log", compared.stdout.encode("utf-8"))
-        atomic_bytes(partial / "comparator-stderr.log", compared.stderr.encode("utf-8"))
-        comparison = {"command": compare_command, **parse_comparator(compared.stdout, compared.returncode)}
+        comparison = execute_comparator(
+            tools.comparator,
+            authority_reference,
+            output,
+            details,
+            partial,
+        )
         atomic_json(partial / "comparison.json", comparison)
     manifest_payload, artifact_count = artifact_manifest(partial)
     atomic_bytes(partial / "artifact-manifest.tsv", manifest_payload)
@@ -900,10 +961,7 @@ def rebuild_stage_summary(stage: str, rows: list[dict[str, str]], stage_root: Pa
 def validate_stage_snapshot(
     stage: str, snapshot: Path, rows: list[dict[str, str]]
 ) -> ToolPaths:
-    require(snapshot.is_dir() and not snapshot.is_symlink(), "execution snapshot is missing or unsafe")
-    metadata_path = snapshot / "snapshot.json"
-    require(metadata_path.is_file() and not metadata_path.is_symlink(), "incomplete stage execution snapshot")
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = validate_snapshot_contents(snapshot)
     require(metadata.get("schema_version") == 1, "snapshot schema drift")
     require(metadata.get("stage") == stage, "snapshot stage drift")
     require(metadata.get("git_head") == git_output("rev-parse", "HEAD"), "snapshot execution commit drift")
@@ -912,20 +970,6 @@ def validate_stage_snapshot(
         metadata.get("runtime_receipt_sha256") == sha256_file(RUNTIME_RECEIPT_PATH),
         "snapshot runtime receipt drift",
     )
-    files = metadata.get("files")
-    require(isinstance(files, dict) and files, "snapshot file manifest is missing")
-    observed_files: set[str] = set()
-    for path in sorted(snapshot.rglob("*")):
-        require(not path.is_symlink(), f"snapshot contains a symlink: {path}")
-        if path.is_file():
-            observed_files.add(path.relative_to(snapshot).as_posix())
-    require(observed_files == set(files) | {"snapshot.json"}, "snapshot file set drift")
-    for relative, identity in files.items():
-        require(isinstance(relative, str) and isinstance(identity, dict), "malformed snapshot identity")
-        path = snapshot / relative
-        require(path.is_file() and not path.is_symlink(), f"missing snapshot file: {relative}")
-        require(path.stat().st_size == identity.get("size_bytes"), f"snapshot size drift: {relative}")
-        require(sha256_file(path) == identity.get("sha256"), f"snapshot digest drift: {relative}")
     tool_names = metadata.get("tool_names")
     require(isinstance(tool_names, dict), "snapshot tool identity is missing")
     hybrid = snapshot / str(tool_names.get("hybrid_binary", ""))
