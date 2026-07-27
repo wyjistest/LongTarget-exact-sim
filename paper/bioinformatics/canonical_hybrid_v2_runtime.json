@@ -1,0 +1,97 @@
+{
+  "authority_binary_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86",
+  "authority_binary_sha256": "75c59f80ee329fe913edce71ea8a0ec1a63620a978b15d3673f636d62268822e",
+  "authority_build_commands": [
+    [
+      "make",
+      "build-fasim",
+      "FASIM_TARGET=.paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86"
+    ]
+  ],
+  "comparator_sha256": "6a589d7960a69be7c84a410f1bbd9d3ea34de929f8f04943d9c7ae033d682eda",
+  "compiler": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+  "complete_cpu_authority_inside_hybrid": false,
+  "contract": "canonical-hybrid-v2",
+  "created_utc": "2026-07-27T09:40:30.905830+00:00",
+  "cuda_compiler": "Build cuda_12.5.r12.5/compiler.34385749_0",
+  "gasal2_revision": "106d94ee53fc847214fb05f2f9f892538a5d3baf",
+  "gpu_inventory": [
+    {
+      "compute_capability": "8.9",
+      "driver_version": "555.42.06",
+      "index": "0",
+      "memory_total_mib": "24564",
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3"
+    },
+    {
+      "compute_capability": "8.9",
+      "driver_version": "555.42.06",
+      "index": "1",
+      "memory_total_mib": "24564",
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2"
+    }
+  ],
+  "historical_decision_sha256": {
+    "phase2_decision.md": "44167694cc44b6e0b46cae598f4b90451806ba7ef902eebdf9858076a859b9b6",
+    "phase3_postpilot_decision.json": "471898d688386f46b4e7f13b932b6b4f9874d9ed74641240b5c2fd4ad71851fe"
+  },
+  "hybrid_binary_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2",
+  "hybrid_binary_sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+  "hybrid_build_commands": [
+    [
+      "make",
+      "-B",
+      "cuda/prealign_cuda.o",
+      "CUDA_CXXFLAGS=-O3 -std=c++11 --generate-code=arch=compute_89,code=sm_89 --generate-code=arch=compute_80,code=compute_80"
+    ],
+    [
+      "make",
+      "build-fasim-gasal2",
+      "FASIM_GASAL2_TARGET=.paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2",
+      "GASAL2_GPU_SM_ARCH=sm_89",
+      "GASAL2_MAX_QUERY_LEN=2812",
+      "GASAL2_N_CODE=0x4E"
+    ]
+  ],
+  "implementation_commit_patch_sha256": "7f337922ee5308783668589e34773b4c28d1d4f96cef6c66d4ccdc49ee9a67e2",
+  "implementation_source_sha256": {
+    "fasim/Fasim-LongTarget.cpp": "23939eb909c07fb673de82728ebbf14116af19e88d645cfc738ab56e9e082fe9",
+    "fasim/gasal2_align_bridge.cpp": "dab371f0959cfb12027497ca2174f507f3fbca3326b9293ccbe15630ed1ad674",
+    "fasim/gasal2_align_bridge.h": "582121c9a3477501b1c7d908363f19ca43fd1468977c753232be8bbf9406edfd",
+    "fasim/gasal2_align_bridge_stub.cpp": "345d6e32bc038afa340d4d39712643a7a1b523f069239a9afc74a894ad0c775e",
+    "paper/bioinformatics/canonical_hybrid_v2_protocol.md": "f202b96557a056f4b6222bfb3d22f28724efc95c98d132e3e483e2e907f3c98d",
+    "reproduce/bioinformatics/run_canonical_hybrid_v2.py": "2a5b6e66bd23f0a1ad61cd240a65321e6a51ecebaf488e8dc9002b9cc09bf616",
+    "schemas/canonical_hybrid_v2_attempt_telemetry.schema.json": "0dfcc075907e0e53922c6e0473cfda5e4e98f621f2d55316d2be3868c2017a21",
+    "scripts/canonical_hybrid_v2_telemetry.py": "eab9e765e7c2c1af3078a3d9bec446e2a5d95480ac0ccc12c9855f4dfdc5476f"
+  },
+  "linked_dependency_sha256": {
+    ".tmp/GASAL2/lib/libgasal.a": "7d3ac0b8076563330f93c847856582efa031508a21e23d987454223ffa05c023",
+    "cuda/prealign_cuda.o": "59d8e0fbeb27a7d7152eaa5f0bf37acfaa03fb794cf61a538ff588613b515e3d"
+  },
+  "platform": "Linux-5.15.0-46-generic-x86_64-with-glibc2.35",
+  "prealign_cuda_code_objects": [
+    "ELF file    1: prealign_cuda.1.sm_89.cubin"
+  ],
+  "python": "3.11.10",
+  "runner_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
+  "runner_sha256": "2a5b6e66bd23f0a1ad61cd240a65321e6a51ecebaf488e8dc9002b9cc09bf616",
+  "runtime_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
+  "runtime_environment": {
+    "FASIM_ALIGN_GASAL2_BATCH": "20000",
+    "FASIM_ALIGN_GASAL2_CPU_TRACEBACK": "1",
+    "FASIM_ALIGN_GASAL2_STAGED_FIRST_PRUNE": "1",
+    "FASIM_ALIGN_GASAL2_STREAMS": "3",
+    "FASIM_CANONICAL_HYBRID_V2": "1",
+    "FASIM_OUTPUT_MODE": "tfosorted",
+    "FASIM_TOP5_GASAL2_GPU_SCOREINFO": "1",
+    "FASIM_TOP5_GASAL2_PHASE_TIMING": "1",
+    "FASIM_TOP5_GASAL2_SCOREINFO_PRUNE_MAX_PER_TASK": "256",
+    "FASIM_VERBOSE": "0"
+  },
+  "runtime_epoch": 1,
+  "schema_version": 1,
+  "telemetry_schema_sha256": "0dfcc075907e0e53922c6e0473cfda5e4e98f621f2d55316d2be3868c2017a21",
+  "telemetry_validator_sha256": "eab9e765e7c2c1af3078a3d9bec446e2a5d95480ac0ccc12c9855f4dfdc5476f"
+}
