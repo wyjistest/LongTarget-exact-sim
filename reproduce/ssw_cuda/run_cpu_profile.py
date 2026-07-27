@@ -26,18 +26,27 @@ from typing import Iterable, Sequence
 ROOT = Path(__file__).resolve().parents[2]
 PAPER = ROOT / "paper/ssw_cuda"
 PLAN = PAPER / "cpu_profile_attempt_plan.tsv"
+RECOVERY_PLAN = PAPER / "cpu_profile_recovery_attempt_plan.tsv"
 SOURCE_DATA = PAPER / "cpu_profile_source_data.tsv"
 STATISTICS = PAPER / "cpu_profile_statistics.json"
 DECISION_JSON = PAPER / "amdahl_decision.json"
 DECISION_MD = PAPER / "amdahl_decision.md"
 EXECUTION_RECEIPT = PAPER / "cpu_profile_execution_receipt.json"
 BLOCKED_ARTIFACT_MANIFEST = PAPER / "cpu_profile_blocked_artifact_manifest.tsv"
+RECOVERY_SOURCE_DATA = PAPER / "cpu_profile_v2_source_data.tsv"
+RECOVERY_STATISTICS = PAPER / "cpu_profile_v2_statistics.json"
+RECOVERY_DECISION_JSON = PAPER / "amdahl_v2_decision.json"
+RECOVERY_DECISION_MD = PAPER / "amdahl_v2_decision.md"
+RECOVERY_EXECUTION_RECEIPT = PAPER / "cpu_profile_v2_execution_receipt.json"
 REGISTRY = PAPER / "used_input_exclusion_registry.tsv"
 DEFAULT_ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/phase1/profile-runs"
+RECOVERY_ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/phase1/profile-runs-v2"
 PROFILE_PREFIX = "benchmark.ssw_cuda_phase1."
 TARGET_SPEEDUP = 10.0
 BOOTSTRAP_ITERATIONS = 10_000
 BOOTSTRAP_SEED = 20260727
+RECOVERY_TIMEOUT_SECONDS = 7_200
+RECOVERY_TOTAL_BUDGET_SECONDS = 36 * 60 * 60
 
 STAGES = (
     "pre_align",
@@ -258,7 +267,9 @@ def compact_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def expected_plan_rows() -> list[dict[str, object]]:
+def build_plan_rows(
+    *, attempt_prefix: str, artifact_subdir: str, timeout_seconds: int
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     execution_order = 0
     for workload in WORKLOAD_SPECS:
@@ -273,7 +284,7 @@ def expected_plan_rows() -> list[dict[str, object]]:
             for mode in modes:
                 execution_order += 1
                 profile_value = "1" if mode == "profile_on" else "0"
-                attempt_id = f"p1_{workload['workload_id']}_o{observation:02d}_{mode}"
+                attempt_id = f"{attempt_prefix}{workload['workload_id']}_o{observation:02d}_{mode}"
                 environment = {
                     "FASIM_EXTEND_THREADS": "1",
                     "FASIM_OUTPUT_MODE": "tfosorted",
@@ -302,16 +313,32 @@ def expected_plan_rows() -> list[dict[str, object]]:
                         "profile_mode": mode,
                         "command": command,
                         "environment_json": compact_json(environment),
-                        "timeout_seconds": 1800,
+                        "timeout_seconds": timeout_seconds,
                         "retry_policy": "none",
                         "formal_source_data": 1,
                         "expected_artifact_root": (
-                            ".paper-artifacts/ssw-cuda-v1/phase1/profile-runs/" + attempt_id
+                            f".paper-artifacts/ssw-cuda-v1/phase1/{artifact_subdir}/" + attempt_id
                         ),
                         "status": "preregistered_not_run",
                     }
                 )
     return rows
+
+
+def expected_plan_rows() -> list[dict[str, object]]:
+    return build_plan_rows(
+        attempt_prefix="p1_",
+        artifact_subdir="profile-runs",
+        timeout_seconds=1800,
+    )
+
+
+def expected_recovery_plan_rows() -> list[dict[str, object]]:
+    return build_plan_rows(
+        attempt_prefix="p1v2_",
+        artifact_subdir="profile-runs-v2",
+        timeout_seconds=RECOVERY_TIMEOUT_SECONDS,
+    )
 
 
 def registry_consumed(row: dict[str, object], registry: list[dict[str, str]]) -> bool:
@@ -325,14 +352,15 @@ def registry_consumed(row: dict[str, object], registry: list[dict[str, str]]) ->
     )
 
 
-def validate_plan() -> list[dict[str, str]]:
-    expected = expected_plan_rows()
+def validate_frozen_plan(
+    path: Path, expected: list[dict[str, object]], *, label: str
+) -> list[dict[str, str]]:
     expected_payload = tsv_bytes(PLAN_FIELDS, expected)
-    require(PLAN.is_file() and not PLAN.is_symlink(), f"missing frozen plan: {PLAN}")
-    require(PLAN.read_bytes() == expected_payload, "CPU profile attempt plan drift")
-    observed = read_tsv(PLAN, PLAN_FIELDS)
-    require(len(observed) == 50, "Phase 1 plan must contain exactly 50 attempts")
-    require(len({row["attempt_id"] for row in observed}) == 50, "duplicate attempt ID")
+    require(path.is_file() and not path.is_symlink(), f"missing frozen plan: {path}")
+    require(path.read_bytes() == expected_payload, f"{label} attempt plan drift")
+    observed = read_tsv(path, PLAN_FIELDS)
+    require(len(observed) == 50, f"{label} plan must contain exactly 50 attempts")
+    require(len({row["attempt_id"] for row in observed}) == 50, f"duplicate {label} attempt ID")
     require(
         [int(row["execution_order"]) for row in observed] == list(range(1, 51)),
         "execution order is not contiguous",
@@ -347,6 +375,31 @@ def validate_plan() -> list[dict[str, str]]:
         require(environment["FASIM_EXTEND_THREADS"] == "1", "thread count drift")
         require(environment["FASIM_OUTPUT_MODE"] == "tfosorted", "output contract drift")
     return observed
+
+
+def validate_plan() -> list[dict[str, str]]:
+    return validate_frozen_plan(PLAN, expected_plan_rows(), label="Phase 1 v1")
+
+
+def validate_recovery_plan() -> list[dict[str, str]]:
+    rows = validate_frozen_plan(
+        RECOVERY_PLAN,
+        expected_recovery_plan_rows(),
+        label="Phase 1 recovery v2",
+    )
+    require(
+        {row["timeout_seconds"] for row in rows} == {str(RECOVERY_TIMEOUT_SECONDS)},
+        "recovery timeout drift",
+    )
+    require(
+        all(row["attempt_id"].startswith("p1v2_") for row in rows),
+        "recovery attempt namespace drift",
+    )
+    require(
+        all("/profile-runs-v2/" in row["expected_artifact_root"] for row in rows),
+        "recovery artifact namespace drift",
+    )
+    return rows
 
 
 def git_output(*arguments: str) -> str:
@@ -1089,6 +1142,194 @@ def check_results(artifact_root: Path) -> None:
             require(int(row["paired_output_equal"]) == 1, "profile output mismatch")
 
 
+def analyze_recovery(
+    rows: list[dict[str, str]], artifact_root: Path
+) -> tuple[list[dict[str, object]], dict[str, object], dict[str, object]]:
+    receipts = receipts_from_artifacts(rows, artifact_root)
+    source = source_rows(rows, receipts)
+    stats = build_statistics(source)
+    stats["phase1_profile_execution_epoch"] = 2
+    stats["v1_blocked_receipt_sha256"] = sha256_file(EXECUTION_RECEIPT)
+    decision = build_decision(stats)
+    decision["phase1_profile_execution_epoch"] = 2
+    decision["v1_status_preserved"] = "blocked_by_fixed_timeout"
+    decision["v1_evidence_reused"] = False
+    decision["recovery_change_scope"] = "outer_timeout_only"
+    return source, stats, decision
+
+
+def render_recovery_decision_markdown(decision: dict[str, object]) -> bytes:
+    base = render_decision_markdown(decision).decode("utf-8").splitlines()
+    base[2:2] = [
+        "Execution epoch: `phase1-profile-v2`.",
+        "",
+        "The v1 fixed-timeout failure remains immutable and was not reused in these",
+        "statistics. V2 repeated the complete 50-attempt panel from the beginning;",
+        "the only execution-policy change was the preregistered outer timeout.",
+        "",
+    ]
+    return ("\n".join(base) + "\n").encode("utf-8")
+
+
+def write_recovery_analysis(
+    rows: list[dict[str, str]],
+    artifact_root: Path,
+    *,
+    execution_receipt: dict[str, object],
+) -> None:
+    source, stats, decision = analyze_recovery(rows, artifact_root)
+    atomic_write(RECOVERY_SOURCE_DATA, tsv_bytes(SOURCE_FIELDS, source))
+    atomic_write(RECOVERY_STATISTICS, json_bytes(stats))
+    atomic_write(RECOVERY_DECISION_JSON, json_bytes(decision))
+    atomic_write(RECOVERY_DECISION_MD, render_recovery_decision_markdown(decision))
+    execution_receipt.update(
+        {
+            "source_data_sha256": sha256_file(RECOVERY_SOURCE_DATA),
+            "statistics_sha256": sha256_file(RECOVERY_STATISTICS),
+            "decision_sha256": sha256_file(RECOVERY_DECISION_JSON),
+            "attempts_complete": len(source),
+            "paired_outputs_equal": all(
+                int(row["paired_output_equal"]) == 1 for row in source
+            ),
+            "status": "complete",
+        }
+    )
+    atomic_write(RECOVERY_EXECUTION_RECEIPT, json_bytes(execution_receipt))
+    atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+
+
+def execute_recovery(binary: Path) -> None:
+    rows = validate_recovery_plan()
+    check_blocked_receipt(DEFAULT_ARTIFACT_ROOT)
+    artifact_root = RECOVERY_ARTIFACT_ROOT
+    require(binary.is_file() and not binary.is_symlink() and os.access(binary, os.X_OK), "invalid binary")
+    require(not artifact_root.exists(), f"recovery artifact root already exists: {artifact_root}")
+    require(git_output("status", "--porcelain") == "", "formal recovery requires a clean worktree")
+    commit = git_output("rev-parse", "HEAD")
+    artifact_root.mkdir(parents=True)
+    started_monotonic = time.monotonic()
+    execution_receipt: dict[str, object] = {
+        "schema_version": 1,
+        "phase": 1,
+        "phase1_profile_execution_epoch": 2,
+        "status": "running",
+        "start_utc": utc_now(),
+        "git_commit": commit,
+        "binary_path": str(binary),
+        "binary_sha256": sha256_file(binary),
+        "plan_sha256": sha256_file(RECOVERY_PLAN),
+        "runner_sha256": sha256_file(Path(__file__)),
+        "prior_v1_status": "blocked_by_fixed_timeout",
+        "prior_v1_receipt_sha256": sha256_file(EXECUTION_RECEIPT),
+        "prior_v1_artifact_root": str(DEFAULT_ARTIFACT_ROOT.relative_to(ROOT)),
+        "v1_evidence_reused": False,
+        "recovery_change_scope": "outer_timeout_only",
+        "timeout_seconds": RECOVERY_TIMEOUT_SECONDS,
+        "total_budget_seconds": RECOVERY_TOTAL_BUDGET_SECONDS,
+        "retry_policy": "none",
+        "attempt_count": len(rows),
+        "attempts_started": 0,
+        "attempts_complete": 0,
+    }
+    atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+    for row in rows:
+        elapsed = time.monotonic() - started_monotonic
+        if elapsed >= RECOVERY_TOTAL_BUDGET_SECONDS:
+            execution_receipt.update(
+                {
+                    "status": "blocked_by_fixed_total_budget",
+                    "end_utc": utc_now(),
+                    "elapsed_seconds": elapsed,
+                    "next_attempt_id": row["attempt_id"],
+                }
+            )
+            atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+            raise ProfileError("Phase 1 recovery reached the fixed total budget")
+        execution_receipt["current_attempt_id"] = row["attempt_id"]
+        execution_receipt["attempts_started"] = int(execution_receipt["attempts_started"]) + 1
+        atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+        try:
+            receipt = run_attempt(
+                row,
+                binary=binary,
+                artifact_root=artifact_root,
+                git_commit=commit,
+            )
+        except Exception as exc:
+            execution_receipt.update(
+                {
+                    "status": "blocked_by_operational_failure",
+                    "end_utc": utc_now(),
+                    "failure": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+            raise
+        if receipt["status"] != "complete":
+            execution_receipt.update(
+                {
+                    "status": "blocked_by_attempt_failure",
+                    "end_utc": utc_now(),
+                    "failed_attempt_id": row["attempt_id"],
+                    "failed_attempt_status": receipt["status"],
+                }
+            )
+            atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+            raise ProfileError(f"recovery attempt failed: {row['attempt_id']}")
+        execution_receipt["attempts_complete"] = int(execution_receipt["attempts_complete"]) + 1
+        atomic_write(artifact_root / "execution.json", json_bytes(execution_receipt))
+    execution_receipt["end_utc"] = utc_now()
+    execution_receipt["elapsed_seconds"] = time.monotonic() - started_monotonic
+    execution_receipt.pop("current_attempt_id", None)
+    write_recovery_analysis(rows, artifact_root, execution_receipt=execution_receipt)
+
+
+def check_recovery_results() -> None:
+    rows = validate_recovery_plan()
+    check_blocked_receipt(DEFAULT_ARTIFACT_ROOT)
+    expected_source, expected_stats, expected_decision = analyze_recovery(
+        rows, RECOVERY_ARTIFACT_ROOT
+    )
+    require(
+        RECOVERY_SOURCE_DATA.read_bytes() == tsv_bytes(SOURCE_FIELDS, expected_source),
+        "recovery source data drift",
+    )
+    require(RECOVERY_STATISTICS.read_bytes() == json_bytes(expected_stats), "recovery statistics drift")
+    require(
+        RECOVERY_DECISION_JSON.read_bytes() == json_bytes(expected_decision),
+        "recovery decision drift",
+    )
+    require(
+        RECOVERY_DECISION_MD.read_bytes()
+        == render_recovery_decision_markdown(expected_decision),
+        "recovery decision report drift",
+    )
+    receipt = json.loads(RECOVERY_EXECUTION_RECEIPT.read_text(encoding="utf-8"))
+    require(receipt["status"] == "complete", "recovery execution receipt is incomplete")
+    require(receipt["attempts_complete"] == 50, "recovery attempt count drift")
+    require(receipt["paired_outputs_equal"] is True, "recovery authority output equality failed")
+    require(receipt["plan_sha256"] == sha256_file(RECOVERY_PLAN), "recovery plan receipt drift")
+    require(receipt["prior_v1_receipt_sha256"] == sha256_file(EXECUTION_RECEIPT), "v1 receipt drift")
+    require(receipt["v1_evidence_reused"] is False, "v1 evidence entered recovery statistics")
+    require(
+        float(receipt["elapsed_seconds"]) <= RECOVERY_TOTAL_BUDGET_SECONDS,
+        "recovery total budget exceeded",
+    )
+    require(
+        (RECOVERY_ARTIFACT_ROOT / "execution.json").read_bytes()
+        == RECOVERY_EXECUTION_RECEIPT.read_bytes(),
+        "recovery artifact execution receipt drift",
+    )
+    require(expected_decision["b3_threshold_changed"] is False, "B3 threshold changed")
+    require(expected_decision["engineering_track"] == "active", "engineering track closed")
+    for row in expected_source:
+        require(str(row["attempt_id"]).startswith("p1v2_"), "v1 attempt entered v2 source data")
+        if row["profile_mode"] == "profile_on":
+            require(int(row["profile_stack_errors"]) == 0, "recovery profile stack error")
+            require(int(row["profile_active_depth"]) == 0, "recovery profile stage leaked")
+            require(int(row["paired_output_equal"]) == 1, "recovery profile output mismatch")
+
+
 def smoke(binary: Path) -> None:
     rows = expected_plan_rows()[:2]
     with tempfile.TemporaryDirectory(prefix="ssw-cuda-phase1-smoke-") as temporary:
@@ -1120,6 +1361,10 @@ def parse_args() -> argparse.Namespace:
     action.add_argument("--check-results", action="store_true")
     action.add_argument("--record-blocked", action="store_true")
     action.add_argument("--check-blocked", action="store_true")
+    action.add_argument("--render-recovery-plan", action="store_true")
+    action.add_argument("--check-recovery-plan", action="store_true")
+    action.add_argument("--execute-recovery", action="store_true")
+    action.add_argument("--check-recovery-results", action="store_true")
     parser.add_argument("--binary", type=Path)
     parser.add_argument("--artifact-root", type=Path, default=DEFAULT_ARTIFACT_ROOT)
     return parser.parse_args()
@@ -1151,6 +1396,18 @@ def main() -> int:
     elif args.check_blocked:
         check_blocked_receipt(artifact_root)
         print("SSW-CUDA Phase 1 blocked receipt OK")
+    elif args.render_recovery_plan:
+        sys.stdout.buffer.write(tsv_bytes(PLAN_FIELDS, expected_recovery_plan_rows()))
+    elif args.check_recovery_plan:
+        validate_recovery_plan()
+        print("SSW-CUDA Phase 1 recovery plan OK")
+    elif args.execute_recovery:
+        require(args.binary is not None, "--execute-recovery requires --binary")
+        execute_recovery(args.binary.resolve())
+        print("SSW-CUDA Phase 1 recovery profile complete")
+    elif args.check_recovery_results:
+        check_recovery_results()
+        print("SSW-CUDA Phase 1 recovery results OK")
     else:
         check_results(artifact_root)
         print("SSW-CUDA Phase 1 results OK")
