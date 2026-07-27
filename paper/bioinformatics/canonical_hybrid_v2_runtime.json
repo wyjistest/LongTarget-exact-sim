@@ -16,9 +16,9 @@
   "compiler": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
   "complete_cpu_authority_inside_hybrid": false,
   "contract": "canonical-hybrid-v2",
-  "created_utc": "2026-07-27T09:46:17.735448+00:00",
+  "created_utc": "2026-07-27T10:06:12.427361+00:00",
   "cuda_compiler": "Build cuda_12.5.r12.5/compiler.34385749_0",
-  "freeze_basis_commit": "0853e403cd1dbdfd3b3d2ea85f6a8d8fba9f1e97",
+  "freeze_basis_commit": "ec9ebb1c5bc1caa14d1a70e8cae89dcc6f2e16f9",
   "gasal2_revision": "106d94ee53fc847214fb05f2f9f892538a5d3baf",
   "gpu_inventory": [
     {
@@ -67,7 +67,7 @@
     "fasim/gasal2_align_bridge.h": "582121c9a3477501b1c7d908363f19ca43fd1468977c753232be8bbf9406edfd",
     "fasim/gasal2_align_bridge_stub.cpp": "345d6e32bc038afa340d4d39712643a7a1b523f069239a9afc74a894ad0c775e",
     "paper/bioinformatics/canonical_hybrid_v2_protocol.md": "f202b96557a056f4b6222bfb3d22f28724efc95c98d132e3e483e2e907f3c98d",
-    "reproduce/bioinformatics/run_canonical_hybrid_v2.py": "5524f8f411ea3a2b2eb9311fb2e428459cc9d7c3e8f417c03653b0b406372a31",
+    "reproduce/bioinformatics/run_canonical_hybrid_v2.py": "41e19d9195dfa1b19746f58a2f225ea7923ca3fe8d23a614370bd74b095e8e6d",
     "schemas/canonical_hybrid_v2_attempt_telemetry.schema.json": "0dfcc075907e0e53922c6e0473cfda5e4e98f621f2d55316d2be3868c2017a21",
     "scripts/canonical_hybrid_v2_telemetry.py": "eab9e765e7c2c1af3078a3d9bec446e2a5d95480ac0ccc12c9855f4dfdc5476f"
   },
@@ -80,9 +80,12 @@
     "ELF file    1: prealign_cuda.1.sm_89.cubin"
   ],
   "python": "3.11.10",
-  "runner_commit": "0853e403cd1dbdfd3b3d2ea85f6a8d8fba9f1e97",
-  "runner_commit_patch_sha256": "5f9ce8b8bfb6269c4b2592fb197d2bea77e1041569631e7208e3e70300e61cd0",
-  "runner_sha256": "5524f8f411ea3a2b2eb9311fb2e428459cc9d7c3e8f417c03653b0b406372a31",
+  "regression_decision_sha256": "193eca076f0bd22aa5317a0b09717133d67355cf2f4a04cc06317289e58d7862",
+  "regression_result_receipt_sha256": "d75b57609eeed12761ab0e9312a1dfe7bc4826cc5a77ee8e5c2c58fe915b34ae",
+  "runner_change_scope": "comparator_bytecode_isolation_and_snapshot_integrity_only",
+  "runner_commit": "ec9ebb1c5bc1caa14d1a70e8cae89dcc6f2e16f9",
+  "runner_commit_patch_sha256": "1f52e275bfd8a40c68b2c1b221303696ad030dc3836fcf999dc79493118d9a7e",
+  "runner_sha256": "41e19d9195dfa1b19746f58a2f225ea7923ca3fe8d23a614370bd74b095e8e6d",
   "runtime_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
   "runtime_environment": {
     "FASIM_ALIGN_GASAL2_BATCH": "20000",
@@ -97,9 +100,11 @@
     "FASIM_VERBOSE": "0"
   },
   "runtime_epoch": 1,
+  "runtime_revision": 2,
   "schema_version": 1,
-  "supersedes_runtime_receipt_sha256": "fd06cef06fb6a820c911923d91acb67984cdb6751217f3b983e250f3bca9c81c",
-  "supersession_reason": "preexecution_snapshot_comparator_dependency_closure",
+  "scientific_runtime_changed": false,
+  "supersedes_runtime_receipt_sha256": "95901013c55c60761344f9320d913c8305269e02876da87fd780b3cdc4796422",
+  "supersession_reason": "post_regression_python_bytecode_isolation",
   "telemetry_schema_sha256": "0dfcc075907e0e53922c6e0473cfda5e4e98f621f2d55316d2be3868c2017a21",
   "telemetry_validator_sha256": "eab9e765e7c2c1af3078a3d9bec446e2a5d95480ac0ccc12c9855f4dfdc5476f"
 }
