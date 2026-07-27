@@ -1497,6 +1497,7 @@ check-bioinformatics-phase3-pilot:
 	check-bioinformatics-phase2-traceback-replay \
 	check-bioinformatics-canonical-hybrid-v2 \
 	check-bioinformatics-canonical-hybrid-v2-regression \
+	check-bioinformatics-canonical-hybrid-v2-holdout \
 	check-bioinformatics-phase3-freeze \
 	check-bioinformatics-phase3-preexecution \
 	check-bioinformatics-phase3-pilot \
