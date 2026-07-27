@@ -1475,6 +1475,7 @@ struct FasimGasal2Attempt
 		task_strand(-1),
 		task_para(-1),
 		task_rule(-1),
+		identity_round(-1),
 		target_source(NULL),
 		target_offset(0),
 		target_length(0)
@@ -1493,6 +1494,7 @@ struct FasimGasal2Attempt
 	int task_strand;
 	int task_para;
 	int task_rule;
+	int identity_round;
 	const std::string *target_source;
 	size_t target_offset;
 	size_t target_length;
@@ -1525,6 +1527,7 @@ struct FasimGasal2Attempt
 struct FasimGasal2SelectedAlignment
 {
 	FasimGasal2SelectedAlignment() :
+		attempt_index(-1),
 		scoreinfo_index(0),
 		cutlength(0),
 		start(0),
@@ -1537,6 +1540,7 @@ struct FasimGasal2SelectedAlignment
 	{
 	}
 
+	int64_t attempt_index;
 	int scoreinfo_index;
 	int cutlength;
 	int start;
@@ -1547,6 +1551,26 @@ struct FasimGasal2SelectedAlignment
 	bool score_prepass_fallback_candidate;
 	bool selected;
 	StripedSmithWaterman::Alignment alignment;
+};
+
+struct FasimGasal2AttemptScoreTelemetry
+{
+	FasimGasal2AttemptScoreTelemetry() :
+		attempt_index(-1),
+		gpu_score(0),
+		gpu_query_end(-1),
+		gpu_ref_end_global(-1),
+		selected(false),
+		selection_reason("not_evaluated")
+	{
+	}
+
+	int64_t attempt_index;
+	int gpu_score;
+	int gpu_query_end;
+	int gpu_ref_end_global;
+	bool selected;
+	std::string selection_reason;
 };
 
 struct FasimGasal2ScoreOnlyAlignment
@@ -2316,6 +2340,13 @@ bool fasim_gasal2_select_attempts(const std::string &query,
                                   const std::vector<FasimGasal2Attempt> &attempts,
                                   std::vector<FasimGasal2SelectedAlignment> *selected,
                                   std::string *errorOut);
+
+bool fasim_gasal2_select_attempts_canonical_hybrid_v2(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::vector<FasimGasal2AttemptScoreTelemetry> *telemetry,
+	std::string *errorOut);
 
 bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,

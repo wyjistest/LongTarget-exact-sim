@@ -3327,6 +3327,17 @@ static inline bool fasim_gasal2_pretraceback_pruning_eligibility_runtime()
 	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY");
 }
 
+static inline bool fasim_canonical_hybrid_v2_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_CANONICAL_HYBRID_V2");
+}
+
+static inline std::string fasim_canonical_hybrid_v2_telemetry_path_runtime()
+{
+	const char *env = getenv("FASIM_CANONICAL_HYBRID_V2_TELEMETRY_PATH");
+	return env == NULL ? std::string("") : std::string(env);
+}
+
 static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
 {
 	const char *env = getenv("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT");
@@ -6119,6 +6130,237 @@ static inline std::string fasim_hash_cigar(
 static inline std::string fasim_hash_lite_row_key(const std::string &key)
 {
 	return fasim_hex_u64(fasim_hash_string_field(1469598103934665603ULL, key));
+}
+
+static inline std::string fasim_canonical_hybrid_v2_cigar(
+	const std::vector<uint32_t> &cigar)
+{
+	if (cigar.empty())
+	{
+		return "*";
+	}
+	std::ostringstream out;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		out << cigar_int_to_len(cigar[i]) << cigar_int_to_op(cigar[i]);
+	}
+	return out.str();
+}
+
+static inline std::string fasim_canonical_hybrid_v2_row_text(
+	const triplex &input,
+	const std::string &taskChr,
+	long recordStartGenome)
+{
+	triplex row = input;
+	if (row.chr.empty())
+	{
+		row.chr = taskChr;
+	}
+	if (row.genomestart == 0)
+	{
+		row.genomestart = row.starj + recordStartGenome - 1;
+	}
+	if (row.genomeend == 0)
+	{
+		row.genomeend = row.endj + recordStartGenome - 1;
+	}
+	const int midpoint = static_cast<int>((row.stari + row.endi) / 2);
+	std::ostringstream out;
+	out << row.stari << "\t" << row.endi << "\t"
+	    << row.starj << "\t" << row.endj << "\t"
+	    << (row.starj < row.endj ? "R" : "L") << "\t"
+	    << row.chr << "\t" << row.genomestart << "\t" << row.genomeend << "\t"
+	    << row.tri_score << "\t" << row.identity << "\t"
+	    << getStrand(row.reverse, row.strand) << "\t"
+	    << row.rule << "\t" << row.score << "\t" << row.nt << "\t"
+	    << 0 << "\t" << midpoint << "\t" << midpoint << "\t"
+	    << row.stri_align << "\t" << row.strj_align;
+	return out.str();
+}
+
+static inline std::string fasim_canonical_hybrid_v2_row_digest(
+	const triplex &row,
+	const std::string &taskChr,
+	long recordStartGenome)
+{
+	const std::string text =
+		fasim_canonical_hybrid_v2_row_text(row, taskChr, recordStartGenome);
+	return std::string("fnv1a64:") +
+	       fasim_hex_u64(fasim_fnv1a_update(1469598103934665603ULL, text));
+}
+
+struct FasimCanonicalHybridV2AttemptTelemetryRow
+{
+	FasimCanonicalHybridV2AttemptTelemetryRow() :
+		batch_id(0), attempt_index(-1), task_id(0), scoreinfo_index(-1),
+		scoreinfo_position(-1), rule(-1), strand(-1), para(-1),
+		identity_round(-1), start(0), cutlength(0), prealign_threshold(0),
+		gpu_score(0), gpu_query_end(-1), gpu_ref_end_global(-1), selected(false),
+		selection_reason("not_evaluated"), cpu_called(false), cpu_score(0),
+		cpu_query_begin(-1), cpu_query_end(-1), cpu_ref_begin_local(-1),
+		cpu_ref_end_local(-1), cpu_cigar("NA"), cpu_emit_reason("not_selected"),
+		converted_row_digest("NA"), final_row_digest("NA"),
+		final_status("not_selected")
+	{
+	}
+
+	uint64_t batch_id;
+	int64_t attempt_index;
+	uint64_t task_id;
+	int scoreinfo_index;
+	int scoreinfo_position;
+	int rule;
+	int strand;
+	int para;
+	int identity_round;
+	int start;
+	int cutlength;
+	int prealign_threshold;
+	int gpu_score;
+	int gpu_query_end;
+	int gpu_ref_end_global;
+	bool selected;
+	std::string selection_reason;
+	bool cpu_called;
+	int cpu_score;
+	int cpu_query_begin;
+	int cpu_query_end;
+	int cpu_ref_begin_local;
+	int cpu_ref_end_local;
+	std::string cpu_cigar;
+	std::string cpu_emit_reason;
+	std::string converted_row_digest;
+	std::string final_row_digest;
+	std::string final_status;
+};
+
+struct FasimCanonicalHybridV2TelemetryExporter
+{
+	FasimCanonicalHybridV2TelemetryExporter() :
+		requested(false), active(false), failed(false), next_batch_id(0),
+		rows(0), selected_rows(0), cpu_rows(0), final_rows(0), path(""),
+		failure_reason("none"), output()
+	{
+	}
+
+	void open()
+	{
+		requested = fasim_canonical_hybrid_v2_runtime();
+		if (!requested)
+		{
+			return;
+		}
+		path = fasim_canonical_hybrid_v2_telemetry_path_runtime();
+		if (path.empty())
+		{
+			fail("telemetry_path_missing");
+			return;
+		}
+		std::ifstream existing(path.c_str());
+		if (existing.good())
+		{
+			fail("telemetry_path_exists");
+			return;
+		}
+		output.open(path.c_str(), std::ios::out | std::ios::trunc);
+		if (!output)
+		{
+			fail("telemetry_path_open_failed");
+			return;
+		}
+		output
+			<< "batch_id\tattempt_index\ttask_id\tscoreinfo_index\t"
+			<< "scoreinfo_position\trule\tstrand\tpara\tidentity_round\tstart\t"
+			<< "cutlength\tprealign_threshold\tgpu_score\tgpu_query_end\t"
+			<< "gpu_ref_end_global\tselected\tselection_reason\tcpu_called\t"
+			<< "cpu_score\tcpu_query_begin\tcpu_query_end\tcpu_ref_begin_local\t"
+			<< "cpu_ref_end_local\tcpu_cigar\tcpu_emit_reason\t"
+			<< "converted_row_digest\tfinal_row_digest\tfinal_status\n";
+		active = true;
+	}
+
+	void fail(const std::string &reason)
+	{
+		failed = true;
+		active = false;
+		failure_reason = reason;
+	}
+
+	uint64_t begin_batch()
+	{
+		return next_batch_id++;
+	}
+
+	bool append(const std::vector<FasimCanonicalHybridV2AttemptTelemetryRow> &batch)
+	{
+		if (!active || failed)
+		{
+			return false;
+		}
+		for (size_t i = 0; i < batch.size(); ++i)
+		{
+			const FasimCanonicalHybridV2AttemptTelemetryRow &row = batch[i];
+			output << row.batch_id << "\t" << row.attempt_index << "\t"
+			       << row.task_id << "\t" << row.scoreinfo_index << "\t"
+			       << row.scoreinfo_position << "\t" << row.rule << "\t"
+			       << row.strand << "\t" << row.para << "\t"
+			       << row.identity_round << "\t" << row.start << "\t"
+			       << row.cutlength << "\t" << row.prealign_threshold << "\t"
+			       << row.gpu_score << "\t" << row.gpu_query_end << "\t"
+			       << row.gpu_ref_end_global << "\t" << (row.selected ? 1 : 0) << "\t"
+			       << row.selection_reason << "\t" << (row.cpu_called ? 1 : 0) << "\t"
+			       << row.cpu_score << "\t" << row.cpu_query_begin << "\t"
+			       << row.cpu_query_end << "\t" << row.cpu_ref_begin_local << "\t"
+			       << row.cpu_ref_end_local << "\t" << row.cpu_cigar << "\t"
+			       << row.cpu_emit_reason << "\t" << row.converted_row_digest << "\t"
+			       << row.final_row_digest << "\t" << row.final_status << "\n";
+			++rows;
+			selected_rows += row.selected ? 1 : 0;
+			cpu_rows += row.cpu_called ? 1 : 0;
+			final_rows += row.final_row_digest != "NA" ? 1 : 0;
+		}
+		output.flush();
+		if (!output)
+		{
+			fail("telemetry_write_failed");
+			return false;
+		}
+		return true;
+	}
+
+	bool requested;
+	bool active;
+	bool failed;
+	uint64_t next_batch_id;
+	uint64_t rows;
+	uint64_t selected_rows;
+	uint64_t cpu_rows;
+	uint64_t final_rows;
+	std::string path;
+	std::string failure_reason;
+	std::ofstream output;
+};
+
+static inline void fasim_print_canonical_hybrid_v2_telemetry_stats(
+	const FasimCanonicalHybridV2TelemetryExporter &exporter)
+{
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_requested="
+	          << (exporter.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_active="
+	          << (exporter.active && !exporter.failed ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_telemetry_rows="
+	          << exporter.rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_selected_rows="
+	          << exporter.selected_rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_cpu_traceback_rows="
+	          << exporter.cpu_rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_final_row_mappings="
+	          << exporter.final_rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_telemetry_path="
+	          << exporter.path << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_failure_reason="
+	          << exporter.failure_reason << "\n";
 }
 
 static inline void fasim_print_pretraceback_eligibility_metric(
@@ -10638,6 +10880,8 @@ int main(int argc, char* const* argv)
 	taxonomyExporter.open();
 	FasimGasal2PretracebackPruningEligibilityRuntime eligibilityRuntime;
 	eligibilityRuntime.open();
+	FasimCanonicalHybridV2TelemetryExporter canonicalHybridV2Telemetry;
+	canonicalHybridV2Telemetry.open();
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -10783,6 +11027,25 @@ int main(int argc, char* const* argv)
 	resultDir = paraList.outpath;
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
+	if (canonicalHybridV2Telemetry.requested &&
+	    (!canonicalHybridV2Telemetry.active ||
+	     outputMode != FASIM_OUTPUT_TFOSORTED ||
+	     !fasim_gasal2_cpu_traceback_enabled_runtime() ||
+	     fasim_gasal2_cpu_traceback_all_enabled_runtime()))
+	{
+		if (!canonicalHybridV2Telemetry.failed)
+		{
+			canonicalHybridV2Telemetry.fail(
+				outputMode != FASIM_OUTPUT_TFOSORTED ?
+				"unsupported_output_mode" :
+				(!fasim_gasal2_cpu_traceback_enabled_runtime() ?
+				 "cpu_traceback_not_enabled" :
+				 "complete_cpu_authority_forbidden"));
+		}
+		fasim_print_canonical_hybrid_v2_telemetry_stats(
+			canonicalHybridV2Telemetry);
+		return 2;
+	}
 	std::vector<int> exactColumnGuardCudaDevices;
 	fasim_cuda_devices_runtime(exactColumnGuardCudaDevices);
 	if (fasim_exact_column_multigpu_guard_failed(exactColumnGuardCudaDevices))
@@ -14634,6 +14897,7 @@ int main(int argc, char* const* argv)
 					const StripedSmithWaterman::scoreInfo &scoreInfo = taskScoreInfos[si];
 					scoreGroups.push_back(Gasal2BatchScoreGroup(t, si));
 					float Iden = 0.6;
+					int identityRound = 6;
 					while (Iden <= 1)
 					{
 						int cutlength = static_cast<int>(scoreInfo.score + 24) / (9 * Iden - 4) + 1;
@@ -14648,6 +14912,7 @@ int main(int argc, char* const* argv)
 							attempt.prealign_score = scoreInfo.score;
 							attempt.target_end_required_for_fallback = cutlength - 1;
 							attempt.nt_min_length = paraList.cLength;
+							attempt.identity_round = identityRound;
 							annotate_gasal2_attempt_task(attempt, task);
 							attempt.set_target_view(&task.seq2,
 							                        static_cast<size_t>(targetStart),
@@ -14655,6 +14920,7 @@ int main(int argc, char* const* argv)
 							gasalAttempts.push_back(std::move(attempt));
 						}
 						Iden += 0.1;
+						++identityRound;
 					}
 					++gasalScoreGroup;
 				}
@@ -15115,6 +15381,10 @@ int main(int argc, char* const* argv)
 			}
 
 				std::vector<FasimGasal2SelectedAlignment> gasalSelected;
+				std::vector<FasimGasal2AttemptScoreTelemetry>
+					canonicalHybridScoreTelemetry;
+				std::vector<FasimCanonicalHybridV2AttemptTelemetryRow>
+					canonicalHybridRows;
 				std::string gasalError;
 				bool gasalOk = true;
 				double scoreSelectSeconds = 0.0;
@@ -15278,9 +15548,23 @@ int main(int argc, char* const* argv)
 						currentFlushPipelineRecord->gasal2_score_wait_start_ns =
 							scoreSelectStartNs;
 					}
-					gasalOk = useCpuTracebackReplay ?
-						fasim_gasal2_select_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError) :
-						fasim_gasal2_align_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError);
+						if (canonicalHybridV2Telemetry.requested)
+						{
+							gasalOk = fasim_gasal2_select_attempts_canonical_hybrid_v2(
+								lncSeq,
+								gasalAttempts,
+								&gasalSelected,
+								&canonicalHybridScoreTelemetry,
+								&gasalError);
+						}
+						else
+						{
+							gasalOk = useCpuTracebackReplay ?
+								fasim_gasal2_select_attempts(
+									lncSeq, gasalAttempts, &gasalSelected, &gasalError) :
+								fasim_gasal2_align_attempts(
+									lncSeq, gasalAttempts, &gasalSelected, &gasalError);
+						}
 					if (currentFlushPipelineRecord != NULL)
 					{
 						const uint64_t scoreSelectEndNs = fasim_monotonic_ns();
@@ -15308,7 +15592,56 @@ int main(int argc, char* const* argv)
 				}
 			if (!gasalOk)
 			{
+				if (canonicalHybridV2Telemetry.requested)
+				{
+					canonicalHybridV2Telemetry.fail("score_prepass_failed");
+				}
 				return false;
+			}
+			if (canonicalHybridV2Telemetry.requested)
+			{
+				if (canonicalHybridScoreTelemetry.size() != gasalAttempts.size())
+				{
+					canonicalHybridV2Telemetry.fail("score_telemetry_count_mismatch");
+					return false;
+				}
+				const uint64_t telemetryBatchId =
+					canonicalHybridV2Telemetry.begin_batch();
+				canonicalHybridRows.resize(gasalAttempts.size());
+				for (size_t ai = 0; ai < gasalAttempts.size(); ++ai)
+				{
+					const FasimGasal2Attempt &attempt = gasalAttempts[ai];
+					const FasimGasal2AttemptScoreTelemetry &score =
+						canonicalHybridScoreTelemetry[ai];
+					FasimCanonicalHybridV2AttemptTelemetryRow &row =
+						canonicalHybridRows[ai];
+					row.batch_id = telemetryBatchId;
+					row.attempt_index = static_cast<int64_t>(ai);
+					row.scoreinfo_index = attempt.scoreinfo_index;
+					row.rule = attempt.task_rule;
+					row.strand = attempt.task_strand;
+					row.para = attempt.task_para;
+					row.identity_round = attempt.identity_round;
+					row.start = attempt.start;
+					row.cutlength = attempt.cutlength;
+					row.prealign_threshold = attempt.prealign_score;
+					row.gpu_score = score.gpu_score;
+					row.gpu_query_end = score.gpu_query_end;
+					row.gpu_ref_end_global = score.gpu_ref_end_global;
+					row.selected = score.selected;
+					row.selection_reason = score.selection_reason;
+					if (attempt.scoreinfo_index >= 0 &&
+					    static_cast<size_t>(attempt.scoreinfo_index) < scoreGroups.size())
+					{
+						const Gasal2BatchScoreGroup &group =
+							scoreGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+						row.scoreinfo_position = static_cast<int>(group.scoreInfoIndex);
+						if (group.taskIndex < tasks.size())
+						{
+							row.task_id = tasks[group.taskIndex].taskIndex;
+						}
+					}
+				}
 			}
 			nvtxScoreTraceback.close();
 
@@ -15365,6 +15698,54 @@ int main(int argc, char* const* argv)
 				bool emitted = false;
 				uint64_t currentGroupAlignRank = 0;
 
+				auto canonicalTelemetryRow =
+					[&](const FasimGasal2SelectedAlignment &selected)
+					-> FasimCanonicalHybridV2AttemptTelemetryRow *
+				{
+					if (!canonicalHybridV2Telemetry.requested ||
+					    selected.attempt_index < 0 ||
+					    static_cast<size_t>(selected.attempt_index) >=
+						    canonicalHybridRows.size())
+					{
+						return NULL;
+					}
+					return &canonicalHybridRows[
+						static_cast<size_t>(selected.attempt_index)];
+				};
+				auto recordCanonicalCpuAlignment =
+					[&](const FasimGasal2SelectedAlignment &selected,
+					    const StripedSmithWaterman::Alignment &alignment)
+				{
+					FasimCanonicalHybridV2AttemptTelemetryRow *row =
+						canonicalTelemetryRow(selected);
+					if (row == NULL)
+					{
+						return;
+					}
+					row->cpu_called = true;
+					row->cpu_score = alignment.sw_score;
+					row->cpu_query_begin = alignment.query_begin;
+					row->cpu_query_end = alignment.query_end;
+					row->cpu_ref_begin_local = alignment.ref_begin;
+					row->cpu_ref_end_local = alignment.ref_end;
+					row->cpu_cigar =
+						fasim_canonical_hybrid_v2_cigar(alignment.cigar);
+					row->cpu_emit_reason = "not_emitted";
+					row->final_status = "cpu_not_emitted";
+				};
+				auto recordCanonicalEmit =
+					[&](const FasimGasal2SelectedAlignment &selected,
+					    const char *reason)
+				{
+					FasimCanonicalHybridV2AttemptTelemetryRow *row =
+						canonicalTelemetryRow(selected);
+					if (row != NULL)
+					{
+						row->cpu_emit_reason = reason;
+						row->final_status = "emitted_not_converted";
+					}
+				};
+
 				auto flushCpuReplay = [&]()
 				{
 					if (currentScoreGroup >= 0 && static_cast<size_t>(currentScoreGroup) < scoreGroups.size() && !emitted)
@@ -15373,6 +15754,7 @@ int main(int argc, char* const* argv)
 						if (haveBest)
 						{
 							bestSelected.alignment = bestAlignment;
+							recordCanonicalEmit(bestSelected, "best_fallback");
 							replaySelectedByTask[taskIndex].push_back(bestSelected);
 							++replaySelectedCount;
 							++cpuTracebackBestFallbackEmits;
@@ -15383,6 +15765,7 @@ int main(int argc, char* const* argv)
 							lastSelected.alignment = lastAlignment;
 							if (lastSelected.alignment.sw_score != 0)
 							{
+								recordCanonicalEmit(lastSelected, "last");
 								replaySelectedByTask[taskIndex].push_back(lastSelected);
 								++replaySelectedCount;
 								++cpuTracebackLastEmits;
@@ -15457,6 +15840,7 @@ int main(int argc, char* const* argv)
 					cpuTracebackAlignSeconds += fasim_seconds_since(alignStart);
 					++cpuTracebackAlignCalls;
 					++currentGroupAlignRank;
+					recordCanonicalCpuAlignment(candidate, cpuCandidateAlignment);
 
 					if (!emitted)
 					{
@@ -15467,6 +15851,7 @@ int main(int argc, char* const* argv)
 					if (!emitted && cpuCandidateAlignment.sw_score >= scoreInfo.score)
 					{
 						candidate.alignment = cpuCandidateAlignment;
+						recordCanonicalEmit(candidate, "threshold");
 						replaySelectedByTask[group.taskIndex].push_back(candidate);
 						++replaySelectedCount;
 						++cpuTracebackThresholdEmits;
@@ -16153,6 +16538,13 @@ int main(int argc, char* const* argv)
 					                       stability,
 					                       notes);
 				};
+					if (canonicalHybridV2Telemetry.requested &&
+					    (directConvertActive || archiveFirstConvertActive))
+					{
+						canonicalHybridV2Telemetry.fail(
+							"unsupported_conversion_path");
+						return false;
+					}
 					if (directConvertActive ||
 					    archiveFirstConvertActive)
 						{
@@ -17780,6 +18172,22 @@ int main(int argc, char* const* argv)
 							                 paraList.ntMax,
 							                 writeFull,
 							                 !equivalenceFirstConvertActive);
+									if (canonicalHybridV2Telemetry.requested &&
+									    selectedAlignment.attempt_index >= 0 &&
+									    static_cast<size_t>(selectedAlignment.attempt_index) <
+										    canonicalHybridRows.size() &&
+									    myTriplexList.size() > beforeTriplexCount)
+									{
+										FasimCanonicalHybridV2AttemptTelemetryRow &telemetryRow =
+											canonicalHybridRows[static_cast<size_t>(
+												selectedAlignment.attempt_index)];
+										telemetryRow.converted_row_digest =
+											fasim_canonical_hybrid_v2_row_digest(
+												myTriplexList[beforeTriplexCount],
+												task.chr,
+												task.recordStartGenome);
+										telemetryRow.final_status = "converted_not_final";
+									}
 								if (equivalenceFirstConvertActive &&
 								    myTriplexList.size() > beforeTriplexCount)
 								{
@@ -18858,6 +19266,62 @@ int main(int argc, char* const* argv)
 							emitRank17To32.load(std::memory_order_relaxed);
 						phaseTiming.scoreinfo_emit_rank_observe_rank33_plus +=
 							emitRank33Plus.load(std::memory_order_relaxed);
+					}
+				}
+				if (canonicalHybridV2Telemetry.requested)
+				{
+					if (canonicalHybridRows.size() != gasalAttempts.size())
+					{
+						canonicalHybridV2Telemetry.fail("attempt_telemetry_count_mismatch");
+						return false;
+					}
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						const StreamTask &task = tasks[t];
+						std::set<std::string> finalDigests;
+						if (t < triplexesByTask.size())
+						{
+							for (size_t ri = 0; ri < triplexesByTask[t].size(); ++ri)
+							{
+								const triplex &row = triplexesByTask[t][ri];
+								if (row.score >= paraList.scoreMin &&
+								    row.identity >= paraList.minIdentity &&
+								    row.tri_score >= paraList.minStability &&
+								    row.nt >= paraList.cLength)
+								{
+									finalDigests.insert(
+										fasim_canonical_hybrid_v2_row_digest(
+											row, task.chr, task.recordStartGenome));
+								}
+							}
+						}
+						for (size_t ai = 0; ai < canonicalHybridRows.size(); ++ai)
+						{
+							FasimCanonicalHybridV2AttemptTelemetryRow &row =
+								canonicalHybridRows[ai];
+							if (row.task_id == task.taskIndex &&
+							    row.converted_row_digest != "NA" &&
+							    finalDigests.count(row.converted_row_digest) != 0)
+							{
+								row.final_row_digest = row.converted_row_digest;
+								row.final_status = "final_row";
+							}
+						}
+					}
+					for (size_t ai = 0; ai < canonicalHybridRows.size(); ++ai)
+					{
+						const FasimCanonicalHybridV2AttemptTelemetryRow &row =
+							canonicalHybridRows[ai];
+						if (row.selected != row.cpu_called)
+						{
+							canonicalHybridV2Telemetry.fail(
+								"selected_cpu_traceback_count_mismatch");
+							return false;
+						}
+					}
+					if (!canonicalHybridV2Telemetry.append(canonicalHybridRows))
+					{
+						return false;
 					}
 				}
 			fasim_gasal2_record_longtarget_bridge_timing(attemptBuildSeconds,
@@ -27187,6 +27651,23 @@ int main(int argc, char* const* argv)
 						&streamingScoreInfoGpuMinScoreCudaQuery);
 				}
 
+			if (canonicalHybridV2Telemetry.requested &&
+			    (canonicalHybridV2Telemetry.failed ||
+			     canonicalHybridV2Telemetry.rows == 0 ||
+			     canonicalHybridV2Telemetry.selected_rows !=
+				     canonicalHybridV2Telemetry.cpu_rows))
+			{
+				if (!canonicalHybridV2Telemetry.failed)
+				{
+					canonicalHybridV2Telemetry.fail(
+						canonicalHybridV2Telemetry.rows == 0 ?
+						"no_attempt_telemetry" :
+						"selected_cpu_traceback_total_mismatch");
+				}
+				fasim_print_canonical_hybrid_v2_telemetry_stats(
+					canonicalHybridV2Telemetry);
+				return 2;
+			}
 			end = clock();
 		cout << "finished normally" << endl;
 			cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
@@ -27328,6 +27809,11 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_snapshot_stats());
 			fasim_print_phase3_cigar_nt_prefilter_shadow_stats(
 				phase3CigarNtPrefilterShadowStats);
+			if (canonicalHybridV2Telemetry.requested)
+			{
+				fasim_print_canonical_hybrid_v2_telemetry_stats(
+					canonicalHybridV2Telemetry);
+			}
 			fasim_gasal2_print_stats();
 			return 0;
 	}

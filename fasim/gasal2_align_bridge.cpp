@@ -733,9 +733,14 @@ void select_alignments(const std::vector<FasimGasal2Attempt> &attempts,
 
 void select_attempts_from_scores(const std::vector<FasimGasal2Attempt> &attempts,
                                  const std::vector<ScoreOnlyResult> &results,
-                                 std::vector<size_t> *selectedAttemptIndexes)
+                                 std::vector<size_t> *selectedAttemptIndexes,
+                                 std::vector<std::string> *selectionReasons = NULL)
 {
 	selectedAttemptIndexes->clear();
+	if (selectionReasons != NULL)
+	{
+		selectionReasons->assign(attempts.size(), "not_selected_lower_score");
+	}
 	const bool ntSumSpanPrune = nt_sum_span_prune_enabled();
 	g_stats.nt_sum_span_prune_enabled =
 		g_stats.nt_sum_span_prune_enabled || ntSumSpanPrune;
@@ -755,11 +760,19 @@ void select_attempts_from_scores(const std::vector<FasimGasal2Attempt> &attempts
 		if (currentScoreInfo >= 0 && haveBest && !emitted)
 		{
 			selectedAttemptIndexes->push_back(bestIndex);
+			if (selectionReasons != NULL)
+			{
+				(*selectionReasons)[bestIndex] = "best_fallback";
+			}
 			++g_stats.score_prepass_select_best_fallback;
 		}
 		else if (currentScoreInfo >= 0 && haveLast && !emitted && lastScore != 0)
 		{
 			selectedAttemptIndexes->push_back(lastIndex);
+			if (selectionReasons != NULL)
+			{
+				(*selectionReasons)[lastIndex] = "last";
+			}
 			++g_stats.score_prepass_select_last;
 		}
 		else if (currentScoreInfo >= 0 && !emitted)
@@ -795,10 +808,22 @@ void select_attempts_from_scores(const std::vector<FasimGasal2Attempt> &attempts
 		{
 			if (attempt_pruned_by_nt_sum_span(attempt, result))
 			{
+				if (selectionReasons != NULL)
+				{
+					(*selectionReasons)[i] = "pruned_nt_sum_span";
+				}
 				++g_stats.nt_sum_span_pruned_attempts;
 				prunedCurrentGroup = true;
 				continue;
 			}
+		}
+		if (emitted)
+		{
+			if (selectionReasons != NULL)
+			{
+				(*selectionReasons)[i] = "not_selected_after_threshold";
+			}
+			continue;
 		}
 		if (!emitted)
 		{
@@ -809,6 +834,10 @@ void select_attempts_from_scores(const std::vector<FasimGasal2Attempt> &attempts
 		if (!emitted && result.sw_score >= attempt.prealign_score)
 		{
 			selectedAttemptIndexes->push_back(i);
+			if (selectionReasons != NULL)
+			{
+				(*selectionReasons)[i] = "threshold";
+			}
 			++g_stats.score_prepass_select_threshold;
 			if (rankInGroup <= 1)
 			{
@@ -839,6 +868,17 @@ void select_attempts_from_scores(const std::vector<FasimGasal2Attempt> &attempts
 		}
 	}
 	flush();
+	if (selectionReasons != NULL)
+	{
+		for (size_t i = 0; i < results.size(); ++i)
+		{
+			if ((*selectionReasons)[i] == "not_selected_lower_score" &&
+			    results[i].sw_score == 0)
+			{
+				(*selectionReasons)[i] = "not_selected_zero_score";
+			}
+		}
+	}
 }
 
 bool select_attempts_with_staged_scores(BridgeState *state,
@@ -4176,11 +4216,16 @@ bool select_attempts_impl(const std::string &query,
                           const std::vector<FasimGasal2Attempt> &attempts,
                           bool strict,
                           std::vector<FasimGasal2SelectedAlignment> *selected,
+                          std::vector<FasimGasal2AttemptScoreTelemetry> *telemetry,
                           std::string *errorOut)
 {
 	if (selected != NULL)
 	{
 		selected->clear();
+	}
+	if (telemetry != NULL)
+	{
+		telemetry->clear();
 	}
 	if (!fasim_gasal2_enabled())
 	{
@@ -4216,9 +4261,31 @@ bool select_attempts_impl(const std::string &query,
 	}
 
 	std::vector<size_t> selectedAttemptIndexes;
+	std::vector<std::string> selectionReasons;
 	if (strict || env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_STRICT"))
 	{
-		select_attempts_from_scores(attempts, scoreResults, &selectedAttemptIndexes);
+		select_attempts_from_scores(attempts,
+		                            scoreResults,
+		                            &selectedAttemptIndexes,
+		                            telemetry != NULL ? &selectionReasons : NULL);
+	}
+	if (telemetry != NULL)
+	{
+		telemetry->reserve(attempts.size());
+		for (size_t i = 0; i < attempts.size(); ++i)
+		{
+			FasimGasal2AttemptScoreTelemetry row;
+			row.attempt_index = static_cast<int64_t>(i);
+			row.gpu_score = scoreResults[i].sw_score;
+			row.gpu_query_end = scoreResults[i].query_end;
+			row.gpu_ref_end_global = scoreResults[i].ref_end;
+			row.selection_reason = selectionReasons.empty() ?
+				"selection_reason_unavailable" : selectionReasons[i];
+			row.selected = row.selection_reason == "threshold" ||
+			               row.selection_reason == "best_fallback" ||
+			               row.selection_reason == "last";
+			telemetry->push_back(row);
+		}
 	}
 	else
 	{
@@ -4240,6 +4307,7 @@ bool select_attempts_impl(const std::string &query,
 		const FasimGasal2Attempt &attempt = attempts[selectedIndex];
 		const ScoreOnlyResult &scoreResult = scoreResults[selectedIndex];
 		FasimGasal2SelectedAlignment out;
+		out.attempt_index = static_cast<int64_t>(selectedIndex);
 		out.scoreinfo_index = attempt.scoreinfo_index;
 		out.cutlength = attempt.cutlength;
 		out.start = attempt.start;
@@ -4264,7 +4332,17 @@ bool fasim_gasal2_select_attempts(const std::string &query,
                                   std::vector<FasimGasal2SelectedAlignment> *selected,
                                   std::string *errorOut)
 {
-	return select_attempts_impl(query, attempts, false, selected, errorOut);
+	return select_attempts_impl(query, attempts, false, selected, NULL, errorOut);
+}
+
+bool fasim_gasal2_select_attempts_canonical_hybrid_v2(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::vector<FasimGasal2AttemptScoreTelemetry> *telemetry,
+	std::string *errorOut)
+{
+	return select_attempts_impl(query, attempts, true, selected, telemetry, errorOut);
 }
 
 bool fasim_gasal2_select_attempts_strict(const std::string &query,
@@ -4272,7 +4350,7 @@ bool fasim_gasal2_select_attempts_strict(const std::string &query,
                                          std::vector<FasimGasal2SelectedAlignment> *selected,
                                          std::string *errorOut)
 {
-	return select_attempts_impl(query, attempts, true, selected, errorOut);
+	return select_attempts_impl(query, attempts, true, selected, NULL, errorOut);
 }
 
 void fasim_gasal2_record_cpu_traceback_replay(uint64_t replayAttempts,

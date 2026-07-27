@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canonical_hybrid_v2_attempt_telemetry.schema.json",
+  "additionalProperties": false,
+  "columns": [
+    "batch_id",
+    "attempt_index",
+    "task_id",
+    "scoreinfo_index",
+    "scoreinfo_position",
+    "rule",
+    "strand",
+    "para",
+    "identity_round",
+    "start",
+    "cutlength",
+    "prealign_threshold",
+    "gpu_score",
+    "gpu_query_end",
+    "gpu_ref_end_global",
+    "selected",
+    "selection_reason",
+    "cpu_called",
+    "cpu_score",
+    "cpu_query_begin",
+    "cpu_query_end",
+    "cpu_ref_begin_local",
+    "cpu_ref_end_local",
+    "cpu_cigar",
+    "cpu_emit_reason",
+    "converted_row_digest",
+    "final_row_digest",
+    "final_status"
+  ],
+  "digest": {
+    "algorithm": "fnv1a64",
+    "basis": "1469598103934665603",
+    "input": "exact UTF-8 TFOsorted data row without trailing newline",
+    "prefix": "fnv1a64:"
+  },
+  "final_status_enum": [
+    "not_selected",
+    "cpu_not_emitted",
+    "emitted_not_converted",
+    "converted_not_final",
+    "final_row"
+  ],
+  "schema_version": 1,
+  "selection_reason_enum": [
+    "threshold",
+    "best_fallback",
+    "last",
+    "not_selected_after_threshold",
+    "not_selected_lower_score",
+    "not_selected_zero_score",
+    "pruned_nt_sum_span"
+  ],
+  "title": "Canonical hybrid v2 per-attempt TSV telemetry"
+}

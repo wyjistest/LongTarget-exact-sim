@@ -887,6 +887,20 @@ bool fasim_gasal2_select_attempts(const std::string &query,
 	return fasim_gasal2_align_attempts(query, attempts, selected, errorOut);
 }
 
+bool fasim_gasal2_select_attempts_canonical_hybrid_v2(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::vector<FasimGasal2AttemptScoreTelemetry> *telemetry,
+	std::string *errorOut)
+{
+	if (telemetry != NULL)
+	{
+		telemetry->clear();
+	}
+	return fasim_gasal2_align_attempts(query, attempts, selected, errorOut);
+}
+
 bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
