@@ -101,6 +101,10 @@ SNAPSHOT_SUPPORT_FILES = (
     ROOT / "schemas/canonical_hybrid_v2_attempt_telemetry.schema.json",
     RUNTIME_RECEIPT_PATH,
 )
+COMPARATOR_SUPPORT_FILES = (
+    ROOT / "scripts/compare_fasim_lite_offline_cluster_topk.py",
+    ROOT / "scripts/fasim_tfo_archive.py",
+)
 
 
 class RunnerError(RuntimeError):
@@ -235,7 +239,6 @@ def read_runtime_receipt(path: Path = RUNTIME_RECEIPT_PATH) -> dict[str, object]
             and COMMIT_PATTERN.fullmatch(str(receipt[field])) is not None,
             f"invalid runtime receipt {field}",
         )
-    require(receipt["runner_commit"] == receipt["runtime_commit"], "runner/runtime commit drift")
     digest_paths = {
         "runner_sha256": RUNNER_PATH,
         "telemetry_validator_sha256": ROOT / "scripts/canonical_hybrid_v2_telemetry.py",
@@ -245,6 +248,14 @@ def read_runtime_receipt(path: Path = RUNTIME_RECEIPT_PATH) -> dict[str, object]
     for field, source in digest_paths.items():
         require(is_sha256(receipt.get(field)), f"invalid runtime receipt {field}")
         require(sha256_file(source) == receipt[field], f"runtime receipt {field} drift")
+    comparator_dependencies = receipt.get("comparator_dependency_sha256")
+    require(isinstance(comparator_dependencies, dict), "missing comparator dependency identity")
+    for source in COMPARATOR_SUPPORT_FILES:
+        relative = source.relative_to(ROOT).as_posix()
+        require(
+            comparator_dependencies.get(relative) == sha256_file(source),
+            f"runtime comparator dependency drift: {relative}",
+        )
     for field in ("hybrid_binary_sha256", "authority_binary_sha256"):
         require(is_sha256(receipt.get(field)), f"invalid runtime receipt {field}")
     for field in ("hybrid_build_commands", "authority_build_commands"):
@@ -948,7 +959,14 @@ def initialize_stage_snapshot(
         require(sha256_file(tools.authority_binary) == runtime["authority_binary_sha256"], "authority binary digest drift")
     partial = stage_root / f".execution-snapshot.partial.{os.getpid()}"
     partial.mkdir()
-    sources = [PLAN_PATHS[stage], PLAN_CHECKSUM_PATHS[stage], *SNAPSHOT_SUPPORT_FILES, tools.comparator, tools.hybrid_binary]
+    sources = [
+        PLAN_PATHS[stage],
+        PLAN_CHECKSUM_PATHS[stage],
+        *SNAPSHOT_SUPPORT_FILES,
+        tools.comparator,
+        *COMPARATOR_SUPPORT_FILES,
+        tools.hybrid_binary,
+    ]
     if any(row["arm"] == "A" for row in rows):
         sources.append(tools.authority_binary)
     names = [path.name for path in sources]

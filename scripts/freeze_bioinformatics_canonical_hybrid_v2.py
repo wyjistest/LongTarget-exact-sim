@@ -41,6 +41,10 @@ PREALIGN_CUDA_FLAGS = (
     "--generate-code=arch=compute_89,code=sm_89 "
     "--generate-code=arch=compute_80,code=compute_80"
 )
+COMPARATOR_SUPPORT_FILES = (
+    ROOT / "scripts/compare_fasim_lite_offline_cluster_topk.py",
+    ROOT / "scripts/fasim_tfo_archive.py",
+)
 
 
 class FreezeError(RuntimeError):
@@ -60,8 +64,13 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def atomic_bytes(path: Path, payload: bytes) -> None:
-    require(not path.exists(), f"refusing to replace frozen artifact: {path}")
+def atomic_bytes(path: Path, payload: bytes, expected_existing_sha256: str | None = None) -> None:
+    if path.exists():
+        require(expected_existing_sha256 is not None, f"refusing to replace frozen artifact: {path}")
+        require(path.is_file() and not path.is_symlink(), f"unsafe frozen artifact: {path}")
+        require(sha256_file(path) == expected_existing_sha256, f"superseded artifact digest drift: {path}")
+    else:
+        require(expected_existing_sha256 is None, f"expected superseded artifact is missing: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
@@ -153,6 +162,19 @@ def gpu_inventory() -> list[dict[str, str]]:
 
 def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
     commit = require_clean_checkout()
+    previous = None
+    previous_sha256 = None
+    if RUNTIME_PATH.exists():
+        require(args.supersede_runtime_sha256 is not None, "existing runtime receipt requires explicit supersession")
+        previous_sha256 = sha256_file(RUNTIME_PATH)
+        require(previous_sha256 == args.supersede_runtime_sha256, "runtime supersession digest drift")
+        require(
+            not (ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2/regression").exists(),
+            "runtime cannot be superseded after regression execution starts",
+        )
+        previous = json.loads(RUNTIME_PATH.read_text(encoding="utf-8"))
+    else:
+        require(args.supersede_runtime_sha256 is None, "no runtime receipt exists to supersede")
     hybrid = args.hybrid_binary.resolve()
     authority = args.authority_binary.resolve()
     for label, binary in (("hybrid", hybrid), ("authority", authority)):
@@ -168,12 +190,17 @@ def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
     source_files = {
         path.relative_to(ROOT).as_posix(): sha256_file(path) for path in IMPLEMENTATION_SOURCES
     }
+    runtime_commit = str(previous["runtime_commit"]) if previous is not None else commit
+    if previous is not None:
+        require(previous["hybrid_binary_sha256"] == sha256_file(hybrid), "supersession changed hybrid binary")
+        require(previous["authority_binary_sha256"] == sha256_file(authority), "supersession changed authority binary")
     receipt = {
         "schema_version": 1,
         "runtime_epoch": 1,
         "contract": "canonical-hybrid-v2",
-        "runtime_commit": commit,
+        "runtime_commit": runtime_commit,
         "runner_commit": commit,
+        "freeze_basis_commit": commit,
         "complete_cpu_authority_inside_hybrid": False,
         "hybrid_binary_path": hybrid.relative_to(ROOT).as_posix(),
         "hybrid_binary_sha256": sha256_file(hybrid),
@@ -208,8 +235,19 @@ def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
             ROOT / "schemas/canonical_hybrid_v2_attempt_telemetry.schema.json"
         ),
         "comparator_sha256": sha256_file(ROOT / "scripts/compare_fasim_segmented_contract.py"),
+        "comparator_dependency_sha256": {
+            path.relative_to(ROOT).as_posix(): sha256_file(path)
+            for path in COMPARATOR_SUPPORT_FILES
+        },
         "implementation_source_sha256": source_files,
         "implementation_commit_patch_sha256": hashlib.sha256(
+            subprocess.run(
+                ["git", "-C", str(ROOT), "show", "--format=", "--binary", runtime_commit],
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+        ).hexdigest(),
+        "runner_commit_patch_sha256": hashlib.sha256(
             subprocess.run(
                 ["git", "-C", str(ROOT), "show", "--format=", "--binary", commit],
                 check=True,
@@ -247,7 +285,10 @@ def freeze_runtime(args: argparse.Namespace) -> dict[str, object]:
         },
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
-    atomic_bytes(RUNTIME_PATH, json_bytes(receipt))
+    if previous_sha256 is not None:
+        receipt["supersedes_runtime_receipt_sha256"] = previous_sha256
+        receipt["supersession_reason"] = "preexecution_snapshot_comparator_dependency_closure"
+    atomic_bytes(RUNTIME_PATH, json_bytes(receipt), previous_sha256)
     return receipt
 
 
@@ -259,8 +300,26 @@ def authority_output(attempt_id: str) -> Path:
     return outputs[0]
 
 
-def freeze_regression_plan(_: argparse.Namespace) -> dict[str, object]:
+def freeze_regression_plan(args: argparse.Namespace) -> dict[str, object]:
     freeze_commit = require_clean_checkout()
+    existing_identities: dict[Path, str] = {}
+    plan_artifacts = (
+        REGRESSION_PLAN_PATH,
+        REGRESSION_PLAN_PATH.with_suffix(".sha256"),
+        REGRESSION_RECEIPT_PATH,
+    )
+    if REGRESSION_PLAN_PATH.exists():
+        require(args.supersede_plan_sha256 is not None, "existing regression plan requires explicit supersession")
+        require(sha256_file(REGRESSION_PLAN_PATH) == args.supersede_plan_sha256, "plan supersession digest drift")
+        require(
+            not (ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2/regression").exists(),
+            "regression plan cannot be superseded after execution starts",
+        )
+        for path in plan_artifacts:
+            require(path.is_file() and not path.is_symlink(), f"missing superseded plan artifact: {path}")
+            existing_identities[path] = sha256_file(path)
+    else:
+        require(args.supersede_plan_sha256 is None, "no regression plan exists to supersede")
     runner = load_runner()
     runtime = runner.read_runtime_receipt()
     results = read_tsv(HOLDOUT_RESULTS_PATH)
@@ -312,11 +371,12 @@ def freeze_regression_plan(_: argparse.Namespace) -> dict[str, object]:
             }
         )
     payload = tsv_bytes(runner.PLAN_FIELDS, rows)
-    atomic_bytes(REGRESSION_PLAN_PATH, payload)
-    plan_sha256 = sha256_file(REGRESSION_PLAN_PATH)
+    plan_sha256 = hashlib.sha256(payload).hexdigest()
+    atomic_bytes(REGRESSION_PLAN_PATH, payload, existing_identities.get(REGRESSION_PLAN_PATH))
     atomic_bytes(
         REGRESSION_PLAN_PATH.with_suffix(".sha256"),
         f"{plan_sha256}  {REGRESSION_PLAN_PATH.name}\n".encode("ascii"),
+        existing_identities.get(REGRESSION_PLAN_PATH.with_suffix(".sha256")),
     )
     receipt = {
         "schema_version": 1,
@@ -335,7 +395,14 @@ def freeze_regression_plan(_: argparse.Namespace) -> dict[str, object]:
         "retry_policy": "none",
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
-    atomic_bytes(REGRESSION_RECEIPT_PATH, json_bytes(receipt))
+    if args.supersede_plan_sha256 is not None:
+        receipt["supersedes_regression_plan_sha256"] = args.supersede_plan_sha256
+        receipt["supersession_reason"] = "preexecution_snapshot_comparator_dependency_closure"
+    atomic_bytes(
+        REGRESSION_RECEIPT_PATH,
+        json_bytes(receipt),
+        existing_identities.get(REGRESSION_RECEIPT_PATH),
+    )
     return receipt
 
 
@@ -345,7 +412,9 @@ def parse_args() -> argparse.Namespace:
     runtime = subparsers.add_parser("runtime")
     runtime.add_argument("--hybrid-binary", type=Path, required=True)
     runtime.add_argument("--authority-binary", type=Path, required=True)
-    subparsers.add_parser("regression-plan")
+    runtime.add_argument("--supersede-runtime-sha256")
+    regression = subparsers.add_parser("regression-plan")
+    regression.add_argument("--supersede-plan-sha256")
     return parser.parse_args()
 
 
