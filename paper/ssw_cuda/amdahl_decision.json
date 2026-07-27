@@ -1,0 +1,20 @@
+{
+  "amdahl_gate": "not_evaluable",
+  "b3_threshold_changed": false,
+  "bioinformatics_b3_track": "pending_amdahl",
+  "conservative_p_backend_addressable": null,
+  "engineering_track": "active",
+  "execution_receipt_sha256": "03f547123d3550961c6a3205792e6a8b4dd2524e6677ab4af5c2b8b2b968e0e5",
+  "failed_attempt_id": "p1_large_h19_chr21_o01_profile_off",
+  "formal_source_data_complete": false,
+  "fresh_holdout_consumed": false,
+  "maximum_speedup_infinite": null,
+  "partial_results_used_for_claim": false,
+  "phase": 1,
+  "reason": "claim_relevant_large_workload_exceeded_fixed_1800_second_timeout",
+  "required_backend_speedup": null,
+  "retry_authorized": false,
+  "schema_version": 1,
+  "status": "blocked",
+  "target_end_to_end_speedup": 10.0
+}

@@ -6,8 +6,8 @@ MODE="${1:---final}"
 BIN="${SSW_CUDA_PHASE1_BIN:-$ROOT/.paper-artifacts/ssw-cuda-v1/phase1/fasim_authority_profile}"
 ARTIFACT_ROOT="${SSW_CUDA_PHASE1_ARTIFACT_ROOT:-$ROOT/.paper-artifacts/ssw-cuda-v1/phase1/profile-runs}"
 
-if [[ "$MODE" != "--preflight" && "$MODE" != "--final" ]]; then
-  echo "usage: $0 [--preflight|--final]" >&2
+if [[ "$MODE" != "--preflight" && "$MODE" != "--final" && "$MODE" != "--blocked" ]]; then
+  echo "usage: $0 [--preflight|--final|--blocked]" >&2
   exit 2
 fi
 
@@ -55,14 +55,24 @@ goal = (root / "goal-ssw.md").read_text(encoding="utf-8")
 
 if state["active_phase"] not in (1, 2) or state["phase_status"]["0"] != "pass":
     raise SystemExit("Phase 1 program state is invalid")
-if "phase_1_status = in_progress" not in goal and "phase_1_status = pass" not in goal:
+if not any(
+    marker in goal
+    for marker in (
+        "phase_1_status = in_progress",
+        "phase_1_status = pass",
+        "phase_1_status = blocked",
+    )
+):
     raise SystemExit("goal-ssw Phase 1 status is missing")
 if mode == "--preflight":
     if state["active_phase"] != 1 or state["phase_status"]["1"] != "in_progress":
         raise SystemExit("Phase 1 preflight requires in-progress state")
-else:
+elif mode == "--final":
     if state["active_phase"] != 2 or state["phase_status"]["1"] != "pass":
         raise SystemExit("Phase 1 final state has not advanced to Phase 2")
+else:
+    if state["active_phase"] != 1 or state["phase_status"]["1"] != "blocked":
+        raise SystemExit("Phase 1 blocked state is invalid")
 PY
 
 if [[ "$MODE" == "--final" ]]; then
@@ -82,6 +92,21 @@ if [[ "$MODE" == "--final" ]]; then
   python3 -m json.tool "$ROOT/paper/ssw_cuda/cpu_profile_execution_receipt.json" >/dev/null
   PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/reproduce/ssw_cuda/run_cpu_profile.py" \
     --check-results --artifact-root "$ARTIFACT_ROOT"
+elif [[ "$MODE" == "--blocked" ]]; then
+  for relative in \
+    paper/ssw_cuda/cpu_profile_blocked_artifact_manifest.tsv \
+    paper/ssw_cuda/cpu_profile_execution_receipt.json \
+    paper/ssw_cuda/amdahl_decision.json \
+    paper/ssw_cuda/amdahl_decision.md; do
+    if [[ ! -f "$ROOT/$relative" || -L "$ROOT/$relative" ]]; then
+      echo "missing blocked Phase 1 evidence: $relative" >&2
+      exit 1
+    fi
+  done
+  python3 -m json.tool "$ROOT/paper/ssw_cuda/cpu_profile_execution_receipt.json" >/dev/null
+  python3 -m json.tool "$ROOT/paper/ssw_cuda/amdahl_decision.json" >/dev/null
+  PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/reproduce/ssw_cuda/run_cpu_profile.py" \
+    --check-blocked --artifact-root "$ARTIFACT_ROOT"
 fi
 
 git -C "$ROOT" diff --check

@@ -1465,7 +1465,7 @@ check-bioinformatics-canonical-hybrid-v2-performance:
 check-ssw-cuda-phase0:
 	bash ./scripts/check_ssw_cuda_phase0.sh
 
-.PHONY: check-ssw-cuda-phase1-preflight check-ssw-cuda-phase1
+.PHONY: check-ssw-cuda-phase1-preflight check-ssw-cuda-phase1 check-ssw-cuda-phase1-blocked
 check-ssw-cuda-phase1-preflight: build-ssw-cuda-phase1-profile
 	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
 		bash ./scripts/check_ssw_cuda_phase1.sh --preflight
@@ -1473,6 +1473,10 @@ check-ssw-cuda-phase1-preflight: build-ssw-cuda-phase1-profile
 check-ssw-cuda-phase1: build-ssw-cuda-phase1-profile
 	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
 		bash ./scripts/check_ssw_cuda_phase1.sh --final
+
+check-ssw-cuda-phase1-blocked: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --blocked
 
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:

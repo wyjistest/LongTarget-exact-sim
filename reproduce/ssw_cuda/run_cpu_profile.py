@@ -31,6 +31,7 @@ STATISTICS = PAPER / "cpu_profile_statistics.json"
 DECISION_JSON = PAPER / "amdahl_decision.json"
 DECISION_MD = PAPER / "amdahl_decision.md"
 EXECUTION_RECEIPT = PAPER / "cpu_profile_execution_receipt.json"
+BLOCKED_ARTIFACT_MANIFEST = PAPER / "cpu_profile_blocked_artifact_manifest.tsv"
 REGISTRY = PAPER / "used_input_exclusion_registry.tsv"
 DEFAULT_ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/phase1/profile-runs"
 PROFILE_PREFIX = "benchmark.ssw_cuda_phase1."
@@ -116,6 +117,12 @@ SOURCE_FIELDS = (
     "query_file_sha256",
     "target_file_sha256",
     "artifact_receipt",
+)
+
+ARTIFACT_MANIFEST_FIELDS = (
+    "path",
+    "size_bytes",
+    "sha256",
 )
 
 WORKLOAD_SPECS = (
@@ -865,6 +872,176 @@ def write_analysis(
         atomic_write(EXECUTION_RECEIPT, json_bytes(execution_receipt))
 
 
+def blocked_artifact_rows(artifact_root: Path) -> list[dict[str, object]]:
+    require(artifact_root.is_dir() and not artifact_root.is_symlink(), "missing blocked artifact root")
+    rows: list[dict[str, object]] = []
+    for path in sorted(artifact_root.rglob("*")):
+        require(not path.is_symlink(), f"blocked artifact symlink is forbidden: {path}")
+        if path.is_file():
+            rows.append(
+                {
+                    "path": str(path.relative_to(artifact_root)),
+                    "size_bytes": path.stat().st_size,
+                    "sha256": sha256_file(path),
+                }
+            )
+    require(rows, "blocked artifact root contains no files")
+    return rows
+
+
+def blocked_receipt(
+    rows: list[dict[str, str]], artifact_root: Path, manifest_rows: list[dict[str, object]]
+) -> tuple[dict[str, object], dict[str, object]]:
+    started: list[dict[str, object]] = []
+    for index, row in enumerate(rows):
+        attempt_dir = artifact_root / row["attempt_id"]
+        receipt_path = attempt_dir / "attempt.json"
+        if not receipt_path.exists():
+            require(not attempt_dir.exists(), f"attempt directory lacks a receipt: {attempt_dir}")
+            for remaining in rows[index + 1 :]:
+                require(
+                    not (artifact_root / remaining["attempt_id"]).exists(),
+                    f"non-contiguous blocked attempt: {remaining['attempt_id']}",
+                )
+            break
+        require(receipt_path.is_file() and not receipt_path.is_symlink(), "unsafe attempt receipt")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        require(receipt["attempt_id"] == row["attempt_id"], "blocked attempt ID drift")
+        require(receipt["plan_row"] == row, "blocked attempt plan row drift")
+        started.append(receipt)
+
+    require(started, "blocked run has no started attempts")
+    failures = [receipt for receipt in started if receipt["status"] != "complete"]
+    require(len(failures) == 1 and failures[0] is started[-1], "blocked run must end at one failure")
+    failed = failures[0]
+    require(failed["status"] == "technical_failure", "unexpected blocked status")
+    require(failed["timed_out"] is True and int(failed["returncode"]) == 124, "failure was not timeout")
+    require(
+        int(failed["plan_row"]["timeout_seconds"]) == 1800,
+        "blocked timeout boundary drift",
+    )
+    require(
+        all(receipt["status"] == "complete" for receipt in started[:-1]),
+        "a pre-failure attempt is incomplete",
+    )
+    commits = {str(receipt["git_commit"]) for receipt in started}
+    binaries = {str(receipt["binary_sha256"]) for receipt in started}
+    require(len(commits) == 1 and len(binaries) == 1, "blocked execution epoch drift")
+
+    partial_files = [
+        row
+        for row in manifest_rows
+        if str(row["path"]).startswith(f"{failed['attempt_id']}/output/")
+    ]
+    manifest_payload = tsv_bytes(ARTIFACT_MANIFEST_FIELDS, manifest_rows)
+    receipt = {
+        "schema_version": 1,
+        "phase": 1,
+        "status": "blocked_by_fixed_timeout",
+        "formal_execution_commit": next(iter(commits)),
+        "binary_sha256": next(iter(binaries)),
+        "plan_sha256": sha256_file(PLAN),
+        "artifact_root": str(artifact_root.relative_to(ROOT)),
+        "artifact_manifest": str(BLOCKED_ARTIFACT_MANIFEST.relative_to(ROOT)),
+        "artifact_manifest_sha256": sha256_bytes(manifest_payload),
+        "artifact_file_count": len(manifest_rows),
+        "artifact_bytes": sum(int(row["size_bytes"]) for row in manifest_rows),
+        "formal_start_utc": started[0]["start_utc"],
+        "formal_end_utc": failed["end_utc"],
+        "attempts_planned": len(rows),
+        "attempts_started": len(started),
+        "attempts_complete": len(started) - 1,
+        "attempts_failed": 1,
+        "attempts_not_started": len(rows) - len(started),
+        "failed_attempt_id": failed["attempt_id"],
+        "failed_execution_order": int(failed["plan_row"]["execution_order"]),
+        "failure_reason": "fixed_backend_timeout",
+        "timeout_seconds": int(failed["plan_row"]["timeout_seconds"]),
+        "observed_outer_wall_seconds": failed["outer_wall_seconds"],
+        "returncode": failed["returncode"],
+        "timed_out": failed["timed_out"],
+        "partial_output_file_count": len(partial_files),
+        "partial_output_bytes": sum(int(row["size_bytes"]) for row in partial_files),
+        "retry_policy": "none",
+        "retries_attempted": 0,
+        "replacement_attempts": 0,
+        "formal_source_data_complete": False,
+        "statistics_generated": False,
+        "amdahl_gate_evaluable": False,
+        "fresh_holdout_consumed": False,
+    }
+    decision = {
+        "schema_version": 1,
+        "phase": 1,
+        "status": "blocked",
+        "reason": "claim_relevant_large_workload_exceeded_fixed_1800_second_timeout",
+        "failed_attempt_id": failed["attempt_id"],
+        "target_end_to_end_speedup": TARGET_SPEEDUP,
+        "b3_threshold_changed": False,
+        "amdahl_gate": "not_evaluable",
+        "bioinformatics_b3_track": "pending_amdahl",
+        "engineering_track": "active",
+        "conservative_p_backend_addressable": None,
+        "maximum_speedup_infinite": None,
+        "required_backend_speedup": None,
+        "formal_source_data_complete": False,
+        "partial_results_used_for_claim": False,
+        "retry_authorized": False,
+        "fresh_holdout_consumed": False,
+        "execution_receipt_sha256": sha256_bytes(json_bytes(receipt)),
+    }
+    return receipt, decision
+
+
+def render_blocked_markdown(decision: dict[str, object]) -> bytes:
+    lines = [
+        "# Phase 1 CPU Profile And Amdahl Decision",
+        "",
+        "Status: `blocked`",
+        "",
+        "The preregistered claim-relevant chr21 attempt exceeded the fixed",
+        "1,800-second backend timeout. The runner retained the partial artifact and",
+        "stopped without retrying or starting later attempts.",
+        "",
+        "The profile panel is incomplete, so no conservative addressable fraction or",
+        "Amdahl ceiling is reported. The original 10x B3 threshold is unchanged, the",
+        "Bioinformatics B3 track remains `pending_amdahl`, and the engineering track",
+        "remains `active`.",
+        "",
+        f"Failed attempt: `{decision['failed_attempt_id']}`.",
+        f"Decision reason: `{decision['reason']}`.",
+        "",
+    ]
+    return "\n".join(lines).encode("utf-8")
+
+
+def write_blocked_receipt(artifact_root: Path) -> None:
+    rows = validate_plan()
+    manifest_rows = blocked_artifact_rows(artifact_root)
+    receipt, decision = blocked_receipt(rows, artifact_root, manifest_rows)
+    atomic_write(
+        BLOCKED_ARTIFACT_MANIFEST,
+        tsv_bytes(ARTIFACT_MANIFEST_FIELDS, manifest_rows),
+    )
+    atomic_write(EXECUTION_RECEIPT, json_bytes(receipt))
+    atomic_write(DECISION_JSON, json_bytes(decision))
+    atomic_write(DECISION_MD, render_blocked_markdown(decision))
+
+
+def check_blocked_receipt(artifact_root: Path) -> None:
+    rows = validate_plan()
+    manifest_rows = blocked_artifact_rows(artifact_root)
+    receipt, decision = blocked_receipt(rows, artifact_root, manifest_rows)
+    require(
+        BLOCKED_ARTIFACT_MANIFEST.read_bytes()
+        == tsv_bytes(ARTIFACT_MANIFEST_FIELDS, manifest_rows),
+        "blocked artifact manifest drift",
+    )
+    require(EXECUTION_RECEIPT.read_bytes() == json_bytes(receipt), "blocked receipt drift")
+    require(DECISION_JSON.read_bytes() == json_bytes(decision), "blocked decision drift")
+    require(DECISION_MD.read_bytes() == render_blocked_markdown(decision), "blocked report drift")
+
+
 def execute(binary: Path, artifact_root: Path) -> None:
     rows = validate_plan()
     require(binary.is_file() and not binary.is_symlink() and os.access(binary, os.X_OK), "invalid binary")
@@ -941,6 +1118,8 @@ def parse_args() -> argparse.Namespace:
     action.add_argument("--execute", action="store_true")
     action.add_argument("--analyze-only", action="store_true")
     action.add_argument("--check-results", action="store_true")
+    action.add_argument("--record-blocked", action="store_true")
+    action.add_argument("--check-blocked", action="store_true")
     parser.add_argument("--binary", type=Path)
     parser.add_argument("--artifact-root", type=Path, default=DEFAULT_ARTIFACT_ROOT)
     return parser.parse_args()
@@ -966,6 +1145,12 @@ def main() -> int:
         rows = validate_plan()
         write_analysis(rows, artifact_root, execution_receipt=None)
         print("SSW-CUDA Phase 1 analysis rebuilt")
+    elif args.record_blocked:
+        write_blocked_receipt(artifact_root)
+        print("SSW-CUDA Phase 1 blocked receipt recorded")
+    elif args.check_blocked:
+        check_blocked_receipt(artifact_root)
+        print("SSW-CUDA Phase 1 blocked receipt OK")
     else:
         check_results(artifact_root)
         print("SSW-CUDA Phase 1 results OK")

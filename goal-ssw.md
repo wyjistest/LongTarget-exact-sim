@@ -213,7 +213,8 @@ l8_contract_status = diagnostic_only
 
 active_phase = 1
 phase_0_status = pass
-phase_1_status = in_progress
+phase_1_status = blocked
+phase_1_block_reason = fixed_backend_timeout
 phase_2_status = pending
 phase_3_status = pending
 phase_4_status = pending
@@ -228,10 +229,10 @@ phase_12_status = pending
 phase_13_status = pending
 
 last_completed_phase = 0
-last_decision = phase0_evidence_frozen
-last_evidence_doc = paper/ssw_cuda/historical_evidence_receipt.json
-last_test_command = make check-ssw-cuda-phase0
-last_commit = 5cc133d
+last_decision = phase1_blocked_fixed_timeout
+last_evidence_doc = paper/ssw_cuda/cpu_profile_execution_receipt.json
+last_test_command = make check-ssw-cuda-phase1-blocked
+last_commit = 2d42986
 ```
 
 ### 2.1 Phase 依赖

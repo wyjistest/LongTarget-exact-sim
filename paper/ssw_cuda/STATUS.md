@@ -5,7 +5,8 @@ execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
 active_phase = 1
 phase_0_status = pass
-phase_1_status = in_progress
+phase_1_status = blocked
+phase_1_block_reason = fixed_backend_timeout
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = pending_amdahl
@@ -19,5 +20,14 @@ the frozen source/toolchain/hardware receipt and matches the historical v2
 authority binary digest. Phase 2, Phase 3 pilot, and canonical-hybrid-v2
 runtime/regression/holdout/performance checks passed.
 
-Phase 1 is active. No new CUDA DP kernel is authorized before the CPU profile
-and Amdahl gate pass.
+Phase 1 formal profiling stopped prospectively at execution order 21. The
+first claim-relevant `large_h19_chr21` profile-off attempt reached the frozen
+1,800-second timeout. The runner retained one 37,430,661-byte partial output,
+recorded 20 complete attempts and one technical failure, attempted no retry,
+and did not start the remaining 29 attempts.
+
+The formal panel is incomplete. No Phase 1 source data, statistics,
+conservative addressable fraction, or Amdahl ceiling is claimed. The original
+10x threshold is unchanged, `bioinformatics_b3_track` remains
+`pending_amdahl`, and no new CUDA DP kernel is authorized while Phase 1 is
+blocked.
