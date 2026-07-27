@@ -1,0 +1,176 @@
+{
+  "claim_role": "fresh_correctness_promotion",
+  "matrix": {
+    "arms_per_validation": [
+      "A",
+      "H"
+    ],
+    "attempts": 120,
+    "base_workloads": 48,
+    "repeat_subset_workloads": 6,
+    "repeats_per_subset_workload": 3,
+    "validation_instances": 60
+  },
+  "performance_claim_role": "none",
+  "prior_pilot_outcomes_read": false,
+  "prior_v1_pilot_exclusion": {
+    "basis": "the first role-local query and target ordinal prefixes were prospectively assigned to the frozen v1 pilot before v2 design",
+    "identity_list_used": false,
+    "query_source_ordinal_prefix_count": 1,
+    "target_source_ordinal_prefix_count": 1
+  },
+  "prohibited_selection_input_used": false,
+  "query_design": {
+    "selected_per_stratum": 4,
+    "selected_total": 12,
+    "strata": [
+      "short_500_800",
+      "medium_801_1600",
+      "long_1601_2812"
+    ]
+  },
+  "retry_policy": "none",
+  "schema_version": 1,
+  "selected_queries": [
+    {
+      "ordinal_selection_hash": "135f1711c6227b79ef03ef8e805917abf069941b85b485cc14da0c63f9a0847b",
+      "record_id": "aq038",
+      "sequence_length": 766,
+      "source_ordinal": 38,
+      "stratum": "short_500_800"
+    },
+    {
+      "ordinal_selection_hash": "2e7c4f4d9d2c01314d0eaff6424d56e9f6f93fdc2c1df179148ac210c709460a",
+      "record_id": "aq033",
+      "sequence_length": 770,
+      "source_ordinal": 33,
+      "stratum": "short_500_800"
+    },
+    {
+      "ordinal_selection_hash": "4222b36c4bce96faa3b260feef794bb6b11bea79639f5d522b301a9f77b7f273",
+      "record_id": "aq015",
+      "sequence_length": 549,
+      "source_ordinal": 15,
+      "stratum": "short_500_800"
+    },
+    {
+      "ordinal_selection_hash": "4999f3e11f5b315525c3fd1e52243cad03431acb7c3a638e7089fa45368f05b8",
+      "record_id": "aq003",
+      "sequence_length": 568,
+      "source_ordinal": 3,
+      "stratum": "short_500_800"
+    },
+    {
+      "ordinal_selection_hash": "0380a10a13ae5f7b61ef409e379b977e67a0804e4d0eaceb07eba9d62131907f",
+      "record_id": "aq037",
+      "sequence_length": 1353,
+      "source_ordinal": 37,
+      "stratum": "medium_801_1600"
+    },
+    {
+      "ordinal_selection_hash": "03cc1ed8edddafc55a5defe542393aab23987fcbc7ad55dc2c44980c430eb9ec",
+      "record_id": "aq048",
+      "sequence_length": 991,
+      "source_ordinal": 48,
+      "stratum": "medium_801_1600"
+    },
+    {
+      "ordinal_selection_hash": "0fe5633b6da854a35f8cd46c40d6a84f93fa09882c42b63ecf8ccff60042cb1a",
+      "record_id": "aq032",
+      "sequence_length": 989,
+      "source_ordinal": 32,
+      "stratum": "medium_801_1600"
+    },
+    {
+      "ordinal_selection_hash": "2844590cef03c8a642b2812144b779e183a2b16bb8a7ddee0eb29584757d75e9",
+      "record_id": "aq018",
+      "sequence_length": 946,
+      "source_ordinal": 18,
+      "stratum": "medium_801_1600"
+    },
+    {
+      "ordinal_selection_hash": "0af1bfce758cd17492767d4d94fe1f3307a53cc9deb38da7c7ee2f9258e1a47b",
+      "record_id": "aq008",
+      "sequence_length": 2709,
+      "source_ordinal": 8,
+      "stratum": "long_1601_2812"
+    },
+    {
+      "ordinal_selection_hash": "2ca1e55b2f2e8e39e39252ae3cddc801d3a3bad17ffd78fd7acf97dd3799f87c",
+      "record_id": "aq007",
+      "sequence_length": 1876,
+      "source_ordinal": 7,
+      "stratum": "long_1601_2812"
+    },
+    {
+      "ordinal_selection_hash": "47051cfa7610a9644bcf08c3be97317c10e23a6b08c4506b8ad52c140a82fb44",
+      "record_id": "aq014",
+      "sequence_length": 2283,
+      "source_ordinal": 14,
+      "stratum": "long_1601_2812"
+    },
+    {
+      "ordinal_selection_hash": "716165c556918a31a890344d63363c275da8743a0f63bdcc2980879aa9210fd9",
+      "record_id": "aq010",
+      "sequence_length": 2422,
+      "source_ordinal": 10,
+      "stratum": "long_1601_2812"
+    }
+  ],
+  "selected_targets": [
+    {
+      "chromosome": "chr21",
+      "ordinal_selection_hash": "000f3e13f8fa82d3333b9c9a7ca9d68f23260610307bcbb64a9fa47c67c8abc6",
+      "record_id": "at0018",
+      "source_ordinal": 18
+    },
+    {
+      "chromosome": "chr21",
+      "ordinal_selection_hash": "03655dbb3904f2723155444134c1962ab33ca0603f6868d63d1348b8157b1b6e",
+      "record_id": "at0195",
+      "source_ordinal": 195
+    },
+    {
+      "chromosome": "chr22",
+      "ordinal_selection_hash": "00355db275df925d2006ddab03195867832d1af10090155a0e9ca2d2435d87c9",
+      "record_id": "at0652",
+      "source_ordinal": 652
+    },
+    {
+      "chromosome": "chr22",
+      "ordinal_selection_hash": "01f5fdaa45669f2fc09292923f809ff701e4e63cfbc3fbd7c1b13ffc1b15bd55",
+      "record_id": "at0260",
+      "source_ordinal": 260
+    }
+  ],
+  "selection_key_definition": "SHA256(seed|kind|coverage_group|source-ordinal-N)",
+  "selection_key_prohibited_inputs": [
+    "query or gene name",
+    "target or gene name",
+    "sequence or file digest",
+    "observed output",
+    "runtime",
+    "mismatch",
+    "fallback",
+    "blacklist",
+    "allowlist"
+  ],
+  "selection_key_uses_only": [
+    "frozen role-local source ordinal",
+    "query length stratum",
+    "target chromosome coverage group"
+  ],
+  "selection_seed": "canonical-hybrid-v2-fresh-holdout-ordinal-v1-20260727",
+  "source_application_manifest_sha256": "e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc",
+  "source_application_protocol_sha256": "494fdd5d255a02932a9a43187bdc74a6a9100a0fd73a0e260e72421190161c51",
+  "stage": "fresh-holdout",
+  "status": "preregistered_not_run",
+  "target_design": {
+    "chromosomes": [
+      "chr21",
+      "chr22"
+    ],
+    "selected_per_chromosome": 2,
+    "selected_total": 4
+  }
+}
