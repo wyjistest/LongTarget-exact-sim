@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_ROOT="$ROOT/.paper-artifacts/bioinformatics-phase3-application-v1"
 RUNTIME_COMMIT="0d11aa2d61b7ccda59b462ab8e0750dad17ee18f"
 HISTORICAL_COMPLETION="a98d80d44d4418cdb8a67dc8d83ee41b8e599023"
+V2_RUNTIME_COMMIT="17525a6d02e5c8d11a2359ae540e117dc08c8f99"
+V2_RUNTIME_PARENT="55330572a90be134a6bb03413ac2f349cdadd718"
 
 for relative in \
   paper/bioinformatics/application_attempt_plan.tsv \
@@ -135,11 +137,47 @@ if ! git -C "$ROOT" merge-base --is-ancestor "$HISTORICAL_COMPLETION" HEAD; then
   echo "historical paper completion commit is not an ancestor of HEAD" >&2
   exit 1
 fi
-if ! git -C "$ROOT" diff --quiet "$RUNTIME_COMMIT" -- \
+if ! git -C "$ROOT" diff --quiet "$RUNTIME_COMMIT" "$V2_RUNTIME_PARENT" -- \
   fasim cuda longtarget.cpp sim.h exact_sim.h rules.h stats.h; then
-  echo "Phase 3 pilot changed immutable runtime paths" >&2
+  echo "Phase 3 v1 changed epoch-0 runtime paths before the versioned v2 fork" >&2
   exit 1
 fi
+if ! git -C "$ROOT" merge-base --is-ancestor "$V2_RUNTIME_COMMIT" HEAD; then
+  echo "canonical-hybrid-v2 runtime commit is not an ancestor of HEAD" >&2
+  exit 1
+fi
+if ! git -C "$ROOT" diff --quiet "$V2_RUNTIME_COMMIT" HEAD -- \
+  fasim cuda longtarget.cpp sim.h exact_sim.h rules.h stats.h; then
+  echo "canonical-hybrid-v2 core runtime drifted after its epoch-1 commit" >&2
+  exit 1
+fi
+python3 - "$ROOT" "$V2_RUNTIME_COMMIT" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+runtime_commit = sys.argv[2]
+receipt = json.loads(
+    (root / "paper/bioinformatics/canonical_hybrid_v2_runtime.json").read_text(
+        encoding="utf-8"
+    )
+)
+if receipt["runtime_epoch"] != 1 or receipt["runtime_commit"] != runtime_commit:
+    raise SystemExit("canonical-hybrid-v2 runtime epoch identity drift")
+if receipt["historical_decision_sha256"] != {
+    "phase2_decision.md": "44167694cc44b6e0b46cae598f4b90451806ba7ef902eebdf9858076a859b9b6",
+    "phase3_postpilot_decision.json": "471898d688386f46b4e7f13b932b6b4f9874d9ed74641240b5c2fd4ad71851fe",
+}:
+    raise SystemExit("canonical-hybrid-v2 historical decision binding drift")
+for relative, expected in receipt["implementation_source_sha256"].items():
+    if not relative.startswith("fasim/"):
+        continue
+    observed = hashlib.sha256((root / relative).read_bytes()).hexdigest()
+    if observed != expected:
+        raise SystemExit(f"canonical-hybrid-v2 implementation source drift: {relative}")
+PY
 if ! git -C "$ROOT" diff --quiet "$HISTORICAL_COMPLETION" HEAD -- \
   paper/source_data paper/workload_manifest.tsv; then
   echo "historical frozen source data changed" >&2
