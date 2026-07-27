@@ -8,12 +8,17 @@
       "FASIM_TARGET=.paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86"
     ]
   ],
+  "comparator_dependency_sha256": {
+    "scripts/compare_fasim_lite_offline_cluster_topk.py": "2765d76b6c8e742596b1072a413309a88ef415f3576c9de62be67213ee76dc80",
+    "scripts/fasim_tfo_archive.py": "3fb42809c4f31b31ec05bcaf9d3249f4059a910164a6ca33d5a789fb0efab856"
+  },
   "comparator_sha256": "6a589d7960a69be7c84a410f1bbd9d3ea34de929f8f04943d9c7ae033d682eda",
   "compiler": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
   "complete_cpu_authority_inside_hybrid": false,
   "contract": "canonical-hybrid-v2",
-  "created_utc": "2026-07-27T09:40:30.905830+00:00",
+  "created_utc": "2026-07-27T09:46:17.735448+00:00",
   "cuda_compiler": "Build cuda_12.5.r12.5/compiler.34385749_0",
+  "freeze_basis_commit": "0853e403cd1dbdfd3b3d2ea85f6a8d8fba9f1e97",
   "gasal2_revision": "106d94ee53fc847214fb05f2f9f892538a5d3baf",
   "gpu_inventory": [
     {
@@ -62,7 +67,7 @@
     "fasim/gasal2_align_bridge.h": "582121c9a3477501b1c7d908363f19ca43fd1468977c753232be8bbf9406edfd",
     "fasim/gasal2_align_bridge_stub.cpp": "345d6e32bc038afa340d4d39712643a7a1b523f069239a9afc74a894ad0c775e",
     "paper/bioinformatics/canonical_hybrid_v2_protocol.md": "f202b96557a056f4b6222bfb3d22f28724efc95c98d132e3e483e2e907f3c98d",
-    "reproduce/bioinformatics/run_canonical_hybrid_v2.py": "2a5b6e66bd23f0a1ad61cd240a65321e6a51ecebaf488e8dc9002b9cc09bf616",
+    "reproduce/bioinformatics/run_canonical_hybrid_v2.py": "5524f8f411ea3a2b2eb9311fb2e428459cc9d7c3e8f417c03653b0b406372a31",
     "schemas/canonical_hybrid_v2_attempt_telemetry.schema.json": "0dfcc075907e0e53922c6e0473cfda5e4e98f621f2d55316d2be3868c2017a21",
     "scripts/canonical_hybrid_v2_telemetry.py": "eab9e765e7c2c1af3078a3d9bec446e2a5d95480ac0ccc12c9855f4dfdc5476f"
   },
@@ -75,8 +80,9 @@
     "ELF file    1: prealign_cuda.1.sm_89.cubin"
   ],
   "python": "3.11.10",
-  "runner_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
-  "runner_sha256": "2a5b6e66bd23f0a1ad61cd240a65321e6a51ecebaf488e8dc9002b9cc09bf616",
+  "runner_commit": "0853e403cd1dbdfd3b3d2ea85f6a8d8fba9f1e97",
+  "runner_commit_patch_sha256": "5f9ce8b8bfb6269c4b2592fb197d2bea77e1041569631e7208e3e70300e61cd0",
+  "runner_sha256": "5524f8f411ea3a2b2eb9311fb2e428459cc9d7c3e8f417c03653b0b406372a31",
   "runtime_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
   "runtime_environment": {
     "FASIM_ALIGN_GASAL2_BATCH": "20000",
@@ -92,6 +98,8 @@
   },
   "runtime_epoch": 1,
   "schema_version": 1,
+  "supersedes_runtime_receipt_sha256": "fd06cef06fb6a820c911923d91acb67984cdb6751217f3b983e250f3bca9c81c",
+  "supersession_reason": "preexecution_snapshot_comparator_dependency_closure",
   "telemetry_schema_sha256": "0dfcc075907e0e53922c6e0473cfda5e4e98f621f2d55316d2be3868c2017a21",
   "telemetry_validator_sha256": "eab9e765e7c2c1af3078a3d9bec446e2a5d95480ac0ccc12c9855f4dfdc5476f"
 }
