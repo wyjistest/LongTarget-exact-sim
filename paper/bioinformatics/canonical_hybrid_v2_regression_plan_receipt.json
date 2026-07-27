@@ -5,16 +5,18 @@
   },
   "attempt_count": 36,
   "claim_role": "regression_only",
-  "created_utc": "2026-07-27T09:41:10.552918+00:00",
-  "freeze_commit": "d799227ed3ccfc50e047ef50f6e4f41b350bc60d",
+  "created_utc": "2026-07-27T09:46:56.323485+00:00",
+  "freeze_commit": "531221d750bdb4b8c08cff5444dcf880c84c4cb6",
   "gpu_assignment": "zero_based_order_modulo_2",
   "phase2_attempt_results_sha256": "96ef4142298274ae9a463e94a490fe70898e748e7d3fbcf94be2b090985b2357",
   "phase2_holdout_manifest_sha256": "9e293b2c3e8d0462e399fe64ff6f684e9c53f7dd428e9c88265b510909cee8c6",
-  "plan_sha256": "63e30f17acdc1634d3ce962ed0bfc455a47e6253ca1290406575b8c12e8335ba",
+  "plan_sha256": "d8a795a18e2414e62a41c4cd34601f4ef4196fc9dfb6b379a4587ace992111dd",
   "promotion_eligible": false,
   "retry_policy": "none",
   "runtime_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
-  "runtime_receipt_sha256": "fd06cef06fb6a820c911923d91acb67984cdb6751217f3b983e250f3bca9c81c",
+  "runtime_receipt_sha256": "95901013c55c60761344f9320d913c8305269e02876da87fd780b3cdc4796422",
   "schema_version": 1,
-  "stage": "regression"
+  "stage": "regression",
+  "supersedes_regression_plan_sha256": "63e30f17acdc1634d3ce962ed0bfc455a47e6253ca1290406575b8c12e8335ba",
+  "supersession_reason": "preexecution_snapshot_comparator_dependency_closure"
 }
