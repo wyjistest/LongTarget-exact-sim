@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import csv
+import json
 import os
 import sys
 import unittest
@@ -109,6 +111,29 @@ class ReplayPlanTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first["run_count"], 6)
         self.assertFalse(first["promotion_eligible"])
+
+
+class ReplayEvidenceTests(unittest.TestCase):
+    def test_checked_in_evidence_is_complete_when_present(self) -> None:
+        table = ROOT / "paper/bioinformatics/phase2_traceback_replay.tsv"
+        receipt_path = ROOT / "paper/bioinformatics/phase2_traceback_replay_receipt.json"
+        if not table.is_file() or not receipt_path.is_file():
+            self.skipTest("replay evidence is created only after preexecution freeze")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        with table.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle, delimiter="\t"))
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(receipt["run_count"], 6)
+        self.assertTrue(receipt["all_outputs_byte_equal"])
+        self.assertFalse(receipt["promotion_eligible"])
+        self.assertFalse(receipt["dp_tie_cell_localized"])
+        self.assertFalse(receipt["cross_gpu_architecture_generalized"])
+        strict = [row for row in rows if row["replay_mode"] == "strict_cpu_traceback"]
+        self.assertEqual(
+            [(row["attempt_id"], row["cpu_traceback_align_calls"]) for row in strict],
+            [("hq10_ht02__repeat00", "641"), ("hq11_ht02__repeat00", "827")],
+        )
+        self.assertTrue(all(row["expected_output_side"] == "authority" for row in strict))
 
 
 if __name__ == "__main__":
