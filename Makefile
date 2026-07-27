@@ -1438,6 +1438,9 @@ check-bioinformatics-phase3-freeze:
 check-bioinformatics-phase3-preexecution:
 	bash ./scripts/check_bioinformatics_phase3_preexecution.sh
 
+check-bioinformatics-phase3-pilot:
+	bash ./scripts/check_bioinformatics_phase3_pilot.sh
+
 .PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
 	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
 	characterize-fasim-gasal2-exact-column-long-query \
@@ -1469,6 +1472,7 @@ check-bioinformatics-phase3-preexecution:
 	check-bioinformatics-phase2 \
 	check-bioinformatics-phase3-freeze \
 	check-bioinformatics-phase3-preexecution \
+	check-bioinformatics-phase3-pilot \
 	paper-source-data \
 	paper-figures \
 	paper-manuscript-kit \

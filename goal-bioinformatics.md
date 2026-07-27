@@ -80,22 +80,22 @@ submission_baseline_commit = a98d80d44d4418cdb8a67dc8d83ee41b8e599023
 submission_release_candidate_commit = UNSET
 submission_data_freeze = UNSET
 
-active_phase = 3
+active_phase = 4
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
-phase_3_status = pending
+phase_3_status = no_go
 phase_4_status = pending
 phase_5_status = pending
 phase_6_status = pending
 phase_7_status = pending
 phase_8_status = pending
 
-last_completed_phase = 2
-last_decision = verified_only_contract
-last_evidence_doc = paper/bioinformatics/phase2_decision.md
-last_test_command = make check-bioinformatics-phase2
-last_commit = analysis: validate a promotable GASAL2-LongTarget output contract
+last_completed_phase = 3
+last_decision = stop_after_pilot_futility
+last_evidence_doc = paper/bioinformatics/phase3_postpilot_decision.json
+last_test_command = make check-bioinformatics-phase3-pilot
+last_commit = bench: record Phase 3 fixed-pilot futility stop
 ```
 
 ### Phase 依赖

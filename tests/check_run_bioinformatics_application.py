@@ -297,7 +297,10 @@ class Phase3PlanTests(unittest.TestCase):
         self.assertEqual(decision["full_run_decision"], "pending_fixed_pilot")
         summary = self.runner.plan_summary()
         self.assertEqual(summary["attempt_counts_by_stage"]["pilot"], 3)
-        self.assertFalse(summary["application_execution_started"])
+        self.assertEqual(
+            summary["application_execution_started"],
+            self.runner.CANONICAL_ARTIFACT_ROOT.exists(),
+        )
 
 
 class Phase3ReportTests(unittest.TestCase):
@@ -605,6 +608,8 @@ class Phase3RepositoryIntegrationTests(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("check-bioinformatics-phase3-preexecution:", makefile)
         self.assertIn("check_bioinformatics_phase3_preexecution.sh", makefile)
+        self.assertIn("check-bioinformatics-phase3-pilot:", makefile)
+        self.assertIn("check_bioinformatics_phase3_pilot.sh", makefile)
 
     def test_submission_manifest_tracks_preexecution_layer(self) -> None:
         if not (ROOT / "paper/bioinformatics/application_attempt_plan.tsv").is_file():
@@ -621,10 +626,136 @@ class Phase3RepositoryIntegrationTests(unittest.TestCase):
             "reproduce/bioinformatics/run_application.py",
             "scripts/check_bioinformatics_phase3_preexecution.sh",
             "tests/check_run_bioinformatics_application.py",
+            "paper/bioinformatics/application_pilot_receipt.json",
+            "paper/bioinformatics/application_pilot_artifacts.tsv",
+            "paper/bioinformatics/application_pilot_artifacts.sha256",
+            "paper/bioinformatics/application_resource_projection.json",
+            "paper/bioinformatics/phase3_postpilot_decision.json",
+            "scripts/check_bioinformatics_phase3_pilot.sh",
         }
         self.assertTrue(expected <= set(by_path), sorted(expected - set(by_path)))
         self.assertTrue(all(by_path[item]["phase"] == "3" for item in expected))
         self.assertTrue(all(by_path[item]["status"] == "pass" for item in expected))
+
+
+class Phase3PostPilotTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.runner = load_runner()
+
+    def test_pilot_raw_receipts_and_checked_outputs_recompute_exactly(self) -> None:
+        rows, decision = self.runner.load_and_validate_plan()
+        attempts = self.runner._load_pilot_attempts(
+            self.runner.CANONICAL_ARTIFACT_ROOT, rows
+        )
+        manifest = self.runner.load_application_manifest()
+        subset = self.runner.read_tsv(
+            self.runner.SUBSET_PATH, self.runner.SUBSET_FIELDS
+        )
+        projection = self.runner.build_resource_projection(attempts, manifest, subset)
+        receipt = self.runner.build_pilot_receipt(attempts, projection)
+        checked_projection = json.loads(
+            self.runner.RESOURCE_PROJECTION_PATH.read_text(encoding="utf-8")
+        )
+        checked_receipt = json.loads(
+            self.runner.PILOT_RECEIPT_PATH.read_text(encoding="utf-8")
+        )
+        self.assertEqual(checked_projection, projection)
+        self.assertEqual(checked_receipt, receipt)
+        self.assertEqual(decision["full_run_decision"], "pending_fixed_pilot")
+
+    def test_raw_artifact_ledger_is_complete_and_checksum_bound(self) -> None:
+        expected = self.runner._raw_pilot_artifact_rows(
+            self.runner.CANONICAL_ARTIFACT_ROOT
+        )
+        observed = self.runner.read_tsv(
+            self.runner.PILOT_ARTIFACTS_PATH,
+            (
+                "artifact_path",
+                "size_bytes",
+                "sha256",
+                "retention",
+                "formal_source_data",
+            ),
+        )
+        rendered = [
+            {field: str(value) for field, value in row.items()} for row in expected
+        ]
+        self.assertEqual(observed, rendered)
+        checksum = self.runner.PILOT_ARTIFACTS_CHECKSUM_PATH.read_text(
+            encoding="ascii"
+        ).split()
+        self.assertEqual(
+            checksum,
+            [
+                self.runner.sha256_file(self.runner.PILOT_ARTIFACTS_PATH),
+                self.runner.PILOT_ARTIFACTS_PATH.name,
+            ],
+        )
+
+    def test_postpilot_decision_is_the_prespecified_futility_stop(self) -> None:
+        attempts = json.loads(
+            self.runner.PILOT_RECEIPT_PATH.read_text(encoding="utf-8")
+        )["attempts"]
+        projection = json.loads(
+            self.runner.RESOURCE_PROJECTION_PATH.read_text(encoding="utf-8")
+        )
+        selected = self.runner.select_postpilot_decision(attempts, projection)
+        decision = json.loads(
+            self.runner.POSTPILOT_DECISION_PATH.read_text(encoding="utf-8")
+        )
+        self.assertEqual(selected, "stop_after_pilot_futility")
+        self.assertEqual(decision["selected_decision"], selected)
+        self.assertEqual(decision["b3_status"], "no_go")
+        self.assertFalse(decision["b3_threshold_changed"])
+        self.assertFalse(decision["formal_execution_started"])
+        self.assertFalse(decision["candidate_only_can_be_reported_as_safe_acceleration"])
+        self.assertFalse(decision["lower_substitute_threshold_introduced"])
+
+    def test_safe_pilot_is_clean_but_slower_than_authority(self) -> None:
+        receipt = json.loads(
+            self.runner.PILOT_RECEIPT_PATH.read_text(encoding="utf-8")
+        )
+        attempts = {row["arm"]: row for row in receipt["attempts"]}
+        self.assertEqual(set(attempts), {"A", "B", "C"})
+        self.assertTrue(all(row["outcome"] == "complete" for row in attempts.values()))
+        self.assertEqual(attempts["C"]["declared_contract_clean"], True)
+        self.assertEqual(attempts["C"]["fallback_count"], 0)
+        self.assertEqual(attempts["C"]["oom_count"], 0)
+        self.assertEqual(attempts["C"]["timeout_count"], 0)
+        observed = receipt["observed"]
+        self.assertLess(observed["safe_speedup_vs_authority"], 1.0)
+        self.assertLess(observed["safe_wall_reduction_seconds"], 0.0)
+        self.assertGreater(observed["safe_c_components"]["candidate_wall_seconds"], 0)
+        self.assertGreater(observed["safe_c_components"]["authority_wall_seconds"], 0)
+        self.assertGreater(observed["safe_c_components"]["comparison_wall_seconds"], 0)
+
+    def test_no_formal_execution_was_started(self) -> None:
+        root = self.runner.CANONICAL_ARTIFACT_ROOT
+        self.assertFalse((root / "formal-full").exists())
+        self.assertFalse((root / "formal-repeat").exists())
+        self.assertFalse((root / "formal-budget.json").exists())
+        self.assertFalse((root / "formal-full-index.json").exists())
+        self.assertFalse((root / "formal-repeat-index.json").exists())
+
+    def test_goal_and_claim_ledger_record_prospective_no_go(self) -> None:
+        goal = (ROOT / "goal-bioinformatics.md").read_text(encoding="utf-8")
+        for phrase in (
+            "active_phase = 4",
+            "phase_3_status = no_go",
+            "last_completed_phase = 3",
+            "last_decision = stop_after_pilot_futility",
+            "last_evidence_doc = paper/bioinformatics/phase3_postpilot_decision.json",
+            "last_test_command = make check-bioinformatics-phase3-pilot",
+        ):
+            self.assertIn(phrase, goal)
+        with (ROOT / "paper/bioinformatics/claim_evidence.tsv").open(
+            newline="", encoding="utf-8"
+        ) as handle:
+            claims = {row["claim_id"]: row for row in csv.DictReader(handle, delimiter="\t")}
+        self.assertEqual(claims["B3"]["status"], "no_go")
+        self.assertIn("not supported", claims["B3"]["allowed_wording"])
+        self.assertIn("pilot", claims["B3"]["authoritative_source"])
 
 
 if __name__ == "__main__":
