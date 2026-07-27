@@ -1425,6 +1425,15 @@ check-bioinformatics-phase2:
 	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase2) \
 	bash ./scripts/check_bioinformatics_phase2.sh
 
+check-bioinformatics-phase2-traceback-replay-preexecution:
+	REPLAY_PREEXECUTION_ONLY=1 bash ./scripts/check_bioinformatics_traceback_replay.sh
+
+replay-bioinformatics-phase2-traceback:
+	bash ./scripts/replay_phase2_traceback_cases.sh
+
+check-bioinformatics-phase2-traceback-replay:
+	bash ./scripts/check_bioinformatics_traceback_replay.sh
+
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:
 	/usr/bin/env -i \
@@ -1470,6 +1479,9 @@ check-bioinformatics-phase3-pilot:
 	check-bioinformatics-phase2-freeze \
 	check-bioinformatics-phase2-preexecution \
 	check-bioinformatics-phase2 \
+	check-bioinformatics-phase2-traceback-replay-preexecution \
+	replay-bioinformatics-phase2-traceback \
+	check-bioinformatics-phase2-traceback-replay \
 	check-bioinformatics-phase3-freeze \
 	check-bioinformatics-phase3-preexecution \
 	check-bioinformatics-phase3-pilot \

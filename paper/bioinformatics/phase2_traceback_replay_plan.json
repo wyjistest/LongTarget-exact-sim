@@ -1,0 +1,155 @@
+{
+  "cases": [
+    {
+      "attempt_id": "hq10_ht02__repeat00",
+      "authority_output_sha256": "c34ff3fbdb9d1a069397615e2ed695dd336eb2055ce389a8ccade83e3858cb88",
+      "candidate_output_sha256": "a768e97e6f02d8a3ddc63ec62d2721222b9040590382afc47d5cd1a603971fab",
+      "expected_metrics": {
+        "gpu_traceback": {
+          "cpu_traceback_align_calls": 0,
+          "cpu_traceback_emit_best_fallback": 0,
+          "cpu_traceback_emit_last": 0,
+          "cpu_traceback_emit_threshold": 641,
+          "cpu_traceback_replay_attempts": 641,
+          "cpu_traceback_selected_attempts": 641,
+          "fallbacks": 0,
+          "score_selected_attempts": 0
+        },
+        "gpu_traceback_no_staged_prune": {
+          "cpu_traceback_align_calls": 0,
+          "cpu_traceback_emit_best_fallback": 0,
+          "cpu_traceback_emit_last": 0,
+          "cpu_traceback_emit_threshold": 641,
+          "cpu_traceback_replay_attempts": 641,
+          "cpu_traceback_selected_attempts": 641,
+          "fallbacks": 0,
+          "score_selected_attempts": 0
+        },
+        "strict_cpu_traceback": {
+          "cpu_traceback_align_calls": 641,
+          "cpu_traceback_emit_best_fallback": 111,
+          "cpu_traceback_emit_last": 48,
+          "cpu_traceback_emit_threshold": 482,
+          "cpu_traceback_replay_attempts": 641,
+          "cpu_traceback_selected_attempts": 641,
+          "fallbacks": 0,
+          "score_selected_attempts": 641
+        }
+      },
+      "expected_tfosorted_name": "GRCh38-ENST00000785836.1|ENSG00000178248.12|FAM230I|GENCODE v49|GRCh38-target-TFOsorted",
+      "execution_identity_sha256": "742b70d16f81a715debb1edc90802de5a3f2a4715ad578cebc84395d9393b7a9",
+      "query_sha256": "97edb4ee3631b3b725198e39ffcc7d788a31aaa4a964069ff4d3d032ee073b5b",
+      "target_sha256": "15b67727bcbfe8138a9caa1f5100f822c8b021a6008878c65b361caa83fe224e"
+    },
+    {
+      "attempt_id": "hq11_ht02__repeat00",
+      "authority_output_sha256": "394fe813c2e10d9340165d371255a8a54bf493e3c9da90d57db4e99dfd72cd82",
+      "candidate_output_sha256": "997117543e311eb335647654bad1909a1da00b12d61395487baa59cb967f0d61",
+      "expected_metrics": {
+        "gpu_traceback": {
+          "cpu_traceback_align_calls": 0,
+          "cpu_traceback_emit_best_fallback": 0,
+          "cpu_traceback_emit_last": 0,
+          "cpu_traceback_emit_threshold": 827,
+          "cpu_traceback_replay_attempts": 827,
+          "cpu_traceback_selected_attempts": 827,
+          "fallbacks": 0,
+          "score_selected_attempts": 0
+        },
+        "gpu_traceback_no_staged_prune": {
+          "cpu_traceback_align_calls": 0,
+          "cpu_traceback_emit_best_fallback": 0,
+          "cpu_traceback_emit_last": 0,
+          "cpu_traceback_emit_threshold": 827,
+          "cpu_traceback_replay_attempts": 827,
+          "cpu_traceback_selected_attempts": 827,
+          "fallbacks": 0,
+          "score_selected_attempts": 0
+        },
+        "strict_cpu_traceback": {
+          "cpu_traceback_align_calls": 827,
+          "cpu_traceback_emit_best_fallback": 163,
+          "cpu_traceback_emit_last": 94,
+          "cpu_traceback_emit_threshold": 570,
+          "cpu_traceback_replay_attempts": 827,
+          "cpu_traceback_selected_attempts": 827,
+          "fallbacks": 0,
+          "score_selected_attempts": 827
+        }
+      },
+      "expected_tfosorted_name": "GRCh38-ENST00000667017.2|ENSG00000255857.9|PXN-AS1|GENCODE v49|GRCh38-target-TFOsorted",
+      "execution_identity_sha256": "742b70d16f81a715debb1edc90802de5a3f2a4715ad578cebc84395d9393b7a9",
+      "query_sha256": "a29a008465ae05e377a26d30fbbca1f8f8a324706eec0b3535cac65089a131b9",
+      "target_sha256": "15b67727bcbfe8138a9caa1f5100f822c8b021a6008878c65b361caa83fe224e"
+    }
+  ],
+  "candidate_environment": {
+    "FASIM_ALIGN_GASAL2_BATCH": "20000",
+    "FASIM_ALIGN_GASAL2_STAGED_FIRST_PRUNE": "1",
+    "FASIM_ALIGN_GASAL2_STREAMS": "3",
+    "FASIM_OUTPUT_MODE": "tfosorted",
+    "FASIM_TOP5_GASAL2_GPU_SCOREINFO": "1",
+    "FASIM_TOP5_GASAL2_PHASE_TIMING": "1",
+    "FASIM_TOP5_GASAL2_SCOREINFO_PRUNE_MAX_PER_TASK": "256",
+    "FASIM_VERBOSE": "0"
+  },
+  "execution": {
+    "artifact_root": ".paper-artifacts/bioinformatics-phase2-traceback-replay-v1",
+    "backend_timeout_seconds": 120,
+    "retry_policy": "none",
+    "source_artifact_root": ".paper-artifacts/bioinformatics-phase2-holdout-v1",
+    "working_directory": "repository_root"
+  },
+  "formal_candidate_device_binding": {
+    "cuda_visible_devices": "unset",
+    "runtime_device_uuid_recorded": false
+  },
+  "freeze_id": "bioinformatics-phase2-traceback-replay-v1",
+  "historical_contract": {
+    "phase2_decision": "verified_only_contract",
+    "phase3_b3_decision": "no_go_for_sequential_verified_v1",
+    "rewrites_historical_decisions": false
+  },
+  "modes": [
+    {
+      "expected_output": "candidate",
+      "mode_id": "gpu_traceback",
+      "set_environment": {},
+      "unset_environment": []
+    },
+    {
+      "expected_output": "candidate",
+      "mode_id": "gpu_traceback_no_staged_prune",
+      "set_environment": {},
+      "unset_environment": [
+        "FASIM_ALIGN_GASAL2_STAGED_FIRST_PRUNE"
+      ]
+    },
+    {
+      "expected_output": "authority",
+      "mode_id": "strict_cpu_traceback",
+      "set_environment": {
+        "FASIM_ALIGN_GASAL2_CPU_TRACEBACK": "1",
+        "FASIM_ALIGN_GASAL2_CPU_TRACEBACK_STRICT": "1"
+      },
+      "unset_environment": []
+    }
+  ],
+  "promotion_eligible": false,
+  "purpose": "post_hoc_root_cause_diagnostic_only",
+  "replay_device": {
+    "compute_capability": "8.9",
+    "driver_version": "555.42.06",
+    "memory_total_mib": 24564,
+    "name": "NVIDIA GeForce RTX 4090",
+    "physical_index": 1,
+    "uuid": "GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2"
+  },
+  "schema_version": 1,
+  "source_freeze": {
+    "candidate_binary_sha256": "584ff639e09ede813a645f6ef0927a183eadbf6c216a530c2ed998fe800e4759",
+    "holdout_freeze_id": "bioinformatics-phase2-holdout-v1-9e293b2c",
+    "holdout_manifest_sha256": "9e293b2c3e8d0462e399fe64ff6f684e9c53f7dd428e9c88265b510909cee8c6",
+    "snapshot_commit": "1c07823bc3a56704415d242b3ddc937cfa03ee86"
+  }
+}
