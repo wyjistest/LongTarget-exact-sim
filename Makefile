@@ -1504,6 +1504,7 @@ check-bioinformatics-phase3-pilot:
 	check-bioinformatics-canonical-hybrid-v2 \
 	check-bioinformatics-canonical-hybrid-v2-regression \
 	check-bioinformatics-canonical-hybrid-v2-holdout \
+	check-bioinformatics-canonical-hybrid-v2-performance \
 	check-bioinformatics-phase3-freeze \
 	check-bioinformatics-phase3-preexecution \
 	check-bioinformatics-phase3-pilot \
