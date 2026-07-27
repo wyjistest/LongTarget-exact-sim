@@ -599,6 +599,7 @@ class Phase3RepositoryIntegrationTests(unittest.TestCase):
             "check_run_bioinformatics_application.py",
             "application_execution_started=0",
             "structurally_unreachable_under_verified_only_v1",
+            "cd \"$ROOT/paper/bioinformatics\"",
         ):
             self.assertIn(phrase, text)
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")

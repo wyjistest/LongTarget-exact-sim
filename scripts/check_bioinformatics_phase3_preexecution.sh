@@ -44,8 +44,11 @@ if [[ "$observed_manifest_sha" != "$expected_manifest_sha" ]]; then
   echo "Phase 3 application manifest digest drift" >&2
   exit 1
 fi
-sha256sum --check --status "$ROOT/paper/bioinformatics/application_manifest.sha256"
-sha256sum --check --status "$PLAN_SHA"
+(
+  cd "$ROOT/paper/bioinformatics"
+  sha256sum --check --status application_manifest.sha256
+  sha256sum --check --status "$(basename "$PLAN_SHA")"
+)
 
 python3 -m py_compile "$RUNNER" "$ROOT/tests/check_run_bioinformatics_application.py"
 python3 -m json.tool "$DECISION" >/dev/null
