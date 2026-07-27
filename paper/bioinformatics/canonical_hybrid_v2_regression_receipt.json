@@ -1,0 +1,81 @@
+{
+  "all_three_clustered_top5_equal": 36,
+  "attempt_count": 36,
+  "b3_speedup_threshold": 10.0,
+  "b3_speedup_threshold_changed": false,
+  "collector_sha256": "e25b8e6137bc295f7bf1f8295083a3600a146ea0b7ec9761d22da5a145c435ae",
+  "complete_cpu_authority_inside_hybrid": false,
+  "completed_utc": "2026-07-27T09:48:25.209441+00:00",
+  "cpu_traceback_calls": 24486,
+  "declared_contract": "all-ranked-top5-canonical-row-v2",
+  "declared_contract_mismatches": 0,
+  "execution_commit": "4bc0ec50d7fdab1126e59ba9ec6aeda223be65de",
+  "fallbacks": 0,
+  "fresh_holdout_required_for_correctness_promotion": true,
+  "full_output_contract_claimed": false,
+  "full_output_equal": 35,
+  "full_output_mismatches": [
+    {
+      "attempt_id": "v2reg_hq04_ht02__repeat00",
+      "baseline_rows": 10,
+      "declared_contract_clean": true,
+      "extra_rows": 0,
+      "hybrid_rows": 8,
+      "missing_rows": 2,
+      "validation_id": "hq04_ht02__repeat00"
+    }
+  ],
+  "historical_decisions_rewritten": false,
+  "historical_phase2_decision": "verified_only_contract",
+  "historical_phase3_sequential_v1_b3": "no_go",
+  "hybrid_binary_sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+  "next_allowed_step": "freeze_fresh_independent_holdout",
+  "nt_clustered_top5_equal": 36,
+  "ooms": 0,
+  "performance_pilot_required_for_b3_v2": true,
+  "plan_sha256": "d8a795a18e2414e62a41c4cd34601f4ef4196fc9dfb6b379a4587ace992111dd",
+  "raw_artifact_bytes": 24968940,
+  "raw_artifact_count": 698,
+  "raw_artifact_inventory_sha256": "7f718dca267c034e1ca1f90bb1d8f52ea55d638f4dc4696d9297242f823d3fa5",
+  "regression_is_promotion_evidence": false,
+  "resource_measurements_claim_role": "diagnostic_only_not_performance_promotion",
+  "result_status": "regression_pass_not_promotion",
+  "results_sha256": "cb055068df043c64b6c81e63022fa202da633a094d355b17418285691267cacc",
+  "runner_commit": "0853e403cd1dbdfd3b3d2ea85f6a8d8fba9f1e97",
+  "runtime_commit": "17525a6d02e5c8d11a2359ae540e117dc08c8f99",
+  "runtime_epoch": 1,
+  "runtime_receipt_sha256": "95901013c55c60761344f9320d913c8305269e02876da87fd780b3cdc4796422",
+  "schema_version": 1,
+  "score_clustered_top5_equal": 36,
+  "score_prepass_attempts": 97944,
+  "selected_attempts": 24486,
+  "selected_cpu_traceback_count_equal": true,
+  "snapshot_cache_future_runner_hardening_required": true,
+  "snapshot_cache_scientific_contract_impact": "none",
+  "snapshot_file_set_exact_after_execution": false,
+  "snapshot_frozen_files_intact": true,
+  "snapshot_postfreeze_extra_file_class": "python_bytecode_cache_only",
+  "snapshot_postfreeze_extra_files": [
+    {
+      "path": "__pycache__/compare_fasim_lite_offline_cluster_topk.cpython-311.pyc",
+      "sha256": "d058422cfa80528c019b51f0aba821c198cf00c3cda5cb72ea0e235f9a051928",
+      "size_bytes": 13143
+    },
+    {
+      "path": "__pycache__/fasim_tfo_archive.cpython-311.pyc",
+      "sha256": "2d521b2a8458a39b912443265eb6a254c33e6b1c1de5269bd4993396492cb283",
+      "size_bytes": 23408
+    }
+  ],
+  "stability_clustered_top5_equal": 36,
+  "stage": "regression",
+  "stage_summary_sha256": "6655bf276dc4ac1d38d6c81ed932fe2b19c0b3662ed95a7c2988df977b4ff4e3",
+  "technical_failures": 0,
+  "timeouts": 0,
+  "wall_seconds_diagnostic_only": {
+    "maximum": 0.42098057409748435,
+    "median": 0.30177232855930924,
+    "minimum": 0.232349697034806,
+    "sum": 10.876187601825222
+  }
+}
