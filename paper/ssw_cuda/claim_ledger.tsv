@@ -1,0 +1,8 @@
+claim_id	status	allowed_wording	prohibited_wording	evidence
+HIST_GPU_TRACEBACK_V1	verified_only_contract	The v1 GPU traceback path requires verified comparison or CPU authority.	GPU-only v1 is contract-safe.	paper/bioinformatics/phase2_decision.md
+HIST_PHASE3_V1_B3	no_go	Sequential verified-v1 failed the prospective B3 feasibility gate.	Sequential verification provides safe acceleration.	paper/bioinformatics/phase3_postpilot_decision.json
+HIST_CANONICAL_HYBRID_V2_CORRECTNESS	pass	Canonical-hybrid-v2 passed its frozen clustered Top-5 contract holdout.	Canonical-hybrid-v2 is a full-output replacement.	paper/bioinformatics/canonical_hybrid_v2_holdout_receipt.json
+HIST_CANONICAL_HYBRID_V2_PERFORMANCE	no_go_closed	Canonical-hybrid-v2 was 3.882109x slower than authority on the fixed pilot.	Canonical-hybrid-v2 provides safe acceleration.	paper/bioinformatics/canonical_hybrid_v2_performance_receipt.json
+SSW_CUDA_L1_L7	pending	No new exact SSW-CUDA correctness claim is currently established.	The new SSW-CUDA backend is exact or safe.	NONE
+SSW_CUDA_L8	diagnostic_only	Full-output equality is recorded only as a diagnostic.	Full-output exact replacement.	goal-ssw.md
+SSW_CUDA_B3	pending_amdahl	B3 feasibility awaits the preregistered CPU Amdahl profile.	Bioinformatics widening is open or achieved.	NONE

@@ -1453,6 +1453,10 @@ check-bioinformatics-canonical-hybrid-v2-performance-preexecution:
 check-bioinformatics-canonical-hybrid-v2-performance:
 	bash ./scripts/check_bioinformatics_canonical_hybrid_v2_performance.sh
 
+.PHONY: check-ssw-cuda-phase0
+check-ssw-cuda-phase0:
+	bash ./scripts/check_ssw_cuda_phase0.sh
+
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:
 	/usr/bin/env -i \

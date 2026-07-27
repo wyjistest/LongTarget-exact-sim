@@ -171,19 +171,21 @@ class Phase2CheckpointTests(unittest.TestCase):
         schema_row = next(row for row in manifest if row["artifact_id"] == "S0202")
         self.assertEqual(schema_row["freeze_or_epoch"], "schema_2.0.0")
 
-    def test_goal_state_advances_only_to_phase3(self) -> None:
+    def test_goal_state_preserves_phase2_after_phase3_decision(self) -> None:
         goal = (ROOT / "goal-bioinformatics.md").read_text()
         for phrase in (
-            "active_phase = 3",
+            "active_phase = 4",
             "phase_2_status = pass",
-            "last_completed_phase = 2",
-            "last_decision = verified_only_contract",
-            "last_evidence_doc = paper/bioinformatics/phase2_decision.md",
-            "last_test_command = make check-bioinformatics-phase2",
-            "last_commit = analysis: validate a promotable GASAL2-LongTarget output contract",
+            "phase_3_status = no_go",
+            "last_completed_phase = 3",
+            "last_decision = stop_after_pilot_futility",
+            "last_evidence_doc = paper/bioinformatics/phase3_postpilot_decision.json",
+            "last_test_command = make check-bioinformatics-phase3-pilot",
+            "last_commit = bench: record Phase 3 fixed-pilot futility stop",
         ):
             self.assertIn(phrase, goal)
-        self.assertIn("phase_3_status = pending", goal)
+        decision = (ROOT / "paper/bioinformatics/phase2_decision.md").read_text()
+        self.assertIn("`verified_only_contract`", decision)
 
     def test_final_checker_and_make_target_are_wired_without_execution_runner(self) -> None:
         checker_path = ROOT / "scripts/check_bioinformatics_phase2.sh"

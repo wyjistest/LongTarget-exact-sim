@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_ROOT="${WORK:-$ROOT/.tmp/check_bioinformatics_phase2}"
 RUNTIME_COMMIT="0d11aa2d61b7ccda59b462ab8e0750dad17ee18f"
 HISTORICAL_COMPLETION="a98d80d44d4418cdb8a67dc8d83ee41b8e599023"
+PHASE2_DECISION_COMMIT="bf94dc75c5fe3e996472a1e90d242f582da361bf"
 FROZEN_ROOT="$ROOT/.paper-artifacts/bioinformatics-phase2-holdout-v1"
 
 mkdir -p -- "$WORK_ROOT"
@@ -175,18 +176,24 @@ if claims["B2"]["status"] != "pass" or "verified" not in claims["B2"]["allowed_w
 
 goal = (root / "goal-bioinformatics.md").read_text()
 for phrase in (
-    "active_phase = 3", "phase_2_status = pass", "last_completed_phase = 2",
-    "last_decision = verified_only_contract",
-    "last_evidence_doc = paper/bioinformatics/phase2_decision.md",
-    "last_test_command = make check-bioinformatics-phase2",
+    "active_phase = 4", "phase_2_status = pass", "phase_3_status = no_go",
+    "last_completed_phase = 3", "last_decision = stop_after_pilot_futility",
+    "last_evidence_doc = paper/bioinformatics/phase3_postpilot_decision.json",
+    "last_test_command = make check-bioinformatics-phase3-pilot",
 ):
     if phrase not in goal:
         raise SystemExit(f"goal state drift: {phrase}")
+if "`verified_only_contract`" not in (bio / "phase2_decision.md").read_text():
+    raise SystemExit("historical Phase 2 decision was not preserved")
 PY
 
-if ! git -C "$ROOT" diff --quiet "$RUNTIME_COMMIT" -- \
+if ! git -C "$ROOT" merge-base --is-ancestor "$PHASE2_DECISION_COMMIT" HEAD; then
+  echo "Phase 2 decision commit is not an ancestor of HEAD" >&2
+  exit 1
+fi
+if ! git -C "$ROOT" diff --quiet "$RUNTIME_COMMIT" "$PHASE2_DECISION_COMMIT" -- \
   fasim cuda longtarget.cpp sim.h exact_sim.h rules.h stats.h; then
-  echo "Phase 2 changed immutable C/C++/CUDA/core runtime paths" >&2
+  echo "Phase 2 changed immutable C/C++/CUDA/core runtime paths before its decision" >&2
   exit 1
 fi
 

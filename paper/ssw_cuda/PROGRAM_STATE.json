@@ -1,0 +1,29 @@
+{
+  "active_phase": 1,
+  "bioinformatics_b3_track": "pending_amdahl",
+  "engineering_track": "active",
+  "execution_branch": "gasal2-kcnq1ot1-focused-review",
+  "execution_start_head": "9f87aace6d96cf8142e3816299f04defae5710e4",
+  "l8_contract_status": "diagnostic_only",
+  "last_decision": "phase0_evidence_frozen",
+  "last_evidence": "paper/ssw_cuda/historical_evidence_receipt.json",
+  "phase_status": {
+    "0": "pass",
+    "1": "pending",
+    "10": "pending",
+    "11": "pending",
+    "12": "pending",
+    "13": "pending",
+    "2": "pending",
+    "3": "pending",
+    "4": "pending",
+    "5": "pending",
+    "6": "pending",
+    "7": "pending",
+    "8": "pending",
+    "9": "pending"
+  },
+  "schema_version": 1,
+  "ssw_cpu_oracle_epoch": 2,
+  "ssw_cuda_program_epoch": 1
+}
