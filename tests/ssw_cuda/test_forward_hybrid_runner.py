@@ -86,6 +86,19 @@ class ForwardHybridRunnerTests(unittest.TestCase):
             with self.assertRaises(P7.Phase7Error):
                 P7.read_fasta(path)
 
+    def test_tfosorted_output_ignores_historical_wrapper_logs(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ssw-cuda-p7-output-") as directory:
+            root = Path(directory)
+            (root / "wrapper-stdout.log").write_text("wrapper\n", encoding="utf-8")
+            (root / "wrapper-stderr.log").write_text("", encoding="utf-8")
+            expected = root / "case-TFOsorted"
+            expected.write_text("result\n", encoding="utf-8")
+            self.assertEqual(P7.tfosorted_output(root), expected)
+
+            (root / "other-TFOsorted").write_text("result\n", encoding="utf-8")
+            with self.assertRaises(P7.Phase7Error):
+                P7.tfosorted_output(root)
+
     def test_telemetry_schema_and_cpu_call_contract_are_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ssw-cuda-p7-telemetry-") as directory:
             path = Path(directory) / "telemetry.tsv"

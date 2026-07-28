@@ -28,6 +28,10 @@ REPAIR_PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md
 REPAIR_RECEIPT = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json"
 REPAIR2_PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.md"
 REPAIR2_RECEIPT = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json"
+ANALYSIS_CORRECTION = ROOT / "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json"
+ANALYSIS_CORRECTION_PROTOCOL = (
+    ROOT / "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md"
+)
 SOURCE_DATA = ROOT / "paper/ssw_cuda/forward_hybrid_source_data.tsv"
 PROJECTION = ROOT / "paper/ssw_cuda/forward_hybrid_projection.json"
 DECISION = ROOT / "paper/ssw_cuda/forward_hybrid_decision.json"
@@ -41,7 +45,8 @@ COMPARATOR = ROOT / "scripts/compare_fasim_lite_offline_cluster_topk.py"
 COMPARATOR_SHA256 = "2765d76b6c8e742596b1072a413309a88ef415f3576c9de62be67213ee76dc80"
 ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/forward-hybrid"
 FORMAL_ROOT = ARTIFACT_ROOT / "formal-v2"
-COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v2"
+COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v3"
+FAILED_COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v2"
 EXECUTION_RECEIPT = ARTIFACT_ROOT / "execution-receipt-v2.json"
 DEFAULT_BINARY = ARTIFACT_ROOT / "build/fasim_forward_hybrid"
 SNAPSHOT_ROOT = ARTIFACT_ROOT / "execution-snapshot-v2"
@@ -305,10 +310,33 @@ def output_digest(output_dir: Path) -> tuple[str, list[dict[str, Any]]]:
     return sha256_bytes(tsv_bytes(("path", "size_bytes", "sha256"), rows)), rows
 
 
-def single_output(output_dir: Path) -> Path:
-    paths = [path for path in output_dir.iterdir() if path.is_file() and not path.is_symlink()]
-    require(len(paths) == 1, f"expected one output in {output_dir}, found {len(paths)}")
+def tfosorted_output(output_dir: Path) -> Path:
+    require(output_dir.is_dir() and not output_dir.is_symlink(),
+            f"missing or unsafe output directory: {output_dir}")
+    paths = [
+        path for path in output_dir.iterdir()
+        if path.is_file() and not path.is_symlink() and path.name.endswith("-TFOsorted")
+    ]
+    require(len(paths) == 1,
+            f"expected one TFOsorted output in {output_dir}, found {len(paths)}")
     return paths[0]
+
+
+def validate_failed_comparison_root() -> None:
+    require(FAILED_COMPARISON_ROOT.is_dir() and not FAILED_COMPARISON_ROOT.is_symlink(),
+            "missing failed Phase 7 comparison root")
+    entries = []
+    for path in sorted(FAILED_COMPARISON_ROOT.rglob("*")):
+        require(not path.is_symlink(), f"unsafe failed comparison artifact: {path}")
+        entries.append(
+            {
+                "type": "directory" if path.is_dir() else "file",
+                "path": str(path.relative_to(FAILED_COMPARISON_ROOT)),
+            }
+        )
+    correction = json.loads(ANALYSIS_CORRECTION.read_text(encoding="utf-8"))
+    require(entries == correction["failed_comparison_root_entries"],
+            "failed Phase 7 comparison root drift")
 
 
 def pair_digest(query_sequence_sha256: str, target_sequence_sha256: str) -> str:
@@ -517,6 +545,11 @@ def check_plan() -> list[dict[str, str]]:
     require(repair2["repair_number"] == 2 and
             repair2["classification"] == "implementation_contract_no_go",
             "Phase 7 repair 2 receipt drift")
+    correction = json.loads(ANALYSIS_CORRECTION.read_text(encoding="utf-8"))
+    require(correction["correction_number"] == 1 and
+            correction["new_backend_attempts"] == 0 and
+            correction["measurement_repairs_used"] == 2,
+            "Phase 7 analysis correction receipt drift")
     observed = read_tsv(PLAN)
     require(tuple(observed[0].keys()) == PLAN_FIELDS, "Phase 7 plan schema mismatch")
     expected = expected_plan_rows()
@@ -555,6 +588,8 @@ def require_clean_committed_execution() -> str:
         "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json",
         "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.md",
         "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json",
+        "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json",
+        "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md",
         "reproduce/ssw_cuda/run_forward_hybrid.py",
         "scripts/check_ssw_cuda_phase7.sh",
         "tests/ssw_cuda/test_forward_hybrid_runner.py",
@@ -1072,8 +1107,8 @@ def run_comparison(row: dict[str, str], receipt: dict[str, Any]) -> dict[str, An
     comparison_dir = COMPARISON_ROOT / row["attempt_id"]
     require(not comparison_dir.exists(), f"refusing to replace comparison: {comparison_dir}")
     comparison_dir.mkdir(parents=True)
-    baseline = single_output(ROOT / row["reference_artifact_root"])
-    candidate = single_output(ROOT / row["artifact_root"] / "output")
+    baseline = tfosorted_output(ROOT / row["reference_artifact_root"])
+    candidate = tfosorted_output(ROOT / row["artifact_root"] / "output")
     details = comparison_dir / "details.tsv"
     command = [
         sys.executable,
@@ -1570,6 +1605,7 @@ def reconstruct_outputs(create_comparisons: bool) -> tuple[bytes, bytes, bytes]:
         attempt = validate_attempt_receipt(row, execution["source_commit"])
         attempts[row["attempt_id"]] = attempt
     if create_comparisons:
+        validate_failed_comparison_root()
         require(not COMPARISON_ROOT.exists(),
                 f"offline comparison root already exists: {COMPARISON_ROOT}")
         for row in rows:

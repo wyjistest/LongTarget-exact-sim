@@ -31,6 +31,8 @@ required=(
   paper/ssw_cuda/STATUS.md
   paper/ssw_cuda/forward_hybrid_attempt_plan.tsv
   paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv
+  paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json
+  paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md
   paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json
   paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md
   paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json
@@ -117,6 +119,14 @@ repair2_protocol = (
 ).read_text(encoding="utf-8")
 repair2_receipt = json.loads(
     (root / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json").read_text(
+        encoding="utf-8"
+    )
+)
+analysis_correction_protocol = (
+    root / "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md"
+).read_text(encoding="utf-8")
+analysis_correction = json.loads(
+    (root / "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json").read_text(
         encoding="utf-8"
     )
 )
@@ -212,6 +222,20 @@ if (
     or repair2_receipt["new_attempts_authorized"] != 0
 ):
     raise SystemExit("Phase 7 repair 2 receipt drift")
+for phrase in (
+    "basename ends in `-TFOsorted`",
+    "launches zero backend attempts",
+    "execution/measurement repairs unchanged",
+):
+    if phrase not in analysis_correction_protocol:
+        raise SystemExit(f"Phase 7 analysis correction drift: {phrase}")
+if (
+    analysis_correction["correction_number"] != 1
+    or analysis_correction["new_backend_attempts"] != 0
+    or analysis_correction["measurement_repairs_used"] != 2
+    or analysis_correction["scientific_contract_changed"] is not False
+):
+    raise SystemExit("Phase 7 analysis correction receipt drift")
 
 def git_file(commit, relative):
     return subprocess.run(
