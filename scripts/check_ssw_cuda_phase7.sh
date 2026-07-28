@@ -172,12 +172,13 @@ else:
     else:
         if state["phase_status"]["7"] != "no_go":
             raise SystemExit("Phase 7 no-go state drift")
-    required_goal = (
+    required_goal = [
         f"active_phase = {state['active_phase']}",
         f"phase_7_status = {state['phase_status']['7']}",
-        f"last_decision = {decision['decision']}",
         "bioinformatics_b3_track = closed_amdahl",
-    )
+    ]
+    if state["phase_status"].get("13") != "pass":
+        required_goal.append(f"last_decision = {decision['decision']}")
 
 for phrase in required_goal:
     if phrase not in goal:
