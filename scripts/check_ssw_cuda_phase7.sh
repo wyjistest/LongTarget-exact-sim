@@ -33,6 +33,8 @@ required=(
   paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv
   paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json
   paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md
+  paper/ssw_cuda/forward_hybrid_analysis_correction_v2.json
+  paper/ssw_cuda/forward_hybrid_analysis_correction_v2.md
   paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json
   paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md
   paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json
@@ -40,6 +42,7 @@ required=(
   paper/ssw_cuda/forward_hybrid_protocol.md
   reproduce/ssw_cuda/run_forward_hybrid.py
   scripts/compare_fasim_lite_offline_cluster_topk.py
+  scripts/compare_fasim_segmented_contract.py
   scripts/check_ssw_cuda_phase5.sh
   scripts/check_ssw_cuda_phase6.sh
   scripts/check_ssw_cuda_phase7.sh
@@ -65,8 +68,8 @@ if [[ "$observed_plan_sha256" != "$PLAN_SHA256" ]]; then
   echo "Phase 7 attempt plan digest drift: $observed_plan_sha256" >&2
   exit 1
 fi
-observed_comparator_sha256="$(sha256sum "$ROOT/scripts/compare_fasim_lite_offline_cluster_topk.py" | awk '{print $1}')"
-if [[ "$observed_comparator_sha256" != "2765d76b6c8e742596b1072a413309a88ef415f3576c9de62be67213ee76dc80" ]]; then
+observed_comparator_sha256="$(sha256sum "$ROOT/scripts/compare_fasim_segmented_contract.py" | awk '{print $1}')"
+if [[ "$observed_comparator_sha256" != "6a589d7960a69be7c84a410f1bbd9d3ea34de929f8f04943d9c7ae033d682eda" ]]; then
   echo "Phase 7 comparator digest drift: $observed_comparator_sha256" >&2
   exit 1
 fi
@@ -127,6 +130,14 @@ analysis_correction_protocol = (
 ).read_text(encoding="utf-8")
 analysis_correction = json.loads(
     (root / "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
+analysis_correction2_protocol = (
+    root / "paper/ssw_cuda/forward_hybrid_analysis_correction_v2.md"
+).read_text(encoding="utf-8")
+analysis_correction2 = json.loads(
+    (root / "paper/ssw_cuda/forward_hybrid_analysis_correction_v2.json").read_text(
         encoding="utf-8"
     )
 )
@@ -236,6 +247,21 @@ if (
     or analysis_correction["scientific_contract_changed"] is not False
 ):
     raise SystemExit("Phase 7 analysis correction receipt drift")
+for phrase in (
+    "compare_fasim_segmented_contract.py",
+    "offline-comparison-v4",
+    "starts zero backend attempts",
+):
+    if phrase not in analysis_correction2_protocol:
+        raise SystemExit(f"Phase 7 analysis correction 2 drift: {phrase}")
+if (
+    analysis_correction2["correction_number"] != 2
+    or analysis_correction2["failed_comparison_receipts"] != 26
+    or analysis_correction2["new_backend_attempts"] != 0
+    or analysis_correction2["measurement_repairs_used"] != 2
+    or analysis_correction2["scientific_contract_changed"] is not False
+):
+    raise SystemExit("Phase 7 analysis correction 2 receipt drift")
 
 def git_file(commit, relative):
     return subprocess.run(

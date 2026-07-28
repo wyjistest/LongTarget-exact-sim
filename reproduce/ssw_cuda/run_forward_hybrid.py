@@ -32,6 +32,7 @@ ANALYSIS_CORRECTION = ROOT / "paper/ssw_cuda/forward_hybrid_analysis_correction_
 ANALYSIS_CORRECTION_PROTOCOL = (
     ROOT / "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md"
 )
+ANALYSIS_CORRECTION2 = ROOT / "paper/ssw_cuda/forward_hybrid_analysis_correction_v2.json"
 SOURCE_DATA = ROOT / "paper/ssw_cuda/forward_hybrid_source_data.tsv"
 PROJECTION = ROOT / "paper/ssw_cuda/forward_hybrid_projection.json"
 DECISION = ROOT / "paper/ssw_cuda/forward_hybrid_decision.json"
@@ -41,12 +42,13 @@ PHASE1_PLAN = ROOT / "paper/ssw_cuda/cpu_profile_recovery_attempt_plan.tsv"
 PHASE1_SOURCE = ROOT / "paper/ssw_cuda/cpu_profile_v2_source_data.tsv"
 PHASE1_STATS = ROOT / "paper/ssw_cuda/cpu_profile_v2_statistics.json"
 H2_RECEIPT = ROOT / "paper/bioinformatics/canonical_hybrid_v2_performance_receipt.json"
-COMPARATOR = ROOT / "scripts/compare_fasim_lite_offline_cluster_topk.py"
-COMPARATOR_SHA256 = "2765d76b6c8e742596b1072a413309a88ef415f3576c9de62be67213ee76dc80"
+COMPARATOR = ROOT / "scripts/compare_fasim_segmented_contract.py"
+COMPARATOR_SHA256 = "6a589d7960a69be7c84a410f1bbd9d3ea34de929f8f04943d9c7ae033d682eda"
 ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/forward-hybrid"
 FORMAL_ROOT = ARTIFACT_ROOT / "formal-v2"
-COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v3"
-FAILED_COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v2"
+COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v4"
+FAILED_COMPARISON_ROOT_V2 = ARTIFACT_ROOT / "offline-comparison-v2"
+FAILED_COMPARISON_ROOT_V3 = ARTIFACT_ROOT / "offline-comparison-v3"
 EXECUTION_RECEIPT = ARTIFACT_ROOT / "execution-receipt-v2.json"
 DEFAULT_BINARY = ARTIFACT_ROOT / "build/fasim_forward_hybrid"
 SNAPSHOT_ROOT = ARTIFACT_ROOT / "execution-snapshot-v2"
@@ -166,7 +168,7 @@ COMPARATOR_COUNT_FIELDS = (
     "full_extra_rows",
     "baseline_boundary_tie_groups",
     "candidate_boundary_tie_groups",
-    "baseline_representative_conflict_clusters",
+    "representative_conflict_clusters",
     "candidate_representative_conflict_clusters",
 )
 
@@ -201,6 +203,8 @@ SOURCE_FIELDS = (
     "full_output_equal_diagnostic",
     *COMPARATOR_BINARY_FIELDS,
     *COMPARATOR_COUNT_FIELDS,
+    "comparison_status",
+    "comparison_error",
     "declared_contract_clean",
     *TELEMETRY_FIELDS[4:-1],
     "telemetry_error",
@@ -322,21 +326,39 @@ def tfosorted_output(output_dir: Path) -> Path:
     return paths[0]
 
 
-def validate_failed_comparison_root() -> None:
-    require(FAILED_COMPARISON_ROOT.is_dir() and not FAILED_COMPARISON_ROOT.is_symlink(),
-            "missing failed Phase 7 comparison root")
+def validate_failed_comparison_roots() -> None:
+    require(FAILED_COMPARISON_ROOT_V2.is_dir() and
+            not FAILED_COMPARISON_ROOT_V2.is_symlink(),
+            "missing failed Phase 7 comparison v2 root")
     entries = []
-    for path in sorted(FAILED_COMPARISON_ROOT.rglob("*")):
+    for path in sorted(FAILED_COMPARISON_ROOT_V2.rglob("*")):
         require(not path.is_symlink(), f"unsafe failed comparison artifact: {path}")
         entries.append(
             {
                 "type": "directory" if path.is_dir() else "file",
-                "path": str(path.relative_to(FAILED_COMPARISON_ROOT)),
+                "path": str(path.relative_to(FAILED_COMPARISON_ROOT_V2)),
             }
         )
     correction = json.loads(ANALYSIS_CORRECTION.read_text(encoding="utf-8"))
     require(entries == correction["failed_comparison_root_entries"],
-            "failed Phase 7 comparison root drift")
+            "failed Phase 7 comparison v2 root drift")
+
+    require(FAILED_COMPARISON_ROOT_V3.is_dir() and
+            not FAILED_COMPARISON_ROOT_V3.is_symlink(),
+            "missing failed Phase 7 comparison v3 root")
+    all_entries = list(FAILED_COMPARISON_ROOT_V3.rglob("*"))
+    require(all(not path.is_symlink() for path in all_entries),
+            "unsafe failed Phase 7 comparison v3 artifact")
+    receipts = sorted(FAILED_COMPARISON_ROOT_V3.glob("*/comparison.json"))
+    correction2 = json.loads(ANALYSIS_CORRECTION2.read_text(encoding="utf-8"))
+    require(len(receipts) == correction2["failed_comparison_receipts"],
+            "failed Phase 7 comparison v3 receipt cardinality drift")
+    for path in receipts:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        require(receipt["status"] == "technical_failure" and
+                receipt["error"] == "offline comparator omitted required metrics" and
+                receipt["metrics"] == {},
+                f"unexpected failed comparison receipt: {path}")
 
 
 def pair_digest(query_sequence_sha256: str, target_sequence_sha256: str) -> str:
@@ -550,6 +572,11 @@ def check_plan() -> list[dict[str, str]]:
             correction["new_backend_attempts"] == 0 and
             correction["measurement_repairs_used"] == 2,
             "Phase 7 analysis correction receipt drift")
+    correction2 = json.loads(ANALYSIS_CORRECTION2.read_text(encoding="utf-8"))
+    require(correction2["correction_number"] == 2 and
+            correction2["correct_comparator_sha256"] == COMPARATOR_SHA256 and
+            correction2["new_backend_attempts"] == 0,
+            "Phase 7 analysis correction 2 receipt drift")
     observed = read_tsv(PLAN)
     require(tuple(observed[0].keys()) == PLAN_FIELDS, "Phase 7 plan schema mismatch")
     expected = expected_plan_rows()
@@ -590,6 +617,8 @@ def require_clean_committed_execution() -> str:
         "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json",
         "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.json",
         "paper/ssw_cuda/forward_hybrid_analysis_correction_v1.md",
+        "paper/ssw_cuda/forward_hybrid_analysis_correction_v2.json",
+        "paper/ssw_cuda/forward_hybrid_analysis_correction_v2.md",
         "reproduce/ssw_cuda/run_forward_hybrid.py",
         "scripts/check_ssw_cuda_phase7.sh",
         "tests/ssw_cuda/test_forward_hybrid_runner.py",
@@ -1253,7 +1282,8 @@ def validate_comparison_receipt(
                 f"{row['attempt_id']}: comparison {name} drift")
     metrics = parse_comparator_stdout((path.parent / "stdout.log").read_text(encoding="utf-8"))
     require(receipt["metrics"] == metrics, f"{row['attempt_id']}: comparison metrics drift")
-    require(receipt["declared_contract_clean"] == comparison_clean(metrics),
+    require(receipt["declared_contract_clean"] ==
+            (bool(metrics) and comparison_clean(metrics)),
             f"{row['attempt_id']}: comparison gate drift")
     require(receipt["full_output_equal_diagnostic"] ==
             (attempt_receipt["output_digest"] == row["reference_output_digest"]),
@@ -1328,11 +1358,16 @@ def source_rows(
                 item["telemetry_error"] = str(telemetry["error"])
         if comparison is not None:
             metrics = comparison["metrics"]
-            for field in (*COMPARATOR_BINARY_FIELDS, *COMPARATOR_COUNT_FIELDS):
-                item[field] = str(metrics[field])
-            item["declared_contract_clean"] = str(
-                int(bool(comparison["declared_contract_clean"]))
-            )
+            item["comparison_status"] = str(comparison["status"])
+            item["comparison_error"] = str(comparison["error"])
+            if metrics:
+                for field in (*COMPARATOR_BINARY_FIELDS, *COMPARATOR_COUNT_FIELDS):
+                    item[field] = str(metrics[field])
+                item["declared_contract_clean"] = str(
+                    int(bool(comparison["declared_contract_clean"]))
+                )
+            else:
+                item["status"] = "technical_failure"
             item["full_output_equal_diagnostic"] = str(
                 int(bool(comparison["full_output_equal_diagnostic"]))
             )
@@ -1605,7 +1640,7 @@ def reconstruct_outputs(create_comparisons: bool) -> tuple[bytes, bytes, bytes]:
         attempt = validate_attempt_receipt(row, execution["source_commit"])
         attempts[row["attempt_id"]] = attempt
     if create_comparisons:
-        validate_failed_comparison_root()
+        validate_failed_comparison_roots()
         require(not COMPARISON_ROOT.exists(),
                 f"offline comparison root already exists: {COMPARISON_ROOT}")
         for row in rows:

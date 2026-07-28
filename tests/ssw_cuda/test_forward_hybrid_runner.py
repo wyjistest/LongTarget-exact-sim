@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -130,6 +131,35 @@ class ForwardHybridRunnerTests(unittest.TestCase):
             reference = ROOT / row["reference_artifact_root"]
             observed, _ = P7.output_digest(reference)
             self.assertEqual(observed, row["reference_output_digest"], row["attempt_id"])
+
+    def test_frozen_comparator_emits_the_declared_metric_schema(self) -> None:
+        row = P7.check_plan()[0]
+        baseline = P7.tfosorted_output(ROOT / row["reference_artifact_root"])
+        with tempfile.TemporaryDirectory(prefix="ssw-cuda-p7-comparator-") as directory:
+            details = Path(directory) / "details.tsv"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(P7.COMPARATOR),
+                    "--baseline",
+                    str(baseline),
+                    "--candidate",
+                    str(baseline),
+                    "--k",
+                    "5",
+                    "--details",
+                    str(details),
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            metrics = P7.parse_comparator_stdout(result.stdout)
+            self.assertTrue(P7.comparison_clean(metrics))
+            self.assertGreater(details.stat().st_size, 0)
 
     def test_comparator_gate_does_not_promote_full_output(self) -> None:
         metrics = {field: 1 for field in P7.COMPARATOR_BINARY_FIELDS}
