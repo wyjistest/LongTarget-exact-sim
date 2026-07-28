@@ -3,7 +3,7 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 2
+active_phase = 3
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -11,7 +11,8 @@ phase_1_analysis_epoch = 2
 phase_1_v1_status = blocked_by_fixed_timeout
 phase_1_recovery_status = pass
 phase_2_oracle_execution_epoch = 1
-phase_2_status = in_progress
+phase_2_status = pass
+phase_3_status = in_progress
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
@@ -54,13 +55,16 @@ did not strip their leading tab, leaving maximum RSS empty in the initial
 analysis. Analysis epoch 2 reconstructed all 50 RSS values from those immutable
 logs. The execution receipt and all attempt receipts remain unchanged; the
 analysis receipt proves that profile statistics and the Amdahl decision did
-not change. Phase 2 is now active. No new CUDA DP kernel has been authored.
+not change. That recovery advanced the program to Phase 2. No new CUDA DP
+kernel had been authored at that gate.
 
-Phase 2 has frozen concrete L0-L6 DP, endpoint, banded traceback, CIGAR, and
-telemetry contracts from the current source. The default-off oracle trace and
-its schema, tiny scalar diagnostic, hq10/hq11 stable call anchors, checker, and
-20-attempt off/on plan are implemented but not yet formally executed. The plan
-uses only consumed regression inputs, five paired observations per case,
-single-thread execution, a 120-second per-attempt timeout, no retry, and
-independent artifact roots. Formal execution requires the implementation
-commit and a clean worktree. No new CUDA DP kernel has been authored.
+Phase 2 froze concrete L0-L6 DP, endpoint, banded traceback, CIGAR, emitted-row,
+and telemetry contracts from implementation commit `d7c8c23`. All 20 frozen
+attempts completed: two consumed mismatch cases, five observations per case,
+and adjacent trace-off/trace-on executions. There were no timeouts, retries, or
+technical failures. Every authority output matched its historical SHA-256;
+paired output, normalized stdout, and stderr were identical; trace-off created
+no trace files; and both trace records were byte-stable across all five
+observations. The hq10/hq11 attempt keys, endpoints, band histories, canonical
+CIGARs, and L6 emitted rows are now fixtures. No fresh holdout was consumed and
+no CUDA DP kernel was authored. Phase 3 is active.
