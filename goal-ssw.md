@@ -188,7 +188,7 @@ Codex 每完成一个 phase 后更新本块，不得提前标记。
 reviewed_local_head = 9f87aac
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-execution_ahead_remote = 20
+execution_ahead_remote = 18
 
 historical_gpu_traceback_v1 = verified_only_contract
 historical_phase3_v1_b3 = no_go
@@ -239,13 +239,13 @@ phase_9_status = not_run_phase7_no_go
 phase_10_status = not_run_phase7_no_go
 phase_11_status = not_run_phase7_no_go
 phase_12_status = not_run_phase7_no_go
-phase_13_status = in_progress
+phase_13_status = pass
 
-last_completed_phase = 7
-last_decision = forward_hybrid_performance_futility_stop
-last_evidence_doc = paper/ssw_cuda/forward_hybrid_decision.json
-last_test_command = python3 reproduce/ssw_cuda/run_forward_hybrid.py --check-results
-last_commit = 750fb29
+last_completed_phase = 13
+last_decision = ssw_cuda_forward_or_reverse_checkpoint_only
+last_evidence_doc = paper/ssw_cuda/final_decision.json
+last_test_command = make check-ssw-cuda
+last_commit = 6f41688
 ```
 
 ### 2.1 Phase 依赖

@@ -24,6 +24,6 @@ A022	Independent execution and offline comparison	pass	pass	paper/ssw_cuda/forwa
 A023	Performance statistics and B3 boundary honest	pass	pass	paper/ssw_cuda/forward_hybrid_projection.json	bd50756f53eb6066f965538280dd543fc3273b627dfc46b93b1727e936eb4485	Projection is incomplete and explicitly non-formal; B3 stays closed.
 A024	License inventory available	pass	pass	paper/ssw_cuda/license_inventory.tsv	a4ba625c3355602a5e41b374aadd549e96e1ff5e3b658398724979639c04237f	Release completeness is not inferred from inventory alone.
 A025	Release reproducibility	pass	not_achieved	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	No release candidate was authorized.
-A026	Final working tree clean	pass	pending_clean_commit	NA	NA	Checked only by final aggregate mode after commit.
-A027	Final artifacts committed	pass	pending_clean_commit	NA	NA	Checked only by final aggregate mode after commit.
-A028	Phase 13 completion	pass	pending_clean_commit	NA	NA	Transitions to pass in the final certification commit.
+A026	Final working tree clean	pass	pass	NA	NA	Certified by final aggregate mode after the certification commit.
+A027	Final artifacts committed	pass	pass	NA	NA	Final artifacts are tracked and bound by the certification commit.
+A028	Phase 13 completion	pass	pass	NA	NA	Final decision and aggregate checker both pass.

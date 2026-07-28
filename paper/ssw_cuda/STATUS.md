@@ -33,12 +33,14 @@ phase_9_status = not_run_phase7_no_go
 phase_10_status = not_run_phase7_no_go
 phase_11_status = not_run_phase7_no_go
 phase_12_status = not_run_phase7_no_go
-phase_13_status = in_progress
+phase_13_status = pass
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
 engineering_track = closed_phase7_forward_hybrid_no_go
 l8_contract_status = diagnostic_only
+final_decision = ssw_cuda_forward_or_reverse_checkpoint_only
+final_certification = aggregate_checker_passed
 ```
 
 Phase 0 imported 904 immutable historical evidence files and froze 112
@@ -199,4 +201,11 @@ unique TFOsorted file and the actual frozen Phase 2 segmented comparator; they
 started no backend attempt and changed no measurement. Phase 7 is `no_go` with
 reason `forward_hybrid_implementation_contract_failure`. Phase 8-12 were not
 authorized, no fresh holdout or 50 x 668 application panel was run, B3 remains
-closed, and Phase 13 is active for the final audit.
+closed, and Phase 13 entered the final audit.
+
+Phase 13 completed the claim-to-evidence map, limitations, release checklist,
+manuscript handoff, and 28-row completion audit. The aggregate checker replays
+the final Phase 0-7 checkers, binds every cited evidence SHA-256, verifies the
+frozen CPU oracle binary and source commit, confirms Phase 8-12 result artifacts
+are absent, and requires a clean certification commit. The unique final
+decision is `ssw_cuda_forward_or_reverse_checkpoint_only`.

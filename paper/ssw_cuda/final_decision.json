@@ -29,19 +29,19 @@
       "sha256": "8b247a6afd170a36a518fe1a1bd40c591e5f05b2a888627a2acc133fedbad38f"
     }
   },
-  "final_certification": "pending_clean_commit",
+  "final_certification": "aggregate_checker_passed",
   "fresh_holdout_executed": false,
   "full_gpu_backend_integrated": false,
   "full_gpu_contract_promoted": false,
   "l8_contract_status": "diagnostic_only",
-  "phase13_status": "in_progress",
+  "phase13_status": "pass",
   "phase_status": {
     "0": "pass",
     "1": "pass",
     "10": "not_run_phase7_no_go",
     "11": "not_run_phase7_no_go",
     "12": "not_run_phase7_no_go",
-    "13": "in_progress",
+    "13": "pass",
     "2": "pass",
     "3": "pass",
     "4": "pass",
