@@ -1,0 +1,205 @@
+{
+  "adversarial": {
+    "all_required_classes_present": true,
+    "byte_score_boundaries": [
+      253,
+      254,
+      255,
+      256
+    ],
+    "length_boundaries": [
+      31,
+      32,
+      33,
+      63,
+      64,
+      65,
+      127,
+      128,
+      129,
+      253,
+      254,
+      255,
+      256,
+      257,
+      511,
+      512,
+      513,
+      1023,
+      1024,
+      1025,
+      2047,
+      2048,
+      2049,
+      2811,
+      2812
+    ],
+    "required_classes": [
+      "byte_boundary_253",
+      "byte_boundary_254",
+      "byte_boundary_255",
+      "byte_boundary_256",
+      "diagonal_gap_tie",
+      "e_f_tie",
+      "equal_forward_endpoints",
+      "equal_gap_placements",
+      "equal_reverse_starts",
+      "homopolymer",
+      "length_boundary",
+      "open_extend_tie",
+      "palindrome_reverse_complement",
+      "periodic_repeat",
+      "supported_lowercase",
+      "supported_u_translation",
+      "supported_unknown_n",
+      "unsupported_empty_query",
+      "unsupported_empty_reference",
+      "unsupported_non_ascii",
+      "unsupported_nul"
+    ]
+  },
+  "bindings": {
+    "holdout_policy_path": "docs/ssw_cuda/HOLDOUT_POLICY.md",
+    "holdout_policy_sha256": "6abb3be193043e2639338f30b85f27a192d568a2e3381d85bf545fd2927a55b0",
+    "layered_comparator_path": "reproduce/ssw_cuda/compare_layers.py",
+    "layered_comparator_sha256": "60326259b80625d6264a00c20c65de6dc78260cfd7d5e224eeb37eb39dc4e7e0",
+    "used_input_exclusion_registry_path": "paper/ssw_cuda/used_input_exclusion_registry.tsv",
+    "used_input_exclusion_registry_sha256": "6f10f684192d0f5cffa46d2c2e3c987cb7f4590e51ea61381e899695079d6762"
+  },
+  "execution_policy": {
+    "compact_rows_are_normal_regression": true,
+    "fresh_holdout_consumed": false,
+    "identity_only_rows_are_not_automatically_executed": true,
+    "l8_contract_status": "diagnostic_only",
+    "large_rows_require_explicit_expensive_gate": true,
+    "normal_checker_runs_large_corpus": false
+  },
+  "frozen_parent_head": "3f2bf535b9b322949e09db966e7128a5d6fc4414",
+  "frozen_utc": "2026-07-28T07:50:28Z",
+  "generator": {
+    "compact_fuzz_count": 128,
+    "compact_fuzz_seed": "0x5353574355444131",
+    "large_fuzz_count": 256,
+    "large_fuzz_seed": "0x5353574355444132",
+    "path": "reproduce/ssw_cuda/build_corpus.py",
+    "prng": "SplitMix64_v1",
+    "sha256": "002af46dcebaa83e3ce05831d168be7c7f81cac64c18756d1c38d18d8ceea863",
+    "version": "ssw-cuda-corpus-v1"
+  },
+  "known_mismatch_classification": {
+    "hq10_ht02": "first_divergent_layer_L5",
+    "hq11_ht02": "first_divergent_layer_L4",
+    "root_cause": "reproducible GASAL2 GPU endpoint/CIGAR traceback divergence, consistent with an alternative reported-equal-score alignment path",
+    "specific_dp_tie_cell_proven": false
+  },
+  "manifest": {
+    "counts_by_case_class": {
+      "ac_lengths_1_to_3": 196,
+      "byte_boundary_253": 1,
+      "byte_boundary_254": 1,
+      "byte_boundary_255": 1,
+      "byte_boundary_256": 1,
+      "compact_gc_high": 32,
+      "compact_gc_low": 32,
+      "compact_repeat": 32,
+      "compact_uniform": 32,
+      "diagonal_gap_tie": 1,
+      "e_f_tie": 1,
+      "equal_forward_endpoints": 1,
+      "equal_gap_placements": 1,
+      "equal_reverse_starts": 1,
+      "full_output_diagnostic": 2,
+      "h19_core": 8,
+      "homopolymer": 1,
+      "known_mismatch": 2,
+      "large_gc_high": 64,
+      "large_gc_low": 64,
+      "large_repeat": 64,
+      "large_uniform": 64,
+      "length_boundary": 25,
+      "open_extend_tie": 1,
+      "palindrome_reverse_complement": 1,
+      "periodic_repeat": 1,
+      "registry_pair": 101,
+      "registry_query_only": 11,
+      "supported_lowercase": 1,
+      "supported_u_translation": 1,
+      "supported_unknown_n": 1,
+      "unsupported_empty_query": 1,
+      "unsupported_empty_reference": 1,
+      "unsupported_non_ascii": 1,
+      "unsupported_nul": 1
+    },
+    "counts_by_execution_tier": {
+      "compact": 370,
+      "identity_only": 112,
+      "large": 267
+    },
+    "counts_by_partition": {
+      "adversarial": 45,
+      "deterministic_fuzz": 384,
+      "historical_regression": 124,
+      "tiny_exhaustive": 196
+    },
+    "path": "paper/ssw_cuda/corpus_manifest.tsv",
+    "row_count": 749,
+    "sha256": "901e571c75b3a07d5adb293a6935e40f8689124c0b7e0ce8ef4b02709fc68cc5"
+  },
+  "phase": 3,
+  "registry_coverage": {
+    "all_registry_rows_represented": true,
+    "manifest_identity_rows": 112,
+    "reason_row_counts": {
+      "canonical_hybrid_v2_fresh_holdout": 48,
+      "canonical_hybrid_v2_performance_pilot": 6,
+      "canonical_hybrid_v2_regression": 24,
+      "historical_development_or_paper_workload": 22,
+      "historical_development_query": 11,
+      "phase2_correctness_holdout": 24,
+      "phase2_fixed_pilot": 1,
+      "phase2_traceback_replay": 2,
+      "phase3_v1_fixed_pilot": 1
+    },
+    "registry_rows": 112,
+    "required_exclusion_reasons": [
+      "canonical_hybrid_v2_fresh_holdout",
+      "canonical_hybrid_v2_performance_pilot",
+      "canonical_hybrid_v2_regression",
+      "historical_development_or_paper_workload",
+      "historical_development_query",
+      "phase2_correctness_holdout",
+      "phase2_fixed_pilot",
+      "phase2_traceback_replay",
+      "phase3_v1_fixed_pilot"
+    ],
+    "source_receipt_paths": [
+      "paper/bioinformatics/application_pilot_receipt.json",
+      "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+      "paper/bioinformatics/canonical_hybrid_v2_performance_workloads.tsv",
+      "paper/bioinformatics/development_query_exclusions.tsv",
+      "paper/bioinformatics/holdout_manifest.tsv",
+      "paper/bioinformatics/holdout_summary.json",
+      "paper/workload_manifest.tsv"
+    ]
+  },
+  "schema_version": 1,
+  "status": "pass",
+  "tiny_exhaustive": {
+    "alphabet": "AC",
+    "cartesian_case_count": 196,
+    "contains_single_match": true,
+    "contains_zero_score": true,
+    "query_lengths": [
+      1,
+      2,
+      3
+    ],
+    "reference_lengths": [
+      1,
+      2,
+      3
+    ],
+    "string_count_per_role": 14,
+    "truncation_rule": "none"
+  }
+}

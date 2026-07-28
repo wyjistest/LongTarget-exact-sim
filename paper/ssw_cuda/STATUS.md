@@ -3,7 +3,7 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 3
+active_phase = 4
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -12,7 +12,8 @@ phase_1_v1_status = blocked_by_fixed_timeout
 phase_1_recovery_status = pass
 phase_2_oracle_execution_epoch = 1
 phase_2_status = pass
-phase_3_status = in_progress
+phase_3_status = pass
+phase_4_status = in_progress
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
@@ -67,4 +68,20 @@ paired output, normalized stdout, and stderr were identical; trace-off created
 no trace files; and both trace records were byte-stable across all five
 observations. The hq10/hq11 attempt keys, endpoints, band histories, canonical
 CIGARs, and L6 emitted rows are now fixtures. No fresh holdout was consumed and
-no CUDA DP kernel was authored. Phase 3 is active.
+no CUDA DP kernel was authored. Phase 3 then became active.
+
+Phase 3 froze 749 differential-corpus rows before any new CUDA/SSW
+implementation change: 112 consumed historical identities, 196 tiny exhaustive
+AC pairs, 45 focused adversarial cases, 128 compact deterministic fuzz cases,
+and 256 large deterministic fuzz cases. Eleven long length-boundary cases make
+the explicit large tier total 267; neither historical identities nor that tier
+is executed by the normal checker. The exclusion registry rebuilt byte for
+byte and all 112 entries are represented. The fail-closed holdout checker
+rejects ordinal, sequence-digest, pair-digest, prior-receipt, debug,
+minimization, and fuzz-replay overlap without an override path.
+
+The frozen layered comparator classifies hq10 first at L5 (alternative CIGAR
+gap placement) and hq11 first at L4 (reverse start), while preserving the
+established root-cause wording and making no DP tie-cell claim. L8 remains
+diagnostic only, no fresh holdout was selected or executed, and no new CUDA DP
+kernel was authored. Phase 4 is active.

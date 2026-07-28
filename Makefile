@@ -1508,6 +1508,13 @@ check-ssw-cuda-phase2: build-ssw-cuda-phase2-oracle
 	SSW_CUDA_PHASE2_BIN=$(SSW_CUDA_PHASE2_ORACLE_BIN) \
 		bash ./scripts/check_ssw_cuda_phase2.sh --final
 
+.PHONY: check-ssw-cuda-phase3-preflight check-ssw-cuda-phase3
+check-ssw-cuda-phase3-preflight:
+	bash ./scripts/check_ssw_cuda_phase3.sh --preflight
+
+check-ssw-cuda-phase3:
+	bash ./scripts/check_ssw_cuda_phase3.sh --final
+
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:
 	/usr/bin/env -i \

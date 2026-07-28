@@ -211,7 +211,7 @@ bioinformatics_b3_track = closed_amdahl
 engineering_track = active
 l8_contract_status = diagnostic_only
 
-active_phase = 3
+active_phase = 4
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -220,8 +220,8 @@ phase_1_v1_status = blocked_by_fixed_timeout
 phase_1_recovery_status = pass
 phase_2_oracle_execution_epoch = 1
 phase_2_status = pass
-phase_3_status = in_progress
-phase_4_status = pending
+phase_3_status = pass
+phase_4_status = in_progress
 phase_5_status = pending
 phase_6_status = pending
 phase_7_status = pending
@@ -232,11 +232,11 @@ phase_11_status = pending
 phase_12_status = pending
 phase_13_status = pending
 
-last_completed_phase = 2
-last_decision = phase2_oracle_pass
-last_evidence_doc = paper/ssw_cuda/cpu_oracle_binary_receipt.json
-last_test_command = make check-ssw-cuda-phase2
-last_commit = d7c8c23
+last_completed_phase = 3
+last_decision = phase3_corpus_policy_pass
+last_evidence_doc = paper/ssw_cuda/corpus_receipt.json
+last_test_command = make check-ssw-cuda-phase3
+last_commit = 3f2bf53
 ```
 
 ### 2.1 Phase 依赖
