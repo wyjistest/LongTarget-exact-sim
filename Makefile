@@ -149,6 +149,9 @@ SSW_CUDA_PHASE5_STUB_PROBE ?= $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_stub_probe
 SSW_CUDA_PHASE5_CUDA_FLAGS ?= -O2 -std=c++11 --generate-code=arch=compute_89,code=sm_89
 SSW_CUDA_PHASE6_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/forward/build
 SSW_CUDA_PHASE6_DRIVER ?= $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward_driver
+SSW_CUDA_PHASE7_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/forward-hybrid/build
+SSW_CUDA_PHASE7_CONTINUATION_DRIVER ?= $(SSW_CUDA_PHASE7_BUILD_DIR)/ssw_cpu_continuation_driver
+SSW_CUDA_PHASE7_FASIM_BIN ?= $(SSW_CUDA_PHASE7_BUILD_DIR)/fasim_forward_hybrid
 FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
 GASAL2_DIR ?= .tmp/GASAL2
@@ -230,6 +233,53 @@ $(SSW_CUDA_PHASE6_DRIVER): tests/ssw_cuda/ssw_cuda_forward_driver.cpp \
 		tests/ssw_cuda/ssw_cuda_forward_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
 		fasim/ssw_oracle_trace.cpp $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
 		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
+
+.PHONY: build-ssw-cuda-phase7-continuation-driver
+build-ssw-cuda-phase7-continuation-driver: $(SSW_CUDA_PHASE7_CONTINUATION_DRIVER)
+
+.PHONY: build-ssw-cuda-phase7-fasim
+build-ssw-cuda-phase7-fasim: $(SSW_CUDA_PHASE7_FASIM_BIN)
+
+.PHONY: check-ssw-cuda-phase7-preflight
+check-ssw-cuda-phase7-preflight:
+	bash ./scripts/check_ssw_cuda_phase7.sh --preflight
+
+.PHONY: check-ssw-cuda-phase7
+check-ssw-cuda-phase7:
+	bash ./scripts/check_ssw_cuda_phase7.sh --final
+
+$(SSW_CUDA_PHASE7_CONTINUATION_DRIVER): tests/ssw_cuda/ssw_cpu_continuation_driver.cpp \
+		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp \
+		fasim/ssw_cpp.h fasim/ssw.h fasim/rules.h \
+		fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_forward_hybrid.h \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -DFASIM_WITH_SSW_CUDA_FORWARD_HYBRID -I$(CURDIR) \
+		-O2 -std=c++11 $(FASIM_SIMD_FLAGS) \
+		tests/ssw_cuda/ssw_cpu_continuation_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
+		fasim/ssw_oracle_trace.cpp fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
+
+$(SSW_CUDA_PHASE7_FASIM_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.h fasim/ssw_cuda/ssw_cuda_api.h \
+		fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -DFASIM_WITH_SSW_CUDA_FORWARD_HYBRID -I$(CURDIR) \
+		$(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp fasim/gasal2_align_bridge_stub.cpp \
+		cuda/prealign_cuda_stub.cpp $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(LDFLAGS) $(LDLIBS) \
+		$(CUDA_LDFLAGS) -o $@
 
 build-fasim-cuda: $(FASIM_CUDA_TARGET)
 

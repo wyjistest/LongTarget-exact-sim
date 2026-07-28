@@ -2357,6 +2357,226 @@ end:
 	return r;
 }
 
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+s_align* ssw_align_from_forward(const s_profile* prof,
+	const int8_t* ref,
+	int32_t refLen,
+	const uint8_t weight_gapO,
+	const uint8_t weight_gapE,
+	const uint8_t flag,
+	const uint16_t filters,
+	const int32_t filterd,
+	const int32_t maskLen,
+	const ssw_forward_endpoint* endpoint) {
+	if (prof == NULL || ref == NULL || endpoint == NULL || refLen <= 0 ||
+		prof->read == NULL || prof->mat == NULL || prof->readLen <= 0 ||
+		endpoint->ref_end2 < -1 || endpoint->ref_end2 >= refLen ||
+		(endpoint->numeric_path != SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
+		 endpoint->numeric_path != SSW_FORWARD_NUMERIC_PATH_WORD16) ||
+		(endpoint->numeric_path == SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
+		 prof->profile_byte == NULL) ||
+		(endpoint->numeric_path == SSW_FORWARD_NUMERIC_PATH_WORD16 &&
+		 prof->profile_word == NULL)) {
+		return NULL;
+	}
+	const bool no_alignment = endpoint->score1 == 0 &&
+		endpoint->ref_end1 == -1 && endpoint->read_end1 == 0;
+	if ((!no_alignment &&
+		 (endpoint->ref_end1 < 0 || endpoint->ref_end1 >= refLen ||
+		  endpoint->read_end1 < 0 || endpoint->read_end1 >= prof->readLen)) ||
+		(no_alignment && endpoint->score2 != 0)) {
+		return NULL;
+	}
+
+	s_align* r = (s_align*)calloc(1, sizeof(s_align));
+	if (r == NULL) return NULL;
+	r->ref_begin1 = -1;
+	r->read_begin1 = -1;
+	r->score1 = endpoint->score1;
+	r->ref_end1 = endpoint->ref_end1;
+	r->read_end1 = endpoint->read_end1;
+	if (maskLen >= 1) {
+		r->score2 = endpoint->score2;
+		r->ref_end2 = endpoint->ref_end2;
+	}
+	else {
+		r->score2 = 0;
+		r->ref_end2 = -1;
+	}
+
+	if (flag == 0 || (flag == 2 && r->score1 < filters)) return r;
+	if (no_alignment) {
+		r->read_begin1 = 0;
+		if ((7 & flag) == 0 ||
+			((2 & flag) != 0 && r->score1 < filters) ||
+			((4 & flag) != 0 && filterd < 0)) {
+			return r;
+		}
+		r->cigar = (uint32_t*)calloc(1, sizeof(uint32_t));
+		if (r->cigar == NULL) {
+			free(r);
+			return NULL;
+		}
+		r->cigar[0] = to_cigar_int(1, 'M');
+		r->cigarLen = 1;
+		return r;
+	}
+
+	const uint8_t collect_internal_stats = ssw_align_internal_stats_enabled();
+	if (collect_internal_stats) ++g_ssw_align_internal_stats.reverse_calls;
+	const uint64_t reverse_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	alignment_end* bests_reverse = NULL;
+	__m128i* vP = NULL;
+	int8_t* read_reverse = NULL;
+
+#if defined(__AVX2__)
+	const bool useAvx2Reverse = ssw_avx2_reverse_enabled_runtime();
+#else
+	if (ssw_avx2_requested_runtime()) ++g_ssw_avx2_fallback_calls;
+#endif
+
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_REVERSE_ALIGNMENT);
+		read_reverse = seq_reverse(prof->read, r->read_end1);
+		if (read_reverse == NULL) {
+			free(r);
+			return NULL;
+		}
+		if (endpoint->numeric_path == SSW_FORWARD_NUMERIC_PATH_BYTE8) {
+#if defined(__AVX2__)
+			__m256i* vPAvx2 = NULL;
+#endif
+			vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1,
+				prof->n, prof->bias);
+			const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+#if defined(__AVX2__)
+			if (useAvx2Reverse) {
+				vPAvx2 = qP_byte_avx2(read_reverse, prof->mat,
+					r->read_end1 + 1, prof->n, prof->bias);
+				if (vPAvx2 != NULL) {
+					++g_ssw_avx2_calls;
+					++g_ssw_avx2_reverse_calls;
+					++g_ssw_avx2_byte_calls;
+					g_ssw_avx2_active = 1;
+					bests_reverse = sw_avx2_byte(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vPAvx2, r->score1, prof->bias, maskLen);
+				}
+				else {
+					++g_ssw_avx2_fallback_calls;
+					bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vP, r->score1, prof->bias, maskLen);
+				}
+				free(vPAvx2);
+			}
+			else
+#endif
+			{
+				bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1,
+					r->read_end1 + 1, weight_gapO, weight_gapE, vP,
+					r->score1, prof->bias, maskLen);
+			}
+			ssw_add_elapsed(&g_ssw_align_internal_stats.byte_path_nanoseconds,
+				byte_start);
+		}
+		else {
+#if defined(__AVX2__)
+			__m256i* vPAvx2 = NULL;
+#endif
+			vP = qP_word(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
+			const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+#if defined(__AVX2__)
+			if (useAvx2Reverse) {
+				vPAvx2 = qP_word_avx2(read_reverse, prof->mat,
+					r->read_end1 + 1, prof->n);
+				if (vPAvx2 != NULL) {
+					++g_ssw_avx2_calls;
+					++g_ssw_avx2_reverse_calls;
+					++g_ssw_avx2_word_calls;
+					g_ssw_avx2_active = 1;
+					bests_reverse = sw_avx2_word(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vPAvx2, r->score1, maskLen);
+				}
+				else {
+					++g_ssw_avx2_fallback_calls;
+					bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vP, r->score1, maskLen);
+				}
+				free(vPAvx2);
+			}
+			else
+#endif
+			{
+				bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1,
+					r->read_end1 + 1, weight_gapO, weight_gapE, vP,
+					r->score1, maskLen);
+			}
+			ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds,
+				word_start);
+		}
+	}
+
+	if (bests_reverse == NULL || vP == NULL) {
+		free(bests_reverse);
+		free(vP);
+		free(read_reverse);
+		free(r);
+		return NULL;
+	}
+	const uint64_t endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	r->score1 = bests_reverse[0].score < endpoint->score1 ?
+		bests_reverse[0].score : endpoint->score1;
+	r->ref_begin1 = bests_reverse[0].ref;
+	r->read_begin1 = r->read_end1 - bests_reverse[0].read;
+	ssw_add_elapsed(&g_ssw_align_internal_stats.endpoint_bookkeeping_nanoseconds,
+		endpoint_start);
+	free(bests_reverse);
+	free(vP);
+	free(read_reverse);
+	ssw_add_elapsed(&g_ssw_align_internal_stats.reverse_start_nanoseconds,
+		reverse_start);
+
+	if ((7 & flag) == 0 ||
+		((2 & flag) != 0 && r->score1 < filters) ||
+		((4 & flag) != 0 &&
+		 (r->ref_end1 - r->ref_begin1 > filterd ||
+		  r->read_end1 - r->read_begin1 > filterd))) {
+		return r;
+	}
+
+	const uint64_t cigar_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	const int32_t alignment_ref_len = r->ref_end1 - r->ref_begin1 + 1;
+	const int32_t alignment_read_len = r->read_end1 - r->read_begin1 + 1;
+	const int32_t band_width = abs(alignment_ref_len - alignment_read_len) + 1;
+	if (collect_internal_stats) ++g_ssw_align_internal_stats.banded_sw_calls;
+	const uint64_t banded_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	cigar* path = NULL;
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK);
+		path = banded_sw(ref + r->ref_begin1,
+			prof->read + r->read_begin1,
+			alignment_ref_len, alignment_read_len, r->score1,
+			weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	}
+	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds,
+		banded_start);
+	if (path == NULL) {
+		free(r);
+		return NULL;
+	}
+	r->cigar = path->seq;
+	r->cigarLen = path->length;
+	free(path);
+	ssw_add_elapsed(&g_ssw_align_internal_stats.cigar_nanoseconds, cigar_start);
+	return r;
+}
+#endif
+
 void align_destroy(s_align* a) {
 	free(a->cigar);
 	free(a);

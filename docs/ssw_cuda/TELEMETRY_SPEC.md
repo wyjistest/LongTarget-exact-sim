@@ -68,6 +68,60 @@ Phase 2 proves this with five paired observations for both hq10/ht02 and
 hq11/ht02. Trace output is filtered to the pre-align context and known
 historical mismatch call; filter choice does not alter computation.
 
+## Phase 7 forward-hybrid telemetry
+
+The F binary requires a new path in
+`FASIM_SSW_FORWARD_HYBRID_TELEMETRY_PATH`. A missing path or an existing path
+is a hard error. One successful process writes one schema-version-1 TSV row.
+
+Identity and call fields are:
+
+```text
+backend, status, device, flushes, tasks, scoreinfos, attempts, selected
+cpu_prealign_calls, cpu_forward_calls, cpu_reverse_calls
+cpu_banded_sw_calls, cpu_continuation_calls, cpu_failures, fallback_calls
+```
+
+GPU phase fields are:
+
+```text
+gpu_packing_seconds, gpu_h2d_seconds
+gpu_prealign_kernel_seconds, gpu_selection_kernel_seconds
+gpu_forward_kernel_seconds, gpu_endpoint_reduce_seconds
+gpu_d2h_seconds, gpu_unattributed_overhead_seconds
+gpu_preselect_seconds, gpu_forward_seconds, backend_total_seconds
+host_input_bytes, device_input_bytes
+device_workspace_peak_bytes, device_output_bytes
+```
+
+CPU and downstream fields are:
+
+```text
+cpu_substring_seconds, cpu_continuation_seconds
+cpu_reverse_start_seconds, cpu_banded_traceback_seconds, cpu_cigar_seconds
+downstream_conversion_seconds, cluster_sort_seconds, filter_seconds
+```
+
+All times are nonnegative steady-clock seconds. Transfer byte counts are
+accumulated across flushes; workspace is the maximum requested by one flush.
+The required success invariant is:
+
+```text
+selected = cpu_continuation_calls
+cpu_prealign_calls = 0
+cpu_forward_calls = 0
+cpu_reverse_calls = cpu_continuation_calls
+cpu_banded_sw_calls = cpu_continuation_calls
+cpu_failures = 0
+fallback_calls = 0
+error = none
+```
+
+Outer attempt receipts separately record argv, environment, source and binary
+identity, input/output SHA-256, stdout/stderr, resource usage, GPU samples, and
+an artifact manifest. Telemetry cannot turn a failed process into a successful
+attempt.
+
 ## Stable hq10/hq11 anchors
 
 The formal runner freezes anchors using only the already-known mismatch

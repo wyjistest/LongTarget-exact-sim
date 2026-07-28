@@ -7,6 +7,9 @@
 #include "ssw_oracle_trace.h"
 #include<algorithm>
 #include <iostream>
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#include <limits>
+#endif
 #include <map>
 #include <memory>
 #include <sstream>
@@ -912,6 +915,70 @@ namespace StripedSmithWaterman {
 
 		return true;
 	}
+
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+	bool Aligner::AlignFromForward(const char* query, const char* ref,
+		const int& ref_len, const Filter& filter,
+		const ForwardEndpoint& endpoint, Alignment* alignment,
+		const int32_t maskLen) const
+	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
+		if (!translation_matrix_ || query == NULL || ref == NULL ||
+			alignment == NULL || ref_len <= 0 ||
+			endpoint.score1 < 0 ||
+			endpoint.score1 > std::numeric_limits<uint16_t>::max() ||
+			endpoint.score2 < 0 ||
+			endpoint.score2 > std::numeric_limits<uint16_t>::max() ||
+			(endpoint.numeric_path != SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
+			 endpoint.numeric_path != SSW_FORWARD_NUMERIC_PATH_WORD16)) {
+			return false;
+		}
+
+		const int query_len = strlen(query);
+		if (query_len == 0) return false;
+		int8_t* translated_query = new int8_t[query_len];
+		TranslateBase(query, query_len, translated_query);
+		int8_t* translated_ref = new int8_t[ref_len];
+		TranslateBase(ref, ref_len, translated_ref);
+
+		const int8_t score_size = 2;
+		const bool profileContextEnabled =
+			SswProfileContextEnabledRuntime() && SswProfileCacheEnabledRuntime();
+		const bool profileCacheEnabled =
+			SswProfileCacheEnabledRuntime() || profileContextEnabled;
+		s_profile* profile = profileCacheEnabled ?
+			SswProfileCacheGetOrBuild(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size, gap_opening_penalty_,
+				gap_extending_penalty_) :
+			ssw_init(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size);
+
+		uint8_t flag = 0;
+		SetFlag(filter, &flag);
+		ssw_forward_endpoint raw_endpoint;
+		raw_endpoint.score1 = static_cast<uint16_t>(endpoint.score1);
+		raw_endpoint.score2 = static_cast<uint16_t>(endpoint.score2);
+		raw_endpoint.ref_end1 = endpoint.ref_end1;
+		raw_endpoint.read_end1 = endpoint.query_end1;
+		raw_endpoint.ref_end2 = endpoint.ref_end2;
+		raw_endpoint.numeric_path = static_cast<uint8_t>(endpoint.numeric_path);
+		s_align* raw_alignment = ssw_align_from_forward(profile, translated_ref,
+			ref_len, static_cast<int>(gap_opening_penalty_),
+			static_cast<int>(gap_extending_penalty_), flag,
+			filter.score_filter, filter.distance_filter, maskLen, &raw_endpoint);
+
+		alignment->Clear();
+		const bool success = raw_alignment != NULL;
+		if (success) {
+			ConvertAlignment(*raw_alignment, query_len, alignment);
+			align_destroy(raw_alignment);
+		}
+		delete[] translated_query;
+		delete[] translated_ref;
+		if (!profileCacheEnabled) init_destroy(profile);
+		return success;
+	}
+#endif
 
 	void Aligner::Clear(void) {
 		ClearMatrices();

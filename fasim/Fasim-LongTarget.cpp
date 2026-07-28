@@ -10869,6 +10869,64 @@ int main(int argc, char* const* argv)
 	clock_t start, end;
 	float cpu_time;
 	start = clock();
+	const char *sswBackendEnv = getenv("FASIM_SSW_BACKEND");
+	const std::string sswBackend =
+		sswBackendEnv == NULL || sswBackendEnv[0] == '\0' ?
+		"cpu" : sswBackendEnv;
+	if (sswBackend != "cpu" && sswBackend != "cuda-forward-hybrid")
+	{
+		cerr << "unsupported FASIM_SSW_BACKEND=" << sswBackend << endl;
+		return 2;
+	}
+	const bool forwardHybridRequested = sswBackend == "cuda-forward-hybrid";
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+	const bool forwardHybridActive = forwardHybridRequested;
+	const int forwardHybridDevice =
+		fasim_env_int_or_default("FASIM_SSW_CUDA_DEVICE", 0);
+	const char *forwardHybridTelemetryEnv =
+		getenv("FASIM_SSW_FORWARD_HYBRID_TELEMETRY_PATH");
+	const std::string forwardHybridTelemetryPath =
+		forwardHybridTelemetryEnv == NULL ? "" : forwardHybridTelemetryEnv;
+	if (forwardHybridActive &&
+		(forwardHybridTelemetryPath.empty() ||
+		 access(forwardHybridTelemetryPath.c_str(), F_OK) == 0))
+	{
+		cerr << "cuda-forward-hybrid requires a new telemetry path" << endl;
+		return 2;
+	}
+	bool forwardHybridFailed = false;
+	std::string forwardHybridError = "none";
+	uint64_t forwardHybridFlushes = 0;
+	uint64_t forwardHybridTasks = 0;
+	uint64_t forwardHybridScoreinfos = 0;
+	uint64_t forwardHybridAttempts = 0;
+	uint64_t forwardHybridSelected = 0;
+	double forwardHybridGpuPreselectSeconds = 0.0;
+	double forwardHybridGpuForwardSeconds = 0.0;
+	double forwardHybridPlanningSeconds = 0.0;
+	double forwardHybridSelectionSeconds = 0.0;
+	double forwardHybridBackendSeconds = 0.0;
+	double forwardHybridGpuPackingSeconds = 0.0;
+	double forwardHybridGpuH2dSeconds = 0.0;
+	double forwardHybridGpuPrealignKernelSeconds = 0.0;
+	double forwardHybridGpuSelectionKernelSeconds = 0.0;
+	double forwardHybridGpuForwardKernelSeconds = 0.0;
+	double forwardHybridGpuEndpointReduceSeconds = 0.0;
+	double forwardHybridGpuD2hSeconds = 0.0;
+	double forwardHybridGpuOverheadSeconds = 0.0;
+	uint64_t forwardHybridHostInputBytes = 0;
+	uint64_t forwardHybridDeviceInputBytes = 0;
+	uint64_t forwardHybridDeviceWorkspacePeakBytes = 0;
+	uint64_t forwardHybridDeviceOutputBytes = 0;
+	fasim_ssw_cuda::ForwardHybridCpuTelemetry forwardHybridCpuTelemetry;
+#else
+	const bool forwardHybridActive = false;
+	if (forwardHybridRequested)
+	{
+		cerr << "cuda-forward-hybrid backend is not built" << endl;
+		return 2;
+	}
+#endif
 	const bool taxonomyEnabled =
 		fasim_gasal2_traceback_rejection_taxonomy_runtime();
 	const bool eligibilityEnabled =
@@ -11115,6 +11173,13 @@ int main(int argc, char* const* argv)
 	resultDir = paraList.outpath;
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
+	if (forwardHybridActive &&
+		(!paraList.doFastSim || outputMode != FASIM_OUTPUT_TFOSORTED ||
+		 canonicalHybridV2Telemetry.requested))
+	{
+		cerr << "cuda-forward-hybrid requires fastSIM TFOsorted with no H2 runtime" << endl;
+		return 2;
+	}
 	if (canonicalHybridV2Telemetry.requested &&
 	    (!canonicalHybridV2Telemetry.active ||
 	     outputMode != FASIM_OUTPUT_TFOSORTED ||
@@ -11767,7 +11832,12 @@ int main(int argc, char* const* argv)
 
 		const int maxTasksPerGpu = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_MAX_TASKS", 4096);
 		int maxTasksTotal = useCudaBatch ? (maxTasksPerGpu * static_cast<int>(cudaQueries.size())) : 1;
-		if (!useCudaBatch && streamingScoreInfoShadowCudaReady)
+		if (!useCudaBatch && forwardHybridActive)
+		{
+			maxTasksTotal = fasim_env_int_or_default(
+				"FASIM_SSW_FORWARD_HYBRID_MAX_TASKS", 16);
+		}
+		else if (!useCudaBatch && streamingScoreInfoShadowCudaReady)
 		{
 			maxTasksTotal =
 				fasim_env_int_or_default(
@@ -19470,6 +19540,177 @@ int main(int argc, char* const* argv)
 						++phaseTiming.flushes;
 						phaseTiming.flush_tasks += static_cast<uint64_t>(tasks.size());
 					}
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+					if (forwardHybridActive)
+					{
+						if (forwardHybridFailed)
+						{
+							tasks.clear();
+							encodedTargets.clear();
+							legacyEncodedTargets.clear();
+							currentTargetLength = -1;
+							return;
+						}
+						std::vector<fasim_ssw_cuda::ForwardHybridTask> hybridTasks;
+						hybridTasks.resize(tasks.size());
+						for (size_t t = 0; t < tasks.size(); ++t)
+						{
+							hybridTasks[t].case_id = "task-" +
+								std::to_string(tasks[t].taskIndex);
+							hybridTasks[t].query = lncSeq;
+							hybridTasks[t].reference = tasks[t].seq2;
+							hybridTasks[t].threshold = task_min_score(tasks[t]);
+						}
+						fasim_ssw_cuda::BatchOptions hybridOptions;
+						hybridOptions.device = forwardHybridDevice;
+						fasim_ssw_cuda::ForwardHybridOutput hybridOutput;
+						const fasim_ssw_cuda::StatusCode hybridStatus =
+							fasim_ssw_cuda::forward_hybrid_select(
+								hybridTasks, hybridOptions, &hybridOutput);
+						++forwardHybridFlushes;
+						forwardHybridTasks += static_cast<uint64_t>(tasks.size());
+						forwardHybridScoreinfos += static_cast<uint64_t>(
+							hybridOutput.telemetry.scoreinfo_count);
+						forwardHybridAttempts += static_cast<uint64_t>(
+							hybridOutput.telemetry.attempt_count);
+						forwardHybridSelected += static_cast<uint64_t>(
+							hybridOutput.telemetry.selected_count);
+						forwardHybridGpuPreselectSeconds +=
+							hybridOutput.telemetry.preselect.total_wall_seconds;
+						forwardHybridGpuForwardSeconds +=
+							hybridOutput.telemetry.forward.total_wall_seconds;
+						forwardHybridPlanningSeconds +=
+							hybridOutput.telemetry.attempt_planning_seconds;
+							forwardHybridSelectionSeconds +=
+								hybridOutput.telemetry.attempt_selection_seconds;
+							forwardHybridBackendSeconds +=
+								hybridOutput.telemetry.total_wall_seconds;
+							forwardHybridGpuPackingSeconds +=
+								hybridOutput.telemetry.preselect.packing_seconds +
+								hybridOutput.telemetry.forward.packing_seconds;
+							forwardHybridGpuH2dSeconds +=
+								hybridOutput.telemetry.preselect.h2d_seconds +
+								hybridOutput.telemetry.forward.h2d_seconds;
+							forwardHybridGpuPrealignKernelSeconds +=
+								hybridOutput.telemetry.preselect.prealign_seconds;
+							forwardHybridGpuSelectionKernelSeconds +=
+								hybridOutput.telemetry.preselect.selection_flag_seconds +
+								hybridOutput.telemetry.preselect.selection_scan_seconds +
+								hybridOutput.telemetry.preselect.selection_scatter_seconds;
+							forwardHybridGpuForwardKernelSeconds +=
+								hybridOutput.telemetry.forward.forward_seconds;
+							forwardHybridGpuEndpointReduceSeconds +=
+								hybridOutput.telemetry.forward.endpoint_reduce_seconds;
+							forwardHybridGpuD2hSeconds +=
+								hybridOutput.telemetry.preselect.d2h_seconds +
+								hybridOutput.telemetry.forward.d2h_seconds;
+							forwardHybridGpuOverheadSeconds +=
+								hybridOutput.telemetry.preselect.overhead_seconds +
+								hybridOutput.telemetry.forward.overhead_seconds;
+							forwardHybridHostInputBytes += static_cast<uint64_t>(
+								hybridOutput.telemetry.preselect.host_input_bytes +
+								hybridOutput.telemetry.forward.host_input_bytes);
+							forwardHybridDeviceInputBytes += static_cast<uint64_t>(
+								hybridOutput.telemetry.preselect.device_input_bytes +
+								hybridOutput.telemetry.forward.device_input_bytes);
+							forwardHybridDeviceWorkspacePeakBytes = std::max(
+								forwardHybridDeviceWorkspacePeakBytes,
+								static_cast<uint64_t>(std::max(
+									hybridOutput.telemetry.preselect.device_workspace_bytes,
+									hybridOutput.telemetry.forward.device_workspace_bytes)));
+							forwardHybridDeviceOutputBytes += static_cast<uint64_t>(
+								hybridOutput.telemetry.preselect.device_output_bytes +
+								hybridOutput.telemetry.forward.device_output_bytes);
+						if (hybridStatus != fasim_ssw_cuda::STATUS_OK ||
+							hybridOutput.telemetry.cpu_prealign_calls != 0 ||
+							hybridOutput.telemetry.cpu_forward_calls != 0 ||
+							hybridOutput.telemetry.preselect.cpu_endpoint_calls != 0 ||
+							hybridOutput.telemetry.forward.cpu_endpoint_calls != 0)
+						{
+							forwardHybridFailed = true;
+							forwardHybridError = hybridOutput.error.empty() ?
+								"GPU stage CPU-call contract mismatch" : hybridOutput.error;
+						}
+						std::vector<std::vector<fasim_ssw_cuda::ForwardHybridSelectedAttempt> >
+							selectedByTask(tasks.size());
+						if (!forwardHybridFailed)
+						{
+							for (size_t index = 0; index < hybridOutput.selected.size(); ++index)
+							{
+								const fasim_ssw_cuda::ForwardHybridSelectedAttempt &selected =
+									hybridOutput.selected[index];
+								if (selected.task_index < 0 ||
+									static_cast<size_t>(selected.task_index) >= tasks.size())
+								{
+									forwardHybridFailed = true;
+									forwardHybridError = "selected task identity drift";
+									break;
+								}
+								selectedByTask[static_cast<size_t>(selected.task_index)]
+									.push_back(selected);
+							}
+						}
+						for (size_t t = 0; t < tasks.size() && !forwardHybridFailed; ++t)
+						{
+							StreamTask &task = tasks[t];
+							taskTriplexes.clear();
+							FasimFastsimExtendScoreInfoTiming extendTiming;
+							fasim_ssw_cuda::ForwardHybridCpuTelemetry cpuTelemetry;
+							std::string extendError;
+							const bool extendOk =
+								fastSIM_extend_from_forward_hybrid_selected(
+									aligner, filter, 15, lncSeq, task.seq2,
+									*task.srcSeq, task.dnaStartPos, selectedByTask[t],
+									taskTriplexes, task.strand, task.Para, task.rule,
+									paraList.ntMin, paraList.ntMax, paraList.penaltyT,
+									paraList.penaltyC, paraList, writeFull, &extendTiming,
+									&cpuTelemetry, &extendError);
+							forwardHybridCpuTelemetry.continuation_calls +=
+								cpuTelemetry.continuation_calls;
+							forwardHybridCpuTelemetry.cpu_forward_calls +=
+								cpuTelemetry.cpu_forward_calls;
+							forwardHybridCpuTelemetry.cpu_reverse_calls +=
+								cpuTelemetry.cpu_reverse_calls;
+							forwardHybridCpuTelemetry.cpu_banded_sw_calls +=
+								cpuTelemetry.cpu_banded_sw_calls;
+							forwardHybridCpuTelemetry.failures += cpuTelemetry.failures;
+								forwardHybridCpuTelemetry.substring_seconds +=
+									cpuTelemetry.substring_seconds;
+								forwardHybridCpuTelemetry.continuation_seconds +=
+									cpuTelemetry.continuation_seconds;
+								forwardHybridCpuTelemetry.reverse_start_seconds +=
+									cpuTelemetry.reverse_start_seconds;
+								forwardHybridCpuTelemetry.banded_traceback_seconds +=
+									cpuTelemetry.banded_traceback_seconds;
+								forwardHybridCpuTelemetry.cigar_seconds +=
+									cpuTelemetry.cigar_seconds;
+								forwardHybridCpuTelemetry.conversion_seconds +=
+									cpuTelemetry.conversion_seconds;
+								forwardHybridCpuTelemetry.sort_seconds +=
+									cpuTelemetry.sort_seconds;
+								forwardHybridCpuTelemetry.filter_seconds +=
+									cpuTelemetry.filter_seconds;
+							if (!extendOk || cpuTelemetry.cpu_forward_calls != 0 ||
+								cpuTelemetry.cpu_reverse_calls !=
+									cpuTelemetry.continuation_calls ||
+								cpuTelemetry.cpu_banded_sw_calls !=
+									cpuTelemetry.continuation_calls ||
+								cpuTelemetry.failures != 0)
+							{
+								forwardHybridFailed = true;
+								forwardHybridError = extendError.empty() ?
+									"CPU continuation contract mismatch" : extendError;
+								break;
+							}
+							write_task_triplexes(task);
+						}
+						tasks.clear();
+						encodedTargets.clear();
+						legacyEncodedTargets.clear();
+						currentTargetLength = -1;
+						return;
+					}
+#endif
 					fasim_gasal2_two_slot_observe_flush(twoSlotOverlapStats,
 					                                     tasks.size());
 					const bool phase7V3AllColumnCertificate =
@@ -27289,6 +27530,12 @@ int main(int argc, char* const* argv)
 			                                    long recordStartGenome,
 			                                    const std::string &chrTag)
 				{
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+				if (forwardHybridFailed)
+				{
+					return;
+				}
+#endif
 				if (useCudaBatch || streamingScoreInfoShadowCudaReady)
 				{
 					if (currentTargetLength < 0)
@@ -27744,6 +27991,103 @@ int main(int argc, char* const* argv)
 					prealign_cuda_release_query(
 						&streamingScoreInfoGpuMinScoreCudaQuery);
 				}
+
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+				if (forwardHybridActive)
+				{
+					if (forwardHybridFlushes == 0 ||
+						forwardHybridSelected !=
+							forwardHybridCpuTelemetry.continuation_calls ||
+						forwardHybridCpuTelemetry.cpu_forward_calls != 0 ||
+						forwardHybridCpuTelemetry.cpu_reverse_calls !=
+							forwardHybridCpuTelemetry.continuation_calls ||
+						forwardHybridCpuTelemetry.cpu_banded_sw_calls !=
+							forwardHybridCpuTelemetry.continuation_calls ||
+						forwardHybridCpuTelemetry.failures != 0)
+					{
+						forwardHybridFailed = true;
+						if (forwardHybridError == "none")
+							forwardHybridError = "final CPU-call invariant failed";
+					}
+					std::string telemetryError = forwardHybridError;
+					std::replace(telemetryError.begin(), telemetryError.end(), '\t', ' ');
+					std::replace(telemetryError.begin(), telemetryError.end(), '\n', ' ');
+					std::replace(telemetryError.begin(), telemetryError.end(), '\r', ' ');
+					std::ofstream telemetryFile(
+						forwardHybridTelemetryPath.c_str(), std::ios::out | std::ios::trunc);
+					if (!telemetryFile.is_open())
+					{
+						cerr << "failed to create forward-hybrid telemetry" << endl;
+						return 2;
+					}
+					telemetryFile
+						<< "schema_version\tbackend\tstatus\tdevice\tflushes\ttasks"
+						   "\tscoreinfos\tattempts\tselected\tcpu_prealign_calls"
+						   "\tcpu_forward_calls\tcpu_reverse_calls\tcpu_banded_sw_calls"
+						   "\tcpu_continuation_calls\tcpu_failures\tfallback_calls"
+						   "\tgpu_preselect_seconds\tgpu_forward_seconds"
+						   "\tattempt_planning_seconds\tattempt_selection_seconds"
+						   "\tgpu_packing_seconds\tgpu_h2d_seconds"
+						   "\tgpu_prealign_kernel_seconds\tgpu_selection_kernel_seconds"
+						   "\tgpu_forward_kernel_seconds\tgpu_endpoint_reduce_seconds"
+						   "\tgpu_d2h_seconds\tgpu_unattributed_overhead_seconds"
+						   "\thost_input_bytes\tdevice_input_bytes"
+						   "\tdevice_workspace_peak_bytes\tdevice_output_bytes"
+						   "\tbackend_total_seconds\tcpu_substring_seconds"
+						   "\tcpu_continuation_seconds\tcpu_reverse_start_seconds"
+						   "\tcpu_banded_traceback_seconds\tcpu_cigar_seconds"
+						   "\tdownstream_conversion_seconds\tcluster_sort_seconds"
+						   "\tfilter_seconds"
+						   "\terror\n";
+					telemetryFile << std::setprecision(17)
+						<< "1\tcuda-forward-hybrid\t"
+						<< (forwardHybridFailed ? "failed" : "complete") << '\t'
+						<< forwardHybridDevice << '\t' << forwardHybridFlushes << '\t'
+						<< forwardHybridTasks << '\t' << forwardHybridScoreinfos << '\t'
+						<< forwardHybridAttempts << '\t' << forwardHybridSelected << '\t'
+						<< 0 << '\t' << forwardHybridCpuTelemetry.cpu_forward_calls << '\t'
+						<< forwardHybridCpuTelemetry.cpu_reverse_calls << '\t'
+						<< forwardHybridCpuTelemetry.cpu_banded_sw_calls << '\t'
+						<< forwardHybridCpuTelemetry.continuation_calls << '\t'
+						<< forwardHybridCpuTelemetry.failures << '\t' << 0 << '\t'
+						<< forwardHybridGpuPreselectSeconds << '\t'
+						<< forwardHybridGpuForwardSeconds << '\t'
+						<< forwardHybridPlanningSeconds << '\t'
+						<< forwardHybridSelectionSeconds << '\t'
+						<< forwardHybridGpuPackingSeconds << '\t'
+						<< forwardHybridGpuH2dSeconds << '\t'
+						<< forwardHybridGpuPrealignKernelSeconds << '\t'
+						<< forwardHybridGpuSelectionKernelSeconds << '\t'
+						<< forwardHybridGpuForwardKernelSeconds << '\t'
+						<< forwardHybridGpuEndpointReduceSeconds << '\t'
+						<< forwardHybridGpuD2hSeconds << '\t'
+						<< forwardHybridGpuOverheadSeconds << '\t'
+						<< forwardHybridHostInputBytes << '\t'
+						<< forwardHybridDeviceInputBytes << '\t'
+						<< forwardHybridDeviceWorkspacePeakBytes << '\t'
+						<< forwardHybridDeviceOutputBytes << '\t'
+						<< forwardHybridBackendSeconds << '\t'
+						<< forwardHybridCpuTelemetry.substring_seconds << '\t'
+						<< forwardHybridCpuTelemetry.continuation_seconds << '\t'
+						<< forwardHybridCpuTelemetry.reverse_start_seconds << '\t'
+						<< forwardHybridCpuTelemetry.banded_traceback_seconds << '\t'
+						<< forwardHybridCpuTelemetry.cigar_seconds << '\t'
+						<< forwardHybridCpuTelemetry.conversion_seconds << '\t'
+						<< forwardHybridCpuTelemetry.sort_seconds << '\t'
+						<< forwardHybridCpuTelemetry.filter_seconds << '\t'
+						<< telemetryError << '\n';
+					telemetryFile.close();
+					cerr << "benchmark.ssw_forward_hybrid.status="
+					     << (forwardHybridFailed ? "failed" : "complete") << "\n"
+					     << "benchmark.ssw_forward_hybrid.tasks="
+					     << forwardHybridTasks << "\n"
+					     << "benchmark.ssw_forward_hybrid.selected="
+					     << forwardHybridSelected << "\n"
+					     << "benchmark.ssw_forward_hybrid.cpu_forward_calls="
+					     << forwardHybridCpuTelemetry.cpu_forward_calls << "\n";
+					if (forwardHybridFailed) return 2;
+				}
+#endif
 
 			if (canonicalHybridV2Telemetry.requested &&
 			    (canonicalHybridV2Telemetry.failed ||

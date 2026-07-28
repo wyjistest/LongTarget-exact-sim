@@ -46,6 +46,23 @@ Thus equal-score starts favor the first endpoint encountered in descending
 reference order, subject to the query-lane rule. This is not interchangeable
 with choosing a lexicographically smallest CIGAR or a smallest genomic start.
 
+### Phase 7 continuation boundary
+
+`ssw_cuda_forward_hybrid_v1` passes the exact L3 tuple into the candidate-only
+`AlignFromForward` entry point:
+
+```text
+score1, score2, ref_end1, read_end1, ref_end2, numeric_path
+```
+
+The entry point validates all coordinates, score widths, and the byte/word
+profile before allocating a result. It does not execute `ssw_align` or any CPU
+forward recurrence. It begins at the frozen reverse-start algorithm above,
+then enters the existing banded traceback routine. The API is compiled only
+with `FASIM_WITH_SSW_CUDA_FORWARD_HYBRID`; it is absent from the default CPU
+binary. CPU call counters must prove zero forward calls and exactly one reverse
+call for each nonzero selected continuation.
+
 ## Filters and coordinates
 
 Fasim's default `Filter` requests begin positions and CIGAR, producing flag

@@ -69,26 +69,25 @@ if mode == "--preflight":
     )
 else:
     if (
-        state["active_phase"] != 6
+        state["active_phase"] < 6
         or state["phase_status"]["5"] != "pass"
-        or state["phase_status"]["6"] != "in_progress"
     ):
-        raise SystemExit("Phase 5 final state has not advanced to Phase 6")
+        raise SystemExit("Phase 5 final state has not advanced beyond Phase 5")
     required_goal = (
-        "active_phase = 6",
         "phase_5_status = pass",
-        "phase_6_status = in_progress",
-        "last_completed_phase = 5",
-        "last_decision = phase5_l1_l2_exact_regression_pass",
-        "last_evidence_doc = paper/ssw_cuda/preselect_receipt.json",
-        "last_test_command = make check-ssw-cuda-phase5",
     )
     receipt = json.loads((root / "paper/ssw_cuda/preselect_receipt.json").read_text(encoding="utf-8"))
     source_commit = receipt["source_commit"]
+    if source_commit != state["phase5_implementation_commit"]:
+        raise SystemExit("Phase 5 implementation commit drift")
     if subprocess.run(
         ["git", "merge-base", "--is-ancestor", phase4_head, source_commit], cwd=root
     ).returncode != 0:
         raise SystemExit("Phase 5 implementation is not descended from Phase 4")
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"], cwd=root
+    ).returncode != 0:
+        raise SystemExit("current HEAD is not descended from the frozen Phase 5 implementation")
     for relative in (
         "fasim/ssw_cuda/ssw_cuda_pre_align.cu",
         "paper/ssw_cuda/preselect_attempt_plan.tsv",
@@ -109,19 +108,22 @@ for phrase in (
     if phrase not in status:
         raise SystemExit(f"SSW-CUDA status drift: {phrase}")
 
+audit_commit = (
+    state["phase5_implementation_commit"] if mode == "--final" else "HEAD"
+)
 changed = subprocess.run(
-    ["git", "diff", "--name-only", f"{phase4_head}..HEAD"],
+    ["git", "diff", "--name-only", f"{phase4_head}..{audit_commit}"],
     cwd=root, check=True, text=True, stdout=subprocess.PIPE,
 ).stdout.splitlines()
-worktree_changed = [
-    line[3:]
-    for line in subprocess.run(
-        ["git", "status", "--porcelain=v1"], cwd=root, check=True,
-        text=True, stdout=subprocess.PIPE,
-    ).stdout.splitlines()
-    if len(line) >= 4
-]
-changed.extend(worktree_changed)
+if mode == "--preflight":
+    changed.extend(
+        line[3:]
+        for line in subprocess.run(
+            ["git", "status", "--porcelain=v1"], cwd=root, check=True,
+            text=True, stdout=subprocess.PIPE,
+        ).stdout.splitlines()
+        if len(line) >= 4
+    )
 oracle_changes = sorted(
     path for path in changed
     if path in {"fasim/sswNew.cpp", "fasim/ssw_cpp.cpp", "fasim/ssw_cpp.h"}

@@ -90,3 +90,10 @@ An invalid direction emits the existing traceback error and returns null.
 When tracing is enabled the call record is marked failed; tracing does not
 replace, repair, or retry the authority result. No automatic band or alignment
 retry exists outside the source-defined width doubling above.
+
+For the Phase 7 forward hybrid, a nonzero selected L3 tuple must enter this
+same reverse-start and banded traceback implementation exactly once. The
+continuation is a candidate-only entry point around frozen L4/L5 code; it does
+not define a second CIGAR tie policy. A null path, score/endpoint drift, call
+counter drift, or invalid externally supplied tuple is a hard candidate
+failure. It cannot trigger a complete CPU authority fallback.

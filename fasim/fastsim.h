@@ -10,6 +10,9 @@
 #include "ssw_oracle_trace.h"
 #include "sim.h"
 #include "gasal2_align_bridge.h"
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#include "ssw_cuda/ssw_cuda_forward_hybrid.h"
+#endif
 #include "../cuda/prealign_cuda.h"
 #include "../cuda/prealign_shared.h"
 #define N 50
@@ -2096,6 +2099,187 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					std::chrono::steady_clock::now() - filterStart).count();
 		}
 	}
+
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+inline bool fastSIM_extend_from_forward_hybrid_selected(
+	StripedSmithWaterman::Aligner &aligner,
+	StripedSmithWaterman::Filter &filter,
+	int32_t maskLen,
+	const string &strA,
+	const string &strB,
+	const string &strSrc,
+	long dnaStartPos,
+	const std::vector<fasim_ssw_cuda::ForwardHybridSelectedAttempt> &selected,
+	vector<struct triplex> &triplex_list,
+	long strand,
+	long Para,
+	long rule,
+	int ntMin,
+	int ntMax,
+	int penaltyT,
+	int penaltyC,
+	const struct para &paraList,
+	bool materializeAlignmentStrings,
+	FasimFastsimExtendScoreInfoTiming *timing,
+	fasim_ssw_cuda::ForwardHybridCpuTelemetry *cpuTelemetry,
+	std::string *error)
+{
+	if (error != NULL) error->clear();
+	if (cpuTelemetry == NULL)
+	{
+		if (error != NULL) *error = "forward-hybrid CPU telemetry is null";
+		return false;
+	}
+	vector<struct triplex> myTriplexList;
+	const int8_t nt_table[128] = {
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	};
+
+	for (size_t index = 0; index < selected.size(); ++index)
+	{
+		const fasim_ssw_cuda::ForwardHybridSelectedAttempt &attempt = selected[index];
+		if (attempt.start < 0 || attempt.cutlength <= 0 ||
+			static_cast<size_t>(attempt.start + attempt.cutlength) > strB.size() ||
+			attempt.endpoint.score1 <= 0)
+		{
+			++cpuTelemetry->failures;
+			if (error != NULL) *error = "invalid selected forward-hybrid attempt";
+			return false;
+		}
+		const std::chrono::steady_clock::time_point substringStart =
+			std::chrono::steady_clock::now();
+		const string smallSeq = strB.substr(static_cast<size_t>(attempt.start),
+			static_cast<size_t>(attempt.cutlength));
+		const double substringSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - substringStart).count();
+		cpuTelemetry->substring_seconds += substringSeconds;
+		if (timing != NULL) timing->substr_seconds += substringSeconds;
+
+		StripedSmithWaterman::ForwardEndpoint endpoint;
+		endpoint.score1 = attempt.endpoint.score1;
+		endpoint.score2 = attempt.endpoint.score2;
+		endpoint.ref_end1 = attempt.endpoint.ref_end1;
+		endpoint.query_end1 = attempt.endpoint.read_end1;
+		endpoint.ref_end2 = attempt.endpoint.ref_end2;
+		endpoint.numeric_path = attempt.endpoint.numeric_path;
+		const ssw_align_internal_stats before = ssw_align_internal_stats_snapshot();
+		const uint8_t priorStats = ssw_align_internal_stats_enabled();
+		ssw_align_internal_stats_set_enabled(1);
+		const std::chrono::steady_clock::time_point continuationStart =
+			std::chrono::steady_clock::now();
+		StripedSmithWaterman::Alignment alignment;
+		const bool continuationOk = aligner.AlignFromForward(
+			strA.c_str(), smallSeq.c_str(), static_cast<int>(smallSeq.size()),
+			filter, endpoint, &alignment, maskLen);
+		const double continuationSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - continuationStart).count();
+		ssw_align_internal_stats_set_enabled(priorStats);
+		const ssw_align_internal_stats after = ssw_align_internal_stats_snapshot();
+		if (after.forward_calls < before.forward_calls ||
+			after.reverse_calls < before.reverse_calls ||
+			after.banded_sw_calls < before.banded_sw_calls ||
+			after.reverse_start_nanoseconds < before.reverse_start_nanoseconds ||
+			after.banded_sw_nanoseconds < before.banded_sw_nanoseconds ||
+			after.cigar_nanoseconds < before.cigar_nanoseconds)
+		{
+			++cpuTelemetry->failures;
+			if (error != NULL) *error = "forward-hybrid CPU counter moved backwards";
+			return false;
+		}
+		const uint64_t forwardCalls = after.forward_calls - before.forward_calls;
+		const uint64_t reverseCalls = after.reverse_calls - before.reverse_calls;
+		const uint64_t bandedCalls = after.banded_sw_calls - before.banded_sw_calls;
+		++cpuTelemetry->continuation_calls;
+		cpuTelemetry->cpu_forward_calls += forwardCalls;
+		cpuTelemetry->cpu_reverse_calls += reverseCalls;
+		cpuTelemetry->cpu_banded_sw_calls += bandedCalls;
+		cpuTelemetry->continuation_seconds += continuationSeconds;
+		cpuTelemetry->reverse_start_seconds += static_cast<double>(
+			after.reverse_start_nanoseconds - before.reverse_start_nanoseconds) /
+			1000000000.0;
+		cpuTelemetry->banded_traceback_seconds += static_cast<double>(
+			after.banded_sw_nanoseconds - before.banded_sw_nanoseconds) /
+			1000000000.0;
+		cpuTelemetry->cigar_seconds += static_cast<double>(
+			after.cigar_nanoseconds - before.cigar_nanoseconds) /
+			1000000000.0;
+		if (timing != NULL)
+		{
+			++timing->align_attempts;
+			timing->align_seconds += continuationSeconds;
+		}
+		if (!continuationOk || forwardCalls != 0 || reverseCalls != 1 ||
+			bandedCalls != 1 || alignment.sw_score != attempt.endpoint.score1 ||
+			alignment.sw_score_next_best != attempt.endpoint.score2 ||
+			alignment.ref_end != attempt.endpoint.ref_end1 ||
+			alignment.query_end != attempt.endpoint.read_end1 ||
+			alignment.ref_end_next_best != attempt.endpoint.ref_end2)
+		{
+			++cpuTelemetry->failures;
+			if (error != NULL) *error = "forward-hybrid continuation contract mismatch";
+			return false;
+		}
+
+		alignment.ref_begin += attempt.start;
+		alignment.ref_end += attempt.start;
+		fasim_phase3_observe_cigar_nt_prefilter(
+			alignment, strA, strB, strSrc, nt_table, dnaStartPos, rule,
+			strand, Para, penaltyT, penaltyC, ntMin, ntMax, timing);
+		const std::chrono::steady_clock::time_point convertStart =
+			std::chrono::steady_clock::now();
+		convertMyTriplex(alignment, myTriplexList, strA, strB, strSrc,
+			nt_table, dnaStartPos, rule, strand, Para, penaltyT, penaltyC,
+			ntMin, ntMax, materializeAlignmentStrings);
+		const double convertSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - convertStart).count();
+		cpuTelemetry->conversion_seconds += convertSeconds;
+		if (timing != NULL) timing->convert_seconds += convertSeconds;
+	}
+
+	const std::chrono::steady_clock::time_point sortStart =
+		std::chrono::steady_clock::now();
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(),
+			sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(),
+			sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
+	if (timing != NULL)
+		timing->sort_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - sortStart).count();
+	cpuTelemetry->sort_seconds += std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - sortStart).count();
+	const std::chrono::steady_clock::time_point filterStart =
+		std::chrono::steady_clock::now();
+	for (int index = 0;
+		index < static_cast<int>(myTriplexList.size() > N ? N : myTriplexList.size());
+		++index)
+	{
+		const triplex &item = myTriplexList[static_cast<size_t>(index)];
+		if (item.identity >= paraList.minIdentity &&
+			item.tri_score >= paraList.minStability && item.nt >= ntMin)
+			triplex_list.push_back(item);
+	}
+	if (timing != NULL)
+		timing->filter_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - filterStart).count();
+	cpuTelemetry->filter_seconds += std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - filterStart).count();
+	return true;
+}
+#endif
 
 inline bool fasim_shadow_attempt_consumer_from_scoreinfo(
 	StripedSmithWaterman::Aligner &aligner,

@@ -128,6 +128,34 @@ extern "C" {
 		const int32_t filterd,
 		const int32_t maskLen);
 
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+	typedef enum {
+		SSW_FORWARD_NUMERIC_PATH_BYTE8 = 1,
+		SSW_FORWARD_NUMERIC_PATH_WORD16 = 2
+	} ssw_forward_numeric_path;
+
+	typedef struct {
+		uint16_t score1;
+		uint16_t score2;
+		int32_t ref_end1;
+		int32_t read_end1;
+		int32_t ref_end2;
+		uint8_t numeric_path;
+	} ssw_forward_endpoint;
+
+	/* Continue an alignment from an externally computed exact forward tuple. */
+	s_align* ssw_align_from_forward(const s_profile* prof,
+		const int8_t* ref,
+		int32_t refLen,
+		const uint8_t weight_gapO,
+		const uint8_t weight_gapE,
+		const uint8_t flag,
+		const uint16_t filters,
+		const int32_t filterd,
+		const int32_t maskLen,
+		const ssw_forward_endpoint* endpoint);
+#endif
+
 	typedef struct {
 		uint64_t forward_score_end_nanoseconds;
 		uint64_t reverse_start_nanoseconds;
