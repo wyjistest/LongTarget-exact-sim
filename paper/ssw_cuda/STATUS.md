@@ -3,7 +3,7 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 6
+active_phase = 7
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -19,7 +19,10 @@ phase_4_status = pass
 phase_5_implementation_commit = ce94f5bddad4c16bc995258fa7b563d4bb8a969b
 phase_5_preselect_execution_epoch = 1
 phase_5_status = pass
-phase_6_status = in_progress
+phase_6_implementation_commit = e41f76d0d67661b56bba915dd850d07849379cf6
+phase_6_forward_execution_epoch = 1
+phase_6_status = pass
+phase_7_status = in_progress
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
@@ -134,3 +137,26 @@ boundary inputs were not supplemented after observing this result. This is
 L1/L2 regression evidence only, not fresh-holdout promotion. The default CPU
 binary remains unchanged, B3 remains closed by Amdahl, and Phase 6 is now
 active for the independent L3 forward-endpoint implementation.
+
+Phase 6 implemented the exact L3 forward tuple on GPU from clean implementation
+commit `e41f76d`: `score1`, `ref_end1`, `read_end1`, `score2`, `ref_end2`, and
+the final byte/word path. The implementation shares the frozen striped
+recurrence but preserves the distinct full-forward overflow and endpoint
+semantics. It contains no CPU endpoint call, fallback, or case-specific branch.
+
+All 31 preregistered attempts completed without retry. The 625 primary cases
+and all 841 supported task executions had zero endpoint and standalone-reducer
+mismatch. The two Phase 2 frozen CPU full-forward vectors reduced to their
+exact hq10/hq11 endpoints. All eight forward and five reducer API probes failed
+closed. The fixed 18-case subset was stable across ten repeats and identical on
+both RTX 4090 devices. There were zero technical failures, timeouts, OOMs,
+fallbacks, and CPU endpoint calls. The conservative GPU wall upper bound was
+8.468333049 seconds, below the fixed 24-hour budget.
+
+Primary execution contained 591 byte8 and 34 word16 endpoints. There were 94
+diagnostic differences between Phase 5 pre-align columns and Phase 6
+full-forward columns. Those differences are expected evidence that the two
+frozen CPU routines are not interchangeable; they do not weaken or overwrite
+the passed L1 or L3 contracts. No fresh holdout or application panel was run,
+the default CPU binary remains unchanged, B3 remains closed by Amdahl, and
+Phase 7 is now active for the bounded forward-hybrid performance checkpoint.

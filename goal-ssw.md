@@ -211,7 +211,7 @@ bioinformatics_b3_track = closed_amdahl
 engineering_track = active
 l8_contract_status = diagnostic_only
 
-active_phase = 6
+active_phase = 7
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -227,8 +227,8 @@ phase_4_accelign_build_attempts = 1
 phase_4_g3sa_build_attempts = 3
 phase_4_status = pass
 phase_5_status = pass
-phase_6_status = in_progress
-phase_7_status = pending
+phase_6_status = pass
+phase_7_status = in_progress
 phase_8_status = pending
 phase_9_status = pending
 phase_10_status = pending
@@ -236,11 +236,11 @@ phase_11_status = pending
 phase_12_status = pending
 phase_13_status = pending
 
-last_completed_phase = 5
-last_decision = phase5_l1_l2_exact_regression_pass
-last_evidence_doc = paper/ssw_cuda/preselect_receipt.json
-last_test_command = make check-ssw-cuda-phase5
-last_commit = ce94f5b
+last_completed_phase = 6
+last_decision = phase6_l3_exact_forward_pass
+last_evidence_doc = paper/ssw_cuda/forward_endpoint_receipt.json
+last_test_command = make check-ssw-cuda-phase6
+last_commit = e41f76d
 ```
 
 ### 2.1 Phase 依赖

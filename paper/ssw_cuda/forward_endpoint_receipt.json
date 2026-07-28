@@ -1,0 +1,132 @@
+{
+  "artifacts": {
+    "attempt_manifest_digests": {
+      "p6-cpu-vector-reducer": "46dd1490039d99c1aeda349b8f5048323dfe34cf35bfabba922ce0fe3e75eeee",
+      "p6-determinism-r00": "dc07ea056f7d53a4b481caec43d28daae9e0038a770b6d4f1eb95052e63d83b7",
+      "p6-determinism-r01": "dad3e864c38450ab1bbbe9472799b7de64f5892a32d3c1aad2c5286296217388",
+      "p6-determinism-r02": "8c747701440b18ca2066f07e0de683f9af70f44e27655a69cb7c29f495a9af0c",
+      "p6-determinism-r03": "235d01cd6a4a818b38115f956a3ff5c870e82fd23c402bf690722ddd74364556",
+      "p6-determinism-r04": "f2afcdfc344d62e3b35030b7bfcf19fbf9981a94a26ca62f808f98c1094d56db",
+      "p6-determinism-r05": "a053ac471263f784bae27d5571c23381045e08655414c01b40cc190a1a7c58d3",
+      "p6-determinism-r06": "34aa96c0297eba9eeb00223c162db30d980977e75605ab69314202af5d8b06c1",
+      "p6-determinism-r07": "d9d5c3af59ed5db4f2c7a6448223ce2b5f218d9fa82863d9e81d762ea08df7e7",
+      "p6-determinism-r08": "6d3a2b013dd9b85e08b7044232897fa123db6931b3a380822fbeae5811e18598",
+      "p6-determinism-r09": "3723094006a6f4903408ceafd6b80ed10370d6ce62c8dd7657eb6416d21934a1",
+      "p6-dual-gpu0": "1509bdc9fae9f0c9d93b3535d113aa6c1748f568b50b00533642158e7f9d6fa9",
+      "p6-dual-gpu1": "5398954d8258e0282a912d5a5558254f71b7ffe69a79413aa595eeea1834cb07",
+      "p6-forward-fail-capacity": "aeb43b2a62785680b6471cfa03bd977e4bf9acb2b21edc376e91ad36e083f0ab",
+      "p6-forward-fail-contract_drift": "9dd0a586e0eb80b9fa8f8abd28b33924bc5bac1eea47a0e4836d56d4f3299b9f",
+      "p6-forward-fail-device_out_of_range": "cefcf6c0dff1edf8b6bd4f358d583ff88acc5f433435222e461e35e1784ed609",
+      "p6-forward-fail-empty_query": "395277ae287d5da59db0f16d09e946b3ad61eb141059b68e42a52ed6e5b2a571",
+      "p6-forward-fail-empty_reference": "f0498e7a490f819b9caa36619c26346b13952773a96c2979d6c7302491b657d8",
+      "p6-forward-fail-invalid_base": "d45623a5b9e1e333d6822238974ea16d7f9e1892648ee16639cf338ccf34ea68",
+      "p6-forward-fail-out_of_memory": "6812f39903d17902df6660dfe8c0f5ca9fb98d42c7728fec8c22ca8bf5ffdc42",
+      "p6-forward-fail-query_too_long": "d3efe81f3de1d30a59bf9a791c2b314ec0d319b137338d24cae8010ab12d3735",
+      "p6-primary-adversarial": "64de62afc059391d2d57dc965eb52682611f02f599b4de8a6c368dddbf44024e",
+      "p6-primary-compact-fuzz": "a65fde1257972b1e0435872c3f72b1130c2abeeaf96784945d4444b7b5fa20d7",
+      "p6-primary-known": "f1fe906f6b067e88ab14bb01e314879bb846e54cf852329c2b5e0c95db2d2a1f",
+      "p6-primary-large": "b749edfb83db1ff12ceda6ac6a2b3ca87692f73e1a365ab322d68a690beecc05",
+      "p6-primary-tiny": "04f82be9589e0b72e54d8002e1d47386791b998352f5593b99ea122f2867f380",
+      "p6-reducer-fail-empty_batch": "b86d5f544fdc716417ceb8a7101e639e60364599afdb09b84dab56ba9626ac91",
+      "p6-reducer-fail-empty_columns": "94c8955eb38483297db2f8f6e76fd642eca99bea62646b8b642d006bc79fa558",
+      "p6-reducer-fail-invalid_column_score": "e2c6ee16872581e892a7fad06ab8803b84ae5747ea4f3d57afc285aed3dcea68",
+      "p6-reducer-fail-invalid_mask": "c348e547a98d0d66cda8a625b4d35bea865084a5b4b36ce2c4402e8b96565e50",
+      "p6-reducer-fail-invalid_numeric_path": "010d43b1f63479dd8103587fb31c699016a12bfd68a42a368d7b330fdd2be5d5"
+    },
+    "forward_endpoint_regression_sha256": "8b2c91f69534c306955667a30b3057cd3fd4cc5eabf52cb8076cd53c16f6f6b3",
+    "root": ".paper-artifacts/ssw-cuda-v1/forward/formal-v1"
+  },
+  "binary_sha256": "5a3e759d2b024e1f49226c293df1f56fc3f04a4b39ee587051445045d3527629",
+  "claim_boundary": {
+    "bioinformatics_b3_track": "closed_amdahl",
+    "contract_established": "L3_forward_endpoint_regression",
+    "cpu_oracle_replaced": false,
+    "default_backend_changed": false,
+    "fresh_holdout_consumed": false,
+    "l8_contract_status": "diagnostic_only",
+    "promotion_evidence": false
+  },
+  "environment": {
+    "cxx_version": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+    "gpu_inventory": [
+      "0, NVIDIA GeForce RTX 4090, GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3, 24564, 8.9",
+      "1, NVIDIA GeForce RTX 4090, GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2, 24564, 8.9"
+    ],
+    "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2024 NVIDIA Corporation\nBuilt on Thu_Jun__6_02:18:23_PDT_2024\nCuda compilation tools, release 12.5, V12.5.82\nBuild cuda_12.5.r12.5/compiler.34385749_0"
+  },
+  "execution": {
+    "attempt_count": 31,
+    "determinism_repeats": 10,
+    "determinism_unique_cases": 18,
+    "fallback_count": 0,
+    "forward_fail_closed_probes": 8,
+    "frozen_cpu_vector_reducer_tasks": 2,
+    "gpu_budget_seconds": 86400,
+    "gpu_wall_seconds_upper_bound": 8.46833304874599,
+    "mechanism_repair_iterations": 0,
+    "primary_gpu_tasks": 625,
+    "reducer_fail_closed_probes": 5,
+    "retry_count": 0,
+    "same_model_gpu_count": 2,
+    "total_supported_gpu_task_executions": 841,
+    "unsupported_frozen_cases": 4
+  },
+  "frozen_utc": "2026-07-28T09:31:39Z",
+  "phase": 6,
+  "plan_sha256": "dbbe24ebc46282a66fdbbcab200cc83e6d7c3d7755b15d3b683f9bf00fab5e41",
+  "results": {
+    "cpu_endpoint_calls": 0,
+    "dual_gpu_digests": [
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f"
+    ],
+    "fail_closed_expected": 13,
+    "fail_closed_observed": 13,
+    "frozen_cpu_vector_reducer_mismatches": 0,
+    "frozen_endpoint_calls": {
+      "known-hq10-ht02-forward-call": {
+        "numeric_path": "byte8",
+        "read_end1": 1751,
+        "ref_end1": 68,
+        "ref_end2": 52,
+        "score1": 68,
+        "score2": 60
+      },
+      "known-hq11-ht02-forward-call": {
+        "numeric_path": "byte8",
+        "read_end1": 790,
+        "ref_end1": 83,
+        "ref_end2": 64,
+        "score1": 93,
+        "score2": 78
+      }
+    },
+    "numeric_path_counts": {
+      "byte8": 591,
+      "word16": 34
+    },
+    "prealign_forward_column_differences_diagnostic": 94,
+    "primary_endpoint_mismatches": 0,
+    "repeat_digest_stable": true,
+    "repeat_digests": [
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f",
+      "062c3a370bcde39c5d5848de0a4933203681802dc8ef5c32b0acc4639defee4f"
+    ],
+    "result_rows": 856,
+    "same_model_dual_gpu_equal": true,
+    "supported_endpoint_mismatches": 0,
+    "supported_reducer_mismatches": 0,
+    "technical_failures": 0
+  },
+  "schema_version": "1",
+  "source_commit": "e41f76d0d67661b56bba915dd850d07849379cf6",
+  "status": "pass"
+}
