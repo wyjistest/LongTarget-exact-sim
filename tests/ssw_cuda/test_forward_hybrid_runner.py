@@ -73,6 +73,18 @@ class ForwardHybridRunnerTests(unittest.TestCase):
             self.assertEqual({row["observation_id"] for row in selected}, {"1", "2", "3", "4", "5"})
         self.assertTrue(all(row["retry_policy"] == "none" for row in rows))
         self.assertTrue(all(row["maximum_tasks"] == "16" for row in rows))
+        self.assertTrue(all(row["attempt_id"].startswith("p7v2") for row in rows))
+        self.assertTrue(all("/formal-v2/" in row["artifact_root"] for row in rows))
+
+    def test_fasta_digest_uses_the_frozen_uppercase_normalization(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ssw-cuda-p7-fasta-") as directory:
+            path = Path(directory) / "masked.fa"
+            path.write_bytes(b">masked\nacgtn\nAcGtN\n")
+            self.assertEqual(P7.read_fasta(path), b"ACGTNACGTN")
+
+            path.write_bytes(b">invalid\nACGTX\n")
+            with self.assertRaises(P7.Phase7Error):
+                P7.read_fasta(path)
 
     def test_telemetry_schema_and_cpu_call_contract_are_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ssw-cuda-p7-telemetry-") as directory:

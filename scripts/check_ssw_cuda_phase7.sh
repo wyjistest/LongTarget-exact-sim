@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${1:---preflight}"
-PLAN_SHA256="49e4f5984fdfa32ed38f169f033deb1016027e440860c5855c5130decbf04038"
+V1_PLAN_SHA256="49e4f5984fdfa32ed38f169f033deb1016027e440860c5855c5130decbf04038"
+PLAN_SHA256="fb86f5539dd55d4f553edb6598de881626d70ef4913ea9ce8e0ccce4a4b0a4f1"
 CONTINUATION_DRIVER="${SSW_CUDA_PHASE7_CONTINUATION_DRIVER:-$ROOT/.paper-artifacts/ssw-cuda-v1/forward-hybrid/build/ssw_cpu_continuation_driver}"
 F_BINARY="${SSW_CUDA_PHASE7_FASIM_BIN:-$ROOT/.paper-artifacts/ssw-cuda-v1/forward-hybrid/build/fasim_forward_hybrid}"
 
@@ -29,6 +30,9 @@ required=(
   paper/ssw_cuda/PROGRAM_STATE.json
   paper/ssw_cuda/STATUS.md
   paper/ssw_cuda/forward_hybrid_attempt_plan.tsv
+  paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv
+  paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json
+  paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md
   paper/ssw_cuda/forward_hybrid_protocol.md
   reproduce/ssw_cuda/run_forward_hybrid.py
   scripts/compare_fasim_lite_offline_cluster_topk.py
@@ -47,7 +51,12 @@ for relative in "${required[@]}"; do
   fi
 done
 
-observed_plan_sha256="$(sha256sum "$ROOT/paper/ssw_cuda/forward_hybrid_attempt_plan.tsv" | awk '{print $1}')"
+observed_v1_plan_sha256="$(sha256sum "$ROOT/paper/ssw_cuda/forward_hybrid_attempt_plan.tsv" | awk '{print $1}')"
+if [[ "$observed_v1_plan_sha256" != "$V1_PLAN_SHA256" ]]; then
+  echo "Phase 7 v1 attempt plan digest drift: $observed_v1_plan_sha256" >&2
+  exit 1
+fi
+observed_plan_sha256="$(sha256sum "$ROOT/paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv" | awk '{print $1}')"
 if [[ "$observed_plan_sha256" != "$PLAN_SHA256" ]]; then
   echo "Phase 7 attempt plan digest drift: $observed_plan_sha256" >&2
   exit 1
@@ -93,6 +102,14 @@ state = json.loads((root / "paper/ssw_cuda/PROGRAM_STATE.json").read_text(encodi
 goal = (root / "goal-ssw.md").read_text(encoding="utf-8")
 status = (root / "paper/ssw_cuda/STATUS.md").read_text(encoding="utf-8")
 protocol = (root / "paper/ssw_cuda/forward_hybrid_protocol.md").read_text(encoding="utf-8")
+repair_protocol = (
+    root / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md"
+).read_text(encoding="utf-8")
+repair_receipt = json.loads(
+    (root / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 if mode == "--preflight":
     if (
@@ -143,7 +160,7 @@ for phrase in (
     if phrase not in status:
         raise SystemExit(f"SSW-CUDA status drift: {phrase}")
 for phrase in (
-    plan_sha256,
+    "49e4f5984fdfa32ed38f169f033deb1016027e440860c5855c5130decbf04038",
     "total new F processes                                             = 49",
     "new A processes                                                    = 0",
     "new H2 processes                                                   = 0",
@@ -152,6 +169,22 @@ for phrase in (
 ):
     if phrase not in protocol:
         raise SystemExit(f"Phase 7 protocol drift: {phrase}")
+for phrase in (
+    plan_sha256,
+    "completed receipts  = 25/49",
+    "replacement retries = 0",
+    "repair count     = 1 of at most 2",
+):
+    if phrase not in repair_protocol:
+        raise SystemExit(f"Phase 7 repair protocol drift: {phrase}")
+if (
+    repair_receipt["repair_number"] != 1
+    or repair_receipt["v1_status"] != "incomplete"
+    or repair_receipt["v1_completed_attempt_receipts"] != 25
+    or repair_receipt["v1_replacement_retries"] != 0
+    or repair_receipt["v2_plan_sha256"] != plan_sha256
+):
+    raise SystemExit("Phase 7 repair receipt drift")
 
 def git_file(commit, relative):
     return subprocess.run(

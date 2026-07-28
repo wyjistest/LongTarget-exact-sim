@@ -22,8 +22,10 @@ from typing import Any, Iterable, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PLAN = ROOT / "paper/ssw_cuda/forward_hybrid_attempt_plan.tsv"
+PLAN = ROOT / "paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv"
 PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_protocol.md"
+REPAIR_PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md"
+REPAIR_RECEIPT = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json"
 SOURCE_DATA = ROOT / "paper/ssw_cuda/forward_hybrid_source_data.tsv"
 PROJECTION = ROOT / "paper/ssw_cuda/forward_hybrid_projection.json"
 DECISION = ROOT / "paper/ssw_cuda/forward_hybrid_decision.json"
@@ -36,12 +38,13 @@ H2_RECEIPT = ROOT / "paper/bioinformatics/canonical_hybrid_v2_performance_receip
 COMPARATOR = ROOT / "scripts/compare_fasim_lite_offline_cluster_topk.py"
 COMPARATOR_SHA256 = "2765d76b6c8e742596b1072a413309a88ef415f3576c9de62be67213ee76dc80"
 ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/forward-hybrid"
-FORMAL_ROOT = ARTIFACT_ROOT / "formal-v1"
-COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v1"
-EXECUTION_RECEIPT = ARTIFACT_ROOT / "execution-receipt-v1.json"
+FORMAL_ROOT = ARTIFACT_ROOT / "formal-v2"
+COMPARISON_ROOT = ARTIFACT_ROOT / "offline-comparison-v2"
+EXECUTION_RECEIPT = ARTIFACT_ROOT / "execution-receipt-v2.json"
 DEFAULT_BINARY = ARTIFACT_ROOT / "build/fasim_forward_hybrid"
-SNAPSHOT_ROOT = ARTIFACT_ROOT / "execution-snapshot-v1"
+SNAPSHOT_ROOT = ARTIFACT_ROOT / "execution-snapshot-v2"
 SNAPSHOT_BINARY = SNAPSHOT_ROOT / "fasim_forward_hybrid"
+V1_EXECUTION_RECEIPT = ARTIFACT_ROOT / "execution-receipt-v1.json"
 PHASE2_ARTIFACT_ROOT = ROOT / ".paper-artifacts/bioinformatics-phase2-holdout-v1"
 SCHEMA_VERSION = "1"
 MAX_TASKS = 16
@@ -269,11 +272,12 @@ def atomic_write(path: Path, payload: bytes) -> None:
 def read_fasta(path: Path) -> bytes:
     require(path.is_file() and not path.is_symlink(), f"missing or unsafe FASTA: {path}")
     sequence = b"".join(
-        line.strip()
+        line.strip().upper()
         for line in path.read_bytes().splitlines()
         if line and not line.startswith(b">")
     )
     require(sequence, f"empty FASTA: {path}")
+    require(not (set(sequence) - set(b"ACGTN")), f"invalid FASTA sequence: {path}")
     return sequence
 
 
@@ -356,7 +360,7 @@ def make_plan_row(
     timeout_seconds: int,
     claim_role: str,
 ) -> dict[str, str]:
-    artifact_root = f".paper-artifacts/ssw-cuda-v1/forward-hybrid/formal-v1/{attempt_id}"
+    artifact_root = f".paper-artifacts/ssw-cuda-v1/forward-hybrid/formal-v2/{attempt_id}"
     return {
         "attempt_id": attempt_id,
         "execution_stage": stage,
@@ -407,7 +411,7 @@ def expected_plan_rows() -> list[dict[str, str]]:
         reference_digest, _ = output_digest(reference_root)
         rows.append(
             make_plan_row(
-                attempt_id=f"p7c_{workload_id}",
+                attempt_id=f"p7v2c_{workload_id}",
                 stage="correctness_regression",
                 workload_id=workload_id,
                 workload_class=f"consumed_{source['length_stratum']}",
@@ -453,7 +457,7 @@ def expected_plan_rows() -> list[dict[str, str]]:
             require((ROOT / authority_root).is_dir(), f"missing Phase 1 authority output: {authority_root}")
             rows.append(
                 make_plan_row(
-                    attempt_id=f"p7p_{workload_id}_o{observation_id:02d}",
+                    attempt_id=f"p7v2p_{workload_id}_o{observation_id:02d}",
                     stage="fixed_development_pilot",
                     workload_id=workload_id,
                     workload_class=source["workload_class"],
@@ -495,6 +499,18 @@ def check_plan() -> list[dict[str, str]]:
             "historical H2 track is not closed")
     require(abs(float(h2["primary_aggregate_speedup"]) - 0.25759196676394047) < 1e-15,
             "historical H2 performance anchor drift")
+    repair = json.loads(REPAIR_RECEIPT.read_text(encoding="utf-8"))
+    require(repair["repair_number"] == 1 and repair["v1_status"] == "incomplete",
+            "Phase 7 repair receipt drift")
+    require(repair["v1_execution_receipt_sha256"] ==
+            "7380d57c286db1540c05e9803a26d329ab6497f2ec9e7e6cd64b244e1b0ba1f1",
+            "Phase 7 v1 receipt anchor drift")
+    repaired_input = ROOT / repair["input_path"]
+    require(sha256_file(repaired_input) == repair["input_file_sha256"],
+            "Phase 7 repaired input file drift")
+    require(sha256_bytes(read_fasta(repaired_input)) ==
+            repair["required_uppercase_sequence_sha256"],
+            "Phase 7 repaired input normalization drift")
     observed = read_tsv(PLAN)
     require(tuple(observed[0].keys()) == PLAN_FIELDS, "Phase 7 plan schema mismatch")
     expected = expected_plan_rows()
@@ -528,7 +544,9 @@ def require_clean_committed_execution() -> str:
     head = git_output("rev-parse", "HEAD")
     for relative in (
         "paper/ssw_cuda/forward_hybrid_protocol.md",
-        "paper/ssw_cuda/forward_hybrid_attempt_plan.tsv",
+        "paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv",
+        "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md",
+        "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json",
         "reproduce/ssw_cuda/run_forward_hybrid.py",
         "scripts/check_ssw_cuda_phase7.sh",
         "tests/ssw_cuda/test_forward_hybrid_runner.py",
@@ -555,6 +573,22 @@ def validate_input(row: dict[str, str]) -> tuple[Path, Path]:
     require(sha256_bytes(read_fasta(target)) == row["target_sequence_sha256"],
             f"{row['attempt_id']}: target sequence digest drift")
     return query, target
+
+
+def validate_v1_repair_evidence() -> None:
+    repair = json.loads(REPAIR_RECEIPT.read_text(encoding="utf-8"))
+    require(V1_EXECUTION_RECEIPT.is_file() and not V1_EXECUTION_RECEIPT.is_symlink(),
+            "missing Phase 7 v1 failure receipt")
+    require(sha256_file(V1_EXECUTION_RECEIPT) == repair["v1_execution_receipt_sha256"],
+            "Phase 7 v1 failure receipt drift")
+    receipt = json.loads(V1_EXECUTION_RECEIPT.read_text(encoding="utf-8"))
+    require(receipt["status"] == "incomplete" and receipt["completed_attempt_receipts"] == 25,
+            "Phase 7 v1 failure cardinality drift")
+    require(receipt["replacement_retries"] == 0,
+            "Phase 7 v1 unexpectedly records a replacement retry")
+    require(receipt["stop_reason"] ==
+            "runner_failure:p7p_medium_h19_chr22_2mb_o01",
+            "Phase 7 v1 stop reason drift")
 
 
 def cache_drop_hint(paths: Sequence[Path]) -> str:
@@ -916,6 +950,7 @@ def run_attempt(
 def execute(binary: Path) -> None:
     rows = check_plan()
     source_commit = require_clean_committed_execution()
+    validate_v1_repair_evidence()
     require(binary.is_file() and not binary.is_symlink(), f"missing Phase 7 binary: {binary}")
     binary_sha256 = sha256_file(binary)
     require(not SNAPSHOT_ROOT.exists(), f"Phase 7 snapshot already exists: {SNAPSHOT_ROOT}")
