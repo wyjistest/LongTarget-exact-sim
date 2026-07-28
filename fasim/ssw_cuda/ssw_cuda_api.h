@@ -37,6 +37,13 @@ enum ScoreInfoReason
     SCOREINFO_THRESHOLD_RUN_MAX = 1
 };
 
+enum NumericPath
+{
+    NUMERIC_PATH_UNKNOWN = 0,
+    NUMERIC_PATH_BYTE8 = 1,
+    NUMERIC_PATH_WORD16 = 2
+};
+
 enum AttemptReason
 {
     ATTEMPT_THRESHOLD = 1,
@@ -96,6 +103,8 @@ struct Telemetry
     double packing_seconds;
     double h2d_seconds;
     double prealign_seconds;
+    double forward_seconds;
+    double endpoint_reduce_seconds;
     double selection_flag_seconds;
     double selection_scan_seconds;
     double selection_scatter_seconds;
@@ -108,6 +117,7 @@ struct Telemetry
     size_t device_output_bytes;
     int task_count;
     int device;
+    uint64_t cpu_endpoint_calls;
 };
 
 struct BatchOutput
@@ -141,6 +151,47 @@ struct AttemptDecision
     int reason;
 };
 
+struct ForwardEndpoint
+{
+    int task_index;
+    int score1;
+    int ref_end1;
+    int read_end1;
+    int score2;
+    int ref_end2;
+    int numeric_path;
+};
+
+struct ColumnReductionInput
+{
+    std::string case_id;
+    std::vector<int> column_maxima;
+    int numeric_path;
+    int mask_length;
+};
+
+struct ColumnEndpoint
+{
+    int task_index;
+    int score1;
+    int ref_end1;
+    int score2;
+    int ref_end2;
+    int numeric_path;
+};
+
+struct ForwardBatchOutput
+{
+    ForwardBatchOutput();
+
+    StatusCode status;
+    std::string error;
+    std::vector<int> column_offsets;
+    std::vector<int> column_maxima;
+    std::vector<ForwardEndpoint> endpoints;
+    Telemetry telemetry;
+};
+
 bool is_built();
 const char *status_name(StatusCode status);
 const char *scoreinfo_reason_name(int reason);
@@ -153,6 +204,16 @@ StatusCode pre_align_and_select(const std::vector<TaskInput> &tasks,
 StatusCode select_attempts(const std::vector<AttemptObservation> &observations,
                            std::vector<AttemptDecision> *decisions,
                            std::string *error);
+
+StatusCode reduce_forward_columns(const std::vector<ColumnReductionInput> &inputs,
+                                  const BatchOptions &options,
+                                  std::vector<ColumnEndpoint> *endpoints,
+                                  Telemetry *telemetry,
+                                  std::string *error);
+
+StatusCode forward_align(const std::vector<TaskInput> &tasks,
+                         const BatchOptions &options,
+                         ForwardBatchOutput *output);
 
 } // namespace fasim_ssw_cuda
 

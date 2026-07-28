@@ -172,14 +172,20 @@ BatchOptions::BatchOptions():
 
 Telemetry::Telemetry():
     packing_seconds(0.0), h2d_seconds(0.0), prealign_seconds(0.0),
+    forward_seconds(0.0), endpoint_reduce_seconds(0.0),
     selection_flag_seconds(0.0), selection_scan_seconds(0.0),
     selection_scatter_seconds(0.0), d2h_seconds(0.0), overhead_seconds(0.0),
     total_wall_seconds(0.0), host_input_bytes(0), device_input_bytes(0),
-    device_workspace_bytes(0), device_output_bytes(0), task_count(0), device(-1)
+    device_workspace_bytes(0), device_output_bytes(0), task_count(0), device(-1),
+    cpu_endpoint_calls(0)
 {
 }
 
 BatchOutput::BatchOutput():status(STATUS_NOT_BUILT)
+{
+}
+
+ForwardBatchOutput::ForwardBatchOutput():status(STATUS_NOT_BUILT)
 {
 }
 

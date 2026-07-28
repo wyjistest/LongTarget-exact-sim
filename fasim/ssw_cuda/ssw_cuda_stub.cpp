@@ -27,6 +27,8 @@ Telemetry::Telemetry():
     packing_seconds(0.0),
     h2d_seconds(0.0),
     prealign_seconds(0.0),
+    forward_seconds(0.0),
+    endpoint_reduce_seconds(0.0),
     selection_flag_seconds(0.0),
     selection_scan_seconds(0.0),
     selection_scatter_seconds(0.0),
@@ -38,11 +40,16 @@ Telemetry::Telemetry():
     device_workspace_bytes(0),
     device_output_bytes(0),
     task_count(0),
-    device(-1)
+    device(-1),
+    cpu_endpoint_calls(0)
 {
 }
 
 BatchOutput::BatchOutput():status(STATUS_NOT_BUILT)
+{
+}
+
+ForwardBatchOutput::ForwardBatchOutput():status(STATUS_NOT_BUILT)
 {
 }
 
@@ -113,6 +120,29 @@ StatusCode select_attempts(const std::vector<AttemptObservation> &,
         *error = "SSW-CUDA backend was not built";
     }
     return STATUS_NOT_BUILT;
+}
+
+StatusCode reduce_forward_columns(const std::vector<ColumnReductionInput> &,
+                                  const BatchOptions &,
+                                  std::vector<ColumnEndpoint> *endpoints,
+                                  Telemetry *telemetry,
+                                  std::string *error)
+{
+    if(endpoints != NULL) endpoints->clear();
+    if(telemetry != NULL) *telemetry = Telemetry();
+    if(error != NULL) *error = "SSW-CUDA backend was not built";
+    return STATUS_NOT_BUILT;
+}
+
+StatusCode forward_align(const std::vector<TaskInput> &,
+                         const BatchOptions &,
+                         ForwardBatchOutput *output)
+{
+    if(output == NULL) return STATUS_INVALID_ARGUMENT;
+    *output = ForwardBatchOutput();
+    output->status = STATUS_NOT_BUILT;
+    output->error = "SSW-CUDA backend was not built";
+    return output->status;
 }
 
 } // namespace fasim_ssw_cuda

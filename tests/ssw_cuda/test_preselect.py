@@ -74,15 +74,17 @@ class Phase5PreselectTests(unittest.TestCase):
 
     def test_production_source_has_exact_stable_structure_without_case_ids(self) -> None:
         prealign = (ROOT / "fasim/ssw_cuda/ssw_cuda_pre_align.cu").read_text(encoding="utf-8")
+        striped = (ROOT / "fasim/ssw_cuda/ssw_cuda_striped.cuh").read_text(encoding="utf-8")
         select = (ROOT / "fasim/ssw_cuda/ssw_cuda_select.cu").read_text(encoding="utf-8")
+        forward = (ROOT / "fasim/ssw_cuda/ssw_cuda_forward.cu").read_text(encoding="utf-8")
         for marker in (
-            "striped_prealign_pass<16, true>",
-            "striped_prealign_pass<8, false>",
+            "striped_forward_pass<16, true>",
+            "striped_forward_pass<8, false>",
             "kContractGapOpen",
             "kContractGapExtend",
             "static_cast<int8_t>",
         ):
-            self.assertIn(marker, prealign)
+            self.assertIn(marker, prealign + striped)
         for marker in (
             "selection_flag_kernel",
             "selection_scan_kernel",
@@ -92,7 +94,7 @@ class Phase5PreselectTests(unittest.TestCase):
         ):
             self.assertIn(marker, select)
         for forbidden in ("hq10", "hq11", "FAM230I", "PXN-AS1", "allowlist", "blacklist"):
-            self.assertNotIn(forbidden, prealign + select)
+            self.assertNotIn(forbidden, prealign + striped + select + forward)
 
     def test_smoke_l1_l2_exact(self) -> None:
         completed = run(
@@ -115,6 +117,25 @@ class Phase5PreselectTests(unittest.TestCase):
         self.assertEqual(rows["known-hq10-ht02-traceback"]["cpu_column_digest"], "4cdb83f5d1b579b4")
         self.assertEqual(rows["known-hq11-ht02-endpoint"]["cpu_column_digest"], "fcd5135e90526dfa")
         self.assertTrue(all(row["column_equal"] == "1" and row["scoreinfo_equal"] == "1" for row in rows.values()))
+
+    def test_byte_word_boundary_columns_remain_exact_after_shared_kernel_refactor(self) -> None:
+        wanted = {
+            "adv-byte-boundary-253",
+            "adv-byte-boundary-254",
+            "adv-byte-boundary-255",
+            "adv-byte-boundary-256",
+        }
+        cases = [case for case in RUNNER.all_cases() if case.case_id in wanted]
+        self.assertEqual({case.case_id for case in cases}, wanted)
+        with tempfile.TemporaryDirectory(prefix="ssw-cuda-p5-boundary-") as directory:
+            path = Path(directory) / "boundary.tsv"
+            path.write_bytes(RUNNER.input_tsv(cases))
+            completed = run([str(DRIVER), "--input", str(path), "--device", "0"])
+        self.assertEqual(completed.returncode, 0, completed.stderr + "\n" + completed.stdout)
+        rows = list(csv.DictReader(io.StringIO(completed.stdout), delimiter="\t"))
+        self.assertEqual(len(rows), 4)
+        self.assertTrue(all(row["column_equal"] == "1" for row in rows))
+        self.assertTrue(all(row["scoreinfo_equal"] == "1" for row in rows))
 
     def test_attempt_selection_reasons_are_stable(self) -> None:
         completed = run([str(DRIVER), "--attempt-probe"])

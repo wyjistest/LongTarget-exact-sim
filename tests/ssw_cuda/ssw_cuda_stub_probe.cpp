@@ -36,6 +36,30 @@ int main()
         std::cerr << "stub attempt selection did not fail closed\n";
         return 1;
     }
+
+    fasim_ssw_cuda::ForwardBatchOutput forward;
+    if(fasim_ssw_cuda::forward_align(tasks, options, &forward) !=
+       fasim_ssw_cuda::STATUS_NOT_BUILT ||
+       forward.status != fasim_ssw_cuda::STATUS_NOT_BUILT ||
+       forward.telemetry.cpu_endpoint_calls != 0)
+    {
+        std::cerr << "stub forward endpoint did not fail closed\n";
+        return 1;
+    }
+    std::vector<fasim_ssw_cuda::ColumnReductionInput> reduction_inputs(1);
+    reduction_inputs[0].case_id = "stub-reducer-probe";
+    reduction_inputs[0].column_maxima.assign(1, 0);
+    reduction_inputs[0].numeric_path = fasim_ssw_cuda::NUMERIC_PATH_BYTE8;
+    reduction_inputs[0].mask_length = fasim_ssw_cuda::kContractMaskLength;
+    std::vector<fasim_ssw_cuda::ColumnEndpoint> endpoints;
+    fasim_ssw_cuda::Telemetry telemetry;
+    if(fasim_ssw_cuda::reduce_forward_columns(
+           reduction_inputs, options, &endpoints, &telemetry, &error) !=
+       fasim_ssw_cuda::STATUS_NOT_BUILT || telemetry.cpu_endpoint_calls != 0)
+    {
+        std::cerr << "stub endpoint reducer did not fail closed\n";
+        return 1;
+    }
     std::cout << "ssw_cuda_stub_status=not_built\n";
     return 0;
 }

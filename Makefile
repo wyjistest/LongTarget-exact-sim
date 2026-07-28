@@ -147,6 +147,8 @@ SSW_CUDA_PHASE5_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/preselect/bu
 SSW_CUDA_PHASE5_DRIVER ?= $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_preselect_driver
 SSW_CUDA_PHASE5_STUB_PROBE ?= $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_stub_probe
 SSW_CUDA_PHASE5_CUDA_FLAGS ?= -O2 -std=c++11 --generate-code=arch=compute_89,code=sm_89
+SSW_CUDA_PHASE6_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/forward/build
+SSW_CUDA_PHASE6_DRIVER ?= $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward_driver
 FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
 GASAL2_DIR ?= .tmp/GASAL2
@@ -190,7 +192,7 @@ $(SSW_CUDA_PHASE5_STUB_PROBE): tests/ssw_cuda/ssw_cuda_stub_probe.cpp \
 	$(CXX) $(CPPFLAGS) -I$(CURDIR) -O2 -std=c++11 tests/ssw_cuda/ssw_cuda_stub_probe.cpp \
 		fasim/ssw_cuda/ssw_cuda_stub.cpp -o $@
 
-$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o: fasim/ssw_cuda/ssw_cuda_pre_align.cu fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_internal.h
+$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o: fasim/ssw_cuda/ssw_cuda_pre_align.cu fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_internal.h fasim/ssw_cuda/ssw_cuda_striped.cuh
 	@mkdir -p $(dir $@)
 	$(NVCC) $(SSW_CUDA_PHASE5_CUDA_FLAGS) -I$(CURDIR) -c $< -o $@
 
@@ -207,6 +209,26 @@ $(SSW_CUDA_PHASE5_DRIVER): tests/ssw_cuda/ssw_cuda_preselect_driver.cpp \
 	$(CXX) $(CPPFLAGS) -I$(CURDIR) -O2 -std=c++11 $(FASIM_SIMD_FLAGS) \
 		tests/ssw_cuda/ssw_cuda_preselect_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
 		fasim/ssw_oracle_trace.cpp $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
+
+.PHONY: build-ssw-cuda-phase6-driver
+build-ssw-cuda-phase6-driver: $(SSW_CUDA_PHASE6_DRIVER)
+
+$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o: fasim/ssw_cuda/ssw_cuda_forward.cu \
+		fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_internal.h \
+		fasim/ssw_cuda/ssw_cuda_striped.cuh
+	@mkdir -p $(dir $@)
+	$(NVCC) $(SSW_CUDA_PHASE5_CUDA_FLAGS) -I$(CURDIR) -c $< -o $@
+
+$(SSW_CUDA_PHASE6_DRIVER): tests/ssw_cuda/ssw_cuda_forward_driver.cpp \
+		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/ssw_cpp.h fasim/ssw.h \
+		fasim/ssw_cuda/ssw_cuda_api.h \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -I$(CURDIR) -O2 -std=c++11 $(FASIM_SIMD_FLAGS) \
+		tests/ssw_cuda/ssw_cuda_forward_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
+		fasim/ssw_oracle_trace.cpp $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
 		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
 
 build-fasim-cuda: $(FASIM_CUDA_TARGET)
@@ -1563,6 +1585,13 @@ check-ssw-cuda-phase5-preflight:
 
 check-ssw-cuda-phase5:
 	bash ./scripts/check_ssw_cuda_phase5.sh --final
+
+.PHONY: check-ssw-cuda-phase6-preflight check-ssw-cuda-phase6
+check-ssw-cuda-phase6-preflight:
+	bash ./scripts/check_ssw_cuda_phase6.sh --preflight
+
+check-ssw-cuda-phase6:
+	bash ./scripts/check_ssw_cuda_phase6.sh --final
 
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:
