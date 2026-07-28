@@ -188,7 +188,7 @@ Codex 每完成一个 phase 后更新本块，不得提前标记。
 reviewed_local_head = 9f87aac
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-execution_ahead_remote = 18
+execution_ahead_remote = 20
 
 historical_gpu_traceback_v1 = verified_only_contract
 historical_phase3_v1_b3 = no_go
