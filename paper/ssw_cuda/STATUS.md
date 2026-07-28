@@ -3,7 +3,7 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 5
+active_phase = 6
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -16,7 +16,10 @@ phase_3_status = pass
 phase_4_upstream_evidence_epoch = 1
 phase_4_architecture = C_mixed_in_tree_checkpoint_recompute
 phase_4_status = pass
-phase_5_status = in_progress
+phase_5_implementation_commit = ce94f5bddad4c16bc995258fa7b563d4bb8a969b
+phase_5_preselect_execution_epoch = 1
+phase_5_status = pass
+phase_6_status = in_progress
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
@@ -106,5 +109,28 @@ alignment, scoring, tie, and CIGAR semantics.
 Architecture C is selected: L1-L5 code and semantics remain in-tree; Accelign
 may influence forward batching/length-bin/tile scheduling and G3SA may influence
 checkpoint layout only. No upstream implementation was copied or linked. The
-four runtime probes total 1.04 seconds of wall-time upper bound, B3 remains
-closed by Amdahl, and Phase 5 is active.
+four runtime probes total 1.04 seconds of wall-time upper bound, B3 remained
+closed by Amdahl, and Phase 5 then became active.
+
+Phase 5 implemented an in-tree int32 CUDA correctness checkpoint for the
+frozen SSE2 striped L1 column frontier and deterministic L2 selection. The
+first eight-case smoke exposed one scalar-versus-striped difference at the
+last column of the periodic-repeat case (CPU 35, scalar 25). The single
+mechanism repair reproduced the frozen stripe padding, saturation, lazy-F and
+signed byte stop behavior without adding any case-specific branch.
+
+The formal execution started from clean implementation commit `ce94f5b` and
+completed all 29 preregistered batch attempts without retry. The 623 supported
+primary GPU tasks had zero column-vector and scoreInfo mismatches. All four
+frozen unsupported inputs and eight API capacity/configuration/OOM probes
+failed closed. The fixed 16-case subset was byte-stable for ten repeats and
+identical on both RTX 4090 devices. There were no technical failures,
+unexpected fallbacks, false negatives, extras, order differences, or reason
+differences. The hq10/hq11 CPU digests remained `4cdb83f5d1b579b4` and
+`fcd5135e90526dfa`.
+
+All 623 primary authority calls selected the byte8 final path; the frozen
+boundary inputs were not supplemented after observing this result. This is
+L1/L2 regression evidence only, not fresh-holdout promotion. The default CPU
+binary remains unchanged, B3 remains closed by Amdahl, and Phase 6 is now
+active for the independent L3 forward-endpoint implementation.
