@@ -1,0 +1,50 @@
+{
+  "authority_reference": {
+    "execution_epoch": 2,
+    "new_authority_attempts_executed": 0,
+    "source": "paper/ssw_cuda/cpu_profile_v2_source_data.tsv",
+    "source_sha256": "427ff238acd36cfa5ac12572a53e628ae5748ea9a9adecda7ffa6d06a50b16f4"
+  },
+  "b3_speedup_threshold": 10.0,
+  "b3_threshold_changed": false,
+  "bioinformatics_b3_track": "closed_amdahl",
+  "formal_speedup_claim": false,
+  "historical_h2_reference": {
+    "hybrid_slowdown_vs_authority": 3.8821086408972096,
+    "new_h2_attempts_executed": 0,
+    "primary_aggregate_speedup": 0.25759196676394047,
+    "source": "paper/bioinformatics/canonical_hybrid_v2_performance_receipt.json",
+    "source_sha256": "765a77c9f3ee5a4a544a1d59a11a20868c94217843aa433942332c860dec7219",
+    "track_status": "closed_performance_no_go"
+  },
+  "projection_definition": {
+    "lower_wall_bound": "F median wall minus measured selected CPU continuation median",
+    "upper_wall_bound": "observed F median wall with no assumed L4/L5 improvement",
+    "warning": "bounds are an early engineering model, not observed G performance"
+  },
+  "role": "development_checkpoint_projection_only",
+  "schema_version": 1,
+  "status": "incomplete",
+  "workloads": {
+    "application_aq005_at0199": {
+      "completed_observations": 0,
+      "status": "incomplete"
+    },
+    "large_h19_chr21": {
+      "completed_observations": 0,
+      "status": "incomplete"
+    },
+    "large_h19_chr22": {
+      "completed_observations": 0,
+      "status": "incomplete"
+    },
+    "medium_h19_chr22_2mb": {
+      "completed_observations": 1,
+      "status": "incomplete"
+    },
+    "overhead_aq001_at0001": {
+      "completed_observations": 1,
+      "status": "incomplete"
+    }
+  }
+}

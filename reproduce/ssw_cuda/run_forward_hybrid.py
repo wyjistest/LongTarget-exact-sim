@@ -538,9 +538,14 @@ def expected_plan_rows() -> list[dict[str, str]]:
 
 def check_plan() -> list[dict[str, str]]:
     state = json.loads(STATE.read_text(encoding="utf-8"))
-    require(state["active_phase"] == 7, "Phase 7 runner requires active_phase=7")
-    require(state["phase_status"]["6"] == "pass" and
-            state["phase_status"]["7"] == "in_progress",
+    phase7_status = state["phase_status"]["7"]
+    valid_state = (
+        (phase7_status == "in_progress" and state["active_phase"] == 7)
+        or (phase7_status == "pass" and state["active_phase"] == 8)
+        or (phase7_status == "no_go" and state["active_phase"] == 13)
+        or (phase7_status == "blocked" and state["active_phase"] == 7)
+    )
+    require(state["phase_status"]["6"] == "pass" and valid_state,
             "Phase 7 state transition drift")
     require(state["bioinformatics_b3_track"] == "closed_amdahl",
             "Phase 7 cannot reopen the closed Amdahl decision")

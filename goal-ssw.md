@@ -208,10 +208,10 @@ ssw_cuda_final_holdout_freeze = UNSET
 ssw_cuda_release_candidate = UNSET
 
 bioinformatics_b3_track = closed_amdahl
-engineering_track = active
+engineering_track = closed_phase7_forward_hybrid_no_go
 l8_contract_status = diagnostic_only
 
-active_phase = 7
+active_phase = 13
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -228,19 +228,24 @@ phase_4_g3sa_build_attempts = 3
 phase_4_status = pass
 phase_5_status = pass
 phase_6_status = pass
-phase_7_status = in_progress
-phase_8_status = pending
-phase_9_status = pending
-phase_10_status = pending
-phase_11_status = pending
-phase_12_status = pending
-phase_13_status = pending
+phase_7_implementation_commit = 750fb29e7c0c989046947f86d2f5648f94fa3754
+phase_7_execution_source_commit = f3ffe9b188c43ef0bff78a903176f991c493f2b8
+phase_7_execution_epoch = 2
+phase_7_measurement_repairs = 2
+phase_7_analysis_corrections = 2
+phase_7_status = no_go
+phase_8_status = not_run_phase7_no_go
+phase_9_status = not_run_phase7_no_go
+phase_10_status = not_run_phase7_no_go
+phase_11_status = not_run_phase7_no_go
+phase_12_status = not_run_phase7_no_go
+phase_13_status = in_progress
 
-last_completed_phase = 6
-last_decision = phase6_l3_exact_forward_pass
-last_evidence_doc = paper/ssw_cuda/forward_endpoint_receipt.json
-last_test_command = make check-ssw-cuda-phase6
-last_commit = e41f76d
+last_completed_phase = 7
+last_decision = forward_hybrid_performance_futility_stop
+last_evidence_doc = paper/ssw_cuda/forward_hybrid_decision.json
+last_test_command = python3 reproduce/ssw_cuda/run_forward_hybrid.py --check-results
+last_commit = 750fb29
 ```
 
 ### 2.1 Phase 依赖

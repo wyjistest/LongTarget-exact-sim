@@ -3,7 +3,7 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 7
+active_phase = 13
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -22,11 +22,22 @@ phase_5_status = pass
 phase_6_implementation_commit = e41f76d0d67661b56bba915dd850d07849379cf6
 phase_6_forward_execution_epoch = 1
 phase_6_status = pass
-phase_7_status = in_progress
+phase_7_implementation_commit = 750fb29e7c0c989046947f86d2f5648f94fa3754
+phase_7_execution_source_commit = f3ffe9b188c43ef0bff78a903176f991c493f2b8
+phase_7_execution_epoch = 2
+phase_7_measurement_repairs = 2
+phase_7_analysis_corrections = 2
+phase_7_status = no_go
+phase_8_status = not_run_phase7_no_go
+phase_9_status = not_run_phase7_no_go
+phase_10_status = not_run_phase7_no_go
+phase_11_status = not_run_phase7_no_go
+phase_12_status = not_run_phase7_no_go
+phase_13_status = in_progress
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
-engineering_track = active
+engineering_track = closed_phase7_forward_hybrid_no_go
 l8_contract_status = diagnostic_only
 ```
 
@@ -160,3 +171,32 @@ frozen CPU routines are not interchangeable; they do not weaken or overwrite
 the passed L1 or L3 contracts. No fresh holdout or application panel was run,
 the default CPU binary remains unchanged, B3 remains closed by Amdahl, and
 Phase 7 is now active for the bounded forward-hybrid performance checkpoint.
+
+Phase 7 combined exact GPU L1-L3 with selected-only CPU L4/L5. The v1
+execution stopped before attempt 26 because its runner did not apply the
+Phase 1 uppercase normalization when validating a repeat-masked FASTA. The 25
+receipts remain immutable. Repair 1 froze a complete v2 epoch; no v1 result was
+reused.
+
+Epoch v2 produced 27 receipts: 26 complete attempts, one fail-closed technical
+failure, and zero retries. All 24 consumed holdout regressions and the two
+completed development performance observations had clean score-, stability-,
+and Nt-ranked clustered Top-5 comparisons. CPU pre-align and forward calls
+were zero; the 26 complete attempts made 192,095 matched reverse-start and
+banded-traceback calls with no fallback.
+
+The overhead observation took 1.179151 seconds versus its historical CPU
+reference of 0.114453 seconds (`0.097064x`). The 2 Mb medium observation took
+1328.082524 seconds versus 61.121143 seconds (`0.046022x`); GPU pre-align alone
+used 1210.617832 seconds. The first chr21 observation ran 5233.500342 seconds,
+selected 665,582 attempts, and then stopped on one reproducible continuation
+contract failure after 665,562 CPU continuations. It was not a timeout, OOM,
+fallback, or environment failure.
+
+The two permitted measurement repairs are exhausted. Two offline-only
+analysis corrections preserved failed comparison roots while binding the
+unique TFOsorted file and the actual frozen Phase 2 segmented comparator; they
+started no backend attempt and changed no measurement. Phase 7 is `no_go` with
+reason `forward_hybrid_implementation_contract_failure`. Phase 8-12 were not
+authorized, no fresh holdout or 50 x 668 application panel was run, B3 remains
+closed, and Phase 13 is active for the final audit.
