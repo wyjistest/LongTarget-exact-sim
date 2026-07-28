@@ -1515,6 +1515,13 @@ check-ssw-cuda-phase3-preflight:
 check-ssw-cuda-phase3:
 	bash ./scripts/check_ssw_cuda_phase3.sh --final
 
+.PHONY: check-ssw-cuda-phase4-preflight check-ssw-cuda-phase4
+check-ssw-cuda-phase4-preflight:
+	bash ./scripts/check_ssw_cuda_phase4.sh --preflight
+
+check-ssw-cuda-phase4:
+	bash ./scripts/check_ssw_cuda_phase4.sh --final
+
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:
 	/usr/bin/env -i \

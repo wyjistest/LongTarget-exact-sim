@@ -3,7 +3,7 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 4
+active_phase = 5
 phase_0_status = pass
 phase_1_status = pass
 phase_1_profile_execution_epoch = 2
@@ -13,7 +13,10 @@ phase_1_recovery_status = pass
 phase_2_oracle_execution_epoch = 1
 phase_2_status = pass
 phase_3_status = pass
-phase_4_status = in_progress
+phase_4_upstream_evidence_epoch = 1
+phase_4_architecture = C_mixed_in_tree_checkpoint_recompute
+phase_4_status = pass
+phase_5_status = in_progress
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
 bioinformatics_b3_track = closed_amdahl
@@ -84,4 +87,24 @@ The frozen layered comparator classifies hq10 first at L5 (alternative CIGAR
 gap placement) and hq11 first at L4 (reverse start), while preserving the
 established root-cause wording and making no DP tie-cell claim. L8 remains
 diagnostic only, no fresh holdout was selected or executed, and no new CUDA DP
-kernel was authored. Phase 4 is active.
+kernel was authored. Phase 4 then became active.
+
+Phase 4 pinned Accelign at `c7ecd32d59e256716cca193556110051c171570f`
+(Apache-2.0) and G3SA at `f0e0c130631dc2e06f92822b66c0494683f77eef`
+(GPL-3.0). Accelign built on its first attempt and passed its own affine-local
+score/start/end checks at 64 and 2812 bases. Those checks establish upstream
+self-consistency only; they do not establish SSW equality.
+
+G3SA used the maximum three build attempts. Two failed because of hard-coded
+CUDA 12.1 include handling; the third succeeded after a sandbox-only two-line
+portability patch and an explicit host CUDA include path. Its help probe was
+treated as an input and its no-argument probe exited 139 after GPU detection,
+so no G3SA runtime correctness claim is made. Source inspection confirmed the
+block-boundary checkpoint/recompute structure, while also confirming different
+alignment, scoring, tie, and CIGAR semantics.
+
+Architecture C is selected: L1-L5 code and semantics remain in-tree; Accelign
+may influence forward batching/length-bin/tile scheduling and G3SA may influence
+checkpoint layout only. No upstream implementation was copied or linked. The
+four runtime probes total 1.04 seconds of wall-time upper bound, B3 remains
+closed by Amdahl, and Phase 5 is active.
