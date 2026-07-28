@@ -128,6 +128,43 @@ class ForwardHybridRunnerTests(unittest.TestCase):
         metrics["clustered_score_top5_equal"] = 0
         self.assertFalse(P7.comparison_clean(metrics))
 
+    def test_cpu_continuation_failure_is_an_implementation_no_go(self) -> None:
+        source = [
+            {"status": "complete", "cpu_failures": "0"},
+            {"status": "technical_failure", "cpu_failures": "1"},
+            {"status": "not_started", "cpu_failures": ""},
+        ]
+        self.assertEqual(P7.implementation_failure_rows(source), [source[1]])
+        self.assertEqual(
+            P7.classify_phase7(
+                technical_complete=False,
+                correctness_pass=False,
+                implementation_failure_count=1,
+            ),
+            (
+                "forward_hybrid_performance_futility_stop",
+                "no_go",
+                False,
+                "forward_hybrid_implementation_contract_failure",
+            ),
+        )
+        self.assertEqual(
+            P7.classify_phase7(
+                technical_complete=False,
+                correctness_pass=False,
+                implementation_failure_count=0,
+            )[1],
+            "blocked",
+        )
+        self.assertEqual(
+            P7.classify_phase7(
+                technical_complete=True,
+                correctness_pass=False,
+                implementation_failure_count=0,
+            )[1],
+            "no_go",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

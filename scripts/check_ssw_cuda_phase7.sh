@@ -33,6 +33,8 @@ required=(
   paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv
   paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json
   paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md
+  paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json
+  paper/ssw_cuda/forward_hybrid_measurement_repair_v2.md
   paper/ssw_cuda/forward_hybrid_protocol.md
   reproduce/ssw_cuda/run_forward_hybrid.py
   scripts/compare_fasim_lite_offline_cluster_topk.py
@@ -107,6 +109,14 @@ repair_protocol = (
 ).read_text(encoding="utf-8")
 repair_receipt = json.loads(
     (root / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json").read_text(
+        encoding="utf-8"
+    )
+)
+repair2_protocol = (
+    root / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.md"
+).read_text(encoding="utf-8")
+repair2_receipt = json.loads(
+    (root / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json").read_text(
         encoding="utf-8"
     )
 )
@@ -185,6 +195,23 @@ if (
     or repair_receipt["v2_plan_sha256"] != plan_sha256
 ):
     raise SystemExit("Phase 7 repair receipt drift")
+for phrase in (
+    "repair 2 of the maximum 2",
+    "forward_hybrid_implementation_contract_failure",
+    "It authorizes zero new",
+):
+    if phrase not in repair2_protocol:
+        raise SystemExit(f"Phase 7 repair 2 protocol drift: {phrase}")
+if (
+    repair2_receipt["repair_number"] != 2
+    or repair2_receipt["classification"] != "implementation_contract_no_go"
+    or repair2_receipt["failing_attempt_cpu_failures"] != 1
+    or repair2_receipt["failing_attempt_timed_out"] is not False
+    or repair2_receipt["phase7_status"] != "no_go"
+    or repair2_receipt["phase8_engineering_authorized"] is not False
+    or repair2_receipt["new_attempts_authorized"] != 0
+):
+    raise SystemExit("Phase 7 repair 2 receipt drift")
 
 def git_file(commit, relative):
     return subprocess.run(

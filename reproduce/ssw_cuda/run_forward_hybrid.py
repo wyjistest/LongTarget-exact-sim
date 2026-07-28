@@ -26,6 +26,8 @@ PLAN = ROOT / "paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv"
 PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_protocol.md"
 REPAIR_PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md"
 REPAIR_RECEIPT = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json"
+REPAIR2_PROTOCOL = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.md"
+REPAIR2_RECEIPT = ROOT / "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json"
 SOURCE_DATA = ROOT / "paper/ssw_cuda/forward_hybrid_source_data.tsv"
 PROJECTION = ROOT / "paper/ssw_cuda/forward_hybrid_projection.json"
 DECISION = ROOT / "paper/ssw_cuda/forward_hybrid_decision.json"
@@ -511,6 +513,10 @@ def check_plan() -> list[dict[str, str]]:
     require(sha256_bytes(read_fasta(repaired_input)) ==
             repair["required_uppercase_sequence_sha256"],
             "Phase 7 repaired input normalization drift")
+    repair2 = json.loads(REPAIR2_RECEIPT.read_text(encoding="utf-8"))
+    require(repair2["repair_number"] == 2 and
+            repair2["classification"] == "implementation_contract_no_go",
+            "Phase 7 repair 2 receipt drift")
     observed = read_tsv(PLAN)
     require(tuple(observed[0].keys()) == PLAN_FIELDS, "Phase 7 plan schema mismatch")
     expected = expected_plan_rows()
@@ -547,6 +553,8 @@ def require_clean_committed_execution() -> str:
         "paper/ssw_cuda/forward_hybrid_attempt_plan_v2.tsv",
         "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.md",
         "paper/ssw_cuda/forward_hybrid_measurement_repair_v1.json",
+        "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.md",
+        "paper/ssw_cuda/forward_hybrid_measurement_repair_v2.json",
         "reproduce/ssw_cuda/run_forward_hybrid.py",
         "scripts/check_ssw_cuda_phase7.sh",
         "tests/ssw_cuda/test_forward_hybrid_runner.py",
@@ -991,6 +999,7 @@ def execute(binary: Path) -> None:
             break
         receipts.append(receipt)
         if receipt["status"] != "complete":
+            runner_error = str(receipt["failure_reason"])
             stop_reason = f"technical_failure:{row['attempt_id']}"
             break
     elapsed = time.monotonic() - started
@@ -1402,6 +1411,37 @@ def build_projection(source: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def implementation_failure_rows(source: Sequence[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        row for row in source
+        if row["status"] == "technical_failure"
+        and row["cpu_failures"] not in ("", "0")
+    ]
+
+
+def classify_phase7(
+    *, technical_complete: bool, correctness_pass: bool,
+    implementation_failure_count: int
+) -> tuple[str, str, bool, str]:
+    if implementation_failure_count > 0:
+        return (
+            "forward_hybrid_performance_futility_stop",
+            "no_go",
+            False,
+            "forward_hybrid_implementation_contract_failure",
+        )
+    if not technical_complete:
+        return "blocked_by_environment", "blocked", False, "none"
+    if not correctness_pass:
+        return (
+            "forward_hybrid_performance_futility_stop",
+            "no_go",
+            False,
+            "forward_hybrid_declared_contract_mismatch",
+        )
+    return "forward_hybrid_correct_but_b3_track_closed", "pass", True, "none"
+
+
 def build_decision(
     rows: list[dict[str, str]],
     source: list[dict[str, str]],
@@ -1423,24 +1463,19 @@ def build_decision(
         and row["fallback_calls"] == "0"
         for row in completed
     )
+    implementation_contract_failures = implementation_failure_rows(source)
     correctness_pass = technical_complete and declared_clean and call_contract_clean
-    if not technical_complete:
-        result = "blocked_by_environment"
-        phase7_status = "blocked"
-        phase8_authorized = False
-    elif not correctness_pass:
-        result = "forward_hybrid_performance_futility_stop"
-        phase7_status = "no_go"
-        phase8_authorized = False
-    else:
-        result = "forward_hybrid_correct_but_b3_track_closed"
-        phase7_status = "pass"
-        phase8_authorized = True
+    result, phase7_status, phase8_authorized, no_go_reason = classify_phase7(
+        technical_complete=technical_complete,
+        correctness_pass=correctness_pass,
+        implementation_failure_count=len(implementation_contract_failures),
+    )
     return {
         "schema_version": 1,
         "decision": result,
         "phase7_status": phase7_status,
         "phase8_engineering_authorized": phase8_authorized,
+        "no_go_reason": no_go_reason,
         "execution_status": execution["status"],
         "execution_stop_reason": execution["stop_reason"],
         "planned_attempts": len(rows),
@@ -1452,6 +1487,7 @@ def build_decision(
             row["execution_stage"] == "fixed_development_pilot" for row in completed
         ),
         "technical_failures": len([row for row in source if row["status"] == "technical_failure"]),
+        "implementation_contract_failures": len(implementation_contract_failures),
         "declared_contract_mismatches": sum(
             row["declared_contract_clean"] == "0" for row in completed
         ),
@@ -1476,6 +1512,7 @@ def build_decision(
         ),
         "fallbacks": sum(int(row["fallback_calls"]) for row in completed),
         "replacement_retries": 0,
+        "measurement_repairs": 2,
         "fresh_holdout_consumed": False,
         "application_50x668_panel_run": False,
         "historical_h2_rerun": False,
@@ -1507,6 +1544,9 @@ def load_execution_receipt(rows: list[dict[str, str]]) -> dict[str, Any]:
     require(EXECUTION_RECEIPT.is_file() and not EXECUTION_RECEIPT.is_symlink(),
             "missing Phase 7 execution receipt")
     receipt = json.loads(EXECUTION_RECEIPT.read_text(encoding="utf-8"))
+    repair2 = json.loads(REPAIR2_RECEIPT.read_text(encoding="utf-8"))
+    require(sha256_file(EXECUTION_RECEIPT) == repair2["v2_execution_receipt_sha256"],
+            "Phase 7 v2 execution receipt repair anchor drift")
     require(receipt["plan_sha256"] == sha256_file(PLAN), "execution plan digest drift")
     require(receipt["planned_attempts"] == len(rows), "execution plan cardinality drift")
     require(receipt["replacement_retries"] == 0, "replacement retry recorded")
@@ -1515,6 +1555,9 @@ def load_execution_receipt(rows: list[dict[str, str]]) -> dict[str, Any]:
     require(receipt["source_commit"] == json.loads(
         (SNAPSHOT_ROOT / "snapshot.json").read_text(encoding="utf-8")
     )["source_commit"], "execution snapshot commit drift")
+    failed_attempt = FORMAL_ROOT / repair2["failing_attempt_id"] / "attempt.json"
+    require(sha256_file(failed_attempt) == repair2["failing_attempt_receipt_sha256"],
+            "Phase 7 failed attempt repair anchor drift")
     return receipt
 
 
