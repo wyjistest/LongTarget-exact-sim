@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -59,6 +60,15 @@ class Phase1ProfileTests(unittest.TestCase):
             RUNNER.bootstrap_median_ci(values, 9),
             RUNNER.bootstrap_median_ci(values, 9),
         )
+
+    def test_max_rss_parser_accepts_indented_gnu_time_output(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ssw-cuda-rss-") as temporary:
+            path = Path(temporary) / "time.txt"
+            path.write_text(
+                "\tMaximum resident set size (kbytes): 3836844\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(RUNNER.parse_max_rss(path), 3836844)
 
     def test_amdahl_closed_at_or_below_point_nine(self) -> None:
         metric = {

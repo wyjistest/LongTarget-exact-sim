@@ -1,0 +1,32 @@
+{
+  "amdahl_decision_unchanged": true,
+  "analysis_epoch": 2,
+  "analysis_role": "analysis_only_max_rss_rebuild",
+  "attempt_receipt_count": 50,
+  "attempt_receipt_manifest_sha256": "456705ee29cfd65c79dbe9a32acbd77f3401194249c97912edfb984d3efc35b6",
+  "attempt_receipts_modified": false,
+  "bioinformatics_b3_track": "closed_amdahl",
+  "conservative_p_backend_addressable": 0.619448148391,
+  "execution_receipt_sha256": "89f26177a71553903e2bd01bb5ef522d8281997cdf636791d4f76c17cc960e55",
+  "execution_runner_sha256": "54fb57700f475b9032edd799e41e6ec819403ace7661f88a1b3e574f598cb57f",
+  "max_rss_recovered_count": 50,
+  "maximum_speedup_infinite": 2.6277628022881236,
+  "parser_change": "strip_gnu_time_leading_whitespace",
+  "phase": 1,
+  "phase1_profile_execution_epoch": 2,
+  "rebuilt_analysis": {
+    "decision_markdown_sha256": "bb5078b86e112aa58d47b421dff3d6367fb002a541771e4349c7187c98edfde8",
+    "decision_sha256": "dd8ac536e60cacea10ed4ec0ad1cc705dde797f308aa53a0e87c2affa8214fdd",
+    "source_data_sha256": "427ff238acd36cfa5ac12572a53e628ae5748ea9a9adecda7ffa6d06a50b16f4",
+    "statistics_sha256": "519dbf733b275fe66bebc9c715463ce69e58451a4f92cae799f1c0c45eb75fac"
+  },
+  "resource_log_count": 50,
+  "resource_log_manifest_sha256": "db3897c921faa2570a49037b34dd01b6e9a33e84e4472650e7e277874a1b5fbf",
+  "runner_analysis": {
+    "decision_sha256": "e7e222ecd96c200a37d9d8eed54cd42bb1a901b9370789b5fd1cb991ab1493bf",
+    "source_data_sha256": "9222859cb59b75064cadcfc9bdc54d5b588f77892582b7a6760fa7953d771d75",
+    "statistics_sha256": "c29dc45079fdb73d52fa3cde20bd2e40fdaab49cf040c65f131a280186e97c13"
+  },
+  "schema_version": 1,
+  "scientific_statistics_unchanged": true
+}

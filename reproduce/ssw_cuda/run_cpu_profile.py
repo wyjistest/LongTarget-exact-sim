@@ -38,6 +38,8 @@ RECOVERY_STATISTICS = PAPER / "cpu_profile_v2_statistics.json"
 RECOVERY_DECISION_JSON = PAPER / "amdahl_v2_decision.json"
 RECOVERY_DECISION_MD = PAPER / "amdahl_v2_decision.md"
 RECOVERY_EXECUTION_RECEIPT = PAPER / "cpu_profile_v2_execution_receipt.json"
+RECOVERY_RESOURCE_LOGS = PAPER / "cpu_profile_v2_resource_logs.tsv"
+RECOVERY_ANALYSIS_RECEIPT = PAPER / "cpu_profile_v2_analysis_receipt.json"
 REGISTRY = PAPER / "used_input_exclusion_registry.tsv"
 DEFAULT_ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/phase1/profile-runs"
 RECOVERY_ARTIFACT_ROOT = ROOT / ".paper-artifacts/ssw-cuda-v1/phase1/profile-runs-v2"
@@ -132,6 +134,14 @@ ARTIFACT_MANIFEST_FIELDS = (
     "path",
     "size_bytes",
     "sha256",
+)
+
+RESOURCE_LOG_FIELDS = (
+    "attempt_id",
+    "path",
+    "size_bytes",
+    "sha256",
+    "max_rss_kib",
 )
 
 WORKLOAD_SPECS = (
@@ -468,10 +478,13 @@ def output_digest(output_dir: Path) -> tuple[str, list[dict[str, object]]]:
 def parse_max_rss(path: Path) -> int | None:
     if not path.is_file():
         return None
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    values: list[int] = []
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
         if line.startswith("Maximum resident set size (kbytes):"):
-            return int(line.split(":", 1)[1].strip())
-    return None
+            values.append(int(line.split(":", 1)[1].strip()))
+    require(len(values) <= 1, f"duplicate maximum RSS line: {path}")
+    return values[0] if values else None
 
 
 def kill_process_group(process: subprocess.Popen[str]) -> None:
@@ -628,7 +641,10 @@ def amdahl_projection(addressable_fraction: float) -> tuple[float, float | None]
 
 
 def source_rows(
-    rows: list[dict[str, str]], receipts: list[dict[str, object]]
+    rows: list[dict[str, str]],
+    receipts: list[dict[str, object]],
+    *,
+    max_rss_by_attempt: dict[str, int] | None = None,
 ) -> list[dict[str, object]]:
     by_attempt = {str(receipt["attempt_id"]): receipt for receipt in receipts}
     paired: dict[tuple[str, str], dict[str, object]] = {}
@@ -645,6 +661,10 @@ def source_rows(
     output: list[dict[str, object]] = []
     for row in rows:
         receipt = by_attempt[row["attempt_id"]]
+        max_rss = receipt["max_rss_kib"]
+        if max_rss_by_attempt is not None:
+            require(row["attempt_id"] in max_rss_by_attempt, "recovered maximum RSS is missing")
+            max_rss = max_rss_by_attempt[row["attempt_id"]]
         profile_on = row["profile_mode"] == "profile_on"
         metrics = receipt["profile_metrics"]
         outer = float(receipt["outer_wall_seconds"])
@@ -705,7 +725,7 @@ def source_rows(
                 "profile_stack_errors": metrics.get("stack_errors", "") if profile_on else "",
                 "profile_active_depth": metrics.get("active_depth", "") if profile_on else "",
                 "profile_max_depth": metrics.get("max_depth", "") if profile_on else "",
-                "max_rss_kib": receipt["max_rss_kib"] if receipt["max_rss_kib"] is not None else "",
+                "max_rss_kib": max_rss if max_rss is not None else "",
                 "cache_drop_hint": receipt["cache_drop_hint"],
                 "binary_sha256": receipt["binary_sha256"],
                 "git_commit": receipt["git_commit"],
@@ -1142,11 +1162,41 @@ def check_results(artifact_root: Path) -> None:
             require(int(row["paired_output_equal"]) == 1, "profile output mismatch")
 
 
-def analyze_recovery(
+def recovery_resource_rows(
     rows: list[dict[str, str]], artifact_root: Path
+) -> list[dict[str, object]]:
+    output: list[dict[str, object]] = []
+    for row in rows:
+        path = artifact_root / row["attempt_id"] / "time.txt"
+        require(path.is_file() and not path.is_symlink(), f"missing resource log: {path}")
+        max_rss = parse_max_rss(path)
+        require(max_rss is not None and max_rss > 0, f"invalid maximum RSS: {path}")
+        output.append(
+            {
+                "attempt_id": row["attempt_id"],
+                "path": str(path.relative_to(ROOT)),
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+                "max_rss_kib": max_rss,
+            }
+        )
+    return output
+
+
+def analyze_recovery(
+    rows: list[dict[str, str]],
+    artifact_root: Path,
+    *,
+    recover_max_rss: bool = False,
 ) -> tuple[list[dict[str, object]], dict[str, object], dict[str, object]]:
     receipts = receipts_from_artifacts(rows, artifact_root)
-    source = source_rows(rows, receipts)
+    max_rss_by_attempt = None
+    if recover_max_rss:
+        max_rss_by_attempt = {
+            str(row["attempt_id"]): int(row["max_rss_kib"])
+            for row in recovery_resource_rows(rows, artifact_root)
+        }
+    source = source_rows(rows, receipts, max_rss_by_attempt=max_rss_by_attempt)
     stats = build_statistics(source)
     stats["phase1_profile_execution_epoch"] = 2
     stats["v1_blocked_receipt_sha256"] = sha256_file(EXECUTION_RECEIPT)
@@ -1156,6 +1206,137 @@ def analyze_recovery(
     decision["v1_evidence_reused"] = False
     decision["recovery_change_scope"] = "outer_timeout_only"
     return source, stats, decision
+
+
+def attempt_receipt_manifest_sha256(
+    rows: list[dict[str, str]], artifact_root: Path
+) -> str:
+    manifest: list[dict[str, object]] = []
+    for row in rows:
+        path = artifact_root / row["attempt_id"] / "attempt.json"
+        require(path.is_file() and not path.is_symlink(), f"missing attempt receipt: {path}")
+        manifest.append(
+            {
+                "path": str(path.relative_to(artifact_root)),
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            }
+        )
+    return sha256_bytes(tsv_bytes(ARTIFACT_MANIFEST_FIELDS, manifest))
+
+
+def without_keys(value: dict[str, object], *keys: str) -> dict[str, object]:
+    return {key: item for key, item in value.items() if key not in keys}
+
+
+def build_recovery_analysis_receipt(
+    rows: list[dict[str, str]], artifact_root: Path
+) -> tuple[
+    list[dict[str, object]],
+    dict[str, object],
+    dict[str, object],
+    list[dict[str, object]],
+    dict[str, object],
+]:
+    execution_receipt = json.loads(RECOVERY_EXECUTION_RECEIPT.read_text(encoding="utf-8"))
+    require(
+        (artifact_root / "execution.json").read_bytes()
+        == RECOVERY_EXECUTION_RECEIPT.read_bytes(),
+        "recovery artifact execution receipt drift",
+    )
+    legacy_source, legacy_stats, legacy_decision = analyze_recovery(
+        rows, artifact_root, recover_max_rss=False
+    )
+    require(
+        execution_receipt["source_data_sha256"]
+        == sha256_bytes(tsv_bytes(SOURCE_FIELDS, legacy_source)),
+        "runner source-data receipt cannot be reconstructed",
+    )
+    require(
+        execution_receipt["statistics_sha256"] == sha256_bytes(json_bytes(legacy_stats)),
+        "runner statistics receipt cannot be reconstructed",
+    )
+    require(
+        execution_receipt["decision_sha256"] == sha256_bytes(json_bytes(legacy_decision)),
+        "runner decision receipt cannot be reconstructed",
+    )
+    require(
+        all(row["max_rss_kib"] == "" for row in legacy_source),
+        "analysis-only RSS rebuild is not applicable",
+    )
+
+    resources = recovery_resource_rows(rows, artifact_root)
+    source, stats, decision = analyze_recovery(
+        rows, artifact_root, recover_max_rss=True
+    )
+    for legacy_row, rebuilt_row in zip(legacy_source, source):
+        require(
+            without_keys(legacy_row, "max_rss_kib")
+            == without_keys(rebuilt_row, "max_rss_kib"),
+            "RSS rebuild changed a scientific source-data field",
+        )
+    require(
+        without_keys(legacy_stats, "source_data_sha256")
+        == without_keys(stats, "source_data_sha256"),
+        "RSS rebuild changed profile statistics",
+    )
+    require(
+        without_keys(legacy_decision, "statistics_sha256")
+        == without_keys(decision, "statistics_sha256"),
+        "RSS rebuild changed the Amdahl decision",
+    )
+
+    resource_bytes = tsv_bytes(RESOURCE_LOG_FIELDS, resources)
+    receipt = {
+        "schema_version": 1,
+        "phase": 1,
+        "phase1_profile_execution_epoch": 2,
+        "analysis_epoch": 2,
+        "analysis_role": "analysis_only_max_rss_rebuild",
+        "parser_change": "strip_gnu_time_leading_whitespace",
+        "execution_receipt_sha256": sha256_file(RECOVERY_EXECUTION_RECEIPT),
+        "execution_runner_sha256": execution_receipt["runner_sha256"],
+        "attempt_receipt_count": len(rows),
+        "attempt_receipt_manifest_sha256": attempt_receipt_manifest_sha256(rows, artifact_root),
+        "attempt_receipts_modified": False,
+        "resource_log_count": len(resources),
+        "resource_log_manifest_sha256": sha256_bytes(resource_bytes),
+        "max_rss_recovered_count": sum(int(row["max_rss_kib"]) > 0 for row in resources),
+        "runner_analysis": {
+            "source_data_sha256": execution_receipt["source_data_sha256"],
+            "statistics_sha256": execution_receipt["statistics_sha256"],
+            "decision_sha256": execution_receipt["decision_sha256"],
+        },
+        "rebuilt_analysis": {
+            "source_data_sha256": sha256_bytes(tsv_bytes(SOURCE_FIELDS, source)),
+            "statistics_sha256": sha256_bytes(json_bytes(stats)),
+            "decision_sha256": sha256_bytes(json_bytes(decision)),
+            "decision_markdown_sha256": sha256_bytes(
+                render_recovery_decision_markdown(decision)
+            ),
+        },
+        "scientific_statistics_unchanged": True,
+        "amdahl_decision_unchanged": True,
+        "bioinformatics_b3_track": decision["bioinformatics_b3_track"],
+        "conservative_p_backend_addressable": decision[
+            "conservative_p_backend_addressable"
+        ],
+        "maximum_speedup_infinite": decision["maximum_speedup_infinite"],
+    }
+    return source, stats, decision, resources, receipt
+
+
+def rebuild_recovery_analysis() -> None:
+    rows = validate_recovery_plan()
+    source, stats, decision, resources, receipt = build_recovery_analysis_receipt(
+        rows, RECOVERY_ARTIFACT_ROOT
+    )
+    atomic_write(RECOVERY_SOURCE_DATA, tsv_bytes(SOURCE_FIELDS, source))
+    atomic_write(RECOVERY_STATISTICS, json_bytes(stats))
+    atomic_write(RECOVERY_DECISION_JSON, json_bytes(decision))
+    atomic_write(RECOVERY_DECISION_MD, render_recovery_decision_markdown(decision))
+    atomic_write(RECOVERY_RESOURCE_LOGS, tsv_bytes(RESOURCE_LOG_FIELDS, resources))
+    atomic_write(RECOVERY_ANALYSIS_RECEIPT, json_bytes(receipt))
 
 
 def render_recovery_decision_markdown(decision: dict[str, object]) -> bytes:
@@ -1287,7 +1468,13 @@ def execute_recovery(binary: Path) -> None:
 def check_recovery_results() -> None:
     rows = validate_recovery_plan()
     check_blocked_receipt(DEFAULT_ARTIFACT_ROOT)
-    expected_source, expected_stats, expected_decision = analyze_recovery(
+    (
+        expected_source,
+        expected_stats,
+        expected_decision,
+        expected_resources,
+        expected_analysis_receipt,
+    ) = build_recovery_analysis_receipt(
         rows, RECOVERY_ARTIFACT_ROOT
     )
     require(
@@ -1304,6 +1491,15 @@ def check_recovery_results() -> None:
         == render_recovery_decision_markdown(expected_decision),
         "recovery decision report drift",
     )
+    require(
+        RECOVERY_RESOURCE_LOGS.read_bytes()
+        == tsv_bytes(RESOURCE_LOG_FIELDS, expected_resources),
+        "recovery resource-log table drift",
+    )
+    require(
+        RECOVERY_ANALYSIS_RECEIPT.read_bytes() == json_bytes(expected_analysis_receipt),
+        "recovery analysis receipt drift",
+    )
     receipt = json.loads(RECOVERY_EXECUTION_RECEIPT.read_text(encoding="utf-8"))
     require(receipt["status"] == "complete", "recovery execution receipt is incomplete")
     require(receipt["attempts_complete"] == 50, "recovery attempt count drift")
@@ -1315,15 +1511,11 @@ def check_recovery_results() -> None:
         float(receipt["elapsed_seconds"]) <= RECOVERY_TOTAL_BUDGET_SECONDS,
         "recovery total budget exceeded",
     )
-    require(
-        (RECOVERY_ARTIFACT_ROOT / "execution.json").read_bytes()
-        == RECOVERY_EXECUTION_RECEIPT.read_bytes(),
-        "recovery artifact execution receipt drift",
-    )
     require(expected_decision["b3_threshold_changed"] is False, "B3 threshold changed")
     require(expected_decision["engineering_track"] == "active", "engineering track closed")
     for row in expected_source:
         require(str(row["attempt_id"]).startswith("p1v2_"), "v1 attempt entered v2 source data")
+        require(int(row["max_rss_kib"]) > 0, "recovery maximum RSS was not rebuilt")
         if row["profile_mode"] == "profile_on":
             require(int(row["profile_stack_errors"]) == 0, "recovery profile stack error")
             require(int(row["profile_active_depth"]) == 0, "recovery profile stage leaked")
@@ -1364,6 +1556,7 @@ def parse_args() -> argparse.Namespace:
     action.add_argument("--render-recovery-plan", action="store_true")
     action.add_argument("--check-recovery-plan", action="store_true")
     action.add_argument("--execute-recovery", action="store_true")
+    action.add_argument("--rebuild-recovery-analysis", action="store_true")
     action.add_argument("--check-recovery-results", action="store_true")
     parser.add_argument("--binary", type=Path)
     parser.add_argument("--artifact-root", type=Path, default=DEFAULT_ARTIFACT_ROOT)
@@ -1405,6 +1598,9 @@ def main() -> int:
         require(args.binary is not None, "--execute-recovery requires --binary")
         execute_recovery(args.binary.resolve())
         print("SSW-CUDA Phase 1 recovery profile complete")
+    elif args.rebuild_recovery_analysis:
+        rebuild_recovery_analysis()
+        print("SSW-CUDA Phase 1 recovery analysis rebuilt")
     elif args.check_recovery_results:
         check_recovery_results()
         print("SSW-CUDA Phase 1 recovery results OK")

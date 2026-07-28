@@ -207,16 +207,17 @@ ssw_cuda_runtime_commit = UNSET
 ssw_cuda_final_holdout_freeze = UNSET
 ssw_cuda_release_candidate = UNSET
 
-bioinformatics_b3_track = pending_amdahl
+bioinformatics_b3_track = closed_amdahl
 engineering_track = active
 l8_contract_status = diagnostic_only
 
-active_phase = 1
+active_phase = 2
 phase_0_status = pass
-phase_1_status = in_progress
+phase_1_status = pass
 phase_1_profile_execution_epoch = 2
+phase_1_analysis_epoch = 2
 phase_1_v1_status = blocked_by_fixed_timeout
-phase_1_recovery_status = preregistered_not_run
+phase_1_recovery_status = pass
 phase_2_status = pending
 phase_3_status = pending
 phase_4_status = pending
@@ -230,11 +231,11 @@ phase_11_status = pending
 phase_12_status = pending
 phase_13_status = pending
 
-last_completed_phase = 0
-last_decision = phase1_recovery_preregistered
-last_evidence_doc = paper/ssw_cuda/cpu_profile_recovery_protocol.md
-last_test_command = make check-ssw-cuda-phase1-recovery-preflight
-last_commit = d77c75a
+last_completed_phase = 1
+last_decision = closed_amdahl
+last_evidence_doc = paper/ssw_cuda/amdahl_v2_decision.json
+last_test_command = make check-ssw-cuda-phase1-recovery
+last_commit = dc9f45b
 ```
 
 ### 2.1 Phase 依赖

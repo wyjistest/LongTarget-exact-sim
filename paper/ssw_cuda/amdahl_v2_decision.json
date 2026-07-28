@@ -1,0 +1,31 @@
+{
+  "amdahl_gate": "closed_amdahl",
+  "authority_output_changed": false,
+  "b3_threshold_changed": false,
+  "bioinformatics_b3_track": "closed_amdahl",
+  "claim_relevant_conservative_p_by_workload": {
+    "large_h19_chr21": 0.619888605291,
+    "large_h19_chr22": 0.619448148391
+  },
+  "claim_relevant_workloads": [
+    "large_h19_chr21",
+    "large_h19_chr22"
+  ],
+  "conservative_p_backend_addressable": 0.619448148391,
+  "cuda_dp_kernel_authorized_by_phase1": false,
+  "engineering_track": "active",
+  "fresh_holdout_consumed": false,
+  "maximum_speedup_infinite": 2.6277628022881236,
+  "performance_gate_passed": false,
+  "phase": 1,
+  "phase1_profile_execution_epoch": 2,
+  "reason": "conservative_backend_fraction_at_or_below_0.90",
+  "recovery_change_scope": "outer_timeout_only",
+  "required_backend_speedup": null,
+  "schema_version": 1,
+  "statistics_sha256": "519dbf733b275fe66bebc9c715463ce69e58451a4f92cae799f1c0c45eb75fac",
+  "status": "pass",
+  "target_end_to_end_speedup": 10.0,
+  "v1_evidence_reused": false,
+  "v1_status_preserved": "blocked_by_fixed_timeout"
+}

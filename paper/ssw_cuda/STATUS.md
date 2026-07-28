@@ -3,15 +3,16 @@
 ```text
 execution_start_head = 9f87aace6d96cf8142e3816299f04defae5710e4
 execution_branch = gasal2-kcnq1ot1-focused-review
-active_phase = 1
+active_phase = 2
 phase_0_status = pass
-phase_1_status = in_progress
+phase_1_status = pass
 phase_1_profile_execution_epoch = 2
+phase_1_analysis_epoch = 2
 phase_1_v1_status = blocked_by_fixed_timeout
-phase_1_recovery_status = preregistered_not_run
+phase_1_recovery_status = pass
 ssw_cpu_oracle_epoch = 2
 ssw_cuda_program_epoch = 1
-bioinformatics_b3_track = pending_amdahl
+bioinformatics_b3_track = closed_amdahl
 engineering_track = active
 l8_contract_status = diagnostic_only
 ```
@@ -32,10 +33,23 @@ The v1 formal panel is incomplete. No v1 source data, statistics, conservative
 addressable fraction, or Amdahl ceiling is claimed. Its receipt, manifest, and
 partial artifact remain immutable.
 
-Phase 1 profile execution epoch 2 is preregistered. It repeats all 50 attempts
-from the beginning in a separate artifact root and changes only the outer
-per-attempt timeout from 1,800 to 7,200 seconds. Its total wall-clock budget is
-36 hours and retry policy remains `none`. V1 observations cannot enter v2
-statistics. The original 10x threshold is unchanged,
-`bioinformatics_b3_track` remains `pending_amdahl`, and no new CUDA DP kernel
-is authorized before v2 completes and passes its checker.
+Phase 1 profile execution epoch 2 completed all 50 attempts from the beginning
+in 46,806.575 seconds, below the fixed 36-hour budget. It used a separate
+artifact root, changed only the preregistered outer timeout from 1,800 to 7,200
+seconds, attempted no retry, and reused no v1 observations. Every profile-off
+and profile-on pair produced the same authority digest; all profile stacks
+closed without errors.
+
+The lower 95% bootstrap bounds for the addressable backend fraction were
+0.619888605 for `large_h19_chr21` and 0.619448148 for
+`large_h19_chr22`. The conservative fraction is therefore 0.619448148 and the
+infinite-backend Amdahl ceiling is 2.627762802x. The original 10x threshold was
+not lowered. `bioinformatics_b3_track` is `closed_amdahl`, while the bounded
+exact SSW-CUDA engineering track remains active.
+
+The execution runner preserved complete GNU time resource logs but its parser
+did not strip their leading tab, leaving maximum RSS empty in the initial
+analysis. Analysis epoch 2 reconstructed all 50 RSS values from those immutable
+logs. The execution receipt and all attempt receipts remain unchanged; the
+analysis receipt proves that profile statistics and the Amdahl decision did
+not change. Phase 2 is now active. No new CUDA DP kernel has been authored.

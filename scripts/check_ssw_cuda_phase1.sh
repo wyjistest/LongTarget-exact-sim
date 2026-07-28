@@ -131,7 +131,9 @@ elif [[ "$MODE" == "--recovery-preflight" ]]; then
     paper/ssw_cuda/cpu_profile_v2_statistics.json \
     paper/ssw_cuda/amdahl_v2_decision.json \
     paper/ssw_cuda/amdahl_v2_decision.md \
-    paper/ssw_cuda/cpu_profile_v2_execution_receipt.json; do
+    paper/ssw_cuda/cpu_profile_v2_execution_receipt.json \
+    paper/ssw_cuda/cpu_profile_v2_resource_logs.tsv \
+    paper/ssw_cuda/cpu_profile_v2_analysis_receipt.json; do
     if [[ -e "$ROOT/$relative" ]]; then
       echo "unexpected preexecution Phase 1 recovery result: $relative" >&2
       exit 1
@@ -143,7 +145,9 @@ elif [[ "$MODE" == "--recovery-final" ]]; then
     paper/ssw_cuda/cpu_profile_v2_statistics.json \
     paper/ssw_cuda/amdahl_v2_decision.json \
     paper/ssw_cuda/amdahl_v2_decision.md \
-    paper/ssw_cuda/cpu_profile_v2_execution_receipt.json; do
+    paper/ssw_cuda/cpu_profile_v2_execution_receipt.json \
+    paper/ssw_cuda/cpu_profile_v2_resource_logs.tsv \
+    paper/ssw_cuda/cpu_profile_v2_analysis_receipt.json; do
     if [[ ! -f "$ROOT/$relative" || -L "$ROOT/$relative" ]]; then
       echo "missing final Phase 1 recovery evidence: $relative" >&2
       exit 1
@@ -152,6 +156,7 @@ elif [[ "$MODE" == "--recovery-final" ]]; then
   python3 -m json.tool "$ROOT/paper/ssw_cuda/cpu_profile_v2_statistics.json" >/dev/null
   python3 -m json.tool "$ROOT/paper/ssw_cuda/amdahl_v2_decision.json" >/dev/null
   python3 -m json.tool "$ROOT/paper/ssw_cuda/cpu_profile_v2_execution_receipt.json" >/dev/null
+  python3 -m json.tool "$ROOT/paper/ssw_cuda/cpu_profile_v2_analysis_receipt.json" >/dev/null
   PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/reproduce/ssw_cuda/run_cpu_profile.py" \
     --check-recovery-results
 fi
