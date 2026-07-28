@@ -1,0 +1,60 @@
+{
+  "bioinformatics_b3_track": "closed_amdahl",
+  "decision": "ssw_cuda_forward_or_reverse_checkpoint_only",
+  "decision_reason": "exact L1-L3 checkpoints passed, but the integrated forward-hybrid failed its Phase 7 continuation contract and performance checkpoint",
+  "engineering_track": "closed_phase7_forward_hybrid_no_go",
+  "evidence": {
+    "amdahl": {
+      "path": "paper/ssw_cuda/amdahl_v2_decision.json",
+      "sha256": "dd8ac536e60cacea10ed4ec0ad1cc705dde797f308aa53a0e87c2affa8214fdd"
+    },
+    "canonical_hybrid_v2_performance": {
+      "path": "paper/bioinformatics/canonical_hybrid_v2_performance_receipt.json",
+      "sha256": "765a77c9f3ee5a4a544a1d59a11a20868c94217843aa433942332c860dec7219"
+    },
+    "cpu_oracle": {
+      "path": "paper/ssw_cuda/cpu_oracle_binary_receipt.json",
+      "sha256": "647d4a8141c75ecbc936a6a25ddc8fda607cba1f76d956de3ee0abe4eaf66941"
+    },
+    "forward_endpoint": {
+      "path": "paper/ssw_cuda/forward_endpoint_receipt.json",
+      "sha256": "026a27107c076028820d0d89db6b6c0b24e3237804a3caa7c56f1091d3755c09"
+    },
+    "forward_hybrid": {
+      "path": "paper/ssw_cuda/forward_hybrid_decision.json",
+      "sha256": "d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1"
+    },
+    "preselect": {
+      "path": "paper/ssw_cuda/preselect_receipt.json",
+      "sha256": "8b247a6afd170a36a518fe1a1bd40c591e5f05b2a888627a2acc133fedbad38f"
+    }
+  },
+  "final_certification": "pending_clean_commit",
+  "fresh_holdout_executed": false,
+  "full_gpu_backend_integrated": false,
+  "full_gpu_contract_promoted": false,
+  "l8_contract_status": "diagnostic_only",
+  "phase13_status": "in_progress",
+  "phase_status": {
+    "0": "pass",
+    "1": "pass",
+    "10": "not_run_phase7_no_go",
+    "11": "not_run_phase7_no_go",
+    "12": "not_run_phase7_no_go",
+    "13": "in_progress",
+    "2": "pass",
+    "3": "pass",
+    "4": "pass",
+    "5": "pass",
+    "6": "pass",
+    "7": "no_go",
+    "8": "not_run_phase7_no_go",
+    "9": "not_run_phase7_no_go"
+  },
+  "publication_route": "negative_result_or_checkpoint_methods_handoff_only",
+  "release_candidate_created": false,
+  "safe_gpu_user_contract": false,
+  "schema_version": 1,
+  "target_end_to_end_speedup": 10.0,
+  "threshold_changed": false
+}

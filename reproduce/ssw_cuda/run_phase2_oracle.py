@@ -245,6 +245,18 @@ def git_output(*args: str) -> str:
     return result.stdout.strip()
 
 
+def git_bytes(commit: str, relative: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "show", f"{commit}:{relative}"],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    require(result.returncode == 0,
+            f"cannot read frozen Phase 2 source: {relative}")
+    return result.stdout
+
+
 def normalized_stdout(data: bytes) -> bytes:
     lines = data.decode("utf-8", errors="replace").splitlines()
     return ("\n".join(line for line in lines if not line.startswith("Running time is ")) + "\n").encode(
@@ -846,8 +858,10 @@ def check_results(binary: Path) -> None:
     require(sha256_file(SCHEMA) == receipt["schema_sha256"], "schema digest drift")
     require(sha256_file(PLAN) == receipt["attempt_plan_sha256"], "attempt-plan digest drift")
     require(set(receipt["source_inventory"]) == set(SOURCE_INVENTORY), "Phase 2 source-inventory membership drift")
+    execution_commit = receipt["execution_commit"]
     for relative, digest in receipt["source_inventory"].items():
-        require(sha256_file(ROOT / relative) == digest, f"Phase 2 source drift: {relative}")
+        require(sha256_bytes(git_bytes(execution_commit, relative)) == digest,
+                f"Phase 2 frozen source drift: {relative}")
     manifest_payload = tsv_bytes(MANIFEST_FIELDS, artifact_rows(ARTIFACT_ROOT))
     require(ARTIFACT_MANIFEST.read_bytes() == manifest_payload, "artifact manifest drift")
     require(sha256_bytes(manifest_payload) == receipt["artifact_manifest_sha256"], "artifact manifest receipt drift")

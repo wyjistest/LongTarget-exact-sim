@@ -97,19 +97,12 @@ if mode == "--preflight":
     comparison_end = "WORKTREE"
 else:
     if (
-        state["active_phase"] != 4
+        state["active_phase"] < 4
         or state["phase_status"]["3"] != "pass"
-        or state["phase_status"]["4"] != "in_progress"
     ):
-        raise SystemExit("Phase 3 final state has not advanced to Phase 4")
+        raise SystemExit("Phase 3 final state is invalid")
     required_goal = (
-        "active_phase = 4",
         "phase_3_status = pass",
-        "phase_4_status = in_progress",
-        "last_completed_phase = 3",
-        "last_decision = phase3_corpus_policy_pass",
-        "last_evidence_doc = paper/ssw_cuda/corpus_receipt.json",
-        "last_test_command = make check-ssw-cuda-phase3",
     )
     completed = subprocess.run(
         [

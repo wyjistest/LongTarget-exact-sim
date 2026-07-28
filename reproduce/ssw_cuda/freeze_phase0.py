@@ -126,6 +126,21 @@ def git(*arguments: str) -> str:
     return run(("git", *arguments)).stdout.strip()
 
 
+def git_bytes(*arguments: str) -> bytes:
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=120,
+    )
+    require(completed.returncode == 0,
+            completed.stderr.decode("utf-8", errors="replace").strip() or
+            f"git command failed: {' '.join(arguments)}")
+    return completed.stdout
+
+
 def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -261,16 +276,26 @@ def build_historical_inventory() -> list[dict[str, object]]:
 
 
 def source_paths() -> list[str]:
+    # The Phase 0 authority inventory is an epoch snapshot, not a live glob.
+    # Later SSW-CUDA phases add headers under fasim/, which must not expand it.
     paths = {
         "Makefile",
+        "fasim/fastSim.h",
+        "fasim/fastsim.h",
         "fasim/Fasim-LongTarget.cpp",
+        "fasim/gasal2_align_bridge.h",
+        "fasim/gasal2_traceback_certificate.h",
+        "fasim/rules.h",
+        "fasim/sim.h",
+        "fasim/ssw.h",
         "fasim/ssw_cpp.cpp",
+        "fasim/ssw_cpp.h",
         "fasim/sswNew.cpp",
+        "fasim/stats.h",
         "fasim/gasal2_align_bridge_stub.cpp",
         "cuda/prealign_cuda_stub.cpp",
         "cuda/prealign_cuda.h",
     }
-    paths.update(git("ls-files", "fasim/*.h").splitlines())
     return sorted(paths)
 
 
@@ -504,12 +529,14 @@ def build_license_inventory() -> list[dict[str, object]]:
     gasal_license = gasal_root / "LICENSE"
     require(gasal_license.is_file() and not gasal_license.is_symlink(), "GASAL2 license is unavailable")
     gasal_commit = run(("git", "rev-parse", "HEAD"), cwd=gasal_root).stdout.strip()
+    project_license = git_bytes("show", f"{EXECUTION_START_HEAD}:LICENSE")
+    ssw_notice = git_bytes("show", f"{EXECUTION_START_HEAD}:fasim/sswNew.cpp")
     return [
         {
             "component": "LongTarget-exact-sim",
             "license_expression": "AGPL-3.0-or-later",
             "notice_path": "LICENSE",
-            "notice_sha256": sha256_file(ROOT / "LICENSE"),
+            "notice_sha256": sha256_bytes(project_license),
             "source_commit": EXECUTION_START_HEAD,
             "use_status": "project_license",
             "notes": "Repository-level license declared by README and LICENSE.",
@@ -518,7 +545,7 @@ def build_license_inventory() -> list[dict[str, object]]:
             "component": "Complete Striped Smith-Waterman core",
             "license_expression": "MIT AND BSD-2-Clause",
             "notice_path": "fasim/sswNew.cpp",
-            "notice_sha256": sha256_file(ROOT / "fasim/sswNew.cpp"),
+            "notice_sha256": sha256_bytes(ssw_notice),
             "source_commit": EXECUTION_START_HEAD,
             "use_status": "embedded_authority_source",
             "notes": "Both notices are embedded at the start of the modified SSW source.",
@@ -893,12 +920,27 @@ def check_outputs() -> None:
     registry_payload = tsv_bytes(REGISTRY_FIELDS, build_registry())
     source_payload = tsv_bytes(SOURCE_FIELDS, build_source_inventory())
     license_payload = tsv_bytes(LICENSE_FIELDS, build_license_inventory())
-    claim_payload = tsv_bytes(CLAIM_FIELDS, claim_rows())
     require(HISTORICAL_INVENTORY.read_bytes() == inventory_payload, "historical inventory is not reproducible")
     require(REGISTRY.read_bytes() == registry_payload, "used-input registry is not reproducible")
     require(SOURCE_INVENTORY.read_bytes() == source_payload, "source inventory is not reproducible")
     require(LICENSE_INVENTORY.read_bytes() == license_payload, "license inventory is not reproducible")
-    require(CLAIM_LEDGER.read_bytes() == claim_payload, "claim ledger is not reproducible")
+    expected_claims = {row["claim_id"]: row for row in claim_rows()}
+    observed_claim_rows = read_tsv(str(CLAIM_LEDGER.relative_to(ROOT)))
+    require(len(observed_claim_rows) == len({row["claim_id"] for row in observed_claim_rows}),
+            "claim ledger contains duplicate IDs")
+    observed_claims = {row["claim_id"]: row for row in observed_claim_rows}
+    for claim_id in (
+        "HIST_GPU_TRACEBACK_V1",
+        "HIST_PHASE3_V1_B3",
+        "HIST_CANONICAL_HYBRID_V2_CORRECTNESS",
+        "HIST_CANONICAL_HYBRID_V2_PERFORMANCE",
+        "SSW_CUDA_L8",
+    ):
+        require(observed_claims.get(claim_id) == expected_claims[claim_id],
+                f"immutable Phase 0 claim drift: {claim_id}")
+    require(observed_claims.get("SSW_CUDA_B3", {}).get("status") in
+            {"pending_amdahl", "closed_amdahl"},
+            "invalid versioned B3 claim state")
     require(receipt["historical_summary"] == historical_summary(), "historical numeric summary drift")
     require(receipt["baseline_checks"] == validate_baseline_check_receipt(), "baseline check binding drift")
     require(receipt["historical_evidence_inventory"]["sha256"] == sha256_bytes(inventory_payload), "inventory binding drift")

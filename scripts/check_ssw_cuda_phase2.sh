@@ -61,7 +61,7 @@ mode = sys.argv[2]
 state = json.loads((root / "paper/ssw_cuda/PROGRAM_STATE.json").read_text(encoding="utf-8"))
 goal = (root / "goal-ssw.md").read_text(encoding="utf-8")
 
-if state["active_phase"] not in (2, 3) or state["phase_status"]["0"] != "pass" or state["phase_status"]["1"] != "pass":
+if state["active_phase"] < 2 or state["phase_status"]["0"] != "pass" or state["phase_status"]["1"] != "pass":
     raise SystemExit("Phase 2 prerequisite state is invalid")
 if "phase_2_status = in_progress" not in goal and "phase_2_status = pass" not in goal:
     raise SystemExit("goal-ssw Phase 2 status is missing")
@@ -69,8 +69,8 @@ if mode == "--preflight":
     if state["active_phase"] != 2 or state["phase_status"]["2"] != "in_progress":
         raise SystemExit("Phase 2 preflight requires in-progress state")
 else:
-    if state["active_phase"] != 3 or state["phase_status"]["2"] != "pass":
-        raise SystemExit("Phase 2 final state has not advanced to Phase 3")
+    if state["active_phase"] < 3 or state["phase_status"]["2"] != "pass":
+        raise SystemExit("Phase 2 final state is invalid")
 PY
 
 if [[ "$MODE" == "--preflight" ]]; then

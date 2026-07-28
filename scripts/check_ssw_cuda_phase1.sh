@@ -58,7 +58,7 @@ mode = sys.argv[2]
 state = json.loads((root / "paper/ssw_cuda/PROGRAM_STATE.json").read_text(encoding="utf-8"))
 goal = (root / "goal-ssw.md").read_text(encoding="utf-8")
 
-if state["active_phase"] not in (1, 2) or state["phase_status"]["0"] != "pass":
+if state["active_phase"] < 1 or state["phase_status"]["0"] != "pass":
     raise SystemExit("Phase 1 program state is invalid")
 if not any(
     marker in goal
@@ -73,8 +73,8 @@ if mode == "--preflight":
     if state["active_phase"] != 1 or state["phase_status"]["1"] != "in_progress":
         raise SystemExit("Phase 1 preflight requires in-progress state")
 elif mode in ("--final", "--recovery-final"):
-    if state["active_phase"] != 2 or state["phase_status"]["1"] != "pass":
-        raise SystemExit("Phase 1 final state has not advanced to Phase 2")
+    if state["active_phase"] < 2 or state["phase_status"]["1"] != "pass":
+        raise SystemExit("Phase 1 final state is invalid")
 elif mode == "--blocked":
     if state["active_phase"] != 1 or state["phase_status"]["1"] != "blocked":
         raise SystemExit("Phase 1 blocked state is invalid")

@@ -57,28 +57,25 @@ receipt = json.loads((root / "paper/ssw_cuda/historical_evidence_receipt.json").
 goal = (root / "goal-ssw.md").read_text(encoding="utf-8")
 status = (root / "paper/ssw_cuda/STATUS.md").read_text(encoding="utf-8")
 
-if state["phase_status"]["0"] != "pass" or state["active_phase"] != 1:
-    raise SystemExit("Phase 0 program state has not advanced to Phase 1")
+if state["phase_status"]["0"] != "pass" or state["active_phase"] < 1:
+    raise SystemExit("Phase 0 program state is invalid")
 if receipt["phase0_status"] != "pass":
     raise SystemExit("Phase 0 historical receipt is not final")
 for phrase in (
-    "active_phase = 1",
     "phase_0_status = pass",
-    "last_completed_phase = 0",
-    "last_decision = phase0_evidence_frozen",
-    "last_evidence_doc = paper/ssw_cuda/historical_evidence_receipt.json",
-    "last_test_command = make check-ssw-cuda-phase0",
+    "historical_canonical_hybrid_v2_fresh_holdout = 60/60",
+    "historical_canonical_hybrid_v2_b3 = no_go",
 ):
     if phrase not in goal:
         raise SystemExit(f"goal-ssw state drift: {phrase}")
 for phrase in (
-    "active_phase = 1",
     "phase_0_status = pass",
-    "bioinformatics_b3_track = pending_amdahl",
     "l8_contract_status = diagnostic_only",
 ):
     if phrase not in status:
         raise SystemExit(f"SSW-CUDA status drift: {phrase}")
+if state["active_phase"] > 1 and "bioinformatics_b3_track = closed_amdahl" not in status:
+    raise SystemExit("SSW-CUDA final Amdahl state drift")
 PY
 
 if [[ "$(sha256sum "$ROOT/goal.md" | awk '{print $1}')" != \

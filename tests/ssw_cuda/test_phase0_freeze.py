@@ -87,7 +87,12 @@ class Phase0FreezeTests(unittest.TestCase):
         self.assertEqual(state["ssw_cpu_oracle_epoch"], 2)
         self.assertEqual(state["ssw_cuda_program_epoch"], 1)
         self.assertEqual(state["l8_contract_status"], "diagnostic_only")
-        self.assertEqual(state["bioinformatics_b3_track"], "pending_amdahl")
+        self.assertIn(
+            state["bioinformatics_b3_track"],
+            {"pending_amdahl", "closed_amdahl"},
+        )
+        if state["active_phase"] > 1:
+            self.assertEqual(state["bioinformatics_b3_track"], "closed_amdahl")
 
 
 if __name__ == "__main__":

@@ -93,19 +93,12 @@ if mode == "--preflight":
     comparison_end = "WORKTREE"
 else:
     if (
-        state["active_phase"] != 5
+        state["active_phase"] < 5
         or state["phase_status"]["4"] != "pass"
-        or state["phase_status"]["5"] != "in_progress"
     ):
-        raise SystemExit("Phase 4 final state has not advanced to Phase 5")
+        raise SystemExit("Phase 4 final state is invalid")
     required_goal = (
-        "active_phase = 5",
         "phase_4_status = pass",
-        "phase_5_status = in_progress",
-        "last_completed_phase = 4",
-        "last_decision = phase4_architecture_C_selected",
-        "last_evidence_doc = paper/ssw_cuda/architecture_decision.md",
-        "last_test_command = make check-ssw-cuda-phase4",
     )
     commits = subprocess.run(
         ["git", "log", "--format=%H", "--diff-filter=A", "--", "paper/ssw_cuda/upstream_snapshot.tsv"],
@@ -125,10 +118,11 @@ for phrase in (
     f"active_phase = {state['active_phase']}",
     f"phase_4_status = {state['phase_status']['4']}",
     "bioinformatics_b3_track = closed_amdahl",
-    "engineering_track = active",
 ):
     if phrase not in status:
         raise SystemExit(f"SSW-CUDA status drift: {phrase}")
+if f"engineering_track = {state['engineering_track']}" not in status:
+    raise SystemExit("SSW-CUDA engineering-track state drift")
 
 if comparison_end == "WORKTREE":
     paths = [

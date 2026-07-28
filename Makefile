@@ -248,6 +248,16 @@ check-ssw-cuda-phase7-preflight:
 check-ssw-cuda-phase7:
 	bash ./scripts/check_ssw_cuda_phase7.sh --final
 
+.PHONY: check-ssw-cuda-phase13-precommit check-ssw-cuda-phase13 check-ssw-cuda
+check-ssw-cuda-phase13-precommit:
+	bash ./scripts/check_ssw_cuda_all.sh --precommit
+
+check-ssw-cuda-phase13:
+	bash ./scripts/check_ssw_cuda_all.sh --final
+
+check-ssw-cuda:
+	bash ./scripts/check_ssw_cuda_all.sh --final
+
 $(SSW_CUDA_PHASE7_CONTINUATION_DRIVER): tests/ssw_cuda/ssw_cpu_continuation_driver.cpp \
 		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp \
 		fasim/ssw_cpp.h fasim/ssw.h fasim/rules.h \
@@ -1611,7 +1621,7 @@ run-ssw-cuda-phase2: check-ssw-cuda-phase2-preflight
 	PYTHONDONTWRITEBYTECODE=1 python3 ./reproduce/ssw_cuda/run_phase2_oracle.py \
 		--run-formal --binary $(SSW_CUDA_PHASE2_ORACLE_BIN)
 
-check-ssw-cuda-phase2: build-ssw-cuda-phase2-oracle
+check-ssw-cuda-phase2:
 	SSW_CUDA_PHASE2_BIN=$(SSW_CUDA_PHASE2_ORACLE_BIN) \
 		bash ./scripts/check_ssw_cuda_phase2.sh --final
 
