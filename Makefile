@@ -142,7 +142,8 @@ FASIM_TARGET ?= fasim_longtarget_x86
 FASIM_CUDA_TARGET ?= fasim_longtarget_cuda
 FASIM_GASAL2_TARGET ?= fasim_longtarget_gasal2
 SSW_CUDA_PHASE1_PROFILE_BIN ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/phase1/fasim_authority_profile
-FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp
+SSW_CUDA_PHASE2_ORACLE_BIN ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/phase2/fasim_cpu_oracle
+FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
 GASAL2_DIR ?= .tmp/GASAL2
 GASAL2_REPO_URL ?= https://github.com/nahmedraja/GASAL2.git
@@ -163,6 +164,13 @@ $(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stu
 build-ssw-cuda-phase1-profile: $(SSW_CUDA_PHASE1_PROFILE_BIN)
 
 $(SSW_CUDA_PHASE1_PROFILE_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-ssw-cuda-phase2-oracle
+build-ssw-cuda-phase2-oracle: $(SSW_CUDA_PHASE2_ORACLE_BIN)
+
+$(SSW_CUDA_PHASE2_ORACLE_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
 	@mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -643,16 +651,16 @@ benchmark-fasim-sharded-worker-workload-matrix:
 	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_worker_workload_matrix.sh
 
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
-FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp
+FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp
 
 FASIM_TRANSFERSTRING_TABLE_TEST_TARGET ?= tests/test_fasim_transferstring_table
 FASIM_TRANSFERSTRING_TABLE_TEST_SOURCES := tests/test_fasim_transferstring_table.cpp
 
 FASIM_SSW_PROFILE_CACHE_TEST_TARGET ?= tests/test_fasim_ssw_profile_cache
-FASIM_SSW_PROFILE_CACHE_TEST_SOURCES := tests/test_fasim_ssw_profile_cache.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp
+FASIM_SSW_PROFILE_CACHE_TEST_SOURCES := tests/test_fasim_ssw_profile_cache.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
 SSW_AVX2_DIRECT_TEST_TARGET ?= tests/test_ssw_avx2_direct
-SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp
+SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
@@ -1486,6 +1494,19 @@ check-ssw-cuda-phase1-recovery-preflight: build-ssw-cuda-phase1-profile
 check-ssw-cuda-phase1-recovery: build-ssw-cuda-phase1-profile
 	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
 		bash ./scripts/check_ssw_cuda_phase1.sh --recovery-final
+
+.PHONY: check-ssw-cuda-phase2-preflight run-ssw-cuda-phase2 check-ssw-cuda-phase2
+check-ssw-cuda-phase2-preflight: build-ssw-cuda-phase2-oracle
+	SSW_CUDA_PHASE2_BIN=$(SSW_CUDA_PHASE2_ORACLE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase2.sh --preflight
+
+run-ssw-cuda-phase2: check-ssw-cuda-phase2-preflight
+	PYTHONDONTWRITEBYTECODE=1 python3 ./reproduce/ssw_cuda/run_phase2_oracle.py \
+		--run-formal --binary $(SSW_CUDA_PHASE2_ORACLE_BIN)
+
+check-ssw-cuda-phase2: build-ssw-cuda-phase2-oracle
+	SSW_CUDA_PHASE2_BIN=$(SSW_CUDA_PHASE2_ORACLE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase2.sh --final
 
 check-bioinformatics-phase3-freeze: SHELL := /bin/sh
 check-bioinformatics-phase3-freeze:

@@ -218,7 +218,8 @@ phase_1_profile_execution_epoch = 2
 phase_1_analysis_epoch = 2
 phase_1_v1_status = blocked_by_fixed_timeout
 phase_1_recovery_status = pass
-phase_2_status = pending
+phase_2_oracle_execution_epoch = 1
+phase_2_status = in_progress
 phase_3_status = pending
 phase_4_status = pending
 phase_5_status = pending
@@ -232,10 +233,10 @@ phase_12_status = pending
 phase_13_status = pending
 
 last_completed_phase = 1
-last_decision = closed_amdahl
-last_evidence_doc = paper/ssw_cuda/amdahl_v2_decision.json
-last_test_command = make check-ssw-cuda-phase1-recovery
-last_commit = dc9f45b
+last_decision = phase2_oracle_preregistered
+last_evidence_doc = paper/ssw_cuda/cpu_oracle_protocol.md
+last_test_command = make check-ssw-cuda-phase2-preflight
+last_commit = e3c953b
 ```
 
 ### 2.1 Phase 依赖

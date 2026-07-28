@@ -4,6 +4,7 @@
 
 #include "ssw_cpp.h"
 #include "ssw.h"
+#include "ssw_oracle_trace.h"
 #include<algorithm>
 #include <iostream>
 #include <map>
@@ -571,6 +572,9 @@ namespace StripedSmithWaterman {
 
 
 		const int8_t score_size = 2;
+		fasim_ssw_oracle::begin_prealign(query, query_len, ref, ref_len,
+			match_score_, mismatch_penalty_, gap_opening_penalty_,
+			gap_extending_penalty_, maskLen);
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
 
@@ -743,6 +747,14 @@ namespace StripedSmithWaterman {
 			//tmpScoreInfo[tmpScoreInfo.size() - 1].position);
 		//finalScoreInfo.push_back(bScoreInfo);
 
+		for (size_t score_info_index = 0;
+			score_info_index < finalScoreInfo.size(); ++score_info_index) {
+			fasim_ssw_oracle::append_prealign_scoreinfo(
+				static_cast<int>(score_info_index),
+				finalScoreInfo[score_info_index].score,
+				finalScoreInfo[score_info_index].position);
+		}
+		fasim_ssw_oracle::finish_prealign(threshold);
 		return true;
 	}
 
@@ -836,6 +848,10 @@ namespace StripedSmithWaterman {
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
+		fasim_ssw_oracle::begin_alignment(query, query_len, ref, valid_ref_len,
+			match_score_, mismatch_penalty_, gap_opening_penalty_,
+			gap_extending_penalty_, maskLen, flag, filter.score_filter,
+			filter.distance_filter);
 		s_align* s_al = ssw_align(profile, translated_ref, valid_ref_len,
 			static_cast<int>(gap_opening_penalty_),
 			static_cast<int>(gap_extending_penalty_),
@@ -844,10 +860,21 @@ namespace StripedSmithWaterman {
 		alignment->Clear();
 				if(s_al!=NULL){
 		    ConvertAlignment(*s_al, query_len, alignment);
+		    fasim_ssw_oracle::finish_alignment(
+			    alignment->sw_score,
+			    alignment->sw_score_next_best,
+			    alignment->ref_begin,
+			    alignment->ref_end,
+			    alignment->query_begin,
+			    alignment->query_end,
+			    alignment->ref_end_next_best,
+			    alignment->cigar_string,
+			    static_cast<int>(alignment->cigar.size()));
 		    align_destroy(s_al);
 		}
 		else{
 		    alignment->sw_score = 0;
+		    fasim_ssw_oracle::abort_alignment("ssw_align_returned_null");
 		}
 		if (profileCacheEnabled &&
 		    (SswProfileCacheValidateRuntime() ||

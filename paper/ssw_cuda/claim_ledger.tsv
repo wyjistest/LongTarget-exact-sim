@@ -6,3 +6,4 @@ HIST_CANONICAL_HYBRID_V2_PERFORMANCE	no_go_closed	Canonical-hybrid-v2 was 3.8821
 SSW_CUDA_L1_L7	pending	No new exact SSW-CUDA correctness claim is currently established.	The new SSW-CUDA backend is exact or safe.	NONE
 SSW_CUDA_L8	diagnostic_only	Full-output equality is recorded only as a diagnostic.	Full-output exact replacement.	goal-ssw.md
 SSW_CUDA_B3	closed_amdahl	For the frozen backend scope, the conservative addressable fraction is 0.619448148 and the infinite-backend ceiling is 2.627762802x; the 10x Bioinformatics widening route is closed.	The current SSW backend scope can achieve or remains mathematically open for 10x end-to-end acceleration.	paper/ssw_cuda/amdahl_v2_decision.json
+SSW_CPU_ORACLE_L0_L6	in_progress	The Phase 2 observable-semantics trace and paired inertness test are preregistered but not yet formal evidence.	L0-L6 semantics or trace inertness are already frozen and proven.	paper/ssw_cuda/cpu_oracle_protocol.md

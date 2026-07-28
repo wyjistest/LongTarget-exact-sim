@@ -7,6 +7,7 @@
 #include <chrono>
 #include "ssw_cpp.h"
 #include "ssw.h"
+#include "ssw_oracle_trace.h"
 #include "sim.h"
 #include "gasal2_align_bridge.h"
 #include "../cuda/prealign_cuda.h"
@@ -1204,6 +1205,7 @@ void fastSIM(string& strA, string& strB, string& strSrc,
 	int penaltyC, struct para paraList,
 	bool materializeAlignmentStrings = true)
 {
+	fasim_ssw_oracle::begin_workload(strA, strB, dnaStartPos, rule, strand);
 	FasimAuthorityProfileScope authoritySelectionScope(
 		FASIM_AUTHORITY_STAGE_SELECTION);
 	int32_t maskLen = 15;
@@ -1303,6 +1305,7 @@ void fastSIM(string& strA, string& strB, string& strSrc,
 	                              penaltyC,
 	                              paraList,
 	                              materializeAlignmentStrings);
+	fasim_ssw_oracle::end_workload();
 }
 
 inline void fastSIM_extend_from_attempt_descriptors(
@@ -1907,6 +1910,11 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			float Iden = 0.6;
 			int cutlength, bestcutregion;
 			int myflag = 0;
+			int identityRound = 0;
+			std::string bestTraceAttempt;
+			std::string lastTraceAttempt;
+			std::string selectedTraceAttempt;
+			const char* traceSelectionReason = "none";
 			StripedSmithWaterman::Alignment bestalignment;
 			bestalignment.sw_score = 0;
 			while (Iden <= 1)
@@ -1915,7 +1923,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				cutlength = finalScoreInfo[i].position - cutlength + 1 > 0 ? cutlength : finalScoreInfo[i].position + 1;
 				const std::chrono::steady_clock::time_point substrStart =
 					std::chrono::steady_clock::now();
-				smallSeq = strB.substr(finalScoreInfo[i].position - cutlength + 1, cutlength);
+				const int traceTargetStart = finalScoreInfo[i].position - cutlength + 1;
+				smallSeq = strB.substr(traceTargetStart, cutlength);
 				if (timing != NULL)
 				{
 					timing->substr_seconds +=
@@ -1924,7 +1933,11 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				}
 				const std::chrono::steady_clock::time_point alignStart =
 					std::chrono::steady_clock::now();
+				const std::string traceAttempt = fasim_ssw_oracle::begin_attempt(
+					i, finalScoreInfo[i].score, identityRound, Iden,
+					traceTargetStart, cutlength);
 				aligner.Align(strA.c_str(), smallSeq.c_str(), smallSeq.size(), filter, &alignment, maskLen);
+				lastTraceAttempt = traceAttempt;
 				if (timing != NULL)
 				{
 					++timing->align_attempts;
@@ -1935,6 +1948,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				if (alignment.sw_score >= finalScoreInfo[i].score)
 				{
 					myflag = 1;
+					selectedTraceAttempt = traceAttempt;
+					traceSelectionReason = "threshold";
 				break;
 			}
 			if (alignment.sw_score > bestalignment.sw_score && alignment.ref_end == cutlength - 1)
@@ -1950,12 +1965,16 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				bestalignment.cigar_string = alignment.cigar_string;
 				bestalignment.cigar = alignment.cigar;
 				bestcutregion = cutlength;
+				bestTraceAttempt = traceAttempt;
 				myflag = 2;
 			}
 			Iden += 0.1;
+			++identityRound;
 		}
 		if (myflag == 2)
 		{
+			selectedTraceAttempt = bestTraceAttempt;
+			traceSelectionReason = "best_fallback";
 			alignment.sw_score = bestalignment.sw_score;
 			alignment.sw_score_next_best = bestalignment.sw_score_next_best;
 			alignment.ref_begin = bestalignment.ref_begin;
@@ -1968,6 +1987,13 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			alignment.cigar = bestalignment.cigar;
 			cutlength = bestcutregion;
 		}
+		else if (myflag == 0 && alignment.sw_score != 0)
+		{
+			selectedTraceAttempt = lastTraceAttempt;
+			traceSelectionReason = "last";
+		}
+		fasim_ssw_oracle::finish_scoreinfo_group(
+			i, selectedTraceAttempt, traceSelectionReason);
 			bestalignment.Clear();
 			if (alignment.sw_score != 0)
 			{
@@ -1990,6 +2016,7 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					timing);
 				const std::chrono::steady_clock::time_point convertStart =
 					std::chrono::steady_clock::now();
+				const size_t convertedRowBegin = myTriplexList.size();
 				convertMyTriplex(alignment,
 				                 myTriplexList,
 				                 strA,
@@ -2005,6 +2032,12 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				                 ntMin,
 				                 ntMax,
 				                 materializeAlignmentStrings);
+				for (size_t rowIndex = convertedRowBegin;
+					rowIndex < myTriplexList.size(); ++rowIndex)
+				{
+					myTriplexList[rowIndex].ssw_oracle_attempt_key =
+						selectedTraceAttempt;
+				}
 				if (timing != NULL)
 				{
 					timing->convert_seconds +=
@@ -2037,9 +2070,25 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			triplex atr = myTriplexList[i];
 			if (atr.identity >= paraList.minIdentity && atr.tri_score >= paraList.minStability && atr.nt >= ntMin)
 			{
+				fasim_ssw_oracle::record_emitted_row(
+					atr.ssw_oracle_attempt_key,
+					atr.stari,
+					atr.endi,
+					atr.starj,
+					atr.endj,
+					atr.strand,
+					atr.reverse,
+					atr.rule,
+					atr.nt,
+					atr.score,
+					atr.identity,
+					atr.tri_score,
+					atr.stri_align,
+					atr.strj_align);
 				triplex_list.push_back(atr);
 			}
 		}
+		fasim_ssw_oracle::publish_workload_records();
 		if (timing != NULL)
 		{
 			timing->filter_seconds +=

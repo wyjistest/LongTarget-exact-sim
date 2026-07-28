@@ -95,6 +95,7 @@
 #include <math.h>
 #include <time.h>
 #include "ssw.h"
+#include "ssw_oracle_trace.h"
 #include <iostream>
 using std::cout;
 #ifdef __GNUC__
@@ -943,6 +944,9 @@ static alignment_end* sw_sse2_byte(const int8_t* ref,
 	//		fprintf(stderr, "%d is score %d is ref\n", maxColumn[i], i);
 	//	}
 	//}
+	fasim_ssw_oracle::record_alignment_dp_pass_u8(
+		maxColumn, refLen, ref_dir, "byte8", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1104,6 +1108,9 @@ static alignment_end* sw_avx2_byte(const int8_t* ref,
 			bests[1].ref = i;
 		}
 	}
+	fasim_ssw_oracle::record_alignment_dp_pass_u8(
+		maxColumn, refLen, ref_dir, "byte8_avx2", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1531,6 +1538,9 @@ static alignment_end* sw_sse2_word(const int8_t* ref,
 		}
 	}
 
+	fasim_ssw_oracle::record_alignment_dp_pass_u16(
+		maxColumn, refLen, ref_dir, "word16", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1690,6 +1700,9 @@ static alignment_end* sw_avx2_word(const int8_t* ref,
 		}
 	}
 
+	fasim_ssw_oracle::record_alignment_dp_pass_u16(
+		maxColumn, refLen, ref_dir, "word16_avx2", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1779,6 +1792,7 @@ static cigar* banded_sw(const int8_t* ref,
 			}
 			for (j = 1; j <= u; j++) h_b[j] = h_c[j];
 		}
+		fasim_ssw_oracle::record_band_iteration(band_width, max, score);
 		band_width *= 2;
 	} while (LIKELY(max < score));
 	band_width /= 2;
@@ -1987,6 +2001,7 @@ int * ssw_pre_align(const s_profile* prof,
 	// Find the alignment scores and ending positions
 	if (prof->profile_byte) {
 		byteColumn = sw_sse2_byte_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte, -1, prof->bias, maskLen);
+		fasim_ssw_oracle::record_prealign_columns_u8(byteColumn, refLen, "byte8");
 		int maxscore = 0;
 		for (int i = 0; i < refLen; i++)
 		{
@@ -1997,6 +2012,7 @@ int * ssw_pre_align(const s_profile* prof,
 			//freeMatrix(scoreMatrix);
 			byteColumn = NULL;
 			wordColumn = sw_sse2_word_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+			fasim_ssw_oracle::record_prealign_columns_u16(wordColumn, refLen, "word16");
 			word = 1;
 		} //else if (bests[0].score == 255) {
 			//fprintf(stderr, "Please set 2 to the score_size parameter of the function ssw_init, otherwise the alignment results will be incorrect.\n");
@@ -2006,6 +2022,7 @@ int * ssw_pre_align(const s_profile* prof,
 	}
 	else if (prof->profile_word) {
 		wordColumn = sw_sse2_word_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+		fasim_ssw_oracle::record_prealign_columns_u16(wordColumn, refLen, "word16");
 		word = 1;
 	}
 	else {
@@ -2035,6 +2052,7 @@ int * ssw_pre_align(const s_profile* prof,
 		wordColumn =NULL;
 	}
 
+	fasim_ssw_oracle::set_prealign_final_numeric_path(word == 0 ? "byte8" : "word16");
 	return scoreMatrix; // should be OK???
 	//r->score1 = bests[0].score;
 	//r->ref_end1 = bests[0].ref;
@@ -2208,6 +2226,7 @@ s_align* ssw_align(const s_profile* prof,
 	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.forward_score_end_nanoseconds, forward_start);
 	}
+	fasim_ssw_oracle::set_alignment_final_numeric_path(word == 0 ? "byte8" : "word16");
 	const uint64_t endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	r->score1 = bests[0].score;
 	r->ref_end1 = bests[0].ref;

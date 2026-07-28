@@ -39,6 +39,7 @@ struct triplex
 	string strj_align;
 	string cigar_probe;
 	std::vector<uint32_t> typed_cigar;
+	string ssw_oracle_attempt_key;
 	int middle;
 	int center;
 	int motif;

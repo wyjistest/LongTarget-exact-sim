@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://longtarget.example/schemas/ssw_oracle_call.schema.json",
+  "title": "Fasim modified-SSW oracle trace record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "oracle_epoch",
+    "record_kind",
+    "record_key",
+    "workload",
+    "input",
+    "scoring",
+    "final_numeric_path",
+    "dp_passes"
+  ],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "oracle_epoch": {"const": 2},
+    "record_kind": {"enum": ["prealign", "alignment"]},
+    "record_key": {"type": "string", "minLength": 1},
+    "workload": {"$ref": "#/$defs/workload"},
+    "input": {"$ref": "#/$defs/input"},
+    "scoring": {"$ref": "#/$defs/scoring"},
+    "final_numeric_path": {
+      "enum": ["byte8", "word16", "unknown"]
+    },
+    "dp_passes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/dp_pass"}
+    },
+    "selection": {"$ref": "#/$defs/prealign_selection"},
+    "attempt": {"$ref": "#/$defs/attempt"},
+    "status": {"enum": ["complete", "failed"]},
+    "failure_reason": {"type": "string"},
+    "forward_endpoint": {"$ref": "#/$defs/forward_endpoint"},
+    "reverse_start": {"$ref": "#/$defs/reverse_start"},
+    "band_history": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/band_step"}
+    },
+    "traceback": {"$ref": "#/$defs/traceback"},
+    "emitted_rows": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/emitted_row"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"record_kind": {"const": "prealign"}}},
+      "then": {
+        "required": ["selection"],
+        "not": {
+          "anyOf": [
+            {"required": ["attempt"]},
+            {"required": ["forward_endpoint"]},
+            {"required": ["traceback"]},
+            {"required": ["emitted_rows"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"record_kind": {"const": "alignment"}}},
+      "then": {
+        "required": [
+          "attempt",
+          "status",
+          "failure_reason",
+          "forward_endpoint",
+          "reverse_start",
+          "band_history",
+          "traceback",
+          "emitted_rows"
+        ],
+        "not": {"required": ["selection"]}
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "digest64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$"
+    },
+    "workload": {
+      "type": "object",
+      "required": [
+        "key",
+        "query_digest_fnv1a64",
+        "target_digest_fnv1a64",
+        "query_length",
+        "target_length",
+        "dna_start",
+        "rule",
+        "strand"
+      ],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "query_digest_fnv1a64": {"$ref": "#/$defs/digest64"},
+        "target_digest_fnv1a64": {"$ref": "#/$defs/digest64"},
+        "query_length": {"type": "integer", "minimum": 1},
+        "target_length": {"type": "integer", "minimum": 1},
+        "dna_start": {"type": "integer"},
+        "rule": {"type": "integer"},
+        "strand": {"type": "integer"}
+      },
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "query_digest_fnv1a64",
+        "reference_digest_fnv1a64",
+        "query_length",
+        "reference_length"
+      ],
+      "properties": {
+        "query_digest_fnv1a64": {"$ref": "#/$defs/digest64"},
+        "reference_digest_fnv1a64": {"$ref": "#/$defs/digest64"},
+        "query_length": {"type": "integer", "minimum": 1},
+        "reference_length": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "scoring": {
+      "type": "object",
+      "required": ["match", "mismatch_penalty", "gap_open", "gap_extend", "mask_len"],
+      "properties": {
+        "match": {"type": "integer"},
+        "mismatch_penalty": {"type": "integer", "minimum": 0},
+        "gap_open": {"type": "integer", "minimum": 0},
+        "gap_extend": {"type": "integer", "minimum": 0},
+        "mask_len": {"type": "integer", "minimum": 0},
+        "flag": {"type": "integer", "minimum": 0, "maximum": 255},
+        "score_filter": {"type": "integer", "minimum": 0},
+        "distance_filter": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "dp_pass": {
+      "type": "object",
+      "required": [
+        "stage",
+        "numeric_path",
+        "ref_direction",
+        "column_count",
+        "column_max_digest_fnv1a64",
+        "maximum_score",
+        "best_score",
+        "best_ref",
+        "best_read",
+        "second_score",
+        "second_ref",
+        "columns"
+      ],
+      "properties": {
+        "stage": {"enum": ["prealign", "forward", "reverse"]},
+        "numeric_path": {
+          "enum": ["byte8", "word16", "byte8_avx2", "word16_avx2"]
+        },
+        "ref_direction": {"enum": [0, 1]},
+        "column_count": {"type": "integer", "minimum": 1},
+        "column_max_digest_fnv1a64": {"$ref": "#/$defs/digest64"},
+        "maximum_score": {"type": "integer", "minimum": 0},
+        "best_score": {"type": "integer", "minimum": 0},
+        "best_ref": {"type": "integer"},
+        "best_read": {"type": "integer"},
+        "second_score": {"type": "integer", "minimum": 0},
+        "second_ref": {"type": "integer"},
+        "columns": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0}
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "scoreinfo": {
+      "type": "object",
+      "required": ["index", "score", "position"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "score": {"type": "integer", "minimum": 0},
+        "position": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "prealign_selection": {
+      "type": "object",
+      "required": [
+        "threshold",
+        "threshold_predicate",
+        "adjacent_distance_exclusive_upper_bound",
+        "equal_score_tie",
+        "scoreinfos"
+      ],
+      "properties": {
+        "threshold": {"type": "integer"},
+        "threshold_predicate": {"const": "score_strictly_greater_than_threshold"},
+        "adjacent_distance_exclusive_upper_bound": {"const": 5},
+        "equal_score_tie": {"const": "lowest_reference_position"},
+        "scoreinfos": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/scoreinfo"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "attempt": {
+      "type": "object",
+      "required": [
+        "key",
+        "scoreinfo_index",
+        "prealign_score",
+        "identity_round",
+        "identity_ppm",
+        "target_start",
+        "cutlength",
+        "selected",
+        "selection_reason"
+      ],
+      "properties": {
+        "key": {"type": "string", "minLength": 1},
+        "scoreinfo_index": {"type": "integer"},
+        "prealign_score": {"type": "integer", "minimum": 0},
+        "identity_round": {"type": "integer"},
+        "identity_ppm": {"type": "integer", "minimum": 0},
+        "target_start": {"type": "integer"},
+        "cutlength": {"type": "integer", "minimum": 0},
+        "selected": {"type": "boolean"},
+        "selection_reason": {
+          "enum": [
+            "threshold",
+            "best_fallback",
+            "last",
+            "not_selected",
+            "direct_call",
+            "alignment_failed",
+            "unresolved_at_workload_end",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "forward_endpoint": {
+      "type": "object",
+      "required": ["score1", "score2", "ref_end1", "read_end1", "ref_end2"],
+      "properties": {
+        "score1": {"type": "integer", "minimum": 0},
+        "score2": {"type": "integer", "minimum": 0},
+        "ref_end1": {"type": "integer"},
+        "read_end1": {"type": "integer"},
+        "ref_end2": {"type": "integer"}
+      },
+      "additionalProperties": false
+    },
+    "reverse_start": {
+      "type": "object",
+      "required": ["ref_begin1", "read_begin1"],
+      "properties": {
+        "ref_begin1": {"type": "integer"},
+        "read_begin1": {"type": "integer"}
+      },
+      "additionalProperties": false
+    },
+    "band_step": {
+      "type": "object",
+      "required": ["band_width", "maximum_score", "target_score"],
+      "properties": {
+        "band_width": {"type": "integer", "minimum": 1},
+        "maximum_score": {"type": "integer", "minimum": 0},
+        "target_score": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "traceback": {
+      "type": "object",
+      "required": [
+        "stop_rule",
+        "cigar",
+        "cigar_operation_count",
+        "cigar_digest_fnv1a64"
+      ],
+      "properties": {
+        "stop_rule": {"const": "read_index_reaches_zero_then_force_terminal_match"},
+        "cigar": {"type": "string"},
+        "cigar_operation_count": {"type": "integer", "minimum": 0},
+        "cigar_digest_fnv1a64": {"$ref": "#/$defs/digest64"}
+      },
+      "additionalProperties": false
+    },
+    "emitted_row": {
+      "type": "object",
+      "required": [
+        "row_contract",
+        "query_start",
+        "query_end",
+        "target_start",
+        "target_end",
+        "direction",
+        "strand",
+        "reverse",
+        "rule",
+        "score",
+        "nt",
+        "mean_identity",
+        "mean_stability",
+        "aligned_tfo",
+        "aligned_tts",
+        "ungapped_tfo",
+        "ungapped_tts",
+        "row_digest_fnv1a64"
+      ],
+      "properties": {
+        "row_contract": {"const": "triplex_l6_v1"},
+        "query_start": {"type": "integer"},
+        "query_end": {"type": "integer"},
+        "target_start": {"type": "integer"},
+        "target_end": {"type": "integer"},
+        "direction": {"enum": ["R", "L"]},
+        "strand": {"type": "integer"},
+        "reverse": {"type": "integer"},
+        "rule": {"type": "integer"},
+        "score": {"type": "number"},
+        "nt": {"type": "integer", "minimum": 0},
+        "mean_identity": {"type": "number"},
+        "mean_stability": {"type": "number"},
+        "aligned_tfo": {"type": "string"},
+        "aligned_tts": {"type": "string"},
+        "ungapped_tfo": {"type": "string"},
+        "ungapped_tts": {"type": "string"},
+        "row_digest_fnv1a64": {"$ref": "#/$defs/digest64"}
+      },
+      "additionalProperties": false
+    }
+  }
+}
