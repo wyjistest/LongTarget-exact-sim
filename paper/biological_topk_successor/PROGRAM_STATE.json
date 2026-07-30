@@ -1,5 +1,5 @@
 {
-  "active_phase": 1,
+  "active_phase": 2,
   "audit_candidate_commit": null,
   "bioinformatics_route": "conditionally_reopened",
   "claim_scope": "set_preservation_with_top1_retention",
@@ -10,11 +10,11 @@
   "final_decision_candidate": null,
   "fixed_total_artifact_storage_bytes": 68719476736,
   "gpu_screen_status": "experimental",
-  "last_completed_phase": 0,
-  "last_decision": "successor_phase_0_protocol_frozen",
+  "last_completed_phase": 1,
+  "last_decision": "successor_phase_1_contract_frozen",
   "phase_status": {
     "0": "pass",
-    "1": "pending",
+    "1": "pass",
     "2": "pending",
     "3": "pending",
     "4": "pending",
@@ -26,10 +26,10 @@
   },
   "predecessor_commit": "7fae3de6b13780d7cc0776038489cf2f22072339",
   "predecessor_decision": "blocked_fixed_budget",
-  "previous_phase_commit": null,
+  "previous_phase_commit": "4ef45838f9164b4c0e4f3cb16e22971e022e9f3d",
   "program_name": "biological_topk_candidate_site_validation_successor",
   "program_schema_version": 1,
   "rank_order_claim": "diagnostic_only",
   "scientific_object": "clustered_TFO_query_target_candidate_site",
-  "score_representation": "pending_phase1"
+  "score_representation": "integral_exact"
 }

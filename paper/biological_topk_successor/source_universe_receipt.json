@@ -1,0 +1,55 @@
+{
+  "annotation_release": "GENCODE v49",
+  "assembly": "GRCh38",
+  "exclusion_registry": {
+    "base_exclusion_count": 1455,
+    "base_registry_sha256": "062be2d3e7706dfba5bf356e88b6df3efb22652dd652fa447a8b6ad0b3430630",
+    "path": "paper/biological_topk_successor/successor_exclusion_registry.tsv",
+    "predecessor_manifest_sha256": "cf26e6d3bfc3180335128d699e30a1e49a8429bf346d2ed3560366af4b0eb865",
+    "predecessor_phase4_added_count": 178,
+    "sha256": "a564e932ef62ec2d20f41dafa210a286869500ffd4b6db2a302c396088846bee",
+    "total_exclusion_count": 1633
+  },
+  "fresh_pair_selected": false,
+  "new_prediction_run": false,
+  "predecessor_overlap_allowed": false,
+  "query_universe": {
+    "fresh_eligible_row_count": 26903,
+    "fresh_unique_namespaced_ordinal_count": 26903,
+    "fresh_unique_sequence_digest_count": 26882,
+    "gzip_sha256": "8e750d558b21782beb5be207e556b57367dde6721b8a89d837fcf7d4a2f93ee0",
+    "path": "paper/biological_topk_successor/query_source_universe.tsv.gz",
+    "predecessor_identity_excluded_row_count": 178,
+    "row_count": 27139,
+    "uncompressed_tsv_sha256": "78f3dd1bfbed06aea4529276bccdd210ec82b35a3777c4a0496b4279083e5435"
+  },
+  "schema_version": 1,
+  "status": "successor_source_universe_frozen",
+  "target_universe": {
+    "gzip_sha256": "48422a5c908cfc08c342bd023002ad08fadc6b86c8ef8cd3c6eb3390dc79e1be",
+    "path": "paper/biological_topk_successor/target_source_universe.tsv.gz",
+    "predecessor_identity_excluded_row_count": 309,
+    "row_count": 2004,
+    "strata": {
+      "large": {
+        "fresh_eligible_row_count": 481,
+        "fresh_unique_namespaced_ordinal_count": 481,
+        "fresh_unique_sequence_digest_count": 480,
+        "required": 59
+      },
+      "medium": {
+        "fresh_eligible_row_count": 608,
+        "fresh_unique_namespaced_ordinal_count": 608,
+        "fresh_unique_sequence_digest_count": 559,
+        "required": 59
+      },
+      "short": {
+        "fresh_eligible_row_count": 606,
+        "fresh_unique_namespaced_ordinal_count": 606,
+        "fresh_unique_sequence_digest_count": 606,
+        "required": 60
+      }
+    },
+    "uncompressed_tsv_sha256": "8a7e869be0b5dc88467cdc92bac18a563fef967aa4e90b79119239679e1c9637"
+  }
+}

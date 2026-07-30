@@ -1,0 +1,1512 @@
+{
+  "observation_counts": {
+    "A_large": 28,
+    "A_medium": 30,
+    "A_short": 25,
+    "G_large": 28,
+    "G_medium": 30,
+    "G_short": 24
+  },
+  "observation_source": "terminal_attempt_receipts_and_directory_file_bytes_only",
+  "observations": [
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 14608847,
+      "attempt_id": "r1_bt3_w001__repeat00_a",
+      "query_length": 673,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "192.28944766195491"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 152759046,
+      "attempt_id": "r1_bt3_w001__repeat00_g",
+      "query_length": 673,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "256.65791062195785"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 14608850,
+      "attempt_id": "r1_bt3_w001__repeat01_a",
+      "query_length": 673,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "185.96137456595898"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 152759048,
+      "attempt_id": "r1_bt3_w001__repeat01_g",
+      "query_length": 673,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "275.45442552003078"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2496544,
+      "attempt_id": "r1_bt3_w002__repeat00_a",
+      "query_length": 568,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "37.519267338095233"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 25635881,
+      "attempt_id": "r1_bt3_w002__repeat00_g",
+      "query_length": 568,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "41.03232167288661"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2529713,
+      "attempt_id": "r1_bt3_w003__repeat00_a",
+      "query_length": 688,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "37.772379349917173"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 27119950,
+      "attempt_id": "r1_bt3_w003__repeat00_g",
+      "query_length": 688,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "44.761463209055364"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3731470,
+      "attempt_id": "r1_bt3_w004__repeat00_a",
+      "query_length": 1628,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "75.694969328120351"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 36500971,
+      "attempt_id": "r1_bt3_w004__repeat00_g",
+      "query_length": 1628,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "70.994112781016156"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 15776495,
+      "attempt_id": "r1_bt3_w005__repeat00_a",
+      "query_length": 1056,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "244.0582150251139"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 164319140,
+      "attempt_id": "r1_bt3_w005__repeat00_g",
+      "query_length": 1056,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "294.76519316993654"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 143585,
+      "attempt_id": "r1_bt3_w006__repeat00_a",
+      "query_length": 2039,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.0052588919643313"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 204922,
+      "attempt_id": "r1_bt3_w006__repeat00_g",
+      "query_length": 2039,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.2170165381394327"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2583346,
+      "attempt_id": "r1_bt3_w007__repeat00_a",
+      "query_length": 1455,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "58.333988321945071"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 31807410,
+      "attempt_id": "r1_bt3_w007__repeat00_g",
+      "query_length": 1455,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "55.412614524830133"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 142957,
+      "attempt_id": "r1_bt3_w008__repeat00_a",
+      "query_length": 811,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.88888150290586054"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 204596,
+      "attempt_id": "r1_bt3_w008__repeat00_g",
+      "query_length": 811,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1642440780997276"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 16220804,
+      "attempt_id": "r1_bt3_w009__repeat00_a",
+      "query_length": 1476,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "299.40934827807359"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 172146478,
+      "attempt_id": "r1_bt3_w009__repeat00_g",
+      "query_length": 1476,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "320.17070551798679"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 139468,
+      "attempt_id": "r1_bt3_w010__repeat00_a",
+      "query_length": 867,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.89739193115383387"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 187555,
+      "attempt_id": "r1_bt3_w010__repeat00_g",
+      "query_length": 867,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1295743158552796"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 16710062,
+      "attempt_id": "r1_bt3_w011__repeat00_a",
+      "query_length": 1398,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "285.5722926678136"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 160722003,
+      "attempt_id": "r1_bt3_w011__repeat00_g",
+      "query_length": 1398,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "285.29023660696112"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3309448,
+      "attempt_id": "r1_bt3_w012__repeat00_a",
+      "query_length": 1728,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "69.788788995007053"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 30973132,
+      "attempt_id": "r1_bt3_w012__repeat00_g",
+      "query_length": 1728,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "55.512973594944924"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3309450,
+      "attempt_id": "r1_bt3_w012__repeat01_a",
+      "query_length": 1728,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "68.87415920314379"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 30973127,
+      "attempt_id": "r1_bt3_w012__repeat01_g",
+      "query_length": 1728,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "54.224459592020139"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 15688766,
+      "attempt_id": "r1_bt3_w013__repeat00_a",
+      "query_length": 1880,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "429.72962648584507"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 156057706,
+      "attempt_id": "r1_bt3_w013__repeat00_g",
+      "query_length": 1880,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "255.30242332513444"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 145572,
+      "attempt_id": "r1_bt3_w014__repeat00_a",
+      "query_length": 1649,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.97022660193033516"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 205285,
+      "attempt_id": "r1_bt3_w014__repeat00_g",
+      "query_length": 1649,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1668171561323106"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 6956600,
+      "attempt_id": "r1_bt3_w015__repeat00_a",
+      "query_length": 933,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "47.765767436940223"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 38064776,
+      "attempt_id": "r1_bt3_w015__repeat00_g",
+      "query_length": 933,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "45.506872934987769"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 139012,
+      "attempt_id": "r1_bt3_w016__repeat00_a",
+      "query_length": 500,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.87852258700877428"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 203704,
+      "attempt_id": "r1_bt3_w016__repeat00_g",
+      "query_length": 500,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1200289588887244"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 145557,
+      "attempt_id": "r1_bt3_w017__repeat00_a",
+      "query_length": 765,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.88783911080099642"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 206778,
+      "attempt_id": "r1_bt3_w017__repeat00_g",
+      "query_length": 765,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1418581090401858"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 141446,
+      "attempt_id": "r1_bt3_w018__repeat00_a",
+      "query_length": 675,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.87381938216276467"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 204707,
+      "attempt_id": "r1_bt3_w018__repeat00_g",
+      "query_length": 675,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1306166299618781"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 15455808,
+      "attempt_id": "r1_bt3_w019__repeat00_a",
+      "query_length": 933,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "240.28599682589993"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 156788481,
+      "attempt_id": "r1_bt3_w019__repeat00_g",
+      "query_length": 933,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "254.82538875006139"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 148895,
+      "attempt_id": "r1_bt3_w020__repeat00_a",
+      "query_length": 845,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.862999620847404"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 189762,
+      "attempt_id": "r1_bt3_w020__repeat00_g",
+      "query_length": 845,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1139161009341478"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3498823,
+      "attempt_id": "r1_bt3_w021__repeat00_a",
+      "query_length": 854,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "47.017128127859905"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 32318410,
+      "attempt_id": "r1_bt3_w021__repeat00_g",
+      "query_length": 854,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "49.394007975934073"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 17373789,
+      "attempt_id": "r1_bt3_w022__repeat00_a",
+      "query_length": 743,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "217.03535476513207"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 134636621,
+      "attempt_id": "r1_bt3_w022__repeat00_g",
+      "query_length": 743,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "184.07394520402886"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 139503,
+      "attempt_id": "r1_bt3_w023__repeat00_a",
+      "query_length": 827,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.90608681086450815"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 199457,
+      "attempt_id": "r1_bt3_w023__repeat00_g",
+      "query_length": 827,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.160220704972744"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 141628,
+      "attempt_id": "r1_bt3_w024__repeat00_a",
+      "query_length": 2233,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.95844257902354002"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 177612,
+      "attempt_id": "r1_bt3_w024__repeat00_g",
+      "query_length": 2233,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1823310891631991"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 12312520,
+      "attempt_id": "r1_bt3_w025__repeat00_a",
+      "query_length": 676,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "191.18179648416117"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 160187125,
+      "attempt_id": "r1_bt3_w025__repeat00_g",
+      "query_length": 676,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "316.20629815594293"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 12933116,
+      "attempt_id": "r1_bt3_w026__repeat00_a",
+      "query_length": 1091,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "251.54225141718052"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 150042831,
+      "attempt_id": "r1_bt3_w026__repeat00_g",
+      "query_length": 1091,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "270.60139915812761"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 12933117,
+      "attempt_id": "r1_bt3_w026__repeat01_a",
+      "query_length": 1091,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "252.51162428990938"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 150042835,
+      "attempt_id": "r1_bt3_w026__repeat01_g",
+      "query_length": 1091,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "278.67332031298429"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 17633974,
+      "attempt_id": "r1_bt3_w027__repeat00_a",
+      "query_length": 1483,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "296.15715656499378"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 166864875,
+      "attempt_id": "r1_bt3_w027__repeat00_g",
+      "query_length": 1483,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "284.80078974110074"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3555307,
+      "attempt_id": "r1_bt3_w028__repeat00_a",
+      "query_length": 2368,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "91.130293949041516"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 33764935,
+      "attempt_id": "r1_bt3_w028__repeat00_g",
+      "query_length": 2368,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "59.599899782100692"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2876507,
+      "attempt_id": "r1_bt3_w029__repeat00_a",
+      "query_length": 2138,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "75.416330324020237"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 34869428,
+      "attempt_id": "r1_bt3_w029__repeat00_g",
+      "query_length": 2138,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "69.343825294869021"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 17053896,
+      "attempt_id": "r1_bt3_w030__repeat00_a",
+      "query_length": 2362,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "417.52009135787375"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 166887098,
+      "attempt_id": "r1_bt3_w030__repeat00_g",
+      "query_length": 2362,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "296.36703036585823"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 12531900,
+      "attempt_id": "r1_bt3_w031__repeat00_a",
+      "query_length": 909,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "231.64680849900469"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 160601733,
+      "attempt_id": "r1_bt3_w031__repeat00_g",
+      "query_length": 909,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "304.9154765070416"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3360902,
+      "attempt_id": "r1_bt3_w032__repeat00_a",
+      "query_length": 1349,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "58.69781282893382"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 31519676,
+      "attempt_id": "r1_bt3_w032__repeat00_g",
+      "query_length": 1349,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "50.382474625017494"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 21217197,
+      "attempt_id": "r1_bt3_w033__repeat00_a",
+      "query_length": 1466,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "304.23736812616698"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 156009142,
+      "attempt_id": "r1_bt3_w033__repeat00_g",
+      "query_length": 1466,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "244.45479277893901"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3016175,
+      "attempt_id": "r1_bt3_w034__repeat00_a",
+      "query_length": 1881,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "71.71499420912005"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 21138055,
+      "attempt_id": "r1_bt3_w034__repeat00_g",
+      "query_length": 1881,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "28.93521758983843"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 146926,
+      "attempt_id": "r1_bt3_w035__repeat00_a",
+      "query_length": 1089,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.8959638241212815"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 208856,
+      "attempt_id": "r1_bt3_w035__repeat00_g",
+      "query_length": 1089,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1002265131101012"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 5233813,
+      "attempt_id": "r1_bt3_w036__repeat00_a",
+      "query_length": 2281,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "90.90469902404584"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 38955985,
+      "attempt_id": "r1_bt3_w036__repeat00_g",
+      "query_length": 2281,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "75.421930424170569"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 4008245,
+      "attempt_id": "r1_bt3_w037__repeat00_a",
+      "query_length": 1504,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "72.063161992002279"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 35591214,
+      "attempt_id": "r1_bt3_w037__repeat00_g",
+      "query_length": 1504,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "59.321218759985641"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 26963657,
+      "attempt_id": "r1_bt3_w038__repeat00_a",
+      "query_length": 2210,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "444.66861975495704"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 208962115,
+      "attempt_id": "r1_bt3_w038__repeat00_g",
+      "query_length": 2210,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "372.91487672994845"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 5323762,
+      "attempt_id": "r1_bt3_w039__repeat00_a",
+      "query_length": 732,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "51.818329700967297"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 36438833,
+      "attempt_id": "r1_bt3_w039__repeat00_g",
+      "query_length": 732,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "47.617789961164817"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 15617014,
+      "attempt_id": "r1_bt3_w040__repeat00_a",
+      "query_length": 1645,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "318.68153941095807"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 157714381,
+      "attempt_id": "r1_bt3_w040__repeat00_g",
+      "query_length": 1645,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "285.29937177710235"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2922629,
+      "attempt_id": "r1_bt3_w041__repeat00_a",
+      "query_length": 534,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "36.419792226981372"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 28035090,
+      "attempt_id": "r1_bt3_w041__repeat00_g",
+      "query_length": 534,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "39.438377327984199"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2892911,
+      "attempt_id": "r1_bt3_w042__repeat00_a",
+      "query_length": 593,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "33.803240783978254"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 24623780,
+      "attempt_id": "r1_bt3_w042__repeat00_g",
+      "query_length": 593,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "39.217581633944064"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 148421,
+      "attempt_id": "r1_bt3_w043__repeat00_a",
+      "query_length": 1647,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.96200118190608919"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 236726,
+      "attempt_id": "r1_bt3_w043__repeat00_g",
+      "query_length": 1647,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.2133621477987617"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2439690,
+      "attempt_id": "r1_bt3_w044__repeat00_a",
+      "query_length": 537,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "34.527750392910093"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 29269221,
+      "attempt_id": "r1_bt3_w044__repeat00_g",
+      "query_length": 537,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "48.997433639131486"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3285362,
+      "attempt_id": "r1_bt3_w045__repeat00_a",
+      "query_length": 1249,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "55.448922171024606"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 30310502,
+      "attempt_id": "r1_bt3_w045__repeat00_g",
+      "query_length": 1249,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "54.262219758005813"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 143963,
+      "attempt_id": "r1_bt3_w046__repeat00_a",
+      "query_length": 1785,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.97680086409673095"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 219142,
+      "attempt_id": "r1_bt3_w046__repeat00_g",
+      "query_length": 1785,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1174373519606888"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3435073,
+      "attempt_id": "r1_bt3_w047__repeat00_a",
+      "query_length": 586,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "37.183749679010361"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 29514719,
+      "attempt_id": "r1_bt3_w047__repeat00_g",
+      "query_length": 586,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "46.168513073818758"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 139116,
+      "attempt_id": "r1_bt3_w048__repeat00_a",
+      "query_length": 727,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.90290886093862355"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 206795,
+      "attempt_id": "r1_bt3_w048__repeat00_g",
+      "query_length": 727,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.0783610409125686"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 12139881,
+      "attempt_id": "r1_bt3_w049__repeat00_a",
+      "query_length": 907,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "255.92375231999904"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 144864541,
+      "attempt_id": "r1_bt3_w049__repeat00_g",
+      "query_length": 907,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "223.57531769899651"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2716768,
+      "attempt_id": "r1_bt3_w050__repeat00_a",
+      "query_length": 702,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "37.686928967945278"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 26600512,
+      "attempt_id": "r1_bt3_w050__repeat00_g",
+      "query_length": 702,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "37.723153761122376"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2907711,
+      "attempt_id": "r1_bt3_w051__repeat00_a",
+      "query_length": 1125,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "48.858059279154986"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 30517244,
+      "attempt_id": "r1_bt3_w051__repeat00_g",
+      "query_length": 1125,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "55.264172178925946"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2358722,
+      "attempt_id": "r1_bt3_w052__repeat00_a",
+      "query_length": 514,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "33.895633701002225"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 27112979,
+      "attempt_id": "r1_bt3_w052__repeat00_g",
+      "query_length": 514,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "43.684187417849898"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3689421,
+      "attempt_id": "r1_bt3_w053__repeat00_a",
+      "query_length": 2296,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "76.486541867023334"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 31723630,
+      "attempt_id": "r1_bt3_w053__repeat00_g",
+      "query_length": 2296,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "52.589895494980738"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 152941,
+      "attempt_id": "r1_bt3_w054__repeat00_a",
+      "query_length": 1561,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.96412933897227049"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 218766,
+      "attempt_id": "r1_bt3_w054__repeat00_g",
+      "query_length": 1561,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.2150288480333984"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 152941,
+      "attempt_id": "r1_bt3_w054__repeat01_a",
+      "query_length": 1561,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.92893789708614349"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 218765,
+      "attempt_id": "r1_bt3_w054__repeat01_g",
+      "query_length": 1561,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1703671370632946"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 141462,
+      "attempt_id": "r1_bt3_w055__repeat00_a",
+      "query_length": 1217,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.96312356111593544"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 194616,
+      "attempt_id": "r1_bt3_w055__repeat00_g",
+      "query_length": 1217,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1868616179563105"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 4598226,
+      "attempt_id": "r1_bt3_w056__repeat00_a",
+      "query_length": 2178,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "86.363371008075774"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 36914996,
+      "attempt_id": "r1_bt3_w056__repeat00_g",
+      "query_length": 2178,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "74.684793066000566"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 11721929,
+      "attempt_id": "r1_bt3_w057__repeat00_a",
+      "query_length": 534,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "175.06050044600852"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 133963561,
+      "attempt_id": "r1_bt3_w057__repeat00_g",
+      "query_length": 534,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "200.23372919019312"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 16272525,
+      "attempt_id": "r1_bt3_w058__repeat00_a",
+      "query_length": 2730,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "490.98913077707402"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 178409503,
+      "attempt_id": "r1_bt3_w058__repeat00_g",
+      "query_length": 2730,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "375.98691564798355"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 140874,
+      "attempt_id": "r1_bt3_w059__repeat00_a",
+      "query_length": 692,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.94464892288669944"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 202116,
+      "attempt_id": "r1_bt3_w059__repeat00_g",
+      "query_length": 692,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1697665280662477"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 22532760,
+      "attempt_id": "r1_bt3_w060__repeat00_a",
+      "query_length": 1706,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "331.88134051603265"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 175884922,
+      "attempt_id": "r1_bt3_w060__repeat00_g",
+      "query_length": 1706,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "319.59838373493403"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 142036,
+      "attempt_id": "r1_bt3_w061__repeat00_a",
+      "query_length": 655,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.94087116001173854"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 201501,
+      "attempt_id": "r1_bt3_w061__repeat00_g",
+      "query_length": 655,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.161559839034453"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 138045,
+      "attempt_id": "r1_bt3_w062__repeat00_a",
+      "query_length": 721,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.90082476986572146"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 188122,
+      "attempt_id": "r1_bt3_w062__repeat00_g",
+      "query_length": 721,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1154044771101326"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 17160200,
+      "attempt_id": "r1_bt3_w063__repeat00_a",
+      "query_length": 577,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "186.03748219809495"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 133150307,
+      "attempt_id": "r1_bt3_w063__repeat00_g",
+      "query_length": 577,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "180.08414311613888"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 145820,
+      "attempt_id": "r1_bt3_w064__repeat00_a",
+      "query_length": 1811,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.0041230858769268"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 212280,
+      "attempt_id": "r1_bt3_w064__repeat00_g",
+      "query_length": 1811,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.210258339997381"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2827762,
+      "attempt_id": "r1_bt3_w065__repeat00_a",
+      "query_length": 2426,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "84.60456316312775"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 34358190,
+      "attempt_id": "r1_bt3_w065__repeat00_g",
+      "query_length": 2426,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "69.373295322060585"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 3580771,
+      "attempt_id": "r1_bt3_w066__repeat00_a",
+      "query_length": 1185,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "54.675919102039188"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 33531071,
+      "attempt_id": "r1_bt3_w066__repeat00_g",
+      "query_length": 1185,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "65.540849046083167"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 15961207,
+      "attempt_id": "r1_bt3_w067__repeat00_a",
+      "query_length": 1936,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "372.35207225102931"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 167689985,
+      "attempt_id": "r1_bt3_w067__repeat00_g",
+      "query_length": 1936,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "337.20314214099199"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 142153,
+      "attempt_id": "r1_bt3_w068__repeat00_a",
+      "query_length": 996,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.92714397492818534"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 214362,
+      "attempt_id": "r1_bt3_w068__repeat00_g",
+      "query_length": 996,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.0964663508348167"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 16796973,
+      "attempt_id": "r1_bt3_w069__repeat00_a",
+      "query_length": 533,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "180.83741977112368"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 149627283,
+      "attempt_id": "r1_bt3_w069__repeat00_g",
+      "query_length": 533,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "229.4393007538747"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 140125,
+      "attempt_id": "r1_bt3_w070__repeat00_a",
+      "query_length": 734,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.90260769100859761"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 221245,
+      "attempt_id": "r1_bt3_w070__repeat00_g",
+      "query_length": 734,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.0863358320202678"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 16548921,
+      "attempt_id": "r1_bt3_w071__repeat00_a",
+      "query_length": 1159,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "268.72789425496012"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 171883221,
+      "attempt_id": "r1_bt3_w071__repeat00_g",
+      "query_length": 1159,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "313.31922971713357"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 140649,
+      "attempt_id": "r1_bt3_w072__repeat00_a",
+      "query_length": 739,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.87737159105017781"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 192136,
+      "attempt_id": "r1_bt3_w072__repeat00_g",
+      "query_length": 739,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "1.1018745258916169"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 14804797,
+      "attempt_id": "r1_bt3_w073__repeat00_a",
+      "query_length": 828,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "236.43547797994688"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 143686910,
+      "attempt_id": "r1_bt3_w073__repeat00_g",
+      "query_length": 828,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "209.81893143011257"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 2973622,
+      "attempt_id": "r1_bt3_w074__repeat00_a",
+      "query_length": 628,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "37.349857266061008"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 29777350,
+      "attempt_id": "r1_bt3_w074__repeat00_g",
+      "query_length": 628,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "43.823651770828292"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 14061022,
+      "attempt_id": "r1_bt3_w075__repeat00_a",
+      "query_length": 1610,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "339.21975808613934"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 164910537,
+      "attempt_id": "r1_bt3_w075__repeat00_g",
+      "query_length": 1610,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "282.65466007194482"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 15971782,
+      "attempt_id": "r1_bt3_w076__repeat00_a",
+      "query_length": 834,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "228.12632068386301"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 162432116,
+      "attempt_id": "r1_bt3_w076__repeat00_g",
+      "query_length": 834,
+      "target_length": 10000001,
+      "target_scale_stratum": "large",
+      "wall_seconds": "273.3582424770575"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 138733,
+      "attempt_id": "r1_bt3_w077__repeat00_a",
+      "query_length": 541,
+      "target_length": 4097,
+      "target_scale_stratum": "short",
+      "wall_seconds": "0.90373958391137421"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 6123701,
+      "attempt_id": "r1_bt3_w078__repeat00_a",
+      "query_length": 1349,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "73.370239821029827"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 37055675,
+      "attempt_id": "r1_bt3_w078__repeat00_g",
+      "query_length": 1349,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "49.098322058096528"
+    },
+    {
+      "arm": "A",
+      "artifact_storage_bytes": 5326049,
+      "attempt_id": "r1_bt3_w080__repeat00_a",
+      "query_length": 1833,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "80.717019269941375"
+    },
+    {
+      "arm": "G",
+      "artifact_storage_bytes": 41005594,
+      "attempt_id": "r1_bt3_w080__repeat00_g",
+      "query_length": 1833,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium",
+      "wall_seconds": "75.889147400157526"
+    }
+  ],
+  "predecessor_actual_resources_sha256": "4314edcdc1861553821c4225e4980a88cebf836f7ae4c6142ccaabfb2824b08f",
+  "predecessor_manifest_sha256": "cf26e6d3bfc3180335128d699e30a1e49a8429bf346d2ed3560366af4b0eb865",
+  "predecessor_run_summary_sha256": "cb406183c4b52aa090efcebc54f609c7a8c5ad824ed873f32524d6d7b2181b0f",
+  "projection_method": {
+    "level": "arm_and_target_scale_stratum",
+    "quantile_definition": "ceil(q*B)-th order statistic without interpolation",
+    "replicates": 10000,
+    "seed": 20260817,
+    "upper_quantile": "0.94999999999999996"
+  },
+  "resource_values_are_performance_claims": false,
+  "schema_version": 1,
+  "scientific_output_fields_read": false,
+  "status": "corrected_from_predecessor_observed_execution"
+}

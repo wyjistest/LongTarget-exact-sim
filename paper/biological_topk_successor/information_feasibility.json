@@ -1,0 +1,56 @@
+{
+  "all_information_gates_pass": true,
+  "allowed_failures": 2,
+  "candidate_N_panel": 178,
+  "contract_binding_sha256": "e8e585f7a8a573fdcde542963401991a9c08469e48a14093097b9147d0bf0b17",
+  "fresh_pair_selected": false,
+  "joint_information_probability_lcb": "0.9526",
+  "joint_information_probability_point": "0.95750000000000002",
+  "joint_inner_mc_precision_pass": true,
+  "k_min": 122,
+  "n_binary_required": 124,
+  "new_prediction_run": false,
+  "predecessor_overlap_count": 0,
+  "schema_version": 1,
+  "source_capacity": {
+    "query": {
+      "fresh_eligible_row_count": 26903,
+      "fresh_unique_namespaced_ordinal_count": 26903,
+      "fresh_unique_sequence_digest_count": 26882,
+      "predecessor_identity_excluded_row_count": 178,
+      "row_count": 27139
+    },
+    "query_gate_pass": true,
+    "target": {
+      "predecessor_identity_excluded_row_count": 309,
+      "row_count": 2004,
+      "strata": {
+        "large": {
+          "fresh_eligible_row_count": 481,
+          "fresh_unique_namespaced_ordinal_count": 481,
+          "fresh_unique_sequence_digest_count": 480,
+          "required": 59
+        },
+        "medium": {
+          "fresh_eligible_row_count": 608,
+          "fresh_unique_namespaced_ordinal_count": 608,
+          "fresh_unique_sequence_digest_count": 559,
+          "required": 59
+        },
+        "short": {
+          "fresh_eligible_row_count": 606,
+          "fresh_unique_namespaced_ordinal_count": 606,
+          "fresh_unique_sequence_digest_count": 606,
+          "required": 60
+        }
+      }
+    },
+    "target_gate_pass_by_stratum": {
+      "large": true,
+      "medium": true,
+      "short": true
+    }
+  },
+  "source_universe_receipt_sha256": "9f9b2ce65c2dd6d3f718e1a05c8834ff585c161406e49b2aac3591a9ae2b8d1e",
+  "status": "pass"
+}

@@ -1,0 +1,15 @@
+{
+  "all_resource_gates_pass": true,
+  "artifact_storage_gate_pass": true,
+  "decision": "pass",
+  "fixed_total_artifact_storage_bytes": 68719476736,
+  "fresh_pair_selected": false,
+  "gpu_hours_gate_pass": true,
+  "later_phase_authorized_if_state_committed": true,
+  "new_prediction_run": false,
+  "phase": 1,
+  "resource_projection_model_sha256": "1a358de7383b1a6d2e046ef2fa8e4fa0e3fd8d026849e191a8955321fea6f504",
+  "resource_projection_sha256": "c6679ce9e01bc78bad5c1e4f8e1724fada53a01125b7df99359dd09d55ae635e",
+  "scheduled_wall_gate_pass": true,
+  "schema_version": 1
+}

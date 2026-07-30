@@ -1,0 +1,61 @@
+{
+  "fixed_total_artifact_storage_bytes": 68719476736,
+  "includes_predecessor_artifact_bytes": true,
+  "projection": {
+    "artifact_storage_bytes": {
+      "gate_basis": 52172798966,
+      "gate_pass": true,
+      "margin": 16546677770,
+      "predecessor_retained": 7142325727,
+      "quota": 68719476736,
+      "raw_g_reservation": 1610612736,
+      "successor_max_observed_per_arm_stress": 43419860503,
+      "successor_point": 12888154247,
+      "successor_upper_95": 13241116543,
+      "total_max_observed_stress_with_reservation": 52172798966,
+      "total_point_with_reservation": 21641092710,
+      "total_upper_95_with_reservation": 21994055006
+    },
+    "bootstrap": {
+      "level": "arm_and_target_scale_stratum",
+      "quantile_definition": "ceil(q*B)-th order statistic without interpolation",
+      "replicates": 10000,
+      "seed": 20260817,
+      "upper_quantile": "0.94999999999999996"
+    },
+    "cpu_aggregate_wall_seconds": {
+      "point": "20808.335081421657",
+      "upper_95": "22020.397646618308"
+    },
+    "gpu_aggregate_wall_seconds": {
+      "point": "20179.139375162791",
+      "upper_95": "20981.606241410365"
+    },
+    "gpu_hours": {
+      "gate_pass": true,
+      "limit": 72,
+      "point": "5.6053164931007755",
+      "upper_95": "5.8282239559473235"
+    },
+    "max_observed_attempt_storage_bytes": {
+      "A": 26963657,
+      "G": 208962115
+    },
+    "planned_attempts_per_arm": 184,
+    "planned_primary_workloads": 178,
+    "planned_validation_instances": 184,
+    "scheduled_elapsed_wall_seconds": {
+      "gate_pass": true,
+      "limit": 172800,
+      "observed_two_worker_factor": "1.3781147907819733",
+      "point": "28242.722392708674",
+      "upper_95": "29630.848795678117"
+    },
+    "successor_fixed_overhead_bytes": 9518455,
+    "technical_repeats": 6
+  },
+  "quota_may_be_raised_after_phase3_projection": false,
+  "resource_projection_model_sha256": "1a358de7383b1a6d2e046ef2fa8e4fa0e3fd8d026849e191a8955321fea6f504",
+  "schema_version": 1,
+  "status": "pass"
+}
