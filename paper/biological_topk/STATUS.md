@@ -6,10 +6,12 @@
 program = biological_topk_candidate_site_validation
 contract = biological_topk_candidate_site_v1
 contract_status = in_validation
-active_phase = 3
+active_phase = 4
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
+phase_3_status = pass
+phase_4_status = pending
 gpu_screen_status = experimental
 bioinformatics_route = conditionally_reopened
 scientific_object = clustered_TFO_query_target_candidate_site
@@ -23,9 +25,42 @@ new contract or promote the GPU product status. Phase 1 freezes the scientific
 object, exact contract, source universes, statistical design, experimental
 estimands, operating envelope, and owner-approved fixed budget. All Phase 1
 gates pass. Phase 2 froze the fail-closed candidate-site comparator after 184
-historical comparisons and 552 ranking results. Phase 3 is authorized to select
-the fresh panel from the frozen source universe. No fresh pair was selected and
-no new A/G prediction ran during Phase 2.
+historical comparisons and 552 ranking results. Phase 3 selected and froze 178
+fresh primary workloads from the Phase 1 source universe using input-only
+metadata. Six workloads form the fixed technical-repeat subset, yielding 184
+validation instances and 368 independently launched A/G attempts. The panel has
+zero overlap with the frozen exclusion registry on sequence digest, namespaced
+ordinal, pair digest, or registered source identity. No prediction or scientific
+comparison ran during Phase 3. Phase 4 remains pending until the Phase 3 commit
+passes its read-only post-commit check.
+
+## Phase 3 Evidence
+
+```text
+primary_workloads = 178
+query_length_strata_short_medium_large = 60,59,59
+target_scale_strata_short_medium_large = 60,59,59
+technical_repeat_workloads = 6
+validation_instances_including_repeats = 184
+A_attempts = 184
+G_attempts = 184
+AG_order_instances = 92
+GA_order_instances = 92
+historical_or_development_overlap = 0
+projected_cpu_aggregate_wall_upper_95_seconds = 31318.056036127316
+projected_gpu_aggregate_wall_upper_95_seconds = 1858.5176139545529
+projected_scheduled_elapsed_upper_95_seconds = 18241.200628539482
+projected_gpu_hours_upper_95 = 0.51625489276515357
+projected_artifact_storage_upper_95_bytes = 4693975188
+fixed_storage_quota_bytes = 8589934592
+resource_decision = pass
+new_prediction_run = false
+```
+
+The attempt plan binds the archived canonical-hybrid-v2 CPU and GASAL2
+binaries by SHA-256. The root binaries are not accepted as substitutes. A and G
+use distinct artifact roots, balanced order, fixed GPU and CPU-affinity mapping,
+no automatic retries, and offline comparison only after both arms are terminal.
 
 ## Phase 2 Evidence
 

@@ -1,0 +1,20 @@
+{
+  "artifact_storage_gate_pass": true,
+  "fixed_budget_gate_pass": true,
+  "gpu_hours_gate_pass": true,
+  "manifest_sha256": "cf26e6d3bfc3180335128d699e30a1e49a8429bf346d2ed3560366af4b0eb865",
+  "max_artifact_storage_bytes": 8589934592,
+  "max_formal_scheduled_wall_seconds": 172800,
+  "max_gpu_hours": 72,
+  "owner_quota_may_be_raised_after_manifest_projection": false,
+  "phase_4_execution_authorized": true,
+  "projected_artifact_storage_bytes_upper_95": "4693975188",
+  "projected_gpu_hours_upper_95": "0.51625489276515357",
+  "projected_scheduled_elapsed_wall_seconds_upper_95": "18241.200628539482",
+  "resource_model_sha256": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+  "resource_projection_path": "paper/biological_topk/fresh_holdout_resource_projection.json",
+  "resource_projection_sha256": "aaa23f5c38ff6a1ab1d00064f6d90ff011bce81fb4823a51413e0a1fe0f8646c",
+  "scheduled_elapsed_gate_pass": true,
+  "schema_version": 1,
+  "status": "pass"
+}

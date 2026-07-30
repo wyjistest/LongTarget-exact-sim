@@ -1,0 +1,43 @@
+{
+  "bootstrap": {
+    "level": "workload_stratified_by_target_scale",
+    "quantile_definition": "ceil(q*B)-th order statistic without interpolation",
+    "replicates": 10000,
+    "residual_treatment": "within-bootstrap stratum-specific nonnegative 95th nearest-rank log residual added per projected workload",
+    "seed": 20260810,
+    "upper_bound_quantile": "0.94999999999999996"
+  },
+  "evidence_role": "resource_planning_control",
+  "manifest_path": "paper/biological_topk/fresh_holdout_manifest.tsv",
+  "manifest_sha256": "cf26e6d3bfc3180335128d699e30a1e49a8429bf346d2ed3560366af4b0eb865",
+  "model_unchanged_from_phase_1": true,
+  "performance_claim": false,
+  "primary_workload_count": 178,
+  "projected_attempt_count": 368,
+  "projected_validation_instance_count": 184,
+  "projection": {
+    "projected_artifact_storage_bytes_point": "3931492172",
+    "projected_artifact_storage_bytes_upper_95": "4693975188",
+    "projected_cpu_aggregate_wall_seconds_point": "28303.515579629013",
+    "projected_cpu_aggregate_wall_seconds_upper_95": "31318.056036127316",
+    "projected_gpu_aggregate_wall_seconds_point": "1752.5124571283845",
+    "projected_gpu_aggregate_wall_seconds_upper_95": "1858.5176139545529",
+    "projected_gpu_hours_point": "0.48680901586899572",
+    "projected_gpu_hours_upper_95": "0.51625489276515357",
+    "projected_scheduled_elapsed_wall_seconds_point": "16530.815420216572",
+    "projected_scheduled_elapsed_wall_seconds_upper_95": "18241.200628539482"
+  },
+  "resource_model_path": "paper/biological_topk/resource_projection_model.json",
+  "resource_model_sha256": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+  "scheduler_simulation": {
+    "cpu_then_gpu_per_workload": true,
+    "formula": "(aggregate_cpu_seconds+aggregate_gpu_seconds)/2*1.10",
+    "inefficiency_factor": "1.1000000000000001",
+    "logical_workers": 2,
+    "worker_assignment": "balanced_static_two_worker_projection"
+  },
+  "schema_version": 1,
+  "status": "manifest_specific_projection_frozen",
+  "technical_repeat_instance_count": 6,
+  "technical_repeats_included": true
+}

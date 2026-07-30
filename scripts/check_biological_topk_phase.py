@@ -14,6 +14,8 @@ import platform
 import re
 import subprocess
 import sys
+from collections import Counter, defaultdict
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -30,6 +32,21 @@ PHASE0_COMMIT = "3e642db8d93fc253972104e6072e2715f52ccb19"
 PHASE1_COMMIT_MESSAGE = "repro: freeze candidate-site contract, source universe, and statistical gates"
 PHASE1_COMMIT = "0daed2c4e1f181d3ce67ecba52db314a1798146e"
 PHASE2_COMMIT_MESSAGE = "test: freeze clustered TFO candidate-site comparator regression"
+PHASE2_COMMIT = "4d89d1cd989f50a42e7e3af56333c39219ba1803"
+PHASE3_COMMIT_MESSAGE = "repro: freeze fresh clustered TFO candidate-site holdout"
+PHASE3_COMPONENTS = (
+    "reproduce/biological_topk/freeze_fresh_holdout.py",
+    "reproduce/biological_topk/run_fresh_holdout.py",
+    "reproduce/biological_topk/analyze_fresh_holdout.py",
+)
+PHASE3_OUTPUTS = (
+    "paper/biological_topk/fresh_holdout_plan.json",
+    "paper/biological_topk/fresh_holdout_manifest.tsv",
+    "paper/biological_topk/fresh_holdout_attempt_plan.tsv",
+    "paper/biological_topk/fresh_holdout_manifest.sha256",
+    "paper/biological_topk/fresh_holdout_resource_projection.json",
+    "paper/biological_topk/fresh_holdout_resource_decision.json",
+)
 PHASE2_COMPONENTS = (
     "reproduce/biological_topk/canonicalize_rows.py",
     "reproduce/biological_topk/recluster_candidate_sites.py",
@@ -927,6 +944,211 @@ def check_phase2(mode: str, current_state: dict[str, Any]) -> None:
         raise CheckError(f"unsupported Phase 2 mode: {mode}")
 
 
+def check_phase3_start_receipt() -> None:
+    start = load_json(PAPER / "phase_3_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 3, "Phase 3 start receipt drift")
+    require(start["phase_start_parent_head"] == PHASE2_COMMIT, "Phase 3 parent HEAD drift")
+    require(start["previous_phase_number"] == 2, "Phase 3 previous phase drift")
+    require(start["previous_phase_commit"] == PHASE2_COMMIT, "Phase 3 previous commit drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_phase.py", "--phase", "2", "--mode", "postcommit"],
+        "Phase 3 previous postcommit command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "Phase 2 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "Phase 3 clean-start evidence drift",
+    )
+    require(start["status"] == "pass", "Phase 3 start receipt did not pass")
+
+
+def run_phase3_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk",
+            "-p",
+            "test_phase3_holdout.py",
+        ),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase3_reproduction() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (sys.executable, "reproduce/biological_topk/freeze_fresh_holdout.py", "--check"),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase3_evidence() -> None:
+    for relative in (*PHASE3_COMPONENTS, *PHASE3_OUTPUTS):
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing or unsafe Phase 3 artifact: {relative}")
+    require(sha256_file(ROOT / "goal-biological-topk.md") == PROTOCOL_SHA256, "protocol file drift")
+    check_phase3_reproduction()
+
+    manifest_fields, manifest = read_tsv(PAPER / "fresh_holdout_manifest.tsv")
+    expected_manifest_fields = (
+        "workload_id", "evidence_role", "primary_unit", "query_length_stratum",
+        "target_scale_stratum", "query_ordinal_namespace", "query_source_ordinal",
+        "query_transcript_id", "query_gene_id", "query_source_path",
+        "query_extraction_recipe_id", "query_extracted_start0", "query_extracted_end0",
+        "query_sequence_length", "query_sequence_sha256", "query_gc_fraction",
+        "query_complexity_proxy", "query_gc_quartile", "query_complexity_quartile",
+        "target_ordinal_namespace", "target_source_ordinal", "target_source_path",
+        "target_extraction_recipe_id", "target_chromosome", "target_anchor_strand",
+        "target_anchor_transcript_id", "target_anchor_gene_id", "target_region_start0",
+        "target_region_end0", "target_sequence_length", "target_sequence_sha256",
+        "target_gc_fraction", "target_complexity_proxy", "target_gc_quartile",
+        "target_complexity_quartile", "assembly", "target_coordinate_namespace",
+        "parameter_bundle_sha256", "input_pair_digest", "selection_hash",
+        "technical_repeat_count", "status",
+    )
+    require(tuple(manifest_fields) == expected_manifest_fields, "Phase 3 manifest schema drift")
+    require(len(manifest) == 178, "Phase 3 panel size drift")
+    quotas = Counter({"short": 60, "medium": 59, "large": 59})
+    require(Counter(row["query_length_stratum"] for row in manifest) == quotas, "query length quotas drift")
+    require(Counter(row["target_scale_stratum"] for row in manifest) == quotas, "target scale quotas drift")
+    expected_matrix = Counter(
+        {
+            ("short", "short"): 20, ("short", "medium"): 20, ("short", "large"): 20,
+            ("medium", "short"): 20, ("medium", "medium"): 20, ("medium", "large"): 19,
+            ("large", "short"): 20, ("large", "medium"): 19, ("large", "large"): 20,
+        }
+    )
+    require(
+        Counter((row["query_length_stratum"], row["target_scale_stratum"]) for row in manifest)
+        == expected_matrix,
+        "query/target pairing matrix drift",
+    )
+    for field in ("workload_id", "query_sequence_sha256", "target_sequence_sha256", "input_pair_digest"):
+        require(len({row[field] for row in manifest}) == 178, f"Phase 3 {field} is not unique")
+    require(
+        len({(row["query_ordinal_namespace"], row["query_source_ordinal"]) for row in manifest}) == 178,
+        "query namespaced ordinals are not unique",
+    )
+    require(
+        len({(row["target_ordinal_namespace"], row["target_source_ordinal"]) for row in manifest}) == 178,
+        "target namespaced ordinals are not unique",
+    )
+    require(
+        Counter(row["target_scale_stratum"] for row in manifest if row["technical_repeat_count"] == "1")
+        == Counter({"short": 2, "medium": 2, "large": 2}),
+        "technical repeat selection drift",
+    )
+    checksum = (PAPER / "fresh_holdout_manifest.sha256").read_text(encoding="ascii").split()
+    require(checksum == [sha256_file(PAPER / "fresh_holdout_manifest.tsv"), "fresh_holdout_manifest.tsv"], "manifest checksum drift")
+
+    attempt_fields, attempts = read_tsv(PAPER / "fresh_holdout_attempt_plan.tsv")
+    require(len(attempt_fields) == 46, "Phase 3 attempt-plan schema width drift")
+    require(len(attempts) == 368, "Phase 3 attempt count drift")
+    require(Counter(row["arm"] for row in attempts) == Counter({"A": 184, "G": 184}), "A/G attempt counts drift")
+    by_validation: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in attempts:
+        by_validation[row["validation_instance_id"]].append(row)
+    require(len(by_validation) == 184, "validation instance count drift")
+    identity_fields = (
+        "query_ordinal_namespace", "query_source_ordinal", "query_sequence_sha256",
+        "target_ordinal_namespace", "target_source_ordinal", "target_sequence_sha256",
+        "assembly", "target_coordinate_namespace", "query_extraction_recipe_id",
+        "target_extraction_recipe_id", "input_pair_digest", "parameter_bundle_sha256",
+    )
+    pair_orders: Counter[str] = Counter()
+    for validation_id, pair in by_validation.items():
+        require(len(pair) == 2 and {row["arm"] for row in pair} == {"A", "G"}, f"A/G pair drift: {validation_id}")
+        require(all(len({row[field] for row in pair}) == 1 for field in identity_fields), f"A/G identity drift: {validation_id}")
+        require(sorted(int(row["arm_launch_order"]) for row in pair) == [1, 2], f"launch order drift: {validation_id}")
+        require(len({row["artifact_root"] for row in pair}) == 2, f"arm artifact roots collide: {validation_id}")
+        require(all(row["retry_policy"] == "none" for row in pair), f"retry policy drift: {validation_id}")
+        require(all(row["comparison_policy"] == "offline_after_both_arms_terminal" for row in pair), f"comparison isolation drift: {validation_id}")
+        pair_orders[pair[0]["pair_order"]] += 1
+    require(pair_orders == Counter({"AG": 92, "GA": 92}), "balanced A/G order drift")
+
+    authority_path = ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86"
+    candidate_path = ROOT / ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2"
+    require(sha256_file(authority_path) == "75c59f80ee329fe913edce71ea8a0ec1a63620a978b15d3673f636d62268822e", "archived authority binary drift")
+    require(sha256_file(candidate_path) == "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9", "archived candidate binary drift")
+    require({row["binary_path"] for row in attempts if row["arm"] == "A"} == {authority_path.relative_to(ROOT).as_posix()}, "authority binary path substitution")
+    require({row["binary_path"] for row in attempts if row["arm"] == "G"} == {candidate_path.relative_to(ROOT).as_posix()}, "candidate binary path substitution")
+
+    plan = load_json(PAPER / "fresh_holdout_plan.json")
+    require(plan["status"] == "frozen_not_run" and plan["selection_kind"] == "input_only_static_source_metadata", "fresh holdout plan status drift")
+    require(plan["prohibited_selection_fields_used"] == [], "prohibited output-side selection field used")
+    require(plan["new_prediction_run"] is False and plan["scientific_output_created"] is False, "Phase 3 plan claims a scientific run")
+    require(plan["N_panel"] == 178 and plan["validation_instance_count"] == 184 and plan["attempt_count"] == 368, "fresh plan counts drift")
+    require(plan["exclusion_checks"]["hard_gate_pass"] is True, "fresh exclusion hard gate failed")
+    require(all(value == 0 for key, value in plan["exclusion_checks"].items() if key.endswith("_overlap")), "fresh exclusion overlap detected")
+
+    projection = load_json(PAPER / "fresh_holdout_resource_projection.json")
+    require(projection["resource_model_sha256"] == "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286", "resource model substitution")
+    require(projection["primary_workload_count"] == 178, "resource primary count drift")
+    require(projection["technical_repeat_instance_count"] == 6, "resource repeat count drift")
+    require(projection["projected_validation_instance_count"] == 184, "resource instance count drift")
+    require(projection["technical_repeats_included"] is True, "resource projection omitted technical repeats")
+    decision = load_json(PAPER / "fresh_holdout_resource_decision.json")
+    require(decision["status"] == "pass" and decision["fixed_budget_gate_pass"] is True, "manifest-specific resource decision failed")
+    require(Decimal(decision["projected_scheduled_elapsed_wall_seconds_upper_95"]) <= Decimal(172800), "elapsed resource gate failed")
+    require(Decimal(decision["projected_gpu_hours_upper_95"]) <= Decimal(72), "GPU-hour resource gate failed")
+    require(int(decision["projected_artifact_storage_bytes_upper_95"]) <= 8589934592, "storage resource gate failed")
+    require(decision["owner_quota_may_be_raised_after_manifest_projection"] is False, "post-manifest quota raise enabled")
+
+
+def check_phase3_state(state: dict[str, Any]) -> None:
+    require(all(state["phase_status"][str(index)] == "pass" for index in range(4)), "Phase 3 prerequisite/final state drift")
+    require(all(state["phase_status"][str(index)] == "pending" for index in range(4, 10)), "later phase advanced during Phase 3")
+    require(state["active_phase"] == 4 and state["last_completed_phase"] == 3, "Phase 3 transition drift")
+    require(state["last_decision"] == "phase_3_holdout_frozen", "Phase 3 decision drift")
+    require(state["previous_phase_commit"] == PHASE2_COMMIT, "Phase 3 previous commit state drift")
+    require(state["contract_status"] == "in_validation", "Phase 3 promoted the contract")
+    require(state["gpu_screen_status"] == "experimental", "Phase 3 promoted gpu-screen")
+    require(state["bioinformatics_route"] == "conditionally_reopened", "Phase 3 route drift")
+    require(state["rank_order_claim"] == "diagnostic_only", "Phase 3 promoted rank order")
+
+
+def check_phase3(mode: str, current_state: dict[str, Any]) -> None:
+    check_phase3_start_receipt()
+    check_phase3_evidence()
+    run_phase3_unit_tests()
+    if mode == "precommit":
+        paths = allowlist(3)
+        check_precommit_receipt(3, paths)
+        check_phase3_state(current_state)
+        require(git("rev-parse", "HEAD") == PHASE2_COMMIT, "Phase 3 precommit parent drift")
+        require(changed_paths() == set(paths), "Phase 3 allowlisted diff mismatch")
+        require(not (ROOT / ".paper-artifacts/biological-topk/fresh-holdout").exists(), "scientific output exists before Phase 3 freeze commit")
+    elif mode == "postcommit":
+        require(not changed_paths(), "Phase 3 postcommit checker requires a clean tree")
+        commit = phase_commit_for_postcommit(3)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "Phase 3 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk/PROGRAM_STATE.json")
+        paths = allowlist_from_commit(3, commit)
+        check_precommit_receipt(3, paths, committed_at=commit)
+        check_phase3_state(state)
+        require(git("rev-parse", f"{commit}^") == PHASE2_COMMIT, "Phase 3 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE3_COMMIT_MESSAGE, "Phase 3 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "Phase 3 committed paths differ from allowlist")
+        if current_state["phase_status"]["4"] == "pending":
+            require(not (ROOT / ".paper-artifacts/biological-topk/fresh-holdout").exists(), "scientific output predates Phase 4 activation")
+    else:
+        raise CheckError(f"unsupported Phase 3 mode: {mode}")
+
+
 def check_generic_phase(phase: int, mode: str, state: dict[str, Any]) -> None:
     paths = allowlist(phase)
     check_precommit_receipt(phase, paths)
@@ -959,6 +1181,8 @@ def main() -> int:
         check_phase1(args.mode, state)
     elif args.phase == 2:
         check_phase2(args.mode, state)
+    elif args.phase == 3:
+        check_phase3(args.mode, state)
     else:
         check_generic_phase(args.phase, args.mode, state)
     after = git_bytes("status", "--porcelain=v1", "-z", "--untracked-files=all")

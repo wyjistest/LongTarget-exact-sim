@@ -1,0 +1,27 @@
+{
+  "clean_start_check": {
+    "command": [
+      "git",
+      "status",
+      "--porcelain=v1"
+    ],
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "phase": 3,
+  "phase_start_parent_head": "4d89d1cd989f50a42e7e3af56333c39219ba1803",
+  "previous_phase_commit": "4d89d1cd989f50a42e7e3af56333c39219ba1803",
+  "previous_phase_number": 2,
+  "previous_phase_postcommit_check_command": [
+    "python3",
+    "scripts/check_biological_topk_phase.py",
+    "--phase",
+    "2",
+    "--mode",
+    "postcommit"
+  ],
+  "previous_phase_postcommit_check_result": "pass",
+  "schema_version": 1,
+  "status": "pass"
+}

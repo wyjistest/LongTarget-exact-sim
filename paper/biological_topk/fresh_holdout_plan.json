@@ -1,0 +1,160 @@
+{
+  "N_panel": 178,
+  "allowed_selection_fields": [
+    "namespaced_source_ordinal",
+    "sequence_length",
+    "GC_fraction",
+    "static_repeat_or_complexity_proxy",
+    "chromosome",
+    "transcript_biotype",
+    "assembly",
+    "target_scale_stratum",
+    "hash_ordering"
+  ],
+  "attempt_count": 368,
+  "contract_binding": {
+    "comparator_freeze_sha256": "37962f8faa77722942af17d06a55513ae11c734db2e618f5543eb2db0f6fd81e",
+    "comparator_sha256": "b91f05161fff8d8b0076b4cb99c2a2b7ea43ae8ffbb94627c36d3a2400b00706",
+    "contract_spec_sha256": "c396f346a0fa00fb0b746f9582100eb46d22fbe892c8fa3053a6caa3d5342af9",
+    "parameter_bundle_sha256": "110752c4078bc2b300ad4e92e2495ea868c365486e540da7002fc3e19a18241a"
+  },
+  "exact_analysis_command": [
+    "python3",
+    "reproduce/biological_topk/analyze_fresh_holdout.py",
+    "--analyze",
+    "--artifact-root",
+    ".paper-artifacts/biological-topk/fresh-holdout"
+  ],
+  "exclusion_checks": {
+    "hard_gate_pass": true,
+    "pair_digest_overlap": 0,
+    "query_accession_or_debug_identity_overlap": 0,
+    "query_digest_overlap": 0,
+    "query_namespaced_ordinal_overlap": 0,
+    "target_accession_or_debug_identity_overlap": 0,
+    "target_digest_overlap": 0,
+    "target_namespaced_ordinal_overlap": 0
+  },
+  "execution_order": "balanced alternating AG and GA over validation instances",
+  "fresh_pair_selected": true,
+  "input_sha256": {
+    "paper/biological_topk/contract_spec.json": "c396f346a0fa00fb0b746f9582100eb46d22fbe892c8fa3053a6caa3d5342af9",
+    "paper/biological_topk/fresh_budget_projection_plan.json": "ad56983d725c4ed0d3a39243d3fee16d1ff57cf2a41d7936e1f8ec81558c6bec",
+    "paper/biological_topk/fresh_input_exclusion_registry.tsv": "062be2d3e7706dfba5bf356e88b6df3efb22652dd652fa447a8b6ad0b3430630",
+    "paper/biological_topk/operating_envelope.json": "43a1a031b6ce0543c1f55a4ecdfec0bcc5b13cda93be41990bd0d3f89bbbca41",
+    "paper/biological_topk/owner_storage_quota_approval.json": "25bddcfe69856003724256ef292b2c404e289a5246f50d219228b7091f6190c5",
+    "paper/biological_topk/query_source_universe.tsv.gz": "9c36b948292654d4c1b5777769e985f06c51eda0d496c388c4a7559de2576ae0",
+    "paper/biological_topk/resource_projection_model.json": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+    "paper/biological_topk/sample_size_plan.json": "61bb50ccbec59833e9322eba88c11d7819080e1f35c3069c82c83cdca565195e",
+    "paper/biological_topk/target_source_universe.tsv.gz": "59174a536aca75c177ca553ed75f3992644a2db8be5cbe3deac2d59a3b598179"
+  },
+  "memory_limits": {
+    "max_address_space_bytes_per_attempt": 103079215104,
+    "max_gpu_memory_mib_per_gpu": 24564
+  },
+  "new_prediction_run": false,
+  "output_sha256": {
+    "paper/biological_topk/fresh_holdout_attempt_plan.tsv": "fc8aaf41f4566fca2805a82067a30c90a5f7e38f5e1d87ff44efad0f14811d36",
+    "paper/biological_topk/fresh_holdout_manifest.tsv": "cf26e6d3bfc3180335128d699e30a1e49a8429bf346d2ed3560366af4b0eb865",
+    "paper/biological_topk/fresh_holdout_resource_decision.json": "41f191fc31aff4591defcda0002a810a8b2230313f9b898c3b81c520b9fc23b3",
+    "paper/biological_topk/fresh_holdout_resource_projection.json": "aaa23f5c38ff6a1ab1d00064f6d90ff011bce81fb4823a51413e0a1fe0f8646c"
+  },
+  "phase": 3,
+  "post_freeze_quota_raise_allowed": false,
+  "primary_workload_count": 178,
+  "prohibited_selection_fields_used": [],
+  "query_balancing": "rank quartiles of GC fraction x sampled distinct 4-mer fraction within length stratum",
+  "query_length_bounds": {
+    "large": [
+      1601,
+      2812
+    ],
+    "medium": [
+      801,
+      1600
+    ],
+    "short": [
+      500,
+      800
+    ]
+  },
+  "query_length_stratum_quotas": {
+    "large": 59,
+    "medium": 59,
+    "short": 60
+  },
+  "query_target_pairing_matrix": {
+    "large": {
+      "large": 20,
+      "medium": 19,
+      "short": 20
+    },
+    "medium": {
+      "large": 19,
+      "medium": 20,
+      "short": 20
+    },
+    "short": {
+      "large": 20,
+      "medium": 20,
+      "short": 20
+    }
+  },
+  "resource_decision": "pass",
+  "resource_decision_sha256": "41f191fc31aff4591defcda0002a810a8b2230313f9b898c3b81c520b9fc23b3",
+  "runtime_binding": {
+    "authority_binary_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86",
+    "authority_binary_sha256": "75c59f80ee329fe913edce71ea8a0ec1a63620a978b15d3673f636d62268822e",
+    "candidate_binary_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2",
+    "candidate_binary_sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+    "runtime_receipt_path": "paper/bioinformatics/canonical_hybrid_v2_runtime.json",
+    "runtime_receipt_sha256": "5bf81a89ff0177c3616c635f81b64c48a36f63f6dc675a10c3eeccc8d9e865bd"
+  },
+  "schema_version": 1,
+  "scientific_output_created": false,
+  "selection_kind": "input_only_static_source_metadata",
+  "selection_seed": "biological_topk_phase3_panel_v1_20260730",
+  "status": "frozen_not_run",
+  "target_balancing": "chromosome x anchor strand quotas with round-robin GC x complexity quartile cells",
+  "target_group_counts": {
+    "large|chr21|+": 14,
+    "large|chr21|-": 15,
+    "large|chr22|+": 15,
+    "large|chr22|-": 15,
+    "medium|chr21|+": 14,
+    "medium|chr21|-": 15,
+    "medium|chr22|+": 15,
+    "medium|chr22|-": 15,
+    "short|chr21|+": 15,
+    "short|chr21|-": 15,
+    "short|chr22|+": 15,
+    "short|chr22|-": 15
+  },
+  "target_scale_stratum_quotas": {
+    "large": 59,
+    "medium": 59,
+    "short": 60
+  },
+  "technical_repeat_rule": "two seed-hash-selected workloads per target scale; one additional repeat each; excluded from independent n",
+  "technical_repeat_workload_count": 6,
+  "timeouts_seconds_by_target_scale": {
+    "large": 43200,
+    "medium": 14400,
+    "short": 3600
+  },
+  "validation_instance_count": 184,
+  "worker_configuration": {
+    "comparison_starts_only_after_both_arms_terminal": true,
+    "cpu_affinity": {
+      "0": "0-4,10-14",
+      "1": "5-9,15-19"
+    },
+    "gpu_assignment": {
+      "0": 0,
+      "1": 1
+    },
+    "logical_workers": 2,
+    "no_automatic_retries": true,
+    "workers_per_gpu": 1
+  }
+}
