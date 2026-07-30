@@ -34,6 +34,25 @@ PHASE1_COMMIT = "0daed2c4e1f181d3ce67ecba52db314a1798146e"
 PHASE2_COMMIT_MESSAGE = "test: freeze clustered TFO candidate-site comparator regression"
 PHASE2_COMMIT = "4d89d1cd989f50a42e7e3af56333c39219ba1803"
 PHASE3_COMMIT_MESSAGE = "repro: freeze fresh clustered TFO candidate-site holdout"
+PHASE3_COMMIT = "ca6410c1fc986e91fd855a43ed71dfeb5940f68f"
+PHASE4_COMMIT_MESSAGE = "bench: freeze fresh candidate-site concordance decision"
+PHASE4_RUNNER_SHA256 = "82d88b6687b5ad67e7f8c5e3e58f276bd31b2a042f6872f9289e11566d3f0d2b"
+PHASE4_ANALYZER_SHA256 = "05f68a62727d342b3abf168f3d892cb430763031351e7c21ca62f49b1c396cbe"
+PHASE4_ORIGINAL_ARTIFACT_ROOT = ROOT / ".paper-artifacts/biological-topk/fresh-holdout"
+PHASE4_REPAIR_ARTIFACT_ROOT = ROOT / ".paper-artifacts/biological-topk/fresh-holdout-repair1"
+PHASE4_REPAIR_RESERVATION_BYTES = 1536 * 1024**2
+PHASE4_STORAGE_QUOTA_BYTES = 8 * 1024**3
+PHASE4_OUTPUTS = (
+    "paper/biological_topk/fresh_holdout_actual_resources.json",
+    "paper/biological_topk/fresh_holdout_decision.json",
+    "paper/biological_topk/fresh_holdout_receipt.json",
+    "paper/biological_topk/source_data/fresh_candidate_matches.tsv",
+    "paper/biological_topk/source_data/fresh_empty_workloads.tsv",
+    "paper/biological_topk/source_data/fresh_exact_binomial_bounds.tsv",
+    "paper/biological_topk/source_data/fresh_failure_ledger.tsv",
+    "paper/biological_topk/source_data/fresh_rank_diagnostics.tsv",
+    "paper/biological_topk/source_data/fresh_workload_metrics.tsv",
+)
 PHASE3_COMPONENTS = (
     "reproduce/biological_topk/freeze_fresh_holdout.py",
     "reproduce/biological_topk/run_fresh_holdout.py",
@@ -147,6 +166,28 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def canonical_digest(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("ascii")
+    ).hexdigest()
+
+
+def directory_bytes(path: Path) -> int:
+    require(path.is_dir() and not path.is_symlink(), f"missing or unsafe directory: {path}")
+    total = 0
+    for child in path.rglob("*"):
+        require(not child.is_symlink(), f"artifact tree contains a symlink: {child}")
+        if child.is_file():
+            total += child.stat().st_size
+    return total
 
 
 def load_json(path: Path) -> Any:
@@ -1149,6 +1190,420 @@ def check_phase3(mode: str, current_state: dict[str, Any]) -> None:
         raise CheckError(f"unsupported Phase 3 mode: {mode}")
 
 
+def check_phase4_start_receipt() -> None:
+    start = load_json(PAPER / "phase_4_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 4, "Phase 4 start receipt drift")
+    require(start["phase_start_parent_head"] == PHASE3_COMMIT, "Phase 4 parent HEAD drift")
+    require(start["previous_phase_number"] == 3, "Phase 4 previous phase drift")
+    require(start["previous_phase_commit"] == PHASE3_COMMIT, "Phase 4 previous commit drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_phase.py", "--phase", "3", "--mode", "postcommit"],
+        "Phase 4 previous postcommit command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "Phase 3 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "Phase 4 clean-start evidence drift",
+    )
+    require(start["status"] == "pass", "Phase 4 start receipt did not pass")
+
+
+def run_phase4_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk",
+            "-p",
+            "test_phase4_concordance.py",
+        ),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase4_reproduction(decision: str) -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    plan_check = run(
+        (sys.executable, "reproduce/biological_topk/run_fresh_holdout_repair1.py", "--check-plan"),
+        check=False,
+        env=environment,
+    )
+    require(plan_check.returncode == 0, plan_check.stderr.decode("utf-8", errors="replace"))
+    if decision == "blocked_fixed_budget":
+        command = (
+            sys.executable,
+            "reproduce/biological_topk/adjudicate_fresh_holdout_repair1_budget_stop.py",
+            "--check",
+            "--artifact-root",
+            ".paper-artifacts/biological-topk/fresh-holdout-repair1",
+        )
+    else:
+        command = (
+            sys.executable,
+            "reproduce/biological_topk/analyze_fresh_holdout_repair1.py",
+            "--check",
+            "--artifact-root",
+            ".paper-artifacts/biological-topk/fresh-holdout-repair1",
+        )
+    analysis_check = run(command, check=False, env=environment)
+    require(analysis_check.returncode == 0, analysis_check.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase4_attempt_artifacts(row: dict[str, str]) -> dict[str, Any]:
+    destination = ROOT / row["artifact_root"]
+    require(destination.is_dir() and not destination.is_symlink(), f"missing attempt directory: {row['attempt_id']}")
+    receipt = load_json(destination / "attempt-complete.json")
+    require(receipt["attempt_id"] == row["attempt_id"], "attempt receipt identity drift")
+    require(receipt["status"] == "success", f"repair attempt did not succeed: {row['attempt_id']}")
+    require(receipt["source_commit"] == PHASE3_COMMIT, "attempt source commit drift")
+    require(receipt["attempt_config_sha256"] == canonical_digest(row), "attempt config digest drift")
+    require(receipt["comparison_started"] is False, "runner performed a comparison")
+    require(receipt["retry_policy"] == "none", "attempt retry policy drift")
+    require(receipt["replacement_retry_allowed"] is False, "replacement retry was enabled")
+    require(receipt["binary_sha256"] == row["binary_sha256"], "attempt binary digest drift")
+
+    manifest_path = destination / "artifact-manifest.tsv"
+    checksum = (destination / "artifact-manifest.sha256").read_text(encoding="ascii").split()
+    require(checksum == [sha256_file(manifest_path), manifest_path.name], "attempt manifest checksum drift")
+    fields, manifest = read_tsv(manifest_path)
+    require(fields == ["path", "size_bytes", "sha256"], "attempt artifact-manifest schema drift")
+    require(len({item["path"] for item in manifest}) == len(manifest), "duplicate attempt artifact path")
+    excluded = {"artifact-manifest.tsv", "artifact-manifest.sha256", "attempt-complete.json"}
+    actual_paths = {
+        path.relative_to(destination).as_posix()
+        for path in destination.rglob("*")
+        if path.is_file() and path.relative_to(destination).as_posix() not in excluded
+    }
+    require({item["path"] for item in manifest} == actual_paths, "attempt artifact inventory drift")
+    observed: dict[str, tuple[int, str]] = {}
+    for item in manifest:
+        relative = Path(item["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "unsafe attempt artifact path")
+        path = destination / relative
+        require(path.is_file() and not path.is_symlink(), f"missing attempt artifact: {path}")
+        size = path.stat().st_size
+        digest = sha256_file(path)
+        require(size == int(item["size_bytes"]), f"attempt artifact size drift: {path}")
+        require(digest == item["sha256"], f"attempt artifact digest drift: {path}")
+        observed[item["path"]] = (size, digest)
+
+    output = destination / str(receipt["output_path"])
+    input_receipt_path = destination / str(receipt["input_receipt_path"])
+    require(output.is_file() and sha256_file(output) == receipt["output_sha256"], "attempt output drift")
+    input_receipt = load_json(input_receipt_path)
+    identity = input_receipt["input_identity"]
+    for receipt_field, plan_field in (
+        ("query_ordinal_namespace", "query_ordinal_namespace"),
+        ("query_source_ordinal", "query_source_ordinal"),
+        ("query_sequence_sha256", "query_sequence_sha256"),
+        ("target_ordinal_namespace", "target_ordinal_namespace"),
+        ("target_source_ordinal", "target_source_ordinal"),
+        ("target_sequence_sha256", "target_sequence_sha256"),
+        ("assembly", "assembly"),
+        ("target_coordinate_namespace", "target_coordinate_namespace"),
+        ("input_pair_digest", "input_pair_digest"),
+    ):
+        require(str(identity[receipt_field]) == row[plan_field], f"attempt input identity drift: {receipt_field}")
+
+    if row["arm"] == "G":
+        require(
+            receipt["telemetry_storage_policy"] == "validate_raw_then_lossless_gzip_mtime0",
+            "G telemetry storage policy drift",
+        )
+        require(not (destination / "telemetry.json").exists(), "raw G telemetry was not removed after compression")
+        compressed_name = str(receipt["telemetry_compressed_path"])
+        require(compressed_name == "attempt-telemetry.tsv.gz", "compressed telemetry path drift")
+        compressed = destination / compressed_name
+        require(compressed_name in observed, "compressed telemetry omitted from artifact manifest")
+        require(
+            observed[compressed_name]
+            == (int(receipt["telemetry_compressed_size_bytes"]), receipt["telemetry_compressed_sha256"]),
+            "compressed telemetry receipt drift",
+        )
+        with compressed.open("rb") as handle:
+            header = handle.read(10)
+        require(len(header) == 10 and header[:2] == b"\x1f\x8b", "invalid gzip telemetry header")
+        require(header[4:8] == b"\x00\x00\x00\x00", "gzip telemetry mtime is not deterministic")
+        raw_digest = hashlib.sha256()
+        raw_size = 0
+        with gzip.open(compressed, "rb") as decoded:
+            for block in iter(lambda: decoded.read(1024 * 1024), b""):
+                raw_digest.update(block)
+                raw_size += len(block)
+        require(raw_size == int(receipt["telemetry_uncompressed_size_bytes"]), "telemetry round-trip size drift")
+        require(raw_digest.hexdigest() == receipt["telemetry_uncompressed_sha256"], "telemetry round-trip digest drift")
+    else:
+        require(not (destination / "telemetry.json").exists(), "A attempt contains G telemetry")
+        require(not (destination / "attempt-telemetry.tsv.gz").exists(), "A attempt contains compressed G telemetry")
+    return receipt
+
+
+def check_phase4_freeze_and_incident() -> tuple[list[dict[str, str]], dict[str, Any]]:
+    require(sha256_file(ROOT / "goal-biological-topk.md") == PROTOCOL_SHA256, "protocol file drift")
+    require(
+        sha256_file(ROOT / "reproduce/biological_topk/run_fresh_holdout_repair1.py")
+        == PHASE4_RUNNER_SHA256,
+        "Phase 4 repair runner drift",
+    )
+    require(
+        sha256_file(ROOT / "reproduce/biological_topk/analyze_fresh_holdout_repair1.py")
+        == PHASE4_ANALYZER_SHA256,
+        "Phase 4 repair analyzer drift",
+    )
+    incident = load_json(PAPER / "fresh_holdout_infrastructure_incident.json")
+    require(incident["schema_version"] == 1 and incident["phase"] == 4, "infrastructure incident schema drift")
+    require(incident["status"] == "superseded_epoch_retained_repair1_authorized", "incident status drift")
+    require(incident["terminal_attempt_count"] == 3, "superseded terminal-attempt count drift")
+    require(incident["successful_attempt_count"] == 1, "superseded success count drift")
+    require(incident["budget_stop_technical_failure_count"] == 2, "superseded failure count drift")
+    require(incident["comparison_started"] is False, "superseded epoch started comparison")
+    require(incident["automatic_retry_used"] is False, "superseded epoch used an automatic retry")
+    require(incident["repair_epoch_authorized"] == incident["repair_epoch_limit"] == 1, "repair limit drift")
+    require(incident["fixed_storage_quota_bytes"] == PHASE4_STORAGE_QUOTA_BYTES, "incident storage quota drift")
+    require(directory_bytes(PHASE4_ORIGINAL_ARTIFACT_ROOT) == incident["superseded_artifact_bytes"], "superseded evidence size drift")
+    require(
+        sha256_file(ROOT / incident["run_summary_path"]) == incident["run_summary_sha256"],
+        "superseded run-summary drift",
+    )
+    for item in incident["terminal_attempt_receipts"] + incident["large_candidate_telemetry_observations"]:
+        path = ROOT / item["path"]
+        require(path.stat().st_size == item.get("size_bytes", path.stat().st_size), "incident evidence size drift")
+        require(sha256_file(path) == item["sha256"], "incident evidence digest drift")
+
+    plan = load_json(PAPER / "fresh_holdout_repair1_plan.json")
+    require(plan["repair_epoch"] == plan["repair_epoch_limit"] == 1, "repair plan epoch-limit drift")
+    require(plan["full_panel_rerun"] is True and plan["original_evidence_retained"] is True, "repair rerun/retention drift")
+    require(plan["planned_attempts"] == 368 and plan["planned_validation_instances"] == 184, "repair plan counts drift")
+    require(plan["planned_primary_workloads"] == 178, "repair primary-workload count drift")
+    require(plan["fixed_storage_quota_bytes"] == PHASE4_STORAGE_QUOTA_BYTES, "repair quota drift")
+    require(plan["telemetry_raw_reservation_bytes"] == PHASE4_REPAIR_RESERVATION_BYTES, "repair reservation drift")
+    require(plan["runner_sha256"] == PHASE4_RUNNER_SHA256, "repair-plan runner digest drift")
+    require(plan["analyzer_sha256"] == PHASE4_ANALYZER_SHA256, "repair-plan analyzer digest drift")
+    require(plan["scientific_input_changed"] is False, "repair changed scientific input")
+    require(plan["scientific_contract_changed"] is False, "repair changed scientific contract")
+    require(plan["runtime_binary_changed"] is False, "repair changed runtime binary")
+    require(plan["panel_or_attempt_order_changed"] is False, "repair changed panel/order")
+
+    original_fields, original = read_tsv(PAPER / "fresh_holdout_attempt_plan.tsv")
+    repair_fields, attempts = read_tsv(PAPER / "fresh_holdout_repair1_attempt_plan.tsv")
+    require(
+        repair_fields
+        == original_fields
+        + ["supersedes_attempt_id", "repair_epoch", "repair_reason", "telemetry_storage_policy"],
+        "repair attempt-plan schema drift",
+    )
+    require(len(original) == len(attempts) == 368, "repair attempt-plan count drift")
+    checksum = (PAPER / "fresh_holdout_repair1_attempt_plan.sha256").read_text(encoding="ascii").split()
+    require(
+        checksum == [sha256_file(PAPER / "fresh_holdout_repair1_attempt_plan.tsv"), "fresh_holdout_repair1_attempt_plan.tsv"],
+        "repair attempt-plan checksum drift",
+    )
+    identity_fields = (
+        "execution_index", "workload_id", "repeat_id", "primary_instance", "independent_sample",
+        "arm", "pair_order", "arm_launch_order", "worker_index", "query_ordinal_namespace",
+        "query_source_ordinal", "query_sequence_sha256", "target_ordinal_namespace",
+        "target_source_ordinal", "target_sequence_sha256", "assembly",
+        "target_coordinate_namespace", "query_extraction_recipe_id", "target_extraction_recipe_id",
+        "input_pair_digest", "parameter_bundle_sha256", "binary_path", "binary_sha256",
+        "gpu_physical_index", "cpu_affinity", "timeout_seconds", "retry_policy", "comparison_policy",
+    )
+    for source, row in zip(original, attempts):
+        require(row["attempt_id"] == f"r1_{source['attempt_id']}", "repair attempt ID drift")
+        require(row["validation_instance_id"] == f"r1_{source['validation_instance_id']}", "repair validation ID drift")
+        require(row["supersedes_attempt_id"] == source["attempt_id"], "repair supersession drift")
+        require(all(row[field] == source[field] for field in identity_fields), "repair changed a frozen attempt")
+    return attempts, plan
+
+
+def check_phase4_evidence() -> dict[str, Any]:
+    for relative in PHASE4_OUTPUTS:
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing or unsafe Phase 4 artifact: {relative}")
+    attempts, plan = check_phase4_freeze_and_incident()
+    decision = load_json(PAPER / "fresh_holdout_decision.json")
+    receipt = load_json(PAPER / "fresh_holdout_receipt.json")
+    resources = load_json(PAPER / "fresh_holdout_actual_resources.json")
+    require(decision["schema_version"] == 1 and decision["phase"] == 4, "Phase 4 decision schema drift")
+    require(
+        decision["decision"] in {"pass", "no_go", "blocked_insufficient_information", "blocked_fixed_budget"},
+        "unknown Phase 4 decision",
+    )
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 4, "Phase 4 receipt schema drift")
+    require(resources["schema_version"] == 1 and resources["phase"] == 4, "Phase 4 resource schema drift")
+    require(decision["rank_order_claim"] == "diagnostic_only", "Phase 4 promoted rank order")
+    require(decision["gpu_screen_status_if_applied"] == "experimental", "Phase 4 promoted product status")
+    require(receipt["rank_order_claim"] == "diagnostic_only", "Phase 4 receipt promoted rank order")
+    require(receipt["attempt_plan_sha256"] == sha256_file(PAPER / "fresh_holdout_repair1_attempt_plan.tsv"), "receipt attempt plan drift")
+    require(receipt["repair_plan_sha256"] == sha256_file(PAPER / "fresh_holdout_repair1_plan.json"), "receipt repair plan drift")
+    require(decision["repair_plan_sha256"] == receipt["repair_plan_sha256"], "decision repair plan drift")
+    require(
+        decision["fresh_holdout_receipt_sha256"] == sha256_file(PAPER / "fresh_holdout_receipt.json"),
+        "decision/receipt digest drift",
+    )
+    require(
+        receipt["actual_resources_sha256"] == sha256_file(PAPER / "fresh_holdout_actual_resources.json"),
+        "receipt/resource digest drift",
+    )
+    for relative, digest in receipt["source_data_sha256"].items():
+        require(sha256_file(ROOT / relative) == digest, f"Phase 4 source-data digest drift: {relative}")
+
+    summary = load_json(PHASE4_REPAIR_ARTIFACT_ROOT / "run-summary.json")
+    require(summary["planned_attempt_count"] == len(attempts) == 368, "run-summary plan count drift")
+    require(summary["comparison_started"] is False, "runner comparison isolation drift")
+    require(not list(PHASE4_REPAIR_ARTIFACT_ROOT.glob(".*.partial.*")), "stale partial attempt remains")
+    attempt_by_id = {row["attempt_id"]: row for row in attempts}
+    completed_paths = sorted(PHASE4_REPAIR_ARTIFACT_ROOT.glob("*/attempt-complete.json"))
+    completed_ids = {path.parent.name for path in completed_paths}
+    require(completed_ids <= set(attempt_by_id), "unplanned repair attempt exists")
+    checked_receipts = {
+        attempt_id: check_phase4_attempt_artifacts(attempt_by_id[attempt_id])
+        for attempt_id in sorted(completed_ids)
+    }
+    require(summary["terminal_attempt_count"] == len(checked_receipts), "terminal attempt count drift")
+    require(summary["successful_attempt_count"] == len(checked_receipts), "successful attempt count drift")
+    require(summary["technical_failure_count"] == 0, "repair contains a technical failure")
+    require(
+        receipt["attempt_receipt_sha256"]
+        == {
+            attempt_id: sha256_file(PHASE4_REPAIR_ARTIFACT_ROOT / attempt_id / "attempt-complete.json")
+            for attempt_id in sorted(checked_receipts)
+        },
+        "Phase 4 attempt-receipt inventory drift",
+    )
+
+    _, matches = read_tsv(PAPER / "source_data/fresh_candidate_matches.tsv")
+    _, metrics = read_tsv(PAPER / "source_data/fresh_workload_metrics.tsv")
+    _, empty = read_tsv(PAPER / "source_data/fresh_empty_workloads.tsv")
+    _, failures = read_tsv(PAPER / "source_data/fresh_failure_ledger.tsv")
+    _, bounds = read_tsv(PAPER / "source_data/fresh_exact_binomial_bounds.tsv")
+    _, ranks = read_tsv(PAPER / "source_data/fresh_rank_diagnostics.tsv")
+    require(len(metrics) == 184 * 3 and len(bounds) == 6, "Phase 4 metric/bound row count drift")
+    require(sum(row["primary_instance"] == "1" for row in metrics) == 178 * 3, "primary metric count drift")
+    require({row["ranking_mode"] for row in metrics} == {"score", "stability", "nt"}, "ranking mode drift")
+
+    if decision["decision"] == "blocked_fixed_budget":
+        require(summary["status"] == "in_progress_or_interrupted", "budget-stop summary status drift")
+        require(0 < len(checked_receipts) < len(attempts), "budget-stop terminal count is not partial")
+        require(summary["missing_attempt_ids"] == [row["attempt_id"] for row in attempts if row["attempt_id"] not in checked_receipts], "budget-stop missing-attempt order drift")
+        require(receipt["status"] == "fixed_budget_stop_with_missing_attempts", "budget-stop receipt status drift")
+        require(receipt["comparison_global_start_gate_pass"] is False, "partial epoch passed comparison gate")
+        require(receipt["comparison_count"] == 0 and receipt["scientific_comparison_started"] is False, "partial epoch ran comparisons")
+        require(receipt["fixed_budget_stop"] is True and receipt["repair_epoch_limit_exhausted"] is True, "budget-stop receipt drift")
+        require(resources["status"] == "blocked_fixed_budget", "budget resource status drift")
+        require(resources["terminal_attempt_count"] == len(checked_receipts), "budget resource terminal count drift")
+        require(resources["unstarted_attempt_count"] == len(attempts) - len(checked_receipts), "budget resource missing count drift")
+        require(resources["terminal_technical_failure_count"] == 0, "budget stop masked a terminal failure")
+        require(resources["fixed_budget_gate_pass"] is False, "budget-stop resource gate passed")
+        require(
+            resources["retained_artifact_storage_within_quota"] is False
+            or resources["next_g_storage_reservation_gate_pass"] is False,
+            "budget-stop storage condition is not proven",
+        )
+        retained = directory_bytes(PHASE4_ORIGINAL_ARTIFACT_ROOT) + directory_bytes(PHASE4_REPAIR_ARTIFACT_ROOT)
+        require(resources["actual_total_epoch_artifact_storage_bytes"] == retained, "actual retained storage drift")
+        require(resources["max_artifact_storage_bytes"] == PHASE4_STORAGE_QUOTA_BYTES, "actual resource quota drift")
+        require(resources["next_raw_g_telemetry_reservation_bytes"] == PHASE4_REPAIR_RESERVATION_BYTES, "actual resource reservation drift")
+        require(decision["fixed_budget_stop"] is True, "decision omitted fixed-budget stop")
+        require(decision["scientific_decision_reached"] is False, "partial epoch claims a scientific decision")
+        require(decision["later_phase_authorized"] is False, "budget stop authorized a later phase")
+        require(decision["contract_status_if_applied"] == "in_validation", "budget stop changed contract status")
+        require(decision["bioinformatics_route_if_applied"] == "conditionally_reopened", "budget stop changed route")
+        require(len(matches) == len(empty) == len(ranks) == 0, "partial epoch contains scientific comparisons")
+        require(len(failures) == len(attempts) - len(checked_receipts), "budget-stop failure ledger count drift")
+        require(all(row["failure_class"] == "missing_attempt" for row in failures), "budget ledger failure class drift")
+        require(all(row["replacement_or_retry_used"] == "0" for row in failures), "budget ledger contains retry")
+        require(all(row["comparison_status"] == "technical_failure" for row in metrics), "partial metrics claim comparison success")
+        require(all(row["matching_started"] == "0" for row in metrics), "partial metrics started matching")
+        require(all(row["binary_success"] == "0" for row in metrics), "partial metrics claim binary success")
+        require(all(row["successes"] == "0" and row["trials"] == "178" for row in bounds), "partial exact bounds drift")
+        require(all(row["threshold_pass"] == "0" for row in bounds), "partial exact bound passed")
+    else:
+        require(len(checked_receipts) == len(attempts) == 368, "complete decision lacks every attempt")
+        require(summary["status"] == "complete_success", "complete repair summary did not pass")
+        require(receipt["status"] == "complete", "complete receipt status drift")
+        require(receipt["comparison_global_start_gate_pass"] is True, "complete epoch comparison gate failed")
+        require(receipt["comparison_count"] == 184, "complete comparison count drift")
+        require(resources["status"] == "pass" and resources["fixed_budget_gate_pass"] is True, "complete resource gate failed")
+        require(len(ranks) == 184 * 3, "complete rank-diagnostic count drift")
+        if decision["decision"] == "pass":
+            require(decision["all_promotion_gates_pass"] is True, "Phase 4 pass lacks all gates")
+            require(decision["information_gate_pass"] is True, "Phase 4 pass lacks information")
+            require(decision["endpoint_gate_pass"] is True, "Phase 4 pass lacks endpoint gate")
+            require(decision["zero_technical_failure_gate_pass"] is True, "Phase 4 pass lacks technical gate")
+            require(all(row["threshold_pass"] == "1" for row in bounds), "Phase 4 pass bound failure")
+            require(not failures, "Phase 4 pass contains failures")
+
+    require(plan["repair_epoch_limit"] == 1, "repair epoch limit changed during analysis")
+    check_phase4_reproduction(str(decision["decision"]))
+    return decision
+
+
+def check_phase4_state(state: dict[str, Any], decision: dict[str, Any]) -> None:
+    require(all(state["phase_status"][str(index)] == "pass" for index in range(4)), "Phase 4 prerequisite state drift")
+    result = decision["decision"]
+    require(state["previous_phase_commit"] == PHASE3_COMMIT, "Phase 4 previous commit state drift")
+    require(state["gpu_screen_status"] == "experimental", "Phase 4 promoted gpu-screen")
+    require(state["rank_order_claim"] == "diagnostic_only", "Phase 4 promoted rank order")
+    if result == "pass":
+        require(state["phase_status"]["4"] == "pass", "Phase 4 pass state drift")
+        require(all(state["phase_status"][str(index)] == "pending" for index in range(5, 10)), "later phase advanced during Phase 4")
+        require(state["active_phase"] == 5 and state["last_completed_phase"] == 4, "Phase 4 pass transition drift")
+        require(state["last_decision"] == "fresh_concordance_pass", "Phase 4 pass decision drift")
+        require(state["contract_status"] == "fresh_concordance_pass", "Phase 4 contract promotion drift")
+        require(state["bioinformatics_route"] == "conditionally_reopened", "Phase 4 pass route drift")
+    elif result == "no_go":
+        require(state["phase_status"]["4"] == "no_go", "Phase 4 no-go state drift")
+        require(all(state["phase_status"][str(index)] == "not_authorized_previous_no_go" for index in range(5, 10)), "later phase authorized after no-go")
+        require(state["active_phase"] is None and state["last_completed_phase"] == 4, "Phase 4 no-go transition drift")
+        require(state["last_decision"] == "concordance_no_go", "Phase 4 no-go decision drift")
+        require(state["contract_status"] == "concordance_no_go", "Phase 4 no-go contract drift")
+        require(state["bioinformatics_route"] == "closed_for_this_contract", "Phase 4 no-go route drift")
+    else:
+        require(result in {"blocked_insufficient_information", "blocked_fixed_budget"}, "unsupported Phase 4 block")
+        require(state["phase_status"]["4"] == result, "Phase 4 blocking state drift")
+        require(all(state["phase_status"][str(index)] == "not_authorized_previous_no_go" for index in range(5, 10)), "later phase authorized after block")
+        require(state["active_phase"] is None and state["last_completed_phase"] == 4, "Phase 4 blocked transition drift")
+        require(state["last_decision"] == result, "Phase 4 blocked decision drift")
+        require(state["contract_status"] == "in_validation", "Phase 4 block changed contract status")
+        require(state["bioinformatics_route"] == "conditionally_reopened", "Phase 4 block changed route")
+
+
+def check_phase4(mode: str, current_state: dict[str, Any]) -> None:
+    check_phase4_start_receipt()
+    decision = check_phase4_evidence()
+    run_phase4_unit_tests()
+    if mode == "precommit":
+        paths = allowlist(4)
+        check_precommit_receipt(4, paths)
+        check_phase4_state(current_state, decision)
+        require(git("rev-parse", "HEAD") == PHASE3_COMMIT, "Phase 4 precommit parent drift")
+        require(changed_paths() == set(paths), "Phase 4 allowlisted diff mismatch")
+    elif mode == "postcommit":
+        require(not changed_paths(), "Phase 4 postcommit checker requires a clean tree")
+        commit = phase_commit_for_postcommit(4)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "Phase 4 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk/PROGRAM_STATE.json")
+        paths = allowlist_from_commit(4, commit)
+        check_precommit_receipt(4, paths, committed_at=commit)
+        check_phase4_state(state, decision)
+        require(git("rev-parse", f"{commit}^") == PHASE3_COMMIT, "Phase 4 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE4_COMMIT_MESSAGE, "Phase 4 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "Phase 4 committed paths differ from allowlist")
+    else:
+        raise CheckError(f"unsupported Phase 4 mode: {mode}")
+
+
 def check_generic_phase(phase: int, mode: str, state: dict[str, Any]) -> None:
     paths = allowlist(phase)
     check_precommit_receipt(phase, paths)
@@ -1183,6 +1638,8 @@ def main() -> int:
         check_phase2(args.mode, state)
     elif args.phase == 3:
         check_phase3(args.mode, state)
+    elif args.phase == 4:
+        check_phase4(args.mode, state)
     else:
         check_generic_phase(args.phase, args.mode, state)
     after = git_bytes("status", "--porcelain=v1", "-z", "--untracked-files=all")

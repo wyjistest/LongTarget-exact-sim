@@ -6,12 +6,17 @@
 program = biological_topk_candidate_site_validation
 contract = biological_topk_candidate_site_v1
 contract_status = in_validation
-active_phase = 4
+active_phase = null
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
 phase_3_status = pass
-phase_4_status = pending
+phase_4_status = blocked_fixed_budget
+phase_5_status = not_authorized_previous_no_go
+phase_6_status = not_authorized_previous_no_go
+phase_7_status = not_authorized_previous_no_go
+phase_8_status = not_authorized_previous_no_go
+phase_9_status = not_authorized_previous_no_go
 gpu_screen_status = experimental
 bioinformatics_route = conditionally_reopened
 scientific_object = clustered_TFO_query_target_candidate_site
@@ -31,8 +36,49 @@ metadata. Six workloads form the fixed technical-repeat subset, yielding 184
 validation instances and 368 independently launched A/G attempts. The panel has
 zero overlap with the frozen exclusion registry on sequence digest, namespaced
 ordinal, pair digest, or registered source identity. No prediction or scientific
-comparison ran during Phase 3. Phase 4 remains pending until the Phase 3 commit
-passes its read-only post-commit check.
+comparison ran during Phase 3. The Phase 3 commit and aggregate checks passed.
+Phase 4 exhausted the single authorized infrastructure-repair epoch under the
+fixed 8 GiB artifact quota. The repair retained 165 successful terminal
+attempts and stopped before the next G attempt because its fixed raw-telemetry
+reservation would exceed that quota. No scientific comparison started, so no
+scientific concordance decision was reached. The contract remains in validation
+and no later phase is authorized.
+
+## Phase 4 Evidence
+
+```text
+decision = blocked_fixed_budget
+planned_attempts = 368
+terminal_attempts = 165
+successful_attempts = 165
+terminal_technical_failures = 0
+unstarted_attempts = 203
+comparison_started = false
+scientific_decision_reached = false
+repair_epoch = 1
+repair_epoch_limit = 1
+repair_epoch_limit_exhausted = true
+superseded_epoch0_artifact_bytes = 1156799426
+repair_epoch_artifact_bytes_at_stop = 5985526301
+actual_total_epoch_artifact_storage_bytes = 7142325727
+next_raw_g_telemetry_reservation_bytes = 1610612736
+storage_with_next_g_reservation_bytes = 8752938463
+fixed_storage_quota_bytes = 8589934592
+fixed_storage_quota_excess_bytes = 163003871
+actual_cpu_aggregate_wall_seconds = 9657.1083856201731
+actual_gpu_aggregate_wall_seconds = 9356.8122901252937
+actual_gpu_hours = 2.5991145250348038
+actual_scheduled_elapsed_wall_seconds = 13101.682656999999
+no later phase authorized
+```
+
+The original interrupted epoch remains retained. Repair epoch 1 reran the full
+frozen panel without changing inputs, binaries, attempt order, or the scientific
+contract. Missing attempts remain failures in the fixed denominator; no retry,
+replacement, supplementation, quota increase, or second repair epoch is
+permitted. Product status remains experimental and the Bioinformatics route
+remains conditionally reopened rather than receiving a scientific promotion or
+no-go decision.
 
 ## Phase 3 Evidence
 
