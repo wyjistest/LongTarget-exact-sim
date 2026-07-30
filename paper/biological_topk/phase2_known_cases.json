@@ -1,0 +1,25 @@
+{
+  "hq10_ht02": {
+    "comparison_id": "phase2_holdout:hq10_ht02__repeat00",
+    "set_membership": "preserved",
+    "stability_classifications": [
+      "representation-only difference",
+      "strict-row diagnostic mismatch"
+    ],
+    "strict_row_diagnostic": "mismatch",
+    "unique_candidate_site_match": true
+  },
+  "hq11_ht02": {
+    "comparison_id": "phase2_holdout:hq11_ht02__repeat00",
+    "score_classifications": [
+      "same candidate site endpoint shift",
+      "strict-row diagnostic mismatch"
+    ],
+    "set_membership": "preserved",
+    "strict_row_diagnostic": "mismatch",
+    "target_reciprocal_overlap": "62/65",
+    "unique_candidate_site_match": true
+  },
+  "implementation_has_workload_id_special_cases": false,
+  "schema_version": 1
+}
