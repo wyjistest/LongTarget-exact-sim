@@ -5,11 +5,12 @@ epoch_id = biological_topk_successor_v2
 predecessor_commit = 7fae3de6b13780d7cc0776038489cf2f22072339
 predecessor_decision = blocked_fixed_budget
 fixed_total_artifact_storage_bytes = 68719476736
-active_phase = 3
+active_phase = 4
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
-phase_3_status = pending
+phase_3_status = pass
+phase_4_status = pending
 contract_status = in_validation
 gpu_screen_status = experimental
 bioinformatics_route = conditionally_reopened
@@ -69,5 +70,26 @@ fresh_pair_selected = false
 new_prediction_run = false
 ```
 
-Phase 3 may now select a successor panel using input-only metadata. No
-successor fresh workload has yet been selected or executed.
+## Phase 3 Evidence
+
+```text
+selection_kind = input_only_static_source_metadata
+primary_workloads = 178
+technical_repeat_instances = 6
+validation_instances = 184
+planned_attempts = 368
+predecessor_query_overlap = 0
+predecessor_target_overlap = 0
+predecessor_pair_overlap = 0
+pair_order_AG = 92
+pair_order_GA = 92
+fixed_total_artifact_storage_bytes = 68719476736
+manifest_specific_storage_gate = pass
+manifest_specific_gpu_hours_gate = pass
+manifest_specific_scheduled_wall_gate = pass
+raw_telemetry_policy = validate_then_deterministic_lossless_gzip_before_next_attempt
+new_prediction_run = false
+```
+
+Phase 4 may execute the single frozen successor epoch. No successor prediction
+or scientific comparison has yet run.
