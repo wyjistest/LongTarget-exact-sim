@@ -1,0 +1,93 @@
+{
+  "annotation_release": "GENCODE v49",
+  "assembly": "GRCh38",
+  "build_kind": "input_only_static_source_universe",
+  "fresh_pair_selected": false,
+  "historical_exclusion_registry": {
+    "path": "paper/biological_topk/fresh_input_exclusion_registry.tsv",
+    "sha256": "062be2d3e7706dfba5bf356e88b6df3efb22652dd652fa447a8b6ad0b3430630"
+  },
+  "new_prediction_run": false,
+  "query_universe": {
+    "fresh_eligible_row_count": 27081,
+    "fresh_unique_namespaced_ordinal_count": 27081,
+    "fresh_unique_sequence_digest_count": 27060,
+    "gzip_sha256": "9c36b948292654d4c1b5777769e985f06c51eda0d496c388c4a7559de2576ae0",
+    "path": "paper/biological_topk/query_source_universe.tsv.gz",
+    "row_count": 27139,
+    "uncompressed_tsv_sha256": "c3160864d267b2fcaf1d7aba99f303ebbde7f240e7d2def287032ac6766b7489"
+  },
+  "schema_version": 1,
+  "source_parser": {
+    "path": "reproduce/bioinformatics/build_application_panel.py",
+    "sha256": "678e20f6262a71981c3f538466c409da944208921993a8b64efc6a8a5d6534c9"
+  },
+  "sources": [
+    {
+      "path": ".tmp/bioinformatics_application_sources/gencode.v49.lncRNA_transcripts.fa.gz",
+      "sha256": "1f04e509309fa74b694ef3cc1e52c1c8173bb0e679f8a22785fa43ecadd28ef4",
+      "size_bytes": 37870043
+    },
+    {
+      "path": ".tmp/bioinformatics_application_sources/gencode.v49.annotation.gtf.gz",
+      "sha256": "d6e6fe0515c95b2a8cd36a853c1989cee9115c736c60237c56ae92b9daaaf7c4",
+      "size_bytes": 93374019
+    },
+    {
+      "path": ".tmp/bioinformatics_application_sources/chr21.fa.gz",
+      "sha256": "c979ca1e5065c2521a50773473e0d0cc018fd6f3e9bb3aa90493fe7b45d57d1b",
+      "size_bytes": 12709705
+    },
+    {
+      "path": ".tmp/bioinformatics_application_sources/chr22.fa.gz",
+      "sha256": "05f9d97d6fbfd08a44ca45b50837ca2ae9c471f35ba79dffec04d2cb5eaaf695",
+      "size_bytes": 12255678
+    }
+  ],
+  "target_recipes": [
+    {
+      "length": 4097,
+      "namespace": "grch38_chr21_chr22_tss_short_v1",
+      "recipe_id": "grch38_tss_centered_4097_v1",
+      "stratum": "short"
+    },
+    {
+      "length": 2000001,
+      "namespace": "grch38_chr21_chr22_tss_medium_v1",
+      "recipe_id": "grch38_tss_centered_2000001_v1",
+      "stratum": "medium"
+    },
+    {
+      "length": 10000001,
+      "namespace": "grch38_chr21_chr22_tss_large_v1",
+      "recipe_id": "grch38_tss_centered_10000001_v1",
+      "stratum": "large"
+    }
+  ],
+  "target_universe": {
+    "gzip_sha256": "59174a536aca75c177ca553ed75f3992644a2db8be5cbe3deac2d59a3b598179",
+    "path": "paper/biological_topk/target_source_universe.tsv.gz",
+    "row_count": 2004,
+    "strata": {
+      "large": {
+        "fresh_eligible_row_count": 668,
+        "fresh_unique_namespaced_ordinal_count": 668,
+        "fresh_unique_sequence_digest_count": 539,
+        "row_count": 668
+      },
+      "medium": {
+        "fresh_eligible_row_count": 668,
+        "fresh_unique_namespaced_ordinal_count": 668,
+        "fresh_unique_sequence_digest_count": 618,
+        "row_count": 668
+      },
+      "short": {
+        "fresh_eligible_row_count": 668,
+        "fresh_unique_namespaced_ordinal_count": 668,
+        "fresh_unique_sequence_digest_count": 666,
+        "row_count": 668
+      }
+    },
+    "uncompressed_tsv_sha256": "193972303f4d38ce7f42ec708852b7aeead3683b4ba6a7770828c9c55ab3da41"
+  }
+}

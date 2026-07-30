@@ -1,0 +1,148 @@
+{
+  "artifact_sha256": {
+    "paper/biological_topk/concordance_power_plan.json": "b3c8b7ca610bf86336e902a706340a51bd1975e2c8922220bc2f64d1abbdd903",
+    "paper/biological_topk/fresh_budget_projection_plan.json": "ad56983d725c4ed0d3a39243d3fee16d1ff57cf2a41d7936e1f8ec81558c6bec",
+    "paper/biological_topk/joint_information_model.json": "20de2f857c5cc0b677ba626987256641244120955221d4109ff5c4117e1b1a33",
+    "paper/biological_topk/joint_information_simulation.json": "42485b4cf741967fbec0d2a21120a4859d821af68dad6c7256b83c197ac49bae",
+    "paper/biological_topk/resource_projection_model.json": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+    "paper/biological_topk/resource_projection_model_receipt.json": "245dcd0cf5ed98d3deb148edd5f92e15659790947ca5da4cecdd5415af556b6b",
+    "paper/biological_topk/source_universe_receipt.json": "c0120897c125d491b5031933010ab4fb1fe3f26e8a2b93b3483d42afd85312dd"
+  },
+  "blocking_reason": null,
+  "candidate_N_panel": 178,
+  "fresh_pair_selected": false,
+  "gates": {
+    "all_computable_gates_pass": true,
+    "all_required_gates_pass": true,
+    "artifact_storage_budget_pass": true,
+    "denominator_eligibility_probability_pass": true,
+    "exact_binomial_power_pass": true,
+    "gpu_hours_budget_pass": true,
+    "joint_information_probability_pass": true,
+    "scheduled_wall_budget_pass": true,
+    "source_universe_capacity_pass": true
+  },
+  "information": {
+    "joint_information_probability_lcb": "0.9526",
+    "joint_information_probability_point": "0.95750000000000002",
+    "joint_inner_mc_precision_pass": true,
+    "marginal_probability_outer_lcb": {
+      "eligible_count": "0.9526",
+      "reference_nonempty_count": "1",
+      "total_reference_candidate_sites": "1"
+    },
+    "marginal_probability_point": {
+      "eligible_count": "0.95750000000000002",
+      "reference_nonempty_count": "1",
+      "total_reference_candidate_sites": "1"
+    },
+    "p_binary_denominator_eligible_planning": "0.75",
+    "p_reference_nonempty_planning": "1",
+    "reference_candidate_count_distribution_planning": {
+      "large": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 1.0
+      },
+      "medium": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 1.0
+      },
+      "short": {
+        "0": 0,
+        "1": 0.020833333333333332,
+        "2": 0.041666666666666664,
+        "3": 0.041666666666666664,
+        "4": 0.0625,
+        "5": 0.8333333333333334
+      }
+    }
+  },
+  "minimality": {
+    "N_panel": 178,
+    "N_panel_eligibility_tail_probability": "0.95596970750257329891016165466025246439924053214176336273728958993440827252709086",
+    "N_panel_minus_one": 177,
+    "N_panel_minus_one_eligibility_tail_probability": "0.94358114734726632363757003348862400313027546950640396876178348472799880610939327",
+    "eligibility_tail_target": "0.95",
+    "minimal_statistical_panel_pass": true,
+    "n_binary_required": 124
+  },
+  "new_prediction_run": false,
+  "panel_selection_status": "frozen_minimum_satisfying_all_gates",
+  "phase_1_status_recommendation": "pass",
+  "resource": {
+    "artifact_storage_gate_pass": true,
+    "fixed_budget_gate_pass": true,
+    "gpu_hours_gate_pass": true,
+    "max_artifact_storage_bytes": 8589934592,
+    "max_formal_scheduled_wall_seconds": 172800,
+    "max_gpu_hours": 72,
+    "projected": {
+      "artifact_storage_bytes": {
+        "point": "3728506456",
+        "upper_95": "5508762270"
+      },
+      "cpu_aggregate_wall_seconds": {
+        "point": "26840.997519788252",
+        "upper_95": "35416.834581740855"
+      },
+      "gpu_aggregate_wall_seconds": {
+        "point": "1673.1329282948536",
+        "upper_95": "2020.9022325876936"
+      },
+      "gpu_hours": {
+        "point": "0.46475914674857044",
+        "upper_95": "0.56136173127435929"
+      },
+      "scheduled_elapsed_wall_seconds": {
+        "point": "15682.771746445709",
+        "upper_95": "20576.305696676598"
+      }
+    },
+    "projection_model_sha256": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+    "scheduled_wall_gate_pass": true
+  },
+  "schema_version": 1,
+  "source_capacity": {
+    "gate_pass": true,
+    "query": {
+      "fresh_unique_namespaced_ordinal_count": 27081,
+      "fresh_unique_sequence_digest_count": 27060,
+      "gate_pass": true,
+      "required": 178
+    },
+    "targets_by_stratum": {
+      "large": {
+        "fresh_unique_namespaced_ordinal_count": 668,
+        "fresh_unique_sequence_digest_count": 539,
+        "gate_pass": true,
+        "required": 59
+      },
+      "medium": {
+        "fresh_unique_namespaced_ordinal_count": 668,
+        "fresh_unique_sequence_digest_count": 618,
+        "gate_pass": true,
+        "required": 59
+      },
+      "short": {
+        "fresh_unique_namespaced_ordinal_count": 668,
+        "fresh_unique_sequence_digest_count": 666,
+        "gate_pass": true,
+        "required": 60
+      }
+    }
+  },
+  "status": "frozen",
+  "stratum_quotas": {
+    "large": 59,
+    "medium": 59,
+    "short": 60
+  }
+}

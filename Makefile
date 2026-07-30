@@ -258,12 +258,15 @@ check-ssw-cuda-phase13:
 check-ssw-cuda:
 	bash ./scripts/check_ssw_cuda_all.sh --final
 
-.PHONY: check-biological-topk check-biological-topk-phase0
+.PHONY: check-biological-topk check-biological-topk-phase0 check-biological-topk-phase1
 check-biological-topk:
 	bash ./scripts/check_biological_topk_all.sh --final
 
 check-biological-topk-phase0:
 	python3 ./scripts/check_biological_topk_phase.py --phase 0 --mode postcommit
+
+check-biological-topk-phase1:
+	python3 ./scripts/check_biological_topk_phase.py --phase 1 --mode postcommit
 
 $(SSW_CUDA_PHASE7_CONTINUATION_DRIVER): tests/ssw_cuda/ssw_cpu_continuation_driver.cpp \
 		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp \

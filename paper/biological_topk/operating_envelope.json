@@ -1,0 +1,71 @@
+{
+  "batching_policy": {
+    "FASIM_ALIGN_GASAL2_BATCH": "20000",
+    "FASIM_ALIGN_GASAL2_STREAMS": "3",
+    "FASIM_TOP5_GASAL2_SCOREINFO_PRUNE_MAX_PER_TASK": "256"
+  },
+  "contract_name": "biological_topk_candidate_site_v1",
+  "hardware": {
+    "compute_capability": "8.9",
+    "cuda_version": "12.5",
+    "driver_version": "555.42.06",
+    "gpu_count": 2,
+    "gpu_memory_mib_each": 24564,
+    "gpu_model": "NVIDIA GeForce RTX 4090",
+    "logical_worker_count": 2,
+    "workers_per_gpu": 1
+  },
+  "hardware_generality_claim": "single_gpu_generation_RTX4090_only",
+  "memory_guard": "fixed RTX4090 24564 MiB inventory; OOM is a technical failure",
+  "normalized_output_alphabet": "ACGTN",
+  "oom_behavior": "technical_failure_binary_zero_no_retry",
+  "parameter_bundle_sha256": "110752c4078bc2b300ad4e92e2495ea868c365486e540da7002fc3e19a18241a",
+  "parameters": {
+    "cluster_distance": 15,
+    "cut_length": 5000,
+    "k": 5,
+    "minimum_identity_percent": "60",
+    "minimum_nt_bp": 50,
+    "minimum_nt_rule": "strict_greater_than",
+    "minimum_stability": "1",
+    "nt_max_runtime": 100000,
+    "nt_min_runtime": 20,
+    "overlap_length": 100,
+    "penalty_c": 0,
+    "penalty_t": -1000,
+    "rule": 0,
+    "runtime_mode": "normal_triplex_fast_topk",
+    "score_min": "0",
+    "strand_request": 0
+  },
+  "query_input_alphabet": "ACGT",
+  "query_length_max": 2812,
+  "query_length_min": 500,
+  "runtime_mode": "normal_triplex_fast_topk",
+  "schema_version": 1,
+  "source_code_defaults": "fasim/Fasim-LongTarget.cpp:28436-28470",
+  "supported_runtime_modes": [
+    "cpu_fast_topk_authority",
+    "canonical_hybrid_v2_candidate"
+  ],
+  "target_input_alphabet": "ACGTN",
+  "target_scale_recipes": [
+    {
+      "length_bp": 4097,
+      "recipe_id": "grch38_tss_centered_4097_v1",
+      "stratum": "short"
+    },
+    {
+      "length_bp": 2000001,
+      "recipe_id": "grch38_tss_centered_2000001_v1",
+      "stratum": "medium"
+    },
+    {
+      "length_bp": 10000001,
+      "recipe_id": "grch38_tss_centered_10000001_v1",
+      "stratum": "large"
+    }
+  ],
+  "unexpected_fallback_behavior": "technical_failure_binary_zero",
+  "unsupported_input_behavior": "fail_closed_before_matching"
+}

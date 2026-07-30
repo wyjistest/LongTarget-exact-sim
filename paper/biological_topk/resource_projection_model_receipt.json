@@ -1,0 +1,26 @@
+{
+  "bootstrap_replicates": 10000,
+  "bootstrap_seed": 20260810,
+  "builder_path": "reproduce/biological_topk/build_resource_model.py",
+  "fresh_pair_selected": false,
+  "input_sha256": {
+    ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854",
+    "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+    "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+    "paper/biological_topk/owner_storage_quota_approval.json": "25bddcfe69856003724256ef292b2c404e289a5246f50d219228b7091f6190c5",
+    "paper/biological_topk/query_source_universe.tsv.gz": "9c36b948292654d4c1b5777769e985f06c51eda0d496c388c4a7559de2576ae0",
+    "paper/biological_topk/target_source_universe.tsv.gz": "59174a536aca75c177ca553ed75f3992644a2db8be5cbe3deac2d59a3b598179"
+  },
+  "model_path": "paper/biological_topk/resource_projection_model.json",
+  "model_sha256": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+  "model_size_bytes": 136132,
+  "new_prediction_run": false,
+  "owner_storage_quota": {
+    "approval_path": "paper/biological_topk/owner_storage_quota_approval.json",
+    "approval_sha256": "25bddcfe69856003724256ef292b2c404e289a5246f50d219228b7091f6190c5",
+    "max_artifact_storage_bytes": 8589934592
+  },
+  "schema_version": 1,
+  "source_builder_path": "reproduce/biological_topk/build_source_universe.py",
+  "source_builder_sha256": "2a32224fab90978a5481a7d65d3e91bf3c2a62f28586d8b92913212895288e12"
+}

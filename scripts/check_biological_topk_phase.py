@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import gzip
 import hashlib
 import json
 import os
@@ -24,6 +25,28 @@ EXECUTION_START_HEAD = "2658a98fea8f34bd295892e6236607060e2f2803"
 EXECUTION_BRANCH = "gasal2-kcnq1ot1-focused-review"
 PROTOCOL_SHA256 = "1cd5e5a023d53655641ba831142f489011111fd2c166d895b2a851b0f513f6c3"
 PHASE0_COMMIT_MESSAGE = "docs: freeze biological Top-K candidate-site validation epoch"
+PHASE0_COMMIT = "3e642db8d93fc253972104e6072e2715f52ccb19"
+PHASE1_COMMIT_MESSAGE = "repro: freeze candidate-site contract, source universe, and statistical gates"
+PHASE1_BUILDERS = (
+    "reproduce/biological_topk/build_contract_artifacts.py",
+    "reproduce/biological_topk/build_source_universe.py",
+    "reproduce/biological_topk/build_information_plan.py",
+    "reproduce/biological_topk/build_resource_model.py",
+    "reproduce/biological_topk/build_feasibility_plan.py",
+)
+PHASE1_DOCS = (
+    "docs/biological_topk/scientific_object.md",
+    "docs/biological_topk/legacy_clustering_semantics.md",
+    "docs/biological_topk/coordinate_mapping.md",
+    "docs/biological_topk/coordinate_mapping_table.tsv",
+    "docs/biological_topk/canonicalization_spec.md",
+    "docs/biological_topk/ranking_semantics.md",
+    "docs/biological_topk/matching_spec.md",
+    "docs/biological_topk/statistical_analysis_plan.md",
+    "docs/biological_topk/source_universe_spec.md",
+    "docs/biological_topk/experimental_estimand_spec.md",
+    "docs/biological_topk/operating_envelope.md",
+)
 
 PHASE_STATUSES = {
     "pending",
@@ -231,8 +254,10 @@ def validate_state_transitions(state: dict[str, Any]) -> None:
     blocking = [index for index in range(10) if statuses[str(index)] in BLOCKING_STATUSES]
     if blocking:
         first = min(blocking)
-        if state["active_phase"] is not None:
-            require(state["active_phase"] <= first, "later phase active after terminal blocking state")
+        require(state["active_phase"] is None, "terminal blocking state requires active_phase=null")
+        require(state["last_completed_phase"] == first, "terminal blocking phase completion drift")
+        if statuses[str(first)].startswith("blocked_"):
+            require(state["last_decision"] == statuses[str(first)], "blocked decision/status drift")
         for later in range(first + 1, 10):
             require(
                 statuses[str(later)] in {"pending", "not_authorized_previous_no_go"},
@@ -274,6 +299,37 @@ def allowlist(phase: int) -> list[str]:
     require(rows == sorted(set(rows)), f"Phase {phase} allowlist must be sorted and unique")
     require(all(not Path(row).is_absolute() and ".." not in Path(row).parts for row in rows), "unsafe allowlist path")
     return rows
+
+
+def load_json_from_commit(commit: str, relative: str) -> Any:
+    try:
+        return json.loads(git_bytes("show", f"{commit}:{relative}").decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise CheckError(f"invalid committed JSON {commit}:{relative}: {error}") from error
+
+
+def allowlist_from_commit(phase: int, commit: str) -> list[str]:
+    relative = f"paper/biological_topk/phase_{phase}_change_allowlist.txt"
+    rows = [
+        line.strip()
+        for line in git_bytes("show", f"{commit}:{relative}").decode("utf-8").splitlines()
+        if line.strip()
+    ]
+    require(rows == sorted(set(rows)), f"committed Phase {phase} allowlist drift")
+    return rows
+
+
+def phase_commit_for_postcommit(phase: int) -> str:
+    next_receipt = PAPER / f"phase_{phase + 1}_start_receipt.json"
+    if phase < 9 and next_receipt.is_file():
+        receipt = load_json(next_receipt)
+        commit = receipt.get("previous_phase_commit")
+        require(
+            isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit) is not None,
+            f"Phase {phase + 1} start receipt does not identify Phase {phase} commit",
+        )
+        return commit
+    return git("rev-parse", "HEAD")
 
 
 def read_tsv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -399,8 +455,18 @@ def check_phase0_state(state: dict[str, Any]) -> None:
     require(state["score_representation"] == "pending_phase1", "Phase 0 pre-decided Score representation")
 
 
-def check_precommit_receipt(phase: int, paths: list[str]) -> None:
-    receipt = load_json(PAPER / f"phase_{phase}_precommit_receipt.json")
+def check_precommit_receipt(
+    phase: int,
+    paths: list[str],
+    *,
+    committed_at: str | None = None,
+) -> None:
+    relative = f"paper/biological_topk/phase_{phase}_precommit_receipt.json"
+    receipt = (
+        load_json_from_commit(committed_at, relative)
+        if committed_at is not None
+        else load_json(ROOT / relative)
+    )
     require(receipt["schema_version"] == 1 and receipt["phase"] == phase, "precommit receipt schema drift")
     require(receipt["phase_start_parent_head"] == EXECUTION_START_HEAD if phase == 0 else True, "phase-start parent drift")
     require(receipt["expected_changed_paths"] == paths, "precommit path inventory drift")
@@ -408,7 +474,12 @@ def check_precommit_receipt(phase: int, paths: list[str]) -> None:
     require(receipt["checker_result"] == "pass", "precommit checker result is not pass")
     require("commit_sha" not in receipt and "phase_commit" not in receipt, "precommit receipt claims a future/self commit")
     for relative, digest in receipt["schema_evidence_sha256"].items():
-        require(sha256_file(ROOT / relative) == digest, f"precommit evidence digest drift: {relative}")
+        observed = (
+            sha256_bytes(git_bytes("show", f"{committed_at}:{relative}"))
+            if committed_at is not None
+            else sha256_file(ROOT / relative)
+        )
+        require(observed == digest, f"precommit evidence digest drift: {relative}")
 
 
 def run_phase0_unit_tests() -> None:
@@ -432,13 +503,19 @@ def run_phase0_unit_tests() -> None:
 
 
 def check_phase0(mode: str, state: dict[str, Any]) -> None:
-    check_phase0_state(state)
+    phase_commit = phase_commit_for_postcommit(0) if mode == "postcommit" else None
+    checked_state = (
+        load_json_from_commit(phase_commit, "paper/biological_topk/PROGRAM_STATE.json")
+        if phase_commit is not None
+        else state
+    )
+    check_phase0_state(checked_state)
     check_phase0_registries()
     check_phase0_receipts()
     check_historical_decisions()
     run_phase0_unit_tests()
-    paths = allowlist(0)
-    check_precommit_receipt(0, paths)
+    paths = allowlist_from_commit(0, phase_commit) if phase_commit is not None else allowlist(0)
+    check_precommit_receipt(0, paths, committed_at=phase_commit)
 
     if mode == "precommit":
         head = git("rev-parse", "HEAD")
@@ -453,12 +530,186 @@ def check_phase0(mode: str, state: dict[str, Any]) -> None:
         require(prospective == set(paths), f"Phase 0 allowlisted diff mismatch: missing={sorted(set(paths)-prospective)} extra={sorted(prospective-set(paths))}")
     elif mode == "postcommit":
         require(not changed_paths(), "Phase 0 postcommit checker requires a clean tree")
-        require(git("rev-parse", "HEAD^") == EXECUTION_START_HEAD, "Phase 0 commit parent drift")
-        require(git("log", "-1", "--format=%s") == PHASE0_COMMIT_MESSAGE, "Phase 0 commit message drift")
-        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").splitlines())
+        require(phase_commit is not None, "Phase 0 postcommit identity missing")
+        require(git("merge-base", "--is-ancestor", phase_commit, "HEAD") == "", "Phase 0 commit is not an ancestor")
+        require(git("rev-parse", f"{phase_commit}^") == EXECUTION_START_HEAD, "Phase 0 commit parent drift")
+        require(git("log", "-1", "--format=%s", phase_commit) == PHASE0_COMMIT_MESSAGE, "Phase 0 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", phase_commit).splitlines())
         require(committed == set(paths), "Phase 0 committed paths differ from allowlist")
     else:
         raise CheckError(f"unsupported Phase 0 mode: {mode}")
+
+
+def run_phase1_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk",
+            "-p",
+            "test_phase1_contract.py",
+        ),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase1_reproduction() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    for script in PHASE1_BUILDERS:
+        completed = run((sys.executable, script, "--check"), check=False, env=environment)
+        require(
+            completed.returncode == 0,
+            completed.stderr.decode("utf-8", errors="replace")
+            or f"Phase 1 builder check failed: {script}",
+        )
+
+
+def check_phase1_start_receipt() -> None:
+    start = load_json(PAPER / "phase_1_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 1, "Phase 1 start receipt schema drift")
+    require(start["status"] == "pass", "Phase 1 clean-start check did not pass")
+    require(start["phase_start_parent_head"] == PHASE0_COMMIT, "Phase 1 parent HEAD drift")
+    require(start["previous_phase_number"] == 0, "Phase 1 previous phase number drift")
+    require(start["previous_phase_commit"] == PHASE0_COMMIT, "Phase 1 previous commit drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_phase.py", "--phase", "0", "--mode", "postcommit"],
+        "Phase 1 previous postcommit command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "Phase 0 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "Phase 1 clean-start evidence drift",
+    )
+
+
+def check_phase1_evidence() -> dict[str, Any]:
+    require(sha256_file(ROOT / "goal-biological-topk.md") == PROTOCOL_SHA256, "protocol digest drift")
+    for relative in PHASE1_DOCS:
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing Phase 1 specification: {relative}")
+
+    contract_schema = load_json(ROOT / "schemas/biological_topk_contract.schema.json")
+    contract = load_json(PAPER / "contract_spec.json")
+    validate_schema(contract, contract_schema)
+    require(contract["schema_version"] == 2, "contract schema version drift")
+    require(contract["coordinate_mapping_table_sha256"] == sha256_file(ROOT / "docs/biological_topk/coordinate_mapping_table.tsv"), "coordinate table digest drift")
+
+    mapping_fields, mapping_rows = read_tsv(ROOT / "docs/biological_topk/coordinate_mapping_table.tsv")
+    require(len(mapping_fields) == 13 and len(mapping_rows) == 8, "coordinate mapping table shape drift")
+    require(
+        {(row["strand_label"], row["direction_label"]) for row in mapping_rows}
+        == {(strand, direction) for strand in ("ParaPlus", "ParaMinus", "AntiPlus", "AntiMinus") for direction in ("R", "L")},
+        "coordinate mapping combinations are incomplete",
+    )
+    require(sum(row["status"] == "reachable_current_fast_path" for row in mapping_rows) == 4, "reachable coordinate count drift")
+    require(sum(row["status"] == "unreachable_by_current_runtime" for row in mapping_rows) == 4, "unreachable coordinate count drift")
+
+    power = load_json(PAPER / "concordance_power_plan.json")
+    require((power["n_binary_required"], power["k_min"], power["allowed_failures"]) == (124, 122, 2), "power boundary drift")
+    joint = load_json(PAPER / "joint_information_simulation.json")
+    require(joint["joint_information_gate_pass"] is True, "joint information gate failed")
+    require(joint["joint_inner_mc_precision_pass"] is True, "joint MC precision failed")
+    require(len(joint["outer_q_distribution"]) == 2000, "outer bootstrap count drift")
+    require(joint["inner_simulations_are_independent_scientific_evidence"] is False, "inner simulations misclassified")
+
+    source = load_json(PAPER / "source_universe_receipt.json")
+    require(source["fresh_pair_selected"] is False and source["new_prediction_run"] is False, "source freeze selected or ran a fresh pair")
+    for key in ("query_source_universe.tsv.gz", "target_source_universe.tsv.gz"):
+        require((PAPER / key).read_bytes()[4:8] == b"\0\0\0\0", f"nondeterministic gzip mtime: {key}")
+    with gzip.open(PAPER / "query_source_universe.tsv.gz", "rt", newline="", encoding="utf-8") as handle:
+        query_rows = [row for row in csv.DictReader(handle, delimiter="\t") if row["historical_exclusion_status"] == "fresh_eligible"]
+    require(len({row["sequence_sha256"] for row in query_rows}) >= 178, "fresh unique query capacity failed")
+
+    score = load_json(PAPER / "score_integrality_decision.json")
+    require(score["decision"] in {"integral_exact", "decimal_exact"}, "invalid score decision")
+    require(score["decision"] == "integral_exact" and score["nonintegral_row_count"] == 0, "score audit decision drift")
+
+    feasibility = load_json(PAPER / "fresh_information_feasibility.json")
+    sample = load_json(PAPER / "sample_size_plan.json")
+    budget = load_json(PAPER / "fresh_budget_projection_plan.json")
+    approval = load_json(PAPER / "owner_storage_quota_approval.json")
+    require(sample["N_panel"] == 178 and sample["source_capacity_gate_pass"] is True, "sample/source plan drift")
+    require(feasibility["gates"]["all_computable_gates_pass"] is True, "a computable feasibility gate failed")
+    require(feasibility["phase_1_status_recommendation"] in PHASE_STATUSES, "invalid Phase 1 recommendation")
+    require(feasibility["fresh_pair_selected"] is False and feasibility["new_prediction_run"] is False, "fresh work occurred during Phase 1")
+    require(budget["fresh_pair_selected"] is False and budget["new_prediction_run"] is False, "resource planning ran fresh predictions")
+    require(approval["max_artifact_storage_bytes"] == 8589934592, "owner storage quota drift")
+    require(approval["phase_1_commit_replacement_authorized"] is True, "Phase 1 replacement lacks owner authorization")
+    require(approval["quota_may_be_raised_after_manifest_projection"] is False, "owner quota mutability drift")
+    require(budget["storage_quota_source"] == "paper/biological_topk/owner_storage_quota_approval.json", "budget quota source drift")
+    require(budget["storage_quota_source_sha256"] == sha256_file(PAPER / "owner_storage_quota_approval.json"), "budget quota receipt digest drift")
+    require(load_json(PAPER / "experimental_power_simulation_plan.json")["status"] == "preregistered_before_dataset_inventory_and_predictions", "experimental plan status drift")
+    require(load_json(PAPER / "operating_envelope.json")["hardware_generality_claim"] == "single_gpu_generation_RTX4090_only", "hardware claim drift")
+    return feasibility
+
+
+def check_phase1_state(state: dict[str, Any], feasibility: dict[str, Any]) -> None:
+    expected_status = feasibility["phase_1_status_recommendation"]
+    require(state["phase_status"]["0"] == "pass", "Phase 0 state drift")
+    require(state["phase_status"]["1"] == expected_status, "Phase 1 state does not match feasibility evidence")
+    require(all(state["phase_status"][str(index)] == "pending" for index in range(2, 10)), "later phase advanced during Phase 1")
+    require(state["previous_phase_commit"] == PHASE0_COMMIT, "PROGRAM_STATE previous commit drift")
+    require(state["score_representation"] == "integral_exact", "PROGRAM_STATE score representation drift")
+    require(state["rank_order_claim"] == "diagnostic_only", "rank-order claim drift")
+    require(state["gpu_screen_status"] == "experimental", "Phase 1 promoted gpu-screen")
+    require(state["bioinformatics_route"] == "conditionally_reopened", "Phase 1 route drift")
+    if expected_status == "pass":
+        require(feasibility["gates"]["all_required_gates_pass"] is True, "Phase 1 pass lacks all gates")
+        require(state["active_phase"] == 2, "Phase 1 pass must authorize Phase 2")
+        require(state["last_completed_phase"] == 1, "Phase 1 completion drift")
+        require(state["last_decision"] == "phase_1_contract_frozen", "Phase 1 pass decision drift")
+        require(state["contract_status"] == "in_validation", "Phase 1 pass contract state drift")
+    else:
+        require(expected_status.startswith("blocked_") or expected_status == "no_go", "unsupported Phase 1 terminal status")
+        require(state["active_phase"] is None, "blocked Phase 1 must terminate the epoch")
+        require(state["last_completed_phase"] == 1, "blocked Phase 1 completion drift")
+        require(state["last_decision"] == expected_status, "blocked Phase 1 decision drift")
+        require(state["contract_status"] == "proposed", "blocked Phase 1 cannot promote the contract")
+
+
+def check_phase1(mode: str, current_state: dict[str, Any]) -> None:
+    check_phase1_start_receipt()
+    check_phase1_reproduction()
+    feasibility = check_phase1_evidence()
+    run_phase1_unit_tests()
+    if mode == "precommit":
+        state = current_state
+        paths = allowlist(1)
+        check_precommit_receipt(1, paths)
+        check_phase1_state(state, feasibility)
+        head = git("rev-parse", "HEAD")
+        if head == PHASE0_COMMIT:
+            prospective = changed_paths()
+        else:
+            require(git("rev-parse", "HEAD^") == PHASE0_COMMIT, "Phase 1 amend parent drift")
+            require(git("log", "-1", "--format=%s") == PHASE1_COMMIT_MESSAGE, "unexpected Phase 1 amend target")
+            require(changed_paths() <= set(paths), "Phase 1 correction touched a path outside the allowlist")
+            prospective = set(git("diff", "--name-only", "HEAD^").splitlines())
+        require(prospective == set(paths), "Phase 1 allowlisted diff mismatch")
+    elif mode == "postcommit":
+        require(not changed_paths(), "Phase 1 postcommit checker requires a clean tree")
+        commit = phase_commit_for_postcommit(1)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "Phase 1 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk/PROGRAM_STATE.json")
+        paths = allowlist_from_commit(1, commit)
+        check_precommit_receipt(1, paths, committed_at=commit)
+        check_phase1_state(state, feasibility)
+        require(git("rev-parse", f"{commit}^") == PHASE0_COMMIT, "Phase 1 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE1_COMMIT_MESSAGE, "Phase 1 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "Phase 1 committed paths differ from allowlist")
+    else:
+        raise CheckError(f"unsupported Phase 1 mode: {mode}")
 
 
 def check_generic_phase(phase: int, mode: str, state: dict[str, Any]) -> None:
@@ -489,6 +740,8 @@ def main() -> int:
     require(git("branch", "--show-current") == EXECUTION_BRANCH, "execution branch drift")
     if args.phase == 0:
         check_phase0(args.mode, state)
+    elif args.phase == 1:
+        check_phase1(args.mode, state)
     else:
         check_generic_phase(args.phase, args.mode, state)
     after = git_bytes("status", "--porcelain=v1", "-z", "--untracked-files=all")

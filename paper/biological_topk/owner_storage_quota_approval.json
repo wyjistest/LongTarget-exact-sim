@@ -1,0 +1,13 @@
+{
+  "approval_context": "Owner approved the proposed 8 GiB fixed artifact-storage quota after its byte value and projected margin were stated.",
+  "approval_message": "\u6279\u51c6",
+  "approval_scope": "max_artifact_storage_bytes_and_phase_1_commit_replacement",
+  "approved_by": "repository_owner_via_active_codex_thread",
+  "approved_on": "2026-07-30",
+  "max_artifact_storage_bytes": 8589934592,
+  "phase_1_commit_replacement_authorized": true,
+  "previous_terminal_phase_1_commit": "a26c2709179e22920243b9ca6dc9e3444a0187da",
+  "quota_may_be_raised_after_manifest_projection": false,
+  "quota_unit": "bytes",
+  "schema_version": 1
+}

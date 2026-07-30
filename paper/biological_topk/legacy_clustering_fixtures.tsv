@@ -1,0 +1,15 @@
+fixture_id	row_order	raw_QueryStart	raw_QueryEnd	raw_Nt_bp	expected_eligible	expected_legacy_midpoint	expected_motif	expected_center	expected_neartriplex	source_semantics
+nt_boundary	1	101	149	49	0	0	0	0	0	fasim/Fasim-LongTarget.cpp:29089-29179
+nt_boundary	2	101	150	50	0	0	0	0	0	fasim/Fasim-LongTarget.cpp:29089-29179
+nt_boundary	3	101	151	51	1	126	1	125	0	fasim/Fasim-LongTarget.cpp:29089-29179
+midpoint_parity	1	100	151	51	1	125	1	124	0	fasim/Fasim-LongTarget.cpp:29089-29179
+midpoint_parity	2	101	151	51	1	126	1	124	14	fasim/Fasim-LongTarget.cpp:29089-29179
+midpoint_parity	3	131	181	51	1	156	2	155	0	fasim/Fasim-LongTarget.cpp:29089-29179
+dynamic_map_strict_ties	1	101	151	51	1	126	1	125	0	fasim/Fasim-LongTarget.cpp:29089-29179
+dynamic_map_strict_ties	2	131	181	51	1	156	2	155	0	fasim/Fasim-LongTarget.cpp:29089-29179
+dynamic_map_strict_ties	3	161	211	51	1	186	3	185	0	fasim/Fasim-LongTarget.cpp:29089-29179
+dynamic_map_strict_ties	4	101	151	52	1	126	1	125	0	fasim/Fasim-LongTarget.cpp:29089-29179
+motif_assignment_order	1	200	260	61	1	230	1	221	0	fasim/Fasim-LongTarget.cpp:29089-29179
+motif_assignment_order	2	190	250	61	1	220	1	221	5	fasim/Fasim-LongTarget.cpp:29089-29179
+motif_assignment_order	3	220	280	61	1	250	2	249	0	fasim/Fasim-LongTarget.cpp:29089-29179
+motif_assignment_order	4	500	560	61	1	530	3	529	0	fasim/Fasim-LongTarget.cpp:29089-29179
