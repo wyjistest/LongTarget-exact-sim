@@ -1,0 +1,22 @@
+{
+  "clean_start_check": {
+    "command": [
+      "git",
+      "status",
+      "--porcelain=v1"
+    ],
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "execution_branch": "gasal2-kcnq1ot1-focused-review",
+  "execution_start_head": "2658a98fea8f34bd295892e6236607060e2f2803",
+  "phase": 0,
+  "previous_phase_commit": null,
+  "previous_phase_number": null,
+  "protocol_repository_path": "goal-biological-topk.md",
+  "protocol_source_location": "outside_repository_during_clean_start_check",
+  "protocol_source_sha256": "1cd5e5a023d53655641ba831142f489011111fd2c166d895b2a851b0f513f6c3",
+  "schema_version": 1,
+  "status": "pass"
+}
