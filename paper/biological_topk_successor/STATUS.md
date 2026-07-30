@@ -5,10 +5,11 @@ epoch_id = biological_topk_successor_v2
 predecessor_commit = 7fae3de6b13780d7cc0776038489cf2f22072339
 predecessor_decision = blocked_fixed_budget
 fixed_total_artifact_storage_bytes = 68719476736
-active_phase = 2
+active_phase = 3
 phase_0_status = pass
 phase_1_status = pass
-phase_2_status = pending
+phase_2_status = pass
+phase_3_status = pending
 contract_status = in_validation
 gpu_screen_status = experimental
 bioinformatics_route = conditionally_reopened
@@ -52,5 +53,21 @@ fresh_pair_selected = false
 new_prediction_run = false
 ```
 
-Phase 2 may freeze and rerun the unchanged comparator regression. No successor
-fresh workload has been selected or executed.
+## Phase 2 Evidence
+
+```text
+historical_comparisons_rerun = 184
+ranking_results = 552
+detail_rows = 2391
+strict_row_diagnostic_mismatches_preserved = 14
+technical_failures = 0
+input_identity_mismatches = 0
+scientific_contract_changed = false
+comparator_changed = false
+regression_artifacts_byte_identical_to_predecessor = true
+fresh_pair_selected = false
+new_prediction_run = false
+```
+
+Phase 3 may now select a successor panel using input-only metadata. No
+successor fresh workload has yet been selected or executed.

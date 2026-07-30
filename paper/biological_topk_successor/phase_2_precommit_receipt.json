@@ -1,0 +1,48 @@
+{
+  "checker_command": [
+    "python3",
+    "scripts/check_biological_topk_successor_phase.py",
+    "--phase",
+    "2",
+    "--mode",
+    "precommit"
+  ],
+  "checker_result": "pass",
+  "expected_changed_paths": [
+    "paper/biological_topk_successor/PROGRAM_STATE.json",
+    "paper/biological_topk_successor/STATUS.md",
+    "paper/biological_topk_successor/phase2_comparator_freeze.json",
+    "paper/biological_topk_successor/phase2_known_cases.json",
+    "paper/biological_topk_successor/phase2_regression_details.tsv",
+    "paper/biological_topk_successor/phase2_regression_manifest.tsv",
+    "paper/biological_topk_successor/phase2_regression_receipt.json",
+    "paper/biological_topk_successor/phase2_regression_results.tsv",
+    "paper/biological_topk_successor/phase_2_change_allowlist.txt",
+    "paper/biological_topk_successor/phase_2_precommit_receipt.json",
+    "paper/biological_topk_successor/phase_2_start_receipt.json",
+    "reproduce/biological_topk_successor/freeze_phase2.py",
+    "scripts/check_biological_topk_successor_phase.py",
+    "scripts/check_biological_topk_successor_phase2.sh",
+    "tests/biological_topk_successor/test_phase2.py"
+  ],
+  "phase": 2,
+  "phase_start_parent_head": "c68891dab08a777e54c9e301e8dd3515a11bcc31",
+  "planned_commit_message": "test: freeze successor candidate-site comparator regression",
+  "schema_evidence_sha256": {
+    "paper/biological_topk_successor/PROGRAM_STATE.json": "5fd96ef3040de68617f7afe790908a15b74708513b0596274c0b30a336e8d8aa",
+    "paper/biological_topk_successor/STATUS.md": "695eb058ec7a3a9a8d4334affdda36ea296c6df6c3696b245b6b3fa667d43093",
+    "paper/biological_topk_successor/phase2_comparator_freeze.json": "4aae4a32dd0e7ea8345fac1ec92c54756c3552a6a2f1335506dd2ec061527d6b",
+    "paper/biological_topk_successor/phase2_known_cases.json": "0ad4ef0531cc4610f04dfe134e464e05bca76c8cf64a6d43b4769e910ce8a9fb",
+    "paper/biological_topk_successor/phase2_regression_details.tsv": "9e028787f07e7ceca2bd2f5ad526c10209327fcdb87c8488ea7930ec898870d5",
+    "paper/biological_topk_successor/phase2_regression_manifest.tsv": "973af60d11431c1a5641b848b850f7456907fe6c8cc9973021ff1a77efb447f9",
+    "paper/biological_topk_successor/phase2_regression_receipt.json": "265296f4b90076cd75375702b102b1faf646f23309bcbee8226990dffb3048f9",
+    "paper/biological_topk_successor/phase2_regression_results.tsv": "25044573fdaee7383a1ecc2543435d698093d0c681553f6c9b0bdc0891eabe09",
+    "paper/biological_topk_successor/phase_2_change_allowlist.txt": "f57e87bf80ca8b90f080521f54c9b3b46c6bb0fd65cc325f9db974b23035b2e3",
+    "paper/biological_topk_successor/phase_2_start_receipt.json": "23a7e4009a1b8baca8410221fc26457878ee510f2cd5ca1f9054545bf23c316e",
+    "reproduce/biological_topk_successor/freeze_phase2.py": "3d59bd3d1ffc229e30032dc21b9c46f74be83ac2a94ead71202aee416e268b70",
+    "scripts/check_biological_topk_successor_phase.py": "9447295b2e01a3ea54181aac7d226c07050ecf56ceb96e0768688b847f251e95",
+    "scripts/check_biological_topk_successor_phase2.sh": "9ab05be695001e636ea6a0a59b0c23a028b62ffb0d05dd638a61087c9fb97163",
+    "tests/biological_topk_successor/test_phase2.py": "b3330a820d02ce3fdbea23f7e78e6eacdd8a1a6d8055adbddcbfcd4ad1c01744"
+  },
+  "schema_version": 1
+}

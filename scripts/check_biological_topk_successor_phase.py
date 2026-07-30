@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -36,6 +37,8 @@ SUCCESSOR_ARTIFACT_ROOT = ROOT / ".paper-artifacts/biological-topk-successor"
 PHASE0_COMMIT_MESSAGE = "docs: freeze biological Top-K successor validation epoch"
 PHASE0_COMMIT = "4ef45838f9164b4c0e4f3cb16e22971e022e9f3d"
 PHASE1_COMMIT_MESSAGE = "repro: freeze successor contract, source universe, and corrected resource gates"
+PHASE1_COMMIT = "c68891dab08a777e54c9e301e8dd3515a11bcc31"
+PHASE2_COMMIT_MESSAGE = "test: freeze successor candidate-site comparator regression"
 PINNED_V1_AUDIT_COMMAND = ["python3", "scripts/check_biological_topk_successor_v1_audit.py"]
 PHASE1_OUTPUTS = (
     "paper/biological_topk_successor/contract_binding.json",
@@ -47,6 +50,22 @@ PHASE1_OUTPUTS = (
     "paper/biological_topk_successor/source_universe_receipt.json",
     "paper/biological_topk_successor/successor_exclusion_registry.tsv",
     "paper/biological_topk_successor/target_source_universe.tsv.gz",
+)
+PHASE2_COMPONENTS = (
+    "reproduce/biological_topk/canonicalize_rows.py",
+    "reproduce/biological_topk/recluster_candidate_sites.py",
+    "reproduce/biological_topk/match_candidate_sites.py",
+    "reproduce/biological_topk/compare_candidate_topk.py",
+    "reproduce/biological_topk/exact_binomial_bounds.py",
+    "reproduce/biological_topk/rank_diagnostics.py",
+)
+PHASE2_OUTPUTS = (
+    "paper/biological_topk_successor/phase2_comparator_freeze.json",
+    "paper/biological_topk_successor/phase2_known_cases.json",
+    "paper/biological_topk_successor/phase2_regression_details.tsv",
+    "paper/biological_topk_successor/phase2_regression_manifest.tsv",
+    "paper/biological_topk_successor/phase2_regression_receipt.json",
+    "paper/biological_topk_successor/phase2_regression_results.tsv",
 )
 
 
@@ -224,7 +243,11 @@ def check_precommit_receipt(
     require("commit_sha" not in receipt and "phase_commit" not in receipt, "successor receipt claims self/future commit")
     expected_evidence = set(paths) - {relative}
     require(set(receipt["schema_evidence_sha256"]) == expected_evidence, "successor precommit evidence inventory drift")
-    expected_messages = {0: PHASE0_COMMIT_MESSAGE, 1: PHASE1_COMMIT_MESSAGE}
+    expected_messages = {
+        0: PHASE0_COMMIT_MESSAGE,
+        1: PHASE1_COMMIT_MESSAGE,
+        2: PHASE2_COMMIT_MESSAGE,
+    }
     if phase in expected_messages:
         require(receipt["planned_commit_message"] == expected_messages[phase], "successor planned commit message drift")
     for relative, digest in receipt["schema_evidence_sha256"].items():
@@ -715,6 +738,192 @@ def check_phase1(mode: str, current_state: dict[str, Any], status_before: set[st
         raise CheckError(f"unsupported successor Phase 1 mode: {mode}")
 
 
+def check_phase2_start_receipt() -> None:
+    start = load_json(PAPER / "phase_2_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 2, "successor Phase 2 start schema drift")
+    require(start["phase_start_parent_head"] == PHASE1_COMMIT, "successor Phase 2 parent HEAD drift")
+    require(start["previous_phase_number"] == 1 and start["previous_phase_commit"] == PHASE1_COMMIT, "successor Phase 2 previous phase binding drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_successor_phase.py", "--phase", "1", "--mode", "postcommit"],
+        "successor Phase 2 previous checker command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "successor Phase 1 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "successor Phase 2 clean-start evidence drift",
+    )
+    require(start["status"] == "pass", "successor Phase 2 start did not pass")
+
+
+def check_phase2_reproduction() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (sys.executable, "reproduce/biological_topk_successor/freeze_phase2.py", "--check"),
+        check=False,
+        env=environment,
+    )
+    require(
+        completed.returncode == 0,
+        completed.stderr.decode("utf-8", errors="replace") or "successor Phase 2 regression does not reproduce",
+    )
+
+
+def run_phase2_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    commands = (
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk",
+            "-p",
+            "test_phase2_comparator.py",
+            "-v",
+        ),
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk_successor",
+            "-p",
+            "test_phase2.py",
+            "-v",
+        ),
+    )
+    for command in commands:
+        completed = run(command, check=False, env=environment)
+        require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase2_evidence() -> None:
+    for relative in (*PHASE2_COMPONENTS, *PHASE2_OUTPUTS, "reproduce/biological_topk_successor/freeze_phase2.py"):
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 2 evidence: {relative}")
+
+    regression_names = (
+        "phase2_known_cases.json",
+        "phase2_regression_details.tsv",
+        "phase2_regression_manifest.tsv",
+        "phase2_regression_receipt.json",
+        "phase2_regression_results.tsv",
+    )
+    for name in regression_names:
+        require(
+            (PAPER / name).read_bytes() == (ROOT / "paper/biological_topk" / name).read_bytes(),
+            f"successor Phase 2 did not preserve predecessor regression bytes: {name}",
+        )
+
+    receipt = load_json(PAPER / "phase2_regression_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2 and receipt["status"] == "pass", "successor Phase 2 regression receipt drift")
+    require(receipt["evidence_role"] == "historical_regression_only" and receipt["independent_validation_claim"] is False, "successor historical evidence role drift")
+    require(receipt["fresh_pair_selected"] is False and receipt["new_prediction_run"] is False, "successor Phase 2 ran fresh predictions")
+    require((receipt["comparison_count"], receipt["ranking_result_count"], receipt["detail_count"]) == (184, 552, 2391), "successor Phase 2 regression shape drift")
+    require(receipt["technical_failure_count"] == 0 and receipt["input_identity_mismatch_count"] == 0, "successor Phase 2 technical/input failure")
+    require(receipt["ambiguous_matching_result_count"] == 0, "successor Phase 2 ambiguous matching drift")
+    require(receipt["strict_row_mismatch_result_count"] == 14, "successor Phase 2 prior mismatch count drift")
+    require(receipt["all_regression_deterministic"] is True and receipt["no_parser_or_comparator_technical_failures"] is True, "successor Phase 2 regression gate failed")
+    require(
+        receipt["dataset_comparison_counts"]
+        == {
+            "canonical_hybrid_v2_former_fresh_60_regression_only": 60,
+            "canonical_hybrid_v2_regression_36": 36,
+            "historical_paper_core_available": 8,
+            "historical_paper_generalization_available": 44,
+            "phase2_holdout_36": 36,
+        },
+        "successor Phase 2 dataset coverage drift",
+    )
+
+    manifest_fields, manifest = read_tsv(PAPER / "phase2_regression_manifest.tsv")
+    result_fields, results = read_tsv(PAPER / "phase2_regression_results.tsv")
+    detail_fields, details = read_tsv(PAPER / "phase2_regression_details.tsv")
+    require(len(manifest) == 184 and len(results) == 552 and len(details) == 2391, "successor Phase 2 TSV count drift")
+    require(manifest_fields[:5] == ["comparison_id", "dataset_class", "evidence_role", "workload_id", "repeat_id"], "successor Phase 2 manifest schema drift")
+    require(result_fields[:7] == ["comparison_id", "dataset_class", "workload_id", "repeat_id", "comparison_status", "technical_failure", "ranking_mode"], "successor Phase 2 result schema drift")
+    require(detail_fields[:5] == ["comparison_id", "dataset_class", "workload_id", "repeat_id", "ranking_mode"], "successor Phase 2 detail schema drift")
+    require(len({row["comparison_id"] for row in manifest}) == 184, "successor Phase 2 duplicate comparison ID")
+    require(all(row["technical_failure"] == "0" for row in results), "successor Phase 2 retained technical failure")
+    require({row["ranking_mode"] for row in results} == {"score", "stability", "nt"}, "successor Phase 2 ranking coverage drift")
+    require(receipt["manifest_sha256"] == sha256_file(PAPER / "phase2_regression_manifest.tsv"), "successor Phase 2 manifest digest drift")
+    require(receipt["results_sha256"] == sha256_file(PAPER / "phase2_regression_results.tsv"), "successor Phase 2 results digest drift")
+    require(receipt["details_sha256"] == sha256_file(PAPER / "phase2_regression_details.tsv"), "successor Phase 2 details digest drift")
+
+    known = load_json(PAPER / "phase2_known_cases.json")
+    require(known["implementation_has_workload_id_special_cases"] is False, "successor comparator declares workload special cases")
+    require(known["hq10_ht02"]["strict_row_diagnostic"] == "mismatch" and known["hq10_ht02"]["set_membership"] == "preserved", "successor hq10 mismatch drift")
+    require(known["hq11_ht02"]["strict_row_diagnostic"] == "mismatch" and known["hq11_ht02"]["target_reciprocal_overlap"] == "62/65" and known["hq11_ht02"]["set_membership"] == "preserved", "successor hq11 mismatch drift")
+    for relative in PHASE2_COMPONENTS[:4]:
+        implementation = (ROOT / relative).read_text(encoding="utf-8").lower()
+        require("hq10" not in implementation and "hq11" not in implementation, f"successor comparator workload special case: {relative}")
+
+    binding = load_json(PAPER / "contract_binding.json")
+    freeze = load_json(PAPER / "phase2_comparator_freeze.json")
+    require(freeze["schema_version"] == 1 and freeze["phase"] == 2 and freeze["status"] == "pass", "successor Phase 2 freeze status drift")
+    require(freeze["source_commit"] == PHASE1_COMMIT and freeze["predecessor_phase2_commit"] == "4d89d1cd989f50a42e7e3af56333c39219ba1803", "successor Phase 2 commit binding drift")
+    require(freeze["historical_regression_rerun"] is True and freeze["prior_mismatch_and_no_go_preserved"] is True, "successor Phase 2 did not preserve prior outcomes")
+    require(freeze["regression_artifacts_byte_identical_to_predecessor"] is True, "successor Phase 2 byte identity claim drift")
+    require(freeze["scientific_contract_changed"] is False and freeze["comparator_changed"] is False, "successor Phase 2 changed contract/comparator")
+    require(freeze["fresh_pair_selected"] is False and freeze["new_prediction_run"] is False, "successor Phase 2 freeze ran fresh work")
+    require(freeze["python_version"] == platform.python_version(), "successor Phase 2 Python version drift")
+    require(freeze["contract_binding_sha256"] == sha256_file(PAPER / "contract_binding.json"), "successor Phase 2 contract binding digest drift")
+    require(freeze["component_sha256"] == {relative: sha256_file(ROOT / relative) for relative in PHASE2_COMPONENTS}, "successor Phase 2 component digest drift")
+    require(freeze["comparator_sha256"] == binding["bindings"]["reproduce/biological_topk/compare_candidate_topk.py"], "successor comparator differs from Phase 1 binding")
+    require(freeze["comparator_sha256"] == sha256_file(ROOT / "reproduce/biological_topk/compare_candidate_topk.py"), "successor comparator live digest drift")
+    for name in regression_names:
+        require(freeze["successor_regression_sha256"][f"paper/biological_topk_successor/{name}"] == sha256_file(PAPER / name), f"successor Phase 2 freeze digest drift: {name}")
+        require(freeze["predecessor_regression_sha256"][f"paper/biological_topk/{name}"] == sha256_file(ROOT / "paper/biological_topk" / name), f"predecessor Phase 2 freeze digest drift: {name}")
+
+    help_result = run((sys.executable, "reproduce/biological_topk/compare_candidate_topk.py", "--help"), check=False)
+    require(help_result.returncode == 0 and b"--fail-closed" in help_result.stdout, "successor comparator is not fail closed")
+
+
+def check_phase2_state(state: dict[str, Any]) -> None:
+    require(all(state["phase_status"][str(index)] == "pass" for index in range(3)), "successor Phase 2 prerequisite/final state drift")
+    require(all(state["phase_status"][str(index)] == "pending" for index in range(3, 10)), "successor later phase advanced during Phase 2")
+    require(state["active_phase"] == 3 and state["last_completed_phase"] == 2, "successor Phase 2 transition drift")
+    require(state["last_decision"] == "successor_phase_2_regression_frozen", "successor Phase 2 decision drift")
+    require(state["previous_phase_commit"] == PHASE1_COMMIT, "successor Phase 2 previous commit drift")
+    require(state["contract_status"] == "in_validation" and state["gpu_screen_status"] == "experimental", "successor Phase 2 promoted product status")
+    require(state["bioinformatics_route"] == "conditionally_reopened" and state["rank_order_claim"] == "diagnostic_only", "successor Phase 2 claim scope drift")
+
+
+def check_phase2(mode: str, current_state: dict[str, Any], status_before: set[str]) -> None:
+    check_phase2_start_receipt()
+    check_phase2_reproduction()
+    check_phase2_evidence()
+    run_phase2_unit_tests()
+    if mode == "precommit":
+        paths = allowlist(2)
+        check_precommit_receipt(2, paths)
+        check_phase2_state(current_state)
+        require(git("rev-parse", "HEAD") == PHASE1_COMMIT, "successor Phase 2 precommit parent drift")
+        require(changed_paths() == set(paths), "successor Phase 2 allowlisted diff mismatch")
+        require(not SUCCESSOR_ARTIFACT_ROOT.exists(), "successor Phase 2 created a scientific artifact root")
+    elif mode == "postcommit":
+        require(not status_before, "successor Phase 2 postcommit requires a clean tree")
+        commit = phase_commit_for_postcommit(2)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "successor Phase 2 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk_successor/PROGRAM_STATE.json")
+        validate_program_state_value(state)
+        paths = allowlist_from_commit(2, commit)
+        check_precommit_receipt(2, paths, committed_at=commit)
+        check_phase2_state(state)
+        require(git("rev-parse", f"{commit}^") == PHASE1_COMMIT, "successor Phase 2 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE2_COMMIT_MESSAGE, "successor Phase 2 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "successor Phase 2 committed paths differ from allowlist")
+    else:
+        raise CheckError(f"unsupported successor Phase 2 mode: {mode}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(10), required=True)
@@ -727,6 +936,8 @@ def main() -> int:
             check_phase0(args.mode, state, status_before)
         elif args.phase == 1:
             check_phase1(args.mode, state, status_before)
+        elif args.phase == 2:
+            check_phase2(args.mode, state, status_before)
         else:
             raise CheckError(f"successor Phase {args.phase} checker is not frozen yet")
         require(changed_paths() == status_before, "successor checker modified the working tree")
