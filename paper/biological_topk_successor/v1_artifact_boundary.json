@@ -1,0 +1,31 @@
+{
+  "aggregate_checker_command": [
+    "python3",
+    "scripts/check_biological_topk_successor_v1_audit.py"
+  ],
+  "aggregate_checker_required_result": "pass",
+  "artifact_roots": [
+    {
+      "logical_file_bytes": 1156799426,
+      "mutable": false,
+      "path": ".paper-artifacts/biological-topk/fresh-holdout",
+      "run_summary_sha256": "760b2de98d491cff5f822955a2cac087dc121f25afb8c35645d9bb7d83dfebd6"
+    },
+    {
+      "logical_file_bytes": 5985526301,
+      "mutable": false,
+      "path": ".paper-artifacts/biological-topk/fresh-holdout-repair1",
+      "run_summary_sha256": "cb406183c4b52aa090efcebc54f609c7a8c5ad824ed873f32524d6d7b2181b0f"
+    }
+  ],
+  "comparison_started": false,
+  "decision": "blocked_fixed_budget",
+  "decision_sha256": "d96fd8a0a8d7d86e7cfcbdd9e44a76affdaa8d175e609ace5ebd91a2ab5b398c",
+  "predecessor_commit": "7fae3de6b13780d7cc0776038489cf2f22072339",
+  "predecessor_program_state_sha256": "8c626090b68e9699a30ec3ee7ce3b0b448791d39fa9ede4d1af682236235ff63",
+  "predecessor_protocol_sha256": "1cd5e5a023d53655641ba831142f489011111fd2c166d895b2a851b0f513f6c3",
+  "predecessor_receipt_sha256": "4b3c404a60853713e7823ea37c7695a03a1889b7c1a51ef13a413d61236cf4c6",
+  "schema_version": 1,
+  "scientific_decision_reached": false,
+  "total_logical_file_bytes": 7142325727
+}
