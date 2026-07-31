@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import importlib.util
 import json
@@ -22,6 +23,10 @@ BASELINE_COMMIT = "739ee0a8db01f77143a5c993e6c68a56a772502b"
 PHASE0_COMMIT_MESSAGE = "docs: start Bioinformatics submission readiness v2"
 PHASE1_COMMIT_MESSAGE = "repro: freeze v2 GPU-only release candidate"
 PHASE1_IMPLEMENTATION_COMMIT = "0f04c241b6fda746f061b043aa9a9d26c79938ab"
+PHASE2_COMMIT_MESSAGE = "repro: freeze v2 development harnesses"
+PHASE2_FREEZE_PARENT = "8114ce45be9bd5b25e52dc8fe7bc768eb6aee589"
+PHASE2_RUNTIME_COMMIT = PHASE2_FREEZE_PARENT
+PHASE2_CAPACITY_COMMIT = "49ed7d5242def174a0bd8708b9bb24825d49ee67"
 ARTIFACT_ROOT = ROOT / ".paper-artifacts/bioinformatics-submission-readiness-v2"
 IMMUTABLE_ROOTS = (
     "paper/bioinformatics",
@@ -73,6 +78,36 @@ PHASE1_RUNTIME_PATHS = (
     "scripts/gasal2_gpu_screen.py",
     "scripts/gasal2_longtarget.py",
 )
+PHASE1_FROZEN_EVIDENCE_PATHS = (
+    "paper/bioinformatics_submission_readiness_v2/phase_1_artifact_manifest.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_1_change_allowlist.txt",
+    "paper/bioinformatics_submission_readiness_v2/phase_1_precommit_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_1_runtime_identity.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_1_smoke_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_1_start_receipt.json",
+)
+PHASE2_PATHS = (
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+    "paper/bioinformatics_submission_readiness_v2/external_method_landscape.tsv",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_artifact_manifest.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_change_allowlist.txt",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_development_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_external_search_protocol.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_external_tool_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_precommit_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_runtime_identity.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_start_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_supersession_receipt.json",
+    "reproduce/bioinformatics_submission_readiness_v2/cpu_reference_screen.py",
+    "reproduce/bioinformatics_submission_readiness_v2/run_development_harness.py",
+    "reproduce/bioinformatics_submission_readiness_v2/run_external_development.py",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "tests/bioinformatics_submission_readiness_v2/test_development_harness.py",
+    "tests/bioinformatics_submission_readiness_v2/test_external_development.py",
+    "tests/bioinformatics_submission_readiness_v2/test_phase2.py",
+)
+PHASE2_RUNTIME_PATHS = PHASE1_RUNTIME_PATHS
 CRITICAL_LEGACY_SHA256 = {
     "paper/bioinformatics/canonical_hybrid_v2_performance_decision.md": "71edaabd0339352df0ca7bd648f33787071d4d2c1097ea09d00aa5572f9999d1",
     "paper/bioinformatics/phase3_postpilot_decision.json": "471898d688386f46b4e7f13b932b6b4f9874d9ed74641240b5c2fd4ad71851fe",
@@ -535,6 +570,314 @@ def check_phase1(mode: str) -> None:
     run_phase1_tests()
 
 
+def check_phase1_history() -> None:
+    commit = commit_with_subject(PHASE1_COMMIT_MESSAGE)
+    require(git("rev-parse", f"{commit}^") == PHASE1_IMPLEMENTATION_COMMIT, "Phase 1 historical parent drift")
+    check_phase1_precommit_receipt(commit)
+    state = load_json_from_commit(
+        commit, "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json"
+    )
+    validate_schema(state, load_json(SCHEMA))
+    validate_state_transitions(state)
+    require(state["active_phase"] == 2 and state["last_completed_phase"] == 1, "Phase 1 historical state drift")
+    require(state["software_epoch"] == "submission_rc_v2", "Phase 1 historical epoch was rewritten")
+    for relative in PHASE1_FROZEN_EVIDENCE_PATHS:
+        require(
+            (ROOT / relative).read_bytes() == git_bytes("show", f"{commit}:{relative}"),
+            f"Phase 1 frozen evidence was rewritten: {relative}",
+        )
+    check_phase0_history()
+
+
+def check_phase2_start_receipt() -> None:
+    receipt = load_json(PAPER / "phase_2_start_receipt.json")
+    phase1_commit = commit_with_subject(PHASE1_COMMIT_MESSAGE)
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2, "Phase 2 start receipt drift")
+    require(receipt["phase_1_transition_commit"] == phase1_commit, "Phase 2 start/Phase 1 binding drift")
+    require(receipt["phase_start_parent_head"] == phase1_commit, "Phase 2 start parent drift")
+    require(receipt["freeze_parent_head"] == PHASE2_FREEZE_PARENT, "Phase 2 freeze parent drift")
+    require(receipt["phase_start_tree_was_clean"] is True, "Phase 2 did not start from a clean Phase 1 commit")
+    require(receipt["previous_phase_postcommit_check_result"] == "pass", "Phase 1 postcommit audit was not preserved")
+    require(receipt["receipt_created_at_freeze"] is True, "Phase 2 receipt timing disclosure missing")
+
+
+def check_phase2_precommit_receipt(commit: str | None) -> None:
+    relative = "paper/bioinformatics_submission_readiness_v2/phase_2_precommit_receipt.json"
+    receipt = load_json(PAPER / "phase_2_precommit_receipt.json") if commit is None else load_json_from_commit(commit, relative)
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2, "Phase 2 precommit receipt drift")
+    require(receipt["phase_start_parent_head"] == PHASE2_FREEZE_PARENT, "Phase 2 precommit parent drift")
+    require(receipt["planned_commit_message"] == PHASE2_COMMIT_MESSAGE, "Phase 2 commit message drift")
+    require(receipt["expected_changed_paths"] == list(PHASE2_PATHS), "Phase 2 path inventory drift")
+    expected_evidence = set(PHASE2_PATHS) - {relative}
+    require(set(receipt["schema_evidence_sha256"]) == expected_evidence, "Phase 2 evidence inventory drift")
+    for path, expected in receipt["schema_evidence_sha256"].items():
+        require(sha256_bytes(file_bytes(path, commit)) == expected, f"Phase 2 evidence digest drift: {path}")
+    require("commit_sha" not in receipt and "phase_commit" not in receipt, "Phase 2 receipt claims future commit")
+
+
+def check_phase2_supersession() -> None:
+    receipt = load_json(PAPER / "phase_2_supersession_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2, "Phase 2 supersession receipt drift")
+    require(receipt["discovered_during_excluded_development"] is True, "supersession discovery boundary drift")
+    require(receipt["formal_attempts_before_discovery"] == 0, "formal attempts preceded runtime correction")
+    require(receipt["supersession_does_not_rewrite_phase_1"] is True, "supersession permits Phase 1 rewrite")
+    old = receipt["old_epoch"]
+    new = receipt["new_epoch"]
+    require(old["software_epoch"] == "submission_rc_v2" and old["preserved_artifact"] is True, "old epoch was not preserved")
+    require(old["implementation_commit"] == PHASE1_IMPLEMENTATION_COMMIT, "old epoch commit drift")
+    require(new["software_epoch"] == "submission_rc_v2_2", "new epoch identity drift")
+    require(new["implementation_commit"] == PHASE2_RUNTIME_COMMIT, "new epoch commit drift")
+    require(new["validation_status"] == "pending_phase4", "new epoch prematurely validated")
+    require(old["candidate_binary_sha256"] == new["candidate_binary_sha256"], "candidate binary changed during identity correction")
+    phase1_runtime = load_json(PAPER / "phase_1_runtime_identity.json")
+    require(phase1_runtime["execution_identity"]["software_epoch"] == "submission_rc_v2", "Phase 1 runtime receipt was rewritten")
+
+
+def check_phase2_runtime() -> None:
+    receipt = load_json(PAPER / "phase_2_runtime_identity.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2, "Phase 2 runtime receipt drift")
+    require(receipt["status"] == "frozen_release_candidate_under_test", "Phase 2 runtime role drift")
+    require(receipt["validation_status"] == "pending_phase4", "Phase 2 runtime prematurely validated")
+    require(receipt["implementation_commit"] == PHASE2_RUNTIME_COMMIT, "Phase 2 implementation commit drift")
+    require(
+        receipt["execution_identity"]
+        == {
+            "execution_mode": "gpu-screen",
+            "scientific_contract": "biological_topk_candidate_site_v1",
+            "output_schema": "gasal2_candidate_sites_tsv_v1",
+            "software_epoch": "submission_rc_v2_2",
+        },
+        "Phase 2 four-way runtime identity drift",
+    )
+    require(set(receipt["runtime_source_sha256"]) == set(PHASE2_RUNTIME_PATHS), "Phase 2 runtime inventory drift")
+    for relative, expected in receipt["runtime_source_sha256"].items():
+        require(sha256_bytes(git_bytes("show", f"{PHASE2_RUNTIME_COMMIT}:{relative}")) == expected, f"v2.2 committed runtime drift: {relative}")
+        require(sha256_file(ROOT / relative) == expected, f"v2.2 working runtime drift: {relative}")
+    runtime_diff = run(("git", "diff", "--quiet", PHASE2_RUNTIME_COMMIT, "--", *PHASE2_RUNTIME_PATHS), check=False)
+    require(runtime_diff.returncode == 0, "runtime path changed after v2.2 freeze")
+    require(
+        sha256_file(ROOT / "reproduce/bioinformatics_submission_readiness_v2/build_runtime_image.py")
+        == receipt["container"]["build_script_sha256"],
+        "v2.2 build script drift",
+    )
+
+    candidate = receipt["candidate_binary"]
+    candidate_path = ROOT / candidate["source_path"]
+    require(candidate_path.is_file() and sha256_file(candidate_path) == candidate["sha256"], "v2.2 candidate binary drift")
+    require(candidate["sha256"] == "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9", "v2.2 candidate identity drift")
+    require(receipt["complete_cpu_authority_inside_product"] is False, "v2.2 product embeds complete CPU authority")
+    require(receipt["formal_performance_claim"] is False, "Phase 2 runtime claims performance")
+
+    container = receipt["container"]
+    archive = artifact_path(container["archive_relative_path"])
+    require(archive.stat().st_size == container["archive_bytes"], "v2.2 archive size drift")
+    require(sha256_file(archive) == container["archive_sha256"], "v2.2 archive digest drift")
+    embedded_path = artifact_path(container["embedded_identity_relative_path"])
+    require(sha256_file(embedded_path) == container["embedded_identity_sha256"], "v2.2 embedded identity drift")
+    embedded = load_json(embedded_path)
+    require(embedded["implementation_commit"] == PHASE2_RUNTIME_COMMIT, "v2.2 embedded commit drift")
+    require(embedded["candidate_binary_sha256"] == candidate["sha256"], "v2.2 embedded binary drift")
+    for field, expected in receipt["execution_identity"].items():
+        require(embedded[field] == expected, f"v2.2 embedded {field} drift")
+    image = run(("docker", "image", "inspect", container["image_tag"], "--format", "{{.Id}}"), check=False)
+    require(image.returncode == 0, "v2.2 container image is unavailable")
+    require(image.stdout.decode().strip() == container["image_digest"], "v2.2 image digest drift")
+    require(container["entrypoint"] == ["/usr/bin/python3.11", "/opt/gasal2/gasal2_gpu_screen.py"], "v2.2 entrypoint drift")
+    schedule = receipt["validated_gpu_container_schedule"]
+    require(schedule["nvidia_container_toolkit_available"] is False, "v2.2 toolkit availability drift")
+    require(schedule["mode"] == "explicit_device_and_read_only_host_driver_bind", "v2.2 container schedule drift")
+
+    report_schema = load_json(ROOT / "schemas/gasal2_gpu_screen_run_report_v1.schema.json")
+    report_validator = load_gpu_screen_schema_validator()
+    reports: dict[str, Any] = {}
+    smoke = receipt["smoke"]
+    for arm in ("host", "container"):
+        relative = smoke[f"{arm}_report_relative_path"]
+        path = artifact_path(relative)
+        require(sha256_file(path) == smoke[f"{arm}_report_sha256"], f"v2.2 {arm} smoke digest drift")
+        report = load_json(path)
+        report_validator.validate_schema_value(report_schema, report, "report")
+        require(report["result_status"] == "release_candidate_under_test_complete", f"v2.2 {arm} smoke failed")
+        require(report["runtime_identity"]["source_commit"] == PHASE2_RUNTIME_COMMIT, f"v2.2 {arm} source drift")
+        require(report["runtime_identity"]["container_image_digest"] == container["image_digest"], f"v2.2 {arm} image binding drift")
+        require(report["backend_telemetry"]["fallbacks"] == 0, f"v2.2 {arm} used fallback")
+        require(report["backend_telemetry"]["gasal2_requests"] == smoke["gasal2_requests"], f"v2.2 {arm} request-count drift")
+        reports[arm] = report
+    host_sites = artifact_path("phase1/runtime-epoch-v2-2/real-gpu-smoke-host/product/candidate_sites.tsv")
+    container_sites = artifact_path("phase1/runtime-epoch-v2-2/real-gpu-smoke/product/candidate_sites.tsv")
+    require(host_sites.read_bytes() == container_sites.read_bytes(), "v2.2 host/container sites differ")
+    require(sha256_file(container_sites) == smoke["candidate_sites_sha256"], "v2.2 candidate-sites digest drift")
+    summary = load_candidate_sites_module().validate_candidate_sites(container_sites)
+    require(summary["software_epoch"] == "submission_rc_v2_2", "v2.2 product epoch drift")
+    require(reports["host"]["candidate_sites"]["sha256"] == summary["sha256"], "v2.2 host report/product mismatch")
+    require(reports["container"]["candidate_sites"]["sha256"] == summary["sha256"], "v2.2 container report/product mismatch")
+    require(reports["host"]["product_identity"]["target_region_start0"] == smoke["target_region_start0"], "v2.2 host target start drift")
+    require(reports["container"]["product_identity"]["target_region_start0"] == smoke["target_region_start0"], "v2.2 container target start drift")
+
+    module = load_candidate_sites_module()
+    query_path = ROOT / "reproduce/bioinformatics/holdout_inputs/queries/hq01_ENSG00000276454_ENST00000615076.fa"
+    target_path = ROOT / "reproduce/bioinformatics/holdout_inputs/targets/ht01_ENSG00000159423_chr1_18902299_18904799.fa"
+    identity = module.ProductIdentity(
+        workload_id="phase1_v2_2_excluded_smoke",
+        assembly="GRCh38",
+        target_coordinate_namespace="GRCh38_0_based_half_open",
+        target_region_start0=smoke["target_region_start0"],
+    )
+    input_receipt = module.build_receipt(
+        query=module.read_single_fasta(query_path, "query"),
+        target=module.read_single_fasta(target_path, "target"),
+        tfosorted=artifact_path("phase1/runtime-epoch-v2-2/real-gpu-smoke/product/diagnostics/native-TFOsorted"),
+        identity=identity,
+    )
+    interval = input_receipt.input_identity["target_extracted_interval"]
+    require([interval["start0"], interval["end0"]] == smoke["target_extracted_interval"], "v2.2 genomic extraction identity drift")
+
+
+def check_phase2_artifact_manifest() -> None:
+    manifest = load_json(PAPER / "phase_2_artifact_manifest.json")
+    require(manifest["schema_version"] == 1 and manifest["phase"] == 2, "Phase 2 artifact manifest drift")
+    require(manifest["formal_claim_evidence"] is False, "Phase 2 artifacts were promoted")
+    observed: set[str] = set()
+    for item in manifest["artifacts"]:
+        relative = item["relative_path"]
+        require(relative not in observed, "duplicate Phase 2 artifact path")
+        observed.add(relative)
+        path = artifact_path(relative)
+        require(path.is_file() and not path.is_symlink(), f"missing or unsafe Phase 2 artifact: {relative}")
+        require(path.stat().st_size == item["size_bytes"], f"Phase 2 artifact size drift: {relative}")
+        require(sha256_file(path) == item["sha256"], f"Phase 2 artifact digest drift: {relative}")
+    total = sum(path.stat().st_size for path in ARTIFACT_ROOT.rglob("*") if path.is_file())
+    state = validate_program_state()
+    require(total <= state["fixed_v2_artifact_storage_bytes"], "v2 artifact quota exceeded")
+    require(manifest["bytes_at_phase2_freeze"] <= manifest["quota_bytes"], "Phase 2 froze over quota")
+
+
+def check_phase2_development() -> None:
+    receipt = load_json(PAPER / "phase_2_development_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2, "Phase 2 development receipt drift")
+    require(receipt["formal_claim"] is False and receipt["formal_performance_estimate"] is None, "development diagnostics were promoted")
+    require(receipt["all_development_inputs_excluded_from_formal_panels"] is True, "development input exclusion drift")
+    summary_path = artifact_path(receipt["summary_relative_path"])
+    require(sha256_file(summary_path) == receipt["summary_sha256"], "development summary digest drift")
+    summary = load_json(summary_path)
+    require(summary["formal_claim"] is False and summary["workload_count"] == 3, "development summary boundary drift")
+    expected = {
+        "phase2_dev_bts3_w022": ("development_failure", False),
+        "phase2_dev_bts3_w006": ("development_failure", False),
+        "phase2_dev_bts3_w153": ("development_pass", True),
+    }
+    require({item["workload_id"] for item in receipt["development_pairs"]} == set(expected), "development pair inventory drift")
+    for item in receipt["development_pairs"]:
+        workload_id = item["workload_id"]
+        status, contract_pass = expected[workload_id]
+        require(item["status"] == status and item["contract_pass"] is contract_pass, f"development decision drift: {workload_id}")
+        require(abs(item["diagnostic_speedup"] - item["authority_wall_seconds"] / item["candidate_wall_seconds"]) < 1e-12, f"development speedup arithmetic drift: {workload_id}")
+        pair_path = artifact_path(f"phase2/development-harness/{workload_id}/pair-complete.json")
+        pair = load_json(pair_path)
+        require(pair["development_diagnostic_only"] is True and pair["excluded_from_all_v2_formal_panels"] is True, f"development pair promoted: {workload_id}")
+        require(pair["status"] == status, f"development terminal status drift: {workload_id}")
+        require(pair["comparison"]["result"]["contract_pass"] is contract_pass, f"development comparator drift: {workload_id}")
+    invalid = receipt["non_acgt_preflight"]
+    invalid_report = load_json(artifact_path(invalid["artifact_relative_path"]))
+    require(sha256_file(artifact_path(invalid["artifact_relative_path"])) == invalid["artifact_sha256"], "non-ACGT receipt digest drift")
+    require(invalid_report["result_status"] == "invalid_input" and invalid["backend_executed"] is False, "non-ACGT preflight drift")
+
+
+def check_phase2_external() -> None:
+    protocol = load_json(PAPER / "phase_2_external_search_protocol.json")
+    require(protocol["schema_version"] == 1 and protocol["phase"] == 2, "external search protocol drift")
+    require(protocol["search_date"] == "2026-07-31", "external search date drift")
+    require(protocol["formal_comparator_selection_frozen"] is False, "formal comparator selected before Phase 3")
+    require(len(protocol["inclusion_criteria"]) >= 4 and len(protocol["exclusion_criteria"]) >= 5, "external search criteria incomplete")
+    with (PAPER / "external_method_landscape.tsv").open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    tools = {row["tool"]: row for row in rows}
+    require(set(tools) == {"PATO", "Triplexator", "3plex", "TriplexAligner", "TripLexicon", "TriplexFPP", "Triplexity", "Triplex_Bioconductor"}, "external landscape inventory drift")
+    require(tools["PATO"]["phase2_decision"] == "retain_for_phase3_semantic_freeze", "PATO landscape decision drift")
+    require(tools["Triplexator"]["phase2_decision"] == "retain_as_legacy_reference", "Triplexator landscape decision drift")
+    require(tools["TripLexicon"]["direct_runtime_candidate"] == "no", "web resource promoted to runtime comparator")
+
+    receipt = load_json(PAPER / "phase_2_external_tool_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 2, "external tool receipt drift")
+    require(receipt["formal_comparison_authorized"] is False, "formal external comparison began in Phase 2")
+    pato = receipt["pato"]
+    pato_binary = ROOT / pato["binary_path"]
+    require(sha256_file(pato_binary) == pato["binary_sha256"], "PATO binary drift")
+    require(sha256_file(ROOT / pato["license_path"]) == pato["license_sha256"], "PATO license drift")
+    require(pato["upstream_tag"] == "1.0.6" and pato["upstream_commit"] == "0c90c163f3582a457dfc808d656a8c992a95a3ba", "PATO release identity drift")
+    pato_head = run(("git", "-C", str(pato_binary.parents[3]), "rev-parse", "HEAD")).stdout.decode().strip()
+    require(pato_head == pato["upstream_commit"], "PATO checkout drift")
+    require(pato["upstream_test_diagnostics"]["clean_serial_final_result"] == "224_of_224_pass", "PATO isolated test result drift")
+    triplexator = receipt["triplexator"]
+    require(sha256_file(ROOT / triplexator["binary_path"]) == triplexator["binary_sha256"], "Triplexator binary drift")
+    require(sha256_file(ROOT / triplexator["license_path"]) == triplexator["license_sha256"], "Triplexator license drift")
+    require(triplexator["historical_five_failures_reinterpreted"] is False, "historical Triplexator failures were rewritten")
+    for tool in ("pato", "triplexator"):
+        record = receipt[tool]
+        report_path = artifact_path(record["development_report_relative_path"])
+        require(sha256_file(report_path) == record["development_report_sha256"], f"{tool} development report drift")
+        report = load_json(report_path)
+        require(report["status"] == "development_success", f"{tool} development smoke failed")
+        require(report["development_diagnostic_only"] is True and report["excluded_from_all_v2_formal_panels"] is True, f"{tool} development result promoted")
+        require(report["output_basename_only"] is True and report["expected_summary_suffix"] == ".summary", f"{tool} output semantics drift")
+        require(report["tool_identity"]["binary_sha256"] == record["binary_sha256"], f"{tool} report binary binding drift")
+
+
+def run_phase2_tests() -> None:
+    for relative in (
+        "tests/bioinformatics_submission_readiness_v2/test_capacity.py",
+        "tests/bioinformatics_submission_readiness_v2/test_development_harness.py",
+        "tests/bioinformatics_submission_readiness_v2/test_external_development.py",
+        "tests/bioinformatics_submission_readiness_v2/test_gpu_screen.py",
+        "tests/bioinformatics_submission_readiness_v2/test_phase2.py",
+    ):
+        run((sys.executable, relative))
+    for relative in (
+        "reproduce/bioinformatics_submission_readiness_v2/cpu_reference_screen.py",
+        "reproduce/bioinformatics_submission_readiness_v2/run_development_harness.py",
+        "reproduce/bioinformatics_submission_readiness_v2/run_external_development.py",
+    ):
+        run((sys.executable, "-m", "py_compile", relative))
+    capacity_paths = (
+        "reproduce/bioinformatics_submission_readiness_v2/capacity.py",
+        "tests/bioinformatics_submission_readiness_v2/test_capacity.py",
+    )
+    diff = run(("git", "diff", "--quiet", PHASE2_CAPACITY_COMMIT, "--", *capacity_paths), check=False)
+    require(diff.returncode == 0, "capacity estimator changed after its Phase 2 commit")
+
+
+def check_phase2(mode: str) -> None:
+    status_before = changed_paths()
+    if mode == "precommit":
+        require(git("rev-parse", "HEAD") == PHASE2_FREEZE_PARENT, "Phase 2 precommit parent drift")
+        require(status_before == set(PHASE2_PATHS), "Phase 2 changed paths differ from allowlist")
+        allowlist = tuple((PAPER / "phase_2_change_allowlist.txt").read_text(encoding="utf-8").splitlines())
+        require(allowlist == PHASE2_PATHS, "Phase 2 allowlist drift")
+        check_phase2_precommit_receipt(None)
+    else:
+        require(not status_before, "Phase 2 postcommit requires a clean tree")
+        commit = commit_with_subject(PHASE2_COMMIT_MESSAGE)
+        require(git("rev-parse", f"{commit}^") == PHASE2_FREEZE_PARENT, "Phase 2 commit parent drift")
+        check_phase2_precommit_receipt(commit)
+    state = validate_program_state()
+    require(state["phase_status"] == {"0": "pass", "1": "pass", "2": "pass", "3": "active", "4": "pending", "5": "pending", "6": "pending", "7": "pending"}, "Phase 2 state drift")
+    require(state["active_phase"] == 3 and state["last_completed_phase"] == 2, "Phase 2 transition drift")
+    require(state["software_epoch"] == "submission_rc_v2_2", "Phase 2 active software epoch drift")
+    require(state["artifact_role"] == "frozen_release_candidate_under_test", "Phase 2 artifact role drift")
+    require(state["product_status"] == "experimental" and state["validation_status"] == "pending", "Phase 2 product prematurely validated")
+    require(state["target_claim_status"] == "pending_final_rc_performance_validation", "Phase 2 target claim promoted")
+    require(not state["external_comparison_authorized"] and not state["release_packaging_authorized"] and not state["submission_drafting_authorized"], "Phase 2 granted downstream authorization")
+    check_phase1_history()
+    check_phase2_start_receipt()
+    check_phase2_supersession()
+    check_phase2_runtime()
+    check_phase2_artifact_manifest()
+    check_phase2_development()
+    check_phase2_external()
+    check_legacy_boundary()
+    run_phase2_tests()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(8), required=True)
@@ -545,6 +888,8 @@ def main() -> int:
             check_phase0(args.mode)
         elif args.phase == 1:
             check_phase1(args.mode)
+        elif args.phase == 2:
+            check_phase2(args.mode)
         else:
             raise CheckError("checker for requested phase is not implemented yet")
         print(f"Bioinformatics submission readiness v2 Phase {args.phase} {args.mode} checks OK")

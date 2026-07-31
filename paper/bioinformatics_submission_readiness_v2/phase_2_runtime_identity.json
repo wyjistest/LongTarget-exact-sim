@@ -1,0 +1,109 @@
+{
+  "candidate_binary": {
+    "image_path": "/opt/gasal2/bin/fasim_longtarget_gasal2",
+    "sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+    "source_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2"
+  },
+  "complete_cpu_authority_inside_product": false,
+  "container": {
+    "archive_bytes": 294943232,
+    "archive_relative_path": "phase1/runtime-epoch-v2-2/gasal2-gpu-screen-submission-rc-v2-2.tar",
+    "archive_sha256": "d6d3f9f26cbc1c1f50d80e2a04f5fe2621acd56af6c52797084bdd3d1ffe2d8b",
+    "base_image": "scratch_host_runtime_snapshot",
+    "build_script_sha256": "83b38cb0f40ca809151f83304aa9c1d12f766bf334646536f29b94197ca47142",
+    "embedded_identity_relative_path": "phase1/runtime-epoch-v2-2/container-context/rootfs/opt/gasal2/runtime_identity.json",
+    "embedded_identity_sha256": "269285aefffdde4f2be228479d64cd3e55721dcaecedfee3dc994671349e74ed",
+    "entrypoint": [
+      "/usr/bin/python3.11",
+      "/opt/gasal2/gasal2_gpu_screen.py"
+    ],
+    "image_bytes": 291471888,
+    "image_digest": "sha256:f04340aa1b77092c25eee50c84144adb08e6f1b48a34580f6f9c33aff3163ca7",
+    "image_tag": "longtarget/gasal2-gpu-screen:submission-rc-v2-2"
+  },
+  "execution_identity": {
+    "execution_mode": "gpu-screen",
+    "output_schema": "gasal2_candidate_sites_tsv_v1",
+    "scientific_contract": "biological_topk_candidate_site_v1",
+    "software_epoch": "submission_rc_v2_2"
+  },
+  "formal_performance_claim": false,
+  "implementation_commit": "8114ce45be9bd5b25e52dc8fe7bc768eb6aee589",
+  "interface": {
+    "candidate_sites_top_k": 5,
+    "cli_defaults": {
+      "batch_size": 20000,
+      "fallback_behavior": "fail_closed_zero_fallbacks_required",
+      "gpu_streams": 3,
+      "output_mode": "tfosorted_then_candidate_sites_tsv_v1",
+      "scoreinfo_prune_max_per_task": 256,
+      "timeout_seconds": 3600
+    },
+    "empty_result": "header_only_candidate_sites_tsv",
+    "outputs": [
+      "candidate_sites.tsv",
+      "contract.json",
+      "diagnostics/native-TFOsorted",
+      "standalone_run_report.json"
+    ]
+  },
+  "phase": 2,
+  "runtime_dependencies": {
+    "cuda_compiler_build": "cuda_12.5.r12.5/compiler.34385749_0",
+    "cuda_runtime_path": "/usr/local/cuda-12.5/targets/x86_64-linux/lib/libcudart.so.12.5.82",
+    "cuda_runtime_sha256": "16e8815a5e36a7ffbc9107df350d3f67090afb10a3de4b3710f6928aa7994a36",
+    "cuda_runtime_version": "12.5.82",
+    "driver_compatibility_range": {
+      "maximum": "555.42.06",
+      "minimum": "555.42.06",
+      "policy": "exact_tested_driver_only"
+    },
+    "glibc": "2.35",
+    "kernel": "Linux 5.15.0-46-generic x86_64",
+    "python": "3.11.10"
+  },
+  "runtime_source_sha256": {
+    "reproduce/biological_topk/canonicalize_rows.py": "d12db4fba3d1e6693a1b0edcb78bc7cb0e325bbc4b0e5623234a43bffe0b9b88",
+    "reproduce/biological_topk/contract.py": "bb2c5bb5684270af1ab776278551c4cce1a7043fe3758858e011dedb79ebbb55",
+    "reproduce/biological_topk/recluster_candidate_sites.py": "98e7f6a64fe45f6cb9a161f0b97285ae63eb63bad3a872b442ec7bd4d18700ce",
+    "reproduce/bioinformatics_submission_readiness_v2/Dockerfile.runtime": "c53ca682bf5ede7f8fee739386cbddcd1e880340d58105f0de854afde12875bf",
+    "schemas/gasal2_candidate_sites_tsv_v1.schema.json": "a5164e544f9978b39db5e26ea3c72f6b8e041e668c5d94184511aa0d4ff2b4cc",
+    "schemas/gasal2_gpu_screen_run_report_v1.schema.json": "3ca51790352fa8fef70601dc16a64aa37703ff8158a8e9e0f9f6a87e6515e5b0",
+    "scripts/fasim_tfo_archive.py": "3fb42809c4f31b31ec05bcaf9d3249f4059a910164a6ca33d5a789fb0efab856",
+    "scripts/gasal2_candidate_sites.py": "576429580d52d1725991f27326fd5ad7eecec03d52f231b12ada244046cd098e",
+    "scripts/gasal2_gpu_screen.py": "04fcb35a4283cd64f3f0060a97dc737624b0a1d9773c0a8c798213fa8a269e61",
+    "scripts/gasal2_longtarget.py": "42a1c90f9850d28b3e7226140362fa488fdcf46730e2d858cd540c8a0762b91c"
+  },
+  "schema_version": 1,
+  "smoke": {
+    "candidate_sites_host_container_byte_equal": true,
+    "candidate_sites_sha256": "77cea049ce8e57bb46a9b8a433d3492b92ea8738e77e21d4e0f5a668e4ba44e0",
+    "container_report_relative_path": "phase1/runtime-epoch-v2-2/real-gpu-smoke/report.json",
+    "container_report_sha256": "fa727aba80eb23fa0f5514a098e236511ba3cf2fc61d4ce7040576aecf9484ea",
+    "development_diagnostic_only": true,
+    "excluded_from_all_v2_formal_panels": true,
+    "fallbacks": 0,
+    "gasal2_requests": 1389,
+    "host_report_relative_path": "phase1/runtime-epoch-v2-2/real-gpu-smoke-host/report.json",
+    "host_report_sha256": "0a0f4af2453459dddd284aef74b371ab6553cb900a08e86799f369a26bc8744d",
+    "target_extracted_interval": [18902299, 18904800],
+    "target_region_start0": 18902299
+  },
+  "status": "frozen_release_candidate_under_test",
+  "validated_gpu_container_schedule": {
+    "devices": [
+      "/dev/nvidia0",
+      "/dev/nvidiactl",
+      "/dev/nvidia-uvm",
+      "/dev/nvidia-uvm-tools"
+    ],
+    "mode": "explicit_device_and_read_only_host_driver_bind",
+    "mounts": [
+      "/usr/bin/nvidia-smi:/usr/bin/nvidia-smi:ro",
+      "/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:ro"
+    ],
+    "nvidia_container_toolkit_available": false,
+    "standard_gpus_attempt_result": "environment_unavailable_before_product_execution"
+  },
+  "validation_status": "pending_phase4"
+}

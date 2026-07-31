@@ -1,0 +1,53 @@
+{
+  "development_inputs": {
+    "excluded_from_all_v2_formal_panels": true,
+    "query_path": "reproduce/bioinformatics/holdout_inputs/queries/hq01_ENSG00000276454_ENST00000615076.fa",
+    "query_sha256": "f1a033aeaffe55eab472636b7b3dbcf9f6c6b267781aa68f71c66142b8da7ce7",
+    "target_path": "reproduce/bioinformatics/holdout_inputs/targets/ht01_ENSG00000159423_chr1_18902299_18904799.fa",
+    "target_sha256": "075b0bcbe0f5f232b030e44a25f27ac4cb05ad4ced6743bac8a0450286cbea43"
+  },
+  "formal_comparison_authorized": false,
+  "pato": {
+    "binary_path": ".paper-artifacts/bioinformatics-submission-readiness-v2/phase2/tools/PATO-1.0.6/build/tools/PATO/PATO",
+    "binary_sha256": "f2f669831f01ffc6b29a0b21233dec9340517234cf040c5f3912845521955a7a",
+    "development_report_relative_path": "phase2/external-development/pato-hq01-ht01-bound/development-report.json",
+    "development_report_sha256": "007048c950e140dbb3e9efa98a42a1cd7e12184a58ef4a69db27170b2d409636",
+    "development_smoke_status": "development_success_header_only_summary",
+    "license": "MIT",
+    "license_path": ".paper-artifacts/bioinformatics-submission-readiness-v2/phase2/tools/PATO-1.0.6/LICENSE",
+    "license_sha256": "f3347c319fa48a3add4479f84f213a0c6aa503b982f2824b6a47a7f77ed7a5d8",
+    "reported_seqan_version": "2.4.0",
+    "reported_version": "1.0.6",
+    "upstream_commit": "0c90c163f3582a457dfc808d656a8c992a95a3ba",
+    "upstream_release_date": "2026-03-24",
+    "upstream_repository": "https://github.com/UDC-GAC/PATO.git",
+    "upstream_tag": "1.0.6",
+    "upstream_test_diagnostics": {
+      "clean_serial_final_result": "224_of_224_pass",
+      "invalid_overlapping_attempts_retained_as_diagnostics": true,
+      "invalid_parallel_result": "223_of_224_pass_with_tpx_61_shared_output_race",
+      "reason_invalid": "CTest cases share build/test/output paths; overlapping or parallel runs can rewrite expected and observed files. Only the final isolated serial run is used."
+    }
+  },
+  "phase": 2,
+  "schema_version": 1,
+  "triplexator": {
+    "binary_path": ".paper-artifacts/biological-topk-successor/experimental-phase5/tools/triplexator-v1.3.3/triplexator",
+    "binary_sha256": "b13e66b61820ae56c5bf2a3f4f767a2d94ded354a920467cb3116778dbe8b481",
+    "build_boundary": "Historical GNU++98 compatibility build; no Phase 2 binary modification.",
+    "corrected_output_semantics": "-o receives a basename in the attempt working directory and format 2 is read from <basename>.summary",
+    "development_report_relative_path": "phase2/external-development/triplexator-hq01-ht01-bound/development-report.json",
+    "development_report_sha256": "e532d174acd2396a804346716a64889f282fa5106e01a4ae912f3e7934dc0ee3",
+    "development_smoke_status": "development_success_header_only_summary",
+    "historical_five_failures_reinterpreted": false,
+    "historical_failure_classification": "output_path_and_harness_compatibility_failure",
+    "license": "CC BY-NC-ND 3.0 Australia",
+    "license_path": ".paper-artifacts/biological-topk-successor/experimental-phase5/tools/triplexator-v1.3.3/LICENCE.txt",
+    "license_sha256": "8fdd847f4f79b9b74d9eba7092e536c2ae0dda1e0542e4e46ee5494daed231b4",
+    "reported_version": "Version 1.3.2 (30/03/2012) SeqAn Revision: 1225",
+    "upstream_commit": "4505bba7b3dc8cf4922d71446c755e91c448673c",
+    "upstream_repository": "https://github.com/Gurado/Triplexator.git",
+    "upstream_tag": "v1.3.3",
+    "use_boundary": "local noncommercial research evaluation only; do not redistribute source or binary without owner/legal review"
+  }
+}
