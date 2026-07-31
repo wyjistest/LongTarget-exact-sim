@@ -29,7 +29,7 @@ import recluster_candidate_sites  # type: ignore[import-not-found]  # noqa: E402
 SCHEMA_VERSION = "1"
 OUTPUT_SCHEMA = "gasal2_candidate_sites_tsv_v1"
 SCIENTIFIC_CONTRACT = "biological_topk_candidate_site_v1"
-SOFTWARE_EPOCH = "submission_rc_v2"
+SOFTWARE_EPOCH = "submission_rc_v2_2"
 PARAMETER_BUNDLE_SHA256 = "110752c4078bc2b300ad4e92e2495ea868c365486e540da7002fc3e19a18241a"
 COORDINATE_SYSTEM = "0_based_half_open"
 RANKING_ORDER = ("score", "stability", "nt")
@@ -184,7 +184,10 @@ def build_receipt(
         "target_ordinal_namespace": identity.target_ordinal_namespace,
         "target_source_ordinal": target_ordinal,
         "target_sequence_sha256": contract.sequence_sha256(target.sequence),
-        "target_extracted_interval": {"start0": 0, "end0": len(target.sequence)},
+        "target_extracted_interval": {
+            "start0": identity.target_region_start0,
+            "end0": identity.target_region_start0 + len(target.sequence),
+        },
         "assembly": identity.assembly,
         "target_coordinate_namespace": identity.target_coordinate_namespace,
         "query_extraction_recipe_id": identity.query_extraction_recipe_id,

@@ -18,6 +18,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from gasal2_candidate_sites import (  # noqa: E402
     FIELDS,
     CandidateSitesError,
+    ProductIdentity,
+    build_receipt,
+    read_single_fasta,
     schema_descriptor,
     validate_candidate_sites,
 )
@@ -222,7 +225,7 @@ class GpuScreenTests(unittest.TestCase):
                     "execution_mode": "gpu-screen",
                     "scientific_contract": "biological_topk_candidate_site_v1",
                     "output_schema": "gasal2_candidate_sites_tsv_v1",
-                    "software_epoch": "submission_rc_v2",
+                    "software_epoch": "submission_rc_v2_2",
                     "implementation_commit": "a" * 40,
                     "candidate_binary_sha256": hashlib.sha256(backend.read_bytes()).hexdigest(),
                     "container_image_digest": "sha256:" + "b" * 64,
@@ -257,6 +260,21 @@ class GpuScreenTests(unittest.TestCase):
         sites.write_text("\n".join(lines) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(CandidateSitesError, "identity digest drift"):
             validate_candidate_sites(sites)
+
+    def test_genomic_target_extraction_interval_uses_declared_offset(self) -> None:
+        result = self.run_cli(self.backend(), "--target-region-start0", "1000")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        native = self.output / "diagnostics/native-TFOsorted"
+        receipt = build_receipt(
+            query=read_single_fasta(self.query, "query"),
+            target=read_single_fasta(self.target, "target"),
+            tfosorted=native,
+            identity=ProductIdentity(target_region_start0=1000),
+        )
+        self.assertEqual(
+            receipt.input_identity["target_extracted_interval"],
+            {"start0": 1000, "end0": 1200},
+        )
 
 
 if __name__ == "__main__":

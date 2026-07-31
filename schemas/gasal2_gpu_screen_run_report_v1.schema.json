@@ -25,7 +25,7 @@
   ],
   "properties": {
     "schema_version": {"const": "1.0.0"},
-    "software_version": {"const": "0.1.0-rc.1"},
+    "software_version": {"const": "0.1.0-rc.2"},
     "execution_identity": {
       "type": "object",
       "additionalProperties": false,
@@ -34,7 +34,7 @@
         "execution_mode": {"const": "gpu-screen"},
         "scientific_contract": {"const": "biological_topk_candidate_site_v1"},
         "output_schema": {"const": "gasal2_candidate_sites_tsv_v1"},
-        "software_epoch": {"const": "submission_rc_v2"},
+        "software_epoch": {"const": "submission_rc_v2_2"},
         "artifact_role": {"const": "frozen_release_candidate_under_test"},
         "validation_status": {"const": "pending_phase4"}
       }

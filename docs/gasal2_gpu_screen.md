@@ -14,7 +14,7 @@ before `accelerates` becomes a supported claim.
 execution_mode = gpu-screen
 scientific_contract = biological_topk_candidate_site_v1
 output_schema = gasal2_candidate_sites_tsv_v1
-software_epoch = submission_rc_v2
+software_epoch = submission_rc_v2_2
 artifact_role = frozen_release_candidate_under_test
 validation_status = pending_phase4
 ```
@@ -49,6 +49,11 @@ coordinates equal target-local coordinates plus the declared target-region
 offset. The candidate-site identity digest is recomputed from the ordered
 payload frozen in the schema descriptor; local cluster IDs are provenance only
 and are not cross-arm equality keys.
+
+The input-pair identity records the target extraction interval in the declared
+target coordinate namespace as `[target_region_start0, target_region_start0 +
+target_length)`. Epoch `submission_rc_v2` used a local interval here and was
+superseded before formal validation; it must not supply Phase 4 evidence.
 
 Each ranking is descending. The score key is `(score, nt, mean_stability)`, the
 stability key is `(mean_stability, nt, score)`, and the nt key is

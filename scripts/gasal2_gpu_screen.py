@@ -23,7 +23,7 @@ import gasal2_candidate_sites as candidate_sites  # noqa: E402
 import gasal2_longtarget as legacy  # noqa: E402
 
 
-VERSION = "0.1.0-rc.1"
+VERSION = "0.1.0-rc.2"
 REPORT_SCHEMA_VERSION = "1.0.0"
 EXECUTION_MODE = "gpu-screen"
 VALIDATION_STATUS = "pending_phase4"

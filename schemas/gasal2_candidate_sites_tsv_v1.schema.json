@@ -3,7 +3,7 @@
   "schema_id": "gasal2_candidate_sites_tsv_v1",
   "format": "UTF-8 TSV with LF line endings",
   "scientific_contract": "biological_topk_candidate_site_v1",
-  "software_epoch": "submission_rc_v2",
+  "software_epoch": "submission_rc_v2_2",
   "coordinate_system": "0_based_half_open",
   "empty_result": "header_only",
   "primary_order": ["ranking_mode(score,stability,nt)", "rank_ascending"],

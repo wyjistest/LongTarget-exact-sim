@@ -16,7 +16,7 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE_TAG = "longtarget/gasal2-gpu-screen:submission-rc-v2"
+IMAGE_TAG = "longtarget/gasal2-gpu-screen:submission-rc-v2-2"
 CANDIDATE_SHA256 = "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9"
 FILES = (
     "scripts/gasal2_gpu_screen.py",
@@ -161,7 +161,7 @@ def build(source_commit: str, artifact_root: Path, candidate_binary: Path) -> di
         "execution_mode": "gpu-screen",
         "scientific_contract": "biological_topk_candidate_site_v1",
         "output_schema": "gasal2_candidate_sites_tsv_v1",
-        "software_epoch": "submission_rc_v2",
+        "software_epoch": "submission_rc_v2_2",
         "implementation_commit": source_commit,
         "candidate_binary_sha256": CANDIDATE_SHA256,
         "container_image_digest": None,
@@ -173,7 +173,7 @@ def build(source_commit: str, artifact_root: Path, candidate_binary: Path) -> di
     )
     result = run(("docker", "build", "--network=none", "--tag", IMAGE_TAG, str(context)))
     image_digest = run(("docker", "image", "inspect", IMAGE_TAG, "--format", "{{.Id}}" )).stdout.decode().strip()
-    archive = artifact_root / "gasal2-gpu-screen-submission-rc-v2.tar"
+    archive = artifact_root / "gasal2-gpu-screen-submission-rc-v2-2.tar"
     with archive.open("wb") as handle:
         saved = subprocess.run(
             ("docker", "save", IMAGE_TAG), cwd=ROOT, check=False, stdout=handle, stderr=subprocess.PIPE
