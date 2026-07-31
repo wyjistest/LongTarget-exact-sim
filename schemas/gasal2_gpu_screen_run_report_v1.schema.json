@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:gasal2-gpu-screen:run-report:1.0.0",
+  "title": "GASAL2 GPU screen run report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "software_version",
+    "execution_identity",
+    "runtime_identity",
+    "result_status",
+    "command",
+    "inputs",
+    "product_identity",
+    "environment",
+    "preflight",
+    "backend",
+    "backend_telemetry",
+    "candidate_sites",
+    "published_outputs",
+    "timestamps",
+    "warnings",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "software_version": {"const": "0.1.0-rc.1"},
+    "execution_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_mode", "scientific_contract", "output_schema", "software_epoch", "artifact_role", "validation_status"],
+      "properties": {
+        "execution_mode": {"const": "gpu-screen"},
+        "scientific_contract": {"const": "biological_topk_candidate_site_v1"},
+        "output_schema": {"const": "gasal2_candidate_sites_tsv_v1"},
+        "software_epoch": {"const": "submission_rc_v2"},
+        "artifact_role": {"const": "frozen_release_candidate_under_test"},
+        "validation_status": {"const": "pending_phase4"}
+      }
+    },
+    "runtime_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_commit", "binary_path", "binary_sha256", "container_image_digest", "runtime_identity_path"],
+      "properties": {
+        "source_commit": {"type": ["string", "null"]},
+        "binary_path": {"type": "string"},
+        "binary_sha256": {"type": ["string", "null"]},
+        "container_image_digest": {"type": ["string", "null"]},
+        "runtime_identity_path": {"type": ["string", "null"]}
+      }
+    },
+    "result_status": {
+      "enum": [
+        "preflight_pending",
+        "dry_run",
+        "release_candidate_under_test_complete",
+        "invalid_input",
+        "environment_unavailable",
+        "backend_failure",
+        "telemetry_failure",
+        "unexpected_fallback",
+        "product_output_failure",
+        "internal_error",
+        "interrupted"
+      ]
+    },
+    "command": {"type": "array", "items": {"type": "string"}},
+    "inputs": {"type": "object"},
+    "product_identity": {"type": "object"},
+    "environment": {"type": "object"},
+    "preflight": {"type": "object"},
+    "backend": {"type": ["object", "null"]},
+    "backend_telemetry": {"type": ["object", "null"]},
+    "candidate_sites": {"type": ["object", "null"]},
+    "published_outputs": {"type": "array", "items": {"type": "object"}},
+    "timestamps": {"type": "object"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array", "items": {"type": "string"}}
+  }
+}
