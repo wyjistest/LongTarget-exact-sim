@@ -5,13 +5,14 @@ epoch_id = biological_topk_successor_v2
 predecessor_commit = 7fae3de6b13780d7cc0776038489cf2f22072339
 predecessor_decision = blocked_fixed_budget
 fixed_total_artifact_storage_bytes = 68719476736
-active_phase = 5
+active_phase = 6
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
 phase_3_status = pass
 phase_4_status = pass
-phase_5_status = pending
+phase_5_status = pass
+phase_6_status = pending
 contract_status = fresh_concordance_pass
 gpu_screen_status = experimental
 bioinformatics_route = conditionally_reopened
@@ -130,3 +131,35 @@ the independent information and identity gates, the zero-technical-failure
 gate, and the fixed 64 GiB resource gate. Phase 5 independent experimental
 benchmark preregistration is therefore authorized. Product status remains
 `experimental`, and rank order remains diagnostic-only.
+
+## Phase 5 Evidence
+
+```text
+decision = pass
+distinct_lncRNA_outer_units = 5
+primary_datasets = 5
+assay_type_classes = ChIRP
+cross_assay_generality_claim = not_supported
+regions_per_dataset = 1000
+positives_per_dataset = 100
+negatives_per_positive = 9
+total_regions = 5000
+maximum_gc_absolute_difference = 0.049792531120
+LINC01116_4x_feasible_windows = 3324
+LINC01116_8x_feasible_windows = 830
+LINC01116_eligible_GRCh38_windows = 806
+attempts_A_G_X = 5/5/5
+bootstrap_replicates = 10000
+bootstrap_seed = 20260816
+external_predictor = Triplexator_v1.3.3
+evaluation_prediction_started = false
+phase_6_authorized = true
+```
+
+Phase 5 froze five independent evaluation lncRNAs, deterministic public-data
+labels and matched negatives, exact region scoring, the E1-E4 paired
+hierarchical bootstrap, and independent A/G/X attempts. Only ChIRP satisfied
+the input availability definition, so no cross-assay generality claim is
+supported. Product status remains `experimental`; no evaluation prediction has
+run, and Phase 6 may start only after the Phase 5 commit passes its read-only
+post-commit check.

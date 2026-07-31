@@ -43,6 +43,8 @@ PHASE2_COMMIT = "a48bcf814d4d055320ee1ab437666bde9d03d390"
 PHASE3_COMMIT_MESSAGE = "repro: freeze successor fresh candidate-site holdout"
 PHASE3_COMMIT = "7e3f46ee94df6651240052f5f317202129f73d05"
 PHASE4_COMMIT_MESSAGE = "bench: freeze successor fresh candidate-site concordance decision"
+PHASE4_COMMIT = "59f2445b1deb980d5e4c2f25cda916206158d81a"
+PHASE5_COMMIT_MESSAGE = "repro: preregister independent biological utility benchmark"
 PINNED_V1_AUDIT_COMMAND = ["python3", "scripts/check_biological_topk_successor_v1_audit.py"]
 PHASE1_OUTPUTS = (
     "paper/biological_topk_successor/contract_binding.json",
@@ -89,6 +91,20 @@ PHASE4_OUTPUTS = (
     "paper/biological_topk_successor/source_data/fresh_failure_ledger.tsv",
     "paper/biological_topk_successor/source_data/fresh_rank_diagnostics.tsv",
     "paper/biological_topk_successor/source_data/fresh_workload_metrics.tsv",
+)
+PHASE5_OUTPUTS = (
+    "paper/biological_topk_successor/experimental_attempt_plan.tsv",
+    "paper/biological_topk_successor/experimental_benchmark_manifest.tsv",
+    "paper/biological_topk_successor/experimental_benchmark_plan.json",
+    "paper/biological_topk_successor/experimental_benchmark_spec.md",
+    "paper/biological_topk_successor/experimental_development_registry.tsv",
+    "paper/biological_topk_successor/experimental_evaluation_inventory.tsv",
+    "paper/biological_topk_successor/experimental_information_decision.json",
+    "paper/biological_topk_successor/experimental_manifest.sha256",
+    "paper/biological_topk_successor/experimental_power_simulation.json",
+    "paper/biological_topk_successor/experimental_runtime_input_receipt.json",
+    "paper/biological_topk_successor/experimental_source_receipt.json",
+    "paper/biological_topk_successor/experimental_tool_receipt.json",
 )
 
 
@@ -278,6 +294,7 @@ def check_precommit_receipt(
         2: PHASE2_COMMIT_MESSAGE,
         3: PHASE3_COMMIT_MESSAGE,
         4: PHASE4_COMMIT_MESSAGE,
+        5: PHASE5_COMMIT_MESSAGE,
     }
     if phase in expected_messages:
         require(receipt["planned_commit_message"] == expected_messages[phase], "successor planned commit message drift")
@@ -1436,6 +1453,269 @@ def check_phase4(mode: str, current_state: dict[str, Any], status_before: set[st
         raise CheckError(f"unsupported successor Phase 4 mode: {mode}")
 
 
+def check_phase5_start_receipt() -> None:
+    start = load_json(PAPER / "phase_5_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 5 and start["status"] == "pass", "successor Phase 5 start schema/status drift")
+    require(start["phase_start_parent_head"] == PHASE4_COMMIT, "successor Phase 5 parent HEAD drift")
+    require(start["previous_phase_number"] == 4 and start["previous_phase_commit"] == PHASE4_COMMIT, "successor Phase 5 previous phase binding drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_successor_phase.py", "--phase", "4", "--mode", "postcommit"],
+        "successor Phase 5 previous checker command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "successor Phase 4 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "successor Phase 5 clean-start evidence drift",
+    )
+    require(start["inventory_started_before_clean_phase_boundary"] is False, "successor Phase 5 inventory crossed phase boundary")
+    require(start["evaluation_prediction_started"] is False and start["scientific_output_created"] is False, "successor Phase 5 start claims evaluation output")
+
+
+def check_phase5_reproduction() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (sys.executable, "reproduce/biological_topk_successor/freeze_phase5.py", "--check"),
+        check=False,
+        env=environment,
+    )
+    require(
+        completed.returncode == 0,
+        completed.stderr.decode("utf-8", errors="replace") or "successor Phase 5 benchmark does not reproduce",
+    )
+
+
+def run_phase5_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk_successor",
+            "-p",
+            "test_phase5.py",
+            "-v",
+        ),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def read_single_fasta(path: Path) -> tuple[str, str]:
+    require(path.is_file() and not path.is_symlink(), f"missing or unsafe successor FASTA: {path}")
+    headers: list[str] = []
+    chunks: list[str] = []
+    active = False
+    with path.open(encoding="ascii") as handle:
+        for line_number, raw in enumerate(handle, 1):
+            line = raw.rstrip("\r\n")
+            if line.startswith(">"):
+                headers.append(line[1:])
+                active = True
+            elif line:
+                require(active and line == line.strip(), f"malformed successor FASTA line {line_number}: {path}")
+                chunks.append(line)
+    require(len(headers) == 1 and chunks, f"successor FASTA must have one nonempty record: {path}")
+    sequence = "".join(chunks)
+    require(not (set(sequence) - set("ACGTN")), f"successor FASTA alphabet drift: {path}")
+    return headers[0], sequence
+
+
+def check_phase5_evidence(*, require_no_phase6_root: bool) -> None:
+    implementation_paths = (
+        "reproduce/biological_topk_successor/freeze_phase5.py",
+        "reproduce/biological_topk_successor/run_phase6.py",
+        "reproduce/biological_topk_successor/analyze_phase6.py",
+    )
+    for relative in (*PHASE5_OUTPUTS, *implementation_paths):
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 5 evidence: {relative}")
+
+    source = load_json(PAPER / "experimental_source_receipt.json")
+    require(source["schema_version"] == 1 and source["phase"] == 5 and source["status"] == "complete", "successor Phase 5 source receipt drift")
+    require(source["legal_access_gate_pass"] is True and source["dataset_specific_license_asserted"] is False, "successor Phase 5 source legal boundary drift")
+    signal = source["source_counts"]["bte_linc01116_gse227804"]["signal_rule"]
+    require(signal["threshold_candidate_counts"] == {"4": 3324, "8": 830}, "successor LINC feasibility counts drift")
+    require(signal["feasibility_chromosome_count"] == 24 and signal["fixed_window_length"] == 4097, "successor LINC chromosome/window rule drift")
+    require(signal["selection_strength"] == "log1p(replicate)-log1p(control)", "successor LINC strength rule drift")
+    require(source["source_counts"]["bte_linc01116_gse227804"]["eligible_GRCh38_windows"] == 806, "successor LINC eligible count drift")
+    require(len(source["files"]) == 37 and len({row["path"] for row in source["files"]}) == 37, "successor Phase 5 source file inventory drift")
+    for row in source["files"]:
+        path = ROOT / row["path"]
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 5 source file: {row['path']}")
+        require(path.stat().st_size == row["size_bytes"] and sha256_file(path) == row["sha256"], f"successor Phase 5 source digest drift: {row['path']}")
+
+    tools = load_json(PAPER / "experimental_tool_receipt.json")
+    require(tools["schema_version"] == 1 and tools["phase"] == 5 and tools["status"] == "pass", "successor Phase 5 tool receipt drift")
+    require(tools["external_predictor_available"] is True, "successor external predictor unavailable")
+    require(tools["external"]["name"] == "Triplexator" and tools["external"]["upstream_tag"] == "v1.3.3", "successor external predictor identity drift")
+    require(tools["external"]["reported_version"] == "Version 1.3.2 (30/03/2012) SeqAn Revision: 1225" and tools["external"]["version_probe_exit_code"] == 1, "successor Triplexator version probe drift")
+    require(tools["external"]["license"] == "CC BY-NC-ND 3.0 Australia" and tools["external"]["primary_metric_comparability"] is False, "successor Triplexator license/comparability drift")
+    for role in ("authority", "candidate", "external"):
+        item = tools[role]
+        require(sha256_file(ROOT / item["path"]) == item["sha256"], f"successor Phase 5 {role} binary drift")
+    require(sha256_file(ROOT / tools["external"]["license_path"]) == tools["external"]["license_sha256"], "successor external license digest drift")
+
+    development_fields, development = read_tsv(PAPER / "experimental_development_registry.tsv")
+    evaluation_fields, evaluation = read_tsv(PAPER / "experimental_evaluation_inventory.tsv")
+    require(development_fields[:3] == ["outer_lncRNA_id", "lncRNA", "query_sequence_sha256"], "successor development registry schema drift")
+    require(evaluation_fields[:5] == ["dataset_id", "outer_lncRNA_id", "lncRNA", "assay", "assay_type_class"], "successor evaluation inventory schema drift")
+    require({row["lncRNA"] for row in development} == {"MEG3", "MALAT1", "NEAT1", "H19", "KCNQ1OT1"}, "successor development lncRNA registry drift")
+    require(all(row["development_or_evaluation"] == "development" and row["primary_evaluation_allowed"] == "0" for row in development), "successor development registry eligibility drift")
+    primary = [row for row in evaluation if row["development_or_evaluation"] == "primary_evaluation"]
+    require(len(primary) == 5 and len({row["outer_lncRNA_id"] for row in primary}) == 5, "successor primary lncRNA outer-unit count drift")
+    require(not {row["lncRNA"] for row in primary} & {row["lncRNA"] for row in development}, "successor primary/development lncRNA overlap")
+    require(all(row["assay_type_class"] == "ChIRP" and row["assay_type_available"] == "1" for row in primary), "successor primary assay availability drift")
+    require(all(500 <= int(row["query_length"]) <= 2812 for row in primary), "successor primary query outside envelope")
+    require(len({row["sequence_sha256"] for row in primary}) == 5, "successor primary query digest duplication")
+
+    power = load_json(PAPER / "experimental_power_simulation.json")
+    information = load_json(PAPER / "experimental_information_decision.json")
+    require(power["schema_version"] == 1 and power["phase"] == 5 and power["simulation_replicates"] == 10000, "successor Phase 5 power simulation drift")
+    require(power["distinct_lncRNA_outer_units"] == 5 and power["datasets_per_lncRNA"] == 1, "successor Phase 5 simulated information structure drift")
+    require(power["analysis"]["bootstrap_replicates"] == 10000 and power["analysis"]["bootstrap_seed"] == 20260816, "successor Phase 5 bootstrap freeze drift")
+    require(power["analysis"]["nested_block"] == "chromosome" and power["analysis"]["shared_resample_indices_for_all_endpoints"] is True, "successor Phase 5 paired bootstrap structure drift")
+    require(power["results"]["one_sided_interval_identifiable"] is True and power["results"]["finite_lcb_fraction"] == "1", "successor Phase 5 information simulation failed")
+    require(information["decision"] == "pass" and information["minimum_outer_unit_gate_pass"] is True, "successor Phase 5 information decision failed")
+    require(information["distinct_lncRNA_outer_units"] == 5 and information["cross_assay_generality_claim"] == "not_supported", "successor Phase 5 information/claim scope drift")
+    require(information["evaluation_prediction_started"] is False and information["phase_6_authorized"] is True, "successor Phase 5 information decision timing drift")
+
+    manifest_fields, manifest = read_tsv(PAPER / "experimental_benchmark_manifest.tsv")
+    require(manifest_fields[:8] == ["dataset_id", "outer_lncRNA_id", "region_id", "fasta_order", "label", "label_source", "source_build", "source_chromosome"], "successor experimental manifest schema drift")
+    require(len(manifest) == 5000 and len({row["region_id"] for row in manifest}) == 5000, "successor experimental manifest count/identity drift")
+    require(all(re.fullmatch(r"bt5_[0-9a-f]{24}", row["region_id"]) for row in manifest), "successor region ID leaks labels or drifts")
+    by_dataset: dict[str, list[dict[str, str]]] = {}
+    for row in manifest:
+        by_dataset.setdefault(row["dataset_id"], []).append(row)
+    require(len(by_dataset) == 5, "successor experimental dataset count drift")
+    primary_by_id = {row["dataset_id"]: row for row in primary}
+    require(set(by_dataset) == set(primary_by_id), "successor manifest/inventory dataset mismatch")
+
+    runtime_receipt = load_json(PAPER / "experimental_runtime_input_receipt.json")
+    require(runtime_receipt["schema_version"] == 1 and runtime_receipt["phase"] == 5 and runtime_receipt["status"] == "complete", "successor runtime input receipt drift")
+    require(runtime_receipt["target_fasta_records_per_dataset"] == 1 and runtime_receipt["target_region_count"] == 5000, "successor runtime serialization receipt drift")
+    require(runtime_receipt["fasta_headers_label_blind"] is True and runtime_receipt["evaluation_prediction_started"] is False, "successor runtime label/timing receipt drift")
+    registered_runtime = {row["path"]: row for row in runtime_receipt["files"]}
+    require(len(registered_runtime) == 10, "successor runtime input file count drift")
+    for dataset_id, rows in by_dataset.items():
+        require(len(rows) == 1000 and sum(int(row["label"]) for row in rows) == 100, f"successor experimental class count drift: {dataset_id}")
+        require(max(float(row["gc_absolute_difference"]) for row in rows) <= 0.05, f"successor negative GC match drift: {dataset_id}")
+        ordered = sorted(rows, key=lambda row: int(row["fasta_order"]))
+        require([row["region_id"] for row in ordered] == sorted(row["region_id"] for row in ordered), f"successor label-blind FASTA order drift: {dataset_id}")
+        query_path = ROOT / ordered[0]["query_fasta_path"]
+        target_path = ROOT / ordered[0]["target_fasta_path"]
+        query_header, query_sequence = read_single_fasta(query_path)
+        target_header, target_sequence = read_single_fasta(target_path)
+        require(re.fullmatch(r"q_[0-9a-f]{24}", query_header) is not None and re.fullmatch(r"t_[0-9a-f]{24}", target_header) is not None, f"successor FASTA header drift: {dataset_id}")
+        require("N" not in query_sequence and hashlib.sha256(query_sequence.encode("ascii")).hexdigest() == primary_by_id[dataset_id]["sequence_sha256"], f"successor query FASTA drift: {dataset_id}")
+        require(len(target_sequence) == 1000 * 4097 + 999 * 4097, f"successor concatenated target length drift: {dataset_id}")
+        for index, row in enumerate(ordered):
+            start, end = int(row["target_concat_start0"]), int(row["target_concat_end0"])
+            require((start, end) == (index * 8194, index * 8194 + 4097), f"successor target offset drift: {row['region_id']}")
+            require(hashlib.sha256(target_sequence[start:end].encode("ascii")).hexdigest() == row["region_sequence_sha256"], f"successor region sequence drift: {row['region_id']}")
+            if index < 999:
+                require(target_sequence[end : end + 4097] == "N" * 4097, f"successor target separator drift: {row['region_id']}")
+        for path in (query_path, target_path):
+            relative = path.relative_to(ROOT).as_posix()
+            identity = registered_runtime[relative]
+            require(identity["contains_labels"] is False and identity["size_bytes"] == path.stat().st_size and identity["sha256"] == sha256_file(path), f"successor runtime input binding drift: {relative}")
+
+    checksum = (PAPER / "experimental_manifest.sha256").read_text(encoding="ascii").split()
+    require(checksum == [sha256_file(PAPER / "experimental_benchmark_manifest.tsv"), "experimental_benchmark_manifest.tsv"], "successor experimental manifest checksum drift")
+    attempt_fields, attempts = read_tsv(PAPER / "experimental_attempt_plan.tsv")
+    require(attempt_fields[:6] == ["attempt_id", "execution_index", "dataset_id", "outer_lncRNA_id", "arm", "backend"], "successor experimental attempt schema drift")
+    require(len(attempts) == 15 and len({row["attempt_id"] for row in attempts}) == 15, "successor experimental attempt count/identity drift")
+    require({arm: sum(row["arm"] == arm for row in attempts) for arm in ("A", "G", "X")} == {"A": 5, "G": 5, "X": 5}, "successor experimental arm count drift")
+    require(all(row["labels_visible_to_backend"] == "0" and row["retry_policy"] == "none" for row in attempts), "successor attempt label/retry policy drift")
+    require(all(row["comparison_policy"] == "offline_after_all_15_attempts_terminal" and row["status"] == "preregistered_not_run" for row in attempts), "successor attempt comparison/timing policy drift")
+    require({row["runner_sha256"] for row in attempts} == {sha256_file(ROOT / "reproduce/biological_topk_successor/run_phase6.py")}, "successor Phase 6 runner binding drift")
+    require({row["analyzer_sha256"] for row in attempts} == {sha256_file(ROOT / "reproduce/biological_topk_successor/analyze_phase6.py")}, "successor Phase 6 analyzer binding drift")
+    for row in attempts:
+        require(sha256_file(ROOT / row["query_fasta_path"]) == row["query_fasta_sha256"], f"successor attempt query binding drift: {row['attempt_id']}")
+        require(sha256_file(ROOT / row["target_fasta_path"]) == row["target_fasta_sha256"], f"successor attempt target binding drift: {row['attempt_id']}")
+        require(sha256_file(ROOT / row["binary_path"]) == row["binary_sha256"], f"successor attempt binary binding drift: {row['attempt_id']}")
+
+    plan = load_json(PAPER / "experimental_benchmark_plan.json")
+    require(plan["schema_version"] == 1 and plan["phase"] == 5 and plan["status"] == "preregistered", "successor experimental plan status drift")
+    require(plan["dataset_count"] == 5 and plan["distinct_lncRNA_outer_units"] == 5 and plan["regions_per_dataset"] == 1000, "successor experimental plan count drift")
+    require(plan["cross_assay_generality_claim"] == "not_supported" and plan["evaluation_prediction_started"] is False, "successor experimental plan claim/timing drift")
+    require(plan["bindings"]["experimental_benchmark_manifest_sha256"] == sha256_file(PAPER / "experimental_benchmark_manifest.tsv"), "successor plan manifest binding drift")
+    require(plan["bindings"]["experimental_attempt_plan_sha256"] == sha256_file(PAPER / "experimental_attempt_plan.tsv"), "successor plan attempt binding drift")
+    require(plan["region_score"]["no_valid_row_sentinel"] == -1 and plan["region_score"]["legal_emitted_score_minimum"] == 0, "successor region-score sentinel drift")
+    require(plan["bootstrap_zero_precision_resample_rule"] == "negative_infinity_E4_no_pseudocount_or_replacement", "successor bootstrap zero-precision rule drift")
+    require(plan["execution"]["max_gpu_hours"] == 96 and plan["execution"]["max_cpu_wall_hours"] == 96, "successor Phase 6 runtime budget drift")
+    require(plan["execution"]["max_total_artifact_storage_bytes"] == FIXED_TOTAL_STORAGE_BYTES and plan["execution"]["fixed_quota_includes_predecessor_evidence"] is True, "successor Phase 6 artifact budget drift")
+    require(plan["phase_6_authorized"] is True and plan["scientific_output_created"] is False, "successor Phase 6 authorization timing drift")
+    spec = (PAPER / "experimental_benchmark_spec.md").read_text(encoding="utf-8")
+    for phrase in ("five distinct primary lncRNA outer units", "maximum exact integer Score", "all 15 A/G/X attempts are terminal", "cross_assay_generality_claim=not_supported"):
+        require(phrase in spec, f"successor experimental specification missing: {phrase}")
+
+    phase6_root = SUCCESSOR_ARTIFACT_ROOT / "experimental-phase6"
+    if require_no_phase6_root:
+        require(not phase6_root.exists(), "successor Phase 6 prediction artifact exists before Phase 5 commit")
+    if not phase6_root.exists():
+        environment = dict(os.environ)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        for command in (
+            (sys.executable, "reproduce/biological_topk_successor/run_phase6.py", "--preflight"),
+            (sys.executable, "reproduce/biological_topk_successor/analyze_phase6.py", "--preflight"),
+        ):
+            completed = run(command, check=False, env=environment)
+            require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+            summary = json.loads(completed.stdout)
+            require(summary["status"] == "preflight_pass" and summary["attempt_count"] == 15, "successor Phase 6 preflight drift")
+        require(not phase6_root.exists(), "successor Phase 6 preflight created an artifact root")
+    else:
+        snapshot = load_json(phase6_root / "execution-snapshot.json")
+        require(snapshot["comparison_started"] is False and snapshot["labels_copied_or_mounted"] is False, "successor later execution invalidates Phase 5 isolation")
+        require(snapshot["attempt_plan_sha256"] == sha256_file(PAPER / "experimental_attempt_plan.tsv"), "successor later execution attempt binding drift")
+
+
+def check_phase5_state(state: dict[str, Any]) -> None:
+    require(all(state["phase_status"][str(index)] == "pass" for index in range(6)), "successor Phase 5 prerequisite/final state drift")
+    require(all(state["phase_status"][str(index)] == "pending" for index in range(6, 10)), "successor later phase advanced during Phase 5")
+    require(state["active_phase"] == 6 and state["last_completed_phase"] == 5, "successor Phase 5 transition drift")
+    require(state["last_decision"] == "experimental_benchmark_preregistered", "successor Phase 5 decision drift")
+    require(state["previous_phase_commit"] == PHASE4_COMMIT, "successor Phase 5 previous commit drift")
+    require(state["contract_status"] == "fresh_concordance_pass" and state["gpu_screen_status"] == "experimental", "successor Phase 5 promoted product/contract status")
+    require(state["bioinformatics_route"] == "conditionally_reopened" and state["rank_order_claim"] == "diagnostic_only", "successor Phase 5 claim scope drift")
+
+
+def check_phase5(mode: str, current_state: dict[str, Any], status_before: set[str]) -> None:
+    check_phase5_start_receipt()
+    check_phase5_reproduction()
+    check_phase5_evidence(require_no_phase6_root=mode == "precommit")
+    run_phase5_unit_tests()
+    if mode == "precommit":
+        paths = allowlist(5)
+        check_precommit_receipt(5, paths)
+        check_phase5_state(current_state)
+        require(git("rev-parse", "HEAD") == PHASE4_COMMIT, "successor Phase 5 precommit parent drift")
+        require(changed_paths() == set(paths), "successor Phase 5 allowlisted diff mismatch")
+    elif mode == "postcommit":
+        require(not status_before, "successor Phase 5 postcommit requires a clean tree")
+        commit = phase_commit_for_postcommit(5)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "successor Phase 5 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk_successor/PROGRAM_STATE.json")
+        validate_program_state_value(state)
+        paths = allowlist_from_commit(5, commit)
+        check_precommit_receipt(5, paths, committed_at=commit)
+        check_phase5_state(state)
+        require(git("rev-parse", f"{commit}^") == PHASE4_COMMIT, "successor Phase 5 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE5_COMMIT_MESSAGE, "successor Phase 5 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "successor Phase 5 committed paths differ from allowlist")
+    else:
+        raise CheckError(f"unsupported successor Phase 5 mode: {mode}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(10), required=True)
@@ -1454,6 +1734,8 @@ def main() -> int:
             check_phase3(args.mode, state, status_before)
         elif args.phase == 4:
             check_phase4(args.mode, state, status_before)
+        elif args.phase == 5:
+            check_phase5(args.mode, state, status_before)
         else:
             raise CheckError(f"successor Phase {args.phase} checker is not frozen yet")
         require(changed_paths() == status_before, "successor checker modified the working tree")
