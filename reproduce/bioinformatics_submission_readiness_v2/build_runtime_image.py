@@ -71,6 +71,8 @@ def copy_root_file(source: Path, rootfs: Path, destination: Path | None = None) 
     target_relative = destination or Path(str(resolved).lstrip("/"))
     target = rootfs / target_relative
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink():
+        target.unlink()
     shutil.copy2(resolved, target)
     return target
 
@@ -143,11 +145,13 @@ def build(source_commit: str, artifact_root: Path, candidate_binary: Path) -> di
     copy_root_file(python, rootfs, Path("usr/bin/python3.11"))
     stdlib_source = Path("/usr/lib/python3.11")
     shutil.copytree(stdlib_source, rootfs / "usr/lib/python3.11", symlinks=True)
-    shared_objects = list((rootfs / "usr/lib/python3.11").rglob("*.so"))
+    shared_objects = {
+        path.resolve()
+        for path in stdlib_source.rglob("*.so")
+        if path.is_file()
+    }
     dependency_sources = {python, candidate_binary}
-    dependency_sources.update(
-        Path("/") / path.relative_to(rootfs) for path in shared_objects
-    )
+    dependency_sources.update(shared_objects)
     copy_dependencies(dependency_sources, rootfs)
     (rootfs / "tmp").mkdir()
     (rootfs / "work").mkdir()
