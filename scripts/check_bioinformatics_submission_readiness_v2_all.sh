@@ -18,7 +18,10 @@ case "$MODE" in
     ;;
 esac
 
+phase="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["last_completed_phase"])' \
+  "$ROOT/paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json")"
+
 python3 "$ROOT/scripts/check_bioinformatics_submission_readiness_v2.py" \
-  --phase 0 --mode postcommit
+  --phase "$phase" --mode postcommit
 
 echo "Bioinformatics submission readiness v2 aggregate checks OK"

@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    {
+      "relative_path": "phase1/gasal2-gpu-screen-submission-rc-v2.tar",
+      "role": "frozen_container_archive",
+      "sha256": "20cf34c72c56cac2b26e0588902faccb16fd1a19747340ecf0fec4a041547faa",
+      "size_bytes": 294943232
+    },
+    {
+      "relative_path": "phase1/container-context/rootfs/opt/gasal2/runtime_identity.json",
+      "role": "embedded_runtime_identity",
+      "sha256": "2dc8473c85f04f210624359b31e90765a28db1d00173121160d808f775952d1f",
+      "size_bytes": 1506
+    },
+    {
+      "relative_path": "phase1/real-gpu-smoke/host-report.json",
+      "role": "excluded_development_host_smoke_report",
+      "sha256": "96239c282e5eb9f2d7762cf3a8d633fdcec16b08f9f7815ac54d02c4ba8771c4",
+      "size_bytes": 16619
+    },
+    {
+      "relative_path": "phase1/real-gpu-smoke/container-report.json",
+      "role": "excluded_development_container_smoke_report",
+      "sha256": "cdb220bf5b3cf269e61564f0e5eabe2b895085724824be1dd7433c3ec8df6378",
+      "size_bytes": 14850
+    },
+    {
+      "relative_path": "phase1/real-gpu-smoke/host-product/candidate_sites.tsv",
+      "role": "excluded_development_host_product",
+      "sha256": "895daa97902d67a0afd01ecb317bd012edb3aee1c6bf6d1df2390e702f3f1313",
+      "size_bytes": 3342
+    },
+    {
+      "relative_path": "phase1/real-gpu-smoke/container-product/candidate_sites.tsv",
+      "role": "excluded_development_container_product",
+      "sha256": "895daa97902d67a0afd01ecb317bd012edb3aee1c6bf6d1df2390e702f3f1313",
+      "size_bytes": 3342
+    },
+    {
+      "relative_path": "phase1/real-gpu-smoke/host-product/contract.json",
+      "role": "excluded_development_host_contract",
+      "sha256": "ad96ef5a4f045382bbce925327a1b05f6d67add258fabae826d78fd581fa2ba6",
+      "size_bytes": 634
+    },
+    {
+      "relative_path": "phase1/real-gpu-smoke/container-product/contract.json",
+      "role": "excluded_development_container_contract",
+      "sha256": "ad96ef5a4f045382bbce925327a1b05f6d67add258fabae826d78fd581fa2ba6",
+      "size_bytes": 634
+    }
+  ],
+  "bytes_at_phase1_freeze": 586679836,
+  "formal_claim_evidence": false,
+  "phase": 1,
+  "quota_bytes": 68719476736,
+  "schema_version": 1
+}

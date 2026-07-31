@@ -64,8 +64,11 @@ class Phase0Tests(unittest.TestCase):
         self.assertFalse(self.state["release_packaging_authorized"])
         self.assertFalse(self.state["submission_drafting_authorized"])
 
-    def test_phase0_has_no_runtime_artifact_root(self) -> None:
-        self.assertFalse(CHECKER.ARTIFACT_ROOT.exists())
+    def test_phase0_receipt_records_no_runtime_artifact_root(self) -> None:
+        epoch = json.loads(
+            (CHECKER.PAPER / "epoch_receipt.json").read_text(encoding="utf-8")
+        )
+        self.assertFalse(epoch["artifact_root_exists_at_phase0"])
 
     def test_authorization_is_independent_and_nonretroactive(self) -> None:
         authorization = json.loads(
