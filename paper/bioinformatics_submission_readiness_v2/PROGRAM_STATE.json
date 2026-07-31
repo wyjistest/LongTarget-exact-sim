@@ -1,5 +1,5 @@
 {
-  "active_phase": 4,
+  "active_phase": null,
   "artifact_role": "frozen_release_candidate_under_test",
   "baseline_commit": "739ee0a8db01f77143a5c993e6c68a56a772502b",
   "current_legacy_bioinformatics_route": "closed_biological_utility_gap",
@@ -7,18 +7,18 @@
   "execution_mode": "gpu-screen",
   "external_comparison_authorized": false,
   "fixed_v2_artifact_storage_bytes": 68719476736,
-  "last_completed_phase": 3,
-  "last_decision": "phase_3_performance_plan_frozen",
+  "last_completed_phase": 4,
+  "last_decision": "performance_no_go",
   "output_schema": "gasal2_candidate_sites_tsv_v1",
   "phase_status": {
     "0": "pass",
     "1": "pass",
     "2": "pass",
     "3": "pass",
-    "4": "active",
-    "5": "pending",
-    "6": "pending",
-    "7": "pending"
+    "4": "no_go",
+    "5": "not_authorized_previous_no_go",
+    "6": "not_authorized_previous_no_go",
+    "7": "not_authorized_previous_no_go"
   },
   "post_hoc_scope_decision": true,
   "product_status": "experimental",
@@ -30,7 +30,7 @@
   "software_epoch": "submission_rc_v2_2",
   "submission_drafting_authorized": false,
   "target_claim": "accelerates_short_query_candidate_site_screening_while_highly_preserving_fasim_topk_and_top1_with_comparable_performance_on_five_chirp_datasets",
-  "target_claim_status": "pending_final_rc_performance_validation",
-  "validation_status": "pending",
-  "v2_bioinformatics_route": "conditionally_open_performance_gated"
+  "target_claim_status": "not_supported",
+  "validation_status": "failed",
+  "v2_bioinformatics_route": "closed_performance_or_correctness_gap"
 }

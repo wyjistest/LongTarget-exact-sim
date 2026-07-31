@@ -29,6 +29,8 @@ PHASE2_RUNTIME_COMMIT = PHASE2_FREEZE_PARENT
 PHASE2_CAPACITY_COMMIT = "49ed7d5242def174a0bd8708b9bb24825d49ee67"
 PHASE3_COMMIT_MESSAGE = "repro: freeze v2 formal performance plan"
 PHASE3_FREEZE_PARENT = "ea939bae371e966adad0d90b7e97157f355cdd4d"
+PHASE3_COMMIT = "53e57591da1bfe8ffa34ebe57d89a5d2cd347d29"
+PHASE4_COMMIT_MESSAGE = "bench: freeze v2 decisive performance no-go"
 ARTIFACT_ROOT = ROOT / ".paper-artifacts/bioinformatics-submission-readiness-v2"
 IMMUTABLE_ROOTS = (
     "paper/bioinformatics",
@@ -169,6 +171,27 @@ PHASE3_EXECUTION_PATHS = (
     "scripts/gasal2_candidate_sites.py",
     "scripts/gasal2_gpu_screen.py",
     "scripts/gasal2_longtarget.py",
+)
+PHASE3_FROZEN_EVIDENCE_PATHS = tuple(
+    path
+    for path in PHASE3_PATHS
+    if path
+    not in {
+        "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+        "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+        "scripts/check_bioinformatics_submission_readiness_v2.py",
+    }
+)
+PHASE4_PATHS = (
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_artifact_manifest.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_change_allowlist.txt",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_decision_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_precommit_receipt.json",
+    "reproduce/bioinformatics_submission_readiness_v2/freeze_phase4_evidence.py",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "tests/bioinformatics_submission_readiness_v2/test_phase4.py",
 )
 CRITICAL_LEGACY_SHA256 = {
     "paper/bioinformatics/canonical_hybrid_v2_performance_decision.md": "71edaabd0339352df0ca7bd648f33787071d4d2c1097ea09d00aa5572f9999d1",
@@ -1277,6 +1300,220 @@ def check_phase3(mode: str) -> None:
     run_phase3_tests()
 
 
+def check_phase3_boundary_after_execution() -> None:
+    commit = commit_with_subject(PHASE3_COMMIT_MESSAGE)
+    require(commit == PHASE3_COMMIT, "Phase 3 commit identity drift")
+    require(git("rev-parse", f"{commit}^") == PHASE3_FREEZE_PARENT, "Phase 3 historical parent drift")
+    check_phase3_precommit_receipt(commit)
+    historical_state = load_json_from_commit(
+        commit, "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json"
+    )
+    validate_schema(historical_state, load_json(SCHEMA))
+    validate_state_transitions(historical_state)
+    require(
+        historical_state["phase_status"]["4"] == "active"
+        and historical_state["last_completed_phase"] == 3,
+        "Phase 3 historical transition drift",
+    )
+    for relative in PHASE3_FROZEN_EVIDENCE_PATHS:
+        require(
+            (ROOT / relative).read_bytes() == git_bytes("show", f"{commit}:{relative}"),
+            f"Phase 3 frozen evidence was rewritten: {relative}",
+        )
+
+    manifest = load_json(PAPER / "phase_3_artifact_manifest.json")
+    observed_paths: set[str] = set()
+    for item in manifest["artifacts"]:
+        relative = item["relative_path"]
+        observed_paths.add(relative)
+        path = artifact_path(relative)
+        require(path.is_file() and not path.is_symlink(), f"missing Phase 3 artifact: {relative}")
+        require(path.stat().st_size == item["size_bytes"], f"Phase 3 artifact size drift: {relative}")
+        require(sha256_file(path) == item["sha256"], f"Phase 3 artifact digest drift: {relative}")
+    current_paths = {
+        path.relative_to(ARTIFACT_ROOT).as_posix()
+        for path in (ARTIFACT_ROOT / "phase3").rglob("*")
+        if path.is_file()
+    }
+    require(current_paths == observed_paths, "Phase 3 artifact inventory changed after freeze")
+    inputs = check_phase3_inputs()
+    check_phase3_attempts(inputs)
+    check_phase3_performance_plan()
+    check_phase3_external_plan()
+    check_phase3_hardware()
+    check_phase3_execution_binding()
+    check_phase2_history()
+
+
+def check_phase4_precommit_receipt(commit: str | None) -> None:
+    relative = "paper/bioinformatics_submission_readiness_v2/phase_4_precommit_receipt.json"
+    receipt = load_json(PAPER / "phase_4_precommit_receipt.json") if commit is None else load_json_from_commit(commit, relative)
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 4, "Phase 4 precommit receipt drift")
+    require(receipt["phase_start_parent_head"] == PHASE3_COMMIT, "Phase 4 precommit parent drift")
+    require(receipt["planned_commit_message"] == PHASE4_COMMIT_MESSAGE, "Phase 4 commit message drift")
+    require(receipt["expected_changed_paths"] == list(PHASE4_PATHS), "Phase 4 path inventory drift")
+    expected_evidence = set(PHASE4_PATHS) - {relative}
+    require(set(receipt["schema_evidence_sha256"]) == expected_evidence, "Phase 4 evidence inventory drift")
+    for path, expected in receipt["schema_evidence_sha256"].items():
+        require(sha256_bytes(file_bytes(path, commit)) == expected, f"Phase 4 evidence digest drift: {path}")
+    require("commit_sha" not in receipt and "phase_commit" not in receipt, "Phase 4 receipt claims future commit")
+
+
+def check_phase4_artifact_manifest() -> None:
+    manifest = load_json(PAPER / "phase_4_artifact_manifest.json")
+    require(manifest["schema_version"] == 1 and manifest["phase"] == 4, "Phase 4 artifact manifest drift")
+    require(manifest["formal_decision_evidence"] is True, "Phase 4 artifacts are not formal evidence")
+    require(manifest["decision"] == "performance_no_go", "Phase 4 manifest decision drift")
+    expected_roles = {
+        "formal_attempt_terminal": 100,
+        "formal_backend_log": 200,
+        "formal_candidate_sites": 100,
+        "formal_comparator_log": 100,
+        "formal_comparison_details": 50,
+        "formal_comparison_result": 50,
+        "formal_decision": 1,
+        "formal_determinism_result": 1,
+        "formal_eligible_timing_input": 1,
+        "formal_gpu_input_receipt": 50,
+        "formal_input_receipt": 50,
+        "formal_native_diagnostic": 100,
+        "formal_pair_result_table": 1,
+        "formal_pair_terminal": 50,
+        "formal_product_contract": 50,
+        "formal_run_report": 100,
+        "formal_run_start": 1,
+        "formal_run_summary": 1,
+        "formal_runner_log": 200,
+    }
+    require(manifest["role_counts"] == expected_roles, "Phase 4 artifact role inventory drift")
+    require(manifest["phase4_artifact_count"] == 1206, "Phase 4 artifact count drift")
+    observed_paths: set[str] = set()
+    observed_bytes = 0
+    for item in manifest["artifacts"]:
+        relative = item["relative_path"]
+        require(relative not in observed_paths, "duplicate Phase 4 artifact path")
+        observed_paths.add(relative)
+        path = artifact_path(relative)
+        require(path.is_file() and not path.is_symlink(), f"missing or unsafe Phase 4 artifact: {relative}")
+        require(path.stat().st_size == item["size_bytes"], f"Phase 4 artifact size drift: {relative}")
+        require(sha256_file(path) == item["sha256"], f"Phase 4 artifact digest drift: {relative}")
+        observed_bytes += item["size_bytes"]
+    current_paths = {
+        path.relative_to(ARTIFACT_ROOT).as_posix()
+        for path in (ARTIFACT_ROOT / "phase4").rglob("*")
+        if path.is_file()
+    }
+    require(current_paths == observed_paths, "unmanifested Phase 4 artifact exists")
+    require(observed_bytes == manifest["phase4_artifact_bytes"], "Phase 4 artifact byte count drift")
+    require(
+        artifact_tree_bytes(ARTIFACT_ROOT) == manifest["bytes_at_phase4_freeze"],
+        "v2 artifact tree changed after Phase 4 freeze",
+    )
+    require(manifest["bytes_at_phase4_freeze"] <= manifest["quota_bytes"] == 68_719_476_736, "Phase 4 quota drift")
+
+
+def check_phase4_decision() -> None:
+    receipt = load_json(PAPER / "phase_4_decision_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 4, "Phase 4 decision receipt drift")
+    require(receipt["phase3_commit"] == PHASE3_COMMIT, "Phase 4 decision/plan binding drift")
+    require(receipt["software_epoch"] == "submission_rc_v2_2", "Phase 4 software epoch drift")
+    require(receipt["decision"] == "performance_no_go" and receipt["stop_loss_applied"] is True, "Phase 4 stop-loss drift")
+    require(receipt["run_start_sha256"] == sha256_file(artifact_path("phase4/run-start.json")), "Phase 4 run-start binding drift")
+    require(receipt["run_summary_sha256"] == sha256_file(artifact_path("phase4/run-summary.json")), "Phase 4 run-summary binding drift")
+    require(receipt["analysis_decision_sha256"] == sha256_file(artifact_path("phase4/analysis/decision.json")), "Phase 4 analysis binding drift")
+    require(receipt["artifact_manifest_sha256"] == sha256_file(PAPER / "phase_4_artifact_manifest.json"), "Phase 4 manifest binding drift")
+
+    run_start = load_json(artifact_path("phase4/run-start.json"))
+    summary = load_json(artifact_path("phase4/run-summary.json"))
+    decision = load_json(artifact_path("phase4/analysis/decision.json"))
+    require(run_start["phase3_commit"] == PHASE3_COMMIT, "formal run-start commit drift")
+    require(summary["phase3_commit"] == PHASE3_COMMIT, "formal run-summary commit drift")
+    require(summary["planned_arm_attempts"] == summary["terminal_arm_attempts"] == 100, "formal arm denominator drift")
+    require(summary["technical_success_arm_attempts"] == 100 and summary["technical_failure_arm_attempts"] == 0, "formal technical outcome drift")
+    require(summary["retry_count"] == 0 and summary["formal_execution_complete"] is True, "formal retry/completion drift")
+    require(0 <= summary["phase4_elapsed_seconds"] <= 43_200, "formal Phase 4 wall budget drift")
+    require(decision["decision"] == "performance_no_go", "formal Phase 4 decision drift")
+    require(decision["planned_pair_rows"] == decision["technical_success_pair_rows"] == 50, "formal pair denominator drift")
+    require(decision["candidate_site_contract_pass_rows"] == 45, "formal contract pass count drift")
+    require(decision["primary_capacity_estimate_computed"] is False and decision["capacity"] is None, "ineligible primary capacity was computed")
+    require(decision["primary_gate_pass"] is False and decision["downstream_phases_authorized"] is False, "no-go authorized downstream work")
+    require(decision["all_outputs_deterministic"] is False, "frozen analyzer short-circuit field drift")
+
+    failures = receipt["formal_comparison"]["contract_failure_pair_ids"]
+    require(failures == [f"v2p4_w010__repeat{index:02d}" for index in range(5)], "contract failure identity drift")
+    for pair_id in failures:
+        comparison = load_json(artifact_path(f"phase4/comparisons/{pair_id}/comparison.json"))
+        require(comparison["comparison_status"] == "scientific_mismatch" and comparison["contract_pass"] is False, f"failure status drift: {pair_id}")
+        require(comparison["technical_failure"] is False and comparison["input_identity_pass"] is True, f"failure reclassified technical: {pair_id}")
+        require(comparison["modes"]["score"]["binary_success"] is True, f"score mismatch drift: {pair_id}")
+        require(comparison["modes"]["nt"]["binary_success"] is True, f"nt mismatch drift: {pair_id}")
+        stability = comparison["modes"]["stability"]
+        require(stability["binary_success"] is False and stability["complete_set_preserved"] is False, f"stability failure drift: {pair_id}")
+        require(stability["top1_retained"] is True and stability["matched_count"] == 4, f"stability failure shape drift: {pair_id}")
+
+    diagnostic = receipt["repeat_digest_diagnostic"]
+    require(diagnostic["diagnostic_only"] is True, "repeat digest result was promoted")
+    require(diagnostic["formal_analyzer_all_outputs_deterministic_field"] is False, "analyzer field disclosure drift")
+    require(diagnostic["all_observed_repeat_digests_deterministic"] is True, "observed repeat digest diagnostic failed")
+    require(len(diagnostic["workload_arm_groups"]) == 20, "repeat digest group count drift")
+    require(all(row["repeat_count"] == 5 and row["unique_candidate_sites_digests"] == 1 and row["pass"] is True for row in diagnostic["workload_arm_groups"]), "repeat digest inventory drift")
+    require(receipt["primary_capacity"] == {
+        "eligible": False,
+        "estimate_computed": False,
+        "gate_pass": False,
+        "reason": "planned_pair_rows != candidate_site_contract_pass_rows",
+    }, "primary capacity ineligibility drift")
+    require(all(value == "not_authorized_previous_no_go" for key, value in receipt["downstream"].items() if key.startswith("phase_")), "downstream phase authorization drift")
+    require(not any(receipt["downstream"][key] for key in ("formal_external_comparison_executed", "release_packaging_executed", "application_note_drafting_executed")), "unauthorized downstream execution recorded")
+    require(not (ARTIFACT_ROOT / "phase5").exists(), "formal Phase 5 artifacts exist after no-go")
+    require(not (ARTIFACT_ROOT / "phase6").exists(), "Phase 6 artifacts exist after no-go")
+    require(not (ARTIFACT_ROOT / "phase7").exists(), "Phase 7 artifacts exist after no-go")
+
+
+def run_phase4_tests() -> None:
+    run((sys.executable, "tests/bioinformatics_submission_readiness_v2/test_phase4.py"))
+    run((sys.executable, "-m", "py_compile", "reproduce/bioinformatics_submission_readiness_v2/freeze_phase4_evidence.py"))
+
+
+def check_phase4(mode: str) -> None:
+    status_before = changed_paths()
+    if mode == "precommit":
+        require(git("rev-parse", "HEAD") == PHASE3_COMMIT, "Phase 4 precommit parent is not frozen Phase 3")
+        require(status_before == set(PHASE4_PATHS), "Phase 4 changed paths differ from allowlist")
+        allowlist = tuple((PAPER / "phase_4_change_allowlist.txt").read_text(encoding="utf-8").splitlines())
+        require(allowlist == PHASE4_PATHS, "Phase 4 allowlist drift")
+        check_phase4_precommit_receipt(None)
+    else:
+        require(not status_before, "Phase 4 postcommit requires a clean tree")
+        commit = commit_with_subject(PHASE4_COMMIT_MESSAGE)
+        require(git("rev-parse", f"{commit}^") == PHASE3_COMMIT, "Phase 4 commit parent drift")
+        check_phase4_precommit_receipt(commit)
+    state = validate_program_state()
+    require(state["phase_status"] == {
+        "0": "pass",
+        "1": "pass",
+        "2": "pass",
+        "3": "pass",
+        "4": "no_go",
+        "5": "not_authorized_previous_no_go",
+        "6": "not_authorized_previous_no_go",
+        "7": "not_authorized_previous_no_go",
+    }, "Phase 4 terminal state drift")
+    require(state["active_phase"] is None and state["last_completed_phase"] == 4, "Phase 4 terminal cursor drift")
+    require(state["last_decision"] == "performance_no_go", "Phase 4 state decision drift")
+    require(state["v2_bioinformatics_route"] == "closed_performance_or_correctness_gap", "v2 route was not closed")
+    require(state["software_epoch"] == "submission_rc_v2_2", "Phase 4 software epoch drift")
+    require(state["artifact_role"] == "frozen_release_candidate_under_test", "failed candidate artifact role drift")
+    require(state["product_status"] == "experimental" and state["validation_status"] == "failed", "failed candidate product status drift")
+    require(state["target_claim_status"] == "not_supported", "failed target claim was not closed")
+    require(not state["external_comparison_authorized"] and not state["release_packaging_authorized"] and not state["submission_drafting_authorized"], "downstream work authorized after no-go")
+    check_phase3_boundary_after_execution()
+    check_phase4_artifact_manifest()
+    check_phase4_decision()
+    check_legacy_boundary()
+    run_phase4_tests()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(8), required=True)
@@ -1291,6 +1528,8 @@ def main() -> int:
             check_phase2(args.mode)
         elif args.phase == 3:
             check_phase3(args.mode)
+        elif args.phase == 4:
+            check_phase4(args.mode)
         else:
             raise CheckError("checker for requested phase is not implemented yet")
         print(f"Bioinformatics submission readiness v2 Phase {args.phase} {args.mode} checks OK")

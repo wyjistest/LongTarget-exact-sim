@@ -1,0 +1,36 @@
+{
+  "checker_command": [
+    "python3",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "--phase",
+    "4",
+    "--mode",
+    "precommit"
+  ],
+  "checker_result": "pass",
+  "expected_changed_paths": [
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_artifact_manifest.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_change_allowlist.txt",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_decision_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_precommit_receipt.json",
+    "reproduce/bioinformatics_submission_readiness_v2/freeze_phase4_evidence.py",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "tests/bioinformatics_submission_readiness_v2/test_phase4.py"
+  ],
+  "phase": 4,
+  "phase_start_parent_head": "53e57591da1bfe8ffa34ebe57d89a5d2cd347d29",
+  "planned_commit_message": "bench: freeze v2 decisive performance no-go",
+  "schema_evidence_sha256": {
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json": "cf15262ab1cc9554a085d9900669fed9dd31f8327cc63974278abad480a74912",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md": "6748329cb3ad79cb08980d4d5c4b6fc9c564f00f6d6dcbc88f1d95178cb8836e",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_artifact_manifest.json": "29808a6c770fd620ae39c7a0ab9658e9145b977a416af15778ab3f08cddbf6a8",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_change_allowlist.txt": "dcfcc693a6a738250331c8eb382b01894f0eb44651247cea702d3c90876132b3",
+    "paper/bioinformatics_submission_readiness_v2/phase_4_decision_receipt.json": "275be960a0d45c27483a8cb924163d8e8e488231f0d8e5b89ae633a390de25f3",
+    "reproduce/bioinformatics_submission_readiness_v2/freeze_phase4_evidence.py": "9d31805989349df21ec5982e47f4f5ac2ec4d31123d56011be6fc037950915c2",
+    "scripts/check_bioinformatics_submission_readiness_v2.py": "808bbdc03d79c7acf838b9d35601b703ecfa334afa9d9101572b0ed999c76dff",
+    "tests/bioinformatics_submission_readiness_v2/test_phase4.py": "176fee3efca95e7e2a112dfec08da2cde7bc5b51efaf9b41f95c2da7eafa815c"
+  },
+  "schema_version": 1
+}

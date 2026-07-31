@@ -1,0 +1,195 @@
+{
+  "analysis_decision_sha256": "b6f03f7cf6cdb9ad4ddebea6a2f5cb3199f23735ec57ac0a84c50467b577478a",
+  "artifact_manifest_sha256": "29808a6c770fd620ae39c7a0ab9658e9145b977a416af15778ab3f08cddbf6a8",
+  "decision": "performance_no_go",
+  "downstream": {
+    "application_note_drafting_executed": false,
+    "formal_external_comparison_executed": false,
+    "phase_5": "not_authorized_previous_no_go",
+    "phase_6": "not_authorized_previous_no_go",
+    "phase_7": "not_authorized_previous_no_go",
+    "release_packaging_executed": false
+  },
+  "formal_comparison": {
+    "candidate_site_contract_pass_rows": 45,
+    "contract_failure_pair_ids": [
+      "v2p4_w010__repeat00",
+      "v2p4_w010__repeat01",
+      "v2p4_w010__repeat02",
+      "v2p4_w010__repeat03",
+      "v2p4_w010__repeat04"
+    ],
+    "contract_failure_pair_rows": 5,
+    "failure_scope": "v2p4_w010 stability Top-5 complete-set substitution; score and nt passed and stability Top-1 was retained",
+    "planned_pair_rows": 50,
+    "technical_success_pair_rows": 50
+  },
+  "formal_execution": {
+    "planned_arm_attempts": 100,
+    "retry_count": 0,
+    "technical_failure_arm_attempts": 0,
+    "technical_success_arm_attempts": 100,
+    "terminal_arm_attempts": 100
+  },
+  "phase": 4,
+  "phase3_commit": "53e57591da1bfe8ffa34ebe57d89a5d2cd347d29",
+  "primary_capacity": {
+    "eligible": false,
+    "estimate_computed": false,
+    "gate_pass": false,
+    "reason": "planned_pair_rows != candidate_site_contract_pass_rows"
+  },
+  "repeat_digest_diagnostic": {
+    "all_observed_repeat_digests_deterministic": true,
+    "diagnostic_only": true,
+    "formal_analyzer_all_outputs_deterministic_field": false,
+    "formal_analyzer_field_reason": "eligibility short-circuit before determinism branch",
+    "workload_arm_groups": [
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w001"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w001"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w002"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w002"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w003"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w003"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w004"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w004"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w005"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w005"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w006"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w006"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w007"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w007"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w008"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w008"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w009"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w009"
+      },
+      {
+        "arm": "A",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w010"
+      },
+      {
+        "arm": "G",
+        "pass": true,
+        "repeat_count": 5,
+        "unique_candidate_sites_digests": 1,
+        "workload_id": "v2p4_w010"
+      }
+    ]
+  },
+  "run_start_sha256": "1aca5242b8b4cd4e540e1b05bf454e2d528a0d9331d4c7671cbe1c0d7348a9c9",
+  "run_summary_sha256": "23e18614fbd29ffacbd93e7c774bea8a3259daf325774950f8df82daf7d9f598",
+  "schema_version": 1,
+  "software_epoch": "submission_rc_v2_2",
+  "stop_loss_applied": true
+}
