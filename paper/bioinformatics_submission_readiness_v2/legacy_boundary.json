@@ -1,0 +1,33 @@
+{
+  "baseline_commit": "739ee0a8db01f77143a5c993e6c68a56a772502b",
+  "critical_evidence_sha256": {
+    "paper/bioinformatics/canonical_hybrid_v2_performance_decision.md": "71edaabd0339352df0ca7bd648f33787071d4d2c1097ea09d00aa5572f9999d1",
+    "paper/bioinformatics/phase3_postpilot_decision.json": "471898d688386f46b4e7f13b932b6b4f9874d9ed74641240b5c2fd4ad71851fe",
+    "paper/biological_topk/PROGRAM_STATE.json": "8c626090b68e9699a30ec3ee7ce3b0b448791d39fa9ede4d1af682236235ff63",
+    "paper/biological_topk_successor/PROGRAM_STATE.json": "17869b0ce1913bb10b5592128a00b4a4f7d7de435c0017d2b7c9fef9b98536f0",
+    "paper/biological_topk_successor/biological_utility_decision.json": "ab91cb645048d73a21692b9433b41f8197d7e74c41c637a124e00232e163fdef",
+    "paper/ssw_cuda/forward_hybrid_decision.json": "d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1"
+  },
+  "immutable_roots": [
+    "paper/bioinformatics",
+    "paper/biological_topk",
+    "paper/biological_topk_successor",
+    "paper/ssw_cuda",
+    "paper/source_data"
+  ],
+  "legacy_tree_command": [
+    "git",
+    "ls-tree",
+    "-r",
+    "739ee0a8db01f77143a5c993e6c68a56a772502b",
+    "--",
+    "paper/bioinformatics",
+    "paper/biological_topk",
+    "paper/biological_topk_successor",
+    "paper/ssw_cuda",
+    "paper/source_data"
+  ],
+  "legacy_tree_listing_sha256": "ea89de4d2e5382dca0f823d8d2e9d5b4124c569ab2e283a03c4fe387a8f29502",
+  "legacy_tree_may_change": false,
+  "schema_version": 1
+}

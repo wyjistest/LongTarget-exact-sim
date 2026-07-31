@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://longtarget.example/schemas/bioinformatics_submission_readiness_v2_program_state.schema.json",
+  "title": "Bioinformatics submission readiness v2 program state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "program_name",
+    "program_schema_version",
+    "epoch_id",
+    "baseline_commit",
+    "current_legacy_bioinformatics_route",
+    "v2_bioinformatics_route",
+    "post_hoc_scope_decision",
+    "execution_mode",
+    "scientific_contract",
+    "output_schema",
+    "software_epoch",
+    "artifact_role",
+    "product_status",
+    "validation_status",
+    "target_claim",
+    "target_claim_status",
+    "external_comparison_authorized",
+    "release_packaging_authorized",
+    "submission_drafting_authorized",
+    "fixed_v2_artifact_storage_bytes",
+    "active_phase",
+    "phase_status",
+    "last_completed_phase",
+    "last_decision",
+    "proposed_v2_epoch_before_authorization"
+  ],
+  "properties": {
+    "program_name": { "const": "bioinformatics_submission_readiness_v2" },
+    "program_schema_version": { "const": 1 },
+    "epoch_id": { "const": "bioinformatics_submission_readiness_v2" },
+    "baseline_commit": { "const": "739ee0a8db01f77143a5c993e6c68a56a772502b" },
+    "current_legacy_bioinformatics_route": { "const": "closed_biological_utility_gap" },
+    "v2_bioinformatics_route": {
+      "enum": [
+        "conditionally_open_performance_gated",
+        "closed_performance_or_correctness_gap",
+        "conditionally_open_external_comparison",
+        "conditionally_open_release_packaging",
+        "conditionally_open_submission_drafting",
+        "application_note_ready_pending_owner_actions",
+        "application_note_ready"
+      ]
+    },
+    "post_hoc_scope_decision": { "const": true },
+    "execution_mode": { "const": "gpu-screen" },
+    "scientific_contract": { "const": "biological_topk_candidate_site_v1" },
+    "output_schema": { "const": "gasal2_candidate_sites_tsv_v1" },
+    "software_epoch": {
+      "type": "string",
+      "pattern": "^submission_rc_v2(?:_[0-9]+)?$"
+    },
+    "artifact_role": {
+      "enum": [null, "frozen_release_candidate_under_test", "validated_release_candidate"]
+    },
+    "product_status": { "enum": ["experimental", "validated_release_candidate"] },
+    "validation_status": { "enum": ["pending", "passed", "failed"] },
+    "target_claim": {
+      "const": "accelerates_short_query_candidate_site_screening_while_highly_preserving_fasim_topk_and_top1_with_comparable_performance_on_five_chirp_datasets"
+    },
+    "target_claim_status": {
+      "enum": ["pending_final_rc_performance_validation", "supported", "not_supported"]
+    },
+    "external_comparison_authorized": { "type": "boolean" },
+    "release_packaging_authorized": { "type": "boolean" },
+    "submission_drafting_authorized": { "type": "boolean" },
+    "fixed_v2_artifact_storage_bytes": { "const": 68719476736 },
+    "active_phase": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0, "maximum": 7 },
+        { "type": "null" }
+      ]
+    },
+    "phase_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["0", "1", "2", "3", "4", "5", "6", "7"],
+      "properties": {
+        "0": { "$ref": "#/$defs/phase_status" },
+        "1": { "$ref": "#/$defs/phase_status" },
+        "2": { "$ref": "#/$defs/phase_status" },
+        "3": { "$ref": "#/$defs/phase_status" },
+        "4": { "$ref": "#/$defs/phase_status" },
+        "5": { "$ref": "#/$defs/phase_status" },
+        "6": { "$ref": "#/$defs/phase_status" },
+        "7": { "$ref": "#/$defs/phase_status" }
+      }
+    },
+    "last_completed_phase": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0, "maximum": 7 },
+        { "type": "null" }
+      ]
+    },
+    "last_decision": {
+      "enum": [
+        "phase_0_protocol_frozen",
+        "phase_1_release_candidate_frozen",
+        "phase_2_development_harness_frozen",
+        "phase_3_performance_plan_frozen",
+        "performance_pass",
+        "performance_no_go",
+        "blocked",
+        "phase_5_external_comparison_pass",
+        "phase_5_external_comparison_no_go",
+        "phase_6_release_pass",
+        "phase_6_release_no_go",
+        "phase_7_application_note_ready",
+        "phase_7_application_note_ready_pending_owner_actions"
+      ]
+    },
+    "proposed_v2_epoch_before_authorization": { "const": "not_started" }
+  },
+  "$defs": {
+    "phase_status": {
+      "enum": [
+        "pending",
+        "active",
+        "pass",
+        "no_go",
+        "blocked",
+        "not_authorized_previous_no_go"
+      ]
+    }
+  }
+}
