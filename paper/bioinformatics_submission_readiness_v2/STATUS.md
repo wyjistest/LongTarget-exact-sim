@@ -5,12 +5,12 @@ epoch_id = bioinformatics_submission_readiness_v2
 baseline_commit = 739ee0a8db01f77143a5c993e6c68a56a772502b
 legacy_successor_route = closed_biological_utility_gap
 v2_route = conditionally_open_performance_gated
-active_phase = 3
+active_phase = 4
 phase_0 = pass
 phase_1 = pass
 phase_2 = pass
-phase_3 = active
-phase_4 = pending
+phase_3 = pass
+phase_4 = active
 phase_5 = pending
 phase_6 = pending
 phase_7 = pending
@@ -52,6 +52,28 @@ v1.3.3 both completed corrected basename-output development smokes; the old
 five Triplexator attempts remain historical harness failures. PATO is the
 candidate current executable comparator and Triplexator is the legacy
 executable comparator. No formal external comparison is yet authorized.
+
+Phase 3 froze an input-only formal performance panel without running either
+prediction arm. It contains 10 fresh GENCODE/GRCh38 workloads, each pairing a
+450-750 nt query with a distinct 20,000,001 nt A/C/G/T-only target window from
+chromosomes 1-10. All 20 selected sequence digests are absent from the frozen
+1,478-digest historical/development exclusion snapshot. Five paired timing
+repeats per workload produce 50 pair rows and 100 arm attempts. A fixed hash
+order balances 25 A-before-G and 25 G-before-A rows.
+
+The single primary estimand is the validated 24-hour capacity ratio. CPU and
+GPU each use one worker; workload duration is the arithmetic mean of five
+end-to-end repeats. The paired hierarchical bootstrap uses 100,000 replicates
+with seed `2026073103`, resamples workloads outside and paired repeat indices
+inside, and replays the scheduler. The decisive gate is a one-sided 95% lower
+bound of at least 10. Any arm failure, fallback, malformed output, identity
+mismatch, contract failure, or nondeterminism forces `performance_no_go`.
+
+The Phase 5 plan is also frozen but remains unauthorized. Its five biological
+datasets are serialized as 1,000 label-blind FASTA records so PATO and
+Triplexator `Total (rel)` summaries can map `# Duplex-ID` to region IDs. This
+corrects the scientifically invalid alternative of scoring one concatenated
+duplex summary as 1,000 regions.
 
 Formal external comparison, release packaging, and manuscript drafting remain
 unauthorized until the decisive Phase 4 correctness and 24-hour capacity gate

@@ -1,0 +1,18 @@
+{
+  "freeze_parent_head": "ea939bae371e966adad0d90b7e97157f355cdd4d",
+  "phase": 3,
+  "phase_2_transition_commit": "ea939bae371e966adad0d90b7e97157f355cdd4d",
+  "phase_start_tree_was_clean": true,
+  "previous_phase_postcommit_check_command": [
+    "python3",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "--phase",
+    "2",
+    "--mode",
+    "postcommit"
+  ],
+  "previous_phase_postcommit_check_result": "pass",
+  "receipt_created_at_freeze": true,
+  "receipt_timing_note": "The Phase 3 start boundary is the clean Phase 2 transition commit; all Phase 3 files are frozen together before prediction execution.",
+  "schema_version": 1
+}

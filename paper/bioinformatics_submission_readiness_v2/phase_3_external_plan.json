@@ -1,0 +1,44 @@
+{
+  "authorization": "Execute only if Phase 4 decision is performance_pass.",
+  "current_executable": {
+    "name": "PATO",
+    "required_dataset_attempts": 5,
+    "role": "primary current executable comparator",
+    "version": "1.0.6",
+    "version_wording": "candidate current executable comparator; do not use an unqualified state-of-the-art label"
+  },
+  "failure_policy": {
+    "all_planned_successes_and_failures_retained": true,
+    "outcome_informed_retry": false,
+    "pato_phase5_pass_condition": "all five attempts technical successes with 1,000 mapped region scores each",
+    "triplexator_failure_does_not_imply_algorithm_failure": true
+  },
+  "input_mapping": {
+    "backend_label_visibility": false,
+    "manifest": "paper/bioinformatics_submission_readiness_v2/phase_3_external_attempt_manifest.tsv",
+    "region_count_per_dataset": 1000,
+    "target_serialization": "one FASTA record per frozen label-blind region_id in predecessor fasta_order"
+  },
+  "legacy_executable": {
+    "name": "Triplexator",
+    "required_dataset_attempts": 5,
+    "role": "legacy executable diagnostic comparator",
+    "tag": "v1.3.3",
+    "reported_version": "1.3.2"
+  },
+  "metrics": {
+    "labels": "reuse the immutable predecessor 100-positive/900-negative labels only after every external attempt is terminal",
+    "per_dataset": [
+      "AUCPR",
+      "recall at P where P=100",
+      "end-to-end wall seconds",
+      "reported nonzero region count"
+    ],
+    "primary_external_score": "Total (rel)",
+    "region_score_mapping": "map # Duplex-ID to region_id; if duplicate summary rows exist take maximum Total (rel); if a planned region is absent assign 0",
+    "runtime_comparison_boundary": "Native external-tool wall times are descriptive because output semantics differ; do not present row-equivalent speedup against gpu-screen."
+  },
+  "parameter_tuning_after_phase3": false,
+  "phase": 3,
+  "schema_version": 1
+}

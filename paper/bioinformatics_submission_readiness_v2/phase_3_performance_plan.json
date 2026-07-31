@@ -1,0 +1,118 @@
+{
+  "arm_execution": {
+    "arm_order_balance": {
+      "AG_pair_rows": 25,
+      "GA_pair_rows": 25,
+      "order_seed": "bioinformatics_submission_readiness_v2_phase4_order_20260731"
+    },
+    "cache_policy": "Do not drop operating-system caches. Do not run unrecorded warm-ups. Include repeat 0. Balance which arm runs first across paired rows.",
+    "concurrency": "One formal process at a time in the exact attempt_sequence_index order; CPU and GPU arms never overlap.",
+    "gpu_container_startup_included": true,
+    "offline_comparator_time_excluded_from_arm_timing": true,
+    "repeat_count_per_workload": 5,
+    "retry_policy": "none",
+    "timed_interval": "outer monotonic wall time from CLI process launch through successful candidate_sites.tsv and run-report generation",
+    "unplanned_attempts": "forbidden"
+  },
+  "budgets": {
+    "formal_arm_attempts": 100,
+    "formal_pair_rows": 50,
+    "per_attempt_timeout_seconds": 1800,
+    "phase4_max_new_artifact_bytes": 12884901888,
+    "phase4_wall_seconds": 43200,
+    "total_v2_artifact_bytes": 68719476736
+  },
+  "capacity_estimator": {
+    "authority_workers": 1,
+    "bootstrap_replicates": 100000,
+    "bootstrap_seed": 2026073103,
+    "gpu_workers": 1,
+    "inner_resampling_unit": "paired repeat index within sampled workload",
+    "makespan_scheduler": "deterministic list scheduling; next task goes to earliest available worker with worker index tie-break",
+    "outer_resampling_unit": "paired workload",
+    "point_task_duration": "arithmetic mean of the five end-to-end repeats within each workload and arm",
+    "quantile_method": "inverted_cdf empirical 0.05 quantile",
+    "scheduler_replayed_per_bootstrap_replicate": true,
+    "validated_work_unit": "one complete 20,000,001-nt GRCh38 target-chunk screen for one frozen 450-750-nt query"
+  },
+  "candidate_site_comparator": {
+    "contract_spec": "paper/biological_topk/contract_spec.json",
+    "contract_spec_sha256": "c396f346a0fa00fb0b746f9582100eb46d22fbe892c8fa3053a6caa3d5342af9",
+    "modes_required": [
+      "score",
+      "stability",
+      "nt"
+    ],
+    "path": "reproduce/biological_topk/compare_candidate_topk.py",
+    "run_offline_after_both_arms_terminal": true,
+    "top_k": 5
+  },
+  "failure_denominator": {
+    "contract_pass_required_for_every_pair_row": true,
+    "events_forcing_complete_gate_no_go": [
+      "technical failure",
+      "timeout",
+      "OOM",
+      "unexpected fallback",
+      "missing or malformed output",
+      "input identity mismatch",
+      "candidate-site contract failure",
+      "non-deterministic output"
+    ],
+    "failed_row_deletion": "forbidden",
+    "primary_estimate_condition": "planned_pair_rows == technical_success_pair_rows == candidate_site_contract_pass_rows and every repeated output is deterministic",
+    "planned_arm_attempts": 100,
+    "planned_pair_rows": 50
+  },
+  "formal_execution_authorized_after_phase3_commit": true,
+  "input_panel": {
+    "assembly": "GRCh38",
+    "fresh_against_excluded_digest_count": 1478,
+    "input_manifest": "paper/bioinformatics_submission_readiness_v2/phase_3_input_manifest.tsv",
+    "query_length_range": [
+      450,
+      750
+    ],
+    "selection_seed": "bioinformatics_submission_readiness_v2_phase3_inputs_20260731",
+    "target_length_nt": 20000001,
+    "workload_count": 10
+  },
+  "primary_estimand": {
+    "authority_capacity_24h": "86400 * validated_work_units / authority_scheduled_makespan_seconds",
+    "capacity_ratio": "gpu_capacity_24h / authority_capacity_24h",
+    "gpu_capacity_24h": "86400 * validated_work_units / gpu_scheduled_makespan_seconds",
+    "name": "validated_24_hour_capacity_ratio"
+  },
+  "primary_gate": {
+    "capacity_ratio_lcb_minimum": 10.0,
+    "inferential_rule": "one-sided 95% lower confidence bound >= 10",
+    "point_estimate_consistency_minimum": 10.0,
+    "point_estimate_is_second_independent_gate": false
+  },
+  "resources": {
+    "authority": {
+      "binary_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86",
+      "binary_sha256": "75c59f80ee329fe913edce71ea8a0ec1a63620a978b15d3673f636d62268822e",
+      "cpu_affinity": "0-4,10-14",
+      "worker_count": 1
+    },
+    "gpu": {
+      "container_image_digest": "sha256:f04340aa1b77092c25eee50c84144adb08e6f1b48a34580f6f9c33aff3163ca7",
+      "container_image_tag": "longtarget/gasal2-gpu-screen:submission-rc-v2-2",
+      "cpu_affinity": "0-4,10-14",
+      "gpu_index": 0,
+      "gpu_uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+      "worker_count": 1
+    },
+    "unused_gpu_index": 1
+  },
+  "schema_version": 1,
+  "secondary_only": [
+    "median paired end-to-end speedup",
+    "absolute batch wall-time saving",
+    "per-stage timing breakdown",
+    "historical 38.32x anchor"
+  ],
+  "software_epoch": "submission_rc_v2_2",
+  "phase": 3
+}

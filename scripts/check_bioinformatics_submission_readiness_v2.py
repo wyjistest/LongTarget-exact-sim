@@ -27,6 +27,8 @@ PHASE2_COMMIT_MESSAGE = "repro: freeze v2 development harnesses"
 PHASE2_FREEZE_PARENT = "8114ce45be9bd5b25e52dc8fe7bc768eb6aee589"
 PHASE2_RUNTIME_COMMIT = PHASE2_FREEZE_PARENT
 PHASE2_CAPACITY_COMMIT = "49ed7d5242def174a0bd8708b9bb24825d49ee67"
+PHASE3_COMMIT_MESSAGE = "repro: freeze v2 formal performance plan"
+PHASE3_FREEZE_PARENT = "ea939bae371e966adad0d90b7e97157f355cdd4d"
 ARTIFACT_ROOT = ROOT / ".paper-artifacts/bioinformatics-submission-readiness-v2"
 IMMUTABLE_ROOTS = (
     "paper/bioinformatics",
@@ -108,6 +110,66 @@ PHASE2_PATHS = (
     "tests/bioinformatics_submission_readiness_v2/test_phase2.py",
 )
 PHASE2_RUNTIME_PATHS = PHASE1_RUNTIME_PATHS
+PHASE2_FROZEN_EVIDENCE_PATHS = tuple(
+    path
+    for path in PHASE2_PATHS
+    if path
+    not in {
+        "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+        "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+        "scripts/check_bioinformatics_submission_readiness_v2.py",
+    }
+)
+PHASE3_PATHS = (
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_artifact_manifest.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_attempt_manifest.tsv",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_change_allowlist.txt",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_exclusion_digest_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_execution_binding.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_external_attempt_manifest.tsv",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_external_plan.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_hardware_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_input_manifest.tsv",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_performance_plan.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_precommit_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_start_receipt.json",
+    "reproduce/bioinformatics_submission_readiness_v2/analyze_phase4.py",
+    "reproduce/bioinformatics_submission_readiness_v2/build_phase3_attempt_manifest.py",
+    "reproduce/bioinformatics_submission_readiness_v2/freeze_phase3_artifact_manifest.py",
+    "reproduce/bioinformatics_submission_readiness_v2/freeze_phase3_execution_binding.py",
+    "reproduce/bioinformatics_submission_readiness_v2/prepare_phase3_external_inputs.py",
+    "reproduce/bioinformatics_submission_readiness_v2/prepare_phase3_inputs.py",
+    "reproduce/bioinformatics_submission_readiness_v2/run_phase4.py",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "tests/bioinformatics_submission_readiness_v2/test_phase3.py",
+)
+PHASE3_EXECUTION_PATHS = (
+    ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86",
+    "paper/bioinformatics_submission_readiness_v2/phase_2_runtime_identity.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_artifact_manifest.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_attempt_manifest.tsv",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_exclusion_digest_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_hardware_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_input_manifest.tsv",
+    "paper/bioinformatics_submission_readiness_v2/phase_3_performance_plan.json",
+    "paper/biological_topk/contract_spec.json",
+    "reproduce/bioinformatics_submission_readiness_v2/analyze_phase4.py",
+    "reproduce/bioinformatics_submission_readiness_v2/capacity.py",
+    "reproduce/bioinformatics_submission_readiness_v2/cpu_reference_screen.py",
+    "reproduce/bioinformatics_submission_readiness_v2/run_phase4.py",
+    "reproduce/biological_topk/canonicalize_rows.py",
+    "reproduce/biological_topk/compare_candidate_topk.py",
+    "reproduce/biological_topk/contract.py",
+    "reproduce/biological_topk/recluster_candidate_sites.py",
+    "schemas/gasal2_candidate_sites_tsv_v1.schema.json",
+    "schemas/gasal2_gpu_screen_run_report_v1.schema.json",
+    "scripts/fasim_tfo_archive.py",
+    "scripts/gasal2_candidate_sites.py",
+    "scripts/gasal2_gpu_screen.py",
+    "scripts/gasal2_longtarget.py",
+)
 CRITICAL_LEGACY_SHA256 = {
     "paper/bioinformatics/canonical_hybrid_v2_performance_decision.md": "71edaabd0339352df0ca7bd648f33787071d4d2c1097ea09d00aa5572f9999d1",
     "paper/bioinformatics/phase3_postpilot_decision.json": "471898d688386f46b4e7f13b932b6b4f9874d9ed74641240b5c2fd4ad71851fe",
@@ -878,6 +940,343 @@ def check_phase2(mode: str) -> None:
     run_phase2_tests()
 
 
+def load_tsv(path: Path) -> list[dict[str, str]]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        require(reader.fieldnames is not None, f"missing TSV header: {path}")
+        return list(reader)
+
+
+def load_local_module(name: str, relative: str):
+    path = ROOT / relative
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load module: {relative}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def single_fasta_identity(path: Path) -> dict[str, Any]:
+    header: str | None = None
+    digest = hashlib.sha256()
+    length = 0
+    alphabet: set[str] = set()
+    with path.open(encoding="ascii") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                require(header is None, f"multiple FASTA records: {path}")
+                header = line[1:]
+                continue
+            require(header is not None, f"FASTA sequence precedes header: {path}")
+            sequence = line.upper()
+            digest.update(sequence.encode("ascii"))
+            length += len(sequence)
+            alphabet.update(sequence)
+    require(header is not None and length > 0, f"empty FASTA: {path}")
+    return {"header": header, "sequence_sha256": digest.hexdigest(), "length": length, "alphabet": alphabet}
+
+
+def fasta_headers(path: Path) -> list[str]:
+    with path.open(encoding="ascii") as handle:
+        return [line[1:].strip() for line in handle if line.startswith(">")]
+
+
+def artifact_tree_bytes(root: Path) -> int:
+    if not root.exists():
+        return 0
+    return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+
+
+def check_phase2_history() -> None:
+    commit = commit_with_subject(PHASE2_COMMIT_MESSAGE)
+    require(git("rev-parse", f"{commit}^") == PHASE2_FREEZE_PARENT, "Phase 2 historical parent drift")
+    check_phase2_precommit_receipt(commit)
+    state = load_json_from_commit(
+        commit, "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json"
+    )
+    validate_schema(state, load_json(SCHEMA))
+    validate_state_transitions(state)
+    require(state["active_phase"] == 3 and state["last_completed_phase"] == 2, "Phase 2 historical state drift")
+    require(state["software_epoch"] == "submission_rc_v2_2", "Phase 2 historical epoch drift")
+    for relative in PHASE2_FROZEN_EVIDENCE_PATHS:
+        require(
+            (ROOT / relative).read_bytes() == git_bytes("show", f"{commit}:{relative}"),
+            f"Phase 2 frozen evidence was rewritten: {relative}",
+        )
+    check_phase1_history()
+
+
+def check_phase3_start_receipt() -> None:
+    receipt = load_json(PAPER / "phase_3_start_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 3, "Phase 3 start receipt drift")
+    require(receipt["phase_2_transition_commit"] == PHASE3_FREEZE_PARENT, "Phase 3 start/Phase 2 binding drift")
+    require(receipt["freeze_parent_head"] == PHASE3_FREEZE_PARENT, "Phase 3 freeze parent drift")
+    require(receipt["phase_start_tree_was_clean"] is True, "Phase 3 did not start cleanly")
+    require(receipt["previous_phase_postcommit_check_result"] == "pass", "Phase 2 audit was not preserved")
+    require(receipt["receipt_created_at_freeze"] is True, "Phase 3 receipt timing disclosure missing")
+
+
+def check_phase3_precommit_receipt(commit: str | None) -> None:
+    relative = "paper/bioinformatics_submission_readiness_v2/phase_3_precommit_receipt.json"
+    receipt = load_json(PAPER / "phase_3_precommit_receipt.json") if commit is None else load_json_from_commit(commit, relative)
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 3, "Phase 3 precommit receipt drift")
+    require(receipt["phase_start_parent_head"] == PHASE3_FREEZE_PARENT, "Phase 3 precommit parent drift")
+    require(receipt["planned_commit_message"] == PHASE3_COMMIT_MESSAGE, "Phase 3 commit message drift")
+    require(receipt["expected_changed_paths"] == list(PHASE3_PATHS), "Phase 3 path inventory drift")
+    expected_evidence = set(PHASE3_PATHS) - {relative}
+    require(set(receipt["schema_evidence_sha256"]) == expected_evidence, "Phase 3 evidence inventory drift")
+    for path, expected in receipt["schema_evidence_sha256"].items():
+        require(sha256_bytes(file_bytes(path, commit)) == expected, f"Phase 3 evidence digest drift: {path}")
+    require("commit_sha" not in receipt and "phase_commit" not in receipt, "Phase 3 receipt claims future commit")
+
+
+def check_phase3_artifact_manifest() -> None:
+    manifest = load_json(PAPER / "phase_3_artifact_manifest.json")
+    require(manifest["schema_version"] == 1 and manifest["phase"] == 3, "Phase 3 artifact manifest drift")
+    require(manifest["formal_claim_evidence"] is False and manifest["prediction_executed"] is False, "Phase 3 input artifacts were promoted")
+    require(manifest["phase3_artifact_count"] == 27, "Phase 3 artifact count drift")
+    expected_roles = {
+        "frozen_formal_query": 10,
+        "frozen_formal_target": 10,
+        "frozen_label_blind_external_target": 5,
+        "input_only_generation_receipt": 1,
+        "external_input_only_generation_receipt": 1,
+    }
+    observed_roles = {role: 0 for role in expected_roles}
+    observed_paths: set[str] = set()
+    for item in manifest["artifacts"]:
+        relative = item["relative_path"]
+        require(relative not in observed_paths, "duplicate Phase 3 artifact path")
+        observed_paths.add(relative)
+        require(item["role"] in observed_roles, f"unknown Phase 3 artifact role: {item['role']}")
+        observed_roles[item["role"]] += 1
+        path = artifact_path(relative)
+        require(path.is_file() and not path.is_symlink(), f"missing or unsafe Phase 3 artifact: {relative}")
+        require(path.stat().st_size == item["size_bytes"], f"Phase 3 artifact size drift: {relative}")
+        require(sha256_file(path) == item["sha256"], f"Phase 3 artifact digest drift: {relative}")
+    require(observed_roles == expected_roles, "Phase 3 artifact role inventory drift")
+    phase3_root = ARTIFACT_ROOT / "phase3"
+    current_paths = {
+        path.relative_to(ARTIFACT_ROOT).as_posix()
+        for path in phase3_root.rglob("*")
+        if path.is_file()
+    }
+    require(current_paths == observed_paths, "unmanifested Phase 3 artifact exists")
+    total = artifact_tree_bytes(ARTIFACT_ROOT)
+    require(total == manifest["bytes_at_phase3_freeze"], "Phase 3 artifact-byte baseline drift")
+    require(total <= manifest["quota_bytes"] == 68_719_476_736, "Phase 3 artifact quota drift")
+
+
+def check_phase3_inputs() -> list[dict[str, str]]:
+    rows = load_tsv(PAPER / "phase_3_input_manifest.tsv")
+    require(len(rows) == 10, "Phase 3 workload count drift")
+    require([row["workload_id"] for row in rows] == [f"v2p4_w{index:03d}" for index in range(1, 11)], "Phase 3 workload IDs drift")
+    prepare = load_local_module(
+        "v2_phase3_prepare_checker",
+        "reproduce/bioinformatics_submission_readiness_v2/prepare_phase3_inputs.py",
+    )
+    excluded, source_counts = prepare.collect_excluded_digests()
+    exclusion = load_json(PAPER / "phase_3_exclusion_digest_receipt.json")
+    exclusion_digest = sha256_bytes(("\n".join(sorted(excluded)) + "\n").encode("ascii"))
+    require(len(excluded) == exclusion["excluded_digest_count"] == 1478, "Phase 3 exclusion count drift")
+    require(exclusion_digest == exclusion["excluded_digest_set_sha256"], "Phase 3 exclusion snapshot drift")
+    require(source_counts == exclusion["source_counts"], "Phase 3 exclusion source-count drift")
+    require(exclusion["performance_or_prediction_outputs_inspected_for_selection"] is False, "Phase 3 selection inspected outcomes")
+
+    selected: set[str] = set()
+    source_bindings: dict[str, str] = {}
+    for index, row in enumerate(rows, 1):
+        require(row["selection_seed"] == "bioinformatics_submission_readiness_v2_phase3_inputs_20260731", "Phase 3 input seed drift")
+        require(row["assembly"] == "GRCh38" and row["target_coordinate_namespace"] == "GRCh38_0_based_half_open", "Phase 3 coordinate identity drift")
+        require(row["chromosome"] == f"chr{index}" and row["target_source_ordinal"] == f"chr{index}", "Phase 3 chromosome inventory drift")
+        require(row["fresh_against_exclusion_snapshot"] == "1", "Phase 3 input is not marked fresh")
+        query = single_fasta_identity(ROOT / row["query_path"])
+        target = single_fasta_identity(ROOT / row["target_path"])
+        require(query["header"] == row["query_header"] and target["header"] == row["target_header"], "Phase 3 FASTA header drift")
+        require(query["length"] == int(row["query_sequence_length"]) and 450 <= query["length"] <= 750, "Phase 3 query length drift")
+        require(target["length"] == int(row["target_sequence_length"]) == 20_000_001, "Phase 3 target length drift")
+        require(query["sequence_sha256"] == row["query_sequence_sha256"], "Phase 3 query sequence digest drift")
+        require(target["sequence_sha256"] == row["target_sequence_sha256"], "Phase 3 target sequence digest drift")
+        require(query["alphabet"] <= set("ACGT") and target["alphabet"] <= set("ACGT"), "Phase 3 input alphabet drift")
+        require(int(row["target_region_end0"]) - int(row["target_region_start0"]) == 20_000_001, "Phase 3 target interval drift")
+        for digest in (row["query_sequence_sha256"], row["target_sequence_sha256"]):
+            require(digest not in excluded and digest not in selected, "Phase 3 selected digest is not fresh and unique")
+            selected.add(digest)
+        source_bindings[row["query_source_path"]] = row["query_source_sha256"]
+        source_bindings[row["target_source_path"]] = row["target_source_sha256"]
+    require(len(selected) == 20, "Phase 3 selected sequence inventory drift")
+    for relative, expected in source_bindings.items():
+        path = ROOT / relative
+        require(path.is_file() and sha256_file(path) == expected, f"Phase 3 source binding drift: {relative}")
+    generation = load_json(artifact_path("phase3/input-generation-receipt.json"))
+    require(generation["input_only"] is True and generation["prediction_executed"] is False, "Phase 3 generation was not input-only")
+    require(generation["manifest_sha256"] == sha256_file(PAPER / "phase_3_input_manifest.tsv"), "Phase 3 generation/manifest binding drift")
+    require(generation["exclusion_receipt_sha256"] == sha256_file(PAPER / "phase_3_exclusion_digest_receipt.json"), "Phase 3 generation/exclusion binding drift")
+    return rows
+
+
+def check_phase3_attempts(inputs: list[dict[str, str]]) -> None:
+    attempts = load_tsv(PAPER / "phase_3_attempt_manifest.tsv")
+    builder = load_local_module(
+        "v2_phase3_attempt_checker",
+        "reproduce/bioinformatics_submission_readiness_v2/build_phase3_attempt_manifest.py",
+    )
+    require(attempts == builder.build_rows(inputs), "Phase 3 attempt manifest is not the deterministic frozen schedule")
+    require(len(attempts) == 100 and len({row["attempt_id"] for row in attempts}) == 100, "Phase 3 attempt denominator drift")
+    require(all(row["formal_status"] == "preregistered_not_run" for row in attempts), "Phase 3 attempt outcomes were edited")
+    pairs: dict[str, list[dict[str, str]]] = {}
+    for row in attempts:
+        pairs.setdefault(row["pair_id"], []).append(row)
+    require(len(pairs) == 50 and all({row["arm"] for row in pair} == {"A", "G"} for pair in pairs.values()), "Phase 3 pair inventory drift")
+    require(sum(pair[0]["arm_order"] == "AG" for pair in pairs.values()) == 25, "Phase 3 arm-order balance drift")
+
+
+def check_phase3_performance_plan() -> None:
+    plan = load_json(PAPER / "phase_3_performance_plan.json")
+    require(plan["schema_version"] == 1 and plan["phase"] == 3, "Phase 3 performance plan drift")
+    require(plan["software_epoch"] == "submission_rc_v2_2", "Phase 3 plan epoch drift")
+    require(plan["primary_estimand"]["name"] == "validated_24_hour_capacity_ratio", "Phase 3 primary estimand drift")
+    gate = plan["primary_gate"]
+    require(gate["capacity_ratio_lcb_minimum"] == 10 and gate["point_estimate_consistency_minimum"] == 10, "Phase 3 capacity threshold drift")
+    require(gate["point_estimate_is_second_independent_gate"] is False, "Phase 3 added a second inferential gate")
+    estimator = plan["capacity_estimator"]
+    require(estimator["outer_resampling_unit"] == "paired workload", "Phase 3 outer bootstrap unit drift")
+    require(estimator["inner_resampling_unit"] == "paired repeat index within sampled workload", "Phase 3 inner bootstrap unit drift")
+    require(estimator["scheduler_replayed_per_bootstrap_replicate"] is True, "Phase 3 bootstrap does not replay scheduling")
+    require(estimator["bootstrap_replicates"] == 100_000 and estimator["bootstrap_seed"] == 2026073103, "Phase 3 bootstrap identity drift")
+    require(estimator["authority_workers"] == estimator["gpu_workers"] == 1, "Phase 3 worker allocation drift")
+    budgets = plan["budgets"]
+    require(budgets == {
+        "formal_arm_attempts": 100,
+        "formal_pair_rows": 50,
+        "per_attempt_timeout_seconds": 1800,
+        "phase4_max_new_artifact_bytes": 12_884_901_888,
+        "phase4_wall_seconds": 43_200,
+        "total_v2_artifact_bytes": 68_719_476_736,
+    }, "Phase 3 budget drift")
+    require(plan["failure_denominator"]["planned_pair_rows"] == 50, "Phase 3 failure denominator drift")
+    require(plan["failure_denominator"]["failed_row_deletion"] == "forbidden", "Phase 3 permits failed-row deletion")
+    require(plan["formal_execution_authorized_after_phase3_commit"] is True, "Phase 4 was not bound to Phase 3 commit")
+
+
+def check_phase3_external_plan() -> None:
+    rows = load_tsv(PAPER / "phase_3_external_attempt_manifest.tsv")
+    require(len(rows) == 10, "Phase 3 external attempt count drift")
+    require({row["tool_role"] for row in rows} == {"primary_current_executable", "legacy_executable"}, "Phase 3 external tool roles drift")
+    source_rows = load_tsv(ROOT / "paper/biological_topk_successor/experimental_benchmark_manifest.tsv")
+    source_by_dataset: dict[str, list[dict[str, str]]] = {}
+    for row in source_rows:
+        source_by_dataset.setdefault(row["dataset_id"], []).append(row)
+    by_dataset: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        by_dataset.setdefault(row["dataset_id"], []).append(row)
+    require(set(by_dataset) == set(source_by_dataset) and len(by_dataset) == 5, "Phase 3 external dataset inventory drift")
+    for dataset_id, attempts in by_dataset.items():
+        require(len(attempts) == 2 and {row["tool"] for row in attempts} == {"PATO_1.0.6", "Triplexator_v1.3.3"}, f"external tool inventory drift: {dataset_id}")
+        source = sorted(source_by_dataset[dataset_id], key=lambda row: int(row["fasta_order"]))
+        require(len(source) == 1000 and [int(row["fasta_order"]) for row in source] == list(range(1, 1001)), f"external source order drift: {dataset_id}")
+        target = ROOT / attempts[0]["target_path"]
+        require(fasta_headers(target) == [row["region_id"] for row in source], f"external region mapping drift: {dataset_id}")
+        for attempt in attempts:
+            require(attempt["target_path"] == attempts[0]["target_path"] and sha256_file(target) == attempt["target_fasta_sha256"], f"external target digest drift: {dataset_id}")
+            require(attempt["region_count"] == "1000" and attempt["labels_visible_to_backend"] == "0", f"external label-blind contract drift: {dataset_id}")
+            require(attempt["region_score_mapping"] == "max Total (rel) by # Duplex-ID (region_id); absent region score=0", f"external score mapping drift: {dataset_id}")
+            require(attempt["formal_status"] == "preregistered_not_run", f"external outcome was edited: {dataset_id}")
+            query = single_fasta_identity(ROOT / attempt["query_path"])
+            require(sha256_file(ROOT / attempt["query_path"]) == attempt["query_fasta_sha256"], f"external query file drift: {dataset_id}")
+            require(query["sequence_sha256"] == attempt["query_sequence_sha256"], f"external query sequence drift: {dataset_id}")
+    receipt = load_json(artifact_path("phase3/external-input-generation-receipt.json"))
+    require(receipt["input_only"] is True and receipt["prediction_executed"] is False, "external inputs were not frozen input-only")
+    require(receipt["source_manifest_sha256"] == sha256_file(ROOT / receipt["source_manifest"]), "external source manifest binding drift")
+    plan = load_json(PAPER / "phase_3_external_plan.json")
+    require(plan["authorization"] == "Execute only if Phase 4 decision is performance_pass.", "external execution authorized prematurely")
+    require(plan["parameter_tuning_after_phase3"] is False, "external plan permits post-freeze tuning")
+    require(plan["input_mapping"]["region_count_per_dataset"] == 1000, "external plan region denominator drift")
+
+
+def check_phase3_execution_binding() -> None:
+    binding = load_json(PAPER / "phase_3_execution_binding.json")
+    require(binding["schema_version"] == 1 and binding["phase"] == 3, "Phase 3 execution binding drift")
+    require(binding["prediction_executed_before_binding"] is False, "prediction preceded Phase 3 binding")
+    require(binding["software_epoch"] == "submission_rc_v2_2", "Phase 3 binding epoch drift")
+    require(binding["container_image_digest"] == "sha256:f04340aa1b77092c25eee50c84144adb08e6f1b48a34580f6f9c33aff3163ca7", "Phase 3 image binding drift")
+    require(binding["candidate_binary_sha256"] == "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9", "Phase 3 candidate binding drift")
+    require(binding["authority_binary_sha256"] == "75c59f80ee329fe913edce71ea8a0ec1a63620a978b15d3673f636d62268822e", "Phase 3 authority binding drift")
+    files = binding["execution_file_sha256"]
+    require(set(files) == set(PHASE3_EXECUTION_PATHS) and len(files) == 23, "Phase 3 execution-file inventory drift")
+    for relative, expected in files.items():
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing or unsafe Phase 3 execution file: {relative}")
+        require(sha256_file(path) == expected, f"Phase 3 execution file drift: {relative}")
+
+
+def check_phase3_hardware() -> None:
+    receipt = load_json(PAPER / "phase_3_hardware_receipt.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 3, "Phase 3 hardware receipt drift")
+    require(receipt["formal_gpu_index"] == 0 and receipt["formal_gpu_uuid"] == "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3", "formal GPU identity drift")
+    require(receipt["unused_gpu_index"] == 1 and len(receipt["gpus"]) == 2, "formal GPU allocation drift")
+    require(receipt["cpu"]["logical_cpu_count"] == 20 and receipt["cpu"]["physical_core_count"] == 10, "formal CPU topology drift")
+    require(receipt["runner_mount_smoke"]["backend_executed"] is False and receipt["runner_mount_smoke"]["exit_code"] == 0, "Phase 3 mount smoke drift")
+
+
+def run_phase3_tests() -> None:
+    for relative in (
+        "tests/bioinformatics_submission_readiness_v2/test_capacity.py",
+        "tests/bioinformatics_submission_readiness_v2/test_phase3.py",
+    ):
+        run((sys.executable, relative))
+    for relative in (
+        "reproduce/bioinformatics_submission_readiness_v2/analyze_phase4.py",
+        "reproduce/bioinformatics_submission_readiness_v2/build_phase3_attempt_manifest.py",
+        "reproduce/bioinformatics_submission_readiness_v2/freeze_phase3_artifact_manifest.py",
+        "reproduce/bioinformatics_submission_readiness_v2/freeze_phase3_execution_binding.py",
+        "reproduce/bioinformatics_submission_readiness_v2/prepare_phase3_external_inputs.py",
+        "reproduce/bioinformatics_submission_readiness_v2/prepare_phase3_inputs.py",
+        "reproduce/bioinformatics_submission_readiness_v2/run_phase4.py",
+    ):
+        run((sys.executable, "-m", "py_compile", relative))
+
+
+def check_phase3(mode: str) -> None:
+    status_before = changed_paths()
+    if mode == "precommit":
+        require(git("rev-parse", "HEAD") == PHASE3_FREEZE_PARENT, "Phase 3 precommit parent drift")
+        require(status_before == set(PHASE3_PATHS), "Phase 3 changed paths differ from allowlist")
+        allowlist = tuple((PAPER / "phase_3_change_allowlist.txt").read_text(encoding="utf-8").splitlines())
+        require(allowlist == PHASE3_PATHS, "Phase 3 allowlist drift")
+        check_phase3_precommit_receipt(None)
+    else:
+        require(not status_before, "Phase 3 postcommit requires a clean tree")
+        commit = commit_with_subject(PHASE3_COMMIT_MESSAGE)
+        require(git("rev-parse", f"{commit}^") == PHASE3_FREEZE_PARENT, "Phase 3 commit parent drift")
+        check_phase3_precommit_receipt(commit)
+    state = validate_program_state()
+    require(state["phase_status"] == {"0": "pass", "1": "pass", "2": "pass", "3": "pass", "4": "active", "5": "pending", "6": "pending", "7": "pending"}, "Phase 3 state drift")
+    require(state["active_phase"] == 4 and state["last_completed_phase"] == 3, "Phase 3 transition drift")
+    require(state["software_epoch"] == "submission_rc_v2_2", "Phase 3 software epoch drift")
+    require(state["product_status"] == "experimental" and state["validation_status"] == "pending", "Phase 3 product prematurely validated")
+    require(state["target_claim_status"] == "pending_final_rc_performance_validation", "Phase 3 claim prematurely promoted")
+    require(not state["external_comparison_authorized"] and not state["release_packaging_authorized"] and not state["submission_drafting_authorized"], "Phase 3 granted downstream authorization")
+    require(not (ARTIFACT_ROOT / "phase4").exists(), "Phase 4 artifact exists before Phase 3 freeze")
+    check_phase2_history()
+    check_phase2_runtime()
+    check_phase2_artifact_manifest()
+    check_phase3_start_receipt()
+    check_phase3_artifact_manifest()
+    inputs = check_phase3_inputs()
+    check_phase3_attempts(inputs)
+    check_phase3_performance_plan()
+    check_phase3_external_plan()
+    check_phase3_hardware()
+    check_phase3_execution_binding()
+    check_legacy_boundary()
+    run_phase3_tests()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(8), required=True)
@@ -890,6 +1289,8 @@ def main() -> int:
             check_phase1(args.mode)
         elif args.phase == 2:
             check_phase2(args.mode)
+        elif args.phase == 3:
+            check_phase3(args.mode)
         else:
             raise CheckError("checker for requested phase is not implemented yet")
         print(f"Bioinformatics submission readiness v2 Phase {args.phase} {args.mode} checks OK")

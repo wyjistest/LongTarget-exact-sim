@@ -1,0 +1,173 @@
+{
+  "artifacts": [
+    {
+      "relative_path": "phase3/external-frozen-inputs/bte_hotair_gse31332/target-regions.fa",
+      "role": "frozen_label_blind_external_target",
+      "sha256": "61215786877d9a17fd370575718f1328bfaa7d662a63a00e7ebb7df388913f0c",
+      "size_bytes": 4179000
+    },
+    {
+      "relative_path": "phase3/external-frozen-inputs/bte_hottip_gse114981/target-regions.fa",
+      "role": "frozen_label_blind_external_target",
+      "sha256": "f84d547de4be60474dd193c33114ccb396fd088704e4ca3be308fe6b9ffd64e2",
+      "size_bytes": 4179000
+    },
+    {
+      "relative_path": "phase3/external-frozen-inputs/bte_linc01116_gse227804/target-regions.fa",
+      "role": "frozen_label_blind_external_target",
+      "sha256": "89228e12e382aa0ac958171be8eb85a9f5db6128773ed17c7cfee153455ec2c0",
+      "size_bytes": 4179000
+    },
+    {
+      "relative_path": "phase3/external-frozen-inputs/bte_pcgem1_gse47804/target-regions.fa",
+      "role": "frozen_label_blind_external_target",
+      "sha256": "8dfa107718d22d1c9653e3a2b7d89123ede62788516d9f674bde42803943636c",
+      "size_bytes": 4179000
+    },
+    {
+      "relative_path": "phase3/external-frozen-inputs/bte_sra_gse58641/target-regions.fa",
+      "role": "frozen_label_blind_external_target",
+      "sha256": "20567d4459de43693be2f2e1df74ed3c5da9c34d45bf0773e103381425c81c8f",
+      "size_bytes": 4179000
+    },
+    {
+      "relative_path": "phase3/external-input-generation-receipt.json",
+      "role": "external_input_only_generation_receipt",
+      "sha256": "40796940d94292266b5f0f7da0deded8605fa8b0ad7d5886628112c9aa24c486",
+      "size_bytes": 3809
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w001/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "5f8e32ff248b3d3e1ea95e7d0860cd22b659c5cb3144126ffd9f7220be541766",
+      "size_bytes": 717
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w001/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "9a8c4b8675abba0f2c67201750f2ec5b6b34921dd942d77c16dedce72d8f6b98",
+      "size_bytes": 20250062
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w002/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "00db6e9d56a4f1a34b9fca785f6904cf67de2701ef44af1506bb1ea715348c20",
+      "size_bytes": 657
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w002/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "2cc34652d6dd4868a4836f4d41a1b5ae863ccf30e60bc56ffa78a4be463cca5b",
+      "size_bytes": 20250062
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w003/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "d5e539c8805da92caad6a4f8afe65b33c8ec0e747466c1c749fba088c5a1b616",
+      "size_bytes": 550
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w003/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "7a23e224064bcf54b412c8dea102c268bf7a61202158177640d121cbdd21bcff",
+      "size_bytes": 20250060
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w004/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "1e44157db599eaf3c32c8dd2573c164626b7c9667a87c276cb19e9a4b7c7947d",
+      "size_bytes": 769
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w004/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "66b81950dbeb7347d46e0de6b5c2d433f39084320471d75aec93e937a507a8ae",
+      "size_bytes": 20250062
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w005/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "8df81ce8b67810553cc58780168b73c1a4a9c01083839d260bdc14fb8b5df925",
+      "size_bytes": 687
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w005/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "efc4680d03e5617dbca686685f71d5c5043240baa546a4e4bd148c96c7fd4cb4",
+      "size_bytes": 20250062
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w006/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "1196533ff680102c404e097c350263286c3b86a0442b005b87f882e4bde81f38",
+      "size_bytes": 724
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w006/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "23a7f452671968d4d7520c33bcb2b0cae66c9301fb9b8551f66721619d131d63",
+      "size_bytes": 20250062
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w007/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "2115432f69edf2184e7c54806febba569b09355496532f2f985a62e6c9d27deb",
+      "size_bytes": 608
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w007/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "a64726dcfae06e8aec4080d9b169ba6758e8458543a9cd9f8c63a817e52d94bf",
+      "size_bytes": 20250060
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w008/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "a5e5c68ac76a6a33dd36cbd7d545e8519f72cc979ffcadbb80c10024099e2cc0",
+      "size_bytes": 621
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w008/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "9c058444f86b8f6aa1f86822eeee0897312edc105b2871261b203e98c1b920ef",
+      "size_bytes": 20250060
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w009/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "36d4121ce508a9f4d114449aa943baac96c3b33d99bbc93692865c27ca525342",
+      "size_bytes": 668
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w009/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "e5136eb1e598aaf383ab75225d3eff34becec2a62c126563e4451a2e449adf9b",
+      "size_bytes": 20250060
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w010/query.fa",
+      "role": "frozen_formal_query",
+      "sha256": "88305f54d6ca35bb9872de922e55866fa5b5d369e0126e0129873e8cd954e6a7",
+      "size_bytes": 615
+    },
+    {
+      "relative_path": "phase3/frozen-inputs/v2p4_w010/target.fa",
+      "role": "frozen_formal_target",
+      "sha256": "efd5dac374bead647eaccf90a1ea9bcdd842feca76c377fd434d3e62fa3fff8d",
+      "size_bytes": 20250062
+    },
+    {
+      "relative_path": "phase3/input-generation-receipt.json",
+      "role": "input_only_generation_receipt",
+      "sha256": "8189fd68465aaa0acbf62b54cd47fc73d66cf6bd077d2ff33fe09f1419bf90e8",
+      "size_bytes": 4480
+    }
+  ],
+  "bytes_at_phase3_freeze": 1588231439,
+  "formal_claim_evidence": false,
+  "phase": 3,
+  "phase3_artifact_count": 27,
+  "prediction_executed": false,
+  "quota_bytes": 68719476736,
+  "schema_version": 1
+}

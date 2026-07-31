@@ -1,5 +1,5 @@
 {
-  "active_phase": 3,
+  "active_phase": 4,
   "artifact_role": "frozen_release_candidate_under_test",
   "baseline_commit": "739ee0a8db01f77143a5c993e6c68a56a772502b",
   "current_legacy_bioinformatics_route": "closed_biological_utility_gap",
@@ -7,15 +7,15 @@
   "execution_mode": "gpu-screen",
   "external_comparison_authorized": false,
   "fixed_v2_artifact_storage_bytes": 68719476736,
-  "last_completed_phase": 2,
-  "last_decision": "phase_2_development_harness_frozen",
+  "last_completed_phase": 3,
+  "last_decision": "phase_3_performance_plan_frozen",
   "output_schema": "gasal2_candidate_sites_tsv_v1",
   "phase_status": {
     "0": "pass",
     "1": "pass",
     "2": "pass",
-    "3": "active",
-    "4": "pending",
+    "3": "pass",
+    "4": "active",
     "5": "pending",
     "6": "pending",
     "7": "pending"

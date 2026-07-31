@@ -1,0 +1,16 @@
+{
+  "excluded_digest_count": 1478,
+  "excluded_digest_set_sha256": "097efd68c9ba76a69b07099a696fe3dedbb3bd007eb2d70b87b0e355254a568b",
+  "exclusion_scope": "all discoverable historical and development query/target FASTA inputs plus structured sequence digests; the Phase 3 output root is excluded",
+  "performance_or_prediction_outputs_inspected_for_selection": false,
+  "phase": 3,
+  "schema_version": 1,
+  "selected_query_digests_fresh": true,
+  "selected_target_digests_fresh": true,
+  "selection_seed": "bioinformatics_submission_readiness_v2_phase3_inputs_20260731",
+  "source_counts": {
+    "artifact_fasta_files": 1831,
+    "tracked_fasta_files": 732,
+    "tracked_structured_records": 9120
+  }
+}
