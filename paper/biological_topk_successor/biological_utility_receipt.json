@@ -1,0 +1,35 @@
+{
+  "attempt_plan_sha256": "4bf32d5281d46f5c517c213ab0bee246ccb811118eef2e69b161d0ba370442e9",
+  "bootstrap": {
+    "index_stream_sha256": "6314c9a32dfdbe7ce5857447be68f46ee58ef67d2591515cc792887aaf5b4a0a",
+    "nested_block": "chromosome",
+    "outer_unit": "distinct_lncRNA",
+    "paired_A_G_at_every_level": true,
+    "replicates": 10000,
+    "seed": 20260816,
+    "shared_resample_index_for_all_endpoints": true,
+    "zero_precision_resample_rule": "negative_infinity_E4_no_pseudocount_or_replacement"
+  },
+  "comparison_started_only_after_all_attempts_terminal": true,
+  "distinct_lncRNA_outer_units": 5,
+  "infrastructure_repair_epochs_used": 0,
+  "labels_unsealed_only_by_offline_analyzer": true,
+  "manifest_sha256": "d26b8bf8fee8ff05d40898b1e8ee100143f623c32e4b58026e92630432a46d38",
+  "phase": 6,
+  "planned_attempts": 15,
+  "primary_technical_failures": 0,
+  "run_summary_sha256": "a63a2ccd9bec8b294894a32058bfef007650379af84e90f3e89611bb04466d6e",
+  "schema_version": 1,
+  "scientific_retries_or_replacements": 0,
+  "source_data_sha256": {
+    "paper/biological_topk_successor/source_data/experimental_bootstrap.tsv": "cc5c9b7bf9bda0d96ae6a8fbb28f14e38ead67c5daa7d5c03bb56f75fda60108",
+    "paper/biological_topk_successor/source_data/experimental_failure_ledger.tsv": "ef8eac429c75f69a323adc29d4a5ff3841494c3e4d53a8bfdbda3777ab052b01",
+    "paper/biological_topk_successor/source_data/experimental_metrics.tsv": "ec4155c9ab7cd38d9f7881d33a581557573f795e898c75fb201c227c4e65b75e",
+    "paper/biological_topk_successor/source_data/experimental_region_scores.tsv": "77d6c126b0ee26b24f75a5e5d843f5f835f22e8de1b8605282a83ac7beee6a26"
+  },
+  "source_phase5_plan_sha256": "6e42d2502bb12b3eb1d34382cfe8523fe3413d6b11fc332b4647fa63e73b4943",
+  "status": "complete",
+  "successful_attempts": 10,
+  "technical_failures": 5,
+  "terminal_attempts": 15
+}

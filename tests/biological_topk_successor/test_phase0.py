@@ -103,8 +103,7 @@ class SuccessorPhase0Tests(unittest.TestCase):
             all(row["frozen_at_commit"] == CHECKER.PREDECESSOR_COMMIT for row in rows)
         )
 
-    def test_phase0_created_no_successor_runtime_root(self) -> None:
-        self.assertFalse((ROOT / ".paper-artifacts/biological-topk-successor").exists())
+    def test_phase0_receipt_records_no_runtime_root_at_its_boundary(self) -> None:
         epoch = json.loads(
             (ROOT / "paper/biological_topk_successor/epoch_receipt.json").read_text(
                 encoding="utf-8"

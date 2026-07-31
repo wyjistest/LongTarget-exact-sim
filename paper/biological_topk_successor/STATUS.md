@@ -5,17 +5,20 @@ epoch_id = biological_topk_successor_v2
 predecessor_commit = 7fae3de6b13780d7cc0776038489cf2f22072339
 predecessor_decision = blocked_fixed_budget
 fixed_total_artifact_storage_bytes = 68719476736
-active_phase = 6
+active_phase = null
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
 phase_3_status = pass
 phase_4_status = pass
 phase_5_status = pass
-phase_6_status = pending
-contract_status = fresh_concordance_pass
+phase_6_status = no_go
+phase_7_status = not_authorized_previous_no_go
+phase_8_status = not_authorized_previous_no_go
+phase_9_status = not_authorized_previous_no_go
+contract_status = biological_utility_no_go
 gpu_screen_status = experimental
-bioinformatics_route = conditionally_reopened
+bioinformatics_route = closed_biological_utility_gap
 ```
 
 The owner authorized a separate 64 GiB successor epoch after the predecessor
@@ -163,3 +166,47 @@ the input availability definition, so no cross-assay generality claim is
 supported. Product status remains `experimental`; no evaluation prediction has
 run, and Phase 6 may start only after the Phase 5 commit passes its read-only
 post-commit check.
+
+Phase 6 ran at parent commit `dc2271b` under the 15 frozen A/G/X attempts,
+96 GPU-hours, 96 CPU wall-hours, one infrastructure repair epoch, and the
+unchanged 64 GiB total artifact quota. Prediction backends received only their
+query, target, and executable inside the isolated sandbox. Labels remained
+sealed until all 15 attempt receipts were terminal.
+
+## Phase 6 Evidence
+
+```text
+decision = no_go
+planned_attempts = 15
+terminal_attempts = 15
+successful_primary_attempts = 10/10
+primary_technical_failures = 0
+external_technical_failures = 5/5
+scientific_retries_or_replacements = 0
+E1_LCB_GPU_minus_CPU_AUCPR = -0.00016433297083244259
+E1_pass = true
+E2_LCB_GPU_minus_CPU_recall_at_P = 0
+E2_pass = true
+E3_LCB_GPU_AUCPR_minus_prevalence = 0.0083898682678954888
+E3_pass = true
+E4_LCB_log_GPU_top_P_enrichment = -0.024581674369296539
+E4_pass = false
+biological_utility_pass = false
+gpu_backend_hours = 0.28682696827055554
+cpu_and_external_backend_wall_hours = 0.4085622015505555
+scheduled_epoch_elapsed_wall_seconds = 3004.548254
+actual_total_artifact_storage_bytes_with_tracked_reservation = 21880213804
+artifact_storage_margin_bytes = 46839262932
+fixed_budget_gates = pass
+```
+
+All ten primary A/G attempts completed successfully and the non-inferiority
+endpoints E1-E2 plus absolute AUCPR endpoint E3 passed. E4 failed its frozen
+strict-positive one-sided lower-bound requirement, so the intersection-union
+gate is a scientific no-go even though its point estimate was positive. All
+five external Triplexator attempts were retained as terminal failures after
+the frozen absolute output path prevented creation of Triplexator temporary
+summary files; they were non-comparable and unused in primary inference. No
+retry or replacement occurred. Phase 7-9 are not authorized, product status
+remains `experimental`, and the bioinformatics route is closed for this
+biological-utility gap.

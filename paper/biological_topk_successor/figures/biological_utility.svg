@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520">
+<rect width="960" height="520" fill="#ffffff"/>
+<text x="90" y="36" font-family="sans-serif" font-size="22" fill="#171717">Independent biological utility by lncRNA</text>
+<text x="90" y="60" font-family="sans-serif" font-size="13" fill="#525252">AUCPR versus prevalence; Phase 6 intersection-union decision</text>
+<line x1="90" y1="380.00" x2="880" y2="380.00" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="384.00" text-anchor="end" font-family="sans-serif" font-size="11" fill="#525252">0.00</text>
+<line x1="90" y1="305.00" x2="880" y2="305.00" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="309.00" text-anchor="end" font-family="sans-serif" font-size="11" fill="#525252">0.04</text>
+<line x1="90" y1="230.00" x2="880" y2="230.00" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="234.00" text-anchor="end" font-family="sans-serif" font-size="11" fill="#525252">0.08</text>
+<line x1="90" y1="155.00" x2="880" y2="155.00" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="159.00" text-anchor="end" font-family="sans-serif" font-size="11" fill="#525252">0.12</text>
+<line x1="90" y1="80.00" x2="880" y2="80.00" stroke="#e5e5e5" stroke-width="1"/>
+<text x="78" y="84.00" text-anchor="end" font-family="sans-serif" font-size="11" fill="#525252">0.16</text>
+<rect x="134.00" y="191.33" width="20" height="188.67" fill="#737373"/>
+<rect x="159.00" y="191.33" width="20" height="188.67" fill="#15803d"/>
+<rect x="184.00" y="192.50" width="20" height="187.50" fill="#b91c1c"/>
+<text x="169.00" y="404" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#262626">HOTAIR</text>
+<rect x="292.00" y="151.72" width="20" height="228.28" fill="#737373"/>
+<rect x="317.00" y="151.72" width="20" height="228.28" fill="#15803d"/>
+<rect x="342.00" y="192.50" width="20" height="187.50" fill="#b91c1c"/>
+<text x="327.00" y="404" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#262626">HOTTIP</text>
+<rect x="450.00" y="129.80" width="20" height="250.20" fill="#737373"/>
+<rect x="475.00" y="130.24" width="20" height="249.76" fill="#15803d"/>
+<rect x="500.00" y="192.50" width="20" height="187.50" fill="#b91c1c"/>
+<text x="485.00" y="404" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#262626">LINC01116</text>
+<rect x="608.00" y="163.49" width="20" height="216.51" fill="#737373"/>
+<rect x="633.00" y="163.49" width="20" height="216.51" fill="#15803d"/>
+<rect x="658.00" y="192.50" width="20" height="187.50" fill="#b91c1c"/>
+<text x="643.00" y="404" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#262626">PCGEM1</text>
+<rect x="766.00" y="148.01" width="20" height="231.99" fill="#737373"/>
+<rect x="791.00" y="148.01" width="20" height="231.99" fill="#15803d"/>
+<rect x="816.00" y="192.50" width="20" height="187.50" fill="#b91c1c"/>
+<text x="801.00" y="404" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#262626">SRA</text>
+<rect x="90" y="440" width="12" height="12" fill="#737373"/><text x="110" y="451" font-family="sans-serif" font-size="12" fill="#262626">CPU AUCPR</text>
+<rect x="210" y="440" width="12" height="12" fill="#15803d"/><text x="230" y="451" font-family="sans-serif" font-size="12" fill="#262626">GPU AUCPR</text>
+<rect x="330" y="440" width="12" height="12" fill="#b91c1c"/><text x="350" y="451" font-family="sans-serif" font-size="12" fill="#262626">Prevalence</text>
+<text x="90" y="490" font-family="sans-serif" font-size="13" fill="#171717">E1 pass | E2 pass | E3 pass | E4 fail (LCB -0.024581674369296539) | overall no-go</text>
+</svg>

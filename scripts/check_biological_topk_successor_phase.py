@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import os
 import platform
 import re
@@ -45,6 +46,8 @@ PHASE3_COMMIT = "7e3f46ee94df6651240052f5f317202129f73d05"
 PHASE4_COMMIT_MESSAGE = "bench: freeze successor fresh candidate-site concordance decision"
 PHASE4_COMMIT = "59f2445b1deb980d5e4c2f25cda916206158d81a"
 PHASE5_COMMIT_MESSAGE = "repro: preregister independent biological utility benchmark"
+PHASE5_COMMIT = "dc2271ba0330c60e6c28b6692b6df9ac11c631f5"
+PHASE6_COMMIT_MESSAGE = "bench: freeze independent biological utility decision"
 PINNED_V1_AUDIT_COMMAND = ["python3", "scripts/check_biological_topk_successor_v1_audit.py"]
 PHASE1_OUTPUTS = (
     "paper/biological_topk_successor/contract_binding.json",
@@ -105,6 +108,19 @@ PHASE5_OUTPUTS = (
     "paper/biological_topk_successor/experimental_runtime_input_receipt.json",
     "paper/biological_topk_successor/experimental_source_receipt.json",
     "paper/biological_topk_successor/experimental_tool_receipt.json",
+)
+PHASE6_OUTPUTS = (
+    "paper/biological_topk_successor/biological_utility_actual_resources.json",
+    "paper/biological_topk_successor/biological_utility_artifact_manifest.tsv",
+    "paper/biological_topk_successor/biological_utility_decision.json",
+    "paper/biological_topk_successor/biological_utility_external_diagnostics.tsv",
+    "paper/biological_topk_successor/biological_utility_receipt.json",
+    "paper/biological_topk_successor/figures/biological_utility.svg",
+    "paper/biological_topk_successor/source_data/experimental_bootstrap.tsv",
+    "paper/biological_topk_successor/source_data/experimental_failure_ledger.tsv",
+    "paper/biological_topk_successor/source_data/experimental_metrics.tsv",
+    "paper/biological_topk_successor/source_data/experimental_region_scores.tsv",
+    "paper/biological_topk_successor/tables/biological_utility.tsv",
 )
 
 
@@ -295,6 +311,7 @@ def check_precommit_receipt(
         3: PHASE3_COMMIT_MESSAGE,
         4: PHASE4_COMMIT_MESSAGE,
         5: PHASE5_COMMIT_MESSAGE,
+        6: PHASE6_COMMIT_MESSAGE,
     }
     if phase in expected_messages:
         require(receipt["planned_commit_message"] == expected_messages[phase], "successor planned commit message drift")
@@ -1716,6 +1733,266 @@ def check_phase5(mode: str, current_state: dict[str, Any], status_before: set[st
         raise CheckError(f"unsupported successor Phase 5 mode: {mode}")
 
 
+def check_phase6_start_receipt() -> None:
+    start = load_json(PAPER / "phase_6_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 6 and start["status"] == "pass", "successor Phase 6 start schema/status drift")
+    require(start["phase_start_parent_head"] == PHASE5_COMMIT, "successor Phase 6 parent HEAD drift")
+    require(start["previous_phase_number"] == 5 and start["previous_phase_commit"] == PHASE5_COMMIT, "successor Phase 6 previous phase binding drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_successor_phase.py", "--phase", "5", "--mode", "postcommit"],
+        "successor Phase 6 previous checker command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "successor Phase 5 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "successor Phase 6 clean-start evidence drift",
+    )
+    require(start["evaluation_prediction_started"] is False and start["labels_unsealed"] is False, "successor Phase 6 start timing/label drift")
+    require(
+        start["fixed_execution_limits"]
+        == {
+            "max_cpu_wall_seconds": 345600,
+            "max_gpu_seconds": 345600,
+            "max_infrastructure_repair_epochs": 1,
+            "max_total_artifact_storage_bytes": FIXED_TOTAL_STORAGE_BYTES,
+            "tracked_evidence_reservation_bytes": 256 * 1024**2,
+        },
+        "successor Phase 6 fixed limits drift",
+    )
+    require(start["formal_artifact_bytes_before_execution"] == 20907076115, "successor Phase 6 pre-execution artifact bytes drift")
+    require(start["artifact_storage_margin_bytes_before_execution"] == 47543965165, "successor Phase 6 pre-execution storage margin drift")
+    require(
+        start["pre_execution_validation_incidents"]
+        == [
+            {
+                "artifact_root_created": False,
+                "attempts_started": 0,
+                "classification": "git_porcelain_leading_space_parser_rejection",
+                "resolution": "stage_existing_phase_6_allowlisted_paths_before_formal_runner_invocation",
+                "scientific_output_created": False,
+            }
+        ],
+        "successor Phase 6 pre-execution incident drift",
+    )
+
+
+def check_phase6_reproduction() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    for command in (
+        (sys.executable, "reproduce/biological_topk_successor/analyze_phase6.py", "--check"),
+        (sys.executable, "reproduce/biological_topk_successor/finalize_phase6.py", "--check"),
+    ):
+        completed = run(command, check=False, env=environment)
+        require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace") or completed.stdout.decode("utf-8", errors="replace"))
+
+
+def run_phase6_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk_successor",
+            "-p",
+            "test_phase6.py",
+            "-v",
+        ),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase6_attempt_artifacts(row: dict[str, str]) -> dict[str, Any]:
+    root = ROOT / row["artifact_root"]
+    require(root.is_dir() and not root.is_symlink(), f"missing successor Phase 6 attempt root: {row['attempt_id']}")
+    receipt = load_json(root / "attempt-complete.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 6, f"successor Phase 6 attempt schema drift: {row['attempt_id']}")
+    require(receipt["attempt_id"] == row["attempt_id"] and receipt["dataset_id"] == row["dataset_id"] and receipt["arm"] == row["arm"], f"successor Phase 6 attempt identity drift: {row['attempt_id']}")
+    require(receipt["source_commit"] == PHASE5_COMMIT, f"successor Phase 6 attempt source commit drift: {row['attempt_id']}")
+    require(receipt["attempt_config_sha256"] == canonical_digest(dict(row)), f"successor Phase 6 attempt config drift: {row['attempt_id']}")
+    require(receipt["query_fasta_sha256"] == row["query_fasta_sha256"] and receipt["target_fasta_sha256"] == row["target_fasta_sha256"], f"successor Phase 6 attempt input binding drift: {row['attempt_id']}")
+    require(receipt["binary_sha256"] == row["binary_sha256"], f"successor Phase 6 attempt binary binding drift: {row['attempt_id']}")
+    require(receipt["labels_visible_to_backend"] is False and receipt["label_manifest_mounted_in_sandbox"] is False, f"successor Phase 6 attempt label isolation drift: {row['attempt_id']}")
+    require(receipt["comparison_started"] is False and receipt["retry_policy"] == "none" and receipt["replacement_retry_allowed"] is False, f"successor Phase 6 attempt comparison/retry drift: {row['attempt_id']}")
+    config = load_json(root / "attempt-config.json")
+    command_text = " ".join(str(value) for value in config["command"])
+    require(config["sandbox"]["repository_and_label_manifest_mounted"] is False and "experimental_benchmark_manifest" not in command_text, f"successor Phase 6 sandbox exposed labels: {row['attempt_id']}")
+
+    manifest_path = root / "artifact-manifest.tsv"
+    checksum = (root / "artifact-manifest.sha256").read_text(encoding="ascii").split()
+    require(checksum == [sha256_file(manifest_path), "artifact-manifest.tsv"], f"successor Phase 6 attempt manifest checksum drift: {row['attempt_id']}")
+    fields, artifacts = read_tsv(manifest_path)
+    require(fields == ["path", "size_bytes", "sha256"] and len({item["path"] for item in artifacts}) == len(artifacts), f"successor Phase 6 attempt manifest schema drift: {row['attempt_id']}")
+    excluded = {"artifact-manifest.tsv", "artifact-manifest.sha256", "attempt-complete.json"}
+    actual = {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file() and path.relative_to(root).as_posix() not in excluded}
+    require({item["path"] for item in artifacts} == actual, f"successor Phase 6 attempt artifact inventory drift: {row['attempt_id']}")
+    for item in artifacts:
+        relative = Path(item["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "unsafe successor Phase 6 artifact path")
+        path = root / relative
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 6 attempt artifact: {path}")
+        require(path.stat().st_size == int(item["size_bytes"]) and sha256_file(path) == item["sha256"], f"successor Phase 6 attempt artifact digest drift: {path}")
+
+    if row["arm"] in {"A", "G"}:
+        require(receipt["status"] == "success" and receipt["failure_reason"] is None, f"successor Phase 6 primary attempt failed: {row['attempt_id']}")
+        output = root / receipt["output_path"]
+        require(output.is_file() and sha256_file(output) == receipt["output_sha256"], f"successor Phase 6 primary output drift: {row['attempt_id']}")
+    else:
+        require(receipt["status"] == "technical_failure", f"successor Phase 6 external attempt status drift: {row['attempt_id']}")
+        require(receipt["failure_reason"] == "output_validation:RunnerError:Triplexator summary output missing" and receipt["output_sha256"] is None, f"successor Phase 6 external failure reason drift: {row['attempt_id']}")
+        stderr = (root / "stderr.txt").read_text(encoding="utf-8")
+        require("Failed to create temporary summary file" in stderr, f"successor Phase 6 external stderr drift: {row['attempt_id']}")
+
+    if row["arm"] == "G":
+        require(not (root / "telemetry.json").exists(), f"raw successor Phase 6 telemetry retained: {row['attempt_id']}")
+        metadata = receipt["telemetry_storage"]
+        archive = root / metadata["path"]
+        require(metadata["compression"] == "gzip_level_9_mtime_0_no_filename" and metadata["validated_before_compression"] is True and metadata["lossless"] is True, f"successor Phase 6 telemetry policy drift: {row['attempt_id']}")
+        with archive.open("rb") as handle:
+            header = handle.read(10)
+        require(header[:2] == b"\x1f\x8b" and header[4:8] == b"\0\0\0\0", f"successor Phase 6 telemetry gzip header drift: {row['attempt_id']}")
+        require(archive.stat().st_size == metadata["compressed_size_bytes"] and sha256_file(archive) == metadata["compressed_sha256"], f"successor Phase 6 telemetry archive drift: {row['attempt_id']}")
+        telemetry_summary = load_json(root / "telemetry-summary.json")
+        require(int(telemetry_summary.get("fallbacks", -1)) == 0, f"successor Phase 6 G fallback drift: {row['attempt_id']}")
+    else:
+        require(not (root / "telemetry.json").exists() and not (root / "telemetry.json.gz").exists(), f"successor non-G attempt contains telemetry: {row['attempt_id']}")
+    return receipt
+
+
+def check_phase6_evidence() -> dict[str, Any]:
+    for relative in (*PHASE6_OUTPUTS, "reproduce/biological_topk_successor/finalize_phase6.py"):
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 6 evidence: {relative}")
+    require(not (PAPER / "phase_7_start_receipt.json").exists(), "successor Phase 7 started after biological utility no-go")
+
+    _, attempts = read_tsv(PAPER / "experimental_attempt_plan.tsv")
+    require(len(attempts) == 15, "successor Phase 6 attempt plan count drift")
+    summary = load_json(SUCCESSOR_ARTIFACT_ROOT / "experimental-phase6/run-summary.json")
+    require(summary["status"] == "complete" and summary["planned_attempt_count"] == summary["terminal_attempt_count"] == 15, "successor Phase 6 run-summary terminal count drift")
+    require(summary["successful_attempt_count"] == 10 and summary["technical_failure_count"] == 5 and summary["missing_attempt_ids"] == [], "successor Phase 6 run-summary outcome drift")
+    require(summary["comparison_started"] is False, "successor Phase 6 runner performed a comparison")
+    require(summary["fixed_runtime_budget_gate_pass"] is True and summary["fixed_artifact_budget_gate_pass"] is True, "successor Phase 6 runner budget gate failed")
+    require(not list((SUCCESSOR_ARTIFACT_ROOT / "experimental-phase6").glob(".*.partial.*")), "successor Phase 6 stale partial attempt remains")
+    checked = [check_phase6_attempt_artifacts(row) for row in attempts]
+    require(sum(receipt["status"] == "success" and receipt["arm"] in {"A", "G"} for receipt in checked) == 10, "successor Phase 6 primary success count drift")
+    require(sum(receipt["status"] != "success" and receipt["arm"] == "X" for receipt in checked) == 5, "successor Phase 6 external failure count drift")
+
+    receipt = load_json(PAPER / "biological_utility_receipt.json")
+    decision = load_json(PAPER / "biological_utility_decision.json")
+    resources = load_json(PAPER / "biological_utility_actual_resources.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 6 and receipt["status"] == "complete", "successor Phase 6 receipt status drift")
+    require(receipt["planned_attempts"] == receipt["terminal_attempts"] == 15 and receipt["successful_attempts"] == 10, "successor Phase 6 receipt attempt count drift")
+    require(receipt["technical_failures"] == 5 and receipt["primary_technical_failures"] == 0, "successor Phase 6 receipt failure count drift")
+    require(receipt["comparison_started_only_after_all_attempts_terminal"] is True and receipt["labels_unsealed_only_by_offline_analyzer"] is True, "successor Phase 6 comparison/label timing drift")
+    require(receipt["scientific_retries_or_replacements"] == 0 and receipt["infrastructure_repair_epochs_used"] == 0, "successor Phase 6 retry/repair drift")
+    require(receipt["bootstrap"]["replicates"] == 10000 and receipt["bootstrap"]["seed"] == 20260816, "successor Phase 6 bootstrap receipt drift")
+    require(receipt["bootstrap"]["shared_resample_index_for_all_endpoints"] is True and receipt["bootstrap"]["paired_A_G_at_every_level"] is True, "successor Phase 6 paired bootstrap receipt drift")
+    for relative, digest in receipt["source_data_sha256"].items():
+        require(sha256_file(ROOT / relative) == digest, f"successor Phase 6 source data drift: {relative}")
+
+    require(decision["schema_version"] == 1 and decision["phase"] == 6 and decision["decision"] == "no_go", "successor Phase 6 decision drift")
+    require(decision["biological_utility_pass"] is False and decision["later_phase_authorized"] is False, "successor Phase 6 no-go authorization drift")
+    require(decision["endpoint_pass"] == {"E1": True, "E2": True, "E3": True, "E4": False}, "successor Phase 6 endpoint decision drift")
+    require(decision["primary_technical_failure_count"] == 0 and decision["missing_primary_output_count"] == 0 and decision["zero_precision_primary_dataset"] is False, "successor Phase 6 primary information gate drift")
+    require(decision["all_four_endpoints_use_identical_paired_resample_indices"] is True, "successor Phase 6 endpoint resample drift")
+    require(decision["contract_status_if_applied"] == "biological_utility_no_go" and decision["bioinformatics_route_if_applied"] == "closed_biological_utility_gap", "successor Phase 6 decision mapping drift")
+    require(decision["gpu_screen_status_if_applied"] == "experimental" and decision["cross_assay_generality_claim"] == "not_supported", "successor Phase 6 unsupported promotion/claim")
+    require(decision["biological_utility_receipt_sha256"] == sha256_file(PAPER / "biological_utility_receipt.json"), "successor Phase 6 decision receipt binding drift")
+
+    _, bootstrap = read_tsv(PAPER / "source_data/experimental_bootstrap.tsv")
+    require(len(bootstrap) == 10000, "successor Phase 6 bootstrap row count drift")
+    e4 = sorted(float(row["E4"]) for row in bootstrap)
+    require(sum(math.isinf(value) and value < 0 for value in e4) == 5 and sum(value <= 0 for value in e4) == 671, "successor Phase 6 E4 bootstrap tail drift")
+    e4_lcb = e4[math.ceil(0.05 * len(e4)) - 1]
+    require(format(e4_lcb, ".17g") == decision["one_sided_95_lcb"]["E4"] == "-0.024581674369296539", "successor Phase 6 E4 LCB drift")
+    _, metrics = read_tsv(PAPER / "source_data/experimental_metrics.tsv")
+    _, scores = read_tsv(PAPER / "source_data/experimental_region_scores.tsv")
+    _, failures = read_tsv(PAPER / "source_data/experimental_failure_ledger.tsv")
+    require(len(metrics) == 10 and len(scores) == 10000 and len(failures) == 5, "successor Phase 6 source-data count drift")
+    paired: dict[tuple[str, str], dict[str, str]] = {}
+    for row in scores:
+        paired.setdefault((row["dataset_id"], row["region_id"]), {})[row["arm"]] = row["region_score"]
+    require(len(paired) == 5000 and sum(value["A"] != value["G"] for value in paired.values()) == 7, "successor Phase 6 paired region-score drift")
+    require({row["arm"] for row in failures} == {"X"} and all(row["failure_reason"] == "output_validation:RunnerError:Triplexator summary output missing" for row in failures), "successor Phase 6 failure ledger drift")
+
+    require(resources["schema_version"] == 1 and resources["phase"] == 6 and resources["status"] == "pass_fixed_budget", "successor Phase 6 resource status drift")
+    require(resources["scientific_decision"] == "no_go" and resources["successful_primary_attempt_count"] == 10 and resources["primary_technical_failure_count"] == 0, "successor Phase 6 resource outcome drift")
+    require(resources["external_technical_failure_count"] == 5 and resources["infrastructure_repair_epochs_used"] == 0, "successor Phase 6 resource external/repair drift")
+    require(resources["predecessor_retained_artifact_bytes"] == directory_file_bytes(ROOT / ".paper-artifacts/biological-topk"), "successor Phase 6 predecessor bytes drift")
+    require(resources["successor_artifact_bytes_through_phase6_runtime"] == directory_file_bytes(SUCCESSOR_ARTIFACT_ROOT), "successor Phase 6 artifact bytes drift")
+    require(resources["formal_artifact_bytes"] == resources["predecessor_retained_artifact_bytes"] + resources["successor_artifact_bytes_through_phase6_runtime"], "successor Phase 6 formal artifact arithmetic drift")
+    require(resources["actual_total_artifact_storage_bytes_with_tracked_reservation"] == resources["formal_artifact_bytes"] + resources["tracked_evidence_reservation_bytes"], "successor Phase 6 reserved artifact arithmetic drift")
+    require(resources["fixed_total_artifact_storage_bytes"] == FIXED_TOTAL_STORAGE_BYTES and resources["artifact_storage_margin_bytes"] == FIXED_TOTAL_STORAGE_BYTES - resources["actual_total_artifact_storage_bytes_with_tracked_reservation"], "successor Phase 6 storage margin drift")
+    require(resources["all_fixed_budget_gates_pass"] is True and resources["resource_values_are_performance_claims"] is False, "successor Phase 6 fixed-budget/claim drift")
+
+    fields, artifacts = read_tsv(PAPER / "biological_utility_artifact_manifest.tsv")
+    require(fields == ["path", "size_bytes", "sha256", "evidence_role"] and len(artifacts) == 10, "successor Phase 6 artifact manifest drift")
+    for row in artifacts:
+        path = ROOT / row["path"]
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 6 final artifact: {row['path']}")
+        require(path.stat().st_size == int(row["size_bytes"]) and sha256_file(path) == row["sha256"], f"successor Phase 6 final artifact digest drift: {row['path']}")
+    _, external = read_tsv(PAPER / "biological_utility_external_diagnostics.tsv")
+    _, table = read_tsv(PAPER / "tables/biological_utility.tsv")
+    require(len(external) == 5 and all(row["terminal_status"] == "technical_failure" and row["output_available"] == "0" and row["used_in_primary_inference"] == "0" for row in external), "successor Phase 6 external diagnostics drift")
+    require(len(table) == 5 and all(row["G_zero_precision"] == "0" for row in table), "successor Phase 6 summary table drift")
+    figure = (PAPER / "figures/biological_utility.svg").read_text(encoding="ascii")
+    require("E4 fail" in figure and "overall no-go" in figure, "successor Phase 6 figure decision drift")
+    return decision
+
+
+def check_phase6_state(state: dict[str, Any], decision: dict[str, Any]) -> None:
+    require(all(state["phase_status"][str(index)] == "pass" for index in range(6)), "successor Phase 6 prerequisite state drift")
+    require(state["phase_status"]["6"] == "no_go", "successor Phase 6 terminal status drift")
+    require(all(state["phase_status"][str(index)] == "not_authorized_previous_no_go" for index in range(7, 10)), "successor later phase advanced after Phase 6 no-go")
+    require(state["active_phase"] is None and state["last_completed_phase"] == 6, "successor Phase 6 terminal transition drift")
+    require(state["last_decision"] == "biological_utility_no_go" and decision["decision"] == "no_go", "successor Phase 6 decision/state mismatch")
+    require(state["previous_phase_commit"] == PHASE5_COMMIT, "successor Phase 6 previous commit drift")
+    require(state["contract_status"] == "biological_utility_no_go" and state["bioinformatics_route"] == "closed_biological_utility_gap", "successor Phase 6 contract/route drift")
+    require(state["gpu_screen_status"] == "experimental" and state["rank_order_claim"] == "diagnostic_only", "successor Phase 6 unsupported promotion")
+
+
+def check_phase6(mode: str, current_state: dict[str, Any], status_before: set[str]) -> None:
+    check_phase6_start_receipt()
+    check_phase6_reproduction()
+    decision = check_phase6_evidence()
+    run_phase6_unit_tests()
+    if mode == "precommit":
+        paths = allowlist(6)
+        check_precommit_receipt(6, paths)
+        check_phase6_state(current_state, decision)
+        head = git("rev-parse", "HEAD")
+        if head == PHASE5_COMMIT:
+            prospective = changed_paths()
+        else:
+            require(git("rev-parse", "HEAD^") == PHASE5_COMMIT, "successor Phase 6 amend parent drift")
+            require(git("log", "-1", "--format=%s") == PHASE6_COMMIT_MESSAGE, "unexpected successor Phase 6 amend target")
+            prospective = set(git("diff", "--name-only", "HEAD^").splitlines())
+        require(prospective == set(paths), "successor Phase 6 allowlisted diff mismatch")
+    elif mode == "postcommit":
+        require(not status_before, "successor Phase 6 postcommit requires a clean tree")
+        commit = phase_commit_for_postcommit(6)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "successor Phase 6 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk_successor/PROGRAM_STATE.json")
+        validate_program_state_value(state)
+        paths = allowlist_from_commit(6, commit)
+        check_precommit_receipt(6, paths, committed_at=commit)
+        check_phase6_state(state, decision)
+        require(git("rev-parse", f"{commit}^") == PHASE5_COMMIT, "successor Phase 6 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE6_COMMIT_MESSAGE, "successor Phase 6 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "successor Phase 6 committed paths differ from allowlist")
+    else:
+        raise CheckError(f"unsupported successor Phase 6 mode: {mode}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(10), required=True)
@@ -1736,6 +2013,8 @@ def main() -> int:
             check_phase4(args.mode, state, status_before)
         elif args.phase == 5:
             check_phase5(args.mode, state, status_before)
+        elif args.phase == 6:
+            check_phase6(args.mode, state, status_before)
         else:
             raise CheckError(f"successor Phase {args.phase} checker is not frozen yet")
         require(changed_paths() == status_before, "successor checker modified the working tree")
