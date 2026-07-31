@@ -5,13 +5,14 @@ epoch_id = biological_topk_successor_v2
 predecessor_commit = 7fae3de6b13780d7cc0776038489cf2f22072339
 predecessor_decision = blocked_fixed_budget
 fixed_total_artifact_storage_bytes = 68719476736
-active_phase = 4
+active_phase = 5
 phase_0_status = pass
 phase_1_status = pass
 phase_2_status = pass
 phase_3_status = pass
-phase_4_status = pending
-contract_status = in_validation
+phase_4_status = pass
+phase_5_status = pending
+contract_status = fresh_concordance_pass
 gpu_screen_status = experimental
 bioinformatics_route = conditionally_reopened
 ```
@@ -91,5 +92,41 @@ raw_telemetry_policy = validate_then_deterministic_lossless_gzip_before_next_att
 new_prediction_run = false
 ```
 
-Phase 4 may execute the single frozen successor epoch. No successor prediction
-or scientific comparison has yet run.
+## Phase 4 Evidence
+
+```text
+decision = pass
+planned_attempts = 368
+terminal_attempts = 368
+successful_attempts = 368
+technical_failures = 0
+comparison_started_by_runner = false
+offline_comparisons = 184
+binary_gate_denominator = 177
+n_binary_required = 124
+informative_reference_nonempty_workloads = 177
+total_reference_candidate_sites = 856
+score_complete_set_successes = 174/177
+score_complete_set_lcb = 0.9567791704809228870584073383547318964204588678636645639634031355891670467556213
+stability_complete_set_successes = 177/177
+nt_complete_set_successes = 175/177
+all_top1_retention_successes = 177/177
+all_six_endpoint_gates_pass = true
+input_identity_mismatches = 0
+ambiguous_matches = 0
+unexpected_fallbacks = 0
+telemetry_archives = 184
+raw_telemetry_files = 0
+actual_gpu_hours = 6.4305268712717547
+actual_scheduled_elapsed_wall_seconds = 32617.130879
+actual_total_artifact_storage_bytes_with_tracked_reservation = 19889990755
+artifact_storage_margin_bytes = 48829485981
+fixed_budget_gate_pass = true
+infrastructure_repair_epochs_used = 0
+```
+
+The frozen successor holdout passed every fixed-sequence concordance endpoint,
+the independent information and identity gates, the zero-technical-failure
+gate, and the fixed 64 GiB resource gate. Phase 5 independent experimental
+benchmark preregistration is therefore authorized. Product status remains
+`experimental`, and rank order remains diagnostic-only.

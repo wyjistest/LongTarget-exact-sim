@@ -1,0 +1,44 @@
+{
+  "clean_start_check": {
+    "command": [
+      "git",
+      "status",
+      "--porcelain=v1"
+    ],
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "fixed_execution_limits": {
+    "max_formal_scheduled_wall_seconds": 172800,
+    "max_gpu_hours": 72,
+    "max_infrastructure_repair_epochs": 1,
+    "max_total_artifact_storage_bytes": 68719476736
+  },
+  "phase": 4,
+  "phase_start_parent_head": "7e3f46ee94df6651240052f5f317202129f73d05",
+  "pre_execution_validation_incidents": [
+    {
+      "artifact_root_created": false,
+      "attempts_started": 0,
+      "classification": "git_porcelain_leading_space_parser_rejection",
+      "resolution": "stage_existing_phase_4_allowlisted_paths_before_formal_runner_invocation",
+      "scientific_output_created": false
+    }
+  ],
+  "previous_phase_commit": "7e3f46ee94df6651240052f5f317202129f73d05",
+  "previous_phase_number": 3,
+  "previous_phase_postcommit_check_command": [
+    "python3",
+    "scripts/check_biological_topk_successor_phase.py",
+    "--phase",
+    "3",
+    "--mode",
+    "postcommit"
+  ],
+  "previous_phase_postcommit_check_result": "pass",
+  "resource_decision_path": "paper/biological_topk_successor/fresh_holdout_resource_decision.json",
+  "resource_decision_sha256": "13da7da70e7c945865f60dbf695ca93f1dfd1ec4748646af053de3564aefc2b6",
+  "schema_version": 1,
+  "status": "pass"
+}

@@ -41,6 +41,8 @@ PHASE1_COMMIT = "c68891dab08a777e54c9e301e8dd3515a11bcc31"
 PHASE2_COMMIT_MESSAGE = "test: freeze successor candidate-site comparator regression"
 PHASE2_COMMIT = "a48bcf814d4d055320ee1ab437666bde9d03d390"
 PHASE3_COMMIT_MESSAGE = "repro: freeze successor fresh candidate-site holdout"
+PHASE3_COMMIT = "7e3f46ee94df6651240052f5f317202129f73d05"
+PHASE4_COMMIT_MESSAGE = "bench: freeze successor fresh candidate-site concordance decision"
 PINNED_V1_AUDIT_COMMAND = ["python3", "scripts/check_biological_topk_successor_v1_audit.py"]
 PHASE1_OUTPUTS = (
     "paper/biological_topk_successor/contract_binding.json",
@@ -76,6 +78,17 @@ PHASE3_OUTPUTS = (
     "paper/biological_topk_successor/fresh_holdout_plan.json",
     "paper/biological_topk_successor/fresh_holdout_resource_decision.json",
     "paper/biological_topk_successor/fresh_holdout_resource_projection.json",
+)
+PHASE4_OUTPUTS = (
+    "paper/biological_topk_successor/fresh_holdout_actual_resources.json",
+    "paper/biological_topk_successor/fresh_holdout_decision.json",
+    "paper/biological_topk_successor/fresh_holdout_receipt.json",
+    "paper/biological_topk_successor/source_data/fresh_candidate_matches.tsv",
+    "paper/biological_topk_successor/source_data/fresh_empty_workloads.tsv",
+    "paper/biological_topk_successor/source_data/fresh_exact_binomial_bounds.tsv",
+    "paper/biological_topk_successor/source_data/fresh_failure_ledger.tsv",
+    "paper/biological_topk_successor/source_data/fresh_rank_diagnostics.tsv",
+    "paper/biological_topk_successor/source_data/fresh_workload_metrics.tsv",
 )
 
 
@@ -139,6 +152,12 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def canonical_digest(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode("ascii")
+    ).hexdigest()
 
 
 def load_json(path: Path) -> Any:
@@ -258,6 +277,7 @@ def check_precommit_receipt(
         1: PHASE1_COMMIT_MESSAGE,
         2: PHASE2_COMMIT_MESSAGE,
         3: PHASE3_COMMIT_MESSAGE,
+        4: PHASE4_COMMIT_MESSAGE,
     }
     if phase in expected_messages:
         require(receipt["planned_commit_message"] == expected_messages[phase], "successor planned commit message drift")
@@ -1137,6 +1157,285 @@ def check_phase3(mode: str, current_state: dict[str, Any], status_before: set[st
         raise CheckError(f"unsupported successor Phase 3 mode: {mode}")
 
 
+def check_phase4_start_receipt() -> None:
+    start = load_json(PAPER / "phase_4_start_receipt.json")
+    require(start["schema_version"] == 1 and start["phase"] == 4 and start["status"] == "pass", "successor Phase 4 start schema/status drift")
+    require(start["phase_start_parent_head"] == PHASE3_COMMIT, "successor Phase 4 parent HEAD drift")
+    require(start["previous_phase_number"] == 3 and start["previous_phase_commit"] == PHASE3_COMMIT, "successor Phase 4 previous phase binding drift")
+    require(
+        start["previous_phase_postcommit_check_command"]
+        == ["python3", "scripts/check_biological_topk_successor_phase.py", "--phase", "3", "--mode", "postcommit"],
+        "successor Phase 4 previous checker command drift",
+    )
+    require(start["previous_phase_postcommit_check_result"] == "pass", "successor Phase 3 postcommit result drift")
+    require(
+        start["clean_start_check"]
+        == {"command": ["git", "status", "--porcelain=v1"], "exit_code": 0, "stderr": "", "stdout": ""},
+        "successor Phase 4 clean-start evidence drift",
+    )
+    require(
+        start["fixed_execution_limits"]
+        == {
+            "max_formal_scheduled_wall_seconds": 172800,
+            "max_gpu_hours": 72,
+            "max_infrastructure_repair_epochs": 1,
+            "max_total_artifact_storage_bytes": FIXED_TOTAL_STORAGE_BYTES,
+        },
+        "successor Phase 4 fixed limits drift",
+    )
+    require(start["resource_decision_sha256"] == sha256_file(PAPER / "fresh_holdout_resource_decision.json"), "successor Phase 4 resource decision binding drift")
+    incidents = start["pre_execution_validation_incidents"]
+    require(
+        incidents
+        == [
+            {
+                "artifact_root_created": False,
+                "attempts_started": 0,
+                "classification": "git_porcelain_leading_space_parser_rejection",
+                "resolution": "stage_existing_phase_4_allowlisted_paths_before_formal_runner_invocation",
+                "scientific_output_created": False,
+            }
+        ],
+        "successor Phase 4 pre-execution incident receipt drift",
+    )
+
+
+def check_phase4_reproduction() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (sys.executable, "reproduce/biological_topk_successor/finalize_phase4.py", "--check"),
+        check=False,
+        env=environment,
+    )
+    require(
+        completed.returncode == 0,
+        completed.stderr.decode("utf-8", errors="replace") or "successor Phase 4 evidence does not reproduce",
+    )
+
+
+def run_phase4_unit_tests() -> None:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    completed = run(
+        (
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/biological_topk_successor",
+            "-p",
+            "test_phase4.py",
+            "-v",
+        ),
+        check=False,
+        env=environment,
+    )
+    require(completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace"))
+
+
+def check_phase4_attempt_artifacts(row: dict[str, str]) -> dict[str, Any]:
+    destination = ROOT / row["artifact_root"]
+    require(destination.is_dir() and not destination.is_symlink(), f"missing successor attempt directory: {row['attempt_id']}")
+    receipt = load_json(destination / "attempt-complete.json")
+    require(receipt["attempt_id"] == row["attempt_id"] and receipt["status"] == "success", f"successor attempt did not succeed: {row['attempt_id']}")
+    require(receipt["source_commit"] == PHASE3_COMMIT, f"successor attempt source commit drift: {row['attempt_id']}")
+    require(receipt["attempt_config_sha256"] == canonical_digest(row), f"successor attempt config drift: {row['attempt_id']}")
+    require(receipt["comparison_started"] is False, f"successor runner compared output: {row['attempt_id']}")
+    require(receipt["retry_policy"] == "none" and receipt["replacement_retry_allowed"] is False, f"successor attempt retry policy drift: {row['attempt_id']}")
+    require(receipt["binary_sha256"] == row["binary_sha256"], f"successor attempt binary drift: {row['attempt_id']}")
+
+    manifest_path = destination / "artifact-manifest.tsv"
+    checksum = (destination / "artifact-manifest.sha256").read_text(encoding="ascii").split()
+    require(checksum == [sha256_file(manifest_path), manifest_path.name], f"successor attempt manifest checksum drift: {row['attempt_id']}")
+    fields, artifacts = read_tsv(manifest_path)
+    require(fields == ["path", "size_bytes", "sha256"], f"successor attempt artifact schema drift: {row['attempt_id']}")
+    require(len({item["path"] for item in artifacts}) == len(artifacts), f"successor duplicate artifact path: {row['attempt_id']}")
+    excluded = {"artifact-manifest.tsv", "artifact-manifest.sha256", "attempt-complete.json"}
+    actual = {
+        path.relative_to(destination).as_posix()
+        for path in destination.rglob("*")
+        if path.is_file() and path.relative_to(destination).as_posix() not in excluded
+    }
+    require({item["path"] for item in artifacts} == actual, f"successor attempt artifact inventory drift: {row['attempt_id']}")
+    observed: dict[str, tuple[int, str]] = {}
+    for item in artifacts:
+        relative = Path(item["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "unsafe successor attempt artifact path")
+        path = destination / relative
+        require(path.is_file() and not path.is_symlink(), f"missing successor attempt artifact: {path}")
+        size = path.stat().st_size
+        digest = sha256_file(path)
+        require(size == int(item["size_bytes"]) and digest == item["sha256"], f"successor attempt artifact digest drift: {path}")
+        observed[item["path"]] = (size, digest)
+
+    output = destination / str(receipt["output_path"])
+    input_receipt = load_json(destination / str(receipt["input_receipt_path"]))
+    require(output.is_file() and sha256_file(output) == receipt["output_sha256"], f"successor attempt output drift: {row['attempt_id']}")
+    identity = input_receipt["input_identity"]
+    for receipt_field, plan_field in (
+        ("query_ordinal_namespace", "query_ordinal_namespace"),
+        ("query_source_ordinal", "query_source_ordinal"),
+        ("query_sequence_sha256", "query_sequence_sha256"),
+        ("target_ordinal_namespace", "target_ordinal_namespace"),
+        ("target_source_ordinal", "target_source_ordinal"),
+        ("target_sequence_sha256", "target_sequence_sha256"),
+        ("assembly", "assembly"),
+        ("target_coordinate_namespace", "target_coordinate_namespace"),
+        ("input_pair_digest", "input_pair_digest"),
+    ):
+        require(str(identity[receipt_field]) == row[plan_field], f"successor attempt input identity drift: {row['attempt_id']} {receipt_field}")
+
+    if row["arm"] == "G":
+        require(not (destination / "telemetry.json").exists(), f"raw successor telemetry retained: {row['attempt_id']}")
+        archive = destination / "telemetry.json.gz"
+        metadata = receipt["telemetry_storage"]
+        require(metadata["path"] == archive.name and metadata["compression"] == "gzip_level_9_mtime_0_no_filename", f"successor telemetry policy drift: {row['attempt_id']}")
+        require(metadata["validated_before_compression"] is True and metadata["lossless"] is True, f"successor telemetry validation receipt drift: {row['attempt_id']}")
+        require(observed[archive.name] == (int(metadata["compressed_size_bytes"]), metadata["compressed_sha256"]), f"successor telemetry archive binding drift: {row['attempt_id']}")
+        with archive.open("rb") as handle:
+            header = handle.read(10)
+        require(header[:2] == b"\x1f\x8b" and header[4:8] == b"\0\0\0\0", f"successor telemetry gzip header drift: {row['attempt_id']}")
+        raw_digest = hashlib.sha256()
+        raw_size = 0
+        with gzip.open(archive, "rb") as decoded:
+            for block in iter(lambda: decoded.read(1024 * 1024), b""):
+                raw_digest.update(block)
+                raw_size += len(block)
+        require(raw_size == int(metadata["uncompressed_size_bytes"]), f"successor telemetry round-trip size drift: {row['attempt_id']}")
+        require(raw_digest.hexdigest() == metadata["uncompressed_sha256"], f"successor telemetry round-trip digest drift: {row['attempt_id']}")
+    else:
+        require(not (destination / "telemetry.json").exists() and not (destination / "telemetry.json.gz").exists(), f"successor A attempt contains G telemetry: {row['attempt_id']}")
+    return receipt
+
+
+def check_phase4_evidence() -> dict[str, Any]:
+    for relative in (*PHASE4_OUTPUTS, "reproduce/biological_topk_successor/finalize_phase4.py"):
+        path = ROOT / relative
+        require(path.is_file() and not path.is_symlink(), f"missing successor Phase 4 evidence: {relative}")
+    _, attempts = read_tsv(PAPER / "fresh_holdout_attempt_plan.tsv")
+    require(len(attempts) == 368, "successor Phase 4 attempt plan count drift")
+    artifact_root = SUCCESSOR_ARTIFACT_ROOT / "fresh-holdout"
+    require(artifact_root.is_dir() and not artifact_root.is_symlink(), "missing successor Phase 4 artifact root")
+    summary = load_json(artifact_root / "run-summary.json")
+    require(summary["status"] == "complete_success", "successor Phase 4 run did not complete successfully")
+    require(summary["planned_attempt_count"] == summary["terminal_attempt_count"] == summary["successful_attempt_count"] == 368, "successor Phase 4 run-summary count drift")
+    require(summary["technical_failure_count"] == 0 and summary["missing_attempt_ids"] == [], "successor Phase 4 run-summary failure drift")
+    require(summary["comparison_started"] is False, "successor runner violated global comparison barrier")
+    require(not list(artifact_root.glob(".*.partial.*")), "successor Phase 4 stale partial attempt remains")
+    checked = {row["attempt_id"]: check_phase4_attempt_artifacts(row) for row in attempts}
+    require(len(checked) == 368 and sum(receipt["arm"] == "G" for receipt in checked.values()) == 184, "successor Phase 4 checked receipt count drift")
+
+    receipt = load_json(PAPER / "fresh_holdout_receipt.json")
+    decision = load_json(PAPER / "fresh_holdout_decision.json")
+    resources = load_json(PAPER / "fresh_holdout_actual_resources.json")
+    require(receipt["schema_version"] == 1 and receipt["phase"] == 4 and receipt["status"] == "complete", "successor Phase 4 receipt status drift")
+    require(receipt["manifest_sha256"] == sha256_file(PAPER / "fresh_holdout_manifest.tsv"), "successor Phase 4 receipt manifest drift")
+    require(receipt["attempt_plan_sha256"] == sha256_file(PAPER / "fresh_holdout_attempt_plan.tsv"), "successor Phase 4 receipt attempt plan drift")
+    require(receipt["source_commit"] == PHASE3_COMMIT, "successor Phase 4 receipt source commit drift")
+    require(receipt["planned_attempts"] == receipt["terminal_attempts"] == receipt["successful_attempts"] == 368, "successor Phase 4 receipt terminal count drift")
+    require(receipt["comparison_global_start_gate_pass"] is True and receipt["comparison_count"] == 184, "successor Phase 4 global comparison gate drift")
+    require(receipt["scientific_comparison_started_only_after_all_attempts_terminal"] is True, "successor Phase 4 comparison timing receipt drift")
+    require(receipt["telemetry_archive_count"] == 184 and receipt["raw_telemetry_file_count"] == 0, "successor Phase 4 telemetry receipt count drift")
+    require(receipt["telemetry_storage_policy"] == "validated_then_deterministic_lossless_gzip_mtime0_before_next_attempt", "successor Phase 4 telemetry policy receipt drift")
+    require(receipt["infrastructure_repair_epochs_used"] == 0 and receipt["no_retries_or_replacements"] is True, "successor Phase 4 repair/retry drift")
+    require(receipt["rank_order_claim"] == "diagnostic_only", "successor Phase 4 receipt promoted rank order")
+    require(receipt["actual_resources_sha256"] == sha256_file(PAPER / "fresh_holdout_actual_resources.json"), "successor Phase 4 resource digest drift")
+    require(receipt["run_summary_sha256"] == sha256_file(artifact_root / "run-summary.json"), "successor Phase 4 run-summary digest drift")
+    require(
+        receipt["attempt_receipt_sha256"]
+        == {attempt_id: sha256_file(ROOT / next(row["artifact_root"] for row in attempts if row["attempt_id"] == attempt_id) / "attempt-complete.json") for attempt_id in sorted(checked)},
+        "successor Phase 4 attempt receipt registry drift",
+    )
+    for relative, digest in receipt["source_data_sha256"].items():
+        require(sha256_file(ROOT / relative) == digest, f"successor Phase 4 source data drift: {relative}")
+
+    require(decision["schema_version"] == 1 and decision["phase"] == 4, "successor Phase 4 decision schema drift")
+    require(decision["decision"] in {"pass", "no_go", "blocked_insufficient_information", "blocked_fixed_budget"}, "successor Phase 4 decision value drift")
+    require(decision["rank_order_claim"] == "diagnostic_only" and decision["gpu_screen_status_if_applied"] == "experimental", "successor Phase 4 promoted unsupported claims")
+    require(decision["primary_workload_count"] == 178 and decision["primary_identity_uniqueness_gate_pass"] is True, "successor Phase 4 independent-unit gate drift")
+    require(decision["technical_failure_count"] == decision["missing_output_count"] == decision["input_identity_mismatch_count"] == decision["ambiguous_matching_count"] == decision["unexpected_fallback_count"] == 0, "successor Phase 4 technical gate drift")
+    require(decision["zero_technical_failure_gate_pass"] is True, "successor Phase 4 zero-failure gate failed")
+    require(decision["fresh_holdout_receipt_sha256"] == sha256_file(PAPER / "fresh_holdout_receipt.json"), "successor Phase 4 decision receipt digest drift")
+    require(decision["actual_resources_sha256"] == sha256_file(PAPER / "fresh_holdout_actual_resources.json"), "successor Phase 4 decision resource digest drift")
+    require(decision["no_post_run_supplementation"] is True and decision["infrastructure_repair_epochs_used"] == 0, "successor Phase 4 supplementation/repair drift")
+    require(decision["scientific_decision_reached"] is (decision["decision"] in {"pass", "no_go"}), "successor scientific decision timing drift")
+
+    require(resources["schema_version"] == 1 and resources["phase"] == 4, "successor Phase 4 actual resource schema drift")
+    require(resources["planned_attempt_count"] == resources["terminal_attempt_count"] == resources["successful_attempt_count"] == 368, "successor Phase 4 actual resource count drift")
+    require(resources["completed_cpu_attempt_count"] == resources["completed_gpu_attempt_count"] == 184, "successor Phase 4 actual arm count drift")
+    require(resources["predecessor_retained_artifact_bytes"] == 7142325727 and resources["successor_phase4_tracked_reservation_bytes"] == 256 * 1024**2, "successor Phase 4 actual storage reservation drift")
+    require(resources["successor_runtime_artifact_bytes"] == directory_file_bytes(artifact_root), "successor Phase 4 runtime byte count drift")
+    require(resources["actual_total_artifact_storage_bytes_with_tracked_reservation"] == resources["predecessor_retained_artifact_bytes"] + resources["successor_tracked_bytes_through_phase3"] + resources["successor_phase4_tracked_reservation_bytes"] + resources["successor_runtime_artifact_bytes"], "successor Phase 4 total storage arithmetic drift")
+    require(resources["fixed_total_artifact_storage_bytes"] == FIXED_TOTAL_STORAGE_BYTES and resources["artifact_storage_margin_bytes"] == FIXED_TOTAL_STORAGE_BYTES - resources["actual_total_artifact_storage_bytes_with_tracked_reservation"], "successor Phase 4 storage margin drift")
+    require(float(resources["actual_gpu_hours"]) <= 72 and float(resources["actual_scheduled_elapsed_wall_seconds"]) <= 172800, "successor Phase 4 actual runtime limit failed")
+    require(resources["fixed_budget_gate_pass"] is True and resources["status"] == "pass", "successor Phase 4 actual fixed-budget gate failed")
+    require(resources["telemetry_archive_count"] == 184 and resources["raw_telemetry_file_count"] == 0, "successor Phase 4 actual telemetry count drift")
+    require(resources["resource_values_are_performance_claims"] is False, "successor Phase 4 resource values promoted to performance claims")
+
+    bound_fields, bounds = read_tsv(PAPER / "source_data/fresh_exact_binomial_bounds.tsv")
+    metric_fields, metrics = read_tsv(PAPER / "source_data/fresh_workload_metrics.tsv")
+    failure_fields, failures = read_tsv(PAPER / "source_data/fresh_failure_ledger.tsv")
+    require(bound_fields[:4] == ["endpoint_order", "endpoint_name", "ranking_mode", "successes"], "successor Phase 4 bound schema drift")
+    require(metric_fields[:5] == ["validation_instance_id", "workload_id", "repeat_id", "primary_instance", "ranking_mode"], "successor Phase 4 metric schema drift")
+    require(failure_fields[:4] == ["failure_id", "validation_instance_id", "workload_id", "repeat_id"], "successor Phase 4 failure schema drift")
+    require(len(metrics) == 184 * 3 and len([row for row in metrics if row["primary_instance"] == "1"]) == 178 * 3, "successor Phase 4 metric count drift")
+    require(not failures, "successor Phase 4 failure ledger is nonempty")
+    require(all(row["threshold_pass"] == "1" for row in bounds) is (decision["endpoint_gate_pass"] is True), "successor Phase 4 endpoint bound/decision drift")
+    return decision
+
+
+def check_phase4_state(state: dict[str, Any], decision: dict[str, Any]) -> None:
+    outcome = decision["decision"]
+    require(all(state["phase_status"][str(index)] == "pass" for index in range(4)), "successor Phase 4 prerequisite state drift")
+    require(state["previous_phase_commit"] == PHASE3_COMMIT, "successor Phase 4 previous commit drift")
+    require(state["last_completed_phase"] == 4 and state["gpu_screen_status"] == "experimental", "successor Phase 4 completion/product state drift")
+    require(state["rank_order_claim"] == "diagnostic_only", "successor Phase 4 promoted rank order")
+    if outcome == "pass":
+        require(state["phase_status"]["4"] == "pass" and all(state["phase_status"][str(index)] == "pending" for index in range(5, 10)), "successor Phase 4 pass status drift")
+        require(state["active_phase"] == 5 and state["last_decision"] == "fresh_concordance_pass", "successor Phase 4 pass transition drift")
+        require(state["contract_status"] == "fresh_concordance_pass" and state["bioinformatics_route"] == "conditionally_reopened", "successor Phase 4 pass contract/route drift")
+        require(decision["all_promotion_gates_pass"] is True and decision["later_phase_authorized"] is True, "successor Phase 4 pass lacks promotion authorization")
+    elif outcome == "no_go":
+        require(state["phase_status"]["4"] == "no_go" and state["active_phase"] is None, "successor Phase 4 no-go state drift")
+        require(all(state["phase_status"][str(index)] == "not_authorized_previous_no_go" for index in range(5, 10)), "successor phases advanced after concordance no-go")
+        require(state["last_decision"] == "concordance_no_go" and state["contract_status"] == "concordance_no_go", "successor Phase 4 no-go decision drift")
+        require(state["bioinformatics_route"] == "closed_for_this_contract", "successor Phase 4 no-go route drift")
+    else:
+        require(outcome in {"blocked_insufficient_information", "blocked_fixed_budget"}, "unsupported successor Phase 4 blocked outcome")
+        require(state["phase_status"]["4"] == outcome and state["active_phase"] is None, "successor Phase 4 blocked state drift")
+        require(state["last_decision"] == outcome and state["contract_status"] == "in_validation", "successor Phase 4 blocked decision drift")
+
+
+def check_phase4(mode: str, current_state: dict[str, Any], status_before: set[str]) -> None:
+    check_phase4_start_receipt()
+    check_phase4_reproduction()
+    decision = check_phase4_evidence()
+    run_phase4_unit_tests()
+    if mode == "precommit":
+        paths = allowlist(4)
+        check_precommit_receipt(4, paths)
+        check_phase4_state(current_state, decision)
+        require(git("rev-parse", "HEAD") == PHASE3_COMMIT, "successor Phase 4 precommit parent drift")
+        require(changed_paths() == set(paths), "successor Phase 4 allowlisted diff mismatch")
+    elif mode == "postcommit":
+        require(not status_before, "successor Phase 4 postcommit requires a clean tree")
+        commit = phase_commit_for_postcommit(4)
+        require(git("merge-base", "--is-ancestor", commit, "HEAD") == "", "successor Phase 4 commit is not an ancestor")
+        state = load_json_from_commit(commit, "paper/biological_topk_successor/PROGRAM_STATE.json")
+        validate_program_state_value(state)
+        paths = allowlist_from_commit(4, commit)
+        check_precommit_receipt(4, paths, committed_at=commit)
+        check_phase4_state(state, decision)
+        require(git("rev-parse", f"{commit}^") == PHASE3_COMMIT, "successor Phase 4 commit parent drift")
+        require(git("log", "-1", "--format=%s", commit) == PHASE4_COMMIT_MESSAGE, "successor Phase 4 commit message drift")
+        committed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).splitlines())
+        require(committed == set(paths), "successor Phase 4 committed paths differ from allowlist")
+    else:
+        raise CheckError(f"unsupported successor Phase 4 mode: {mode}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", type=int, choices=range(10), required=True)
@@ -1153,6 +1452,8 @@ def main() -> int:
             check_phase2(args.mode, state, status_before)
         elif args.phase == 3:
             check_phase3(args.mode, state, status_before)
+        elif args.phase == 4:
+            check_phase4(args.mode, state, status_before)
         else:
             raise CheckError(f"successor Phase {args.phase} checker is not frozen yet")
         require(changed_paths() == status_before, "successor checker modified the working tree")

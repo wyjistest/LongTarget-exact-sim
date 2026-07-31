@@ -1,0 +1,1 @@
+failure_id	validation_instance_id	workload_id	repeat_id	primary_instance	attempt_id	arm	failure_class	failure_reason	missing_output	input_identity_mismatch	ambiguous_matching	unexpected_fallback	retained_in_binary_denominator	replacement_or_retry_used	evidence_role
