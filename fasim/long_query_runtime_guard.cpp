@@ -1,6 +1,8 @@
 #include "long_query_runtime_guard.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdlib>
 #include <limits>
 #include <sstream>
 
@@ -78,6 +80,36 @@ const char *fasim_long_query_runtime_numeric_path_name(int numericPath)
 	default:
 		return "UNKNOWN";
 	}
+}
+
+bool fasim_long_query_runtime_parse_device_index(
+	const char *value, int *deviceIndexOut)
+{
+	if (deviceIndexOut == NULL)
+	{
+		return false;
+	}
+	*deviceIndexOut = -1;
+	if (value == NULL || value[0] == '\0')
+	{
+		*deviceIndexOut = 0;
+		return true;
+	}
+	if (value[0] < '0' || value[0] > '9')
+	{
+		return false;
+	}
+	errno = 0;
+	char *end = NULL;
+	const unsigned long long parsed = std::strtoull(value, &end, 10);
+	if (errno != 0 || end == value || end == NULL || end[0] != '\0' ||
+		parsed > static_cast<unsigned long long>(
+			std::numeric_limits<int>::max()))
+	{
+		return false;
+	}
+	*deviceIndexOut = static_cast<int>(parsed);
+	return true;
 }
 
 bool fasim_long_query_runtime_preflight(

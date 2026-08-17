@@ -111,6 +111,23 @@ int main()
 	require(std::string(fasim_long_query_runtime_numeric_path_name(
 		FASIM_LONG_QUERY_NUMERIC_PATH_WORD16)) == "WORD16",
 		"WORD16 label changed");
+	int parsedDevice = -1;
+	require(fasim_long_query_runtime_parse_device_index(NULL, &parsedDevice) &&
+		parsedDevice == 0, "missing device selector must default to 0");
+	require(fasim_long_query_runtime_parse_device_index("0", &parsedDevice) &&
+		parsedDevice == 0, "device 0 selector was rejected");
+	require(fasim_long_query_runtime_parse_device_index("12", &parsedDevice) &&
+		parsedDevice == 12, "valid device selector was rejected");
+	require(!fasim_long_query_runtime_parse_device_index("-1", &parsedDevice),
+		"negative device selector must fail closed");
+	require(!fasim_long_query_runtime_parse_device_index("gpu0", &parsedDevice),
+		"nonnumeric device selector must fail closed");
+	require(!fasim_long_query_runtime_parse_device_index("1x", &parsedDevice),
+		"partially numeric device selector must fail closed");
+	require(!fasim_long_query_runtime_parse_device_index("2147483648", &parsedDevice),
+		"overflowing device selector must fail closed");
+	require(!fasim_long_query_runtime_parse_device_index("0", NULL),
+		"missing parsed-device output must fail closed");
 
 	request = valid_request();
 	request.query_length = 6553;

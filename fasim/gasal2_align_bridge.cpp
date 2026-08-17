@@ -189,10 +189,17 @@ bool streamed_attempt_runtime_preflight(
 	request.maximum_target_subview_length_known =
 		maximumTargetSubviewLengthKnown;
 	request.scoring = scoringContract;
-	request.device_index = streamed_attempt_cuda_device();
+	const char *deviceValue = std::getenv("FASIM_CUDA_DEVICE");
+	if (deviceValue == NULL || deviceValue[0] == '\0')
+	{
+		deviceValue = std::getenv("LONGTARGET_CUDA_DEVICE");
+	}
+	const bool deviceSelectorValid =
+		fasim_long_query_runtime_parse_device_index(
+			deviceValue, &request.device_index);
 	request.cuda_built = prealign_cuda_is_built();
 	std::string resourceError;
-	if (request.cuda_built && request.query_length > 0 &&
+	if (deviceSelectorValid && request.cuda_built && request.query_length > 0 &&
 		request.query_length <= fasim_long_query_runtime_query_length_limit())
 	{
 		PreAlignCudaQueryHandle resourceProbe;

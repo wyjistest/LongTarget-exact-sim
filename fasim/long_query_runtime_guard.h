@@ -114,6 +114,8 @@ uint64_t fasim_long_query_runtime_target_subview_length_limit();
 uint64_t fasim_long_query_runtime_int16_score_limit();
 bool fasim_long_query_runtime_score_fits_int16(uint64_t score);
 const char *fasim_long_query_runtime_numeric_path_name(int numericPath);
+bool fasim_long_query_runtime_parse_device_index(
+	const char *value, int *deviceIndexOut);
 
 bool fasim_long_query_runtime_preflight(
 	const FasimLongQueryRuntimeGuardRequest &request,
