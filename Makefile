@@ -139,6 +139,11 @@ check-cuda-native-ada-fatbin: build-cuda-native-ada
 FASIM_CXXFLAGS ?= -O3 -std=c++11 -pthread
 FASIM_SIMD_FLAGS ?= -msse2
 FASIM_TARGET ?= fasim_longtarget_x86
+FASIM_OPENMP_TARGET ?= fasim_longtarget_openmp
+# Keep the OpenMP build explicitly separate from the frozen CPU authority
+# binary.  The repository-wide autodetection probe predates this target and
+# can be overridden by callers that use a non-GCC OpenMP toolchain.
+FASIM_OPENMP_FLAGS ?= -fopenmp
 FASIM_CUDA_TARGET ?= fasim_longtarget_cuda
 FASIM_GASAL2_TARGET ?= fasim_longtarget_gasal2
 SSW_CUDA_PHASE1_PROFILE_BIN ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/phase1/fasim_authority_profile
@@ -168,6 +173,16 @@ build-fasim: $(FASIM_TARGET)
 
 $(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-fasim-openmp
+build-fasim-openmp: $(FASIM_OPENMP_TARGET)
+
+.PHONY: check-fasim-openmp
+check-fasim-openmp:
+	bash ./scripts/check_fasim_openmp.sh
+
+$(FASIM_OPENMP_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_OPENMP_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
 
 .PHONY: build-ssw-cuda-phase1-profile
 build-ssw-cuda-phase1-profile: $(SSW_CUDA_PHASE1_PROFILE_BIN)

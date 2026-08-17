@@ -29,7 +29,9 @@
 #include <map>
 #include <set>
 #include <algorithm>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 #include <ctype.h>
 #include <utility>
 #include <thread>
@@ -4194,7 +4196,40 @@ static inline int fasim_extend_threads_runtime(int corenum)
     {
         threads = 256;
     }
-    return threads;
+	return threads;
+}
+
+static inline bool fasim_openmp_requested_runtime()
+{
+#ifdef _OPENMP
+	const char *value = getenv("FASIM_OPENMP");
+	return value != NULL && value[0] != '\0' && value[0] != '0';
+#else
+	return false;
+#endif
+}
+
+static inline int fasim_openmp_configure_threads(int requestedThreads)
+{
+#ifdef _OPENMP
+	const char *explicitThreads = getenv("FASIM_OPENMP_THREADS");
+	if (explicitThreads != NULL && explicitThreads[0] != '\0')
+	{
+		const int value = atoi(explicitThreads);
+		if (value > 0)
+		{
+			omp_set_num_threads(value);
+		}
+	}
+	else if (getenv("OMP_NUM_THREADS") == NULL && requestedThreads > 1)
+	{
+		omp_set_num_threads(requestedThreads);
+	}
+	return omp_get_max_threads();
+#else
+	(void)requestedThreads;
+	return 1;
+#endif
 }
 
 static inline void fasim_cuda_devices_runtime(std::vector<int> &devicesOut)
@@ -28876,10 +28911,49 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 
 	if (!useCudaBatch)
 	{
-		int minScore = 0, minscore;
-		string seqrev;
-		for (int i = 0; i < dnaSequencesVec.size(); i++)
+		/*
+		 * A Fasim invocation has one immutable RNA query and many independent
+		 * target windows.  The old implementation processed those windows in
+		 * one process but one after another; the external queue then duplicated
+		 * the process (and its DP allocator state) once per CPU.  The OpenMP
+		 * path keeps one result vector per window, so workers never mutate shared
+		 * triplex state.  Results are merged in window order below, preserving
+		 * the serial consumer's deterministic input order.
+		 */
+		const bool openmpRequested = fasim_openmp_requested_runtime();
+		const int openmpThreads = openmpRequested ?
+			fasim_openmp_configure_threads(paraList.corenum) : 1;
+		const bool openmpActive =
+			openmpRequested &&
+			openmpThreads > 1 &&
+			!verbose &&
+			!fasim_ssw_oracle::enabled() &&
+			!fasim_prealign_cuda_enabled_runtime() &&
+			!fasim_gasal2_enabled();
+		if (openmpRequested && !openmpActive)
 		{
+			cerr << "[fasim.openmp] disabled for this invocation"
+			     << " (requires plain CPU Fasim, non-verbose output, and >1 thread)"
+			     << endl;
+		}
+		if (openmpActive)
+		{
+			cerr << "benchmark.fasim_openmp.active=1\n"
+			     << "benchmark.fasim_openmp.threads=" << openmpThreads << "\n"
+			     << "benchmark.fasim_openmp.windows=" << dnaSequencesVec.size() << "\n"
+			     << "benchmark.fasim_openmp.schedule=dynamic_1_ordered_merge\n";
+		}
+		vector< vector<struct triplex> > windowTriplexLists(
+			dnaSequencesVec.size());
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 1) if(openmpActive)
+#endif
+		for (int i = 0; i < static_cast<int>(dnaSequencesVec.size()); i++)
+		{
+			vector<struct triplex> &triplex_list =
+				windowTriplexLists[static_cast<size_t>(i)];
+			int minScore = 0, minscore;
+			string seqrev;
 			long dnaStartPos = dnaSequencesStartPos[i];
 			if (verbose)
 			{
@@ -29073,15 +29147,23 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				}
 			}
 		}
-	}
-
-	for (int i = 0; i < triplex_list.size(); i++)
-	{
-		triplex atr = triplex_list[i];
-		if (atr.score >= paraList.scoreMin && atr.identity >= paraList.minIdentity
-			&& atr.tri_score >= paraList.minStability && atr.nt >= paraList.cLength)
+		/* Filter and merge in the original window order.  Moving each row
+		 * avoids a second copy of the alignment strings during the merge. */
+		for (size_t window = 0; window < windowTriplexLists.size(); ++window)
 		{
-			sort_triplex_list.push_back(atr);
+			vector<struct triplex> &windowRows = windowTriplexLists[window];
+			for (size_t row = 0; row < windowRows.size(); ++row)
+			{
+				triplex &atr = windowRows[row];
+				if (atr.score >= paraList.scoreMin &&
+					atr.identity >= paraList.minIdentity &&
+					atr.tri_score >= paraList.minStability &&
+					atr.nt >= paraList.cLength)
+				{
+					sort_triplex_list.push_back(std::move(atr));
+				}
+			}
+			vector<struct triplex>().swap(windowRows);
 		}
 	}
 }
