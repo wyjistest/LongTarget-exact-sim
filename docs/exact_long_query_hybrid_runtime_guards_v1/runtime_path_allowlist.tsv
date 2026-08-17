@@ -1,0 +1,12 @@
+path	allowed_change	valid_input_effect
+Makefile	link guard implementation and add focused tests	build graph only
+fasim/Fasim-LongTarget.cpp	run query-level preflight in replacement mode	before-GPU validation only
+fasim/fastsim.h	bind actual aligner scoring and propagate descriptor	before-attempt validation only
+fasim/gasal2_align_bridge.cpp	run query and attempt preflight before query-profile preparation	device attribute queries and validation only
+fasim/gasal2_align_bridge.h	add guard API, descriptor fields, and bounded target-view validation	API metadata and validation only
+fasim/gasal2_align_bridge_stub.cpp	fail closed when CUDA/GASAL2 support is absent	stub behavior only
+fasim/long_query_runtime_guard.cpp	implement pure fail-closed contract	validation only
+fasim/long_query_runtime_guard.h	define scoring request and runtime descriptor	API metadata only
+fasim/ssw_cpp.h	expose read-only scoring accessors	read-only metadata only
+tests/test_fasim_long_query_runtime_guard.cpp	add pure boundary fixtures	test only
+tests/test_fasim_long_query_runtime_guard_cuda.cpp	add actual-device resource boundary fixtures	test only

@@ -1,0 +1,65 @@
+{
+  "api_limits": {
+    "query_length_limit": "INT_MAX",
+    "target_subview_length_limit": "INT_MAX"
+  },
+  "descriptor_fields": [
+    "query_length",
+    "maximum_target_subview_length",
+    "maximum_target_subview_length_known",
+    "query_length_limit",
+    "target_subview_length_limit",
+    "segment_length",
+    "maximum_possible_score",
+    "required_dynamic_smem_bytes",
+    "default_dynamic_smem_limit_bytes",
+    "optin_dynamic_smem_limit_bytes",
+    "scoring",
+    "device_index",
+    "cuda_built",
+    "device_supported",
+    "resource_limits_available",
+    "query_length_fit",
+    "target_subview_length_fit",
+    "scoring_contract_fit",
+    "numeric_path_fit",
+    "numeric_fit",
+    "resource_fit",
+    "supported",
+    "decision"
+  ],
+  "fail_closed_reasons": [
+    "prealign_cuda_not_built",
+    "invalid_query_length",
+    "query_length_exceeds_api_limit",
+    "invalid_target_subview",
+    "invalid_target_subview_length",
+    "target_subview_length_exceeds_api_limit",
+    "unsupported_scoring_contract",
+    "unsupported_numeric_path",
+    "int16_score_range_exceeded",
+    "unsupported_cuda_device",
+    "dynamic_shared_memory_limit_exceeded"
+  ],
+  "numeric_safety": {
+    "condition": "5 * min(query_length, maximum_target_subview_length) <= INT16_MAX",
+    "state_storage": "int16_t"
+  },
+  "resource_model": {
+    "condition": "required_dynamic_smem_bytes <= actual_device_optin_limit_bytes",
+    "formula": "3 * ceil(query_length / 32) * 32 * sizeof(int16_t)",
+    "limits_are_queried_at_runtime": true
+  },
+  "schema_version": "exact_long_query_hybrid_runtime_guard_contract_v1",
+  "scoring_contract": {
+    "continuation_numeric_path": "WORD16",
+    "gap_extend": 4,
+    "gap_open": 16,
+    "match": 5,
+    "mismatch_penalty": 4
+  },
+  "stages": {
+    "attempt_preflight": "target view, maximum target length, and numeric range before query-profile preparation",
+    "query_preflight": "scoring, numeric path, device, and resource checks before GPU allocation or launch"
+  }
+}

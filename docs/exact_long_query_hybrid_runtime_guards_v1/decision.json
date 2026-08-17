@@ -1,0 +1,32 @@
+{
+  "authorization": {
+    "bioinformatics_v2_state_modified": false,
+    "execution_mode_product_release": false,
+    "formal_promoter_panel_modified": false,
+    "production_authorized": false
+  },
+  "claim_boundary": [
+    "runtime guards are implemented and pass focused boundary tests",
+    "one clean 4006 nt development fixture retained exact lite output and complete GPU coverage",
+    "one 25498 nt query failed closed at query-level resource preflight",
+    "the six-query full-concat promoter panel remains active and authoritative",
+    "continuous query-length support is not validated",
+    "resource fit is not a scientific support claim"
+  ],
+  "decision": "retain_runtime_guard_epoch_for_post_formal_inheritance_regression",
+  "gates": {
+    "attempt_level_target_and_numeric_guard": "pass",
+    "clean_build": "pass",
+    "empty_output_query_level_guard": "pass",
+    "formal_promoter_panel": "active_not_modified",
+    "invalid_device_guard": "pass",
+    "legacy_fixture_output_digest": "pass",
+    "production_promotion": "not_authorized",
+    "query_level_scoring_numeric_path_and_resource_guard": "pass",
+    "runtime_descriptor": "pass"
+  },
+  "implementation_commit": "0b52f80a0d6fed1ac71fd9faf0a572a7181078ea",
+  "next_gate": "after formal promoter pass, run one guarded full-concat paired regression per frozen query under the runtime-path inheritance allowlist",
+  "schema_version": "exact_long_query_hybrid_runtime_guard_decision_v1",
+  "status": "runtime_guard_checkpoint_pass"
+}

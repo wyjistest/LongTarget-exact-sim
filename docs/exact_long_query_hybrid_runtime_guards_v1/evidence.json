@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "binary": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_runtime_guards_v1/clean_build_0b52f80/fasim_longtarget_runtime_guard_0b52f80",
+      "sha256": "8f1efa8fbc706d5a7604e66f6311bd301a323635f9124217859b73c5160c060a"
+    },
+    "consumer_tsv_sha256": "89c30b1a69ec0dd24bc12a598c47f9b15ad650929d08183bfa30bab4bed80912",
+    "rejection_stderr_sha256": "7b790573aeac4d3ea5ed0d667af0fd34819b07421d10e84e9a1b10af094048fa"
+  },
+  "build": {
+    "compiler": "g++ 9.4.0",
+    "cuda": "12.5.82",
+    "gasal2_commit": "106d94ee53fc847214fb05f2f9f892538a5d3baf",
+    "source_commit": "0b52f80a0d6fed1ac71fd9faf0a572a7181078ea",
+    "source_diff_empty": true
+  },
+  "completed_utc": "2026-08-17T16:01:50Z",
+  "device": {
+    "default_dynamic_smem_limit_bytes": 49152,
+    "driver": "555.42.06",
+    "index": 0,
+    "model": "NVIDIA GeForce RTX 4090",
+    "optin_dynamic_smem_limit_bytes": 101376,
+    "resource_formula_fit_query_length_nt": 16896,
+    "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3"
+  },
+  "formal_panel_observation": {
+    "branch": "exact-long-query-hybrid-promoter-panel-v1",
+    "head": "dc534608b11d26d6248f6fa52768144ccb6d4ae4",
+    "modified_by_guard_epoch": false,
+    "service_active_at_evidence_freeze": true
+  },
+  "inheritance_boundary": {
+    "allowed_change_manifest": "runtime_path_allowlist.tsv",
+    "kernel_or_descriptor_changes_allowed": false,
+    "mapping_clustering_or_ranking_changes_allowed": false,
+    "required_post_formal_regression": "one guarded full-concat paired run for each of the six frozen queries"
+  },
+  "guarded_regression": {
+    "consumer": {
+      "cpu_all_attempt_oracle": 0,
+      "cpu_reference_attempts": 0,
+      "endpoint_attempts": 981688,
+      "errors": 0,
+      "gpu_endpoint_attempts": 981688,
+      "scoreinfo_groups": 245422,
+      "selected_attempts": 245422,
+      "selected_continuation_calls": 245422,
+      "selected_continuation_failures": 0,
+      "task_rows": 10368
+    },
+    "diagnostic_timing": {
+      "eligible_for_performance_claim": false,
+      "max_rss_kb": 191656,
+      "reason": "OpenMP production worker and formal CPU baselines active",
+      "wall_seconds": 171.39
+    },
+    "fixture_id": "linc01501_4006",
+    "output_sha256": "6f9e95ab6209d2ea053dfdef4872b6fd5616b07a9be8950976786c0a1215c226",
+    "output_sha256_expected": "6f9e95ab6209d2ea053dfdef4872b6fd5616b07a9be8950976786c0a1215c226",
+    "query_length_nt": 4006,
+    "query_sha256": "77a542d36f1de7e7ad5dae03a641456d6a5415f164034b4f144339e7c2c5b7fa",
+    "target_length_bp": 2000000,
+    "target_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea"
+  },
+  "rejection_fixture": {
+    "decision": "dynamic_shared_memory_limit_exceeded",
+    "exit_status": 1,
+    "fixture_id": "ensg00000254101_25498",
+    "optin_dynamic_smem_limit_bytes": 101376,
+    "query_length_nt": 25498,
+    "query_sha256": "13f4f71389c137cfe197a53ed08cea2c7e299b314baa506bdeb6fce84d747521",
+    "required_dynamic_smem_bytes": 153024
+  },
+  "schema_version": "exact_long_query_hybrid_runtime_guard_evidence_v1",
+  "tests": [
+    "check-fasim-long-query-runtime-guard",
+    "check-fasim-long-query-runtime-guard-cuda",
+    "check-prealign-shared",
+    "check-fasim-cigar",
+    "tests/check_freeze_exact_long_query_hybrid_checkpoint_v1.py"
+  ]
+}
