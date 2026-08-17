@@ -11871,7 +11871,7 @@ int main(int argc, char* const* argv)
 		const int openmpStreamingThreads = openmpStreamingRequested ?
 			fasim_openmp_configure_threads(paraList.corenum) : 1;
 		const int openmpStreamingBatch = fasim_env_int_or_default(
-			"FASIM_OPENMP_TASK_BATCH", 32);
+			"FASIM_OPENMP_TASK_BATCH", 4096);
 		/*
 		 * The production queue uses the tfosorted streaming path.  Keep this
 		 * OpenMP mode deliberately narrow: optional shadow/diagnostic paths have
@@ -23573,11 +23573,6 @@ int main(int argc, char* const* argv)
 			 */
 			if (openmpStreamingActive && !tasks.empty())
 			{
-				for (size_t t = 0; t < tasks.size(); ++t)
-				{
-					// Resolve the cached threshold before workers touch the task list.
-					task_min_score(tasks[t]);
-				}
 				std::vector< std::vector<triplex> > openmpTriplexes(tasks.size());
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic, 1) if(openmpStreamingActive)
@@ -23590,12 +23585,18 @@ int main(int argc, char* const* argv)
 					std::string querySeq = lncSeq;
 					std::string targetSeq = task.seq2;
 					std::string srcSeq = *task.srcSeq;
+					const int fullScore = calc_score_once(
+						querySeq,
+						targetSeq,
+						task.dnaStartPos,
+						task.rule);
+					const int minScore = fasim_min_score_from_full_score(fullScore);
 					fastSIM(
 						querySeq,
 						targetSeq,
 						srcSeq,
 						task.dnaStartPos,
-						task.minScore,
+						minScore,
 						5,
 						-4,
 						-12,
