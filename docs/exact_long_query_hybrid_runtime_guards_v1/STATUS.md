@@ -4,7 +4,7 @@
 
 ```text
 base_checkpoint = 500b0104b5a07407f5749b8ea5271916d47267fd
-implementation_commit = 0b52f80a0d6fed1ac71fd9faf0a572a7181078ea
+implementation_commit = 1da891e4f59f358b1ed62ba5c65e0eb430a85d1e
 runtime_guard_implementation = complete
 clean_fixture_gate = pass
 formal_promoter_panel_modified = false
@@ -84,10 +84,10 @@ overflow, unsupported device, and shared-memory overflow.
 ## Clean evidence
 
 The implementation was committed before the final build. A clean
-`0b52f80a0d6fed1ac71fd9faf0a572a7181078ea` tree produced binary SHA-256:
+`1da891e4f59f358b1ed62ba5c65e0eb430a85d1e` tree produced binary SHA-256:
 
 ```text
-8f1efa8fbc706d5a7604e66f6311bd301a323635f9124217859b73c5160c060a
+ed35ebc6134331205f53aea88bfcd893cf329508ae22799270bb5f9e32994191
 ```
 
 On device 0, the runtime query reported:
@@ -104,6 +104,13 @@ The 25,498 nt LINC02055 query failed at query preflight with:
 ```text
 dynamic_shared_memory_limit_exceeded:
 required=153024:optin_limit=101376
+```
+
+Malformed device selectors are parsed as strict unsigned decimal values.
+For example, `FASIM_CUDA_DEVICE=gpu0` failed at query preflight with:
+
+```text
+unsupported_cuda_device
 ```
 
 The guarded LINC01501 regression retained the frozen lite-output digest:
@@ -124,7 +131,7 @@ selected continuation failures = 0
 fallbacks = 0
 ```
 
-The observed `171.39 s` wall time is resource-contaminated diagnostic timing.
+The observed `190.18 s` wall time is resource-contaminated diagnostic timing.
 It is excluded from all speedup claims because the OpenMP production worker
 and formal CPU baselines were active concurrently.
 

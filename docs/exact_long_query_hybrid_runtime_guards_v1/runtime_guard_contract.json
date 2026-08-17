@@ -28,6 +28,15 @@
     "supported",
     "decision"
   ],
+  "device_selector": {
+    "accepted_syntax": "unsigned decimal integer in [0, INT_MAX]",
+    "environment_precedence": [
+      "FASIM_CUDA_DEVICE",
+      "LONGTARGET_CUDA_DEVICE",
+      "default device 0"
+    ],
+    "malformed_values_fail_closed": true
+  },
   "fail_closed_reasons": [
     "prealign_cuda_not_built",
     "invalid_query_length",

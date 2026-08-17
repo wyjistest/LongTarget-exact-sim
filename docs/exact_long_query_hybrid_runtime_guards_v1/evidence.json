@@ -1,20 +1,21 @@
 {
   "artifacts": {
     "binary": {
-      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_runtime_guards_v1/clean_build_0b52f80/fasim_longtarget_runtime_guard_0b52f80",
-      "sha256": "8f1efa8fbc706d5a7604e66f6311bd301a323635f9124217859b73c5160c060a"
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_runtime_guards_v1/clean_build_1da891e/fasim_longtarget_runtime_guard_1da891e",
+      "sha256": "ed35ebc6134331205f53aea88bfcd893cf329508ae22799270bb5f9e32994191"
     },
-    "consumer_tsv_sha256": "89c30b1a69ec0dd24bc12a598c47f9b15ad650929d08183bfa30bab4bed80912",
-    "rejection_stderr_sha256": "7b790573aeac4d3ea5ed0d667af0fd34819b07421d10e84e9a1b10af094048fa"
+    "consumer_tsv_sha256": "3292102460c68d49537e734650c4177138042fd5d09932e1101ceef3ee2f93c4",
+    "invalid_device_rejection_stderr_sha256": "1505408a29d26e53f37d916928fa343b314354a791ac4958645f56ae5d278e16",
+    "resource_rejection_stderr_sha256": "7b790573aeac4d3ea5ed0d667af0fd34819b07421d10e84e9a1b10af094048fa"
   },
   "build": {
     "compiler": "g++ 9.4.0",
     "cuda": "12.5.82",
     "gasal2_commit": "106d94ee53fc847214fb05f2f9f892538a5d3baf",
-    "source_commit": "0b52f80a0d6fed1ac71fd9faf0a572a7181078ea",
+    "source_commit": "1da891e4f59f358b1ed62ba5c65e0eb430a85d1e",
     "source_diff_empty": true
   },
-  "completed_utc": "2026-08-17T16:01:50Z",
+  "completed_utc": "2026-08-17T16:15:55Z",
   "device": {
     "default_dynamic_smem_limit_bytes": 49152,
     "driver": "555.42.06",
@@ -51,9 +52,9 @@
     },
     "diagnostic_timing": {
       "eligible_for_performance_claim": false,
-      "max_rss_kb": 191656,
+      "max_rss_kb": 191664,
       "reason": "OpenMP production worker and formal CPU baselines active",
-      "wall_seconds": 171.39
+      "wall_seconds": 190.18
     },
     "fixture_id": "linc01501_4006",
     "output_sha256": "6f9e95ab6209d2ea053dfdef4872b6fd5616b07a9be8950976786c0a1215c226",
@@ -62,6 +63,12 @@
     "query_sha256": "77a542d36f1de7e7ad5dae03a641456d6a5415f164034b4f144339e7c2c5b7fa",
     "target_length_bp": 2000000,
     "target_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea"
+  },
+  "invalid_device_selector_fixture": {
+    "decision": "unsupported_cuda_device",
+    "device_selector": "gpu0",
+    "exit_status": 1,
+    "query_length_nt": 4006
   },
   "rejection_fixture": {
     "decision": "dynamic_shared_memory_limit_exceeded",

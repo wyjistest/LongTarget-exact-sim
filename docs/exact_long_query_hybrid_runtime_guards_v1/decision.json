@@ -25,7 +25,7 @@
     "query_level_scoring_numeric_path_and_resource_guard": "pass",
     "runtime_descriptor": "pass"
   },
-  "implementation_commit": "0b52f80a0d6fed1ac71fd9faf0a572a7181078ea",
+  "implementation_commit": "1da891e4f59f358b1ed62ba5c65e0eb430a85d1e",
   "next_gate": "after formal promoter pass, run one guarded full-concat paired regression per frozen query under the runtime-path inheritance allowlist",
   "schema_version": "exact_long_query_hybrid_runtime_guard_decision_v1",
   "status": "runtime_guard_checkpoint_pass"
