@@ -28,12 +28,53 @@ production_authorized = false
 bioinformatics_v2_state = unchanged
 ```
 
+## Clean checkpoint result
+
+The clean checkpoint completed with:
+
+```text
+status = checkpoint_gate_pass
+benchmark source = 61da9b6f1b3d998043d512f5703dc95671d2383e
+formal binary SHA-256 = 6e9d5cec5ff50c9652b9aeb05a8a5533a9d707e0799d9925b2686377cdfdd7ee
+run matrix = 36/36
+candidate consumer task rows = 186624
+all-attempt CPU oracle calls = 0
+full CPU consumer replay attempts = 0
+selected continuation failures = 0
+fallbacks = 0
+```
+
+All paired CPU/hybrid `TFOsorted.lite` and complete `TFOsorted` outputs were
+byte-identical. Each output digest was deterministic across three repeats.
+
+| Fixture | Query nt | Lite median speedup | Full median speedup |
+| --- | ---: | ---: | ---: |
+| LINC01501 | 4,006 | 2.086850x | 2.046231x |
+| PCAT19 | 8,181 | 2.290544x | 2.291396x |
+| AL035530.2 | 12,397 | 2.621838x | 2.583776x |
+
+The independent freezer re-read all run records, recalculated all output
+digests, performed paired byte comparisons, and audited every consumer task
+row. Its sorted manifest binds 237 formal evidence files with SHA-256:
+
+```text
+48179f951eb467832a0c3ba2f79eb975b139cb63dea61ce6182c06d86e9ab583
+```
+
+The frozen derived evidence is:
+
+* `checkpoint_results.tsv`: exactness, determinism, coverage, and performance;
+* `stage_timing.tsv`: per-repeat forward, attempt, continuation, and output timing;
+* `operating_envelope.json`: observed device/resource and numeric boundaries;
+* `decision.json`: pass decision, evidence binding, and claim boundary;
+* `checksums.sha256`: tracked evidence integrity.
+
 ## Evidence boundary
 
-`checkpoint_fixtures.tsv` freezes the three already observed query lengths and
-the development-only 2 Mb target. A clean checkpoint run must rebuild from
-`61da9b6f1b3d998043d512f5703dc95671d2383e`, record an empty source diff at
-build time, and compare CPU and hybrid outputs independently.
+`checkpoint_fixtures.tsv` freezes the three observed query lengths, both clean
+output digests, and the development-only 2 Mb target. The clean run was rebuilt
+from `61da9b6f1b3d998043d512f5703dc95671d2383e`, recorded an empty source diff
+at build time, and compared CPU and hybrid outputs independently.
 
 `build_exact_long_query_hybrid_checkpoint_v1.py` performs that build in a
 separate detached worktree. It refuses a dirty source tree, checks the source
@@ -106,6 +147,17 @@ Dynamic shared-memory demand is:
 
 The runner records device default and opt-in shared-memory limits and reports
 resource fit for each fixture. Resource fit is not scientific validation.
+The RTX 4090 used here gives a resource-formula-only ceiling of 16,896 nt; that
+number is not a validated query-length limit and is not a support claim.
 Runtime scoring-parameter and int16 range guards are not implemented in
 `61da9b6`; production remains blocked until unsupported configurations fail
 closed and boundary fixtures pass.
+
+## Decision and next gate
+
+The implementation remains an exact hybrid engineering candidate. The next
+engineering gate is a fresh panel using the frozen real promoter target,
+including component-local coordinate restoration and fail-closed rejection of
+cross-component and reference-N hits. No production mode, continuous 4-12 kb
+range, GPU-only traceback, or Bioinformatics v2 claim is authorized by this
+checkpoint.

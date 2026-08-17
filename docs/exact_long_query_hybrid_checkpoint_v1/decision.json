@@ -1,0 +1,68 @@
+{
+  "authorization": {
+    "bioinformatics_v2_state_modified": false,
+    "execution_mode_product_release": false,
+    "gpu_only_or_full_gpu_claim": false,
+    "long_query_hybrid": "engineering_candidate",
+    "next_engineering_stage": "fresh_real_promoter_validation_panel",
+    "production_authorized": false
+  },
+  "claim_boundary": [
+    "exactness passed on three discrete query fixtures and one development target slice",
+    "the 4-12 kb continuous range is not validated",
+    "the production promoter scientific and coordinate-restoration contract is not validated",
+    "selected attempts still use CPU canonical reverse-start and CIGAR continuation"
+  ],
+  "decision": "retain_as_exact_hybrid_engineering_candidate",
+  "evidence": {
+    "benchmark_source_commit": "61da9b6f1b3d998043d512f5703dc95671d2383e",
+    "binary_sha256": "6e9d5cec5ff50c9652b9aeb05a8a5533a9d707e0799d9925b2686377cdfdd7ee",
+    "checkpoint_harness_commit_at_execution": "1d73bbc6e80c30804f694d12b86c5bedc1b4e01d",
+    "checkpoint_receipt_sha256": "c0e2d96b4b23f25b9c37b6f98ab06e97419533a85bdbba99ed9a46c823f33eac",
+    "completed_utc": "2026-08-17T11:14:59.037291+00:00",
+    "consumer_reports": {
+      "count": 18,
+      "manifest_sha256": "95a11b88e6eb138e2b87f09c2ba3ea611813c61c76fea7899594af2724a2ca9a",
+      "total_bytes": 37357499
+    },
+    "formal_artifact_manifest": {
+      "algorithm": "sha256 of sorted '<sha256>\\t<size>\\t<relative_path>\\n' rows",
+      "file_count": 237,
+      "sha256": "48179f951eb467832a0c3ba2f79eb975b139cb63dea61ce6182c06d86e9ab583",
+      "total_bytes": 70166859
+    },
+    "formal_run_root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_checkpoint_v1/formal_runs_v2",
+    "output_artifacts": {
+      "count": 36,
+      "manifest_sha256": "88ee671dfc5ef3ce3cc72b7b2aebe5107d21fb86ad547b6d6afcfcf3e5c63552",
+      "total_bytes": 29092956
+    },
+    "preflight_sha256": "8e647adc6230103ceb062cde8dbb44098d42ed7d92abd9eb552b320c22272277",
+    "run_receipts": {
+      "count": 36,
+      "manifest_sha256": "54e284188df6e131b1e2c0515290a8a44ebc60ff253c47bb9008a9ab90f1d294",
+      "total_bytes": 30071
+    },
+    "runs_tsv_sha256": "8521a8590f5be78d6491807cfd4961fed6168b44f3d0d320f2b49ede765a852a"
+  },
+  "gates": {
+    "all_attempt_cpu_oracle_zero": "pass",
+    "all_attempt_gpu_coverage": "pass",
+    "clean_source_and_binary_identity": "pass",
+    "continuous_query_length_range": "not_validated",
+    "fallbacks_zero": "pass",
+    "full_and_lite_output_byte_equality": "pass",
+    "full_cpu_consumer_replay_zero": "pass",
+    "median_paired_speedup_at_least_1_5x": "pass",
+    "minimum_fixture_mode_median_paired_speedup": 2.046230628,
+    "production_promoter_identity": "identity_gate_pass",
+    "production_promoter_scientific_contract": "not_executed",
+    "run_matrix_36_of_36": "pass",
+    "runtime_parameter_and_int16_guards": "not_implemented",
+    "selected_cpu_continuation_failures_zero": "pass",
+    "three_repeat_output_determinism": "pass"
+  },
+  "implementation": "stateful_gpu_scoreinfo_plus_gpu_endpoint_plus_host_selection_plus_selected_cpu_continuation",
+  "schema_version": "exact_long_query_hybrid_checkpoint_decision_v1",
+  "status": "checkpoint_gate_pass"
+}

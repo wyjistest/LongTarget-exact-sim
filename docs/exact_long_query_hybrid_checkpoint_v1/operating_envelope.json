@@ -1,0 +1,75 @@
+{
+  "benchmark_source_commit": "61da9b6f1b3d998043d512f5703dc95671d2383e",
+  "binary_sha256": "6e9d5cec5ff50c9652b9aeb05a8a5533a9d707e0799d9925b2686377cdfdd7ee",
+  "fixture_observations": [
+    {
+      "fixture_id": "linc01501_4006",
+      "full_output_byte_equal": true,
+      "query_length_nt": 4006,
+      "required_dynamic_smem_bytes": 24192,
+      "resource_fit": true
+    },
+    {
+      "fixture_id": "pcat19_8181",
+      "full_output_byte_equal": true,
+      "query_length_nt": 8181,
+      "required_dynamic_smem_bytes": 49152,
+      "resource_fit": true
+    },
+    {
+      "fixture_id": "al035530_2_12397",
+      "full_output_byte_equal": true,
+      "query_length_nt": 12397,
+      "required_dynamic_smem_bytes": 74496,
+      "resource_fit": true
+    }
+  ],
+  "hardware": {
+    "benchmark_device_index": 0,
+    "cpu_model": "Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz",
+    "default_shared_memory_per_block_bytes": 49152,
+    "gpu_inventory": [
+      "0, GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3, NVIDIA GeForce RTX 4090, 555.42.06, 24564 MiB",
+      "1, GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2, NVIDIA GeForce RTX 4090, 555.42.06, 24564 MiB"
+    ],
+    "hostname": "amax",
+    "optin_shared_memory_per_block_bytes": 101376
+  },
+  "numeric_safety": {
+    "boundary_fixtures_validated": false,
+    "conservative_condition": "5 * min(query_length_nt, target_subview_length_nt) <= INT16_MAX",
+    "int16_max": 32767,
+    "runtime_range_guard_implemented": false,
+    "state_storage": "int16_t"
+  },
+  "resource_model": {
+    "required_dynamic_smem_formula": "3 * ceil(query_length_nt / 32) * 32 * sizeof(int16_t)",
+    "resource_fit_does_not_imply_scientific_support": true,
+    "resource_only_ceiling_is_scientifically_validated": false,
+    "resource_only_query_length_ceiling_nt": 16896
+  },
+  "schema_version": "exact_long_query_hybrid_operating_envelope_v1",
+  "scoring_contract": {
+    "continuation_numeric_path": "WORD16",
+    "gap_extend": 4,
+    "gap_open": 16,
+    "int16_range_guard_implemented": false,
+    "match": 5,
+    "mismatch_penalty": 4,
+    "runtime_parameter_guard_implemented": false
+  },
+  "status": "observed_on_three_discrete_fixtures_only",
+  "target_contract": {
+    "executed_target_role": "development_contiguous_chr22_slice",
+    "executed_target_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea",
+    "production_promoter_identity_gate": "identity_gate_pass",
+    "production_promoter_scientific_contract_validated": false
+  },
+  "unsupported_configuration_fail_closed_guards_implemented": false,
+  "validated_continuous_range": false,
+  "validated_query_lengths_nt": [
+    4006,
+    8181,
+    12397
+  ]
+}
