@@ -1,0 +1,33 @@
+{
+  "schema_version": "exact_long_query_hybrid_preexecution_input_repair_v1",
+  "status": "repaired_before_8kb_alignment",
+  "failed_run_root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_checkpoint_v1/formal_runs_v1/pcat19_8181/lite/baseline_1",
+  "failure_scope": {
+    "fixture_id": "pcat19_8181",
+    "mode": "lite",
+    "arm": "baseline",
+    "repeat": 1,
+    "wall_seconds": 0.22,
+    "failure": "output filename derived from the rich FASTA header exceeded the filesystem component limit",
+    "alignment_reached": false,
+    "scientific_output_produced": false,
+    "candidate_arm_started": false
+  },
+  "failed_artifact_sha256": {
+    "invocation.json": "59b93a419cba8b8db8c6d2898104f65083d9086d6c623fabc86a2f572bb51e95",
+    "stdout.log": "5f6287fabd17458999396a810448ac7e9bc3775ccd2954443a170501ab30a345",
+    "stderr.log": "d4566994405f9973d634d07584c815e2208839eede80789201ba39fd0b95bf98",
+    "time.txt": "0f2e097505e16720ffe473cb43b6b4433f37d5142bbbc17ea6191476a80fbc26"
+  },
+  "repair": {
+    "type": "header_only_input_adapter",
+    "rule": "replace the runtime FASTA header with the stable gene ID while preserving the complete sequence byte-for-byte",
+    "manifest_binds_source_and_runtime_file_digests": true,
+    "manifest_binds_sequence_digest": true,
+    "runtime_path_changed": false,
+    "scoring_or_selection_changed": false,
+    "failed_run_deleted": false,
+    "replacement_run_root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_checkpoint_v1/formal_runs_v2"
+  }
+}
+

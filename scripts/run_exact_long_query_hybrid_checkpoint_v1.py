@@ -121,6 +121,21 @@ def fasta_length(path: Path) -> int:
     return total
 
 
+def fasta_sequence_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    records = 0
+    with path.open("r", encoding="ascii") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if line.startswith(">"):
+                records += 1
+            elif line:
+                require(records == 1, f"sequence before or after the sole FASTA record: {path}")
+                digest.update(line.upper().encode("ascii"))
+    require(records == 1, f"expected one FASTA record: {path}")
+    return digest.hexdigest()
+
+
 def command_output(command: list[str]) -> str:
     return subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.strip()
 
@@ -217,13 +232,18 @@ def validate_manifest(path: Path) -> list[dict[str, object]]:
         fixture_id = raw["fixture_id"]
         require(fixture_id not in seen, f"duplicate fixture ID: {fixture_id}")
         seen.add(fixture_id)
+        source_query = Path(raw["source_query_path"])
         query = Path(raw["query_path"])
         target = Path(raw["target_path"])
+        require(sha256_file(source_query) == raw["source_query_sha256"], f"source query digest mismatch: {fixture_id}")
         require(sha256_file(query) == raw["query_sha256"], f"query digest mismatch: {fixture_id}")
         require(fasta_length(query) == int(raw["query_length_nt"]), f"query length mismatch: {fixture_id}")
+        require(fasta_length(source_query) == int(raw["query_length_nt"]), f"source query length mismatch: {fixture_id}")
+        require(fasta_sequence_sha256(query) == raw["query_sequence_sha256"], f"runtime query sequence digest mismatch: {fixture_id}")
+        require(fasta_sequence_sha256(source_query) == raw["query_sequence_sha256"], f"source/runtime query sequence mismatch: {fixture_id}")
         require(sha256_file(target) == raw["target_sha256"], f"target digest mismatch: {fixture_id}")
         require(fasta_length(target) == int(raw["target_length_bp"]), f"target length mismatch: {fixture_id}")
-        rows.append({**raw, "query_path": query, "target_path": target, "query_length_nt": int(raw["query_length_nt"]), "target_length_bp": int(raw["target_length_bp"])})
+        rows.append({**raw, "source_query_path": source_query, "query_path": query, "target_path": target, "query_length_nt": int(raw["query_length_nt"]), "target_length_bp": int(raw["target_length_bp"])})
     require([row["query_length_nt"] for row in rows] == [4006, 8181, 12397], "checkpoint must contain exactly the three discrete fixtures")
     return rows
 

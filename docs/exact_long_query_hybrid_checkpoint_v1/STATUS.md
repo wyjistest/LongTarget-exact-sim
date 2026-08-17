@@ -40,6 +40,13 @@ separate detached worktree. It refuses a dirty source tree, checks the source
 again after compilation, verifies the pinned GASAL2 commit and patched-tree
 digest, and emits the only build receipt accepted by the formal run.
 
+The manifest separately binds each original metadata-rich FASTA, the
+short-header runtime FASTA, and the normalized sequence digest. The short
+header is required because Fasim derives its output filename from the FASTA
+record name. `preexecution_input_repair_v1.json` records the first 8 kb
+pre-alignment filename failure and proves that the repair changes only the
+header, not the sequence or runtime.
+
 The three lengths are discrete fixtures. They must not be reported as a
 validated continuous 4-12 kb range.
 
