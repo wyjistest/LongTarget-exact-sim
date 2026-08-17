@@ -735,7 +735,8 @@ uint8_t * sw_sse2_byte_once(const int8_t* ref,
 //			fprintf(stderr, "%d is score %d is ref\n", maxColumn[i], i);
 //		}
 //	}
-//	free(maxColumn);
+	/* maxColumn ownership is transferred to ssw_pre_align. */
+	free(bests);
 	free(end_read_column);
 	return maxColumn;
 	//return bests;
@@ -1356,7 +1357,8 @@ uint16_t * sw_sse2_word_once(const int8_t* ref,
 		//	fprintf(stderr, "%d is score %d is ref\n", maxColumn[i], i);
 		//}
 	//}
-	//free(maxColumn);
+	/* maxColumn ownership is transferred to ssw_pre_align. */
+	free(bests);
 	free(end_read_column);
 	//return bests;
 	return maxColumn;
@@ -1984,16 +1986,9 @@ int * ssw_pre_align(const s_profile* prof,
 	int32_t word = 0, band_width = 0, readLen = prof->readLen;
 	int8_t* read_reverse = 0;
 	int *scoreMatrix;
-	uint8_t* byteColumn = (uint8_t*)calloc(refLen, 1);;
-	uint16_t *wordColumn;
-	byteColumn = NULL;
-	wordColumn = NULL;
+	uint8_t* byteColumn = NULL;
+	uint16_t *wordColumn = NULL;
 	cigar* path;
-	s_align* r = (s_align*)calloc(1, sizeof(s_align));
-	r->ref_begin1 = -1;
-	r->read_begin1 = -1;
-	r->cigar = 0;
-	r->cigarLen = 0;
 	if (maskLen < 15) {
 		fprintf(stderr, "When maskLen < 15, the function ssw_align doesn't return 2nd best alignment information.\n");
 	}
@@ -2010,6 +2005,7 @@ int * ssw_pre_align(const s_profile* prof,
 		}
 		if (prof->profile_word && maxscore>=255) {//&& bests[0].score == 255
 			//freeMatrix(scoreMatrix);
+			free(byteColumn);
 			byteColumn = NULL;
 			wordColumn = sw_sse2_word_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
 			fasim_ssw_oracle::record_prealign_columns_u16(wordColumn, refLen, "word16");
@@ -2039,7 +2035,7 @@ int * ssw_pre_align(const s_profile* prof,
 		{
 			scoreMatrix[i] = (int)byteColumn[i];
 		}
-		// free byteColumn.
+		free(byteColumn);
 		byteColumn =NULL;
 	}
 	else if (wordColumn)
@@ -2048,7 +2044,7 @@ int * ssw_pre_align(const s_profile* prof,
 		{
 			scoreMatrix[i] = (int)wordColumn[i];
 		}
-		// free wordColumn
+		free(wordColumn);
 		wordColumn =NULL;
 	}
 
