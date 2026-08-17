@@ -1,0 +1,33 @@
+{
+  "authorized_utc": "2026-08-17T14:24:26.809040+00:00",
+  "bioinformatics_v2_state_modified": false,
+  "execution_matrix_sha256": "b06b03c12f7a4c75189716b9c73d38aeadef1dbe58a5ad7eb508f101db9f1527",
+  "formal_panel_authorized": true,
+  "formal_run_count": 36,
+  "fresh_queries_sha256": "1a39fee617916011d0ee7f64e16e1d97a23d96d3d94ef31d3869c6714d4f35fd",
+  "gpu_only_claim": false,
+  "harness_commit": "8feae7e317e5d5c6ee7707d9858faab766d1949f",
+  "performance_note": "shake-down timing was diagnostic only; formal performance requires separately controlled paired timing",
+  "production_authorized": false,
+  "query_ids": [
+    "ENSG00000286042",
+    "ENSG00000215068",
+    "ENSG00000246090",
+    "ENSG00000269086",
+    "ENSG00000254319",
+    "ENSG00000241316"
+  ],
+  "required_runtime_conditions": {
+    "affinity_threshold": 0,
+    "case_runner_must_recheck_query_freshness": true,
+    "complete_tfosorted_only": true,
+    "cpu_hybrid_pairing": true,
+    "fail_closed_on_any_gpu_or_mapping_counter": true,
+    "repeats_per_arm": 3
+  },
+  "schema_version": "exact_long_query_hybrid_promoter_formal_execution_addendum_v1",
+  "shake_down_decision_sha256": "25f199691e9e0877abc7a0264f22a6a721872e5d1ffd60772de3ed9157960f4a",
+  "status": "formal_execution_authorized",
+  "target_artifact_id": "logical_full_concat",
+  "target_length_bp": 164917643
+}

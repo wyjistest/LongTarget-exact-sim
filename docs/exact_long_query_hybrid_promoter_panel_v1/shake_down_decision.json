@@ -1,0 +1,72 @@
+{
+  "authorized_utc": "2026-08-17T14:24:26.809040+00:00",
+  "bioinformatics_v2_state_modified": false,
+  "decision": "authorize_fresh_full_promoter_panel_execution",
+  "evidence": {
+    "all_pair_gates": {
+      "binding_affinity_exact_at_threshold_zero": true,
+      "candidate_gpu_accounting_pass": true,
+      "candidate_site_exact": true,
+      "coordinate_mapping_exact": true,
+      "dbd1_exact": true,
+      "dbs_peak_set_exact": true,
+      "raw_tfosorted_byte_identical": true,
+      "rejection_taxonomy_exact": true
+    },
+    "candidate_site_rows": 15,
+    "cpu_all_attempt_oracle": 0,
+    "cpu_reference_align_attempts": 0,
+    "dbs_peaks_threshold_zero": 8639,
+    "decoded_unique_source_hits": 44477,
+    "forward_gpu_tasks": 48432,
+    "gpu_endpoint_attempts": 4345980,
+    "mapped_promoter_associations": 63368,
+    "promoter_affinity_pairs": 1395,
+    "raw_tfosorted_byte_identical": true,
+    "rejected_source_hits": 268,
+    "rejection_reason_counts": {
+      "cross_component_boundary": 268
+    },
+    "selected_continuation_failures": 0
+  },
+  "freshness_audit": {
+    "external_production_target_matches": {
+      "ENSG00000215068": [],
+      "ENSG00000241316": [],
+      "ENSG00000246090": [],
+      "ENSG00000254319": [],
+      "ENSG00000269086": [],
+      "ENSG00000286042": []
+    },
+    "query_count": 6,
+    "status": "pass"
+  },
+  "harness_commit": "8feae7e317e5d5c6ee7707d9858faab766d1949f",
+  "production_authorized": false,
+  "runtime": {
+    "baseline_wall_seconds_diagnostic_only": 361.63,
+    "binary_sha256": "6e9d5cec5ff50c9652b9aeb05a8a5533a9d707e0799d9925b2686377cdfdd7ee",
+    "candidate_wall_seconds_diagnostic_only": 177.92,
+    "diagnostic_speedup": 2.032542715827338,
+    "performance_formal": false,
+    "raw_tfosorted_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "reason": "unrelated OpenMP production worker was active"
+  },
+  "schema_version": "exact_long_query_hybrid_promoter_shake_down_decision_v1",
+  "source_receipts": {
+    "baseline": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_promoter_panel_v1/shake_down_v1/baseline_1/receipt.json",
+      "sha256": "97f80abad28b67996ae58a081e536441f08f813db567a81060e45fdcddfa69ba"
+    },
+    "candidate": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_promoter_panel_v1/shake_down_v1/candidate_1/receipt.json",
+      "sha256": "749623fcc10d0f5b921e1f2be823dd1730bc9b0008844e14d56b6a6a11aa1c94"
+    },
+    "pair": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_promoter_panel_v1/shake_down_v1/pair/pair-receipt.json",
+      "sha256": "9c85810ff27e0b0509455fff668719d88ab04ba3352a4f11069cbc2a58696c5e"
+    }
+  },
+  "status": "pass",
+  "workload_id": "shake_ENSG00000229613_shard_0009"
+}
