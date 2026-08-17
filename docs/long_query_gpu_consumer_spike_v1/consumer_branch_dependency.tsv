@@ -1,0 +1,8 @@
+state_variable	source_file	line	control_fields	output_fields	cigar_required	mean_stability_required	triplex_conversion_required	spike_interpretation
+group_boundary	fasim/fastsim.h	1434-1443	descriptor.scoreInfoOrder	group reset	no	no	no	attempts must remain ordered by scoreInfo group
+last	fasim/fastsim.h	1489-1491;1799-1813;2717-2719	alignment.sw_score;attempt order	last attempt/alignment	no for branch;yes for emitted row	no	no until final emission	updated for every non-emitted attempt
+threshold_emit	fasim/fastsim.h	1492-1496;1815-1820;2720-2725	alignment.sw_score >= scoreInfo.score	retained attempt	no for control;yes for output	no	yes	stops the current group immediately
+best_fallback	fasim/fastsim.h	1498-1504;1822-1829;2727-2733	alignment.sw_score;alignment.ref_end;attempt.cutlength	best attempt/alignment	no for control;yes for output	no	yes	only terminal-reaching attempts can replace best
+group_flush	fasim/fastsim.h	1409-1429;1977-1997;2649-2669	group state	best or last emission	yes for emitted alignment	yes downstream	yes	flush occurs after all ordered attempts or threshold stop
+global_sort_dedup	fasim/fastsim.h	1510-1536;2052-2094;2737-2755	converted triplex rows	TFO rows	yes	yes	yes	post-consumer canonicalization and filtering
+score_only_projection	fasim/gasal2_align_bridge.cpp	556-564	GPU score;query_end;ref_end	ScoreOnlyResult	no	no	no	fields sufficient for control-state probe, not final scientific output

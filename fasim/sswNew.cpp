@@ -2353,7 +2353,8 @@ end:
 	return r;
 }
 
-#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
 s_align* ssw_align_from_forward(const s_profile* prof,
 	const int8_t* ref,
 	int32_t refLen,

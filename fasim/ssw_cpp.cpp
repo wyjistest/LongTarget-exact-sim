@@ -7,7 +7,8 @@
 #include "ssw_oracle_trace.h"
 #include<algorithm>
 #include <iostream>
-#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
 #include <limits>
 #endif
 #include <map>
@@ -916,7 +917,8 @@ namespace StripedSmithWaterman {
 		return true;
 	}
 
-#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
 	bool Aligner::AlignFromForward(const char* query, const char* ref,
 		const int& ref_len, const Filter& filter,
 		const ForwardEndpoint& endpoint, Alignment* alignment,

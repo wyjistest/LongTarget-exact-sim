@@ -45,7 +45,8 @@ namespace StripedSmithWaterman {
 		int position;
 	};
 
-#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
 	struct ForwardEndpoint {
 		ForwardEndpoint()
 			: score1(0), score2(0), ref_end1(-1), query_end1(0),
@@ -176,7 +177,8 @@ namespace StripedSmithWaterman {
 		// =========
 		bool Align(const char* query, const char* ref, const int& ref_len,
 			const Filter& filter, Alignment* alignment, const int32_t maskLen) const;
-#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
 		bool AlignFromForward(const char* query, const char* ref, const int& ref_len,
 			const Filter& filter, const ForwardEndpoint& endpoint,
 			Alignment* alignment, const int32_t maskLen) const;

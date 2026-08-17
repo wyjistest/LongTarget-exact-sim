@@ -3,6 +3,8 @@
 
 #include "gasal_header.h"
 #include "ssw.h"
+#include "../cuda/prealign_cuda.h"
+#include "../cuda/prealign_shared.h"
 
 #include <algorithm>
 #include <chrono>
@@ -10,6 +12,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -26,6 +29,8 @@ enum class GasalMode
 	ScoreOnly,
 	Traceback
 };
+
+int streamed_attempt_cuda_device();
 
 struct BridgeState
 {
@@ -45,10 +50,69 @@ struct BridgeState
 	int max_alns;
 };
 
+struct StreamedAttemptQueryCache
+{
+	StreamedAttemptQueryCache() :
+		device(-1),
+		seg_len(0),
+		query(),
+		profile(),
+		handle()
+	{
+	}
+
+	~StreamedAttemptQueryCache()
+	{
+		prealign_cuda_release_query(&handle);
+	}
+
+	bool prepare(const std::string &queryValue, std::string *errorOut)
+	{
+		const int requestedDevice = streamed_attempt_cuda_device();
+		if (device == requestedDevice && query == queryValue &&
+		    handle.profileDevice != 0)
+		{
+			return true;
+		}
+
+		prealign_cuda_release_query(&handle);
+		device = requestedDevice;
+		seg_len = 0;
+		query.clear();
+		profile.clear();
+		if (!prealign_cuda_init(device, errorOut))
+		{
+			return false;
+		}
+		prealign_shared_build_query_profile(
+			queryValue, 5, 4, profile, seg_len);
+		if (!prealign_cuda_prepare_query(
+			&handle,
+			profile.data(),
+			5,
+			seg_len,
+			static_cast<int>(queryValue.size()),
+			errorOut))
+		{
+			prealign_cuda_release_query(&handle);
+			return false;
+		}
+		query = queryValue;
+		return true;
+	}
+
+	int device;
+	int seg_len;
+	std::string query;
+	std::vector<int16_t> profile;
+	PreAlignCudaQueryHandle handle;
+};
+
 std::mutex g_mutex;
 FasimGasal2Stats g_stats;
 BridgeState g_score_state;
 BridgeState g_traceback_state;
+StreamedAttemptQueryCache g_streamed_attempt_query_cache;
 uint64_t g_limited_traceback_export_batch_id = 0;
 
 double seconds_since(const std::chrono::steady_clock::time_point &start)
@@ -87,6 +151,28 @@ int env_int_or_unlimited(const char *name)
 	}
 	const int value = std::atoi(env);
 	return value > 0 ? value : 0;
+}
+
+int streamed_attempt_cuda_device()
+{
+	const char *env = std::getenv("FASIM_CUDA_DEVICE");
+	if (env == NULL || env[0] == '\0')
+	{
+		env = std::getenv("LONGTARGET_CUDA_DEVICE");
+	}
+	if (env == NULL || env[0] == '\0')
+	{
+		return 0;
+	}
+	const int value = std::atoi(env);
+	return value >= 0 ? value : 0;
+}
+
+int streamed_attempt_batch_size()
+{
+	const int configured = env_int_or_default(
+		"FASIM_LONG_QUERY_STREAMED_ATTEMPT_BATCH", 4096);
+	return std::max(1, std::min(configured, 32768));
 }
 
 bool env_enabled(const char *name)
@@ -1664,6 +1750,8 @@ bool fasim_gasal2_enabled()
 	return env_enabled("FASIM_ALIGN_GASAL2") ||
 	       env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO") ||
 	       env_enabled("FASIM_TOP5_GASAL2_LONG_QUERY_SEGMENTED_SHADOW") ||
+	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_V1") ||
+	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE") ||
 	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW") ||
 	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_HOST_ASSISTED_CONSUMER_FEASIBILITY") ||
 	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_TASK_FRONTIER_CERTIFICATE") ||
@@ -1681,6 +1769,8 @@ bool fasim_gasal2_longtarget_bridge_enabled()
 {
 	return env_enabled("FASIM_ALIGN_GASAL2_LONGTARGET_BRIDGE") ||
 	       env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO") ||
+	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_V1") ||
+	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE") ||
 	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW") ||
 	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_HOST_ASSISTED_CONSUMER_FEASIBILITY") ||
 	       env_enabled("FASIM_GASAL2_PHASE7_POST_V5_3_TASK_FRONTIER_CERTIFICATE") ||
@@ -2457,6 +2547,299 @@ bool fasim_gasal2_score_attempts(
 		out.ref_end = scoreResults[i].ref_end;
 		scores->push_back(out);
 	}
+	return true;
+}
+
+bool fasim_gasal2_streamed_attempt_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	if (scores != NULL)
+	{
+		scores->clear();
+	}
+	if (telemetry != NULL)
+	{
+		*telemetry = FasimGasal2StreamedAttemptScoreTelemetry();
+		telemetry->requests = static_cast<uint64_t>(attempts.size());
+	}
+	if (errorOut != NULL)
+	{
+		errorOut->clear();
+	}
+	if (query.empty() || attempts.empty() || scores == NULL)
+	{
+		const std::string error = attempts.empty() ? "empty_attempts" : "invalid_input";
+		if (errorOut != NULL) *errorOut = error;
+		if (telemetry != NULL) telemetry->error = error;
+		return false;
+	}
+	if (!prealign_cuda_is_built())
+	{
+		if (errorOut != NULL) *errorOut = "prealign_cuda_not_built";
+		if (telemetry != NULL) telemetry->error = "prealign_cuda_not_built";
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	const std::chrono::steady_clock::time_point totalStart =
+		std::chrono::steady_clock::now();
+	std::string bridgeError;
+	if (!g_streamed_attempt_query_cache.prepare(query, &bridgeError))
+	{
+		if (errorOut != NULL) *errorOut = bridgeError.empty() ? "query_prepare_failed" : bridgeError;
+		if (telemetry != NULL)
+		{
+			telemetry->error = bridgeError.empty() ? "query_prepare_failed" : bridgeError;
+			telemetry->total_seconds = seconds_since(totalStart);
+		}
+		return false;
+	}
+
+	size_t maximumTargetLength = 0;
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		const FasimGasal2Attempt &attempt = attempts[i];
+		const size_t targetLength = attempt.target_size();
+		if (targetLength == 0 || attempt.target_data() == NULL ||
+			targetLength > static_cast<size_t>(std::numeric_limits<int>::max()))
+		{
+			const std::string error = "invalid_target_subview";
+			if (errorOut != NULL) *errorOut = error;
+			if (telemetry != NULL)
+			{
+				telemetry->error = error;
+				telemetry->total_seconds = seconds_since(totalStart);
+			}
+			return false;
+		}
+		maximumTargetLength = std::max(maximumTargetLength, targetLength);
+	}
+
+	scores->assign(attempts.size(), FasimGasal2StreamedAttemptScore());
+	const int maxBatch = streamed_attempt_batch_size();
+	for (size_t batchBegin = 0; batchBegin < attempts.size();
+	     batchBegin += static_cast<size_t>(maxBatch))
+	{
+		const size_t batchEnd = std::min(
+			attempts.size(), batchBegin + static_cast<size_t>(maxBatch));
+		const int taskCount = static_cast<int>(batchEnd - batchBegin);
+		size_t paddedTargetLength = 0;
+		for (size_t i = batchBegin; i < batchEnd; ++i)
+		{
+			paddedTargetLength = std::max(
+				paddedTargetLength, attempts[i].target_size());
+		}
+		if (paddedTargetLength == 0 ||
+			paddedTargetLength > maximumTargetLength)
+		{
+			const std::string error = "invalid_padded_target_length";
+			if (errorOut != NULL) *errorOut = error;
+			if (telemetry != NULL)
+			{
+				telemetry->error = error;
+				telemetry->total_seconds = seconds_since(totalStart);
+			}
+			return false;
+		}
+
+		// N has a negative substitution score for every query base. Padding can
+		// only preserve or decrease an existing path, while the endpoint kernel
+		// updates its winner on a strict score increase. The real subview winner
+		// is therefore unchanged and remains relative to the unpadded attempt.
+		std::vector<uint8_t> encoded(
+			static_cast<size_t>(taskCount) * paddedTargetLength,
+			static_cast<uint8_t>(4));
+		for (size_t i = batchBegin; i < batchEnd; ++i)
+		{
+			const FasimGasal2Attempt &attempt = attempts[i];
+			const char *target = attempt.target_data();
+			uint8_t *destination = encoded.data() +
+				((i - batchBegin) * paddedTargetLength);
+			for (size_t base = 0; base < attempt.target_size(); ++base)
+			{
+				destination[base] = prealign_shared_encode_base(
+					static_cast<unsigned char>(target[base]));
+			}
+		}
+
+		std::vector<PreAlignCudaAttemptEndpoint> endpointRows;
+		PreAlignCudaBatchResult batchResult;
+		if (!prealign_cuda_find_max_endpoints_batch(
+				g_streamed_attempt_query_cache.handle,
+				encoded.data(),
+				taskCount,
+				static_cast<int>(paddedTargetLength),
+				&endpointRows,
+				&batchResult,
+				&bridgeError))
+		{
+			const std::string error = bridgeError.empty() ?
+				"streamed_attempt_score_failed" : bridgeError;
+			if (errorOut != NULL) *errorOut = error;
+			if (telemetry != NULL)
+			{
+				telemetry->error = error;
+				telemetry->total_seconds = seconds_since(totalStart);
+			}
+			return false;
+		}
+		if (endpointRows.size() != static_cast<size_t>(taskCount))
+		{
+			const std::string error = "streamed_attempt_score_count_mismatch";
+			if (errorOut != NULL) *errorOut = error;
+			if (telemetry != NULL)
+			{
+				telemetry->error = error;
+				telemetry->total_seconds = seconds_since(totalStart);
+			}
+			return false;
+		}
+
+		if (telemetry != NULL)
+		{
+			++telemetry->batches;
+			telemetry->gpu_scored_requests += static_cast<uint64_t>(taskCount);
+			telemetry->gpu_seconds += batchResult.gpuSeconds;
+			telemetry->h2d_seconds += batchResult.h2dSeconds;
+			telemetry->d2h_seconds += batchResult.d2hSeconds;
+		}
+		for (size_t i = batchBegin; i < batchEnd; ++i)
+		{
+			const PreAlignCudaAttemptEndpoint &endpoint =
+				endpointRows[i - batchBegin];
+			FasimGasal2StreamedAttemptScore &out = (*scores)[i];
+			out.score = endpoint.score;
+			out.query_end = endpoint.queryEnd;
+			out.ref_end_local = endpoint.targetEnd;
+			out.ref_end_global = endpoint.targetEnd >= 0 ?
+				attempts[i].start + endpoint.targetEnd : -1;
+		}
+	}
+	if (telemetry != NULL)
+	{
+		telemetry->total_seconds = seconds_since(totalStart);
+	}
+	return true;
+}
+
+bool fasim_gasal2_consumer_spike_select_from_scores(
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2ScoreOnlyAlignment> &scores,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<std::string> *selectionReasons,
+	std::string *errorOut)
+{
+	if (selectedAttemptIndexes == NULL || attempts.size() != scores.size())
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = attempts.size() == scores.size() ?
+				"null_selected_indexes" : "attempt_score_count_mismatch";
+		}
+		return false;
+	}
+	selectedAttemptIndexes->clear();
+	if (selectionReasons != NULL)
+	{
+		selectionReasons->assign(attempts.size(), "not_selected_lower_score");
+	}
+	if (attempts.empty())
+	{
+		return true;
+	}
+
+	int currentScoreInfo = -1;
+	size_t bestIndex = 0;
+	int bestScore = 0;
+	bool haveBest = false;
+	size_t lastIndex = 0;
+	int lastScore = 0;
+	bool haveLast = false;
+	bool emitted = false;
+
+	auto mark = [&](size_t index, const char *reason)
+	{
+		if (selectionReasons != NULL && index < selectionReasons->size())
+		{
+			(*selectionReasons)[index] = reason;
+		}
+	};
+	auto flush = [&]()
+	{
+		if (currentScoreInfo >= 0 && haveBest && !emitted)
+		{
+			selectedAttemptIndexes->push_back(bestIndex);
+			mark(bestIndex, "best_fallback");
+		}
+		else if (currentScoreInfo >= 0 && haveLast && !emitted && lastScore != 0)
+		{
+			selectedAttemptIndexes->push_back(lastIndex);
+			mark(lastIndex, "last");
+		}
+		bestIndex = 0;
+		bestScore = 0;
+		haveBest = false;
+		lastIndex = 0;
+		lastScore = 0;
+		haveLast = false;
+		emitted = false;
+	};
+
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		const FasimGasal2Attempt &attempt = attempts[i];
+		const FasimGasal2ScoreOnlyAlignment &score = scores[i];
+		if (attempt.scoreinfo_index != score.scoreinfo_index)
+		{
+			if (errorOut != NULL)
+			{
+				*errorOut = "scoreinfo_identity_mismatch";
+			}
+			selectedAttemptIndexes->clear();
+			return false;
+		}
+		if (attempt.scoreinfo_index < currentScoreInfo)
+		{
+			if (errorOut != NULL)
+			{
+				*errorOut = "scoreinfo_order_not_monotonic";
+			}
+			selectedAttemptIndexes->clear();
+			return false;
+		}
+		if (attempt.scoreinfo_index != currentScoreInfo)
+		{
+			flush();
+			currentScoreInfo = attempt.scoreinfo_index;
+		}
+		if (emitted)
+		{
+			mark(i, "not_selected_after_threshold");
+			continue;
+		}
+		lastIndex = i;
+		lastScore = score.score;
+		haveLast = true;
+		if (score.score >= attempt.prealign_score)
+		{
+			selectedAttemptIndexes->push_back(i);
+			mark(i, "threshold");
+			emitted = true;
+			continue;
+		}
+		if (score.score > bestScore &&
+			score.ref_end == attempt.start + attempt.cutlength - 1)
+		{
+			bestIndex = i;
+			bestScore = score.score;
+			haveBest = true;
+		}
+	}
+	flush();
 	return true;
 }
 
