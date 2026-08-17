@@ -1,0 +1,7 @@
+gene_id	gene_symbol	query_length_nt	target_length_bp	target_scale_vs_checkpoint	estimated_baseline_seconds_per_run	estimated_candidate_seconds_per_run	formal_repeats	estimated_baseline_core_hours	estimated_candidate_gpu_hours	estimate_role
+ENSG00000286042	LCAL1	4498	164917643	82.458821500	7287.564	3470.348	3	6.073	2.892	linear_target_length_planning_only
+ENSG00000215068	AC025171.2	5465	164917643	82.458821500	8880.407	4092.016	3	7.400	3.410	linear_target_length_planning_only
+ENSG00000246090	AP002026.1	7494	164917643	82.458821500	12222.579	5396.424	3	10.185	4.497	linear_target_length_planning_only
+ENSG00000269086	AC008555.2	8481	164917643	82.458821500	13972.002	6031.362	3	11.643	5.026	linear_target_length_planning_only
+ENSG00000254319	AC246817.2	10350	164917643	82.458821500	17820.869	7235.481	3	14.851	6.030	linear_target_length_planning_only
+ENSG00000241316	SUCLG2-AS1	11122	164917643	82.458821500	19410.664	7732.849	3	16.176	6.444	linear_target_length_planning_only

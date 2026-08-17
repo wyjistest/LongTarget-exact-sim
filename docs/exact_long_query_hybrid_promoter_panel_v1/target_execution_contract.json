@@ -1,0 +1,32 @@
+{
+  "mapping_rules": {
+    "component_to_genome": "genomic_start0 = component.genomic_start0 + logical_start0 - component.logical_concat_start0",
+    "coordinate_system": "0-based half-open after strand-specific LongTarget normalization",
+    "cross_component_hit": "reject before DBD clustering or ranking",
+    "overlap_annotation": "retain every original promoter wholly containing the mapped hit",
+    "reference_derived_n_hit": "reject before DBD clustering or ranking"
+  },
+  "operational_shards": {
+    "count": 9,
+    "formal_scientific_execution_uses_independent_shard_runs": false,
+    "ordered_reconstruction_exact": true,
+    "reason": "no validated shard merge preserves global TFOsorted order and DBD tie semantics"
+  },
+  "schema_version": "exact_long_query_hybrid_promoter_target_execution_contract_v1",
+  "scientific_target_artifact": {
+    "artifact_id": "logical_full_concat",
+    "file_sha256": "7b46f5a422386de87fed4f363574fb7da691e37403630b1e40c34f56387abf40",
+    "length_bp": 164917643,
+    "path": "/data/wenyujianData/linjieData/promoter_sequences/human_GRCh38_GENCODE_v33_genes20cells_tss_promoters_v1/promoter_components_concat.fa"
+  },
+  "status": "frozen_before_execution",
+  "target_identity": {
+    "full_target_file_sha256": "7b46f5a422386de87fed4f363574fb7da691e37403630b1e40c34f56387abf40",
+    "full_target_length_bp": 164917643,
+    "full_target_sequence_sha256": "eb4723950082f6a0bfc2c3c14a2f6d6a0f66941c72bf3671feaca40548fe4a23",
+    "ordered_shards_reconstruct_full_target": true,
+    "reference_n_count": 2436,
+    "shard_count": 9
+  },
+  "target_root": "/data/wenyujianData/linjieData/promoter_sequences/human_GRCh38_GENCODE_v33_genes20cells_tss_promoters_v1"
+}

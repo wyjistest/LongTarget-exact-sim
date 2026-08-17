@@ -1,0 +1,15 @@
+{
+  "fixtures": [
+    "hit wholly within component at left edge",
+    "hit wholly within component at right edge",
+    "hit crossing adjacent component boundary is rejected",
+    "hit overlapping a reference-derived N is rejected",
+    "hit in an overlapping component maps to every wholly containing promoter instance",
+    "plus-strand promoter transcriptional-relative coordinates",
+    "minus-strand promoter transcriptional-relative coordinates",
+    "ordered shards reconstruct the canonical full concat byte-for-byte"
+  ],
+  "positive_control_requirement": "cross-component and reference-N rejection must each be exercised; zero natural events is not a pass",
+  "schema_version": "exact_long_query_hybrid_promoter_boundary_fixture_contract_v1",
+  "status": "required_before_formal_execution"
+}

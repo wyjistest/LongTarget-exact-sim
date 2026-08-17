@@ -1,0 +1,100 @@
+{
+  "bioinformatics_v2_state_modified": false,
+  "execution": {
+    "candidate_execution": "stateful GPU scoreInfo + all-attempt GPU endpoint + host selection + selected CPU continuation",
+    "cpu_threads_per_run": 1,
+    "formal_query_target_workloads": 6,
+    "formal_runs": 36,
+    "output_mode": "tfosorted",
+    "shake_down_runs": 2,
+    "speedup_gate": 1.5,
+    "target_execution_shape": "one canonical full concat per run",
+    "technical_repeats_per_arm": 3
+  },
+  "formal_entry_gates": [
+    "shake-down paired raw TFOsorted byte equality",
+    "complete GPU attempt coverage and zero oracle/replay/fallback/continuation failures",
+    "boundary fixture contract pass including positive cross-component and reference-N controls",
+    "CPU and candidate decode-map outputs exact",
+    "DBD1, DBS peak set, promoter/gene affinity outputs exact at threshold zero",
+    "no selected query acquires a prior external production-target result after freeze"
+  ],
+  "formal_panel_authorized": false,
+  "frozen_utc": "2026-08-17T13:45:22.071317+00:00",
+  "panel_version": "exact_long_query_hybrid_promoter_panel_v1",
+  "planning_cost": {
+    "baseline_core_hours": 66.328,
+    "candidate_gpu_hours": 28.299,
+    "estimate_is_authorization_or_claim": false,
+    "paired_wall_hours_serial": 94.627
+  },
+  "predecessor": {
+    "benchmark_source_commit": "61da9b6f1b3d998043d512f5703dc95671d2383e",
+    "checkpoint_decision_sha256": "e8657bcc7fccfc42978627b5842663e61ded49a486bcb1f505e0e359f871030a",
+    "checkpoint_status": "checkpoint_gate_pass",
+    "formal_binary_sha256": "6e9d5cec5ff50c9652b9aeb05a8a5533a9d707e0799d9925b2686377cdfdd7ee"
+  },
+  "production_authorized": false,
+  "schema_version": "exact_long_query_hybrid_promoter_panel_preexecution_decision_v1",
+  "selection": {
+    "eligible_counts_by_selection_target": {
+      "10_13kb_high": 6,
+      "10_13kb_low": 7,
+      "4_6kb_high": 252,
+      "4_6kb_low": 253,
+      "7_9kb_high": 58,
+      "7_9kb_low": 59
+    },
+    "excluded_gene_ids": 72,
+    "freshness_definition": "not used in frozen long-query GPU development panels and no production-target raw job present at freeze",
+    "historical_exclusion_sources": [
+      {
+        "path": "/data/wenyujianData/linjieData/longtarget_runs/human_trial52_longest_GRCh38_GENCODE_v33/all_tasks.tsv",
+        "rows": 52,
+        "sha256": "cecc9a085c64eb6693d0b753fa6e97bec2f18bb0f592853c3449402737d16e09",
+        "source": "human_trial52_longest"
+      },
+      {
+        "path": "/data/wenyujianData/linjieData/longtarget_runs/human_genes20cells_segment_grid_consistency_v1/tasks.tsv",
+        "rows": 6,
+        "sha256": "2fa6c11e5355590c2e400361506311cd8d80fa796e9fd99c65a7b4bb65bf0aca",
+        "source": "segment_grid_consistency"
+      },
+      {
+        "path": "/data/wenyujianData/linjieData/longtarget_runs/segment_owner_authority_probe_v1/tasks.tsv",
+        "rows": 9,
+        "sha256": "a58a674e81808e5fc5e719dac1f3ef66a0dc42b1a1f3f79990e396dc35bb150d",
+        "source": "segment_owner_authority"
+      },
+      {
+        "path_glob": "/data/wenyujianData/linjieData/longtarget_runs/human_genes20cells_ge2048_*/raw_jobs/ENSG*",
+        "rows": 65,
+        "snapshot_sha256": "306edef8730a13208d2db4729d19625ffcc764b6360cfab3e1de9fb76c5d86a5",
+        "source": "prior_production_target_attempt_snapshot"
+      }
+    ],
+    "selected_gene_ids": [
+      "ENSG00000286042",
+      "ENSG00000215068",
+      "ENSG00000246090",
+      "ENSG00000269086",
+      "ENSG00000254319",
+      "ENSG00000241316"
+    ],
+    "selected_query_count": 6,
+    "selection_rule": "nearest union-exonic length to each fixed target; tie by gene_id; no gene reused",
+    "selection_uses_alignment_or_affinity_results": false,
+    "universe_counts_by_selection_target": {
+      "10_13kb_high": 23,
+      "10_13kb_low": 23,
+      "4_6kb_high": 255,
+      "4_6kb_low": 255,
+      "7_9kb_high": 64,
+      "7_9kb_low": 64
+    },
+    "universe_rows": 4852,
+    "universe_sha256": "931d0f4ad09215e58ee7ef2c67bdd9d29f42d49dc9f4441b479de5a81d790139"
+  },
+  "status": "shake_down_authorized_formal_panel_pending",
+  "validated_continuous_range": false
+}
