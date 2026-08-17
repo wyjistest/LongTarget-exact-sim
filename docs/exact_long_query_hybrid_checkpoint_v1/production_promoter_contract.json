@@ -1,0 +1,74 @@
+{
+  "schema_version": "exact_long_query_hybrid_production_promoter_contract_v1",
+  "status": "frozen_not_executed",
+  "assembly": "GRCh38",
+  "annotation": "GENCODE_v33; target_rows=human_genes20cells",
+  "source_rows": {
+    "path": "/data/wenyujianData/linjieData/human_genes20cells.tsv",
+    "sha256": "a46daddfa4f7cd2a10530c89871cc2708907889d3e10df4be475122f1337c70f"
+  },
+  "target_root": "/data/wenyujianData/linjieData/promoter_sequences/human_GRCh38_GENCODE_v33_genes20cells_tss_promoters_v1",
+  "artifact_files": {
+    "audit.json": "433bb7aa6f36ba5480e3737c5dabd737476e7dde44869b00cc395cf88d523506",
+    "checksums.sha256": "bae20d127d21e78eb59a25b3a130d9439de91905e97aaefa406da9588ceefe49",
+    "promoter_components.tsv": "f2c34d17797f15b1038d823c776c079c6a8a5f387ed8fce0cebc349dbb09679e",
+    "promoter_components_concat.fa": "7b46f5a422386de87fed4f363574fb7da691e37403630b1e40c34f56387abf40",
+    "promoter_instances.tsv": "e81d609a7df5cb09535fe236a79ada142c0952c90b19a31c8436268f0192a38a",
+    "promoter_membership.tsv": "86b416503db75eab0a7f9b11ef6c5265f3447818207026d91f6ede2406a27005",
+    "shards.tsv": "bff2f180ba3905e82c02d98db5f5d760f55c0f3175e154ed86809a6baaf83f1d"
+  },
+  "required_counts": {
+    "tss_entries": 48275,
+    "included_promoter_instances": 48274,
+    "excluded_promoter_instances": 1,
+    "component_count": 29479,
+    "component_memberships": 48274,
+    "component_union_bp": 164917643,
+    "shard_count": 9,
+    "separator_bp": 0
+  },
+  "required_rules": {
+    "serialization_schema": "promoter_concat_no_separator_v1",
+    "cross_component_hit_rule": "reject any normalized target interval not wholly contained in exactly one component before clustering or ranking",
+    "reference_n_hit_rule": "reject any normalized target interval overlapping a reference-derived N before clustering or ranking",
+    "sequence_orientation": "forward reference genomic sequence for both gene strands; no reverse complement",
+    "promoter_coordinates": "1-based closed: plus [TSS-1500,TSS+3500], minus [TSS-3500,TSS+1500]"
+  },
+  "shard_file_sha256": {
+    "shards/shard_0001.fa": "b04baaf55b30ca403f69f79c8a770d26d80109b0c1c20383dbd8b6d8481f6da1",
+    "shards/shard_0002.fa": "4ac4afb133b01d119ca13b45cbd875339fcb566392a0eae874f07f26ac870a8f",
+    "shards/shard_0003.fa": "5e0279bd0f78bd87a4c349060a0ec791bfebacd43665ee0f4e52a1e6fd251a62",
+    "shards/shard_0004.fa": "63c5d0371fd793bc6148d9244b0525352ae91f62dcbaf3bb0d7d5c6003ea8fb5",
+    "shards/shard_0005.fa": "bed3982752982956d043e77eb1b2c024358b78b0f348a97dfbf895f073b035a9",
+    "shards/shard_0006.fa": "5941a5780bce2219c56096a2ab81c12698344771ed70dbf9d995d65342fc9149",
+    "shards/shard_0007.fa": "3a529f02fcf9848177f994975e78500f3a6a61b2143dd6de41d0232539cf22c2",
+    "shards/shard_0008.fa": "f3dfdd51f20c5a09e4c37bc735777f5a7d091ffb82a41a0c23980db80328aaae",
+    "shards/shard_0009.fa": "c448a0564c4fbfb2261071885a2f83f2631323d54a5e64b5d4ed4ce57262295f"
+  },
+  "forbidden_target": {
+    "path": "/data/wenyujianData/linjieData/promoter_sequences/human_GRCh38_GENCODE_v33_genes20cells_selected_genes_all_tss_promoters_v1",
+    "audit_sha256": "84c56529236fa61422d86ee41e99ded13c3d08a5da89a4aefe8452e114337dfc",
+    "concat_fasta_sha256": "68259e313054289852aae55fc8b08f04de177b271ddf43868268d15ddb7abb91",
+    "reason": "post-selection expansion to 168769 TSS entries is outside the direct human_genes20cells.tsv target contract"
+  },
+  "downstream_dependencies": {
+    "decode": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/materialize_unsegmented_authority_decode.py",
+      "sha256": "116d8520f25960f9cabdbd92e0b9d947eefd630acbe1b254bcdc4700a81e7178"
+    },
+    "affinity": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/build_dbd1_promoter_affinity.py",
+      "sha256": "67bd6f2959f45c0cf3c76ed8c51379e49a794a0cffb720bfe820a800ad216e41"
+    },
+    "comparison": {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/compare_segment_grid_affinity.py",
+      "sha256": "b9b1c8cc5f8d38b66837f7d7e354bce1baabf4006fef5472d72220ea8a3e43d7"
+    }
+  },
+  "promotion_state": {
+    "fresh_query_target_panel": "not_frozen",
+    "execution_authorized": false,
+    "production_authorized": false
+  }
+}
+
