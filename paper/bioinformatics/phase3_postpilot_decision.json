@@ -1,0 +1,24 @@
+{
+  "allowed_decisions": [
+    "continue_full_descriptive_negative",
+    "stop_after_pilot_futility",
+    "blocked_by_operational_failure",
+    "blocked_by_fixed_budget"
+  ],
+  "attempt_plan_sha256": "b071692a3429414003a122b9388e2601ef5f1f41b6ace077a247424ff91175dd",
+  "b3_promotion_feasibility": "structurally_unreachable_under_verified_only_v1",
+  "b3_status": "no_go",
+  "b3_threshold_changed": false,
+  "candidate_capability_role": "pilot_only_nonclaim_evidence",
+  "candidate_only_can_be_reported_as_safe_acceleration": false,
+  "decision_rule": "operational failure first; fixed-budget failure second; otherwise stop prospectively because B3 promotion is structurally unreachable and no owner authorization for a full descriptive-negative run exists",
+  "formal_execution_started": false,
+  "formal_run_purpose_if_later_authorized": "descriptive_negative_and_operating_envelope_only",
+  "freeze_id": "bioinformatics-phase3-application-v1-e8c5441c",
+  "lower_substitute_threshold_introduced": false,
+  "pilot_receipt_sha256": "34d3183c08d8d315e268f2ac7be18f6b1e7646639a9989c24f9b113bccc65436",
+  "resource_projection_sha256": "b1152d74aa29a368a69ae47b47a4dce722cdbda83bec486a0cd7f3e4d76a85ec",
+  "schema_version": 1,
+  "selected_decision": "stop_after_pilot_futility",
+  "status": "postpilot_decision_frozen"
+}

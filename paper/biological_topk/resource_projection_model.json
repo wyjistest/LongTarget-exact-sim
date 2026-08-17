@@ -1,0 +1,1965 @@
+{
+  "bootstrap": {
+    "level": "workload_stratified_by_target_scale",
+    "quantile_definition": "ceil(q*B)-th order statistic without interpolation",
+    "replicates": 10000,
+    "residual_treatment": "within-bootstrap stratum-specific nonnegative 95th nearest-rank log residual added per projected workload",
+    "seed": 20260810,
+    "upper_bound_quantile": "0.94999999999999996"
+  },
+  "execution_configurations": [
+    "canonical_hybrid_v2",
+    "paper_direct_v1",
+    "paper_sharded_v1"
+  ],
+  "feature_transform": "log1p lengths and length product; raw static complexity proxies; one-hot strata/configuration",
+  "fixed_projection_configuration": "canonical_hybrid_v2",
+  "historical_observations": [
+    {
+      "artifact_storage_bytes": 652786,
+      "cpu_wall_seconds": "0.072482432937249541",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.4585106719750911",
+      "observation_id": "short_vh001",
+      "query_complexity_proxy": "0.3392",
+      "query_length": 766,
+      "query_length_times_target_length": 1915766,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh001__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh001__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh001__repeat00_a/attempt-complete.json": "3daf993b5402f27c7d71f8ac00515783b3967e272b6c39dab9e9036a93a09515",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh001__repeat00_h/attempt-complete.json": "7f5d01c4c8d042b33b1e259bbcb2551b2e2afaac2c6c02387d63340fc45ea053",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa": "a3915527458fbc67068b8cba49e885478a498f3e0074bf5dab8da79ecc4172ee",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 632129,
+      "cpu_wall_seconds": "0.071249864995479584",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.32114827004261315",
+      "observation_id": "short_vh002",
+      "query_complexity_proxy": "0.3392",
+      "query_length": 766,
+      "query_length_times_target_length": 1915766,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh002__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh002__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh002__repeat00_a/attempt-complete.json": "d0d56fe57677d5834724765ef901e4afec8035fa917b72199cd3b3fe2d11b28a",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh002__repeat00_h/attempt-complete.json": "89cf33223b991c08798bae880e4a5e5f8eedea06d477cb96e519e9da21d3af64",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa": "a3915527458fbc67068b8cba49e885478a498f3e0074bf5dab8da79ecc4172ee",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 623493,
+      "cpu_wall_seconds": "0.092193773947656155",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.31516258814372122",
+      "observation_id": "short_vh003",
+      "query_complexity_proxy": "0.3392",
+      "query_length": 766,
+      "query_length_times_target_length": 1915766,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh003__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh003__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh003__repeat00_a/attempt-complete.json": "45235e154be6631204930e81862b537d9c959a9a61c1e5f0f8af7c79975cae4e",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh003__repeat00_h/attempt-complete.json": "3073fc2690ab2a1a4e5e17eaf26e251a81a3076f8255c8fbc2d53a24c3a9af0d",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa": "a3915527458fbc67068b8cba49e885478a498f3e0074bf5dab8da79ecc4172ee",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 715594,
+      "cpu_wall_seconds": "0.078906791983172297",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.33750508399680257",
+      "observation_id": "short_vh004",
+      "query_complexity_proxy": "0.3392",
+      "query_length": 766,
+      "query_length_times_target_length": 1915766,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh004__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh004__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh004__repeat00_a/attempt-complete.json": "98c648126b9aa599447b2df09926af7b1f1577355375977dcd2b3a2f1e86d588",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh004__repeat00_h/attempt-complete.json": "7bf9c6abfcbc080bbbf93a36f9398fc645e601e7668337c580069fec658ffa45",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq038.fa": "a3915527458fbc67068b8cba49e885478a498f3e0074bf5dab8da79ecc4172ee",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 626375,
+      "cpu_wall_seconds": "0.095925648231059313",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.34659463400021195",
+      "observation_id": "short_vh005",
+      "query_complexity_proxy": "0.3584",
+      "query_length": 770,
+      "query_length_times_target_length": 1925770,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh005__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh005__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh005__repeat00_a/attempt-complete.json": "209ab575e9a4c565feb9e8678a6f6570219870b191e8711c605a2f146a849e08",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh005__repeat00_h/attempt-complete.json": "17bc6160763567cd80e3135111b4dfc8c66b2bc96d434c3d785cfbe842911320",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa": "769152ca4da1bf99120edede88a0176737b94a6d9c49e75d4443f23439a61aec",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 653906,
+      "cpu_wall_seconds": "0.081763086142018437",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.30512416106648743",
+      "observation_id": "short_vh006",
+      "query_complexity_proxy": "0.3584",
+      "query_length": 770,
+      "query_length_times_target_length": 1925770,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh006__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh006__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh006__repeat00_a/attempt-complete.json": "33f08cb802e5a6083c45ecb06ff624933b6e165961e554b5583f07b6d6c7e731",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh006__repeat00_h/attempt-complete.json": "7414170a31864dff001b7e9df69414ecc16cdb1fc35a5583f1d63504e30429e3",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa": "769152ca4da1bf99120edede88a0176737b94a6d9c49e75d4443f23439a61aec",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 710347,
+      "cpu_wall_seconds": "0.085498765110969543",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.33494359813630581",
+      "observation_id": "short_vh007",
+      "query_complexity_proxy": "0.3584",
+      "query_length": 770,
+      "query_length_times_target_length": 1925770,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh007__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh007__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh007__repeat00_a/attempt-complete.json": "3c1c7e0de092a74c9d69b48b1760a3e20ab0bce571358c551cc4319e0f4c40fd",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh007__repeat00_h/attempt-complete.json": "37bce712f9dd3f2657afd77700c1fbf7610aac379f419b6af1c3c44667863895",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa": "769152ca4da1bf99120edede88a0176737b94a6d9c49e75d4443f23439a61aec",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 763542,
+      "cpu_wall_seconds": "0.061100391903892159",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.30107764806598425",
+      "observation_id": "short_vh008",
+      "query_complexity_proxy": "0.3584",
+      "query_length": 770,
+      "query_length_times_target_length": 1925770,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh008__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh008__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh008__repeat00_a/attempt-complete.json": "32ada92258b75472ea293a982d22848fda5abfc7b876a508c25d06b9508cb755",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh008__repeat00_h/attempt-complete.json": "2fa2ad56a839ecd7c895bff650bde9cefa7ac61f5c5ff666cc67d3738e07abdc",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq033.fa": "769152ca4da1bf99120edede88a0176737b94a6d9c49e75d4443f23439a61aec",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 610961,
+      "cpu_wall_seconds": "0.073993006022647023",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.31648980104364455",
+      "observation_id": "short_vh009",
+      "query_complexity_proxy": "0.41941391941400002",
+      "query_length": 549,
+      "query_length_times_target_length": 1373049,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh009__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh009__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh009__repeat00_a/attempt-complete.json": "d5b9f38b66797f721497b6b36e368b4b9ccaec18db68ab9c58dabdd1f2ec58a7",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh009__repeat00_h/attempt-complete.json": "dae10c5fa7430e7b04e7c540cf5dd91fa7796e0c3e8d810bb4f5b247a7bd3078",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa": "d8613d74c377b8cba09c516b717c57c15cc1cb80505ed9152a1bc61090519642",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 682067,
+      "cpu_wall_seconds": "0.10282348887994885",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.3141321730799973",
+      "observation_id": "short_vh010",
+      "query_complexity_proxy": "0.41941391941400002",
+      "query_length": 549,
+      "query_length_times_target_length": 1373049,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh010__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh010__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh010__repeat00_a/attempt-complete.json": "6a4bc9c48132fa01cee1a7fe55562c40f4f1e1ca0eb608f6c3746367c7d9282b",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh010__repeat00_h/attempt-complete.json": "e8dec2fec7ac90e786bec6471f5960e47d9c76fcae1e045975918ef0786304ec",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa": "d8613d74c377b8cba09c516b717c57c15cc1cb80505ed9152a1bc61090519642",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 596930,
+      "cpu_wall_seconds": "0.09049853915348649",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.30827341787517071",
+      "observation_id": "short_vh011",
+      "query_complexity_proxy": "0.41941391941400002",
+      "query_length": 549,
+      "query_length_times_target_length": 1373049,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh011__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh011__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh011__repeat00_a/attempt-complete.json": "9091ff95ec60650a97a5872985f22ca4cbc0688feb2a03bcca01cef781daeac6",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh011__repeat00_h/attempt-complete.json": "2d8d659d9eab0a4f835c4054b21398aeb846a3f5da8e6db7f7f6370bcfe18590",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa": "d8613d74c377b8cba09c516b717c57c15cc1cb80505ed9152a1bc61090519642",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 692454,
+      "cpu_wall_seconds": "0.050901768961921334",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.34350061905570328",
+      "observation_id": "short_vh012",
+      "query_complexity_proxy": "0.41941391941400002",
+      "query_length": 549,
+      "query_length_times_target_length": 1373049,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh012__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh012__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh012__repeat00_a/attempt-complete.json": "01761392a832aa6ddc2ec738e1521fc944743c608c875d4d260688c0b2d50dc8",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh012__repeat00_h/attempt-complete.json": "7c23e649fdb0e5534716d187b930b651622e57b037507c0788c9041aadc5df3f",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq015.fa": "d8613d74c377b8cba09c516b717c57c15cc1cb80505ed9152a1bc61090519642",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 640299,
+      "cpu_wall_seconds": "0.053358665900304914",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.31245653098449111",
+      "observation_id": "short_vh013",
+      "query_complexity_proxy": "0.346902654867",
+      "query_length": 568,
+      "query_length_times_target_length": 1420568,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh013__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh013__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh013__repeat00_a/attempt-complete.json": "24ee7d6c3acc12b3dd345dedd2fef6ed06ec8dfacd11347c48a2363a08dfa478",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh013__repeat00_h/attempt-complete.json": "3fe986bb67f36e6a5ead6df6ff711632a2d2b267d56b9fa9c2c96b901dc5a253",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa": "0a22c6a54a7c56ebf849dbe8b9c6f2f8c0847c241264875fcfcf0e8bbad4429d",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 605166,
+      "cpu_wall_seconds": "0.062196132028475404",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.36912428983487189",
+      "observation_id": "short_vh014",
+      "query_complexity_proxy": "0.346902654867",
+      "query_length": 568,
+      "query_length_times_target_length": 1420568,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh014__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh014__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh014__repeat00_a/attempt-complete.json": "f81837c21510229df9c8145c320174e20be5c7400247ed46fc4280b0e24f27bb",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh014__repeat00_h/attempt-complete.json": "954b34f7855aa309ab9e073df9a9efeec5529770b93aa1d7fc5048ad14d04714",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa": "0a22c6a54a7c56ebf849dbe8b9c6f2f8c0847c241264875fcfcf0e8bbad4429d",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 623740,
+      "cpu_wall_seconds": "0.077922831987962127",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.32359984214417636",
+      "observation_id": "short_vh015",
+      "query_complexity_proxy": "0.346902654867",
+      "query_length": 568,
+      "query_length_times_target_length": 1420568,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh015__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh015__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh015__repeat00_a/attempt-complete.json": "e5c4fd5bbedb00361a7dcd31d20345fafd49bcaf657b55fad403d24a4fdcdea7",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh015__repeat00_h/attempt-complete.json": "10472c30b059fb9da4df7c7bc855fdfe6461fd41c22f8a8e5422c781cd25047d",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa": "0a22c6a54a7c56ebf849dbe8b9c6f2f8c0847c241264875fcfcf0e8bbad4429d",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 592814,
+      "cpu_wall_seconds": "0.086958694038912654",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.35316373314708471",
+      "observation_id": "short_vh016",
+      "query_complexity_proxy": "0.346902654867",
+      "query_length": 568,
+      "query_length_times_target_length": 1420568,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh016__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh016__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh016__repeat00_a/attempt-complete.json": "5dcce747b6fec7adfaf78a19ed96767867cfc5c90dcdde185367f315b7d1d7b1",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh016__repeat00_h/attempt-complete.json": "72f217b2644f14d99b9b26655bfd09c2c6fbf3b859769ee7e236e241b57cce7c",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq003.fa": "0a22c6a54a7c56ebf849dbe8b9c6f2f8c0847c241264875fcfcf0e8bbad4429d",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 648013,
+      "cpu_wall_seconds": "0.091715693939477205",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.39634414319880307",
+      "observation_id": "short_vh017",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 1353,
+      "query_length_times_target_length": 3383853,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh017__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh017__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh017__repeat00_a/attempt-complete.json": "942339964f9a5181197bcd90de400a396e088badc414a50be77c0fbdc20c7784",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh017__repeat00_h/attempt-complete.json": "86fad470bfeb12b6ca1d746ca47e4bc6446b1e563a48752d2a2873d2c63fb54e",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa": "6569b17dc8dbb26fe0c0ec4e7a0b2271fa207903e76fb234f03b91cb6957f245",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 732146,
+      "cpu_wall_seconds": "0.11488232901319861",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.45307012205012143",
+      "observation_id": "short_vh018",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 1353,
+      "query_length_times_target_length": 3383853,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh018__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh018__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh018__repeat00_a/attempt-complete.json": "b3d11103e8e201983a4cdf633809fea19a0b493d02b925c5ca6cc2ba6a803386",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh018__repeat00_h/attempt-complete.json": "0ee2aef9a3bd82eba5f13c191da551f32aee30b9076b1e9aef6e2342019789f0",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa": "6569b17dc8dbb26fe0c0ec4e7a0b2271fa207903e76fb234f03b91cb6957f245",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 675502,
+      "cpu_wall_seconds": "0.12361189792864025",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.45346091501414776",
+      "observation_id": "short_vh019",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 1353,
+      "query_length_times_target_length": 3383853,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh019__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh019__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh019__repeat00_a/attempt-complete.json": "c361f2ad3e14d42396fd4b85e6401aef506552621b860717d1bd9d6628f9979d",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh019__repeat00_h/attempt-complete.json": "5a49eb8a7c9240dfcd82c40be18916ca32b602b26b33aa688c952439badd1a45",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa": "6569b17dc8dbb26fe0c0ec4e7a0b2271fa207903e76fb234f03b91cb6957f245",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 708234,
+      "cpu_wall_seconds": "0.12673322088085115",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.34618379594758153",
+      "observation_id": "short_vh020",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 1353,
+      "query_length_times_target_length": 3383853,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh020__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh020__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh020__repeat00_a/attempt-complete.json": "be9a706736ede9dc75a2e77628d378e8cb55eac5b389851f08fe49b2c75c9d5c",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh020__repeat00_h/attempt-complete.json": "ec4535c08cda1060d1e7e8d52478e4ca25ed008469476ef8bf6275610f71c2b8",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq037.fa": "6569b17dc8dbb26fe0c0ec4e7a0b2271fa207903e76fb234f03b91cb6957f245",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 603991,
+      "cpu_wall_seconds": "0.092200780985876918",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.4060624681878835",
+      "observation_id": "short_vh021",
+      "query_complexity_proxy": "0.35520000000000002",
+      "query_length": 991,
+      "query_length_times_target_length": 2478491,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh021__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh021__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh021__repeat00_a/attempt-complete.json": "d5479fea90e76fb47311f455c760d9e26a387a198e8dc0c5f313edf27ede4a13",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh021__repeat00_h/attempt-complete.json": "70ba6ecda6879ad8803933e17e4afb8c9f3d2ea5e4bb903f0f451fbbb13630f4",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa": "1773960e607b10ef5de8dd400757c52c691f05f02ba15ca31db67b42f3947a7f",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 635576,
+      "cpu_wall_seconds": "0.083278256002813578",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.31404404900968075",
+      "observation_id": "short_vh022",
+      "query_complexity_proxy": "0.35520000000000002",
+      "query_length": 991,
+      "query_length_times_target_length": 2478491,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh022__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh022__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh022__repeat00_a/attempt-complete.json": "d13831b0817bea5d28864e6525c172b5f6b2b9d04002d907fc3e2ac767b0d910",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh022__repeat00_h/attempt-complete.json": "a931b616492c23fb040b379784bc125d3d68d463af07cbac93ac268db417fb71",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa": "1773960e607b10ef5de8dd400757c52c691f05f02ba15ca31db67b42f3947a7f",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 637327,
+      "cpu_wall_seconds": "0.069843103876337409",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.35651276004500687",
+      "observation_id": "short_vh023",
+      "query_complexity_proxy": "0.35520000000000002",
+      "query_length": 991,
+      "query_length_times_target_length": 2478491,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh023__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh023__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh023__repeat00_a/attempt-complete.json": "076f1f6af30a259dbe6e8213653bce30e569dd7c5d6b36b48dde6eee38594153",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh023__repeat00_h/attempt-complete.json": "38cab5c049b14fd324ea415d3a0cf4d7650d152b057c3aa9582b76fc4e743057",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa": "1773960e607b10ef5de8dd400757c52c691f05f02ba15ca31db67b42f3947a7f",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 680861,
+      "cpu_wall_seconds": "0.11071345885284245",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.34803554997779429",
+      "observation_id": "short_vh024",
+      "query_complexity_proxy": "0.35520000000000002",
+      "query_length": 991,
+      "query_length_times_target_length": 2478491,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh024__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh024__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh024__repeat00_a/attempt-complete.json": "8d778f711326b91b602488d0459cdf9853c2c8f9e87e964ebd2f89ec613bf8e4",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh024__repeat00_h/attempt-complete.json": "a10b262335a4cddbf61cdaf902daa360b10574afb022cfae5ce4aa1ebf2b6f26",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq048.fa": "1773960e607b10ef5de8dd400757c52c691f05f02ba15ca31db67b42f3947a7f",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 541289,
+      "cpu_wall_seconds": "0.0851344158872962",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.33669084310531616",
+      "observation_id": "short_vh025",
+      "query_complexity_proxy": "0.33760000000000001",
+      "query_length": 989,
+      "query_length_times_target_length": 2473489,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh025__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh025__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh025__repeat00_a/attempt-complete.json": "f39fd3bcea92118e6dff29deef975e6f8ceac981dd40241e977c76c5a6fc269e",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh025__repeat00_h/attempt-complete.json": "0c895d04a22ae04158753391b95f48d2b86250117ecb39dd20b00f10c870a1c9",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa": "16452ad70991c0e030fc28012e68223c12553ffefb1331fa7baeb44eed5b4a6c",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 603850,
+      "cpu_wall_seconds": "0.11518983403220773",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.308361612027511",
+      "observation_id": "short_vh026",
+      "query_complexity_proxy": "0.33760000000000001",
+      "query_length": 989,
+      "query_length_times_target_length": 2473489,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh026__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh026__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh026__repeat00_a/attempt-complete.json": "c76c62c75816fee6e549b4f0f02c058fe9b92b29401c98e4e882c0d8cef6c996",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh026__repeat00_h/attempt-complete.json": "5b50fa5a8bbea8e4581c201ef9120ea1621ac6ff4bbdee5e6896fc490a9da038",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa": "16452ad70991c0e030fc28012e68223c12553ffefb1331fa7baeb44eed5b4a6c",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 553221,
+      "cpu_wall_seconds": "0.067058457992970943",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.31456011510454118",
+      "observation_id": "short_vh027",
+      "query_complexity_proxy": "0.33760000000000001",
+      "query_length": 989,
+      "query_length_times_target_length": 2473489,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh027__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh027__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh027__repeat00_a/attempt-complete.json": "f51797e37642ba7d801076402d11f64b3f13202d8d3751b7b2a6c61001653dc5",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh027__repeat00_h/attempt-complete.json": "070b6b753496ff7c08fc6eaf5f29eff163acd939f83072711bd5c677ec226cba",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa": "16452ad70991c0e030fc28012e68223c12553ffefb1331fa7baeb44eed5b4a6c",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 612433,
+      "cpu_wall_seconds": "0.067417263053357601",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.35478071193210781",
+      "observation_id": "short_vh028",
+      "query_complexity_proxy": "0.33760000000000001",
+      "query_length": 989,
+      "query_length_times_target_length": 2473489,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh028__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh028__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh028__repeat00_a/attempt-complete.json": "bd9fc8342810977c0c9105bd0cb21424caaf5f5e5ad54d350a34eee1716660e0",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh028__repeat00_h/attempt-complete.json": "14478e6f49030196b07754d291125ffc821cee3b26521bd6b6f6f62e55074350",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq032.fa": "16452ad70991c0e030fc28012e68223c12553ffefb1331fa7baeb44eed5b4a6c",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 639052,
+      "cpu_wall_seconds": "0.065216157119721174",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.32697836100123823",
+      "observation_id": "short_vh029",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 946,
+      "query_length_times_target_length": 2365946,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh029__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh029__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh029__repeat00_a/attempt-complete.json": "676ebd02df33ab3a63bd2403872512c0ab548e20bd54359f1bf0628ece0f3c34",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh029__repeat00_h/attempt-complete.json": "c4200786abb3f28f07572be840a5b558abd6993c86626464cbe62fcc58a26471",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa": "2b9c5eed1825b7bdbd86761e34ca2a1854f35b5f9d1527eca25fc95731cebdff",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 653646,
+      "cpu_wall_seconds": "0.064917146926745772",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.42100533400662243",
+      "observation_id": "short_vh030",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 946,
+      "query_length_times_target_length": 2365946,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh030__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh030__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh030__repeat00_a/attempt-complete.json": "0b15cdd48e1286fc1ec9368898c84d1b9e5b7c60697c17556a85e1ca96ec0b4b",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh030__repeat00_h/attempt-complete.json": "6becacda968a94e9604fb2f80461370a67d42c6e11af91aaddf34c95d6024f92",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa": "2b9c5eed1825b7bdbd86761e34ca2a1854f35b5f9d1527eca25fc95731cebdff",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 638656,
+      "cpu_wall_seconds": "0.11200699210166931",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.32663605595007539",
+      "observation_id": "short_vh031",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 946,
+      "query_length_times_target_length": 2365946,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh031__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh031__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh031__repeat00_a/attempt-complete.json": "2e26d91edd3781ae0d1b3054a439b99cd5ac04cbf26b09a1383d4069798b8756",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh031__repeat00_h/attempt-complete.json": "b0d67c2a91a16ae225ea876ac3df2cb5870848e2b7dcbe75968c80b1d94ca954",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa": "2b9c5eed1825b7bdbd86761e34ca2a1854f35b5f9d1527eca25fc95731cebdff",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 665099,
+      "cpu_wall_seconds": "0.0933848328422755",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.33395674591884017",
+      "observation_id": "short_vh032",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 946,
+      "query_length_times_target_length": 2365946,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh032__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh032__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh032__repeat00_a/attempt-complete.json": "c1787a563591ed07f6ad4f2ae14054d78ddb61177b187fbbc5166985b57e8c29",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh032__repeat00_h/attempt-complete.json": "aedbfa344de3b07cda4afb83d2becf995b433630b4a8c1e37659b1a10d8b8b9d",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq018.fa": "2b9c5eed1825b7bdbd86761e34ca2a1854f35b5f9d1527eca25fc95731cebdff",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 714764,
+      "cpu_wall_seconds": "0.14966722810640931",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.46477931295521557",
+      "observation_id": "short_vh033",
+      "query_complexity_proxy": "0.37280000000000002",
+      "query_length": 2709,
+      "query_length_times_target_length": 6775209,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh033__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh033__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh033__repeat00_a/attempt-complete.json": "7ce2beca7a56614caf210bf0bbe1c64fa23b7e1dfe4b3c3fd0a5f05fba373180",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh033__repeat00_h/attempt-complete.json": "76187c00f5065fd9f2a3af6d2786ad614afe6da89ab25a6c3d37bac6c1bfaff8",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa": "cb08018a8969fa0191ee288cc5d3215139d49286e2b05b2e7b44d21a19a767f9",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 769522,
+      "cpu_wall_seconds": "0.18330465280450881",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.42404613108374178",
+      "observation_id": "short_vh034",
+      "query_complexity_proxy": "0.37280000000000002",
+      "query_length": 2709,
+      "query_length_times_target_length": 6775209,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh034__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh034__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh034__repeat00_a/attempt-complete.json": "4f5c73a1943e75ff400891fd83b9c527d252422191d27cfeae0a032ff4f1ed13",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh034__repeat00_h/attempt-complete.json": "dca471227eb72a4b80581f1db666af1f04a35e04a20b30f7f570e9f6c2f755af",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa": "cb08018a8969fa0191ee288cc5d3215139d49286e2b05b2e7b44d21a19a767f9",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 732241,
+      "cpu_wall_seconds": "0.15780140599235892",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.42450405494309962",
+      "observation_id": "short_vh035",
+      "query_complexity_proxy": "0.37280000000000002",
+      "query_length": 2709,
+      "query_length_times_target_length": 6775209,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh035__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh035__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh035__repeat00_a/attempt-complete.json": "9735b36586f0826b45f524707323af33529e2b79b7d5fdb62f44d34d8585c186",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh035__repeat00_h/attempt-complete.json": "6678cee9c8befa705b0f676de0bdbc2e30c999042a978388e24c4d6fb1e82b54",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa": "cb08018a8969fa0191ee288cc5d3215139d49286e2b05b2e7b44d21a19a767f9",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 686427,
+      "cpu_wall_seconds": "0.16921404702588916",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.42446933197788894",
+      "observation_id": "short_vh036",
+      "query_complexity_proxy": "0.37280000000000002",
+      "query_length": 2709,
+      "query_length_times_target_length": 6775209,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh036__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh036__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh036__repeat00_a/attempt-complete.json": "f8c4877a07971a0c0a7633b9daeef5be9f01f56f1b4b2f1b1176ed86d01ae5b1",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh036__repeat00_h/attempt-complete.json": "fde1b350a941f436df62b1def8d35c548fa99dfc118122884e95d3c996dbaa75",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq008.fa": "cb08018a8969fa0191ee288cc5d3215139d49286e2b05b2e7b44d21a19a767f9",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 604640,
+      "cpu_wall_seconds": "0.10142544307745993",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.43223498808220029",
+      "observation_id": "short_vh037",
+      "query_complexity_proxy": "0.40160000000000001",
+      "query_length": 1876,
+      "query_length_times_target_length": 4691876,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh037__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh037__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh037__repeat00_a/attempt-complete.json": "4d810a9c114fc18232f9f0ba2412ac438388fb64afb7ea6dc85d980bdfd71b65",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh037__repeat00_h/attempt-complete.json": "8884ac8296fe29c988b0333ed34e0f30dd1a556f0cd27c00d08be74760c38050",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa": "0ace6c108a46610c611dcd887e39ae38e31f064f67eb467d71d60db6c463e055",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 760469,
+      "cpu_wall_seconds": "0.13819863903336227",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.41200112691149116",
+      "observation_id": "short_vh038",
+      "query_complexity_proxy": "0.40160000000000001",
+      "query_length": 1876,
+      "query_length_times_target_length": 4691876,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh038__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh038__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh038__repeat00_a/attempt-complete.json": "476121e66e63e18dc09cda54c128627d1075b0ddda4ad83a38c1e7122aa2f9ac",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh038__repeat00_h/attempt-complete.json": "87d146a44befbb693ba71c0fe9427bf2915b2ffb16ede3b3cc990699aa7e3099",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa": "0ace6c108a46610c611dcd887e39ae38e31f064f67eb467d71d60db6c463e055",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 674109,
+      "cpu_wall_seconds": "0.11121780308894813",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.40949680097401142",
+      "observation_id": "short_vh039",
+      "query_complexity_proxy": "0.40160000000000001",
+      "query_length": 1876,
+      "query_length_times_target_length": 4691876,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh039__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh039__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh039__repeat00_a/attempt-complete.json": "ce7647b1fcc5a9726c0237ef07c87c555bfade14ce3c73256b115af1be0966d6",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh039__repeat00_h/attempt-complete.json": "e7bd045d41625d42ebbb11a4681dd3f4f0f60fb21e78904f629d0a2cd36cef31",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa": "0ace6c108a46610c611dcd887e39ae38e31f064f67eb467d71d60db6c463e055",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 674865,
+      "cpu_wall_seconds": "0.12697866698727012",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.4430774359498173",
+      "observation_id": "short_vh040",
+      "query_complexity_proxy": "0.40160000000000001",
+      "query_length": 1876,
+      "query_length_times_target_length": 4691876,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh040__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh040__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh040__repeat00_a/attempt-complete.json": "5b9621dce27be87fc50d137771fa0da4a3f7afed8b14872ac90412d53f97da1e",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh040__repeat00_h/attempt-complete.json": "33e4af452a7a7c604b4d08dc2025789f128cd91f88deb62e73469576cdfb7820",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq007.fa": "0ace6c108a46610c611dcd887e39ae38e31f064f67eb467d71d60db6c463e055",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 710223,
+      "cpu_wall_seconds": "0.1330134638119489",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.41893925913609564",
+      "observation_id": "short_vh041",
+      "query_complexity_proxy": "0.40639999999999998",
+      "query_length": 2283,
+      "query_length_times_target_length": 5709783,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh041__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh041__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh041__repeat00_a/attempt-complete.json": "6ef0d276994b518ba06bfda67687c0e98584a52e9b8b210237d1a32a452a73bd",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh041__repeat00_h/attempt-complete.json": "e2c953c3d8fd5e6831214352c4e5fff37c3e40bcc2319ee9d2bdd47bbc80c957",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa": "a94ce49e31f1ddeb042a8cc61ba2e493f7719077b8ded3d19a407f283612f4c5",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 795537,
+      "cpu_wall_seconds": "0.16597206913866103",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.46358379698358476",
+      "observation_id": "short_vh042",
+      "query_complexity_proxy": "0.40639999999999998",
+      "query_length": 2283,
+      "query_length_times_target_length": 5709783,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh042__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh042__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh042__repeat00_a/attempt-complete.json": "fc012209caaf398290855020ecc22e15cababc0626448c1e3c75cae32f18e9a7",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh042__repeat00_h/attempt-complete.json": "7e90d4a1cd39e9da3fe96cdf7f025802f3f810db80c6ba12004465a61c3d61e0",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa": "a94ce49e31f1ddeb042a8cc61ba2e493f7719077b8ded3d19a407f283612f4c5",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 809911,
+      "cpu_wall_seconds": "0.13962986296974123",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.42392350314185023",
+      "observation_id": "short_vh043",
+      "query_complexity_proxy": "0.40639999999999998",
+      "query_length": 2283,
+      "query_length_times_target_length": 5709783,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh043__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh043__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh043__repeat00_a/attempt-complete.json": "edcfc76bff2f13b39f645a6b9b84c1df75e053c21f6ca7debc4c25a879b8e47d",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh043__repeat00_h/attempt-complete.json": "0bc8913655c062d59a1e272469bc48e7e9d90fbdc1112b592dfffbf878e68899",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa": "a94ce49e31f1ddeb042a8cc61ba2e493f7719077b8ded3d19a407f283612f4c5",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 718540,
+      "cpu_wall_seconds": "0.12776632513850927",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.43676931108348072",
+      "observation_id": "short_vh044",
+      "query_complexity_proxy": "0.40639999999999998",
+      "query_length": 2283,
+      "query_length_times_target_length": 5709783,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh044__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh044__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh044__repeat00_a/attempt-complete.json": "640a2eebaf096e25a6707c041ca9723f4479613e2e11cefd47d746111a1a2a94",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh044__repeat00_h/attempt-complete.json": "8fb69be65c314b4552005a0e7d7ff3339dc28f19bbc13f35ff14a840f36d7887",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq014.fa": "a94ce49e31f1ddeb042a8cc61ba2e493f7719077b8ded3d19a407f283612f4c5",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 620994,
+      "cpu_wall_seconds": "0.11206392897292972",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.44400795083492994",
+      "observation_id": "short_vh045",
+      "query_complexity_proxy": "0.39040000000000002",
+      "query_length": 2422,
+      "query_length_times_target_length": 6057422,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh045__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh045__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh045__repeat00_a/attempt-complete.json": "63a7c097f5e0df876bf02ced2bbf45e9b0d96f679dc9d8c45a802697c6c41c62",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh045__repeat00_h/attempt-complete.json": "731d7e7f1bf09479b736fbb408c21388e475dcb76706e8dc0e8cbba4c9f94785",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa": "54aa27a248cac8100025f2e8c6f5f1c5ccb6e8658e64781b9d2f3d5fe0a58e50",
+        "reproduce/bioinformatics/application_inputs/targets/at0018.fa": "4b12417c35b1bf5335b6433ef0834c0c2beb3361ff357c46fb31759f44557ba8"
+      },
+      "target_complexity_proxy": "0.40960000000000002",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 766052,
+      "cpu_wall_seconds": "0.18186567490920424",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.43755203299224377",
+      "observation_id": "short_vh046",
+      "query_complexity_proxy": "0.39040000000000002",
+      "query_length": 2422,
+      "query_length_times_target_length": 6057422,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh046__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh046__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh046__repeat00_a/attempt-complete.json": "8331d4d05de26eb1031ab727d6879ffb1c420205c44a12a68089d962c462cadc",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh046__repeat00_h/attempt-complete.json": "7f57abbb6d28308586f00097d8eed16d5a18a5e93148afde3698c06879f8d54f",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa": "54aa27a248cac8100025f2e8c6f5f1c5ccb6e8658e64781b9d2f3d5fe0a58e50",
+        "reproduce/bioinformatics/application_inputs/targets/at0195.fa": "ff0d9f4bb5a627272b913c1c63eeb632f9d4a5f6e8908c4332dbd182c219bc98"
+      },
+      "target_complexity_proxy": "0.38080000000000003",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 635351,
+      "cpu_wall_seconds": "0.11879336298443377",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.45564462500624359",
+      "observation_id": "short_vh047",
+      "query_complexity_proxy": "0.39040000000000002",
+      "query_length": 2422,
+      "query_length_times_target_length": 6057422,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh047__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh047__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh047__repeat00_a/attempt-complete.json": "018bf70aebda077d8b90f7013b2272bfc3f99e953c450d4c32cc103e0f49f2ea",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh047__repeat00_h/attempt-complete.json": "a9c2e989606eec468e922e68d7fe0415f78b44e327b509e6a08c8ae0f6fdb2a6",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa": "54aa27a248cac8100025f2e8c6f5f1c5ccb6e8658e64781b9d2f3d5fe0a58e50",
+        "reproduce/bioinformatics/application_inputs/targets/at0652.fa": "b4745c6f3cc44f0cf1f6619f196e48f6e57e8e7e4966b56d2fce6c95f4e6c55b"
+      },
+      "target_complexity_proxy": "0.40160000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 811550,
+      "cpu_wall_seconds": "0.17543894588015974",
+      "execution_configuration": "canonical_hybrid_v2",
+      "gpu_wall_seconds": "0.43076419201679528",
+      "observation_id": "short_vh048",
+      "query_complexity_proxy": "0.39040000000000002",
+      "query_length": 2422,
+      "query_length_times_target_length": 6057422,
+      "source_paths": [
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh048__repeat00_a/attempt-complete.json",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh048__repeat00_h/attempt-complete.json",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh048__repeat00_a/attempt-complete.json": "4e5e840295334ea68b251be8e5bec4f3cd3c2694e9486ce36c31786aca0ba22d",
+        ".paper-artifacts/bioinformatics-canonical-hybrid-v2/fresh-holdout/v2hold_vh048__repeat00_h/attempt-complete.json": "a4630f6e9442fbdba93ee4e24eb82ff666ecec879c0f0ad54f38df7464721a95",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_results.tsv": "38cc22b87c92d61f4ded98a30dac66d12ad37af37832e999f23ef6982d1b6535",
+        "paper/bioinformatics/canonical_hybrid_v2_holdout_workloads.tsv": "5a6185f6ce00bac7aef5b6b675a22c690901b73b944f18bd7c9c2f9e904d1dc5",
+        "reproduce/bioinformatics/application_inputs/queries/aq010.fa": "54aa27a248cac8100025f2e8c6f5f1c5ccb6e8658e64781b9d2f3d5fe0a58e50",
+        "reproduce/bioinformatics/application_inputs/targets/at0260.fa": "4acecdbcc63365cdb3e910bfdc09520f088e40134d7bd4aa85fc92e7247c9456"
+      },
+      "target_complexity_proxy": "0.39360000000000001",
+      "target_length": 2501,
+      "target_scale_stratum": "short"
+    },
+    {
+      "artifact_storage_bytes": 6811533,
+      "cpu_wall_seconds": "50.296931123011746",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "4.2252357440302148",
+      "observation_id": "medium_g01_malat1_5p_1024_chr11",
+      "query_complexity_proxy": "0.37440000000000001",
+      "query_length": 1024,
+      "query_length_times_target_length": 2048000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__baseline__0/inputs/query.fa": "02051de9388a89709bd915b8b29ac226d22424b9ccdbc510e630fe537e9bb652",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__baseline__0/inputs/target.fa": "d6c66bdad5c631c9057f18fe2b33b146038bdb5681c9e1dba451d3eee3a09449",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__baseline__0/run-complete.json": "37377d83c7d4cb469f8dabfaca1f191683784354f0f7a570afef26e217d42597",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g01_malat1_5p_1024_chr11__pair01__candidate__0/run-complete.json": "2343c72382b8b1cbdb4f9559bfbfee718858999fa4200c2c6fec1a1f61c7f98c",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40799999999999997",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 5448883,
+      "cpu_wall_seconds": "79.211820266908035",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "4.8787834909744561",
+      "observation_id": "medium_g02_malat1_mid_2048_chr21",
+      "query_complexity_proxy": "0.3664",
+      "query_length": 2048,
+      "query_length_times_target_length": 4096000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__baseline__0/inputs/query.fa": "f773e89378a93887d4c30dbe6b11ac449fdad24504d38c203765844ee2336cf1",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__baseline__0/inputs/target.fa": "c7ceaecd1ddc49dd6020ae5d07cb46a8a4b0e49f70bb1e56ecf1ee01a5541351",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__baseline__0/run-complete.json": "762dcc559bc00fcb1cd9aa0fb84a19811a0e92c48b11b099770bd36ace6752c0",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g02_malat1_mid_2048_chr21__pair01__candidate__0/run-complete.json": "066455d9d3ff6dd9586517fe56935b7373516054dc4ac73d2d26bf95eb7e83e6",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.3952",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 7616593,
+      "cpu_wall_seconds": "93.791682493989356",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "5.3795060170814395",
+      "observation_id": "medium_g03_malat1_3p_2812_chr22",
+      "query_complexity_proxy": "0.3952",
+      "query_length": 2812,
+      "query_length_times_target_length": 5624000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__baseline__0/inputs/query.fa": "a068cd52dd6eef5d1970b8001f05f143fa31377a9556a00832743ff0b37299a3",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__baseline__0/inputs/target.fa": "d015b3099e682e4d70df1439a9c5cc71a67af0af36adc96f31e46c1e71b1fcf7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__baseline__0/run-complete.json": "5fa90f849be4b1b1ba6ecdfcafe932a54c0ab36a40cb9245564e1e9dfbb0121f",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g03_malat1_3p_2812_chr22__pair01__candidate__0/run-complete.json": "ec18af74d9043e87636516ad26c66242847afa80ec12d9d1f53d6979cf3e4965",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40479999999999999",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 6430637,
+      "cpu_wall_seconds": "87.00791515596211",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "5.0960788270458579",
+      "observation_id": "medium_g04_neat1_5p_2048_chr22",
+      "query_complexity_proxy": "0.40479999999999999",
+      "query_length": 2048,
+      "query_length_times_target_length": 4096000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__baseline__0/inputs/query.fa": "614e5b44acb00236de18f16da9e27d778f43c9ead0414007cf7b6f8475f167aa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__baseline__0/inputs/target.fa": "d015b3099e682e4d70df1439a9c5cc71a67af0af36adc96f31e46c1e71b1fcf7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__baseline__0/run-complete.json": "273e549c5274025979010959a41c8d529a554a1e6b4b06cc10887c944e28a198",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g04_neat1_5p_2048_chr22__pair01__candidate__0/run-complete.json": "ce9e2bf93f05f06b8f14c1cb7ac2ca66bc6299ff46c3f7e93892fc455519173c",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40479999999999999",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 10315300,
+      "cpu_wall_seconds": "92.778819175902754",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "5.2307800429407507",
+      "observation_id": "medium_g05_neat1_mid_2812_chr11",
+      "query_complexity_proxy": "0.3856",
+      "query_length": 2812,
+      "query_length_times_target_length": 5624000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__baseline__0/inputs/query.fa": "f2316dac2bedff6ed9d53093af0adbd45cae8327c1f3d5747522632c9d981848",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__baseline__0/inputs/target.fa": "d6c66bdad5c631c9057f18fe2b33b146038bdb5681c9e1dba451d3eee3a09449",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__baseline__0/run-complete.json": "c9fe96d34308cbed73dc6c8fb2d279b4eb4c2c5e6e78881fad94888502569dc7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g05_neat1_mid_2812_chr11__pair01__candidate__0/run-complete.json": "5901b3f66f0c57d76f2da8a783c4f86f2ef22447a3c0d3dfa53200cefa31e872",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40799999999999997",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 4911759,
+      "cpu_wall_seconds": "50.994650156935677",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "3.6744067840045318",
+      "observation_id": "medium_g06_neat1_3p_1024_chr21",
+      "query_complexity_proxy": "0.36480000000000001",
+      "query_length": 1024,
+      "query_length_times_target_length": 2048000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__baseline__0/inputs/query.fa": "23ef739d5f8d8cd9769c789328fad1c89afe7860cf5c07daa64904557e37eee7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__baseline__0/inputs/target.fa": "c7ceaecd1ddc49dd6020ae5d07cb46a8a4b0e49f70bb1e56ecf1ee01a5541351",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__baseline__0/run-complete.json": "cea69d209b8150a3d4633005a0c2739ab4f58b5dfa8e8d7d45ed8a08b6eed869",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g06_neat1_3p_1024_chr21__pair01__candidate__0/run-complete.json": "0c2ef57cbf4c0789ade36b293715b4ccd73419898b153d63d1e825f2135e0a35",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.3952",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 5034429,
+      "cpu_wall_seconds": "113.25956997903995",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "4.8525400139624253",
+      "observation_id": "medium_g07_kcnq1ot1_5p_2812_chr21",
+      "query_complexity_proxy": "0.40479999999999999",
+      "query_length": 2812,
+      "query_length_times_target_length": 5624000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__baseline__0/inputs/query.fa": "239fd57dc78dfa392601d14f344bbfd4e2b0e6f349ac90ac9576c77be5c6a175",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__baseline__0/inputs/target.fa": "c7ceaecd1ddc49dd6020ae5d07cb46a8a4b0e49f70bb1e56ecf1ee01a5541351",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__baseline__0/run-complete.json": "d42fcf7ee743c4e453c76bdf670eca90e137445381cd847308a1034f25a2d3e7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g07_kcnq1ot1_5p_2812_chr21__pair01__candidate__0/run-complete.json": "4e2f5119f8aec5371c275bff86846d59b9edcb498fa24033166626e306f7981b",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.3952",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 6055192,
+      "cpu_wall_seconds": "51.354872417054139",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "3.6745761190541089",
+      "observation_id": "medium_g08_kcnq1ot1_mid_1024_chr22",
+      "query_complexity_proxy": "0.35999999999999999",
+      "query_length": 1024,
+      "query_length_times_target_length": 2048000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__baseline__0/inputs/query.fa": "9d4ffbcb7da03f569c5b08b2029e146dc036ee63b3f973810c18b12cd85c62e0",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__baseline__0/inputs/target.fa": "d015b3099e682e4d70df1439a9c5cc71a67af0af36adc96f31e46c1e71b1fcf7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__baseline__0/run-complete.json": "700e29f3c5901183ffbc64ab475fc3deafd9c9d3e1dc856c9c32d3c08c4bbc13",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g08_kcnq1ot1_mid_1024_chr22__pair01__candidate__0/run-complete.json": "dcd757661a9f5d804a951c8ab016255518e53a81fc2f514c1c63759300535aad",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40479999999999999",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 6088645,
+      "cpu_wall_seconds": "70.762146656052209",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "3.4751614889828488",
+      "observation_id": "medium_g09_kcnq1ot1_3p_2048_chr11",
+      "query_complexity_proxy": "0.35520000000000002",
+      "query_length": 2048,
+      "query_length_times_target_length": 4096000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__baseline__0/inputs/query.fa": "5565c66b877bd7a1e8935ebde286ebbbd2370bc218e380c6bf19b909d1fcdddc",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__baseline__0/inputs/target.fa": "d6c66bdad5c631c9057f18fe2b33b146038bdb5681c9e1dba451d3eee3a09449",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__baseline__0/run-complete.json": "123872a5c95815ea591962e4339c17dde59b4e746f92a2a477ecf286ddf4c638",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g09_kcnq1ot1_3p_2048_chr11__pair01__candidate__0/run-complete.json": "f419cec0520f05d64ee4e1114bb14c056157ed5888a51c82a782cb25867c6414",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40799999999999997",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 15130279,
+      "cpu_wall_seconds": "116.01255977805704",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "5.8315757729578763",
+      "observation_id": "medium_g10_h19_full_chr11",
+      "query_complexity_proxy": "0.39839999999999998",
+      "query_length": 2812,
+      "query_length_times_target_length": 5624000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__baseline__0/inputs/query.fa": "18b082f717a1e6b5f076272916e14ab549142acf7443d692bc3928bdff0d0cbb",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__baseline__0/inputs/target.fa": "d6c66bdad5c631c9057f18fe2b33b146038bdb5681c9e1dba451d3eee3a09449",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__baseline__0/run-complete.json": "11c5a6cdd6cffb3c1545d6b3aa3c46a1cc09d99381e65ae80500f405feb76a15",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g10_h19_full_chr11__pair01__candidate__0/run-complete.json": "a7fc58a2cb1777bc186de1bcace0554e451bfff8932a343dd219631f45151403",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40799999999999997",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 8642789,
+      "cpu_wall_seconds": "114.05731801898219",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "5.5804894630564377",
+      "observation_id": "medium_g11_h19_full_chr21",
+      "query_complexity_proxy": "0.39839999999999998",
+      "query_length": 2812,
+      "query_length_times_target_length": 5624000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__baseline__0/inputs/query.fa": "18b082f717a1e6b5f076272916e14ab549142acf7443d692bc3928bdff0d0cbb",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__baseline__0/inputs/target.fa": "c7ceaecd1ddc49dd6020ae5d07cb46a8a4b0e49f70bb1e56ecf1ee01a5541351",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__baseline__0/run-complete.json": "806eda0c6fc2981720d68bef0975e242113b42461b50ca70ee0ebfc833bee7c8",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g11_h19_full_chr21__pair01__candidate__0/run-complete.json": "45d33ee6000e8174d3dcc787bb55dd4729d5f1b90420a66a09fe0eafccd65d03",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.3952",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 12829886,
+      "cpu_wall_seconds": "115.96162993903272",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "5.6936654079472646",
+      "observation_id": "medium_g12_h19_full_chr22",
+      "query_complexity_proxy": "0.39839999999999998",
+      "query_length": 2812,
+      "query_length_times_target_length": 5624000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__baseline__0/inputs/query.fa": "18b082f717a1e6b5f076272916e14ab549142acf7443d692bc3928bdff0d0cbb",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__baseline__0/inputs/target.fa": "d015b3099e682e4d70df1439a9c5cc71a67af0af36adc96f31e46c1e71b1fcf7",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__baseline__0/run-complete.json": "ef0d58375b348b3d91b1eb3104b3f786d5f5cbce84f291b23632d106a4de3011",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g12_h19_full_chr22__pair01__candidate__0/run-complete.json": "f840d2e027b0d5feb93d1310fec4b5dba880d07f6fb2e53a14ac86d141205490",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40479999999999999",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 7920326,
+      "cpu_wall_seconds": "70.316562446998432",
+      "execution_configuration": "paper_direct_v1",
+      "gpu_wall_seconds": "4.5283316880231723",
+      "observation_id": "medium_g13_meg3_full_chr11",
+      "query_complexity_proxy": "0.38240000000000002",
+      "query_length": 1582,
+      "query_length_times_target_length": 3164000000,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__baseline__0/inputs/target.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__baseline__0/inputs/query.fa": "5c26072fb8512c409c2b759ba06733c76f664ccdaf8a4cb8e3505da5117198a8",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__baseline__0/inputs/target.fa": "d6c66bdad5c631c9057f18fe2b33b146038bdb5681c9e1dba451d3eee3a09449",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__baseline__0/run-complete.json": "ec5b93e0495ae078f793965657fbcc924a805f2dabcd0514ab0ed13cf9d72d2f",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/g13_meg3_full_chr11__pair01__candidate__0/run-complete.json": "dd50a2dc9a21d4c1a645c08bfb01539fc28a36e80de6e07cb0f6906de3f17582",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase3-generalization/phase3-pairs.tsv": "c5c49cb22514d97f4c6ba700c5fd66b084cb2af335bedf1095471409ab5c2854"
+      },
+      "target_complexity_proxy": "0.40799999999999997",
+      "target_length": 2000000,
+      "target_scale_stratum": "medium"
+    },
+    {
+      "artifact_storage_bytes": 254537664,
+      "cpu_wall_seconds": "2377.1971616650699",
+      "execution_configuration": "paper_sharded_v1",
+      "gpu_wall_seconds": "61.585542598040774",
+      "observation_id": "large_c1_h19_chr21_chr22",
+      "query_complexity_proxy": "0.39839999999999998",
+      "query_length": 2812,
+      "query_length_times_target_length": 274250004212,
+      "source_paths": [
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/pairs-v3/c1_h19_chr21_chr22_fast_topk__pair01__0/pair-summary.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__candidate__0/run-complete.json",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/inputs/query.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/output/shards/shard_0000_chr21.fa",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/output/shards/shard_0001_chr22.fa"
+      ],
+      "source_sha256": {
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/inputs/query.fa": "18b082f717a1e6b5f076272916e14ab549142acf7443d692bc3928bdff0d0cbb",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/output/shards/shard_0000_chr21.fa": "9d4f98d47db5404fd1e881123e636fe841e302214af03c9514a0b7892431d571",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/output/shards/shard_0001_chr22.fa": "fdcae3058910b126a32dd10ef9effca2bef20572a8500eda9c8aa07b61879c61",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__baseline__0/run-complete.json": "cff96ecb6be21fedfc4dd83843f9554b0a19ee56510cbcd61a6247bb65dc8e20",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/c1_h19_chr21_chr22_fast_topk__pair01__candidate__0/run-complete.json": "c9f67ef3b56155bfe9df49458be933b0ef1dde14d61fe1b9d7b5a1a8b080c475",
+        ".paper-artifacts/runtime-epoch-0-pre-freeze/phase2-core/pairs-v3/c1_h19_chr21_chr22_fast_topk__pair01__0/pair-summary.json": "b854870bdee2490d95351d88f208b3a9702144a812acfe6ad03537802cf0fe34"
+      },
+      "target_complexity_proxy": "0.40639999999999998",
+      "target_length": 97528451,
+      "target_scale_stratum": "large"
+    }
+  ],
+  "input_features": [
+    "log1p_query_length",
+    "log1p_target_length",
+    "log1p_query_times_target",
+    "query_complexity_proxy",
+    "target_complexity_proxy",
+    "stratum_medium",
+    "stratum_large",
+    "config_paper_direct_v1",
+    "config_paper_sharded_v1"
+  ],
+  "limitations": [
+    "only one chromosome-scale CPU-authority/GPU-candidate timing observation is available",
+    "target-scale and historical execution-configuration effects are partially aliased",
+    "Phase 3 must recompute a manifest-specific projection without changing this model",
+    "resource projections are planning controls and not performance claims"
+  ],
+  "model_family": "ridge_log_response_with_stratified_workload_bootstrap",
+  "observation_count_by_stratum": {
+    "large": 1,
+    "medium": 13,
+    "short": 48
+  },
+  "point_coefficients": {
+    "artifact_storage_bytes": {
+      "config_paper_direct_v1": "-0.46250782396658907",
+      "config_paper_sharded_v1": "0.32029553158701096",
+      "intercept": "8.4617270387207757",
+      "log1p_query_length": "-0.076873098981584342",
+      "log1p_query_times_target": "0.19517518016158683",
+      "log1p_target_length": "0.29446729665814969",
+      "query_complexity_proxy": "1.0210214854904529",
+      "stratum_large": "0.32029553158701773",
+      "stratum_medium": "-0.46250782397201523",
+      "target_complexity_proxy": "-0.2561936733592014"
+    },
+    "cpu_wall_seconds": {
+      "config_paper_direct_v1": "-0.17167600083713258",
+      "config_paper_sharded_v1": "0.14892998022116682",
+      "intercept": "-6.2643301973899392",
+      "log1p_query_length": "-0.13455789458892292",
+      "log1p_query_times_target": "0.2593677881357685",
+      "log1p_target_length": "0.42686016905382379",
+      "query_complexity_proxy": "0.66422912113190458",
+      "stratum_large": "0.14892998022116932",
+      "stratum_medium": "-0.17167600083620391",
+      "target_complexity_proxy": "-0.34525421792028488"
+    },
+    "gpu_wall_seconds": {
+      "config_paper_direct_v1": "-0.34275641808937596",
+      "config_paper_sharded_v1": "0.23409722427328666",
+      "intercept": "-2.8407591840492397",
+      "log1p_query_length": "-0.04758638461920018",
+      "log1p_query_times_target": "0.12539833106658638",
+      "log1p_target_length": "0.18367740126537588",
+      "query_complexity_proxy": "0.45420780705500485",
+      "stratum_large": "0.23409722427329166",
+      "stratum_medium": "-0.34275641808916163",
+      "target_complexity_proxy": "0.054657488923359657"
+    }
+  },
+  "projection": {
+    "projected_artifact_storage_bytes_point": "3728506456",
+    "projected_artifact_storage_bytes_upper_95": "5508762270",
+    "projected_cpu_aggregate_wall_seconds_point": "26840.997519788252",
+    "projected_cpu_aggregate_wall_seconds_upper_95": "35416.834581740855",
+    "projected_gpu_aggregate_wall_seconds_point": "1673.1329282948536",
+    "projected_gpu_aggregate_wall_seconds_upper_95": "2020.9022325876936",
+    "projected_gpu_hours_point": "0.46475914674857044",
+    "projected_gpu_hours_upper_95": "0.56136173127435929",
+    "projected_scheduled_elapsed_wall_seconds_point": "15682.771746445709",
+    "projected_scheduled_elapsed_wall_seconds_upper_95": "20576.305696676598"
+  },
+  "projection_input_bounds": {
+    "large": {
+      "query_complexity_proxy": [
+        0.112,
+        0.442913385827
+      ],
+      "query_length": [
+        500.0,
+        2812.0
+      ],
+      "target_complexity_proxy": [
+        0.3904,
+        0.4112
+      ],
+      "target_length": [
+        10000001.0,
+        10000001.0
+      ]
+    },
+    "medium": {
+      "query_complexity_proxy": [
+        0.112,
+        0.442913385827
+      ],
+      "query_length": [
+        500.0,
+        2812.0
+      ],
+      "target_complexity_proxy": [
+        0.3904,
+        0.4128
+      ],
+      "target_length": [
+        2000001.0,
+        2000001.0
+      ]
+    },
+    "short": {
+      "query_complexity_proxy": [
+        0.112,
+        0.442913385827
+      ],
+      "query_length": [
+        500.0,
+        2812.0
+      ],
+      "target_complexity_proxy": [
+        0.3728,
+        0.4096
+      ],
+      "target_length": [
+        4097.0,
+        4097.0
+      ]
+    }
+  },
+  "projection_input_scenarios": {
+    "large": {
+      "execution_configuration": "canonical_hybrid_v2",
+      "query_complexity_proxy": 0.368,
+      "query_length": 973,
+      "target_complexity_proxy": 0.4064,
+      "target_length": 10000001,
+      "target_scale_stratum": "large"
+    },
+    "medium": {
+      "execution_configuration": "canonical_hybrid_v2",
+      "query_complexity_proxy": 0.368,
+      "query_length": 973,
+      "target_complexity_proxy": 0.408,
+      "target_length": 2000001,
+      "target_scale_stratum": "medium"
+    },
+    "short": {
+      "execution_configuration": "canonical_hybrid_v2",
+      "query_complexity_proxy": 0.368,
+      "query_length": 973,
+      "target_complexity_proxy": 0.408,
+      "target_length": 4097,
+      "target_scale_stratum": "short"
+    }
+  },
+  "responses": [
+    "cpu_wall_seconds",
+    "gpu_wall_seconds",
+    "artifact_storage_bytes"
+  ],
+  "ridge_lambda": "0.01",
+  "scheduler_simulation": {
+    "cpu_then_gpu_per_workload": true,
+    "formula": "(aggregate_cpu_seconds+aggregate_gpu_seconds)/2*1.10",
+    "inefficiency_factor": "1.1000000000000001",
+    "logical_workers": 2,
+    "worker_assignment": "balanced_static_two_worker_projection"
+  },
+  "schema_version": 1,
+  "stratum_quotas": {
+    "large": 59,
+    "medium": 59,
+    "short": 60
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "candidate_binary": {
+    "historical_build_receipt": "paper/bioinformatics/canonical_hybrid_v2_runtime.json",
+    "historical_build_receipt_sha256": "5bf81a89ff0177c3616c635f81b64c48a36f63f6dc675a10c3eeccc8d9e865bd",
+    "image_path": "/opt/gasal2/bin/fasim_longtarget_gasal2",
+    "sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+    "source_path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2"
+  },
+  "complete_cpu_authority_inside_product": false,
+  "container": {
+    "archive_bytes": 294943232,
+    "archive_relative_path": "phase1/gasal2-gpu-screen-submission-rc-v2.tar",
+    "archive_sha256": "20cf34c72c56cac2b26e0588902faccb16fd1a19747340ecf0fec4a041547faa",
+    "base_image": "scratch_host_runtime_snapshot",
+    "build_command": [
+      "python3",
+      "reproduce/bioinformatics_submission_readiness_v2/build_runtime_image.py",
+      "--source-commit",
+      "0f04c241b6fda746f061b043aa9a9d26c79938ab"
+    ],
+    "build_script_sha256": "c3a0d10df0a2445a680d523a5881170d42842faaa0947ce6e86751c30efd0907",
+    "clean_worktree_required": true,
+    "created": "2026-07-31T17:33:35.052062869+08:00",
+    "docker_server_version": "27.3.1",
+    "embedded_identity_relative_path": "phase1/container-context/rootfs/opt/gasal2/runtime_identity.json",
+    "embedded_identity_sha256": "2dc8473c85f04f210624359b31e90765a28db1d00173121160d808f775952d1f",
+    "entrypoint": [
+      "/usr/bin/python3.11",
+      "/opt/gasal2/gasal2_gpu_screen.py"
+    ],
+    "environment": {
+      "GASAL2_GPU_SCREEN_RUNTIME_IDENTITY": "/opt/gasal2/runtime_identity.json",
+      "LD_LIBRARY_PATH": "/usr/local/cuda/targets/x86_64-linux/lib:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu",
+      "NVIDIA_DRIVER_CAPABILITIES": "compute,utility",
+      "NVIDIA_VISIBLE_DEVICES": "all",
+      "PATH": "/usr/bin:/opt/gasal2/bin",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONUNBUFFERED": "1",
+      "PYTHONUTF8": "1"
+    },
+    "image_bytes": 291471785,
+    "image_digest": "sha256:ab31acbf01e125f646889660f6286decfb30c015a21a30e7a60099a7fecbf530",
+    "image_tag": "longtarget/gasal2-gpu-screen:submission-rc-v2"
+  },
+  "execution_identity": {
+    "execution_mode": "gpu-screen",
+    "output_schema": "gasal2_candidate_sites_tsv_v1",
+    "scientific_contract": "biological_topk_candidate_site_v1",
+    "software_epoch": "submission_rc_v2"
+  },
+  "formal_performance_claim": false,
+  "implementation_commit": "0f04c241b6fda746f061b043aa9a9d26c79938ab",
+  "interface": {
+    "candidate_sites_top_k": 5,
+    "cli_defaults": {
+      "batch_size": 20000,
+      "fallback_behavior": "fail_closed_zero_fallbacks_required",
+      "gpu_streams": 3,
+      "output_mode": "tfosorted_then_candidate_sites_tsv_v1",
+      "scoreinfo_prune_max_per_task": 256,
+      "timeout_seconds": 3600
+    },
+    "empty_result": "header_only_candidate_sites_tsv",
+    "outputs": [
+      "candidate_sites.tsv",
+      "contract.json",
+      "diagnostics/native-TFOsorted",
+      "standalone_run_report.json"
+    ]
+  },
+  "phase": 1,
+  "runtime_dependencies": {
+    "cuda_compiler_build": "cuda_12.5.r12.5/compiler.34385749_0",
+    "cuda_runtime_path": "/usr/local/cuda-12.5/targets/x86_64-linux/lib/libcudart.so.12.5.82",
+    "cuda_runtime_sha256": "16e8815a5e36a7ffbc9107df350d3f67090afb10a3de4b3710f6928aa7994a36",
+    "cuda_runtime_version": "12.5.82",
+    "driver_compatibility_range": {
+      "maximum": "555.42.06",
+      "minimum": "555.42.06",
+      "policy": "exact_tested_driver_only"
+    },
+    "glibc": "2.35",
+    "kernel": "Linux 5.15.0-46-generic x86_64",
+    "python": "3.11.10"
+  },
+  "runtime_source_sha256": {
+    "reproduce/biological_topk/canonicalize_rows.py": "d12db4fba3d1e6693a1b0edcb78bc7cb0e325bbc4b0e5623234a43bffe0b9b88",
+    "reproduce/biological_topk/contract.py": "bb2c5bb5684270af1ab776278551c4cce1a7043fe3758858e011dedb79ebbb55",
+    "reproduce/biological_topk/recluster_candidate_sites.py": "98e7f6a64fe45f6cb9a161f0b97285ae63eb63bad3a872b442ec7bd4d18700ce",
+    "reproduce/bioinformatics_submission_readiness_v2/Dockerfile.runtime": "c53ca682bf5ede7f8fee739386cbddcd1e880340d58105f0de854afde12875bf",
+    "schemas/gasal2_candidate_sites_tsv_v1.schema.json": "3de2cded2e6bbc0b4554f1c9a27adcd428595bd72f222679fb4ca8bba17c2ae6",
+    "schemas/gasal2_gpu_screen_run_report_v1.schema.json": "d24e787074a1db325a7f3f583b7a21c00c26b875491359bb939b1ac377492aa9",
+    "scripts/fasim_tfo_archive.py": "3fb42809c4f31b31ec05bcaf9d3249f4059a910164a6ca33d5a789fb0efab856",
+    "scripts/gasal2_candidate_sites.py": "8eb937311036db80f7eb07328c395bd32eef29831e2fa45900f6ad8e91912db1",
+    "scripts/gasal2_gpu_screen.py": "1bf7de073414edcb9138838eab2c96f60b3162755ff3515bc0ccf3b963ad09e7",
+    "scripts/gasal2_longtarget.py": "42a1c90f9850d28b3e7226140362fa488fdcf46730e2d858cd540c8a0762b91c"
+  },
+  "schema_version": 1,
+  "status": "frozen_release_candidate_under_test",
+  "validated_gpu_container_schedule": {
+    "devices": [
+      "/dev/nvidia0",
+      "/dev/nvidiactl",
+      "/dev/nvidia-uvm",
+      "/dev/nvidia-uvm-tools"
+    ],
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": "0",
+      "GASAL2_GPU_SCREEN_CONTAINER_DIGEST": "sha256:ab31acbf01e125f646889660f6286decfb30c015a21a30e7a60099a7fecbf530"
+    },
+    "host_driver_sha256": {
+      "/usr/bin/nvidia-smi": "958224a95a38f35239cc0a9d937bd827b8dfcec6033d8943b301bbd8e1d86994",
+      "/usr/lib/x86_64-linux-gnu/libcuda.so.555.42.06": "47144eeb2a7d0833ce2e473bbb2c34cad1217e65bd287fee529301b19b7f1953",
+      "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.555.42.06": "f72c427a42a17f1c9d5689c1cb2216263b144f298cf3143cc6bb9f7ab13f745f"
+    },
+    "mode": "explicit_device_and_read_only_host_driver_bind",
+    "mounts": [
+      "/usr/bin/nvidia-smi:/usr/bin/nvidia-smi:ro",
+      "/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:ro"
+    ],
+    "nvidia_container_toolkit_available": false,
+    "standard_gpus_attempt_result": "environment_unavailable_before_product_execution"
+  },
+  "validation_status": "pending_phase4"
+}

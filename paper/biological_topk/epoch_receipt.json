@@ -1,0 +1,90 @@
+{
+  "execution_branch": "gasal2-kcnq1ot1-focused-review",
+  "execution_start_head": "2658a98fea8f34bd295892e6236607060e2f2803",
+  "fresh_input_exclusion_registry": {
+    "path": "paper/biological_topk/fresh_input_exclusion_registry.tsv",
+    "row_count": 1455,
+    "sha256": "062be2d3e7706dfba5bf356e88b6df3efb22652dd652fa447a8b6ad0b3430630"
+  },
+  "historical_blob_registry": {
+    "path": "paper/biological_topk/historical_blob_registry.tsv",
+    "row_count": 27,
+    "sha256": "48fe41bc69834e14a8ec4b081682c788d04b681a307cf2242ed5f0ee25143c73"
+  },
+  "historical_checks": [
+    {
+      "check_id": "bioinformatics_phase0",
+      "classification": "expected_historical_runtime_epoch_guard",
+      "command": [
+        "make",
+        "check-bioinformatics-phase0"
+      ],
+      "exit_code": 2,
+      "result_marker": "runtime code changed after the frozen paper commit"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_runtime",
+      "classification": "pass",
+      "command": [
+        "make",
+        "check-bioinformatics-canonical-hybrid-v2"
+      ],
+      "exit_code": 0,
+      "result_marker": "Bioinformatics canonical-hybrid-v2 implementation checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_regression",
+      "classification": "pass",
+      "command": [
+        "make",
+        "check-bioinformatics-canonical-hybrid-v2-regression"
+      ],
+      "exit_code": 0,
+      "result_marker": "Bioinformatics canonical-hybrid-v2 regression evidence checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_holdout",
+      "classification": "pass",
+      "command": [
+        "make",
+        "check-bioinformatics-canonical-hybrid-v2-holdout"
+      ],
+      "exit_code": 0,
+      "result_marker": "Bioinformatics canonical-hybrid-v2 fresh holdout evidence checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_performance",
+      "classification": "pass",
+      "command": [
+        "make",
+        "check-bioinformatics-canonical-hybrid-v2-performance"
+      ],
+      "exit_code": 0,
+      "result_marker": "Bioinformatics canonical-hybrid-v2 performance evidence checks OK"
+    },
+    {
+      "check_id": "ssw_cuda_aggregate",
+      "classification": "pass",
+      "command": [
+        "make",
+        "check-ssw-cuda"
+      ],
+      "exit_code": 0,
+      "result_marker": "SSW-CUDA aggregate --final checks OK"
+    }
+  ],
+  "historical_state": {
+    "canonical_hybrid_v2_correctness": "pass",
+    "canonical_hybrid_v2_performance": "no_go",
+    "canonical_hybrid_v2_rescue_track": "closed",
+    "exact_ssw_cuda": "closed",
+    "exact_ssw_cuda_final_decision": "ssw_cuda_forward_or_reverse_checkpoint_only",
+    "historical_38_320882x_role": "historical_candidate_performance_anchor",
+    "sequential_verified_v1": "no_go",
+    "strict_canonical_row_v1": "no_go"
+  },
+  "new_scientific_run_started": false,
+  "protocol_source_sha256": "1cd5e5a023d53655641ba831142f489011111fd2c166d895b2a851b0f513f6c3",
+  "remote": "origin",
+  "schema_version": 1
+}

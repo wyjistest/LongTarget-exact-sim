@@ -1,0 +1,48 @@
+{
+  "checker_command": [
+    "python3",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "--phase",
+    "0",
+    "--mode",
+    "precommit"
+  ],
+  "checker_result": "pass",
+  "expected_changed_paths": [
+    "Makefile",
+    "goal-bioinformatics-submission-readiness-v2.md",
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md",
+    "paper/bioinformatics_submission_readiness_v2/epoch_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/legacy_boundary.json",
+    "paper/bioinformatics_submission_readiness_v2/owner_phase0_authorization.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_0_change_allowlist.txt",
+    "paper/bioinformatics_submission_readiness_v2/phase_0_precommit_receipt.json",
+    "paper/bioinformatics_submission_readiness_v2/phase_0_start_receipt.json",
+    "schemas/bioinformatics_submission_readiness_v2_program_state.schema.json",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "scripts/check_bioinformatics_submission_readiness_v2_all.sh",
+    "tests/bioinformatics_submission_readiness_v2/__init__.py",
+    "tests/bioinformatics_submission_readiness_v2/test_phase0.py"
+  ],
+  "phase": 0,
+  "phase_start_parent_head": "739ee0a8db01f77143a5c993e6c68a56a772502b",
+  "planned_commit_message": "docs: start Bioinformatics submission readiness v2",
+  "schema_evidence_sha256": {
+    "Makefile": "fb588b132999d2b014a2d7e8de9ef9832a275bde52ea2ae56faa840f9d0c533e",
+    "goal-bioinformatics-submission-readiness-v2.md": "09d70dc201e669fcc278d0a2ebcf4e1a9e64ca470d858ee42cfbe04ec1bb9a32",
+    "paper/bioinformatics_submission_readiness_v2/PROGRAM_STATE.json": "0f94e011a73a6d199e67efda5eaab41306d675203241815fe46bb365f761d327",
+    "paper/bioinformatics_submission_readiness_v2/STATUS.md": "79c53fe2931c91910f76d8143ea3c28704efc78c6eec5ec770465c87f461350a",
+    "paper/bioinformatics_submission_readiness_v2/epoch_receipt.json": "363a0fb721a9ab3889cf852f8081af19e7d39763b68ee96e886029905d0dd90c",
+    "paper/bioinformatics_submission_readiness_v2/legacy_boundary.json": "d5b557a3d59e685eef850411cc423038d67e6747c47b4221b544d139c29e7f1c",
+    "paper/bioinformatics_submission_readiness_v2/owner_phase0_authorization.json": "10d15872d7c99c0ee0b6f7011611f1bf8d94f6518dd42338a89f319eb3cef959",
+    "paper/bioinformatics_submission_readiness_v2/phase_0_change_allowlist.txt": "e5b349d93dc726cd4804eb522e6e9ebfe3a7095fb335f75cb6183e5a53611b8a",
+    "paper/bioinformatics_submission_readiness_v2/phase_0_start_receipt.json": "87d8384fddd8a6f29e376b4cb819cb2251175eccee51507523ff24079b3d7dab",
+    "schemas/bioinformatics_submission_readiness_v2_program_state.schema.json": "61cf416b22029c0d5258b225117d6f26514865acb81efa8517d72583b886e3a7",
+    "scripts/check_bioinformatics_submission_readiness_v2.py": "bb7beef5899b5050cf220de5a8823c9cf58d96fa0c8eafd588a4868a9763a788",
+    "scripts/check_bioinformatics_submission_readiness_v2_all.sh": "b5fe64e1f62bb09d39d55d78fd2d9442f8699574137ac04149c603155a7536d2",
+    "tests/bioinformatics_submission_readiness_v2/__init__.py": "827dc3343ef0b17abeddbdd207b1bbba51ab5eaa45601cc67d66ded71a9c1980",
+    "tests/bioinformatics_submission_readiness_v2/test_phase0.py": "e54194afde6ca80d1fff18bf7f4715de83f0f4ea8c08cfe5f3371c19ce5bea22"
+  },
+  "schema_version": 1
+}

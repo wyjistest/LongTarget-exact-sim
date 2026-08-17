@@ -1,0 +1,19 @@
+{
+  "assignment_proof": "alignment.sw_score_int_to_float",
+  "assignment_source": "fasim/fastsim.h:3714-3724",
+  "audit_path": "paper/biological_topk/score_integrality_audit.tsv",
+  "audit_sha256": "02ea85eb043b6c67b1857532af9e00245d3d26c24800727537b8a5430d09c7ed",
+  "bound_pass": true,
+  "decimal_exact_fallback": "required_if_any_future_supported_path_is_nonintegral",
+  "decision": "integral_exact",
+  "derived_field": "score_integer_required",
+  "float_exact_integer_limit": 16777216,
+  "maximum_match_score_bound": 14060,
+  "maximum_query_length": 2812,
+  "nonintegral_row_count": 0,
+  "normative_product_field": "score_decimal_string",
+  "schema_version": 1,
+  "source_type": "triplex.score_float",
+  "supported_path_count": 4,
+  "supported_row_count": 766261
+}

@@ -7,8 +7,12 @@
 #include <chrono>
 #include "ssw_cpp.h"
 #include "ssw.h"
+#include "ssw_oracle_trace.h"
 #include "sim.h"
 #include "gasal2_align_bridge.h"
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#include "ssw_cuda/ssw_cuda_forward_hybrid.h"
+#endif
 #include "../cuda/prealign_cuda.h"
 #include "../cuda/prealign_shared.h"
 #define N 50
@@ -16,6 +20,31 @@ using std::string;
 using std::cout;
 using std::endl;
 using std::ifstream;
+
+class FasimAuthorityProfileScope
+{
+public:
+	explicit FasimAuthorityProfileScope(fasim_authority_profile_stage stageValue) :
+		stage(stageValue), active(fasim_authority_profile_enabled() != 0)
+	{
+		if (active)
+		{
+			fasim_authority_profile_enter(static_cast<uint8_t>(stage));
+		}
+	}
+
+	~FasimAuthorityProfileScope()
+	{
+		if (active)
+		{
+			fasim_authority_profile_leave(static_cast<uint8_t>(stage));
+		}
+	}
+
+private:
+	fasim_authority_profile_stage stage;
+	bool active;
+};
 
 inline bool fasim_prealign_cuda_enabled_runtime()
 {
@@ -325,6 +354,27 @@ inline bool fasim_gasal2_attempt_consumer_shadow_enabled_runtime()
 			return false;
 		}
 		return env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_long_query_gpu_consumer_spike_v1_enabled_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_V1");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_long_query_gpu_consumer_cpu_continuation_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
 	}();
 	return enabled;
 }
@@ -1179,6 +1229,9 @@ void fastSIM(string& strA, string& strB, string& strSrc,
 	int penaltyC, struct para paraList,
 	bool materializeAlignmentStrings = true)
 {
+	fasim_ssw_oracle::begin_workload(strA, strB, dnaStartPos, rule, strand);
+	FasimAuthorityProfileScope authoritySelectionScope(
+		FASIM_AUTHORITY_STAGE_SELECTION);
 	int32_t maskLen = 15;
 	StripedSmithWaterman::Aligner aligner;
 	StripedSmithWaterman::Filter filter;
@@ -1276,6 +1329,7 @@ void fastSIM(string& strA, string& strB, string& strSrc,
 	                              penaltyC,
 	                              paraList,
 	                              materializeAlignmentStrings);
+	fasim_ssw_oracle::end_workload();
 }
 
 inline void fastSIM_extend_from_attempt_descriptors(
@@ -1474,11 +1528,15 @@ inline void fastSIM_extend_from_attempt_descriptors(
 
 	const std::chrono::steady_clock::time_point sortStart =
 		std::chrono::steady_clock::now();
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
 	if (timing != NULL)
 	{
 		timing->sort_seconds +=
@@ -1543,7 +1601,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 	if (fasim_gasal2_enabled() &&
 	    fasim_gasal2_is_built() &&
 	    fasim_gasal2_fastsim_query_length_supported_runtime(strA.size()) &&
-	    !fasim_gasal2_attempt_consumer_shadow_enabled_runtime())
+	    !fasim_gasal2_attempt_consumer_shadow_enabled_runtime() &&
+	    !fasim_long_query_gpu_consumer_spike_v1_enabled_runtime())
 	{
 		std::vector<FasimGasal2Attempt> gasalAttempts;
 		std::vector<FasimGasal2SelectedAlignment> gasalSelected;
@@ -1840,11 +1899,15 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					                 materializeAlignmentStrings);
 				}
 			}
-			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+			{
+				FasimAuthorityProfileScope authoritySortScope(
+					FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+				std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+				myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+				std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+				myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+				std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+			}
 			for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 			{
 				triplex atr = myTriplexList[i];
@@ -1872,6 +1935,11 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			float Iden = 0.6;
 			int cutlength, bestcutregion;
 			int myflag = 0;
+			int identityRound = 0;
+			std::string bestTraceAttempt;
+			std::string lastTraceAttempt;
+			std::string selectedTraceAttempt;
+			const char* traceSelectionReason = "none";
 			StripedSmithWaterman::Alignment bestalignment;
 			bestalignment.sw_score = 0;
 			while (Iden <= 1)
@@ -1880,7 +1948,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				cutlength = finalScoreInfo[i].position - cutlength + 1 > 0 ? cutlength : finalScoreInfo[i].position + 1;
 				const std::chrono::steady_clock::time_point substrStart =
 					std::chrono::steady_clock::now();
-				smallSeq = strB.substr(finalScoreInfo[i].position - cutlength + 1, cutlength);
+				const int traceTargetStart = finalScoreInfo[i].position - cutlength + 1;
+				smallSeq = strB.substr(traceTargetStart, cutlength);
 				if (timing != NULL)
 				{
 					timing->substr_seconds +=
@@ -1889,7 +1958,24 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				}
 				const std::chrono::steady_clock::time_point alignStart =
 					std::chrono::steady_clock::now();
+				const std::string traceAttempt = fasim_ssw_oracle::begin_attempt(
+					i, finalScoreInfo[i].score, identityRound, Iden,
+					traceTargetStart, cutlength);
 				aligner.Align(strA.c_str(), smallSeq.c_str(), smallSeq.size(), filter, &alignment, maskLen);
+				lastTraceAttempt = traceAttempt;
+				if (timing != NULL &&
+				    fasim_long_query_gpu_consumer_spike_v1_enabled_runtime())
+				{
+					FasimConsumerAttemptTraceRow traceRow;
+					traceRow.scoreinfo_index = i;
+					traceRow.identity_round = identityRound;
+					traceRow.start = traceTargetStart;
+					traceRow.cutlength = cutlength;
+					traceRow.score = alignment.sw_score;
+					traceRow.query_end = alignment.query_end;
+					traceRow.ref_end_local = alignment.ref_end;
+					timing->consumer_attempt_trace.push_back(traceRow);
+				}
 				if (timing != NULL)
 				{
 					++timing->align_attempts;
@@ -1900,6 +1986,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				if (alignment.sw_score >= finalScoreInfo[i].score)
 				{
 					myflag = 1;
+					selectedTraceAttempt = traceAttempt;
+					traceSelectionReason = "threshold";
 				break;
 			}
 			if (alignment.sw_score > bestalignment.sw_score && alignment.ref_end == cutlength - 1)
@@ -1915,12 +2003,16 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				bestalignment.cigar_string = alignment.cigar_string;
 				bestalignment.cigar = alignment.cigar;
 				bestcutregion = cutlength;
+				bestTraceAttempt = traceAttempt;
 				myflag = 2;
 			}
 			Iden += 0.1;
+			++identityRound;
 		}
 		if (myflag == 2)
 		{
+			selectedTraceAttempt = bestTraceAttempt;
+			traceSelectionReason = "best_fallback";
 			alignment.sw_score = bestalignment.sw_score;
 			alignment.sw_score_next_best = bestalignment.sw_score_next_best;
 			alignment.ref_begin = bestalignment.ref_begin;
@@ -1933,6 +2025,13 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			alignment.cigar = bestalignment.cigar;
 			cutlength = bestcutregion;
 		}
+		else if (myflag == 0 && alignment.sw_score != 0)
+		{
+			selectedTraceAttempt = lastTraceAttempt;
+			traceSelectionReason = "last";
+		}
+		fasim_ssw_oracle::finish_scoreinfo_group(
+			i, selectedTraceAttempt, traceSelectionReason);
 			bestalignment.Clear();
 			if (alignment.sw_score != 0)
 			{
@@ -1955,6 +2054,7 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					timing);
 				const std::chrono::steady_clock::time_point convertStart =
 					std::chrono::steady_clock::now();
+				const size_t convertedRowBegin = myTriplexList.size();
 				convertMyTriplex(alignment,
 				                 myTriplexList,
 				                 strA,
@@ -1970,6 +2070,12 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 				                 ntMin,
 				                 ntMax,
 				                 materializeAlignmentStrings);
+				for (size_t rowIndex = convertedRowBegin;
+					rowIndex < myTriplexList.size(); ++rowIndex)
+				{
+					myTriplexList[rowIndex].ssw_oracle_attempt_key =
+						selectedTraceAttempt;
+				}
 				if (timing != NULL)
 				{
 					timing->convert_seconds +=
@@ -1980,11 +2086,15 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		}
 		const std::chrono::steady_clock::time_point sortStart =
 			std::chrono::steady_clock::now();
-		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+		{
+			FasimAuthorityProfileScope authoritySortScope(
+				FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+			myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+			std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+		}
 		if (timing != NULL)
 		{
 			timing->sort_seconds +=
@@ -1998,9 +2108,25 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 			triplex atr = myTriplexList[i];
 			if (atr.identity >= paraList.minIdentity && atr.tri_score >= paraList.minStability && atr.nt >= ntMin)
 			{
+				fasim_ssw_oracle::record_emitted_row(
+					atr.ssw_oracle_attempt_key,
+					atr.stari,
+					atr.endi,
+					atr.starj,
+					atr.endj,
+					atr.strand,
+					atr.reverse,
+					atr.rule,
+					atr.nt,
+					atr.score,
+					atr.identity,
+					atr.tri_score,
+					atr.stri_align,
+					atr.strj_align);
 				triplex_list.push_back(atr);
 			}
 		}
+		fasim_ssw_oracle::publish_workload_records();
 		if (timing != NULL)
 		{
 			timing->filter_seconds +=
@@ -2008,6 +2134,187 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 					std::chrono::steady_clock::now() - filterStart).count();
 		}
 	}
+
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+inline bool fastSIM_extend_from_forward_hybrid_selected(
+	StripedSmithWaterman::Aligner &aligner,
+	StripedSmithWaterman::Filter &filter,
+	int32_t maskLen,
+	const string &strA,
+	const string &strB,
+	const string &strSrc,
+	long dnaStartPos,
+	const std::vector<fasim_ssw_cuda::ForwardHybridSelectedAttempt> &selected,
+	vector<struct triplex> &triplex_list,
+	long strand,
+	long Para,
+	long rule,
+	int ntMin,
+	int ntMax,
+	int penaltyT,
+	int penaltyC,
+	const struct para &paraList,
+	bool materializeAlignmentStrings,
+	FasimFastsimExtendScoreInfoTiming *timing,
+	fasim_ssw_cuda::ForwardHybridCpuTelemetry *cpuTelemetry,
+	std::string *error)
+{
+	if (error != NULL) error->clear();
+	if (cpuTelemetry == NULL)
+	{
+		if (error != NULL) *error = "forward-hybrid CPU telemetry is null";
+		return false;
+	}
+	vector<struct triplex> myTriplexList;
+	const int8_t nt_table[128] = {
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	};
+
+	for (size_t index = 0; index < selected.size(); ++index)
+	{
+		const fasim_ssw_cuda::ForwardHybridSelectedAttempt &attempt = selected[index];
+		if (attempt.start < 0 || attempt.cutlength <= 0 ||
+			static_cast<size_t>(attempt.start + attempt.cutlength) > strB.size() ||
+			attempt.endpoint.score1 <= 0)
+		{
+			++cpuTelemetry->failures;
+			if (error != NULL) *error = "invalid selected forward-hybrid attempt";
+			return false;
+		}
+		const std::chrono::steady_clock::time_point substringStart =
+			std::chrono::steady_clock::now();
+		const string smallSeq = strB.substr(static_cast<size_t>(attempt.start),
+			static_cast<size_t>(attempt.cutlength));
+		const double substringSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - substringStart).count();
+		cpuTelemetry->substring_seconds += substringSeconds;
+		if (timing != NULL) timing->substr_seconds += substringSeconds;
+
+		StripedSmithWaterman::ForwardEndpoint endpoint;
+		endpoint.score1 = attempt.endpoint.score1;
+		endpoint.score2 = attempt.endpoint.score2;
+		endpoint.ref_end1 = attempt.endpoint.ref_end1;
+		endpoint.query_end1 = attempt.endpoint.read_end1;
+		endpoint.ref_end2 = attempt.endpoint.ref_end2;
+		endpoint.numeric_path = attempt.endpoint.numeric_path;
+		const ssw_align_internal_stats before = ssw_align_internal_stats_snapshot();
+		const uint8_t priorStats = ssw_align_internal_stats_enabled();
+		ssw_align_internal_stats_set_enabled(1);
+		const std::chrono::steady_clock::time_point continuationStart =
+			std::chrono::steady_clock::now();
+		StripedSmithWaterman::Alignment alignment;
+		const bool continuationOk = aligner.AlignFromForward(
+			strA.c_str(), smallSeq.c_str(), static_cast<int>(smallSeq.size()),
+			filter, endpoint, &alignment, maskLen);
+		const double continuationSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - continuationStart).count();
+		ssw_align_internal_stats_set_enabled(priorStats);
+		const ssw_align_internal_stats after = ssw_align_internal_stats_snapshot();
+		if (after.forward_calls < before.forward_calls ||
+			after.reverse_calls < before.reverse_calls ||
+			after.banded_sw_calls < before.banded_sw_calls ||
+			after.reverse_start_nanoseconds < before.reverse_start_nanoseconds ||
+			after.banded_sw_nanoseconds < before.banded_sw_nanoseconds ||
+			after.cigar_nanoseconds < before.cigar_nanoseconds)
+		{
+			++cpuTelemetry->failures;
+			if (error != NULL) *error = "forward-hybrid CPU counter moved backwards";
+			return false;
+		}
+		const uint64_t forwardCalls = after.forward_calls - before.forward_calls;
+		const uint64_t reverseCalls = after.reverse_calls - before.reverse_calls;
+		const uint64_t bandedCalls = after.banded_sw_calls - before.banded_sw_calls;
+		++cpuTelemetry->continuation_calls;
+		cpuTelemetry->cpu_forward_calls += forwardCalls;
+		cpuTelemetry->cpu_reverse_calls += reverseCalls;
+		cpuTelemetry->cpu_banded_sw_calls += bandedCalls;
+		cpuTelemetry->continuation_seconds += continuationSeconds;
+		cpuTelemetry->reverse_start_seconds += static_cast<double>(
+			after.reverse_start_nanoseconds - before.reverse_start_nanoseconds) /
+			1000000000.0;
+		cpuTelemetry->banded_traceback_seconds += static_cast<double>(
+			after.banded_sw_nanoseconds - before.banded_sw_nanoseconds) /
+			1000000000.0;
+		cpuTelemetry->cigar_seconds += static_cast<double>(
+			after.cigar_nanoseconds - before.cigar_nanoseconds) /
+			1000000000.0;
+		if (timing != NULL)
+		{
+			++timing->align_attempts;
+			timing->align_seconds += continuationSeconds;
+		}
+		if (!continuationOk || forwardCalls != 0 || reverseCalls != 1 ||
+			bandedCalls != 1 || alignment.sw_score != attempt.endpoint.score1 ||
+			alignment.sw_score_next_best != attempt.endpoint.score2 ||
+			alignment.ref_end != attempt.endpoint.ref_end1 ||
+			alignment.query_end != attempt.endpoint.read_end1 ||
+			alignment.ref_end_next_best != attempt.endpoint.ref_end2)
+		{
+			++cpuTelemetry->failures;
+			if (error != NULL) *error = "forward-hybrid continuation contract mismatch";
+			return false;
+		}
+
+		alignment.ref_begin += attempt.start;
+		alignment.ref_end += attempt.start;
+		fasim_phase3_observe_cigar_nt_prefilter(
+			alignment, strA, strB, strSrc, nt_table, dnaStartPos, rule,
+			strand, Para, penaltyT, penaltyC, ntMin, ntMax, timing);
+		const std::chrono::steady_clock::time_point convertStart =
+			std::chrono::steady_clock::now();
+		convertMyTriplex(alignment, myTriplexList, strA, strB, strSrc,
+			nt_table, dnaStartPos, rule, strand, Para, penaltyT, penaltyC,
+			ntMin, ntMax, materializeAlignmentStrings);
+		const double convertSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - convertStart).count();
+		cpuTelemetry->conversion_seconds += convertSeconds;
+		if (timing != NULL) timing->convert_seconds += convertSeconds;
+	}
+
+	const std::chrono::steady_clock::time_point sortStart =
+		std::chrono::steady_clock::now();
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(),
+			sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(),
+			sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
+	if (timing != NULL)
+		timing->sort_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - sortStart).count();
+	cpuTelemetry->sort_seconds += std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - sortStart).count();
+	const std::chrono::steady_clock::time_point filterStart =
+		std::chrono::steady_clock::now();
+	for (int index = 0;
+		index < static_cast<int>(myTriplexList.size() > N ? N : myTriplexList.size());
+		++index)
+	{
+		const triplex &item = myTriplexList[static_cast<size_t>(index)];
+		if (item.identity >= paraList.minIdentity &&
+			item.tri_score >= paraList.minStability && item.nt >= ntMin)
+			triplex_list.push_back(item);
+	}
+	if (timing != NULL)
+		timing->filter_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - filterStart).count();
+	cpuTelemetry->filter_seconds += std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - filterStart).count();
+	return true;
+}
+#endif
 
 inline bool fasim_shadow_attempt_consumer_from_scoreinfo(
 	StripedSmithWaterman::Aligner &aligner,
@@ -2462,11 +2769,15 @@ inline bool fasim_shadow_attempt_consumer_from_scoreinfo(
 	}
 	flush_scoreinfo();
 
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
 	for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 	{
 		triplex atr = myTriplexList[i];
@@ -2486,6 +2797,627 @@ inline bool fasim_shadow_attempt_consumer_from_scoreinfo(
 			std::chrono::steady_clock::now() - totalStart).count(),
 		true,
 		"attempt_consumer_shadow_active");
+	return true;
+}
+
+// Isolated v1 feasibility probe.  The GPU owns the score-only pass; this
+// first spike intentionally keeps the ordered consumer and canonical
+// traceback on the host so that correctness and cost can be measured without
+// changing the production result path.
+inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
+	StripedSmithWaterman::Aligner &aligner,
+	StripedSmithWaterman::Filter &filter,
+	int32_t maskLen,
+	const string &strA,
+	const string &strB,
+	const string &strSrc,
+	long dnaStartPos,
+	const std::vector<struct StripedSmithWaterman::scoreInfo> &finalScoreInfo,
+	const std::vector<FasimConsumerAttemptTraceRow> &cpuReferenceAttempts,
+	bool validateAgainstCpu,
+	vector<struct triplex> &shadowTriplexList,
+	long strand,
+	long Para,
+	long rule,
+	int ntMin,
+	int ntMax,
+	int penaltyT,
+	int penaltyC,
+	const struct para &paraList,
+	bool materializeAlignmentStrings,
+	FasimLongQueryGpuConsumerSpikeResult *result,
+	std::string *errorOut)
+{
+	FasimLongQueryGpuConsumerSpikeResult localResult;
+	if (result == NULL)
+	{
+		result = &localResult;
+	}
+	*result = FasimLongQueryGpuConsumerSpikeResult();
+	result->validation_enabled = validateAgainstCpu;
+	shadowTriplexList.clear();
+	if (errorOut != NULL)
+	{
+		errorOut->clear();
+	}
+	const std::chrono::steady_clock::time_point totalStart =
+		std::chrono::steady_clock::now();
+
+	if (finalScoreInfo.empty())
+	{
+		result->ok = true;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return true;
+	}
+	const int8_t nt_table[128] = {
+		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4,
+		4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	};
+
+	std::vector<FasimGasal2Attempt> attempts;
+	attempts.reserve(finalScoreInfo.size() * 5);
+	for (size_t scoreInfoIndex = 0;
+	     scoreInfoIndex < finalScoreInfo.size();
+	     ++scoreInfoIndex)
+	{
+		const StripedSmithWaterman::scoreInfo &scoreInfo =
+			finalScoreInfo[scoreInfoIndex];
+		float identity = 0.6f;
+		int identityRound = 0;
+		while (identity <= 1.0f)
+		{
+			int cutlength = static_cast<int>(scoreInfo.score + 24) /
+				(9 * identity - 4) + 1;
+			cutlength = scoreInfo.position - cutlength + 1 > 0 ?
+				cutlength : scoreInfo.position + 1;
+			const int start = scoreInfo.position - cutlength + 1;
+			if (start >= 0 && cutlength > 0 &&
+				start + cutlength <= static_cast<int>(strB.size()))
+			{
+				FasimGasal2Attempt attempt;
+				attempt.scoreinfo_index = static_cast<int>(scoreInfoIndex);
+				attempt.cutlength = cutlength;
+				attempt.start = start;
+				attempt.prealign_score = scoreInfo.score;
+				attempt.target_end_required_for_fallback = cutlength - 1;
+				attempt.nt_min_length = ntMin;
+				attempt.identity_round = identityRound;
+				attempt.set_target_view(&strB,
+				                        static_cast<size_t>(start),
+				                        static_cast<size_t>(cutlength));
+				attempts.push_back(attempt);
+			}
+			identity += 0.1f;
+			++identityRound;
+		}
+	}
+	result->scoreinfo_groups = static_cast<uint64_t>(finalScoreInfo.size());
+	result->attempts = static_cast<uint64_t>(attempts.size());
+	if (attempts.empty())
+	{
+		result->error = "empty_attempts";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+
+	std::vector<FasimGasal2StreamedAttemptScore> endpointScores;
+	FasimGasal2StreamedAttemptScoreTelemetry endpointTelemetry;
+	std::string bridgeError;
+	const std::chrono::steady_clock::time_point scoreStart =
+		std::chrono::steady_clock::now();
+	if (!fasim_gasal2_streamed_attempt_score_v1(
+			strA, attempts, &endpointScores, &endpointTelemetry, &bridgeError))
+	{
+		result->error = bridgeError.empty() ?
+			"streamed_attempt_score_failed" : bridgeError;
+		if (errorOut != NULL) *errorOut = result->error;
+		result->score_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - scoreStart).count();
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+	result->score_seconds = std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - scoreStart).count();
+	result->gpu_scored_attempts = endpointTelemetry.gpu_scored_requests;
+	result->endpoint_batches = endpointTelemetry.batches;
+	result->gpu_kernel_seconds = endpointTelemetry.gpu_seconds;
+	result->h2d_seconds = endpointTelemetry.h2d_seconds;
+	result->d2h_seconds = endpointTelemetry.d2h_seconds;
+	if (endpointScores.size() != attempts.size() ||
+		endpointTelemetry.gpu_scored_requests != attempts.size())
+	{
+		result->error = "gpu_score_count_mismatch";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+
+	std::vector<FasimGasal2ScoreOnlyAlignment> scores(attempts.size());
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		const FasimGasal2Attempt &attempt = attempts[i];
+		const FasimGasal2StreamedAttemptScore &gpu = endpointScores[i];
+		FasimGasal2ScoreOnlyAlignment &gpuRow = scores[i];
+		gpuRow.scoreinfo_index = attempt.scoreinfo_index;
+		gpuRow.cutlength = attempt.cutlength;
+		gpuRow.start = attempt.start;
+		gpuRow.prealign_score = attempt.prealign_score;
+		gpuRow.score = gpu.score;
+		gpuRow.query_end = gpu.query_end;
+		gpuRow.ref_end = gpu.ref_end_global;
+	}
+
+	std::vector<FasimGasal2ScoreOnlyAlignment> cpuScores;
+	if (validateAgainstCpu)
+	{
+		cpuScores.resize(attempts.size());
+		const std::chrono::steady_clock::time_point oracleStart =
+			std::chrono::steady_clock::now();
+		for (size_t i = 0; i < attempts.size(); ++i)
+		{
+			const FasimGasal2Attempt &attempt = attempts[i];
+			const FasimGasal2StreamedAttemptScore &gpu = endpointScores[i];
+			const std::string small(attempt.target_data(), attempt.target_size());
+			StripedSmithWaterman::Alignment cpuAlignment;
+			aligner.Align(strA.c_str(), small.c_str(), small.size(),
+			              filter, &cpuAlignment, maskLen);
+			++result->cpu_oracle_attempts;
+			FasimGasal2ScoreOnlyAlignment &cpuRow = cpuScores[i];
+			cpuRow.scoreinfo_index = attempt.scoreinfo_index;
+			cpuRow.cutlength = attempt.cutlength;
+			cpuRow.start = attempt.start;
+			cpuRow.prealign_score = attempt.prealign_score;
+			cpuRow.score = cpuAlignment.sw_score;
+			cpuRow.query_end = cpuAlignment.query_end;
+			cpuRow.ref_end = attempt.start + cpuAlignment.ref_end;
+
+			const bool scoreMismatch = gpu.score != cpuAlignment.sw_score;
+			const bool queryEndMismatch = gpu.query_end != cpuAlignment.query_end;
+			const bool refEndMismatch =
+				gpu.ref_end_local != cpuAlignment.ref_end;
+			const bool gpuTerminal =
+				gpu.ref_end_local == attempt.cutlength - 1;
+			const bool cpuTerminal =
+				cpuAlignment.ref_end == attempt.cutlength - 1;
+			const bool terminalMismatch = gpuTerminal != cpuTerminal;
+			result->score_mismatches += scoreMismatch ? 1ULL : 0ULL;
+			result->query_end_mismatches += queryEndMismatch ? 1ULL : 0ULL;
+			result->ref_end_local_mismatches += refEndMismatch ? 1ULL : 0ULL;
+			result->terminal_mismatches += terminalMismatch ? 1ULL : 0ULL;
+			if (scoreMismatch || queryEndMismatch || refEndMismatch || terminalMismatch)
+			{
+				++result->attempt_mismatch_rows;
+				if (result->first_attempt_mismatch == "none")
+				{
+					std::ostringstream mismatch;
+					mismatch << "attempt=" << i
+					         << ":group=" << attempt.scoreinfo_index
+					         << ":round=" << attempt.identity_round
+					         << ":gpu=" << gpu.score << ',' << gpu.query_end
+					         << ',' << gpu.ref_end_local << ',' << (gpuTerminal ? 1 : 0)
+					         << ":cpu=" << cpuAlignment.sw_score << ','
+					         << cpuAlignment.query_end << ',' << cpuAlignment.ref_end
+					         << ',' << (cpuTerminal ? 1 : 0);
+					result->first_attempt_mismatch = mismatch.str();
+				}
+			}
+		}
+		result->cpu_oracle_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - oracleStart).count();
+		if (result->attempt_mismatch_rows != 0)
+		{
+			result->error = "attempt_l3_mismatch";
+			if (errorOut != NULL) *errorOut = result->error;
+			result->total_seconds = std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - totalStart).count();
+			return false;
+		}
+	}
+
+	std::vector<size_t> selected;
+	std::vector<size_t> cpuSelected;
+	std::vector<std::string> reasons;
+	std::vector<std::string> cpuReasons;
+	const std::chrono::steady_clock::time_point selectStart =
+		std::chrono::steady_clock::now();
+	if (!fasim_gasal2_consumer_spike_select_from_scores(
+			attempts, scores, &selected, &reasons, &bridgeError))
+	{
+		result->error = bridgeError.empty() ? "consumer_selection_failed" : bridgeError;
+		if (errorOut != NULL) *errorOut = result->error;
+		result->select_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - selectStart).count();
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+	if (validateAgainstCpu &&
+		!fasim_gasal2_consumer_spike_select_from_scores(
+			attempts, cpuScores, &cpuSelected, &cpuReasons, &bridgeError))
+	{
+		result->error = bridgeError.empty() ?
+			"cpu_consumer_selection_failed" : bridgeError;
+		if (errorOut != NULL) *errorOut = result->error;
+		result->select_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - selectStart).count();
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+	result->select_seconds = std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - selectStart).count();
+	result->control_selected_attempts = static_cast<uint64_t>(selected.size());
+	result->cpu_control_selected_attempts =
+		static_cast<uint64_t>(cpuSelected.size());
+	result->consumer_selection_equal =
+		!validateAgainstCpu || selected == cpuSelected;
+	if (validateAgainstCpu && !result->consumer_selection_equal)
+	{
+		result->error = "consumer_selection_mismatch";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+
+	// A selected winner is insufficient to reproduce the ordered state machine.
+	// Threshold winners stop at that attempt. Best-fallback and last winners are
+	// known only after every attempt in their scoreInfo group has executed.
+	std::vector<unsigned char> replayMask(attempts.size(), 0);
+	std::vector<size_t> replay;
+	for (size_t selectedIndex : selected)
+	{
+		if (selectedIndex >= attempts.size())
+		{
+			result->error = "selected_index_out_of_range";
+			if (errorOut != NULL) *errorOut = result->error;
+			result->total_seconds = std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - totalStart).count();
+			return false;
+		}
+		const int group = attempts[selectedIndex].scoreinfo_index;
+		size_t begin = selectedIndex;
+		while (begin > 0 && attempts[begin - 1].scoreinfo_index == group)
+		{
+			--begin;
+		}
+		size_t end = selectedIndex;
+		if (selectedIndex >= reasons.size() ||
+			reasons[selectedIndex] != "threshold")
+		{
+			while (end + 1 < attempts.size() &&
+			       attempts[end + 1].scoreinfo_index == group)
+			{
+				++end;
+			}
+		}
+		for (size_t i = begin; i <= end; ++i)
+		{
+			if (replayMask[i] == 0)
+			{
+				replayMask[i] = 1;
+				replay.push_back(i);
+			}
+		}
+	}
+	std::sort(replay.begin(), replay.end());
+	result->replay_attempts = static_cast<uint64_t>(replay.size());
+	result->cpu_reference_align_attempts =
+		static_cast<uint64_t>(cpuReferenceAttempts.size());
+	result->consumer_attempt_prefix_equal = true;
+	const size_t sharedPrefix = std::min(replay.size(), cpuReferenceAttempts.size());
+	for (size_t i = 0; validateAgainstCpu && i < sharedPrefix; ++i)
+	{
+		const size_t attemptIndex = replay[i];
+		const FasimGasal2Attempt &candidate = attempts[attemptIndex];
+		const FasimGasal2ScoreOnlyAlignment &candidateScore =
+			scores[attemptIndex];
+		const FasimConsumerAttemptTraceRow &authority =
+			cpuReferenceAttempts[i];
+		const bool equal =
+			candidate.scoreinfo_index == authority.scoreinfo_index &&
+			candidate.identity_round == authority.identity_round &&
+			candidate.start == authority.start &&
+			candidate.cutlength == authority.cutlength &&
+			candidateScore.score == authority.score &&
+			candidateScore.query_end == authority.query_end &&
+			candidateScore.ref_end - candidate.start == authority.ref_end_local;
+		if (!equal)
+		{
+			result->consumer_attempt_prefix_equal = false;
+			std::ostringstream mismatch;
+			mismatch << "prefix=" << i
+			         << ":gpu=" << candidate.scoreinfo_index << ','
+			         << candidate.identity_round << ',' << candidate.start << ','
+			         << candidate.cutlength << ',' << candidateScore.score << ','
+			         << candidateScore.query_end << ','
+			         << (candidateScore.ref_end - candidate.start)
+			         << ":cpu=" << authority.scoreinfo_index << ','
+			         << authority.identity_round << ',' << authority.start << ','
+			         << authority.cutlength << ',' << authority.score << ','
+			         << authority.query_end << ',' << authority.ref_end_local;
+			result->first_consumer_mismatch = mismatch.str();
+			break;
+		}
+	}
+	if (validateAgainstCpu && result->consumer_attempt_prefix_equal &&
+		replay.size() != cpuReferenceAttempts.size())
+	{
+		result->consumer_attempt_prefix_equal = false;
+		std::ostringstream mismatch;
+		mismatch << "prefix=" << sharedPrefix;
+		if (sharedPrefix < replay.size())
+		{
+			const size_t attemptIndex = replay[sharedPrefix];
+			const FasimGasal2Attempt &candidate = attempts[attemptIndex];
+			const FasimGasal2ScoreOnlyAlignment &candidateScore =
+				scores[attemptIndex];
+			mismatch << ":gpu=" << candidate.scoreinfo_index << ','
+			         << candidate.identity_round << ',' << candidate.start << ','
+			         << candidate.cutlength << ',' << candidateScore.score << ','
+			         << candidateScore.query_end << ','
+			         << (candidateScore.ref_end - candidate.start);
+		}
+		else
+		{
+			mismatch << ":gpu=eof";
+		}
+		if (sharedPrefix < cpuReferenceAttempts.size())
+		{
+			const FasimConsumerAttemptTraceRow &authority =
+				cpuReferenceAttempts[sharedPrefix];
+			mismatch << ":cpu=" << authority.scoreinfo_index << ','
+			         << authority.identity_round << ',' << authority.start << ','
+			         << authority.cutlength << ',' << authority.score << ','
+			         << authority.query_end << ',' << authority.ref_end_local;
+		}
+		else
+		{
+			mismatch << ":cpu=eof";
+		}
+		result->first_consumer_mismatch = mismatch.str();
+	}
+	if (validateAgainstCpu && !result->consumer_attempt_prefix_equal)
+	{
+		result->error = "consumer_attempt_prefix_mismatch";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+	if (replay.empty())
+	{
+		result->error = "empty_replay_prefix";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+
+	vector<struct triplex> convertedRows;
+	result->cpu_continuation_requested =
+		fasim_long_query_gpu_consumer_cpu_continuation_runtime();
+#if !defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) && \
+	!defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+	if (result->cpu_continuation_requested)
+	{
+		result->error = "cpu_continuation_not_built";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+#endif
+	int currentGroup = -1;
+	FasimGasal2Attempt bestAttempt;
+	FasimGasal2Attempt lastAttempt;
+	StripedSmithWaterman::Alignment bestAlignment;
+	StripedSmithWaterman::Alignment lastAlignment;
+	bool haveBest = false;
+	bool haveLast = false;
+	bool emitted = false;
+	const std::chrono::steady_clock::time_point tracebackStart =
+		std::chrono::steady_clock::now();
+	auto emit = [&](const FasimGasal2Attempt &attempt,
+	                const StripedSmithWaterman::Alignment &local)
+	{
+		if (local.sw_score == 0)
+		{
+			return;
+		}
+		StripedSmithWaterman::Alignment global = local;
+		global.ref_begin += attempt.start;
+		global.ref_end += attempt.start;
+		const std::chrono::steady_clock::time_point convertStart =
+			std::chrono::steady_clock::now();
+		convertMyTriplex(global, convertedRows, strA, strB, strSrc,
+		                 nt_table, dnaStartPos, rule, strand, Para,
+		                 penaltyT, penaltyC, ntMin, ntMax,
+		                 materializeAlignmentStrings);
+		result->convert_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - convertStart).count();
+	};
+#if defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) || \
+	defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+	if (result->cpu_continuation_requested)
+	{
+		result->cpu_continuation_active = true;
+		for (size_t selectedIndex : selected)
+		{
+			if (selectedIndex >= attempts.size() || selectedIndex >= scores.size() ||
+				selectedIndex >= reasons.size())
+			{
+				++result->cpu_continuation_failures;
+				result->error = "cpu_continuation_selected_index_out_of_range";
+				if (errorOut != NULL) *errorOut = result->error;
+				result->total_seconds = std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - totalStart).count();
+				return false;
+			}
+			const FasimGasal2Attempt &attempt = attempts[selectedIndex];
+			const FasimGasal2ScoreOnlyAlignment &score = scores[selectedIndex];
+			const std::string small = strB.substr(
+				static_cast<size_t>(attempt.start),
+				static_cast<size_t>(attempt.cutlength));
+			StripedSmithWaterman::ForwardEndpoint endpoint;
+			endpoint.score1 = score.score;
+			endpoint.score2 = 0;
+			endpoint.ref_end1 = score.ref_end - attempt.start;
+			endpoint.query_end1 = score.query_end;
+			endpoint.ref_end2 = -1;
+			endpoint.numeric_path = SSW_FORWARD_NUMERIC_PATH_WORD16;
+			StripedSmithWaterman::Alignment local;
+			const std::chrono::steady_clock::time_point continuationStart =
+				std::chrono::steady_clock::now();
+			const bool continuationOk = aligner.AlignFromForward(
+				strA.c_str(), small.c_str(), static_cast<int>(small.size()),
+				filter, endpoint, &local, maskLen);
+			result->traceback_seconds += std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - continuationStart).count();
+			++result->cpu_continuation_calls;
+			++result->cpu_align_attempts;
+			if (!continuationOk || local.sw_score != score.score ||
+				local.ref_end != endpoint.ref_end1 ||
+				local.query_end != endpoint.query_end1)
+			{
+				++result->cpu_continuation_failures;
+				result->error = "cpu_continuation_contract_mismatch";
+				if (errorOut != NULL) *errorOut = result->error;
+				result->total_seconds = std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - totalStart).count();
+				return false;
+			}
+			emit(attempt, local);
+			if (reasons[selectedIndex] == "threshold")
+			{
+				++result->threshold_groups;
+			}
+			else if (reasons[selectedIndex] == "best_fallback")
+			{
+				++result->best_fallback_groups;
+			}
+			else if (reasons[selectedIndex] == "last")
+			{
+				++result->last_groups;
+			}
+		}
+		result->empty_groups = result->scoreinfo_groups >= selected.size() ?
+			result->scoreinfo_groups - selected.size() : 0;
+	}
+	else
+#endif
+	{
+	auto flush = [&]()
+	{
+		if (currentGroup >= 0 && !emitted)
+		{
+			if (haveBest)
+			{
+				emit(bestAttempt, bestAlignment);
+				++result->best_fallback_groups;
+			}
+			else if (haveLast && lastAlignment.sw_score != 0)
+			{
+				emit(lastAttempt, lastAlignment);
+				++result->last_groups;
+			}
+			else
+			{
+				++result->empty_groups;
+			}
+		}
+		haveBest = false;
+		haveLast = false;
+		emitted = false;
+		bestAlignment.Clear();
+		lastAlignment.Clear();
+		bestAttempt = FasimGasal2Attempt();
+		lastAttempt = FasimGasal2Attempt();
+	};
+
+	for (size_t attemptIndex : replay)
+	{
+		const FasimGasal2Attempt &attempt = attempts[attemptIndex];
+		if (attempt.scoreinfo_index != currentGroup)
+		{
+			flush();
+			currentGroup = attempt.scoreinfo_index;
+		}
+		if (emitted)
+		{
+			continue;
+		}
+		const std::string small = strB.substr(
+			static_cast<size_t>(attempt.start),
+			static_cast<size_t>(attempt.cutlength));
+		StripedSmithWaterman::Alignment local;
+		const std::chrono::steady_clock::time_point alignStart =
+			std::chrono::steady_clock::now();
+		aligner.Align(strA.c_str(), small.c_str(), small.size(),
+		              filter, &local, maskLen);
+		result->traceback_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - alignStart).count();
+		++result->cpu_align_attempts;
+		lastAttempt = attempt;
+		lastAlignment = local;
+		haveLast = true;
+		if (local.sw_score >= finalScoreInfo[
+				static_cast<size_t>(attempt.scoreinfo_index)].score)
+		{
+			emit(attempt, local);
+			emitted = true;
+			++result->threshold_groups;
+			continue;
+		}
+		if (local.sw_score > bestAlignment.sw_score &&
+			local.ref_end == attempt.cutlength - 1)
+		{
+			bestAttempt = attempt;
+			bestAlignment = local;
+			haveBest = true;
+		}
+	}
+	flush();
+	}
+
+	const std::chrono::steady_clock::time_point sortStart =
+		std::chrono::steady_clock::now();
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexMultiple);
+		convertedRows.erase(std::unique(convertedRows.begin(), convertedRows.end(),
+		                                sameMyTriplex), convertedRows.end());
+		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexMultiple2);
+		convertedRows.erase(std::unique(convertedRows.begin(), convertedRows.end(),
+		                                sameMyTriplex), convertedRows.end());
+		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexSingle);
+	}
+	(void)sortStart;
+	const size_t topLimit = std::min(convertedRows.size(), static_cast<size_t>(N));
+	for (size_t i = 0; i < topLimit; ++i)
+	{
+		const triplex &row = convertedRows[i];
+		if (row.identity >= paraList.minIdentity &&
+			row.tri_score >= paraList.minStability && row.nt >= ntMin)
+		{
+			shadowTriplexList.push_back(row);
+		}
+	}
+	result->ok = true;
+	result->total_seconds = std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - totalStart).count();
 	return true;
 }
 
@@ -3235,11 +4167,15 @@ inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(
 			std::chrono::steady_clock::now() - convertStart).count();
 	}
 
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
-	myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
-	std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexMultiple2);
+		myTriplexList.erase(std::unique(myTriplexList.begin(), myTriplexList.end(), sameMyTriplex), myTriplexList.end());
+		std::sort(myTriplexList.begin(), myTriplexList.end(), compMyTriplexSingle);
+	}
 	for (int i = 0; i < (myTriplexList.size() > N ? N : myTriplexList.size()); i++)
 	{
 		triplex atr = myTriplexList[i];
@@ -3281,6 +4217,8 @@ inline void fasim_calc_identity_and_triscore_from_cigar(const StripedSmithWaterm
                                                         float &triScoreOut,
                                                         int &ntOut)
 {
+	FasimAuthorityProfileScope authorityStabilityScope(
+		FASIM_AUTHORITY_STAGE_STABILITY_IDENTITY_NT);
 	int match = 0;
 	int mis_match = 0;
 	int nt = 0;
@@ -3390,6 +4328,8 @@ bool buildConvertedTriplexRecord(const StripedSmithWaterman::Alignment &alignmen
 	int ntMax,
 	const FasimConvertMaterializationPolicy &policy)
 {
+	FasimAuthorityProfileScope authorityConversionScope(
+		FASIM_AUTHORITY_STAGE_TRIPLEX_CONVERSION);
 	int nt = 0;
 	float identity = 0.0f;
 	float tri_score = 0.0f;

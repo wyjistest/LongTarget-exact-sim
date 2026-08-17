@@ -1,0 +1,16 @@
+row_type	workload_id	metric	value	n	status
+phase4_paired	c5_archive_h19_2mb	storage_reduction_ratio	5.715078	3	clean
+phase4_paired	c5_archive_large_synthetic	peak_rss_reduction_fraction	0.336190	3	clean
+phase4_paired	c6_exact_h19_2mb	exact_stage_speedup	1.348059	3	clean
+phase4_paired	c6_exact_kcnq_segment_chr22	exact_stage_speedup	1.651694	3	clean
+linked_contrast	c1_h19_chr21_chr22_fast_topk	median_paired_speedup	38.320882	5	clean
+linked_contrast	c4_h19_chr21_two_slot	median_paired_speedup	1.143132	5	clean
+linked_contrast	c4_h19_chr22_two_slot	median_paired_speedup	1.151205	5	clean
+resource	c5_archive_h19_2mb	device_peak_mib	19769.0	1	clean
+resource	c5_archive_large_synthetic	device_peak_mib	NA	0	clean
+resource	c6_exact_h19_2mb	device_peak_mib	19697.0	1	clean
+resource	c6_exact_kcnq_segment_chr22	device_peak_mib	14999.0	1	clean
+resource	two_slot_chr17_chr22_scoped	device_peak_mib	19746.0	1	clean
+resource	two_slot_chr17_chr22_scoped	device_peak_mib	39492.0	2	clean
+resource	two_slot_chr17_chr22_scoped	device_peak_mib	NA	4	oom
+resource	two_slot_chr17_chr22_scoped	device_peak_mib	NA	6	oom

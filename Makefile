@@ -1,5 +1,13 @@
+PHASE3_FREEZE_TARGET := check-bioinformatics-phase3-freeze
+PHASE3_FREEZE_ONLY_GOAL := $(if $(filter $(PHASE3_FREEZE_TARGET),$(MAKECMDGOALS)),$(if $(filter-out $(PHASE3_FREEZE_TARGET),$(MAKECMDGOALS)),,1))
+
+ifeq ($(PHASE3_FREEZE_ONLY_GOAL),1)
+UNAME_S :=
+UNAME_M :=
+else
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
+endif
 
 CXX ?= clang++
 CXXFLAGS ?= -O2 -std=c++11
@@ -28,7 +36,11 @@ ifeq ($(UNAME_S),Darwin)
   endif
 endif
 
+ifeq ($(PHASE3_FREEZE_ONLY_GOAL),1)
+OPENMP_AUTODETECT_FLAGS :=
+else
 OPENMP_AUTODETECT_FLAGS := $(strip $(shell TMP_BASE=$$(mktemp /tmp/longtarget-omp-XXXXXX); TMP_OBJ=$${TMP_BASE}.o; TMP_BIN=$${TMP_BASE}.bin; if $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(ARCH_FLAGS) -x c++ /dev/null -c -fopenmp -o $$TMP_OBJ >/dev/null 2>&1 && $(CXX) $(ARCH_FLAGS) -fopenmp $$TMP_OBJ -o $$TMP_BIN >/dev/null 2>&1; then printf '%s' '-fopenmp'; fi; rm -f $$TMP_BASE $$TMP_OBJ $$TMP_BIN))
+endif
 ifneq ($(strip $(OPENMP_FLAGS)),)
   OPENMP_AVAILABLE := 1
 else ifneq ($(strip $(OPENMP_AUTODETECT_FLAGS)),)
@@ -127,9 +139,25 @@ check-cuda-native-ada-fatbin: build-cuda-native-ada
 FASIM_CXXFLAGS ?= -O3 -std=c++11 -pthread
 FASIM_SIMD_FLAGS ?= -msse2
 FASIM_TARGET ?= fasim_longtarget_x86
+FASIM_OPENMP_TARGET ?= fasim_longtarget_openmp
+# Keep the OpenMP build explicitly separate from the frozen CPU authority
+# binary.  The repository-wide autodetection probe predates this target and
+# can be overridden by callers that use a non-GCC OpenMP toolchain.
+FASIM_OPENMP_FLAGS ?= -fopenmp
 FASIM_CUDA_TARGET ?= fasim_longtarget_cuda
 FASIM_GASAL2_TARGET ?= fasim_longtarget_gasal2
-FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp
+SSW_CUDA_PHASE1_PROFILE_BIN ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/phase1/fasim_authority_profile
+SSW_CUDA_PHASE2_ORACLE_BIN ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/phase2/fasim_cpu_oracle
+SSW_CUDA_PHASE5_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/preselect/build
+SSW_CUDA_PHASE5_DRIVER ?= $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_preselect_driver
+SSW_CUDA_PHASE5_STUB_PROBE ?= $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_stub_probe
+SSW_CUDA_PHASE5_CUDA_FLAGS ?= -O2 -std=c++11 --generate-code=arch=compute_89,code=sm_89
+SSW_CUDA_PHASE6_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/forward/build
+SSW_CUDA_PHASE6_DRIVER ?= $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward_driver
+SSW_CUDA_PHASE7_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/forward-hybrid/build
+SSW_CUDA_PHASE7_CONTINUATION_DRIVER ?= $(SSW_CUDA_PHASE7_BUILD_DIR)/ssw_cpu_continuation_driver
+SSW_CUDA_PHASE7_FASIM_BIN ?= $(SSW_CUDA_PHASE7_BUILD_DIR)/fasim_forward_hybrid
+FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
 GASAL2_DIR ?= .tmp/GASAL2
 GASAL2_REPO_URL ?= https://github.com/nahmedraja/GASAL2.git
@@ -145,6 +173,157 @@ build-fasim: $(FASIM_TARGET)
 
 $(FASIM_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-fasim-openmp
+build-fasim-openmp: $(FASIM_OPENMP_TARGET)
+
+.PHONY: check-fasim-openmp
+check-fasim-openmp:
+	bash ./scripts/check_fasim_openmp.sh
+
+$(FASIM_OPENMP_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_OPENMP_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-ssw-cuda-phase1-profile
+build-ssw-cuda-phase1-profile: $(SSW_CUDA_PHASE1_PROFILE_BIN)
+
+$(SSW_CUDA_PHASE1_PROFILE_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-ssw-cuda-phase2-oracle
+build-ssw-cuda-phase2-oracle: $(SSW_CUDA_PHASE2_ORACLE_BIN)
+
+$(SSW_CUDA_PHASE2_ORACLE_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: build-ssw-cuda-phase5-driver
+build-ssw-cuda-phase5-driver: $(SSW_CUDA_PHASE5_DRIVER)
+
+.PHONY: build-ssw-cuda-phase5-stub-probe
+build-ssw-cuda-phase5-stub-probe: $(SSW_CUDA_PHASE5_STUB_PROBE)
+
+$(SSW_CUDA_PHASE5_STUB_PROBE): tests/ssw_cuda/ssw_cuda_stub_probe.cpp \
+		fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_stub.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -I$(CURDIR) -O2 -std=c++11 tests/ssw_cuda/ssw_cuda_stub_probe.cpp \
+		fasim/ssw_cuda/ssw_cuda_stub.cpp -o $@
+
+$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o: fasim/ssw_cuda/ssw_cuda_pre_align.cu fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_internal.h fasim/ssw_cuda/ssw_cuda_striped.cuh
+	@mkdir -p $(dir $@)
+	$(NVCC) $(SSW_CUDA_PHASE5_CUDA_FLAGS) -I$(CURDIR) -c $< -o $@
+
+$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o: fasim/ssw_cuda/ssw_cuda_select.cu fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_internal.h
+	@mkdir -p $(dir $@)
+	$(NVCC) $(SSW_CUDA_PHASE5_CUDA_FLAGS) -I$(CURDIR) -c $< -o $@
+
+$(SSW_CUDA_PHASE5_DRIVER): tests/ssw_cuda/ssw_cuda_preselect_driver.cpp \
+		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/ssw_cpp.h fasim/ssw.h \
+		fasim/ssw_cuda/ssw_cuda_api.h \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -I$(CURDIR) -O2 -std=c++11 $(FASIM_SIMD_FLAGS) \
+		tests/ssw_cuda/ssw_cuda_preselect_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
+		fasim/ssw_oracle_trace.cpp $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
+
+.PHONY: build-ssw-cuda-phase6-driver
+build-ssw-cuda-phase6-driver: $(SSW_CUDA_PHASE6_DRIVER)
+
+$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o: fasim/ssw_cuda/ssw_cuda_forward.cu \
+		fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_internal.h \
+		fasim/ssw_cuda/ssw_cuda_striped.cuh
+	@mkdir -p $(dir $@)
+	$(NVCC) $(SSW_CUDA_PHASE5_CUDA_FLAGS) -I$(CURDIR) -c $< -o $@
+
+$(SSW_CUDA_PHASE6_DRIVER): tests/ssw_cuda/ssw_cuda_forward_driver.cpp \
+		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/ssw_cpp.h fasim/ssw.h \
+		fasim/ssw_cuda/ssw_cuda_api.h \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -I$(CURDIR) -O2 -std=c++11 $(FASIM_SIMD_FLAGS) \
+		tests/ssw_cuda/ssw_cuda_forward_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
+		fasim/ssw_oracle_trace.cpp $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
+
+.PHONY: build-ssw-cuda-phase7-continuation-driver
+build-ssw-cuda-phase7-continuation-driver: $(SSW_CUDA_PHASE7_CONTINUATION_DRIVER)
+
+.PHONY: build-ssw-cuda-phase7-fasim
+build-ssw-cuda-phase7-fasim: $(SSW_CUDA_PHASE7_FASIM_BIN)
+
+.PHONY: check-ssw-cuda-phase7-preflight
+check-ssw-cuda-phase7-preflight:
+	bash ./scripts/check_ssw_cuda_phase7.sh --preflight
+
+.PHONY: check-ssw-cuda-phase7
+check-ssw-cuda-phase7:
+	bash ./scripts/check_ssw_cuda_phase7.sh --final
+
+.PHONY: check-ssw-cuda-phase13-precommit check-ssw-cuda-phase13 check-ssw-cuda
+check-ssw-cuda-phase13-precommit:
+	bash ./scripts/check_ssw_cuda_all.sh --precommit
+
+check-ssw-cuda-phase13:
+	bash ./scripts/check_ssw_cuda_all.sh --final
+
+check-ssw-cuda:
+	bash ./scripts/check_ssw_cuda_all.sh --final
+
+.PHONY: check-biological-topk check-biological-topk-phase0 check-biological-topk-phase1 check-biological-topk-phase2 check-biological-topk-phase3 check-biological-topk-phase4
+check-biological-topk:
+	bash ./scripts/check_biological_topk_all.sh --final
+
+check-biological-topk-phase0:
+	python3 ./scripts/check_biological_topk_phase.py --phase 0 --mode postcommit
+
+check-biological-topk-phase1:
+	python3 ./scripts/check_biological_topk_phase.py --phase 1 --mode postcommit
+
+check-biological-topk-phase2:
+	bash ./scripts/check_biological_topk_phase2.sh --postcommit
+
+check-biological-topk-phase3:
+	bash ./scripts/check_biological_topk_phase3.sh --postcommit
+
+check-biological-topk-phase4:
+	bash ./scripts/check_biological_topk_phase4.sh --postcommit
+
+$(SSW_CUDA_PHASE7_CONTINUATION_DRIVER): tests/ssw_cuda/ssw_cpu_continuation_driver.cpp \
+		fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp \
+		fasim/ssw_cpp.h fasim/ssw.h fasim/rules.h \
+		fasim/ssw_cuda/ssw_cuda_api.h fasim/ssw_cuda/ssw_cuda_forward_hybrid.h \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -DFASIM_WITH_SSW_CUDA_FORWARD_HYBRID -I$(CURDIR) \
+		-O2 -std=c++11 $(FASIM_SIMD_FLAGS) \
+		tests/ssw_cuda/ssw_cpu_continuation_driver.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
+		fasim/ssw_oracle_trace.cpp fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(CUDA_LDFLAGS) -o $@
+
+$(SSW_CUDA_PHASE7_FASIM_BIN): $(FASIM_SOURCES) $(FASIM_HEADERS) \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.h fasim/ssw_cuda/ssw_cuda_api.h \
+		fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp cuda/prealign_cuda.h \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o
+	@mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -DFASIM_WITH_SSW_CUDA_FORWARD_HYBRID -I$(CURDIR) \
+		$(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) \
+		fasim/ssw_cuda/ssw_cuda_forward_hybrid.cpp fasim/gasal2_align_bridge_stub.cpp \
+		cuda/prealign_cuda_stub.cpp $(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_pre_align.o \
+		$(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward.o \
+		$(SSW_CUDA_PHASE5_BUILD_DIR)/ssw_cuda_select.o $(LDFLAGS) $(LDLIBS) \
+		$(CUDA_LDFLAGS) -o $@
 
 build-fasim-cuda: $(FASIM_CUDA_TARGET)
 
@@ -623,16 +802,16 @@ benchmark-fasim-sharded-worker-workload-matrix:
 	BIN=$(CURDIR)/fasim_longtarget_x86 bash ./scripts/check_fasim_sharded_worker_workload_matrix.sh
 
 FASIM_CIGAR_TEST_TARGET ?= tests/test_fasim_cigar_identity
-FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp
+FASIM_CIGAR_TEST_SOURCES := tests/test_fasim_cigar_identity.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/gasal2_align_bridge_stub.cpp cuda/prealign_cuda_stub.cpp
 
 FASIM_TRANSFERSTRING_TABLE_TEST_TARGET ?= tests/test_fasim_transferstring_table
 FASIM_TRANSFERSTRING_TABLE_TEST_SOURCES := tests/test_fasim_transferstring_table.cpp
 
 FASIM_SSW_PROFILE_CACHE_TEST_TARGET ?= tests/test_fasim_ssw_profile_cache
-FASIM_SSW_PROFILE_CACHE_TEST_SOURCES := tests/test_fasim_ssw_profile_cache.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp
+FASIM_SSW_PROFILE_CACHE_TEST_SOURCES := tests/test_fasim_ssw_profile_cache.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
 SSW_AVX2_DIRECT_TEST_TARGET ?= tests/test_ssw_avx2_direct
-SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp
+SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
@@ -1236,11 +1415,384 @@ check-fasim-gasal2-formal-preset-examples:
 check-fasim-gasal2-reproducible-setup:
 	bash ./scripts/check_fasim_gasal2_reproducible_setup.sh
 
+check-fasim-gasal2-long-query-phase0:
+	$(MAKE) check-fasim-gasal2-reproducible-setup
+	$(MAKE) check-sample
+	$(MAKE) check-fasim-tfo-archive-integrity-parser
+	$(MAKE) check-fasim-gasal2-archive-manifest-parser
+	$(MAKE) check-fasim-lite-full-equivalence
+	$(MAKE) check-fasim-gasal2-top5-output-contract
+	$(MAKE) check-fasim-gasal2-short-query-top5-tfo-contract
+	$(MAKE) check-fasim-gasal2-archive-first-output \
+		WORK=$(CURDIR)/.tmp/check_fasim_gasal2_long_query_phase0_archive \
+		TARGET=$(CURDIR)/.tmp/fasim_gasal2_chr22_slice_10m_12m.fa \
+		RNA=$(CURDIR)/H19.fa
+	PHASE0_ARCHIVE_SUMMARY=$(CURDIR)/.tmp/check_fasim_gasal2_long_query_phase0_archive/summary.txt \
+		bash ./scripts/check_fasim_gasal2_long_query_phase0.sh
+
+.PHONY: check-fasim-gasal2-long-query-phase0
+
+check-fasim-gasal2-segmented-archive-first:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_segmented_archive_first) \
+	bash ./scripts/check_fasim_gasal2_segmented_archive_first.sh
+
+.PHONY: check-fasim-gasal2-segmented-archive-first
+
+characterize-fasim-gasal2-segment-ownership-h19:
+	FASIM_GASAL2_SEGMENT_OWNERSHIP_SHADOW=1 \
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_segment_ownership_h19) \
+	python3 ./scripts/characterize_fasim_segment_ownership_h19.py
+
+check-fasim-gasal2-segment-ownership:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_segment_ownership) \
+	bash ./scripts/check_fasim_gasal2_segment_ownership.sh
+
+.PHONY: characterize-fasim-gasal2-segment-ownership-h19 check-fasim-gasal2-segment-ownership
+
+check-fasim-gasal2-multi-segment-context-phase3:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_multi_segment_context_phase3) \
+	bash ./scripts/check_fasim_gasal2_multi_segment_context_phase3.sh
+
+.PHONY: check-fasim-gasal2-multi-segment-context-phase3
+
+check-fasim-gasal2-exact-task-compaction-shadow:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_task_compaction_shadow) \
+	bash ./scripts/check_fasim_gasal2_exact_task_compaction_shadow.sh
+
+check-fasim-gasal2-exact-scoreinfo-pruned-full-output:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_scoreinfo_pruned_full_output) \
+	bash ./scripts/check_fasim_gasal2_exact_scoreinfo_pruned_full_output.sh
+
+characterize-fasim-gasal2-exact-column-long-query:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/characterize_fasim_gasal2_exact_column_long_query_exact_pruned) \
+	bash ./scripts/characterize_fasim_gasal2_exact_column_long_query.sh
+
+check-fasim-gasal2-exact-column-phase5:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_exact_column_phase5) \
+	bash ./scripts/check_fasim_gasal2_exact_column_phase5.sh
+
+characterize-fasim-gasal2-traceback-certificate-phase6:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/phase6_traceback_certificate) \
+	bash ./scripts/characterize_fasim_gasal2_traceback_certificate_phase6.sh
+
+check-fasim-gasal2-traceback-certificate-unit:
+	bash ./scripts/check_fasim_gasal2_traceback_certificate_unit.sh
+
+check-fasim-gasal2-traceback-certificate-shadow-smoke:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct BUILD_BIN=0 \
+	bash ./scripts/check_fasim_gasal2_traceback_certificate_shadow_smoke.sh
+
+check-fasim-gasal2-traceback-certificate-phase6:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_traceback_certificate_phase6) \
+	bash ./scripts/check_fasim_gasal2_traceback_certificate_phase6.sh
+
+characterize-fasim-gasal2-long-query-integrated-phase7:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct \
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/phase7_gasal2_long_query_integrated) \
+	bash ./scripts/characterize_fasim_gasal2_long_query_integrated_phase7.sh
+
+check-fasim-gasal2-long-query-integrated-unit:
+	python3 ./tests/check_characterize_fasim_gasal2_segmented_archive_first_runner.py
+	python3 ./tests/check_compare_fasim_gasal2_long_query_integrated.py
+	python3 ./tests/check_summarize_fasim_gasal2_long_query_integrated.py
+
+check-fasim-gasal2-long-query-integrated-phase7:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_long_query_integrated_phase7) \
+	bash ./scripts/check_fasim_gasal2_long_query_integrated_phase7.sh
+
+check-fasim-gasal2-long-query-final:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_fasim_gasal2_long_query_final) \
+	bash ./scripts/check_fasim_gasal2_long_query_final.sh
+
+check-fasim-gasal2-paper-phase0:
+	$(MAKE) check-fasim-gasal2-long-query-final
+	bash ./scripts/check_fasim_gasal2_paper_phase0.sh
+
+check-fasim-gasal2-paper-phase1:
+	$(MAKE) check-fasim-gasal2-paper-phase0
+	bash ./scripts/check_fasim_gasal2_paper_phase1.sh
+
+check-fasim-gasal2-paper-phase2:
+	$(MAKE) check-fasim-gasal2-paper-phase1
+	bash ./scripts/check_fasim_gasal2_paper_phase2.sh
+
+check-fasim-gasal2-paper-phase3:
+	$(MAKE) check-fasim-gasal2-paper-phase2
+	bash ./scripts/check_fasim_gasal2_paper_phase3.sh
+
+check-fasim-gasal2-paper-phase4:
+	$(MAKE) check-fasim-gasal2-paper-phase3
+	bash ./scripts/check_fasim_gasal2_paper_phase4.sh
+
+paper-source-data:
+	python3 ./reproduce/collect_results.py
+	python3 ./reproduce/analyze_results.py
+	python3 ./reproduce/freeze_results.py
+
+check-fasim-gasal2-paper-phase5:
+	$(MAKE) check-fasim-gasal2-paper-phase4
+	bash ./scripts/check_fasim_gasal2_paper_phase5.sh
+
+paper-figures:
+	python3 ./reproduce/render_figures.py
+
+check-fasim-gasal2-paper-phase6:
+	$(MAKE) check-fasim-gasal2-paper-phase5
+	bash ./scripts/check_fasim_gasal2_paper_phase6.sh
+
+check-fasim-gasal2-paper-reproduction:
+	python3 ./tests/check_fasim_gasal2_paper_reproduction.py
+	python3 -m py_compile ./reproduce/prepare_inputs.py
+	bash ./reproduce/check_reproduction.sh
+
+check-fasim-gasal2-paper-phase7:
+	$(MAKE) check-fasim-gasal2-paper-phase6
+	bash ./scripts/check_fasim_gasal2_paper_phase7.sh
+
+paper-manuscript-kit:
+	python3 ./reproduce/render_manuscript_source_kit.py
+
+check-fasim-gasal2-paper-phase8:
+	$(MAKE) check-fasim-gasal2-paper-phase7
+	bash ./scripts/check_fasim_gasal2_paper_phase8.sh
+
+paper-arithmetic-audit:
+	python3 ./reproduce/audit_paper_results.py
+
+check-fasim-gasal2-paper-prep:
+	$(MAKE) check-fasim-gasal2-paper-phase8
+	bash ./scripts/check_fasim_gasal2_paper_prep.sh
+
+check-fasim-gasal2-paper-phase9: check-fasim-gasal2-paper-prep
+
+check-bioinformatics-phase0:
+	$(MAKE) check-fasim-gasal2-paper-prep
+	bash ./scripts/check_bioinformatics_phase0.sh
+
+check-bioinformatics-phase1: check-bioinformatics-phase0 build-fasim
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase1) \
+	bash ./scripts/check_bioinformatics_phase1.sh
+
+check-bioinformatics-phase2-freeze:
+	bash ./scripts/check_bioinformatics_phase2_freeze.sh
+
+check-bioinformatics-phase2-preexecution: check-bioinformatics-phase2-freeze
+	bash ./scripts/check_bioinformatics_phase2_preexecution.sh
+
+check-bioinformatics-phase2:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_phase2) \
+	bash ./scripts/check_bioinformatics_phase2.sh
+
+check-bioinformatics-phase2-traceback-replay-preexecution:
+	REPLAY_PREEXECUTION_ONLY=1 bash ./scripts/check_bioinformatics_traceback_replay.sh
+
+replay-bioinformatics-phase2-traceback:
+	bash ./scripts/replay_phase2_traceback_cases.sh
+
+check-bioinformatics-phase2-traceback-replay:
+	bash ./scripts/check_bioinformatics_traceback_replay.sh
+
+check-bioinformatics-canonical-hybrid-v2:
+	WORK=$(or $(WORK),$(CURDIR)/.tmp/check_bioinformatics_canonical_hybrid_v2) \
+	bash ./scripts/check_bioinformatics_canonical_hybrid_v2.sh
+
+check-bioinformatics-canonical-hybrid-v2-regression:
+	bash ./scripts/check_bioinformatics_canonical_hybrid_v2_regression.sh
+
+check-bioinformatics-canonical-hybrid-v2-holdout-preexecution:
+	bash ./scripts/check_bioinformatics_canonical_hybrid_v2_holdout_preexecution.sh
+
+check-bioinformatics-canonical-hybrid-v2-holdout:
+	bash ./scripts/check_bioinformatics_canonical_hybrid_v2_holdout.sh
+
+check-bioinformatics-canonical-hybrid-v2-performance-preexecution:
+	bash ./scripts/check_bioinformatics_canonical_hybrid_v2_performance_preexecution.sh
+
+check-bioinformatics-canonical-hybrid-v2-performance:
+	bash ./scripts/check_bioinformatics_canonical_hybrid_v2_performance.sh
+
+.PHONY: check-ssw-cuda-phase0
+check-ssw-cuda-phase0:
+	bash ./scripts/check_ssw_cuda_phase0.sh
+
+.PHONY: check-ssw-cuda-phase1-preflight check-ssw-cuda-phase1 check-ssw-cuda-phase1-blocked \
+	check-ssw-cuda-phase1-recovery-preflight check-ssw-cuda-phase1-recovery
+check-ssw-cuda-phase1-preflight: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --preflight
+
+check-ssw-cuda-phase1: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --final
+
+check-ssw-cuda-phase1-blocked: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --blocked
+
+check-ssw-cuda-phase1-recovery-preflight: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --recovery-preflight
+
+check-ssw-cuda-phase1-recovery: build-ssw-cuda-phase1-profile
+	SSW_CUDA_PHASE1_BIN=$(SSW_CUDA_PHASE1_PROFILE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase1.sh --recovery-final
+
+.PHONY: check-ssw-cuda-phase2-preflight run-ssw-cuda-phase2 check-ssw-cuda-phase2
+check-ssw-cuda-phase2-preflight: build-ssw-cuda-phase2-oracle
+	SSW_CUDA_PHASE2_BIN=$(SSW_CUDA_PHASE2_ORACLE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase2.sh --preflight
+
+run-ssw-cuda-phase2: check-ssw-cuda-phase2-preflight
+	PYTHONDONTWRITEBYTECODE=1 python3 ./reproduce/ssw_cuda/run_phase2_oracle.py \
+		--run-formal --binary $(SSW_CUDA_PHASE2_ORACLE_BIN)
+
+check-ssw-cuda-phase2:
+	SSW_CUDA_PHASE2_BIN=$(SSW_CUDA_PHASE2_ORACLE_BIN) \
+		bash ./scripts/check_ssw_cuda_phase2.sh --final
+
+.PHONY: check-ssw-cuda-phase3-preflight check-ssw-cuda-phase3
+check-ssw-cuda-phase3-preflight:
+	bash ./scripts/check_ssw_cuda_phase3.sh --preflight
+
+check-ssw-cuda-phase3:
+	bash ./scripts/check_ssw_cuda_phase3.sh --final
+
+.PHONY: check-ssw-cuda-phase4-preflight check-ssw-cuda-phase4
+check-ssw-cuda-phase4-preflight:
+	bash ./scripts/check_ssw_cuda_phase4.sh --preflight
+
+check-ssw-cuda-phase4:
+	bash ./scripts/check_ssw_cuda_phase4.sh --final
+
+.PHONY: check-ssw-cuda-phase5-preflight check-ssw-cuda-phase5
+check-ssw-cuda-phase5-preflight:
+	bash ./scripts/check_ssw_cuda_phase5.sh --preflight
+
+check-ssw-cuda-phase5:
+	bash ./scripts/check_ssw_cuda_phase5.sh --final
+
+.PHONY: check-ssw-cuda-phase6-preflight check-ssw-cuda-phase6
+check-ssw-cuda-phase6-preflight:
+	bash ./scripts/check_ssw_cuda_phase6.sh --preflight
+
+check-ssw-cuda-phase6:
+	bash ./scripts/check_ssw_cuda_phase6.sh --final
+
+check-bioinformatics-phase3-freeze: SHELL := /bin/sh
+check-bioinformatics-phase3-freeze:
+	/usr/bin/env -i \
+		LC_ALL=C \
+		PATH=/usr/bin:/bin \
+		PHASE3_FREEZE_CLEAN_BOOTSTRAP=phase3-freeze-v1 \
+		WORK="$${WORK:-$(CURDIR)/.tmp/check_bioinformatics_phase3_freeze}" \
+		/usr/bin/bash --noprofile --norc \
+		./scripts/check_bioinformatics_phase3_freeze.sh
+
+check-bioinformatics-phase3-preexecution:
+	bash ./scripts/check_bioinformatics_phase3_preexecution.sh
+
+check-bioinformatics-phase3-pilot:
+	bash ./scripts/check_bioinformatics_phase3_pilot.sh
+
+check-bioinformatics-submission-readiness-v2:
+	bash ./scripts/check_bioinformatics_submission_readiness_v2_all.sh
+
+.PHONY: check-fasim-gasal2-exact-task-compaction-shadow \
+	check-fasim-gasal2-exact-scoreinfo-pruned-full-output \
+	characterize-fasim-gasal2-exact-column-long-query \
+	check-fasim-gasal2-exact-column-phase5 \
+	characterize-fasim-gasal2-traceback-certificate-phase6 \
+	check-fasim-gasal2-traceback-certificate-unit \
+	check-fasim-gasal2-traceback-certificate-shadow-smoke \
+	check-fasim-gasal2-traceback-certificate-phase6 \
+	characterize-fasim-gasal2-long-query-integrated-phase7 \
+	check-fasim-gasal2-long-query-integrated-unit \
+	check-fasim-gasal2-long-query-integrated-phase7 \
+	check-fasim-gasal2-long-query-final \
+	check-fasim-gasal2-paper-phase0 \
+	check-fasim-gasal2-paper-phase1 \
+	check-fasim-gasal2-paper-phase2 \
+	check-fasim-gasal2-paper-phase3 \
+	check-fasim-gasal2-paper-phase4 \
+	check-fasim-gasal2-paper-phase5 \
+	check-fasim-gasal2-paper-phase6 \
+	check-fasim-gasal2-paper-reproduction \
+	check-fasim-gasal2-paper-phase7 \
+	check-fasim-gasal2-paper-phase8 \
+	check-fasim-gasal2-paper-phase9 \
+	check-fasim-gasal2-paper-prep \
+	check-bioinformatics-phase0 \
+	check-bioinformatics-phase1 \
+	check-bioinformatics-phase2-freeze \
+	check-bioinformatics-phase2-preexecution \
+	check-bioinformatics-phase2 \
+	check-bioinformatics-phase2-traceback-replay-preexecution \
+	replay-bioinformatics-phase2-traceback \
+	check-bioinformatics-phase2-traceback-replay \
+	check-bioinformatics-canonical-hybrid-v2 \
+	check-bioinformatics-canonical-hybrid-v2-regression \
+	check-bioinformatics-canonical-hybrid-v2-holdout \
+	check-bioinformatics-canonical-hybrid-v2-performance \
+	check-bioinformatics-phase3-freeze \
+	check-bioinformatics-phase3-preexecution \
+	check-bioinformatics-phase3-pilot \
+	check-bioinformatics-submission-readiness-v2 \
+	paper-source-data \
+	paper-figures \
+	paper-manuscript-kit \
+	paper-arithmetic-audit
+
 check-fasim-gasal2-short-query-top5-readiness:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_readiness.sh
 
 check-fasim-gasal2-short-query-top5-tfo-contract:
 	bash ./scripts/check_fasim_gasal2_short_query_top5_tfo_contract.sh
+
+KCNQ1OT1_FASTA ?= $(CURDIR)/.tmp/fasim_gasal2_query_inputs/KCNQ1OT1_ENST00000597346.fa
+
+characterize-fasim-gasal2-short-query-generalization-panel:
+	KCNQ1OT1_FASTA="$(KCNQ1OT1_FASTA)" \
+	bash ./scripts/characterize_fasim_gasal2_short_query_generalization_panel.sh
+
+check-fasim-gasal2-short-query-generalization-panel-result:
+	bash ./scripts/check_fasim_gasal2_short_query_generalization_panel_result.sh
+
+.PHONY: characterize-fasim-gasal2-short-query-generalization-panel check-fasim-gasal2-short-query-generalization-panel-result
+
+characterize-fasim-gasal2-segmented-query-h19-control:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct bash ./scripts/characterize_fasim_gasal2_segmented_query_h19_control.sh
+
+check-fasim-gasal2-segmented-query-h19-control-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_h19_control_result.sh
+
+.PHONY: characterize-fasim-gasal2-segmented-query-h19-control check-fasim-gasal2-segmented-query-h19-control-result
+
+characterize-fasim-gasal2-segmented-query-kcnq1ot1-pilot:
+	BIN=$(CURDIR)/.tmp/fasim_longtarget_gasal2_direct KCNQ1OT1_FASTA="$(KCNQ1OT1_FASTA)" bash ./scripts/characterize_fasim_gasal2_segmented_query_kcnq1ot1_pilot.sh
+
+check-fasim-gasal2-segmented-query-kcnq1ot1-pilot-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_kcnq1ot1_pilot_result.sh
+
+.PHONY: characterize-fasim-gasal2-segmented-query-kcnq1ot1-pilot check-fasim-gasal2-segmented-query-kcnq1ot1-pilot-result
+
+check-fasim-gasal2-segmented-query-kcnq1ot1-target-scope-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_kcnq1ot1_target_scope_result.sh
+
+.PHONY: check-fasim-gasal2-segmented-query-kcnq1ot1-target-scope-result
+
+check-fasim-gasal2-segmented-query-kcnq1ot1-coverage-ladder-result:
+	bash ./scripts/check_fasim_gasal2_segmented_query_kcnq1ot1_coverage_ladder_result.sh
+
+.PHONY: check-fasim-gasal2-segmented-query-kcnq1ot1-coverage-ladder-result
 
 check-fasim-gasal2-formal-makefile-gate:
 	bash ./scripts/check_fasim_gasal2_formal_makefile_gate.sh

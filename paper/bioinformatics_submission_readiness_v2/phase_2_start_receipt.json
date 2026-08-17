@@ -1,0 +1,19 @@
+{
+  "freeze_parent_head": "8114ce45be9bd5b25e52dc8fe7bc768eb6aee589",
+  "phase": 2,
+  "phase_1_transition_commit": "ef34c62d6a0b3dc8d9b3099c2a3a23c7be1d4583",
+  "phase_start_parent_head": "ef34c62d6a0b3dc8d9b3099c2a3a23c7be1d4583",
+  "phase_start_tree_was_clean": true,
+  "previous_phase_postcommit_check_command": [
+    "python3",
+    "scripts/check_bioinformatics_submission_readiness_v2.py",
+    "--phase",
+    "1",
+    "--mode",
+    "postcommit"
+  ],
+  "previous_phase_postcommit_check_result": "pass",
+  "receipt_created_at_freeze": true,
+  "receipt_timing_note": "The Phase 2 start boundary is reconstructed from the clean Phase 1 transition commit and disclosed at the Phase 2 freeze; this receipt was not backdated.",
+  "schema_version": 1
+}

@@ -45,6 +45,21 @@ namespace StripedSmithWaterman {
 		int position;
 	};
 
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+	struct ForwardEndpoint {
+		ForwardEndpoint()
+			: score1(0), score2(0), ref_end1(-1), query_end1(0),
+			  ref_end2(-1), numeric_path(0) {};
+		int score1;
+		int score2;
+		int ref_end1;
+		int query_end1;
+		int ref_end2;
+		int numeric_path;
+	};
+#endif
+
 	struct Filter {
 		// NOTE: No matter the filter, those five fields of Alignment will be given anyway.
 		//       sw_score; sw_score_next_best; ref_end; query_end; ref_end_next_best.
@@ -162,6 +177,12 @@ namespace StripedSmithWaterman {
 		// =========
 		bool Align(const char* query, const char* ref, const int& ref_len,
 			const Filter& filter, Alignment* alignment, const int32_t maskLen) const;
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+		bool AlignFromForward(const char* query, const char* ref, const int& ref_len,
+			const Filter& filter, const ForwardEndpoint& endpoint,
+			Alignment* alignment, const int32_t maskLen) const;
+#endif
 		// @function use this function to get all sub-optimal alignments whose 
 		// score is larger than threshold. Highly similar with Align, but just gather
 		// scoreMatrix, no alignments.

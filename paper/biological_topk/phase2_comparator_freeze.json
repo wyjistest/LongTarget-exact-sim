@@ -1,0 +1,27 @@
+{
+  "comparator_sha256": "b91f05161fff8d8b0076b4cb99c2a2b7ea43ae8ffbb94627c36d3a2400b00706",
+  "component_sha256": {
+    "reproduce/biological_topk/canonicalize_rows.py": "d12db4fba3d1e6693a1b0edcb78bc7cb0e325bbc4b0e5623234a43bffe0b9b88",
+    "reproduce/biological_topk/compare_candidate_topk.py": "b91f05161fff8d8b0076b4cb99c2a2b7ea43ae8ffbb94627c36d3a2400b00706",
+    "reproduce/biological_topk/exact_binomial_bounds.py": "c320fced436b8640590d4c47cfd2fd0b9e08088b45d6cc0a99b2eef8a22ac2c4",
+    "reproduce/biological_topk/match_candidate_sites.py": "02f107d81c077fe22a2ac128bc8d650ab1147751426de4ea2ef1a56144c81e6a",
+    "reproduce/biological_topk/rank_diagnostics.py": "f951a074a9a236759f066704f46ff77f7d6ec082683965eda10f62f4dc8ec89d",
+    "reproduce/biological_topk/recluster_candidate_sites.py": "98e7f6a64fe45f6cb9a161f0b97285ae63eb63bad3a872b442ec7bd4d18700ce"
+  },
+  "contract_module_sha256": "bb2c5bb5684270af1ab776278551c4cce1a7043fe3758858e011dedb79ebbb55",
+  "contract_name": "biological_topk_candidate_site_v1",
+  "contract_spec_sha256": "c396f346a0fa00fb0b746f9582100eb46d22fbe892c8fa3053a6caa3d5342af9",
+  "coordinate_mapping_sha256": "6dbcfa6a3857edcc01cf46217f93127ccdeb968b3113c59e505575236f601612",
+  "default_fail_closed": true,
+  "expected_regression_digest": "25044573fdaee7383a1ecc2543435d698093d0c681553f6c9b0bdc0891eabe09",
+  "fixture_sha256": "47fdebd28c9cf8fd802bb8ce3e4872e8ab8b40e069ae492fad66787daa2465d3",
+  "independent_validation_claim": false,
+  "known_cases_sha256": "0ad4ef0531cc4610f04dfe134e464e05bca76c8cf64a6d43b4769e910ce8a9fb",
+  "python_version": "3.11.10",
+  "regression_details_sha256": "9e028787f07e7ceca2bd2f5ad526c10209327fcdb87c8488ea7930ec898870d5",
+  "regression_manifest_sha256": "973af60d11431c1a5641b848b850f7456907fe6c8cc9973021ff1a77efb447f9",
+  "regression_receipt_sha256": "265296f4b90076cd75375702b102b1faf646f23309bcbee8226990dffb3048f9",
+  "schema_version": 1,
+  "source_commit": "0daed2c4e1f181d3ce67ecba52db314a1798146e",
+  "source_commit_role": "phase_2_parent_and_frozen_contract_commit"
+}

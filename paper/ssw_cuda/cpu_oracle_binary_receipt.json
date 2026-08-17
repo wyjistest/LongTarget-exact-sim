@@ -1,0 +1,181 @@
+{
+  "artifact_manifest_path": "paper/ssw_cuda/cpu_oracle_trace_artifacts.tsv",
+  "artifact_manifest_sha256": "6e2ccb7f803fef75d7a4d044836d7f41ee54c7327814ad1ae5e2676675e920b2",
+  "attempt_count": 20,
+  "attempt_plan_sha256": "d74158a18a814aff2f7e6e93c1b3b29dfecadd20f18ac3b79bf5492be1968452",
+  "attempts_complete": 20,
+  "authority_outputs_byte_identical_on_off": true,
+  "avx2_authority_active": false,
+  "binary_path": ".paper-artifacts/ssw-cuda-v1/phase2/fasim_cpu_oracle",
+  "binary_sha256": "1c7743caf0e9550d23c5a6d4023233c9d6dfc6fa8a0e6731bdc05d82a806af93",
+  "binary_size_bytes": 1733416,
+  "build_command": "make build-ssw-cuda-phase2-oracle",
+  "cases": [
+    "hq10_ht02",
+    "hq11_ht02"
+  ],
+  "compiler_path": "/usr/bin/g++",
+  "compiler_version": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+  "effective_flags": "-O3 -std=c++11 -pthread -msse2",
+  "execution_commit": "d7c8c2308e162a40c82b8f54ab4149409a88f10a",
+  "fixtures": {
+    "tests/ssw_cuda/fixtures/hq10_mismatch_call.json": "8087fccd206658522438088155c8101d41cea8a47d0d116ae9300f00e0783dd7",
+    "tests/ssw_cuda/fixtures/hq10_prealign.json": "08563289f632b58f3b46c15e146323e7839df38f4759e9a67ab9fb149b48c72c",
+    "tests/ssw_cuda/fixtures/hq11_mismatch_call.json": "f442a1f57744239f63f110fd3a12315548b0b578945d9a1b8aae19f5e441e2f2",
+    "tests/ssw_cuda/fixtures/hq11_prealign.json": "b5b12bcdca81146729c0dcaa6f22c2ba1aba00c3b267972aa65016966b38ddeb"
+  },
+  "fresh_holdout_consumed": false,
+  "hq10_hq11_stable_attempt_keys": true,
+  "inputs": {
+    "hq10_ht02": {
+      "query": {
+        "path": "reproduce/bioinformatics/holdout_inputs/queries/hq10_ENSG00000178248_ENST00000785836.fa",
+        "sha256": "97edb4ee3631b3b725198e39ffcc7d788a31aaa4a964069ff4d3d032ee073b5b",
+        "size_bytes": 1996
+      },
+      "target": {
+        "path": "reproduce/bioinformatics/holdout_inputs/targets/ht02_ENSG00000198722_chr9_35159829_35162329.fa",
+        "sha256": "15b67727bcbfe8138a9caa1f5100f822c8b021a6008878c65b361caa83fe224e",
+        "size_bytes": 2608
+      }
+    },
+    "hq11_ht02": {
+      "query": {
+        "path": "reproduce/bioinformatics/holdout_inputs/queries/hq11_ENSG00000255857_ENST00000667017.fa",
+        "sha256": "a29a008465ae05e377a26d30fbbca1f8f8a324706eec0b3535cac65089a131b9",
+        "size_bytes": 2636
+      },
+      "target": {
+        "path": "reproduce/bioinformatics/holdout_inputs/targets/ht02_ENSG00000198722_chr9_35159829_35162329.fa",
+        "sha256": "15b67727bcbfe8138a9caa1f5100f822c8b021a6008878c65b361caa83fe224e",
+        "size_bytes": 2608
+      }
+    }
+  },
+  "instrumentation_off_created_trace_files": 0,
+  "normalized_stdout_identical_on_off": true,
+  "observations_per_case": 5,
+  "output_pairs": [
+    {
+      "case_id": "hq10_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "c34ff3fbdb9d1a069397615e2ed695dd336eb2055ce389a8ccade83e3858cb88",
+      "repeat_id": 0,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq10_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "c34ff3fbdb9d1a069397615e2ed695dd336eb2055ce389a8ccade83e3858cb88",
+      "repeat_id": 1,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq10_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "c34ff3fbdb9d1a069397615e2ed695dd336eb2055ce389a8ccade83e3858cb88",
+      "repeat_id": 2,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq10_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "c34ff3fbdb9d1a069397615e2ed695dd336eb2055ce389a8ccade83e3858cb88",
+      "repeat_id": 3,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq10_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "c34ff3fbdb9d1a069397615e2ed695dd336eb2055ce389a8ccade83e3858cb88",
+      "repeat_id": 4,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq11_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "394fe813c2e10d9340165d371255a8a54bf493e3c9da90d57db4e99dfd72cd82",
+      "repeat_id": 0,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq11_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "394fe813c2e10d9340165d371255a8a54bf493e3c9da90d57db4e99dfd72cd82",
+      "repeat_id": 1,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq11_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "394fe813c2e10d9340165d371255a8a54bf493e3c9da90d57db4e99dfd72cd82",
+      "repeat_id": 2,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq11_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "394fe813c2e10d9340165d371255a8a54bf493e3c9da90d57db4e99dfd72cd82",
+      "repeat_id": 3,
+      "stderr_equal": true
+    },
+    {
+      "case_id": "hq11_ht02",
+      "normalized_stdout_equal": true,
+      "output_sha256": "394fe813c2e10d9340165d371255a8a54bf493e3c9da90d57db4e99dfd72cd82",
+      "repeat_id": 4,
+      "stderr_equal": true
+    }
+  ],
+  "phase": 2,
+  "retry_policy": "none",
+  "schema_sha256": "48dd24a28f37c6d8181794d916e633aa460236c6cc30f9754f2a2de0d373fec7",
+  "schema_version": 1,
+  "source_data_path": "paper/ssw_cuda/cpu_oracle_trace_source_data.tsv",
+  "source_data_sha256": "62094679016009d997644f08ab6eca9eaed1eaaa684abe4224fb564b677206cc",
+  "source_inventory": {
+    "Makefile": "3784c29e9cd7e2f8cabac696589d3ab211722573a4fa4000892fdaf37b570077",
+    "cuda/prealign_cuda.h": "9d98552077cef989a3e0cfa3cf487b01ccf1ae5179bfb807a63e3400d49fe70b",
+    "cuda/prealign_cuda_stub.cpp": "ae98d526867e5a805466cc6beb877819b5160f9fb249f44ac7e414e100dd132a",
+    "cuda/prealign_shared.h": "f09b70dbad2cd7509d79eba46385189b803e53bb24115a94ef1dbee7a50f7681",
+    "docs/ssw_cuda/CIGAR_CONTRACT.md": "d721ede984de5dc3513bd21b00470a90833ca65ca45c02bd5254c26251ab3d46",
+    "docs/ssw_cuda/DP_CONTRACT.md": "cc39a8dc9b786c48d7d1db16482c3f74fbcdf83d44530b7edf9595ccb7ebafb3",
+    "docs/ssw_cuda/ENDPOINT_CONTRACT.md": "6485ce4173cd24f75e036739c81f14790faeb51c18f9c1cdf2fea3509cf48a95",
+    "docs/ssw_cuda/TELEMETRY_SPEC.md": "086838ab538af00e4d60a6241ad2e940c6e513b8568295ffec210bef23696a36",
+    "fasim/Fasim-LongTarget.cpp": "e5858bfc641ef1598fd1e915e9ac8649a5168df302a80c65da9268b12aa6f767",
+    "fasim/fastsim.h": "79bd1f5137711e32adbca006f93b0cb8e62092a7ea7b66adb942a22ec9e59232",
+    "fasim/gasal2_align_bridge.h": "582121c9a3477501b1c7d908363f19ca43fd1468977c753232be8bbf9406edfd",
+    "fasim/gasal2_align_bridge_stub.cpp": "345d6e32bc038afa340d4d39712643a7a1b523f069239a9afc74a894ad0c775e",
+    "fasim/rules.h": "d985ffc3895cbb9550fd4c867288d92a68a19b42c28a2125254c04553ccb90e0",
+    "fasim/sim.h": "87689a097d43e2f36be8819808ffe33aa6bf7054708b043c212e5e7f909e8446",
+    "fasim/ssw.h": "e89e3dfac574715739d397f7622d443254c04eae283b79e4ee90d11ed2cb81e2",
+    "fasim/sswNew.cpp": "14881c340773038040eb1d0160c827dda2199b17b90bdf7eea3f7faf04c1817a",
+    "fasim/ssw_cpp.cpp": "9d3ad032e69219a5794f0a678f14e466b0cbc7733a7bb3bfd1f6c01f232d241f",
+    "fasim/ssw_cpp.h": "b4cea0a5352f15e8a69ed7c7cf8fb406fb15656d903add7c7988c4bfa1488ce7",
+    "fasim/ssw_oracle_trace.cpp": "6236d9491c16f4bf73be679f35d338a3dedcc76835b08b171a36ccf14f11bd5f",
+    "fasim/ssw_oracle_trace.h": "1465534bd95adf66c612d615d0d774e95c99dc66df9070f2cbdd6afb3b7eade2",
+    "fasim/stats.h": "25376d0e556d261723aced37fad5662152e647157f32109e02ce6e08a58a7868",
+    "paper/ssw_cuda/cpu_oracle_attempt_plan.tsv": "d74158a18a814aff2f7e6e93c1b3b29dfecadd20f18ac3b79bf5492be1968452",
+    "paper/ssw_cuda/cpu_oracle_protocol.md": "be38ede73a5a4fdbddddb4152226865494c20873ee9896c3c595c38120584523",
+    "reproduce/ssw_cuda/run_phase2_oracle.py": "c1e13070d85f0c1882b49b96be77d4fadaf0201850fb2a787284134179cf54d5",
+    "reproduce/ssw_cuda/scalar_ssw_reference.py": "fe23ce20695267ac336b551c05f2772e76133e10660ce1cca8a40dc6a7b54a20",
+    "schemas/ssw_oracle_call.schema.json": "48dd24a28f37c6d8181794d916e633aa460236c6cc30f9754f2a2de0d373fec7",
+    "scripts/check_ssw_cuda_phase2.sh": "b7f8df0ee36b8576d472ae3a24231ee45fe927373a10bfba9a1b53f327c497dc",
+    "tests/ssw_cuda/test_phase2_oracle.py": "439ce38588b369ad230463dc313451958cebefb265b3a0846253eebe7d1aeacb"
+  },
+  "ssw_cpu_oracle_epoch": 2,
+  "status": "pass",
+  "stderr_identical_on_off": true,
+  "timeout_seconds": 120,
+  "trace_digests": {
+    "hq10_ht02": {
+      "mismatch_call_sha256": "8087fccd206658522438088155c8101d41cea8a47d0d116ae9300f00e0783dd7",
+      "prealign_sha256": "08563289f632b58f3b46c15e146323e7839df38f4759e9a67ab9fb149b48c72c"
+    },
+    "hq11_ht02": {
+      "mismatch_call_sha256": "f442a1f57744239f63f110fd3a12315548b0b578945d9a1b8aae19f5e441e2f2",
+      "prealign_sha256": "b5b12bcdca81146729c0dcaa6f22c2ba1aba00c3b267972aa65016966b38ddeb"
+    }
+  },
+  "trace_records_deterministic": true
+}

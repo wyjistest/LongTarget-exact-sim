@@ -1,0 +1,39 @@
+{
+  "all_four_endpoints_use_identical_paired_resample_indices": true,
+  "bioinformatics_route_if_applied": "closed_biological_utility_gap",
+  "biological_utility_pass": false,
+  "biological_utility_receipt_sha256": "0569c9449c5eb44e2da12a41dd444d11c794ca4de75ca40f3bccdf1739722cbf",
+  "contract_status_if_applied": "biological_utility_no_go",
+  "cross_assay_generality_claim": "not_supported",
+  "decision": "no_go",
+  "distinct_lncRNA_outer_units": 5,
+  "endpoint_pass": {
+    "E1": true,
+    "E2": true,
+    "E3": true,
+    "E4": false
+  },
+  "gpu_screen_status_if_applied": "experimental",
+  "intersection_union_gate": "E1_AND_E2_AND_E3_AND_E4",
+  "later_phase_authorized": false,
+  "minimum_distinct_lncRNA_gate_pass": true,
+  "missing_primary_output_count": 0,
+  "one_sided_95_lcb": {
+    "E1": "-0.00016433297083244259",
+    "E2": "0",
+    "E3": "0.0083898682678954888",
+    "E4": "-0.024581674369296539"
+  },
+  "phase": 6,
+  "point_estimates": {
+    "E1": "-4.6936700964622656e-05",
+    "E2": "0",
+    "E3": "0.01895502601418065",
+    "E4": "0.24037812762432226"
+  },
+  "primary_dataset_count": 5,
+  "primary_technical_failure_count": 0,
+  "schema_version": 1,
+  "zero_precision_primary_dataset": false,
+  "zero_precision_rule": "automatic_E4_and_global_failure_no_pseudocount"
+}

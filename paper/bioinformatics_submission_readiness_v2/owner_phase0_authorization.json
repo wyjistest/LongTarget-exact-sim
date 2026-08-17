@@ -1,0 +1,14 @@
+{
+  "approval_message": "启动并完成v2",
+  "approval_scope": "independent_bioinformatics_submission_readiness_v2_epoch_subject_to_frozen_state_machine",
+  "approved_by": "repository_owner_via_active_codex_thread_goal",
+  "approved_on": "2026-07-31",
+  "baseline_commit": "739ee0a8db01f77143a5c993e6c68a56a772502b",
+  "historical_evidence_may_be_modified": false,
+  "historical_no_go_may_be_reopened": false,
+  "later_phases_authorized_only_by_v2_state_machine": true,
+  "phase_4_stop_loss_required": true,
+  "protocol_path": "goal-bioinformatics-submission-readiness-v2.md",
+  "protocol_sha256": "09d70dc201e669fcc278d0a2ebcf4e1a9e64ca470d858ee42cfbe04ec1bb9a32",
+  "schema_version": 1
+}

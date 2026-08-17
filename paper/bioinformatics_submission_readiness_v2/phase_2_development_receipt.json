@@ -1,0 +1,53 @@
+{
+  "all_development_inputs_excluded_from_formal_panels": true,
+  "development_pairs": [
+    {
+      "authority_wall_seconds": 0.19759682985022664,
+      "candidate_wall_seconds": 1.03233493398875,
+      "comparison_status": "scientific_mismatch",
+      "contract_pass": false,
+      "diagnostic_speedup": 0.191407675304321,
+      "failure_reason": "stability complete set matched 4 of 5; score and nt complete sets passed; Top-1 retained in all modes",
+      "source_workload_id": "bts3_w022",
+      "status": "development_failure",
+      "workload_id": "phase2_dev_bts3_w022"
+    },
+    {
+      "authority_wall_seconds": 35.62714183796197,
+      "candidate_wall_seconds": 3.912391737103462,
+      "comparison_status": "scientific_mismatch",
+      "contract_pass": false,
+      "diagnostic_speedup": 9.106230723291148,
+      "failure_reason": "nt complete set matched 4 of 5; score and stability complete sets passed; Top-1 retained in all modes",
+      "source_workload_id": "bts3_w006",
+      "status": "development_failure",
+      "workload_id": "phase2_dev_bts3_w006"
+    },
+    {
+      "authority_wall_seconds": 172.3829672189895,
+      "candidate_wall_seconds": 15.804589380975813,
+      "comparison_status": "pass",
+      "contract_pass": true,
+      "diagnostic_speedup": 10.907146213269488,
+      "failure_reason": null,
+      "source_workload_id": "bts3_w153",
+      "status": "development_pass",
+      "workload_id": "phase2_dev_bts3_w153"
+    }
+  ],
+  "formal_claim": false,
+  "formal_performance_estimate": null,
+  "non_acgt_preflight": {
+    "artifact_relative_path": "phase2/timing-debug/bts3_w008/gpu-report.json",
+    "artifact_sha256": "79d654d51590dc04241711109418dd8513418d50ef66b39d42b15c54f5ec66f7",
+    "backend_executed": false,
+    "source_workload_id": "bts3_w008",
+    "status": "invalid_input",
+    "terminal_reason": "target FASTA contains unsupported characters at line 8628: N"
+  },
+  "phase": 2,
+  "phase4_gate_inference": "none",
+  "schema_version": 1,
+  "summary_relative_path": "phase2/development-harness/development-summary.json",
+  "summary_sha256": "c8392bfa9645279b00d03b8aae783f5fe15f02fa77c7a49be90bd69f9c34175f"
+}

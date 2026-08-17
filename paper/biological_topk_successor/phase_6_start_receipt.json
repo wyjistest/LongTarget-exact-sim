@@ -1,0 +1,49 @@
+{
+  "clean_start_check": {
+    "command": [
+      "git",
+      "status",
+      "--porcelain=v1"
+    ],
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  "evaluation_prediction_started": false,
+  "fixed_execution_limits": {
+    "max_cpu_wall_seconds": 345600,
+    "max_gpu_seconds": 345600,
+    "max_infrastructure_repair_epochs": 1,
+    "max_total_artifact_storage_bytes": 68719476736,
+    "tracked_evidence_reservation_bytes": 268435456
+  },
+  "formal_artifact_bytes_before_execution": 20907076115,
+  "formal_artifact_bytes_with_tracked_reservation_before_execution": 21175511571,
+  "artifact_storage_margin_bytes_before_execution": 47543965165,
+  "labels_unsealed": false,
+  "pre_execution_validation_incidents": [
+    {
+      "artifact_root_created": false,
+      "attempts_started": 0,
+      "classification": "git_porcelain_leading_space_parser_rejection",
+      "resolution": "stage_existing_phase_6_allowlisted_paths_before_formal_runner_invocation",
+      "scientific_output_created": false
+    }
+  ],
+  "phase": 6,
+  "phase_start_parent_head": "dc2271ba0330c60e6c28b6692b6df9ac11c631f5",
+  "previous_phase_commit": "dc2271ba0330c60e6c28b6692b6df9ac11c631f5",
+  "previous_phase_number": 5,
+  "previous_phase_postcommit_check_command": [
+    "python3",
+    "scripts/check_biological_topk_successor_phase.py",
+    "--phase",
+    "5",
+    "--mode",
+    "postcommit"
+  ],
+  "previous_phase_postcommit_check_result": "pass",
+  "schema_version": 1,
+  "start_utc": "2026-07-31T05:25:54Z",
+  "status": "pass"
+}

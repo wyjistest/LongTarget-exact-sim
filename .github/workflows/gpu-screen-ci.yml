@@ -1,0 +1,44 @@
+name: gpu-screen-ci
+
+on:
+  push:
+    paths:
+      - "scripts/gasal2_gpu_screen.py"
+      - "scripts/gasal2_candidate_sites.py"
+      - "schemas/gasal2_*"
+      - "reproduce/bioinformatics_submission_readiness_v2/**"
+      - "tests/bioinformatics_submission_readiness_v2/**"
+      - ".github/workflows/gpu-screen-ci.yml"
+  pull_request:
+    paths:
+      - "scripts/gasal2_gpu_screen.py"
+      - "scripts/gasal2_candidate_sites.py"
+      - "schemas/gasal2_*"
+      - "reproduce/bioinformatics_submission_readiness_v2/**"
+      - "tests/bioinformatics_submission_readiness_v2/**"
+      - ".github/workflows/gpu-screen-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-contract-smoke:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate schemas
+        run: |
+          python -m json.tool schemas/gasal2_candidate_sites_tsv_v1.schema.json >/dev/null
+          python -m json.tool schemas/gasal2_gpu_screen_run_report_v1.schema.json >/dev/null
+      - name: Compile Python entry points
+        run: |
+          python -m py_compile scripts/gasal2_candidate_sites.py
+          python -m py_compile scripts/gasal2_gpu_screen.py
+          python -m py_compile reproduce/bioinformatics_submission_readiness_v2/build_runtime_image.py
+      - name: Run GPU-screen CPU fixtures
+        run: python tests/bioinformatics_submission_readiness_v2/test_gpu_screen.py
+      - name: Run legacy wrapper regressions
+        run: python tests/check_gasal2_longtarget_cli.py

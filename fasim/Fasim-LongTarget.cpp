@@ -29,7 +29,9 @@
 #include <map>
 #include <set>
 #include <algorithm>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 #include <ctype.h>
 #include <utility>
 #include <thread>
@@ -45,6 +47,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <exception>
+#include <iterator>
 
 #ifdef FASIM_WITH_NVTX
 #include <nvToolsExt.h>
@@ -195,6 +198,91 @@ struct FasimScopedSeconds
 	std::chrono::steady_clock::time_point start;
 };
 
+struct FasimSswCudaPhase1ProfileReporter
+{
+	FasimSswCudaPhase1ProfileReporter() :
+		enabled(false),
+		start(std::chrono::steady_clock::now())
+	{
+		const char *value = getenv("FASIM_SSW_CUDA_PHASE1_PROFILE");
+		enabled = value != NULL && value[0] != '\0' && value[0] != '0';
+		if (enabled)
+		{
+			fasim_authority_profile_reset();
+			fasim_authority_profile_set_enabled(1);
+		}
+	}
+
+	~FasimSswCudaPhase1ProfileReporter()
+	{
+		if (!enabled)
+		{
+			return;
+		}
+		const uint64_t totalNanoseconds = static_cast<uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - start).count());
+		const fasim_authority_profile_snapshot snapshot =
+			fasim_authority_profile_get_snapshot();
+		fasim_authority_profile_set_enabled(0);
+
+		static const char *stageNames[FASIM_AUTHORITY_STAGE_COUNT] = {
+			"pre_align",
+			"selection",
+			"forward_alignment",
+			"reverse_alignment",
+			"banded_traceback",
+			"backend_bridge",
+			"downstream_triplex_conversion",
+			"stability_identity_nt",
+			"clustering_ranking_sort",
+			"serialization_io"
+		};
+		uint64_t stageSumNanoseconds = 0;
+		for (int stage = 0; stage < FASIM_AUTHORITY_STAGE_COUNT; ++stage)
+		{
+			stageSumNanoseconds += snapshot.stage_nanoseconds[stage];
+		}
+		const uint64_t wrapperOtherNanoseconds =
+			totalNanoseconds >= stageSumNanoseconds ?
+				totalNanoseconds - stageSumNanoseconds : 0;
+
+		const std::ios::fmtflags previousFlags = cerr.flags();
+		const std::streamsize previousPrecision = cerr.precision();
+		cerr << std::fixed << std::setprecision(9);
+		cerr << "benchmark.ssw_cuda_phase1.schema_version=1\n";
+		cerr << "benchmark.ssw_cuda_phase1.profile_enabled=1\n";
+		cerr << "benchmark.ssw_cuda_phase1.timer=steady_clock\n";
+		cerr << "benchmark.ssw_cuda_phase1.total_seconds="
+		     << static_cast<double>(totalNanoseconds) / 1000000000.0 << "\n";
+		for (int stage = 0; stage < FASIM_AUTHORITY_STAGE_COUNT; ++stage)
+		{
+			cerr << "benchmark.ssw_cuda_phase1." << stageNames[stage]
+			     << "_seconds="
+			     << static_cast<double>(snapshot.stage_nanoseconds[stage]) /
+					1000000000.0 << "\n";
+			cerr << "benchmark.ssw_cuda_phase1." << stageNames[stage]
+			     << "_entries=" << snapshot.stage_entries[stage] << "\n";
+		}
+		cerr << "benchmark.ssw_cuda_phase1.stage_sum_seconds="
+		     << static_cast<double>(stageSumNanoseconds) / 1000000000.0 << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.wrapper_other_seconds="
+		     << static_cast<double>(wrapperOtherNanoseconds) / 1000000000.0
+		     << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.stack_errors="
+		     << snapshot.stack_errors << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.max_depth="
+		     << snapshot.max_depth << "\n";
+		cerr << "benchmark.ssw_cuda_phase1.active_depth="
+		     << snapshot.active_depth << "\n";
+		cerr.flags(previousFlags);
+		cerr.precision(previousPrecision);
+	}
+
+	bool enabled;
+	std::chrono::steady_clock::time_point start;
+};
+
 static inline uint64_t fasim_fnv1a_update(uint64_t digest, const std::string &text)
 {
 	for (size_t i = 0; i < text.size(); ++i)
@@ -233,8 +321,11 @@ struct FasimTop5PhaseTimingStats
 		exact_scoreinfo_gpu_column_pruned_output_enabled(false),
 		exact_scoreinfo_gpu_batches(0),
 		exact_scoreinfo_gpu_tasks(0),
+		exact_scoreinfo_gpu_cells(0),
 		exact_scoreinfo_gpu_overflow_batches(0),
 		exact_scoreinfo_gpu_fallback_batches(0),
+		exact_scoreinfo_gpu_validation_tasks(0),
+		exact_scoreinfo_gpu_validation_mismatches(0),
 		exact_scoreinfo_gpu_pruned_output_batches(0),
 		exact_scoreinfo_gpu_pruned_output_input_groups(0),
 		exact_scoreinfo_gpu_pruned_output_kept_groups(0),
@@ -243,6 +334,17 @@ struct FasimTop5PhaseTimingStats
 		exact_column_batches(0),
 		exact_column_tasks(0),
 		exact_column_cells(0),
+		exact_task_shadow_requested(false),
+		exact_task_shadow_active(false),
+		exact_task_shadow_batches(0),
+		exact_tasks_before(0),
+		exact_tasks_after(0),
+		exact_tasks_dropped_identical(0),
+		exact_task_shadow_candidate_tasks_after(0),
+		exact_task_shadow_candidate_tasks_dropped_identical(0),
+		exact_cells_before(0),
+		exact_cells_after(0),
+		exact_task_shadow_candidate_cells_after(0),
 		exact_scoreinfo_groups(0),
 		scoreinfo_prune_enabled(false),
 		scoreinfo_prune_max_per_task(0),
@@ -381,8 +483,11 @@ struct FasimTop5PhaseTimingStats
 	bool exact_scoreinfo_gpu_column_pruned_output_enabled;
 	uint64_t exact_scoreinfo_gpu_batches;
 	uint64_t exact_scoreinfo_gpu_tasks;
+	uint64_t exact_scoreinfo_gpu_cells;
 	uint64_t exact_scoreinfo_gpu_overflow_batches;
 	uint64_t exact_scoreinfo_gpu_fallback_batches;
+	uint64_t exact_scoreinfo_gpu_validation_tasks;
+	uint64_t exact_scoreinfo_gpu_validation_mismatches;
 	uint64_t exact_scoreinfo_gpu_pruned_output_batches;
 	uint64_t exact_scoreinfo_gpu_pruned_output_input_groups;
 	uint64_t exact_scoreinfo_gpu_pruned_output_kept_groups;
@@ -391,6 +496,17 @@ struct FasimTop5PhaseTimingStats
 	uint64_t exact_column_batches;
 	uint64_t exact_column_tasks;
 	uint64_t exact_column_cells;
+	bool exact_task_shadow_requested;
+	bool exact_task_shadow_active;
+	uint64_t exact_task_shadow_batches;
+	uint64_t exact_tasks_before;
+	uint64_t exact_tasks_after;
+	uint64_t exact_tasks_dropped_identical;
+	uint64_t exact_task_shadow_candidate_tasks_after;
+	uint64_t exact_task_shadow_candidate_tasks_dropped_identical;
+	uint64_t exact_cells_before;
+	uint64_t exact_cells_after;
+	uint64_t exact_task_shadow_candidate_cells_after;
 	uint64_t exact_scoreinfo_groups;
 	bool scoreinfo_prune_enabled;
 	int scoreinfo_prune_max_per_task;
@@ -3299,6 +3415,17 @@ static inline bool fasim_gasal2_pretraceback_pruning_eligibility_runtime()
 	return fasim_env_flag_enabled("FASIM_GASAL2_PRETRACEBACK_PRUNING_ELIGIBILITY");
 }
 
+static inline bool fasim_canonical_hybrid_v2_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_CANONICAL_HYBRID_V2");
+}
+
+static inline std::string fasim_canonical_hybrid_v2_telemetry_path_runtime()
+{
+	const char *env = getenv("FASIM_CANONICAL_HYBRID_V2_TELEMETRY_PATH");
+	return env == NULL ? std::string("") : std::string(env);
+}
+
 static inline std::string fasim_gasal2_traceback_rejection_taxonomy_export_path_runtime()
 {
 	const char *env = getenv("FASIM_GASAL2_TRACEBACK_REJECTION_TAXONOMY_EXPORT");
@@ -3414,6 +3541,28 @@ static inline bool fasim_gasal2_attempt_consumer_shadow_runtime()
 {
 	return fasim_env_flag_enabled(
 		"FASIM_GASAL2_ATTEMPT_CONSUMER_SHADOW");
+}
+
+static inline bool fasim_long_query_gpu_consumer_spike_v1_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_V1");
+}
+
+static inline bool fasim_long_query_gpu_consumer_replacement_prototype_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE");
+}
+
+static inline uint64_t fasim_long_query_gpu_consumer_spike_v1_max_tasks_runtime()
+{
+	const char *env = getenv("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_MAX_TASKS");
+	if (env == NULL || env[0] == '\0' || env[0] == '-')
+	{
+		return 0;
+	}
+	return static_cast<uint64_t>(strtoull(env, NULL, 10));
 }
 
 static inline std::string fasim_gasal2_long_query_segmented_cpu_traceback_order_runtime()
@@ -3753,6 +3902,11 @@ static inline bool fasim_exact_column_extend_batch_debug_columns_runtime()
     return fasim_env_flag_enabled("FASIM_EXACT_COLUMN_EXTEND_BATCH_DEBUG_COLUMNS");
 }
 
+static inline bool fasim_gasal2_exact_task_compaction_shadow_enabled_runtime()
+{
+	return fasim_env_flag_enabled("FASIM_GASAL2_EXACT_TASK_COMPACTION_SHADOW");
+}
+
 static inline bool fasim_long_query_streaming_scoreinfo_debug_columns_runtime()
 {
 	return fasim_env_flag_enabled(
@@ -4065,7 +4219,40 @@ static inline int fasim_extend_threads_runtime(int corenum)
     {
         threads = 256;
     }
-    return threads;
+	return threads;
+}
+
+static inline bool fasim_openmp_requested_runtime()
+{
+#ifdef _OPENMP
+	const char *value = getenv("FASIM_OPENMP");
+	return value != NULL && value[0] != '\0' && value[0] != '0';
+#else
+	return false;
+#endif
+}
+
+static inline int fasim_openmp_configure_threads(int requestedThreads)
+{
+#ifdef _OPENMP
+	const char *explicitThreads = getenv("FASIM_OPENMP_THREADS");
+	if (explicitThreads != NULL && explicitThreads[0] != '\0')
+	{
+		const int value = atoi(explicitThreads);
+		if (value > 0)
+		{
+			omp_set_num_threads(value);
+		}
+	}
+	else if (getenv("OMP_NUM_THREADS") == NULL && requestedThreads > 1)
+	{
+		omp_set_num_threads(requestedThreads);
+	}
+	return omp_get_max_threads();
+#else
+	(void)requestedThreads;
+	return 1;
+#endif
 }
 
 static inline void fasim_cuda_devices_runtime(std::vector<int> &devicesOut)
@@ -4232,6 +4419,8 @@ static inline bool fasim_read_next_fasta_record(std::ifstream &in,
                                                 std::string &pendingHeader,
                                                 FasimFastaRecord &out)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
     out.header.clear();
     out.sequence.clear();
 
@@ -6088,6 +6277,237 @@ static inline std::string fasim_hash_lite_row_key(const std::string &key)
 	return fasim_hex_u64(fasim_hash_string_field(1469598103934665603ULL, key));
 }
 
+static inline std::string fasim_canonical_hybrid_v2_cigar(
+	const std::vector<uint32_t> &cigar)
+{
+	if (cigar.empty())
+	{
+		return "*";
+	}
+	std::ostringstream out;
+	for (size_t i = 0; i < cigar.size(); ++i)
+	{
+		out << cigar_int_to_len(cigar[i]) << cigar_int_to_op(cigar[i]);
+	}
+	return out.str();
+}
+
+static inline std::string fasim_canonical_hybrid_v2_row_text(
+	const triplex &input,
+	const std::string &taskChr,
+	long recordStartGenome)
+{
+	triplex row = input;
+	if (row.chr.empty())
+	{
+		row.chr = taskChr;
+	}
+	if (row.genomestart == 0)
+	{
+		row.genomestart = row.starj + recordStartGenome - 1;
+	}
+	if (row.genomeend == 0)
+	{
+		row.genomeend = row.endj + recordStartGenome - 1;
+	}
+	const int midpoint = static_cast<int>((row.stari + row.endi) / 2);
+	std::ostringstream out;
+	out << row.stari << "\t" << row.endi << "\t"
+	    << row.starj << "\t" << row.endj << "\t"
+	    << (row.starj < row.endj ? "R" : "L") << "\t"
+	    << row.chr << "\t" << row.genomestart << "\t" << row.genomeend << "\t"
+	    << row.tri_score << "\t" << row.identity << "\t"
+	    << getStrand(row.reverse, row.strand) << "\t"
+	    << row.rule << "\t" << row.score << "\t" << row.nt << "\t"
+	    << 0 << "\t" << midpoint << "\t" << midpoint << "\t"
+	    << row.stri_align << "\t" << row.strj_align;
+	return out.str();
+}
+
+static inline std::string fasim_canonical_hybrid_v2_row_digest(
+	const triplex &row,
+	const std::string &taskChr,
+	long recordStartGenome)
+{
+	const std::string text =
+		fasim_canonical_hybrid_v2_row_text(row, taskChr, recordStartGenome);
+	return std::string("fnv1a64:") +
+	       fasim_hex_u64(fasim_fnv1a_update(1469598103934665603ULL, text));
+}
+
+struct FasimCanonicalHybridV2AttemptTelemetryRow
+{
+	FasimCanonicalHybridV2AttemptTelemetryRow() :
+		batch_id(0), attempt_index(-1), task_id(0), scoreinfo_index(-1),
+		scoreinfo_position(-1), rule(-1), strand(-1), para(-1),
+		identity_round(-1), start(0), cutlength(0), prealign_threshold(0),
+		gpu_score(0), gpu_query_end(-1), gpu_ref_end_global(-1), selected(false),
+		selection_reason("not_evaluated"), cpu_called(false), cpu_score(0),
+		cpu_query_begin(-1), cpu_query_end(-1), cpu_ref_begin_local(-1),
+		cpu_ref_end_local(-1), cpu_cigar("NA"), cpu_emit_reason("not_selected"),
+		converted_row_digest("NA"), final_row_digest("NA"),
+		final_status("not_selected")
+	{
+	}
+
+	uint64_t batch_id;
+	int64_t attempt_index;
+	uint64_t task_id;
+	int scoreinfo_index;
+	int scoreinfo_position;
+	int rule;
+	int strand;
+	int para;
+	int identity_round;
+	int start;
+	int cutlength;
+	int prealign_threshold;
+	int gpu_score;
+	int gpu_query_end;
+	int gpu_ref_end_global;
+	bool selected;
+	std::string selection_reason;
+	bool cpu_called;
+	int cpu_score;
+	int cpu_query_begin;
+	int cpu_query_end;
+	int cpu_ref_begin_local;
+	int cpu_ref_end_local;
+	std::string cpu_cigar;
+	std::string cpu_emit_reason;
+	std::string converted_row_digest;
+	std::string final_row_digest;
+	std::string final_status;
+};
+
+struct FasimCanonicalHybridV2TelemetryExporter
+{
+	FasimCanonicalHybridV2TelemetryExporter() :
+		requested(false), active(false), failed(false), next_batch_id(0),
+		rows(0), selected_rows(0), cpu_rows(0), final_rows(0), path(""),
+		failure_reason("none"), output()
+	{
+	}
+
+	void open()
+	{
+		requested = fasim_canonical_hybrid_v2_runtime();
+		if (!requested)
+		{
+			return;
+		}
+		path = fasim_canonical_hybrid_v2_telemetry_path_runtime();
+		if (path.empty())
+		{
+			fail("telemetry_path_missing");
+			return;
+		}
+		std::ifstream existing(path.c_str());
+		if (existing.good())
+		{
+			fail("telemetry_path_exists");
+			return;
+		}
+		output.open(path.c_str(), std::ios::out | std::ios::trunc);
+		if (!output)
+		{
+			fail("telemetry_path_open_failed");
+			return;
+		}
+		output
+			<< "batch_id\tattempt_index\ttask_id\tscoreinfo_index\t"
+			<< "scoreinfo_position\trule\tstrand\tpara\tidentity_round\tstart\t"
+			<< "cutlength\tprealign_threshold\tgpu_score\tgpu_query_end\t"
+			<< "gpu_ref_end_global\tselected\tselection_reason\tcpu_called\t"
+			<< "cpu_score\tcpu_query_begin\tcpu_query_end\tcpu_ref_begin_local\t"
+			<< "cpu_ref_end_local\tcpu_cigar\tcpu_emit_reason\t"
+			<< "converted_row_digest\tfinal_row_digest\tfinal_status\n";
+		active = true;
+	}
+
+	void fail(const std::string &reason)
+	{
+		failed = true;
+		active = false;
+		failure_reason = reason;
+	}
+
+	uint64_t begin_batch()
+	{
+		return next_batch_id++;
+	}
+
+	bool append(const std::vector<FasimCanonicalHybridV2AttemptTelemetryRow> &batch)
+	{
+		if (!active || failed)
+		{
+			return false;
+		}
+		for (size_t i = 0; i < batch.size(); ++i)
+		{
+			const FasimCanonicalHybridV2AttemptTelemetryRow &row = batch[i];
+			output << row.batch_id << "\t" << row.attempt_index << "\t"
+			       << row.task_id << "\t" << row.scoreinfo_index << "\t"
+			       << row.scoreinfo_position << "\t" << row.rule << "\t"
+			       << row.strand << "\t" << row.para << "\t"
+			       << row.identity_round << "\t" << row.start << "\t"
+			       << row.cutlength << "\t" << row.prealign_threshold << "\t"
+			       << row.gpu_score << "\t" << row.gpu_query_end << "\t"
+			       << row.gpu_ref_end_global << "\t" << (row.selected ? 1 : 0) << "\t"
+			       << row.selection_reason << "\t" << (row.cpu_called ? 1 : 0) << "\t"
+			       << row.cpu_score << "\t" << row.cpu_query_begin << "\t"
+			       << row.cpu_query_end << "\t" << row.cpu_ref_begin_local << "\t"
+			       << row.cpu_ref_end_local << "\t" << row.cpu_cigar << "\t"
+			       << row.cpu_emit_reason << "\t" << row.converted_row_digest << "\t"
+			       << row.final_row_digest << "\t" << row.final_status << "\n";
+			++rows;
+			selected_rows += row.selected ? 1 : 0;
+			cpu_rows += row.cpu_called ? 1 : 0;
+			final_rows += row.final_row_digest != "NA" ? 1 : 0;
+		}
+		output.flush();
+		if (!output)
+		{
+			fail("telemetry_write_failed");
+			return false;
+		}
+		return true;
+	}
+
+	bool requested;
+	bool active;
+	bool failed;
+	uint64_t next_batch_id;
+	uint64_t rows;
+	uint64_t selected_rows;
+	uint64_t cpu_rows;
+	uint64_t final_rows;
+	std::string path;
+	std::string failure_reason;
+	std::ofstream output;
+};
+
+static inline void fasim_print_canonical_hybrid_v2_telemetry_stats(
+	const FasimCanonicalHybridV2TelemetryExporter &exporter)
+{
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_requested="
+	          << (exporter.requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_active="
+	          << (exporter.active && !exporter.failed ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_telemetry_rows="
+	          << exporter.rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_selected_rows="
+	          << exporter.selected_rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_cpu_traceback_rows="
+	          << exporter.cpu_rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_final_row_mappings="
+	          << exporter.final_rows << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_telemetry_path="
+	          << exporter.path << "\n";
+	std::cerr << "benchmark.fasim_canonical_hybrid_v2_failure_reason="
+	          << exporter.failure_reason << "\n";
+}
+
 static inline void fasim_print_pretraceback_eligibility_metric(
 	const char *name,
 	uint64_t value)
@@ -6326,8 +6746,11 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_column_pruned_output_enabled=" << (stats.exact_scoreinfo_gpu_column_pruned_output_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_batches=" << stats.exact_scoreinfo_gpu_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_tasks=" << stats.exact_scoreinfo_gpu_tasks << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_cells=" << stats.exact_scoreinfo_gpu_cells << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_overflow_batches=" << stats.exact_scoreinfo_gpu_overflow_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_fallback_batches=" << stats.exact_scoreinfo_gpu_fallback_batches << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_validation_tasks=" << stats.exact_scoreinfo_gpu_validation_tasks << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_validation_mismatches=" << stats.exact_scoreinfo_gpu_validation_mismatches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_batches=" << stats.exact_scoreinfo_gpu_pruned_output_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_input_groups=" << stats.exact_scoreinfo_gpu_pruned_output_input_groups << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_gpu_pruned_output_kept_groups=" << stats.exact_scoreinfo_gpu_pruned_output_kept_groups << "\n";
@@ -6336,6 +6759,18 @@ static inline void fasim_print_top5_phase_timing_stats(const FasimTop5PhaseTimin
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_column_batches=" << stats.exact_column_batches << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_column_tasks=" << stats.exact_column_tasks << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_column_cells=" << stats.exact_column_cells << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_requested=" << (stats.exact_task_shadow_requested ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_active=" << (stats.exact_task_shadow_active ? 1 : 0) << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_batches=" << stats.exact_task_shadow_batches << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_tasks_before=" << stats.exact_tasks_before << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_tasks_after=" << stats.exact_tasks_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_tasks_dropped_identical=" << stats.exact_tasks_dropped_identical << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_candidate_tasks_after=" << stats.exact_task_shadow_candidate_tasks_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_candidate_tasks_dropped_identical=" << stats.exact_task_shadow_candidate_tasks_dropped_identical << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_cells_before=" << stats.exact_cells_before << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_cells_after=" << stats.exact_cells_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_candidate_cells_after=" << stats.exact_task_shadow_candidate_cells_after << "\n";
+	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_task_shadow_runtime_work_dropped=0\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_exact_scoreinfo_groups=" << stats.exact_scoreinfo_groups << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_scoreinfo_prune_enabled=" << (stats.scoreinfo_prune_enabled ? 1 : 0) << "\n";
 	std::cerr << "benchmark.fasim_top5_gasal2_phase_scoreinfo_prune_max_per_task=" << stats.scoreinfo_prune_max_per_task << "\n";
@@ -7725,7 +8160,9 @@ static inline void fasim_prepare_long_query_streaming_scoreinfo_shadow_stats(
 	stats->requested =
 		(fasim_long_query_streaming_scoreinfo_shadow_runtime() ||
 		 fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime() ||
-		 fasim_gasal2_score_prepass_state_machine_consumer_shadow_runtime()) ?
+		 fasim_gasal2_score_prepass_state_machine_consumer_shadow_runtime() ||
+		 fasim_long_query_gpu_consumer_spike_v1_runtime() ||
+		 fasim_long_query_gpu_consumer_replacement_prototype_runtime()) ?
 			1ULL : 0ULL;
 	stats->active = 0;
 	stats->query_len = static_cast<uint64_t>(query.size());
@@ -10455,6 +10892,7 @@ fasim_observe_gpu_dp_column_auto_workload(ifstream &dnaIn,
 
 int main(int argc, char* const* argv)
 {
+	FasimSswCudaPhase1ProfileReporter phase1ProfileReporter;
 	struct para paraList;
 	vector<struct	lgInfo>	lgList;
 	initEnv(argc, argv, paraList);
@@ -10491,6 +10929,64 @@ int main(int argc, char* const* argv)
 	clock_t start, end;
 	float cpu_time;
 	start = clock();
+	const char *sswBackendEnv = getenv("FASIM_SSW_BACKEND");
+	const std::string sswBackend =
+		sswBackendEnv == NULL || sswBackendEnv[0] == '\0' ?
+		"cpu" : sswBackendEnv;
+	if (sswBackend != "cpu" && sswBackend != "cuda-forward-hybrid")
+	{
+		cerr << "unsupported FASIM_SSW_BACKEND=" << sswBackend << endl;
+		return 2;
+	}
+	const bool forwardHybridRequested = sswBackend == "cuda-forward-hybrid";
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+	const bool forwardHybridActive = forwardHybridRequested;
+	const int forwardHybridDevice =
+		fasim_env_int_or_default("FASIM_SSW_CUDA_DEVICE", 0);
+	const char *forwardHybridTelemetryEnv =
+		getenv("FASIM_SSW_FORWARD_HYBRID_TELEMETRY_PATH");
+	const std::string forwardHybridTelemetryPath =
+		forwardHybridTelemetryEnv == NULL ? "" : forwardHybridTelemetryEnv;
+	if (forwardHybridActive &&
+		(forwardHybridTelemetryPath.empty() ||
+		 access(forwardHybridTelemetryPath.c_str(), F_OK) == 0))
+	{
+		cerr << "cuda-forward-hybrid requires a new telemetry path" << endl;
+		return 2;
+	}
+	bool forwardHybridFailed = false;
+	std::string forwardHybridError = "none";
+	uint64_t forwardHybridFlushes = 0;
+	uint64_t forwardHybridTasks = 0;
+	uint64_t forwardHybridScoreinfos = 0;
+	uint64_t forwardHybridAttempts = 0;
+	uint64_t forwardHybridSelected = 0;
+	double forwardHybridGpuPreselectSeconds = 0.0;
+	double forwardHybridGpuForwardSeconds = 0.0;
+	double forwardHybridPlanningSeconds = 0.0;
+	double forwardHybridSelectionSeconds = 0.0;
+	double forwardHybridBackendSeconds = 0.0;
+	double forwardHybridGpuPackingSeconds = 0.0;
+	double forwardHybridGpuH2dSeconds = 0.0;
+	double forwardHybridGpuPrealignKernelSeconds = 0.0;
+	double forwardHybridGpuSelectionKernelSeconds = 0.0;
+	double forwardHybridGpuForwardKernelSeconds = 0.0;
+	double forwardHybridGpuEndpointReduceSeconds = 0.0;
+	double forwardHybridGpuD2hSeconds = 0.0;
+	double forwardHybridGpuOverheadSeconds = 0.0;
+	uint64_t forwardHybridHostInputBytes = 0;
+	uint64_t forwardHybridDeviceInputBytes = 0;
+	uint64_t forwardHybridDeviceWorkspacePeakBytes = 0;
+	uint64_t forwardHybridDeviceOutputBytes = 0;
+	fasim_ssw_cuda::ForwardHybridCpuTelemetry forwardHybridCpuTelemetry;
+#else
+	const bool forwardHybridActive = false;
+	if (forwardHybridRequested)
+	{
+		cerr << "cuda-forward-hybrid backend is not built" << endl;
+		return 2;
+	}
+#endif
 	const bool taxonomyEnabled =
 		fasim_gasal2_traceback_rejection_taxonomy_runtime();
 	const bool eligibilityEnabled =
@@ -10590,6 +11086,8 @@ int main(int argc, char* const* argv)
 	taxonomyExporter.open();
 	FasimGasal2PretracebackPruningEligibilityRuntime eligibilityRuntime;
 	eligibilityRuntime.open();
+	FasimCanonicalHybridV2TelemetryExporter canonicalHybridV2Telemetry;
+	canonicalHybridV2Telemetry.open();
 	FasimExactColumnMinScoreShadowStats minScoreShadowStats;
 	FasimLegacyScoreGpuShadowStats legacyScoreGpuShadowStats;
 	FasimGasal2LongQueryShadowStats gasal2LongQuerySegmentedShadowStats;
@@ -10603,13 +11101,48 @@ int main(int argc, char* const* argv)
 	legacyScoreGpuShadowStats.replacement_enabled = legacyScoreGpuReplacementEnabled;
     if(paraList.doFastSim==true)
     cout<<"Searching triplexes using Fasim"<<endl;
-    else
-    cout<<"Searching triplexes using Sim"<<endl;
-    core_num = paraList.corenum;
+	    else
+	    cout<<"Searching triplexes using Sim"<<endl;
+	    core_num = paraList.corenum;
+	const bool longQueryGpuConsumerSpikeV1Requested =
+		fasim_long_query_gpu_consumer_spike_v1_runtime();
+	const bool longQueryGpuConsumerReplacementPrototypeRequested =
+		fasim_long_query_gpu_consumer_replacement_prototype_runtime();
+	if (longQueryGpuConsumerSpikeV1Requested &&
+	    longQueryGpuConsumerReplacementPrototypeRequested)
+	{
+		cerr << "FASIM long-query consumer shadow and replacement modes are "
+		     << "mutually exclusive" << endl;
+		return EXIT_FAILURE;
+	}
+	if (longQueryGpuConsumerReplacementPrototypeRequested &&
+	    !fasim_long_query_gpu_consumer_cpu_continuation_runtime())
+	{
+		cerr << "FASIM long-query replacement prototype requires "
+		     << "FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION=1" << endl;
+		return EXIT_FAILURE;
+	}
 
 	{
 		FasimScopedSeconds scoped(phaseTimingEnabled, &phaseTiming.read_rna_seconds);
 		lncSeq = readRna(paraList.file2path, lncName);
+	}
+	if (longQueryGpuConsumerReplacementPrototypeRequested)
+	{
+		const bool replacementConfigOk =
+			paraList.doFastSim &&
+			lncSeq.size() > 2812 &&
+			fasim_long_query_streaming_scoreinfo_legacy_byte_runtime() &&
+			fasim_long_query_streaming_scoreinfo_gpu_minscore_runtime() &&
+			fasim_long_query_streaming_scoreinfo_gpu_minscore_hot_runtime() &&
+			!fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
+		if (!replacementConfigOk)
+		{
+			cerr << "FASIM long-query replacement prototype requires a >2812 nt "
+			     << "Fasim query, exact legacy-byte streaming scoreInfo, and the "
+			     << "GPU min-score hot path" << endl;
+			return EXIT_FAILURE;
+		}
 	}
 	fasim_prepare_gasal2_long_query_segmented_shadow_stats(
 		lncSeq,
@@ -10735,6 +11268,32 @@ int main(int argc, char* const* argv)
 	resultDir = paraList.outpath;
 
 	const FasimOutputMode outputMode = fasim_output_mode_runtime();
+	if (forwardHybridActive &&
+		(!paraList.doFastSim || outputMode != FASIM_OUTPUT_TFOSORTED ||
+		 canonicalHybridV2Telemetry.requested))
+	{
+		cerr << "cuda-forward-hybrid requires fastSIM TFOsorted with no H2 runtime" << endl;
+		return 2;
+	}
+	if (canonicalHybridV2Telemetry.requested &&
+	    (!canonicalHybridV2Telemetry.active ||
+	     outputMode != FASIM_OUTPUT_TFOSORTED ||
+	     !fasim_gasal2_cpu_traceback_enabled_runtime() ||
+	     fasim_gasal2_cpu_traceback_all_enabled_runtime()))
+	{
+		if (!canonicalHybridV2Telemetry.failed)
+		{
+			canonicalHybridV2Telemetry.fail(
+				outputMode != FASIM_OUTPUT_TFOSORTED ?
+				"unsupported_output_mode" :
+				(!fasim_gasal2_cpu_traceback_enabled_runtime() ?
+				 "cpu_traceback_not_enabled" :
+				 "complete_cpu_authority_forbidden"));
+		}
+		fasim_print_canonical_hybrid_v2_telemetry_stats(
+			canonicalHybridV2Telemetry);
+		return 2;
+	}
 	std::vector<int> exactColumnGuardCudaDevices;
 	fasim_cuda_devices_runtime(exactColumnGuardCudaDevices);
 	if (fasim_exact_column_multigpu_guard_failed(exactColumnGuardCudaDevices))
@@ -10779,6 +11338,52 @@ int main(int argc, char* const* argv)
 			int minScore;
 			bool minScoreReady;
 		};
+
+		auto exact_task_unique_sequence_count =
+			[](const std::vector<StreamTask> &batchTasks) -> size_t
+			{
+				std::vector< std::pair<uint64_t, size_t> > keyed;
+				keyed.reserve(batchTasks.size());
+				for (size_t i = 0; i < batchTasks.size(); ++i)
+				{
+					keyed.push_back(std::make_pair(
+						fasim_fnv1a_update(1469598103934665603ULL, batchTasks[i].seq2),
+						i));
+				}
+				std::sort(keyed.begin(), keyed.end());
+
+				size_t uniqueCount = 0;
+				for (size_t begin = 0; begin < keyed.size();)
+				{
+					size_t end = begin + 1;
+					while (end < keyed.size() && keyed[end].first == keyed[begin].first)
+					{
+						++end;
+					}
+					std::vector<size_t> representatives;
+					for (size_t i = begin; i < end; ++i)
+					{
+						const size_t candidate = keyed[i].second;
+						bool seen = false;
+						for (size_t r = 0; r < representatives.size(); ++r)
+						{
+							if (batchTasks[candidate].seq2 ==
+							    batchTasks[representatives[r]].seq2)
+							{
+								seen = true;
+								break;
+							}
+						}
+						if (!seen)
+						{
+							representatives.push_back(candidate);
+							++uniqueCount;
+						}
+					}
+					begin = end;
+				}
+				return uniqueCount;
+			};
 
 		auto annotate_gasal2_attempt_task =
 			[](FasimGasal2Attempt &attempt, const StreamTask &task)
@@ -10915,9 +11520,35 @@ int main(int argc, char* const* argv)
 				const bool phase7FrontierLogEnabled =
 					fasim_gasal2_phase7_frontier_log_runtime();
 				std::vector<FasimLiteRow> topkLiteRows;
-			std::map<uint64_t, std::vector<triplex> > broadReplacementTriplexesByTask;
-			std::map<uint64_t, std::vector<triplex> > attemptConsumerTriplexesByTask;
-			std::map<uint64_t, std::vector<triplex> > emissionOnlyTriplexesByTask;
+				std::map<uint64_t, std::vector<triplex> > broadReplacementTriplexesByTask;
+				std::map<uint64_t, std::vector<triplex> > attemptConsumerTriplexesByTask;
+				std::map<uint64_t, std::vector<triplex> > emissionOnlyTriplexesByTask;
+				std::ofstream longQueryGpuConsumerSpikeReport;
+				if (longQueryGpuConsumerSpikeV1Requested ||
+				    longQueryGpuConsumerReplacementPrototypeRequested)
+				{
+					const char *reportPath =
+						longQueryGpuConsumerReplacementPrototypeRequested ?
+							getenv("FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_REPORT") :
+							getenv("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_REPORT");
+					if ((reportPath == NULL || reportPath[0] == '\0') &&
+					    longQueryGpuConsumerReplacementPrototypeRequested)
+					{
+						reportPath = getenv(
+							"FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_REPORT");
+					}
+					if (reportPath != NULL && reportPath[0] != '\0')
+					{
+						longQueryGpuConsumerSpikeReport.open(
+							reportPath,
+							std::ios::out | std::ios::trunc);
+						if (longQueryGpuConsumerSpikeReport)
+						{
+								longQueryGpuConsumerSpikeReport
+									<< "task_index\texecution_mode\tauthority_comparison_available\tvalidation_enabled\tok\toutput_equal\tscoreinfo_groups\tattempts\tgpu_scored_attempts\tendpoint_batches\tcpu_oracle_attempts\tattempt_mismatch_rows\tscore_mismatches\tquery_end_mismatches\tref_end_local_mismatches\tterminal_mismatches\tcontrol_selected_attempts\tcpu_control_selected_attempts\tconsumer_selection_equal\tcpu_reference_align_attempts\tconsumer_attempt_prefix_equal\tcpu_continuation_requested\tcpu_continuation_active\tcpu_continuation_calls\tcpu_continuation_failures\treplay_attempts\tcpu_align_attempts\tthreshold_groups\tbest_fallback_groups\tlast_groups\tempty_groups\tscore_seconds\tgpu_kernel_seconds\th2d_seconds\td2h_seconds\tcpu_oracle_seconds\tselect_seconds\ttraceback_seconds\tconvert_seconds\ttotal_seconds\tmissing_rows\textra_rows\tfirst_attempt_mismatch\tfirst_consumer_mismatch\terror\n";
+						}
+					}
+				}
 			uint64_t attemptConsumerShadowTaskMismatches = 0;
 			uint64_t attemptConsumerShadowMissingTriplexes = 0;
 			uint64_t attemptConsumerShadowExtraTriplexes = 0;
@@ -10929,6 +11560,8 @@ int main(int argc, char* const* argv)
 
 			auto ensure_output_opened = [&](const string &speciesValue)
 			{
+				FasimAuthorityProfileScope authorityIoScope(
+					FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 				FasimScopedSeconds scoped(phaseTimingEnabled, &phaseTiming.output_open_seconds);
 				if (outOpened)
 				{
@@ -11164,7 +11797,9 @@ int main(int argc, char* const* argv)
 						phase7FullAlignVerifierFirst1ShadowRequested ||
 						phase7NativeCudaFasimDpEngineFirst1ShadowRequested ||
 						phase7GpuUpperBoundRejectFirst1ShadowRequested ||
-						phase7GpuExactWorkUnitCompactionFirst1ShadowRequested;
+						phase7GpuExactWorkUnitCompactionFirst1ShadowRequested ||
+						longQueryGpuConsumerSpikeV1Requested ||
+						longQueryGpuConsumerReplacementPrototypeRequested;
 		const bool streamingScoreInfoLegacyByteRequested =
 			phase7V4GpuLegacyByteScoreInfoShadowRequested ||
 			phase7V4GpuLegacyByteScoreInfoSourceReplayRequested ||
@@ -11218,6 +11853,13 @@ int main(int argc, char* const* argv)
 			useCudaBatch =
 				!cudaQueries.empty() &&
 				(fasim_prealign_cuda_enabled_runtime() || gpuDpColumnAutoEffective);
+			if (longQueryGpuConsumerSpikeV1Requested ||
+			    longQueryGpuConsumerReplacementPrototypeRequested)
+			{
+				// Keep the preAlign handles for stateful scoreInfo, but route task
+				// execution through the isolated consumer loop below.
+				useCudaBatch = false;
+			}
 			if (legacyScoreGpuShadowEnabled && !cudaQueries.empty())
 			{
 				std::vector<int16_t> legacyQueryProfile;
@@ -11311,7 +11953,9 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_enabled() &&
 				fasim_gasal2_is_built() &&
 				fasim_gasal2_longtarget_bridge_enabled() &&
-			!fasim_gasal2_cpu_traceback_all_enabled_runtime();
+			!fasim_gasal2_cpu_traceback_all_enabled_runtime() &&
+			!longQueryGpuConsumerSpikeV1Requested &&
+			!longQueryGpuConsumerReplacementPrototypeRequested;
 		const bool gasal2LongtargetCpuTracebackBatch =
 			gasal2LongtargetBatch &&
 			fasim_gasal2_cpu_traceback_enabled_runtime();
@@ -11320,7 +11964,49 @@ int main(int argc, char* const* argv)
 
 		const int maxTasksPerGpu = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_MAX_TASKS", 4096);
 		int maxTasksTotal = useCudaBatch ? (maxTasksPerGpu * static_cast<int>(cudaQueries.size())) : 1;
-		if (!useCudaBatch && streamingScoreInfoShadowCudaReady)
+		const bool openmpStreamingRequested = fasim_openmp_requested_runtime();
+		const int openmpStreamingThreads = openmpStreamingRequested ?
+			fasim_openmp_configure_threads(paraList.corenum) : 1;
+		const int openmpStreamingBatch = fasim_env_int_or_default(
+			"FASIM_OPENMP_TASK_BATCH", 4096);
+		/*
+		 * The production queue uses the tfosorted streaming path.  Keep this
+		 * OpenMP mode deliberately narrow: optional shadow/diagnostic paths have
+		 * shared accounting state and remain serial unless they gain their own
+		 * reduction contract.
+		 */
+		const bool openmpStreamingActive =
+			openmpStreamingRequested &&
+			openmpStreamingThreads > 1 &&
+			openmpStreamingBatch > 0 &&
+			!useCudaBatch &&
+			!verbose &&
+			!phaseTimingEnabled &&
+			paraList.doFastSim &&
+			outputMode == FASIM_OUTPUT_TFOSORTED &&
+			writeFull &&
+			!writeLite &&
+			!writeCigarArchiveProbe &&
+			!writeCompactArchiveProbe &&
+			!writeColumnArchiveProbe &&
+			!streamingScoreInfoInfrastructureRequested &&
+			!forwardHybridActive &&
+			!gasal2LongtargetBatch &&
+			!fasim_gasal2_enabled();
+		if (openmpStreamingActive)
+		{
+			maxTasksTotal = openmpStreamingBatch;
+			cerr << "benchmark.fasim_openmp.active=1\n"
+			     << "benchmark.fasim_openmp.threads=" << openmpStreamingThreads << "\n"
+			     << "benchmark.fasim_openmp.mode=streaming_tfosorted\n"
+			     << "benchmark.fasim_openmp.task_batch=" << maxTasksTotal << "\n";
+		}
+		if (!useCudaBatch && forwardHybridActive)
+		{
+			maxTasksTotal = fasim_env_int_or_default(
+				"FASIM_SSW_FORWARD_HYBRID_MAX_TASKS", 16);
+		}
+		else if (!useCudaBatch && streamingScoreInfoShadowCudaReady)
 		{
 			maxTasksTotal =
 				fasim_env_int_or_default(
@@ -11366,6 +12052,9 @@ int main(int argc, char* const* argv)
 			const bool exactColumnBatchRequested = fasim_exact_column_extend_batch_enabled_runtime();
 			const bool exactColumnBatchValidate = fasim_exact_column_extend_batch_validate_enabled_runtime();
 			const bool exactColumnBatchDebugColumns = fasim_exact_column_extend_batch_debug_columns_runtime();
+			const bool exactTaskCompactionShadowRequested =
+				fasim_gasal2_exact_task_compaction_shadow_enabled_runtime();
+			phaseTiming.exact_task_shadow_requested = exactTaskCompactionShadowRequested;
 			const bool exactScoreInfoGpuRequested = fasim_exact_column_scoreinfo_gpu_enabled_runtime();
 			phaseTiming.exact_scoreinfo_gpu_enabled = exactScoreInfoGpuRequested;
 			const bool singlePassTopNRequested =
@@ -12292,6 +12981,8 @@ int main(int argc, char* const* argv)
 
 			auto write_task_triplexes = [&](const StreamTask &task)
 			{
+			FasimAuthorityProfileScope authorityIoScope(
+				FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 			if (broadReplacementConsumerEnabled &&
 			    broadScoreInfoConsumerShadowStats.broad_path_active != 0)
 			{
@@ -13805,6 +14496,88 @@ int main(int argc, char* const* argv)
 			return true;
 		};
 
+		auto write_long_query_gpu_consumer_spike_row =
+			[&](uint64_t taskIndex,
+			    const FasimLongQueryGpuConsumerSpikeResult &result,
+			    const std::vector<triplex> &shadowRows,
+			    const std::vector<triplex> &referenceRows)
+		{
+			if (!longQueryGpuConsumerSpikeReport)
+			{
+				return;
+			}
+			size_t diffIndex = 0;
+			const size_t shared = std::min(shadowRows.size(), referenceRows.size());
+			while (diffIndex < shared &&
+			       triplex_probe_key(shadowRows[diffIndex]) ==
+			           triplex_probe_key(referenceRows[diffIndex]))
+			{
+				++diffIndex;
+			}
+			const bool authorityComparisonAvailable = result.validation_enabled;
+			const bool equal = authorityComparisonAvailable && result.ok &&
+				diffIndex == shared &&
+				shadowRows.size() == referenceRows.size();
+			const uint64_t missing = authorityComparisonAvailable &&
+				referenceRows.size() > shadowRows.size() ?
+				static_cast<uint64_t>(referenceRows.size() - shadowRows.size()) : 0;
+			const uint64_t extra = authorityComparisonAvailable &&
+				shadowRows.size() > referenceRows.size() ?
+				static_cast<uint64_t>(shadowRows.size() - referenceRows.size()) : 0;
+			std::string error = result.error;
+			if (error.empty())
+			{
+				error = "none";
+			}
+			longQueryGpuConsumerSpikeReport
+				<< taskIndex << '\t'
+				<< (authorityComparisonAvailable ? "shadow" : "replacement_prototype")
+				<< '\t'
+				<< (authorityComparisonAvailable ? 1 : 0) << '\t'
+				<< (result.validation_enabled ? 1 : 0) << '\t'
+				<< (result.ok ? 1 : 0) << '\t'
+				<< (authorityComparisonAvailable ? (equal ? 1 : 0) : -1) << '\t'
+				<< result.scoreinfo_groups << '\t'
+					<< result.attempts << '\t'
+					<< result.gpu_scored_attempts << '\t'
+					<< result.endpoint_batches << '\t'
+					<< result.cpu_oracle_attempts << '\t'
+					<< result.attempt_mismatch_rows << '\t'
+					<< result.score_mismatches << '\t'
+					<< result.query_end_mismatches << '\t'
+					<< result.ref_end_local_mismatches << '\t'
+					<< result.terminal_mismatches << '\t'
+					<< result.control_selected_attempts << '\t'
+					<< result.cpu_control_selected_attempts << '\t'
+					<< (result.consumer_selection_equal ? 1 : 0) << '\t'
+					<< result.cpu_reference_align_attempts << '\t'
+					<< (result.consumer_attempt_prefix_equal ? 1 : 0) << '\t'
+					<< (result.cpu_continuation_requested ? 1 : 0) << '\t'
+					<< (result.cpu_continuation_active ? 1 : 0) << '\t'
+					<< result.cpu_continuation_calls << '\t'
+					<< result.cpu_continuation_failures << '\t'
+					<< result.replay_attempts << '\t'
+				<< result.cpu_align_attempts << '\t'
+				<< result.threshold_groups << '\t'
+				<< result.best_fallback_groups << '\t'
+				<< result.last_groups << '\t'
+					<< result.empty_groups << '\t'
+					<< result.score_seconds << '\t'
+					<< result.gpu_kernel_seconds << '\t'
+					<< result.h2d_seconds << '\t'
+					<< result.d2h_seconds << '\t'
+					<< result.cpu_oracle_seconds << '\t'
+					<< result.select_seconds << '\t'
+				<< result.traceback_seconds << '\t'
+				<< result.convert_seconds << '\t'
+				<< result.total_seconds << '\t'
+					<< missing << '\t'
+					<< extra << '\t'
+					<< result.first_attempt_mismatch << '\t'
+					<< result.first_consumer_mismatch << '\t'
+					<< error << '\n';
+		};
+
 			auto record_triplex_probe_first_mismatch =
 				[&](size_t taskIndex,
 				    const std::vector<triplex> &replayTriplexes,
@@ -14537,6 +15310,7 @@ int main(int argc, char* const* argv)
 					const StripedSmithWaterman::scoreInfo &scoreInfo = taskScoreInfos[si];
 					scoreGroups.push_back(Gasal2BatchScoreGroup(t, si));
 					float Iden = 0.6;
+					int identityRound = 6;
 					while (Iden <= 1)
 					{
 						int cutlength = static_cast<int>(scoreInfo.score + 24) / (9 * Iden - 4) + 1;
@@ -14551,6 +15325,7 @@ int main(int argc, char* const* argv)
 							attempt.prealign_score = scoreInfo.score;
 							attempt.target_end_required_for_fallback = cutlength - 1;
 							attempt.nt_min_length = paraList.cLength;
+							attempt.identity_round = identityRound;
 							annotate_gasal2_attempt_task(attempt, task);
 							attempt.set_target_view(&task.seq2,
 							                        static_cast<size_t>(targetStart),
@@ -14558,6 +15333,7 @@ int main(int argc, char* const* argv)
 							gasalAttempts.push_back(std::move(attempt));
 						}
 						Iden += 0.1;
+						++identityRound;
 					}
 					++gasalScoreGroup;
 				}
@@ -15018,6 +15794,10 @@ int main(int argc, char* const* argv)
 			}
 
 				std::vector<FasimGasal2SelectedAlignment> gasalSelected;
+				std::vector<FasimGasal2AttemptScoreTelemetry>
+					canonicalHybridScoreTelemetry;
+				std::vector<FasimCanonicalHybridV2AttemptTelemetryRow>
+					canonicalHybridRows;
 				std::string gasalError;
 				bool gasalOk = true;
 				double scoreSelectSeconds = 0.0;
@@ -15181,9 +15961,23 @@ int main(int argc, char* const* argv)
 						currentFlushPipelineRecord->gasal2_score_wait_start_ns =
 							scoreSelectStartNs;
 					}
-					gasalOk = useCpuTracebackReplay ?
-						fasim_gasal2_select_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError) :
-						fasim_gasal2_align_attempts(lncSeq, gasalAttempts, &gasalSelected, &gasalError);
+						if (canonicalHybridV2Telemetry.requested)
+						{
+							gasalOk = fasim_gasal2_select_attempts_canonical_hybrid_v2(
+								lncSeq,
+								gasalAttempts,
+								&gasalSelected,
+								&canonicalHybridScoreTelemetry,
+								&gasalError);
+						}
+						else
+						{
+							gasalOk = useCpuTracebackReplay ?
+								fasim_gasal2_select_attempts(
+									lncSeq, gasalAttempts, &gasalSelected, &gasalError) :
+								fasim_gasal2_align_attempts(
+									lncSeq, gasalAttempts, &gasalSelected, &gasalError);
+						}
 					if (currentFlushPipelineRecord != NULL)
 					{
 						const uint64_t scoreSelectEndNs = fasim_monotonic_ns();
@@ -15211,7 +16005,56 @@ int main(int argc, char* const* argv)
 				}
 			if (!gasalOk)
 			{
+				if (canonicalHybridV2Telemetry.requested)
+				{
+					canonicalHybridV2Telemetry.fail("score_prepass_failed");
+				}
 				return false;
+			}
+			if (canonicalHybridV2Telemetry.requested)
+			{
+				if (canonicalHybridScoreTelemetry.size() != gasalAttempts.size())
+				{
+					canonicalHybridV2Telemetry.fail("score_telemetry_count_mismatch");
+					return false;
+				}
+				const uint64_t telemetryBatchId =
+					canonicalHybridV2Telemetry.begin_batch();
+				canonicalHybridRows.resize(gasalAttempts.size());
+				for (size_t ai = 0; ai < gasalAttempts.size(); ++ai)
+				{
+					const FasimGasal2Attempt &attempt = gasalAttempts[ai];
+					const FasimGasal2AttemptScoreTelemetry &score =
+						canonicalHybridScoreTelemetry[ai];
+					FasimCanonicalHybridV2AttemptTelemetryRow &row =
+						canonicalHybridRows[ai];
+					row.batch_id = telemetryBatchId;
+					row.attempt_index = static_cast<int64_t>(ai);
+					row.scoreinfo_index = attempt.scoreinfo_index;
+					row.rule = attempt.task_rule;
+					row.strand = attempt.task_strand;
+					row.para = attempt.task_para;
+					row.identity_round = attempt.identity_round;
+					row.start = attempt.start;
+					row.cutlength = attempt.cutlength;
+					row.prealign_threshold = attempt.prealign_score;
+					row.gpu_score = score.gpu_score;
+					row.gpu_query_end = score.gpu_query_end;
+					row.gpu_ref_end_global = score.gpu_ref_end_global;
+					row.selected = score.selected;
+					row.selection_reason = score.selection_reason;
+					if (attempt.scoreinfo_index >= 0 &&
+					    static_cast<size_t>(attempt.scoreinfo_index) < scoreGroups.size())
+					{
+						const Gasal2BatchScoreGroup &group =
+							scoreGroups[static_cast<size_t>(attempt.scoreinfo_index)];
+						row.scoreinfo_position = static_cast<int>(group.scoreInfoIndex);
+						if (group.taskIndex < tasks.size())
+						{
+							row.task_id = tasks[group.taskIndex].taskIndex;
+						}
+					}
+				}
 			}
 			nvtxScoreTraceback.close();
 
@@ -15268,6 +16111,54 @@ int main(int argc, char* const* argv)
 				bool emitted = false;
 				uint64_t currentGroupAlignRank = 0;
 
+				auto canonicalTelemetryRow =
+					[&](const FasimGasal2SelectedAlignment &selected)
+					-> FasimCanonicalHybridV2AttemptTelemetryRow *
+				{
+					if (!canonicalHybridV2Telemetry.requested ||
+					    selected.attempt_index < 0 ||
+					    static_cast<size_t>(selected.attempt_index) >=
+						    canonicalHybridRows.size())
+					{
+						return NULL;
+					}
+					return &canonicalHybridRows[
+						static_cast<size_t>(selected.attempt_index)];
+				};
+				auto recordCanonicalCpuAlignment =
+					[&](const FasimGasal2SelectedAlignment &selected,
+					    const StripedSmithWaterman::Alignment &alignment)
+				{
+					FasimCanonicalHybridV2AttemptTelemetryRow *row =
+						canonicalTelemetryRow(selected);
+					if (row == NULL)
+					{
+						return;
+					}
+					row->cpu_called = true;
+					row->cpu_score = alignment.sw_score;
+					row->cpu_query_begin = alignment.query_begin;
+					row->cpu_query_end = alignment.query_end;
+					row->cpu_ref_begin_local = alignment.ref_begin;
+					row->cpu_ref_end_local = alignment.ref_end;
+					row->cpu_cigar =
+						fasim_canonical_hybrid_v2_cigar(alignment.cigar);
+					row->cpu_emit_reason = "not_emitted";
+					row->final_status = "cpu_not_emitted";
+				};
+				auto recordCanonicalEmit =
+					[&](const FasimGasal2SelectedAlignment &selected,
+					    const char *reason)
+				{
+					FasimCanonicalHybridV2AttemptTelemetryRow *row =
+						canonicalTelemetryRow(selected);
+					if (row != NULL)
+					{
+						row->cpu_emit_reason = reason;
+						row->final_status = "emitted_not_converted";
+					}
+				};
+
 				auto flushCpuReplay = [&]()
 				{
 					if (currentScoreGroup >= 0 && static_cast<size_t>(currentScoreGroup) < scoreGroups.size() && !emitted)
@@ -15276,6 +16167,7 @@ int main(int argc, char* const* argv)
 						if (haveBest)
 						{
 							bestSelected.alignment = bestAlignment;
+							recordCanonicalEmit(bestSelected, "best_fallback");
 							replaySelectedByTask[taskIndex].push_back(bestSelected);
 							++replaySelectedCount;
 							++cpuTracebackBestFallbackEmits;
@@ -15286,6 +16178,7 @@ int main(int argc, char* const* argv)
 							lastSelected.alignment = lastAlignment;
 							if (lastSelected.alignment.sw_score != 0)
 							{
+								recordCanonicalEmit(lastSelected, "last");
 								replaySelectedByTask[taskIndex].push_back(lastSelected);
 								++replaySelectedCount;
 								++cpuTracebackLastEmits;
@@ -15360,6 +16253,7 @@ int main(int argc, char* const* argv)
 					cpuTracebackAlignSeconds += fasim_seconds_since(alignStart);
 					++cpuTracebackAlignCalls;
 					++currentGroupAlignRank;
+					recordCanonicalCpuAlignment(candidate, cpuCandidateAlignment);
 
 					if (!emitted)
 					{
@@ -15370,6 +16264,7 @@ int main(int argc, char* const* argv)
 					if (!emitted && cpuCandidateAlignment.sw_score >= scoreInfo.score)
 					{
 						candidate.alignment = cpuCandidateAlignment;
+						recordCanonicalEmit(candidate, "threshold");
 						replaySelectedByTask[group.taskIndex].push_back(candidate);
 						++replaySelectedCount;
 						++cpuTracebackThresholdEmits;
@@ -16056,6 +16951,13 @@ int main(int argc, char* const* argv)
 					                       stability,
 					                       notes);
 				};
+					if (canonicalHybridV2Telemetry.requested &&
+					    (directConvertActive || archiveFirstConvertActive))
+					{
+						canonicalHybridV2Telemetry.fail(
+							"unsupported_conversion_path");
+						return false;
+					}
 					if (directConvertActive ||
 					    archiveFirstConvertActive)
 						{
@@ -17683,6 +18585,22 @@ int main(int argc, char* const* argv)
 							                 paraList.ntMax,
 							                 writeFull,
 							                 !equivalenceFirstConvertActive);
+									if (canonicalHybridV2Telemetry.requested &&
+									    selectedAlignment.attempt_index >= 0 &&
+									    static_cast<size_t>(selectedAlignment.attempt_index) <
+										    canonicalHybridRows.size() &&
+									    myTriplexList.size() > beforeTriplexCount)
+									{
+										FasimCanonicalHybridV2AttemptTelemetryRow &telemetryRow =
+											canonicalHybridRows[static_cast<size_t>(
+												selectedAlignment.attempt_index)];
+										telemetryRow.converted_row_digest =
+											fasim_canonical_hybrid_v2_row_digest(
+												myTriplexList[beforeTriplexCount],
+												task.chr,
+												task.recordStartGenome);
+										telemetryRow.final_status = "converted_not_final";
+									}
 								if (equivalenceFirstConvertActive &&
 								    myTriplexList.size() > beforeTriplexCount)
 								{
@@ -18763,6 +19681,62 @@ int main(int argc, char* const* argv)
 							emitRank33Plus.load(std::memory_order_relaxed);
 					}
 				}
+				if (canonicalHybridV2Telemetry.requested)
+				{
+					if (canonicalHybridRows.size() != gasalAttempts.size())
+					{
+						canonicalHybridV2Telemetry.fail("attempt_telemetry_count_mismatch");
+						return false;
+					}
+					for (size_t t = 0; t < tasks.size(); ++t)
+					{
+						const StreamTask &task = tasks[t];
+						std::set<std::string> finalDigests;
+						if (t < triplexesByTask.size())
+						{
+							for (size_t ri = 0; ri < triplexesByTask[t].size(); ++ri)
+							{
+								const triplex &row = triplexesByTask[t][ri];
+								if (row.score >= paraList.scoreMin &&
+								    row.identity >= paraList.minIdentity &&
+								    row.tri_score >= paraList.minStability &&
+								    row.nt >= paraList.cLength)
+								{
+									finalDigests.insert(
+										fasim_canonical_hybrid_v2_row_digest(
+											row, task.chr, task.recordStartGenome));
+								}
+							}
+						}
+						for (size_t ai = 0; ai < canonicalHybridRows.size(); ++ai)
+						{
+							FasimCanonicalHybridV2AttemptTelemetryRow &row =
+								canonicalHybridRows[ai];
+							if (row.task_id == task.taskIndex &&
+							    row.converted_row_digest != "NA" &&
+							    finalDigests.count(row.converted_row_digest) != 0)
+							{
+								row.final_row_digest = row.converted_row_digest;
+								row.final_status = "final_row";
+							}
+						}
+					}
+					for (size_t ai = 0; ai < canonicalHybridRows.size(); ++ai)
+					{
+						const FasimCanonicalHybridV2AttemptTelemetryRow &row =
+							canonicalHybridRows[ai];
+						if (row.selected != row.cpu_called)
+						{
+							canonicalHybridV2Telemetry.fail(
+								"selected_cpu_traceback_count_mismatch");
+							return false;
+						}
+					}
+					if (!canonicalHybridV2Telemetry.append(canonicalHybridRows))
+					{
+						return false;
+					}
+				}
 			fasim_gasal2_record_longtarget_bridge_timing(attemptBuildSeconds,
 			                                             scoreSelectSeconds,
 			                                             cpuTracebackReplaySeconds,
@@ -18817,6 +19791,177 @@ int main(int argc, char* const* argv)
 						++phaseTiming.flushes;
 						phaseTiming.flush_tasks += static_cast<uint64_t>(tasks.size());
 					}
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+					if (forwardHybridActive)
+					{
+						if (forwardHybridFailed)
+						{
+							tasks.clear();
+							encodedTargets.clear();
+							legacyEncodedTargets.clear();
+							currentTargetLength = -1;
+							return;
+						}
+						std::vector<fasim_ssw_cuda::ForwardHybridTask> hybridTasks;
+						hybridTasks.resize(tasks.size());
+						for (size_t t = 0; t < tasks.size(); ++t)
+						{
+							hybridTasks[t].case_id = "task-" +
+								std::to_string(tasks[t].taskIndex);
+							hybridTasks[t].query = lncSeq;
+							hybridTasks[t].reference = tasks[t].seq2;
+							hybridTasks[t].threshold = task_min_score(tasks[t]);
+						}
+						fasim_ssw_cuda::BatchOptions hybridOptions;
+						hybridOptions.device = forwardHybridDevice;
+						fasim_ssw_cuda::ForwardHybridOutput hybridOutput;
+						const fasim_ssw_cuda::StatusCode hybridStatus =
+							fasim_ssw_cuda::forward_hybrid_select(
+								hybridTasks, hybridOptions, &hybridOutput);
+						++forwardHybridFlushes;
+						forwardHybridTasks += static_cast<uint64_t>(tasks.size());
+						forwardHybridScoreinfos += static_cast<uint64_t>(
+							hybridOutput.telemetry.scoreinfo_count);
+						forwardHybridAttempts += static_cast<uint64_t>(
+							hybridOutput.telemetry.attempt_count);
+						forwardHybridSelected += static_cast<uint64_t>(
+							hybridOutput.telemetry.selected_count);
+						forwardHybridGpuPreselectSeconds +=
+							hybridOutput.telemetry.preselect.total_wall_seconds;
+						forwardHybridGpuForwardSeconds +=
+							hybridOutput.telemetry.forward.total_wall_seconds;
+						forwardHybridPlanningSeconds +=
+							hybridOutput.telemetry.attempt_planning_seconds;
+							forwardHybridSelectionSeconds +=
+								hybridOutput.telemetry.attempt_selection_seconds;
+							forwardHybridBackendSeconds +=
+								hybridOutput.telemetry.total_wall_seconds;
+							forwardHybridGpuPackingSeconds +=
+								hybridOutput.telemetry.preselect.packing_seconds +
+								hybridOutput.telemetry.forward.packing_seconds;
+							forwardHybridGpuH2dSeconds +=
+								hybridOutput.telemetry.preselect.h2d_seconds +
+								hybridOutput.telemetry.forward.h2d_seconds;
+							forwardHybridGpuPrealignKernelSeconds +=
+								hybridOutput.telemetry.preselect.prealign_seconds;
+							forwardHybridGpuSelectionKernelSeconds +=
+								hybridOutput.telemetry.preselect.selection_flag_seconds +
+								hybridOutput.telemetry.preselect.selection_scan_seconds +
+								hybridOutput.telemetry.preselect.selection_scatter_seconds;
+							forwardHybridGpuForwardKernelSeconds +=
+								hybridOutput.telemetry.forward.forward_seconds;
+							forwardHybridGpuEndpointReduceSeconds +=
+								hybridOutput.telemetry.forward.endpoint_reduce_seconds;
+							forwardHybridGpuD2hSeconds +=
+								hybridOutput.telemetry.preselect.d2h_seconds +
+								hybridOutput.telemetry.forward.d2h_seconds;
+							forwardHybridGpuOverheadSeconds +=
+								hybridOutput.telemetry.preselect.overhead_seconds +
+								hybridOutput.telemetry.forward.overhead_seconds;
+							forwardHybridHostInputBytes += static_cast<uint64_t>(
+								hybridOutput.telemetry.preselect.host_input_bytes +
+								hybridOutput.telemetry.forward.host_input_bytes);
+							forwardHybridDeviceInputBytes += static_cast<uint64_t>(
+								hybridOutput.telemetry.preselect.device_input_bytes +
+								hybridOutput.telemetry.forward.device_input_bytes);
+							forwardHybridDeviceWorkspacePeakBytes = std::max(
+								forwardHybridDeviceWorkspacePeakBytes,
+								static_cast<uint64_t>(std::max(
+									hybridOutput.telemetry.preselect.device_workspace_bytes,
+									hybridOutput.telemetry.forward.device_workspace_bytes)));
+							forwardHybridDeviceOutputBytes += static_cast<uint64_t>(
+								hybridOutput.telemetry.preselect.device_output_bytes +
+								hybridOutput.telemetry.forward.device_output_bytes);
+						if (hybridStatus != fasim_ssw_cuda::STATUS_OK ||
+							hybridOutput.telemetry.cpu_prealign_calls != 0 ||
+							hybridOutput.telemetry.cpu_forward_calls != 0 ||
+							hybridOutput.telemetry.preselect.cpu_endpoint_calls != 0 ||
+							hybridOutput.telemetry.forward.cpu_endpoint_calls != 0)
+						{
+							forwardHybridFailed = true;
+							forwardHybridError = hybridOutput.error.empty() ?
+								"GPU stage CPU-call contract mismatch" : hybridOutput.error;
+						}
+						std::vector<std::vector<fasim_ssw_cuda::ForwardHybridSelectedAttempt> >
+							selectedByTask(tasks.size());
+						if (!forwardHybridFailed)
+						{
+							for (size_t index = 0; index < hybridOutput.selected.size(); ++index)
+							{
+								const fasim_ssw_cuda::ForwardHybridSelectedAttempt &selected =
+									hybridOutput.selected[index];
+								if (selected.task_index < 0 ||
+									static_cast<size_t>(selected.task_index) >= tasks.size())
+								{
+									forwardHybridFailed = true;
+									forwardHybridError = "selected task identity drift";
+									break;
+								}
+								selectedByTask[static_cast<size_t>(selected.task_index)]
+									.push_back(selected);
+							}
+						}
+						for (size_t t = 0; t < tasks.size() && !forwardHybridFailed; ++t)
+						{
+							StreamTask &task = tasks[t];
+							taskTriplexes.clear();
+							FasimFastsimExtendScoreInfoTiming extendTiming;
+							fasim_ssw_cuda::ForwardHybridCpuTelemetry cpuTelemetry;
+							std::string extendError;
+							const bool extendOk =
+								fastSIM_extend_from_forward_hybrid_selected(
+									aligner, filter, 15, lncSeq, task.seq2,
+									*task.srcSeq, task.dnaStartPos, selectedByTask[t],
+									taskTriplexes, task.strand, task.Para, task.rule,
+									paraList.ntMin, paraList.ntMax, paraList.penaltyT,
+									paraList.penaltyC, paraList, writeFull, &extendTiming,
+									&cpuTelemetry, &extendError);
+							forwardHybridCpuTelemetry.continuation_calls +=
+								cpuTelemetry.continuation_calls;
+							forwardHybridCpuTelemetry.cpu_forward_calls +=
+								cpuTelemetry.cpu_forward_calls;
+							forwardHybridCpuTelemetry.cpu_reverse_calls +=
+								cpuTelemetry.cpu_reverse_calls;
+							forwardHybridCpuTelemetry.cpu_banded_sw_calls +=
+								cpuTelemetry.cpu_banded_sw_calls;
+							forwardHybridCpuTelemetry.failures += cpuTelemetry.failures;
+								forwardHybridCpuTelemetry.substring_seconds +=
+									cpuTelemetry.substring_seconds;
+								forwardHybridCpuTelemetry.continuation_seconds +=
+									cpuTelemetry.continuation_seconds;
+								forwardHybridCpuTelemetry.reverse_start_seconds +=
+									cpuTelemetry.reverse_start_seconds;
+								forwardHybridCpuTelemetry.banded_traceback_seconds +=
+									cpuTelemetry.banded_traceback_seconds;
+								forwardHybridCpuTelemetry.cigar_seconds +=
+									cpuTelemetry.cigar_seconds;
+								forwardHybridCpuTelemetry.conversion_seconds +=
+									cpuTelemetry.conversion_seconds;
+								forwardHybridCpuTelemetry.sort_seconds +=
+									cpuTelemetry.sort_seconds;
+								forwardHybridCpuTelemetry.filter_seconds +=
+									cpuTelemetry.filter_seconds;
+							if (!extendOk || cpuTelemetry.cpu_forward_calls != 0 ||
+								cpuTelemetry.cpu_reverse_calls !=
+									cpuTelemetry.continuation_calls ||
+								cpuTelemetry.cpu_banded_sw_calls !=
+									cpuTelemetry.continuation_calls ||
+								cpuTelemetry.failures != 0)
+							{
+								forwardHybridFailed = true;
+								forwardHybridError = extendError.empty() ?
+									"CPU continuation contract mismatch" : extendError;
+								break;
+							}
+							write_task_triplexes(task);
+						}
+						tasks.clear();
+						encodedTargets.clear();
+						legacyEncodedTargets.clear();
+						currentTargetLength = -1;
+						return;
+					}
+#endif
 					fasim_gasal2_two_slot_observe_flush(twoSlotOverlapStats,
 					                                     tasks.size());
 					const bool phase7V3AllColumnCertificate =
@@ -18948,7 +20093,9 @@ int main(int argc, char* const* argv)
 				auto run_long_query_streaming_scoreinfo_shadow = [&]()
 				{
 					if (longQueryStreamingScoreInfoShadowStats.requested == 0 ||
-					    gasal2QueryLengthSupported ||
+					    (gasal2QueryLengthSupported &&
+					     !longQueryGpuConsumerSpikeV1Requested &&
+					     !longQueryGpuConsumerReplacementPrototypeRequested) ||
 					    !paraList.doFastSim)
 						{
 							return;
@@ -18967,8 +20114,10 @@ int main(int argc, char* const* argv)
 						const bool scorePrepassStateMachineTrustRequested =
 							fasim_gasal2_score_prepass_state_machine_consumer_trust_runtime();
 							const bool streamingRealpathRequested =
-								fasim_long_query_streaming_scoreinfo_realpath_prototype_runtime() ||
-								scorePrepassStateMachineShadowRequested;
+									fasim_long_query_streaming_scoreinfo_realpath_prototype_runtime() ||
+									scorePrepassStateMachineShadowRequested ||
+									longQueryGpuConsumerSpikeV1Requested ||
+									longQueryGpuConsumerReplacementPrototypeRequested;
 						const bool streamingRealpathAllowed =
 							(streamingRealpathRequested && !twoContractRequested) ||
 							twoContractTrustRequested;
@@ -18977,6 +20126,7 @@ int main(int argc, char* const* argv)
 							 twoContractTrustRequested) &&
 							!fusedMinScoreRequested &&
 							(twoContractTrustRequested ||
+							 longQueryGpuConsumerReplacementPrototypeRequested ||
 							 fasim_long_query_streaming_scoreinfo_realpath_trust_runtime());
 						if (streamingRealpathAllowed)
 						{
@@ -20813,6 +21963,28 @@ int main(int argc, char* const* argv)
 							gpuDpColumnModeActive &&
 							!singlePassTopNRequested &&
 							cudaDeviceCount == 1;
+						if (exactBatchCanRun)
+						{
+							const uint64_t before = static_cast<uint64_t>(tasks.size());
+							const uint64_t targetLength =
+								static_cast<uint64_t>(currentTargetLength);
+							phaseTiming.exact_tasks_before += before;
+							phaseTiming.exact_tasks_after += before;
+							phaseTiming.exact_cells_before += before * targetLength;
+							phaseTiming.exact_cells_after += before * targetLength;
+							if (exactTaskCompactionShadowRequested)
+							{
+								const uint64_t after = static_cast<uint64_t>(
+									exact_task_unique_sequence_count(tasks));
+								phaseTiming.exact_task_shadow_active = true;
+								++phaseTiming.exact_task_shadow_batches;
+								phaseTiming.exact_task_shadow_candidate_tasks_after += after;
+								phaseTiming.exact_task_shadow_candidate_tasks_dropped_identical +=
+									before - after;
+								phaseTiming.exact_task_shadow_candidate_cells_after +=
+									after * targetLength;
+							}
+						}
 						const bool deferTopkForExactGasal2 =
 							exactBatchCanRun &&
 							gasal2LongtargetBatch &&
@@ -21025,6 +22197,9 @@ int main(int argc, char* const* argv)
 										++phaseTiming.exact_scoreinfo_gpu_batches;
 										phaseTiming.exact_scoreinfo_gpu_tasks +=
 											static_cast<uint64_t>(tasks.size());
+										phaseTiming.exact_scoreinfo_gpu_cells +=
+											static_cast<uint64_t>(tasks.size()) *
+											static_cast<uint64_t>(currentTargetLength);
 										phaseTiming.exact_scoreinfo_gpu_wall_seconds +=
 											fasim_seconds_since(compactStart) -
 											(columnResult.gpuSeconds + columnResult.h2dSeconds + columnResult.d2hSeconds);
@@ -21141,11 +22316,14 @@ int main(int argc, char* const* argv)
 															&compactResult,
 															&compactError);
 												}
-												if (phaseTimingEnabled)
-												{
-													++phaseTiming.exact_scoreinfo_gpu_batches;
-													phaseTiming.exact_scoreinfo_gpu_tasks +=
-														static_cast<uint64_t>(tasks.size());
+											if (phaseTimingEnabled)
+											{
+												++phaseTiming.exact_scoreinfo_gpu_batches;
+												phaseTiming.exact_scoreinfo_gpu_tasks +=
+													static_cast<uint64_t>(tasks.size());
+												phaseTiming.exact_scoreinfo_gpu_cells +=
+													static_cast<uint64_t>(tasks.size()) *
+													static_cast<uint64_t>(currentTargetLength);
 												phaseTiming.exact_scoreinfo_gpu_wall_seconds +=
 													fasim_seconds_since(compactStart);
 												phaseTiming.exact_scoreinfo_gpu_kernel_seconds +=
@@ -21187,52 +22365,60 @@ int main(int argc, char* const* argv)
 												}
 											}
 										}
-											if (compactValid && exactColumnBatchValidate)
+										if (compactValid && exactColumnBatchValidate)
+										{
+											for (size_t t = 0; t < tasks.size(); ++t)
 											{
-												for (size_t t = 0; t < tasks.size(); ++t)
+												if (phaseTimingEnabled)
 												{
-													const StreamTask &task = tasks[t];
-													std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
-													std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfoExpected;
-													StripedSmithWaterman::Aligner cpuAligner;
-													StripedSmithWaterman::Filter cpuFilter;
-													StripedSmithWaterman::Alignment cpuAlignment;
-													cpuAligner.preAlign(lncSeq.c_str(),
-													                    task.seq2.c_str(),
+													++phaseTiming.exact_scoreinfo_gpu_validation_tasks;
+												}
+												const StreamTask &task = tasks[t];
+												std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfo;
+												std::vector<struct StripedSmithWaterman::scoreInfo> cpuScoreInfoExpected;
+												StripedSmithWaterman::Aligner cpuAligner;
+												StripedSmithWaterman::Filter cpuFilter;
+												StripedSmithWaterman::Alignment cpuAlignment;
+												cpuAligner.preAlign(lncSeq.c_str(),
+												                    task.seq2.c_str(),
 												                    static_cast<int>(task.seq2.size()),
 												                    cpuFilter,
 												                    &cpuAlignment,
 												                    15,
 												                    minScores[t],
-													                    cpuScoreInfo,
-													                    5,
-													                    -4);
-													if (exactScoreInfoGpuPrunedOutputRequested)
+												                    cpuScoreInfo,
+												                    5,
+												                    -4);
+												if (exactScoreInfoGpuPrunedOutputRequested)
+												{
+													prune_scoreinfo_for_gasal2_top5(cpuScoreInfo,
+													                                gasal2ScoreInfoPruneMaxPerTask,
+													                                cpuScoreInfoExpected);
+												}
+												else
+												{
+													cpuScoreInfoExpected = cpuScoreInfo;
+												}
+												if (!scoreinfo_equal(compactBatchScoreInfos[t], cpuScoreInfoExpected))
+												{
+													compactValid = false;
+													if (phaseTimingEnabled)
 													{
-														prune_scoreinfo_for_gasal2_top5(cpuScoreInfo,
-														                                gasal2ScoreInfoPruneMaxPerTask,
-														                                cpuScoreInfoExpected);
+														++phaseTiming.exact_scoreinfo_gpu_validation_mismatches;
 													}
-													else
+													if (debugCuda)
 													{
-														cpuScoreInfoExpected = cpuScoreInfo;
+														cerr << "[fasim.cuda.scoreinfo_gpu] validate mismatch"
+														     << " task=" << t
+														     << " gpu_count=" << compactBatchScoreInfos[t].size()
+														     << " cpu_count=" << cpuScoreInfoExpected.size()
+														     << " cpu_input_count=" << cpuScoreInfo.size()
+														     << endl;
 													}
-													if (!scoreinfo_equal(compactBatchScoreInfos[t], cpuScoreInfoExpected))
-													{
-														compactValid = false;
-														if (debugCuda)
-														{
-															cerr << "[fasim.cuda.scoreinfo_gpu] validate mismatch"
-															     << " task=" << t
-															     << " gpu_count=" << compactBatchScoreInfos[t].size()
-															     << " cpu_count=" << cpuScoreInfoExpected.size()
-															     << " cpu_input_count=" << cpuScoreInfo.size()
-															     << endl;
-														}
-														break;
-													}
+													break;
 												}
 											}
+										}
 											if (compactValid)
 											{
 												if (phaseTimingEnabled &&
@@ -22562,6 +23748,68 @@ int main(int argc, char* const* argv)
 				}
 			}
 
+			/*
+			 * Standard tfosorted CPU work can be parallelized at the task level.
+			 * Each task gets an independent SSW workspace and triplex vector; the
+			 * authority writer below still consumes those vectors in input order.
+			 * This branch intentionally precedes all optional shadow/replay paths,
+			 * which are excluded from openmpStreamingActive above.
+			 */
+			if (openmpStreamingActive && !tasks.empty())
+			{
+				std::vector< std::vector<triplex> > openmpTriplexes(tasks.size());
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 1) if(openmpStreamingActive)
+#endif
+				for (int taskIndex = 0;
+				     taskIndex < static_cast<int>(tasks.size());
+				     ++taskIndex)
+				{
+					const StreamTask &task = tasks[static_cast<size_t>(taskIndex)];
+					std::string querySeq = lncSeq;
+					std::string targetSeq = task.seq2;
+					std::string srcSeq = *task.srcSeq;
+					const int fullScore = calc_score_once(
+						querySeq,
+						targetSeq,
+						task.dnaStartPos,
+						task.rule);
+					const int minScore = fasim_min_score_from_full_score(fullScore);
+					fastSIM(
+						querySeq,
+						targetSeq,
+						srcSeq,
+						task.dnaStartPos,
+						minScore,
+						5,
+						-4,
+						-12,
+						-4,
+						openmpTriplexes[static_cast<size_t>(taskIndex)],
+						task.strand,
+						task.Para,
+						task.rule,
+						paraList.ntMin,
+						paraList.ntMax,
+						paraList.penaltyT,
+						paraList.penaltyC,
+						paraList,
+						writeFull);
+				}
+				for (size_t t = 0; t < tasks.size(); ++t)
+				{
+					taskTriplexes.swap(openmpTriplexes[t]);
+					write_task_triplexes(tasks[t]);
+				}
+				finalize_attempt_consumer_shadow();
+				finalize_emission_only_consumer_shadow();
+				tasks.clear();
+				encodedTargets.clear();
+				legacyEncodedTargets.clear();
+				currentTargetLength = -1;
+				return;
+			}
+
 			// CPU fallback for this batch.
 			std::vector< std::vector<struct StripedSmithWaterman::scoreInfo> > gasalCpuScoreInfos;
 			std::vector< std::vector<triplex> > gasalCpuTriplexes;
@@ -23273,18 +24521,22 @@ int main(int argc, char* const* argv)
 								false);
 						}
 
-						if (gasal2_batched_traceback_enabled() ||
-					    segmentedLongQueryShadowFallbackRequested ||
-					    phase7AllAttemptEarlyStopFallbackRequested ||
-					    phase7V3AttemptCoverageSeedCertificateFallbackRequested ||
+					if (!longQueryGpuConsumerSpikeV1Requested &&
+					    !longQueryGpuConsumerReplacementPrototypeRequested &&
+					    (gasal2_batched_traceback_enabled() ||
+				    segmentedLongQueryShadowFallbackRequested ||
+				    phase7AllAttemptEarlyStopFallbackRequested ||
+				    phase7V3AttemptCoverageSeedCertificateFallbackRequested ||
 				    phase7V5FusedConsumerFallbackRequested ||
-				    phase7V3OracleMinCoverReplayFallbackRequested)
+				    phase7V3OracleMinCoverReplayFallbackRequested))
 				{
 					const bool streamingRealpathRequested =
 						(fasim_long_query_streaming_scoreinfo_realpath_prototype_runtime() &&
 						 !fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime()) ||
 						(fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime() &&
-						 fasim_long_query_streaming_scoreinfo_two_contract_bridge_trust_runtime());
+						 fasim_long_query_streaming_scoreinfo_two_contract_bridge_trust_runtime()) ||
+						longQueryGpuConsumerSpikeV1Requested ||
+						longQueryGpuConsumerReplacementPrototypeRequested;
 					if (streamingRealpathRequested)
 					{
 						++longQueryStreamingScoreInfoShadowStats.realpath_fallbacks;
@@ -23367,7 +24619,9 @@ int main(int argc, char* const* argv)
 						(fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime() &&
 						 fasim_long_query_streaming_scoreinfo_two_contract_bridge_trust_runtime()) ||
 						scorePrepassStateMachineShadowRequested ||
-						phase7V4GpuLegacyByteScoreInfoSourceReplayRequested;
+						phase7V4GpuLegacyByteScoreInfoSourceReplayRequested ||
+						longQueryGpuConsumerSpikeV1Requested ||
+						longQueryGpuConsumerReplacementPrototypeRequested;
 					const bool streamingRealpathCanUse =
 						streamingRealpathRequested &&
 						streamingRealpathScoreInfos.size() == tasks.size() &&
@@ -26198,10 +27452,105 @@ int main(int argc, char* const* argv)
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
 						StreamTask &task = tasks[t];
-						const int minScore = task_min_score(task);
+						const int minScore =
+							longQueryGpuConsumerReplacementPrototypeRequested ?
+								0 : task_min_score(task);
 							taskTriplexes.clear();
 							if (paraList.doFastSim)
 							{
+									if (longQueryGpuConsumerReplacementPrototypeRequested)
+									{
+										std::vector<triplex> replacementTriplexes;
+										const std::vector<FasimConsumerAttemptTraceRow>
+											emptyCpuReferenceAttempts;
+										FasimLongQueryGpuConsumerSpikeResult replacementResult;
+										std::string replacementError;
+										bool replacementOk = false;
+										if (!streamingRealpathCanUse ||
+										    t >= streamingRealpathScoreInfos.size())
+										{
+											replacementResult.validation_enabled = false;
+											replacementResult.error =
+												"replacement_scoreinfo_not_ready";
+											replacementError = replacementResult.error;
+										}
+										else
+										{
+											replacementOk =
+												fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
+													aligner,
+													filter,
+													15,
+													lncSeq,
+													task.seq2,
+													*task.srcSeq,
+													task.dnaStartPos,
+													streamingRealpathScoreInfos[t],
+													emptyCpuReferenceAttempts,
+													false,
+													replacementTriplexes,
+													task.strand,
+													task.Para,
+													task.rule,
+													paraList.ntMin,
+													paraList.ntMax,
+													paraList.penaltyT,
+													paraList.penaltyC,
+													paraList,
+													writeFull,
+													&replacementResult,
+													&replacementError);
+										}
+										if (!replacementError.empty() &&
+										    replacementResult.error == "none")
+										{
+											replacementResult.error = replacementError;
+										}
+										const std::vector<triplex> noInProcessAuthority;
+										write_long_query_gpu_consumer_spike_row(
+											task.taskIndex,
+											replacementResult,
+											replacementTriplexes,
+											noInProcessAuthority);
+										const bool emptyScoreInfo =
+											replacementResult.scoreinfo_groups == 0;
+										const bool replacementContractOk =
+											replacementOk && replacementResult.ok &&
+											!replacementResult.validation_enabled &&
+											replacementResult.cpu_oracle_attempts == 0 &&
+											replacementResult.cpu_reference_align_attempts == 0 &&
+											(emptyScoreInfo ||
+											 (replacementResult.gpu_scored_attempts ==
+											      replacementResult.attempts &&
+											  replacementResult.cpu_continuation_requested &&
+											  replacementResult.cpu_continuation_active &&
+											  replacementResult.cpu_continuation_failures == 0 &&
+											  replacementResult.cpu_align_attempts ==
+											      replacementResult.cpu_continuation_calls &&
+											  replacementResult.cpu_continuation_calls ==
+											      replacementResult.control_selected_attempts));
+										if (!replacementContractOk)
+										{
+											longQueryGpuConsumerSpikeReport.flush();
+											cerr << "FASIM long-query replacement prototype failed closed"
+											     << " task=" << task.taskIndex
+											     << " error=" << replacementResult.error << endl;
+											std::exit(EXIT_FAILURE);
+										}
+										taskTriplexes.swap(replacementTriplexes);
+										longQueryStreamingScoreInfoShadowStats
+											.realpath_extend_seconds += replacementResult.total_seconds;
+										longQueryStreamingScoreInfoShadowStats
+											.realpath_extend_scoreinfo_groups +=
+											replacementResult.scoreinfo_groups;
+										longQueryStreamingScoreInfoShadowStats
+											.realpath_extend_align_attempts +=
+											replacementResult.cpu_continuation_calls;
+										++longQueryStreamingScoreInfoShadowStats.realpath_extend_calls;
+										++longQueryStreamingScoreInfoShadowStats.realpath_used;
+										write_task_triplexes(task);
+										continue;
+									}
 									if (scorePrepassStateMachineTrustRequested &&
 									    streamingRealpathCanUse &&
 									    t < scorePrepassStateMachineTriplexesByTask.size() &&
@@ -26284,6 +27633,50 @@ int main(int argc, char* const* argv)
 										extendTiming.align_seconds;
 									longQueryStreamingScoreInfoShadowStats.realpath_extend_convert_seconds +=
 										extendTiming.convert_seconds;
+								if (longQueryGpuConsumerSpikeV1Requested &&
+								    lncSeq.size() > 2812 &&
+								    streamingRealpathCanUse &&
+								    t < streamingRealpathScoreInfos.size() &&
+								    (fasim_long_query_gpu_consumer_spike_v1_max_tasks_runtime() == 0 ||
+								     task.taskIndex <
+								       fasim_long_query_gpu_consumer_spike_v1_max_tasks_runtime()))
+									{
+										std::vector<triplex> spikeTriplexes;
+										FasimLongQueryGpuConsumerSpikeResult spikeResult;
+										std::string spikeError;
+										fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
+											aligner,
+											filter,
+											15,
+											lncSeq,
+											task.seq2,
+											*task.srcSeq,
+											task.dnaStartPos,
+											streamingRealpathScoreInfos[t],
+											extendTiming.consumer_attempt_trace,
+											true,
+											spikeTriplexes,
+											task.strand,
+											task.Para,
+											task.rule,
+											paraList.ntMin,
+											paraList.ntMax,
+											paraList.penaltyT,
+											paraList.penaltyC,
+											paraList,
+											writeFull,
+											&spikeResult,
+											&spikeError);
+										if (!spikeError.empty() && spikeResult.error == "none")
+										{
+											spikeResult.error = spikeError;
+										}
+										write_long_query_gpu_consumer_spike_row(
+											task.taskIndex,
+											spikeResult,
+											spikeTriplexes,
+											taskTriplexes);
+									}
 									if (phase3CigarNtPrefilterShadowEnabled)
 									{
 										phase3CigarNtPrefilterShadowStats.alignments_seen +=
@@ -26600,6 +27993,12 @@ int main(int argc, char* const* argv)
 			                                    long recordStartGenome,
 			                                    const std::string &chrTag)
 				{
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+				if (forwardHybridFailed)
+				{
+					return;
+				}
+#endif
 				if (useCudaBatch || streamingScoreInfoShadowCudaReady)
 				{
 					if (currentTargetLength < 0)
@@ -26922,6 +28321,8 @@ int main(int argc, char* const* argv)
 			two_slot_drain_pipeline();
 			if (outOpened)
 			{
+				FasimAuthorityProfileScope authorityIoScope(
+					FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 				FasimScopedSeconds scoped(phaseTimingEnabled,
 				                          &phaseTiming.output_close_seconds);
 				if (writeFull)
@@ -27054,6 +28455,120 @@ int main(int argc, char* const* argv)
 						&streamingScoreInfoGpuMinScoreCudaQuery);
 				}
 
+#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+				if (forwardHybridActive)
+				{
+					if (forwardHybridFlushes == 0 ||
+						forwardHybridSelected !=
+							forwardHybridCpuTelemetry.continuation_calls ||
+						forwardHybridCpuTelemetry.cpu_forward_calls != 0 ||
+						forwardHybridCpuTelemetry.cpu_reverse_calls !=
+							forwardHybridCpuTelemetry.continuation_calls ||
+						forwardHybridCpuTelemetry.cpu_banded_sw_calls !=
+							forwardHybridCpuTelemetry.continuation_calls ||
+						forwardHybridCpuTelemetry.failures != 0)
+					{
+						forwardHybridFailed = true;
+						if (forwardHybridError == "none")
+							forwardHybridError = "final CPU-call invariant failed";
+					}
+					std::string telemetryError = forwardHybridError;
+					std::replace(telemetryError.begin(), telemetryError.end(), '\t', ' ');
+					std::replace(telemetryError.begin(), telemetryError.end(), '\n', ' ');
+					std::replace(telemetryError.begin(), telemetryError.end(), '\r', ' ');
+					std::ofstream telemetryFile(
+						forwardHybridTelemetryPath.c_str(), std::ios::out | std::ios::trunc);
+					if (!telemetryFile.is_open())
+					{
+						cerr << "failed to create forward-hybrid telemetry" << endl;
+						return 2;
+					}
+					telemetryFile
+						<< "schema_version\tbackend\tstatus\tdevice\tflushes\ttasks"
+						   "\tscoreinfos\tattempts\tselected\tcpu_prealign_calls"
+						   "\tcpu_forward_calls\tcpu_reverse_calls\tcpu_banded_sw_calls"
+						   "\tcpu_continuation_calls\tcpu_failures\tfallback_calls"
+						   "\tgpu_preselect_seconds\tgpu_forward_seconds"
+						   "\tattempt_planning_seconds\tattempt_selection_seconds"
+						   "\tgpu_packing_seconds\tgpu_h2d_seconds"
+						   "\tgpu_prealign_kernel_seconds\tgpu_selection_kernel_seconds"
+						   "\tgpu_forward_kernel_seconds\tgpu_endpoint_reduce_seconds"
+						   "\tgpu_d2h_seconds\tgpu_unattributed_overhead_seconds"
+						   "\thost_input_bytes\tdevice_input_bytes"
+						   "\tdevice_workspace_peak_bytes\tdevice_output_bytes"
+						   "\tbackend_total_seconds\tcpu_substring_seconds"
+						   "\tcpu_continuation_seconds\tcpu_reverse_start_seconds"
+						   "\tcpu_banded_traceback_seconds\tcpu_cigar_seconds"
+						   "\tdownstream_conversion_seconds\tcluster_sort_seconds"
+						   "\tfilter_seconds"
+						   "\terror\n";
+					telemetryFile << std::setprecision(17)
+						<< "1\tcuda-forward-hybrid\t"
+						<< (forwardHybridFailed ? "failed" : "complete") << '\t'
+						<< forwardHybridDevice << '\t' << forwardHybridFlushes << '\t'
+						<< forwardHybridTasks << '\t' << forwardHybridScoreinfos << '\t'
+						<< forwardHybridAttempts << '\t' << forwardHybridSelected << '\t'
+						<< 0 << '\t' << forwardHybridCpuTelemetry.cpu_forward_calls << '\t'
+						<< forwardHybridCpuTelemetry.cpu_reverse_calls << '\t'
+						<< forwardHybridCpuTelemetry.cpu_banded_sw_calls << '\t'
+						<< forwardHybridCpuTelemetry.continuation_calls << '\t'
+						<< forwardHybridCpuTelemetry.failures << '\t' << 0 << '\t'
+						<< forwardHybridGpuPreselectSeconds << '\t'
+						<< forwardHybridGpuForwardSeconds << '\t'
+						<< forwardHybridPlanningSeconds << '\t'
+						<< forwardHybridSelectionSeconds << '\t'
+						<< forwardHybridGpuPackingSeconds << '\t'
+						<< forwardHybridGpuH2dSeconds << '\t'
+						<< forwardHybridGpuPrealignKernelSeconds << '\t'
+						<< forwardHybridGpuSelectionKernelSeconds << '\t'
+						<< forwardHybridGpuForwardKernelSeconds << '\t'
+						<< forwardHybridGpuEndpointReduceSeconds << '\t'
+						<< forwardHybridGpuD2hSeconds << '\t'
+						<< forwardHybridGpuOverheadSeconds << '\t'
+						<< forwardHybridHostInputBytes << '\t'
+						<< forwardHybridDeviceInputBytes << '\t'
+						<< forwardHybridDeviceWorkspacePeakBytes << '\t'
+						<< forwardHybridDeviceOutputBytes << '\t'
+						<< forwardHybridBackendSeconds << '\t'
+						<< forwardHybridCpuTelemetry.substring_seconds << '\t'
+						<< forwardHybridCpuTelemetry.continuation_seconds << '\t'
+						<< forwardHybridCpuTelemetry.reverse_start_seconds << '\t'
+						<< forwardHybridCpuTelemetry.banded_traceback_seconds << '\t'
+						<< forwardHybridCpuTelemetry.cigar_seconds << '\t'
+						<< forwardHybridCpuTelemetry.conversion_seconds << '\t'
+						<< forwardHybridCpuTelemetry.sort_seconds << '\t'
+						<< forwardHybridCpuTelemetry.filter_seconds << '\t'
+						<< telemetryError << '\n';
+					telemetryFile.close();
+					cerr << "benchmark.ssw_forward_hybrid.status="
+					     << (forwardHybridFailed ? "failed" : "complete") << "\n"
+					     << "benchmark.ssw_forward_hybrid.tasks="
+					     << forwardHybridTasks << "\n"
+					     << "benchmark.ssw_forward_hybrid.selected="
+					     << forwardHybridSelected << "\n"
+					     << "benchmark.ssw_forward_hybrid.cpu_forward_calls="
+					     << forwardHybridCpuTelemetry.cpu_forward_calls << "\n";
+					if (forwardHybridFailed) return 2;
+				}
+#endif
+
+			if (canonicalHybridV2Telemetry.requested &&
+			    (canonicalHybridV2Telemetry.failed ||
+			     canonicalHybridV2Telemetry.rows == 0 ||
+			     canonicalHybridV2Telemetry.selected_rows !=
+				     canonicalHybridV2Telemetry.cpu_rows))
+			{
+				if (!canonicalHybridV2Telemetry.failed)
+				{
+					canonicalHybridV2Telemetry.fail(
+						canonicalHybridV2Telemetry.rows == 0 ?
+						"no_attempt_telemetry" :
+						"selected_cpu_traceback_total_mismatch");
+				}
+				fasim_print_canonical_hybrid_v2_telemetry_stats(
+					canonicalHybridV2Telemetry);
+				return 2;
+			}
 			end = clock();
 		cout << "finished normally" << endl;
 			cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
@@ -27195,6 +28710,11 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_snapshot_stats());
 			fasim_print_phase3_cigar_nt_prefilter_shadow_stats(
 				phase3CigarNtPrefilterShadowStats);
+			if (canonicalHybridV2Telemetry.requested)
+			{
+				fasim_print_canonical_hybrid_v2_telemetry_stats(
+					canonicalHybridV2Telemetry);
+			}
 			fasim_gasal2_print_stats();
 			return 0;
 	}
@@ -27317,6 +28837,8 @@ int main(int argc, char* const* argv)
 
 string readRna(string rnaFileName, string &lncName)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 	ifstream rnaFile;
 	string tmpRNA;
 	string tmpStr;
@@ -27346,6 +28868,8 @@ string readRna(string rnaFileName, string &lncName)
 
 void readDna(string dnaFileName, vector<string> &speciess, vector<string> &chroTags,vector<long> &startGenomes,vector<string> &dnaSeqs)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 	ifstream dnaFile(dnaFileName.c_str());
 	if (!dnaFile.is_open())
 	{
@@ -27815,10 +29339,49 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 
 	if (!useCudaBatch)
 	{
-		int minScore = 0, minscore;
-		string seqrev;
-		for (int i = 0; i < dnaSequencesVec.size(); i++)
+		/*
+		 * A Fasim invocation has one immutable RNA query and many independent
+		 * target windows.  The old implementation processed those windows in
+		 * one process but one after another; the external queue then duplicated
+		 * the process (and its DP allocator state) once per CPU.  The OpenMP
+		 * path keeps one result vector per window, so workers never mutate shared
+		 * triplex state.  Results are merged in window order below, preserving
+		 * the serial consumer's deterministic input order.
+		 */
+		const bool openmpRequested = fasim_openmp_requested_runtime();
+		const int openmpThreads = openmpRequested ?
+			fasim_openmp_configure_threads(paraList.corenum) : 1;
+		const bool openmpActive =
+			openmpRequested &&
+			openmpThreads > 1 &&
+			!verbose &&
+			!fasim_ssw_oracle::enabled() &&
+			!fasim_prealign_cuda_enabled_runtime() &&
+			!fasim_gasal2_enabled();
+		if (openmpRequested && !openmpActive)
 		{
+			cerr << "[fasim.openmp] disabled for this invocation"
+			     << " (requires plain CPU Fasim, non-verbose output, and >1 thread)"
+			     << endl;
+		}
+		if (openmpActive)
+		{
+			cerr << "benchmark.fasim_openmp.active=1\n"
+			     << "benchmark.fasim_openmp.threads=" << openmpThreads << "\n"
+			     << "benchmark.fasim_openmp.windows=" << dnaSequencesVec.size() << "\n"
+			     << "benchmark.fasim_openmp.schedule=dynamic_1_ordered_merge\n";
+		}
+		vector< vector<struct triplex> > windowTriplexLists(
+			dnaSequencesVec.size());
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 1) if(openmpActive)
+#endif
+		for (int i = 0; i < static_cast<int>(dnaSequencesVec.size()); i++)
+		{
+			vector<struct triplex> &triplex_list =
+				windowTriplexLists[static_cast<size_t>(i)];
+			int minScore = 0, minscore;
+			string seqrev;
 			long dnaStartPos = dnaSequencesStartPos[i];
 			if (verbose)
 			{
@@ -28012,15 +29575,23 @@ void LongTarget(struct para &paraList, string rnaSequence, string dnaSequence,
 				}
 			}
 		}
-	}
-
-	for (int i = 0; i < triplex_list.size(); i++)
-	{
-		triplex atr = triplex_list[i];
-		if (atr.score >= paraList.scoreMin && atr.identity >= paraList.minIdentity
-			&& atr.tri_score >= paraList.minStability && atr.nt >= paraList.cLength)
+		/* Filter and merge in the original window order.  Moving each row
+		 * avoids a second copy of the alignment strings during the merge. */
+		for (size_t window = 0; window < windowTriplexLists.size(); ++window)
 		{
-			sort_triplex_list.push_back(atr);
+			vector<struct triplex> &windowRows = windowTriplexLists[window];
+			for (size_t row = 0; row < windowRows.size(); ++row)
+			{
+				triplex &atr = windowRows[row];
+				if (atr.score >= paraList.scoreMin &&
+					atr.identity >= paraList.minIdentity &&
+					atr.tri_score >= paraList.minStability &&
+					atr.nt >= paraList.cLength)
+				{
+					sort_triplex_list.push_back(std::move(atr));
+				}
+			}
+			vector<struct triplex>().swap(windowRows);
 		}
 	}
 }
@@ -28224,6 +29795,8 @@ void print_cluster(int c_level, map<size_t, size_t> class1[], int start_genome, 
 
 void printResult(string &species, struct para paraList, string &lncName, string &dnaFile, vector<struct triplex> &sort_triplex_list, string &chroTag, string &dnaSequence, int start_genome, string &c_tmp_dd, string &c_tmp_length, string &resultDir,string lncSeq)
 {
+	FasimAuthorityProfileScope authorityIoScope(
+		FASIM_AUTHORITY_STAGE_SERIALIZATION_IO);
 	vector<struct tmp_class> w_tmp_class;
 	string pre_file2 = resultDir + "/" + species + "-" + lncName;
 	string pre_file1=dnaFile;
@@ -28242,6 +29815,8 @@ void printResult(string &species, struct para paraList, string &lncName, string 
 	int class_level = 5;
 	if (doCluster)
 	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
 		cluster_triplex(paraList.cDistance, paraList.cLength, sort_triplex_list, class1, class1a, class1b, class_level);
 		sort(sort_triplex_list.begin(), sort_triplex_list.end(), comp);
 	}

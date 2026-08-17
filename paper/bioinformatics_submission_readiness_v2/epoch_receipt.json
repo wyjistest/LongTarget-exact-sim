@@ -1,0 +1,16 @@
+{
+  "artifact_root": ".paper-artifacts/bioinformatics-submission-readiness-v2",
+  "artifact_root_exists_at_phase0": false,
+  "authorization_path": "paper/bioinformatics_submission_readiness_v2/owner_phase0_authorization.json",
+  "authorization_sha256": "10d15872d7c99c0ee0b6f7011611f1bf8d94f6518dd42338a89f319eb3cef959",
+  "baseline_commit": "739ee0a8db01f77143a5c993e6c68a56a772502b",
+  "epoch_id": "bioinformatics_submission_readiness_v2",
+  "fixed_v2_artifact_storage_bytes": 68719476736,
+  "legacy_boundary_path": "paper/bioinformatics_submission_readiness_v2/legacy_boundary.json",
+  "legacy_boundary_sha256": "d5b557a3d59e685eef850411cc423038d67e6747c47b4221b544d139c29e7f1c",
+  "new_prediction_started": false,
+  "post_hoc_scope_decision": true,
+  "protocol_path": "goal-bioinformatics-submission-readiness-v2.md",
+  "protocol_sha256": "09d70dc201e669fcc278d0a2ebcf4e1a9e64ca470d858ee42cfbe04ec1bb9a32",
+  "schema_version": 1
+}

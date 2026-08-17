@@ -1,0 +1,16 @@
+{
+  "approval_context": "Owner approved the explicitly proposed 64 GiB successor epoch after the fixed byte value and conservative observed-size envelope were stated.",
+  "approval_message": "\u6279\u51c6",
+  "approval_scope": "independent_biological_topk_successor_epoch_and_fixed_total_artifact_quota",
+  "approved_by": "repository_owner_via_active_codex_thread",
+  "approved_on": "2026-07-30",
+  "includes_predecessor_artifact_bytes": true,
+  "max_total_artifact_storage_bytes": 68719476736,
+  "predecessor_commit": "7fae3de6b13780d7cc0776038489cf2f22072339",
+  "predecessor_evidence_may_be_modified": false,
+  "protocol_path": "goal-biological-topk-successor.md",
+  "protocol_sha256": "7404c52e0ef19db1ca48186fae610ff28bc9c4989febb5667ec09bfa4cc6f2f1",
+  "quota_may_be_raised_after_successor_phase3_projection": false,
+  "quota_unit": "bytes",
+  "schema_version": 1
+}

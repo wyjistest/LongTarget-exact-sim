@@ -1,0 +1,323 @@
+{
+  "$id": "https://longtarget.example/schemas/biological_topk_contract.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": {
+        "exact_numbers": {
+          "properties": {
+            "score_integer_required": { "const": true },
+            "score_representation": { "const": "integral_exact" }
+          },
+          "required": ["score_integer_required", "score_representation"]
+        },
+        "score_representation": { "const": "integral_exact" }
+      },
+      "required": ["exact_numbers", "score_representation"]
+    },
+    {
+      "properties": {
+        "exact_numbers": {
+          "properties": {
+            "score_integer_required": { "const": false },
+            "score_representation": { "const": "decimal_exact" }
+          },
+          "required": ["score_integer_required", "score_representation"]
+        },
+        "score_representation": { "const": "decimal_exact" }
+      },
+      "required": ["exact_numbers", "score_representation"]
+    }
+  ],
+  "properties": {
+    "alpha": { "const": 0.05 },
+    "claim_scope": { "const": "set_preservation_with_top1_retention" },
+    "cluster_distance": { "const": 15 },
+    "clustering": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "const": "exact_legacy_cluster_triplex" },
+        "distance": { "const": 15 },
+        "dynamic_map_operator_indexing": { "const": true },
+        "fixture_sha256": { "$ref": "#/$defs/sha256" },
+        "max_tie_comparison": { "const": "strict_greater_than" },
+        "midpoint_formula": { "const": "(raw_QueryStart+raw_QueryEnd)//2" },
+        "minimum_nt_bp": { "const": 50 },
+        "minimum_nt_rule": { "const": "strict_greater_than" }
+      },
+      "required": [
+        "algorithm",
+        "distance",
+        "dynamic_map_operator_indexing",
+        "fixture_sha256",
+        "max_tie_comparison",
+        "midpoint_formula",
+        "minimum_nt_bp",
+        "minimum_nt_rule"
+      ],
+      "type": "object"
+    },
+    "confidence_method": { "const": "one_sided_exact_clopper_pearson" },
+    "contract_name": { "const": "biological_topk_candidate_site_v1" },
+    "coordinate_mapping_table_sha256": { "$ref": "#/$defs/sha256" },
+    "coordinates": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_basis": { "const": "0_based_half_open_forward_target" },
+        "fixture_sha256": { "$ref": "#/$defs/sha256" },
+        "query_raw_basis": { "const": "1_based_inclusive" },
+        "reachable_directions": { "const": ["R"] },
+        "unreachable_directions": { "const": ["L"] }
+      },
+      "required": [
+        "canonical_basis",
+        "fixture_sha256",
+        "query_raw_basis",
+        "reachable_directions",
+        "unreachable_directions"
+      ],
+      "type": "object"
+    },
+    "denominator": {
+      "additionalProperties": false,
+      "properties": {
+        "A_empty_G_nonempty": { "const": "noninformative_denominator_eligible_binary_zero" },
+        "A_nonempty_G_empty": { "const": "informative_denominator_eligible_binary_zero" },
+        "clean_double_empty_binary_success": { "type": "null" },
+        "only_exclusion": { "const": "clean_double_empty" },
+        "technical_failure": { "const": "denominator_eligible_binary_zero" }
+      },
+      "required": [
+        "A_empty_G_nonempty",
+        "A_nonempty_G_empty",
+        "clean_double_empty_binary_success",
+        "only_exclusion",
+        "technical_failure"
+      ],
+      "type": "object"
+    },
+    "double_empty": { "const": "non_informative_not_success" },
+    "exact_numbers": {
+      "additionalProperties": false,
+      "properties": {
+        "binary_float_contract_comparison": { "const": false },
+        "decimal_regex": { "const": "-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?\\Z" },
+        "identity_representation": { "const": "exact_Decimal" },
+        "nt_representation": { "const": "exact_integer" },
+        "score_decimal_string_required": { "const": true },
+        "score_integer_required": { "type": "boolean" },
+        "score_representation": { "enum": ["integral_exact", "decimal_exact"] },
+        "stability_representation": { "const": "exact_Decimal" }
+      },
+      "required": [
+        "binary_float_contract_comparison",
+        "decimal_regex",
+        "identity_representation",
+        "nt_representation",
+        "score_decimal_string_required",
+        "score_integer_required",
+        "score_representation",
+        "stability_representation"
+      ],
+      "type": "object"
+    },
+    "input_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "const": [
+            "query_ordinal_namespace",
+            "query_source_ordinal",
+            "query_sequence_sha256",
+            "target_ordinal_namespace",
+            "target_source_ordinal",
+            "target_sequence_sha256",
+            "assembly",
+            "target_coordinate_namespace",
+            "query_extraction_recipe_id",
+            "target_extraction_recipe_id",
+            "parameter_bundle_sha256",
+            "input_pair_digest"
+          ]
+        },
+        "logic": { "const": "AND" },
+        "mismatch_behavior": { "const": "technical_failure_matching_not_started_all_primary_metrics_fail" },
+        "ordinal_identity": { "const": "namespace_and_ordinal" },
+        "pair_digest_serialization": { "const": "UTF-8_sorted_keys_compact_JSON_SHA-256" }
+      },
+      "required": [
+        "fields",
+        "logic",
+        "mismatch_behavior",
+        "ordinal_identity",
+        "pair_digest_serialization"
+      ],
+      "type": "object"
+    },
+    "k": { "const": 5 },
+    "lcb_min": { "const": 0.95 },
+    "legacy_midpoint": { "const": "int((raw_QueryStart+raw_QueryEnd)/2)" },
+    "matching": {
+      "additionalProperties": false,
+      "properties": {
+        "arithmetic": { "const": "exact_Fraction_and_integer_cross_multiplication" },
+        "equal_objective_distinct_pair_sets": { "const": "ambiguous_failure" },
+        "equivalent_optima": { "const": "failure" },
+        "input_identity": { "const": "all_fields_AND" },
+        "objective": { "const": "lexicographic_aggregate_exact_fraction" },
+        "objective_comparison": { "const": "lexicographic" },
+        "one_to_one_objective": {
+          "const": [
+            "matched_edge_count_max",
+            "sum_target_overlap_max",
+            "sum_query_rep_overlap_max",
+            "sum_query_cluster_overlap_max",
+            "sum_ungapped_tfo_equal_max",
+            "sum_ungapped_tts_equal_max",
+            "sum_target_endpoint_L1_min",
+            "sum_query_endpoint_L1_min",
+            "sum_cluster_center_distance_min"
+          ]
+        },
+        "overlap_definition": { "const": "intersection_length/max(length_A,length_G)" },
+        "prohibited_tiebreakers": {
+          "const": ["score", "Nt", "stability", "cluster_id", "row_order", "backend"]
+        },
+        "query_cluster_span_reciprocal_overlap_min": { "$ref": "#/$defs/nine_tenths" },
+        "query_representative_reciprocal_overlap_min": { "$ref": "#/$defs/nine_tenths" },
+        "target_representative_reciprocal_overlap_min": { "$ref": "#/$defs/nine_tenths" }
+      },
+      "required": [
+        "arithmetic",
+        "equal_objective_distinct_pair_sets",
+        "equivalent_optima",
+        "input_identity",
+        "objective",
+        "objective_comparison",
+        "one_to_one_objective",
+        "overlap_definition",
+        "prohibited_tiebreakers",
+        "query_cluster_span_reciprocal_overlap_min",
+        "query_representative_reciprocal_overlap_min",
+        "target_representative_reciprocal_overlap_min"
+      ],
+      "type": "object"
+    },
+    "operating_envelope_sha256": { "$ref": "#/$defs/sha256" },
+    "parameter_bundle_sha256": { "$ref": "#/$defs/sha256" },
+    "primary_endpoint": { "const": "score_complete_set_success_rate" },
+    "rank_order_claim": { "const": "diagnostic_only" },
+    "ranking": {
+      "additionalProperties": false,
+      "properties": {
+        "full_row_fallback_cross_arm_identity": { "const": false },
+        "nt": { "const": ["Nt_desc", "Score_desc", "MeanStability_desc", "full_row_desc_within_arm_only"] },
+        "score": { "const": ["Score_desc", "Nt_desc", "MeanStability_desc", "full_row_desc_within_arm_only"] },
+        "stability": { "const": ["MeanStability_desc", "Nt_desc", "Score_desc", "full_row_desc_within_arm_only"] }
+      },
+      "required": ["full_row_fallback_cross_arm_identity", "nt", "score", "stability"],
+      "type": "object"
+    },
+    "ranking_mode_values": { "const": ["score", "stability", "nt"] },
+    "row_eligibility": {
+      "additionalProperties": false,
+      "properties": {
+        "nt_bp": { "const": 50 },
+        "nt_operator": { "const": ">" }
+      },
+      "required": ["nt_bp", "nt_operator"],
+      "type": "object"
+    },
+    "schema_version": { "const": 2 },
+    "scientific_object": { "const": "clustered_TFO_query_target_candidate_site" },
+    "score_representation": { "enum": ["integral_exact", "decimal_exact"] },
+    "statistics": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": { "const": "one_sided_exact_Clopper_Pearson_95" },
+        "n_binary_required": { "const": 124 },
+        "ordered_diagnostic": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_role": { "const": "secondary_diagnostic_only" },
+            "depth": { "const": 5 },
+            "empty_value": { "const": "0" },
+            "name": { "const": "finite_RBO_EXT" },
+            "p": { "const": "0.90" }
+          },
+          "required": ["claim_role", "depth", "empty_value", "name", "p"],
+          "type": "object"
+        },
+        "primary": { "const": "score_ranked_complete_set_binary_success_rate" },
+        "promotion_lcb": { "const": "0.95" },
+        "zero_failure_hard_gate": {
+          "const": [
+            "technical_failure_count",
+            "missing_output_count",
+            "input_identity_mismatch_count",
+            "ambiguous_matching_count",
+            "unexpected_fallback_count"
+          ]
+        }
+      },
+      "required": [
+        "confidence",
+        "n_binary_required",
+        "ordered_diagnostic",
+        "primary",
+        "promotion_lcb",
+        "zero_failure_hard_gate"
+      ],
+      "type": "object"
+    },
+    "strict_row_equality": { "const": "diagnostic_only" }
+  },
+  "required": [
+    "alpha",
+    "claim_scope",
+    "cluster_distance",
+    "clustering",
+    "confidence_method",
+    "contract_name",
+    "coordinate_mapping_table_sha256",
+    "coordinates",
+    "denominator",
+    "double_empty",
+    "exact_numbers",
+    "input_identity",
+    "k",
+    "lcb_min",
+    "legacy_midpoint",
+    "matching",
+    "operating_envelope_sha256",
+    "parameter_bundle_sha256",
+    "primary_endpoint",
+    "rank_order_claim",
+    "ranking",
+    "ranking_mode_values",
+    "row_eligibility",
+    "schema_version",
+    "scientific_object",
+    "score_representation",
+    "statistics",
+    "strict_row_equality"
+  ],
+  "title": "Biological Top-K candidate-site v1 contract",
+  "type": "object",
+  "$defs": {
+    "nine_tenths": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator": { "const": 10 },
+        "numerator": { "const": 9 }
+      },
+      "required": ["denominator", "numerator"],
+      "type": "object"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  }
+}

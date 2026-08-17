@@ -1,0 +1,59 @@
+{
+  "allowed_post_pilot_decisions": [
+    "continue_full_descriptive_negative",
+    "stop_after_pilot_futility",
+    "blocked_by_operational_failure",
+    "blocked_by_fixed_budget"
+  ],
+  "attempt_plan_sha256": "b071692a3429414003a122b9388e2601ef5f1f41b6ace077a247424ff91175dd",
+  "b3_capacity_gain_threshold": 10.0,
+  "b3_promotion_feasibility": "structurally_unreachable_under_verified_only_v1",
+  "b3_reason": "sequential safe C includes the complete authority A workload plus candidate, comparison, and nonnegative wrapper overhead",
+  "b3_safe_speedup_threshold": 10.0,
+  "b3_threshold_changed": false,
+  "b3_wall_reduction_threshold_seconds": 28800,
+  "candidate_only_can_be_reported_as_safe_acceleration": false,
+  "continue_full_descriptive_negative_requires_owner_authorization": true,
+  "formal_execution_started": false,
+  "freeze_id": "bioinformatics-phase3-application-v1-e8c5441c",
+  "full_run_decision": "pending_fixed_pilot",
+  "lower_substitute_threshold_allowed": false,
+  "manifest_sha256": "e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc",
+  "phase2_decision": "verified_only_contract",
+  "pilot_attempt_ids": [
+    "p3pilot_a_aq001_at0001",
+    "p3pilot_b_aq001_at0001",
+    "p3pilot_c_aq001_at0001"
+  ],
+  "pilot_can_change_claim_boundary": false,
+  "pilot_can_change_panel": false,
+  "pilot_can_change_parameters": false,
+  "pilot_can_change_scale": false,
+  "pilot_can_promote_b3": false,
+  "pilot_can_rescue_b3": false,
+  "pilot_role": "operational_and_resource_characterization_only",
+  "pilot_scope": "aq001_at0001",
+  "postpilot_decision_precedence": [
+    "blocked_by_operational_failure",
+    "blocked_by_fixed_budget",
+    "stop_after_pilot_futility"
+  ],
+  "repeat_subset_sha256": "4011e0bd452d0fcbdf22388a21b8f92aed71240209f8176b52364212675b7e12",
+  "resource_projection_conservatism_factor": 1.25,
+  "resource_projection_method_version": "pilot_max_pair_or_sequence_worker_scale_v1",
+  "runner_commit": "f1f9f63506c1d853da968d5f518c1ff2b8376345",
+  "runner_sha256": "0fa369148b1e9cb081368b716e470b0c7aad9956ef7e50fb3e881921a490cd98",
+  "safe_pipeline_definition": [
+    "candidate",
+    "complete_authority",
+    "comparison"
+  ],
+  "safe_pipeline_execution_order": [
+    "candidate",
+    "complete_authority",
+    "comparison"
+  ],
+  "safe_timing_identity": "T_C=T_candidate+T_authority+T_compare+wrapper_overhead",
+  "schema_version": 1,
+  "status": "preexecution_frozen"
+}

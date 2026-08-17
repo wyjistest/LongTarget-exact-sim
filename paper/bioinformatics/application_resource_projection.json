@@ -1,0 +1,67 @@
+{
+  "arm_projections": [
+    {
+      "arm": "A",
+      "conservatism_factor": 1.25,
+      "observed_pilot_wall_seconds": 0.281959478976205,
+      "pair_count_scale_per_worker": 17300.0,
+      "projected_full_plus_repeats_wall_seconds": 10775.426768093355,
+      "selected_scale_per_worker": 30572.97965571205,
+      "sequence_work_scale_per_worker": 30572.97965571205
+    },
+    {
+      "arm": "B",
+      "conservatism_factor": 1.25,
+      "observed_pilot_wall_seconds": 0.48448782693594694,
+      "pair_count_scale_per_worker": 17300.0,
+      "projected_full_plus_repeats_wall_seconds": 18515.295595441057,
+      "selected_scale_per_worker": 30572.97965571205,
+      "sequence_work_scale_per_worker": 30572.97965571205
+    },
+    {
+      "arm": "C",
+      "conservatism_factor": 1.25,
+      "observed_pilot_wall_seconds": 0.5719262440688908,
+      "pair_count_scale_per_worker": 17300.0,
+      "projected_full_plus_repeats_wall_seconds": 21856.861780607505,
+      "selected_scale_per_worker": 30572.97965571205,
+      "sequence_work_scale_per_worker": 30572.97965571205
+    }
+  ],
+  "attempt_plan_sha256": "b071692a3429414003a122b9388e2601ef5f1f41b6ace077a247424ff91175dd",
+  "fixed_budget_seconds": 86400,
+  "formal_pair_count_per_arm": 33400,
+  "freeze_id": "bioinformatics-phase3-application-v1-e8c5441c",
+  "limitations": [
+    "one fixed short-query pilot cannot estimate workload-tail variance",
+    "projection is a prospective stop-control estimate, not a performance claim",
+    "no panel, parameter, threshold, or claim boundary may change from this estimate"
+  ],
+  "manifest_sha256": "e8c5441c36db8fb4ae28492aee20f7e1af5f357148216ef58fae03c7f52c78bc",
+  "method": "for each arm, pilot wall multiplied by the larger of the exact maximum per-worker pair-count scale and exact maximum per-worker sequence-length-product scale under frozen modulo-2 assignment, then multiplied by a prespecified 1.25 conservatism factor",
+  "pilot_receipt_role": "operational_and_resource_characterization_only",
+  "projected_total_wall_seconds": 51147.58414414192,
+  "projection_is_formal_source_data": false,
+  "repeat_pair_count_per_arm": 1200,
+  "schema_version": 1,
+  "status": "pilot_based_nonclaim_projection",
+  "within_fixed_budget": true,
+  "work_units": {
+    "formal_full": 94193932508,
+    "formal_full_by_worker": [
+      47096966254,
+      47096966254
+    ],
+    "formal_repeats": 3525809760,
+    "formal_repeats_by_worker": [
+      1762904880,
+      1762904880
+    ],
+    "full_plus_repeats_by_worker": [
+      48859871134,
+      48859871134
+    ],
+    "pilot": 1598139
+  },
+  "worker_count": 2
+}

@@ -1,0 +1,6 @@
+attempt_id	dataset_id	arm	failure_reason
+bt6_01_x	bte_linc01116_gse227804	X	output_validation:RunnerError:Triplexator summary output missing
+bt6_02_x	bte_hotair_gse31332	X	output_validation:RunnerError:Triplexator summary output missing
+bt6_03_x	bte_pcgem1_gse47804	X	output_validation:RunnerError:Triplexator summary output missing
+bt6_04_x	bte_sra_gse58641	X	output_validation:RunnerError:Triplexator summary output missing
+bt6_05_x	bte_hottip_gse114981	X	output_validation:RunnerError:Triplexator summary output missing

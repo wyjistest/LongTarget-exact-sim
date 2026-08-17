@@ -1,0 +1,23 @@
+{
+  "epoch_id": "biological_topk_successor_v2",
+  "execution_start_head": "7fae3de6b13780d7cc0776038489cf2f22072339",
+  "fixed_total_artifact_storage_bytes": 68719476736,
+  "new_scientific_run_started": false,
+  "owner_authorization_path": "paper/biological_topk_successor/owner_successor_authorization.json",
+  "owner_authorization_sha256": "8b7e971c8288303f31ef5e79d20b62017f22881b218450684966d34d7e213a0b",
+  "predecessor_aggregate_check": {
+    "command": [
+      "python3",
+      "scripts/check_biological_topk_successor_v1_audit.py"
+    ],
+    "required_result": "pass"
+  },
+  "predecessor_commit": "7fae3de6b13780d7cc0776038489cf2f22072339",
+  "predecessor_evidence_registry_path": "paper/biological_topk_successor/v1_evidence_registry.tsv",
+  "predecessor_evidence_registry_sha256": "c871af7df4644439f8ba44aa29faa48c5a2e897471222003b15a4e5ef05225ce",
+  "protocol_path": "goal-biological-topk-successor.md",
+  "protocol_sha256": "7404c52e0ef19db1ca48186fae610ff28bc9c4989febb5667ec09bfa4cc6f2f1",
+  "schema_version": 1,
+  "successor_artifact_root": ".paper-artifacts/biological-topk-successor",
+  "successor_artifact_root_exists": false
+}

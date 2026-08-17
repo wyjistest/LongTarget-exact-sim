@@ -95,6 +95,7 @@
 #include <math.h>
 #include <time.h>
 #include "ssw.h"
+#include "ssw_oracle_trace.h"
 #include <iostream>
 using std::cout;
 #ifdef __GNUC__
@@ -239,6 +240,20 @@ const uint8_t encoded_ops[] = {
 static thread_local ssw_align_internal_stats g_ssw_align_internal_stats = {0};
 static thread_local uint8_t g_ssw_align_internal_stats_enabled = 0;
 
+struct fasim_authority_profile_state {
+	uint64_t stage_nanoseconds[FASIM_AUTHORITY_STAGE_COUNT];
+	uint64_t stage_entries[FASIM_AUTHORITY_STAGE_COUNT];
+	int current_stage;
+	int parent_stack[64];
+	uint64_t depth;
+	uint64_t max_depth;
+	uint64_t stack_errors;
+	uint64_t last_transition_nanoseconds;
+	uint8_t enabled;
+};
+
+static thread_local fasim_authority_profile_state g_fasim_authority_profile = {{0}, {0}, -1, {0}, 0, 0, 0, 0, 0};
+
 static uint64_t ssw_now_nanoseconds(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -263,6 +278,115 @@ void ssw_align_internal_stats_set_enabled(uint8_t enabled) {
 uint8_t ssw_align_internal_stats_enabled(void) {
 	return g_ssw_align_internal_stats_enabled;
 }
+
+static void fasim_authority_profile_charge_current(uint64_t now) {
+	if (g_fasim_authority_profile.current_stage >= 0 &&
+	    g_fasim_authority_profile.current_stage < FASIM_AUTHORITY_STAGE_COUNT) {
+		g_fasim_authority_profile.stage_nanoseconds[
+			g_fasim_authority_profile.current_stage] +=
+			now - g_fasim_authority_profile.last_transition_nanoseconds;
+	}
+	g_fasim_authority_profile.last_transition_nanoseconds = now;
+}
+
+void fasim_authority_profile_reset(void) {
+	memset(&g_fasim_authority_profile, 0, sizeof(g_fasim_authority_profile));
+	g_fasim_authority_profile.current_stage = -1;
+}
+
+void fasim_authority_profile_set_enabled(uint8_t enabled) {
+	if (enabled != 0) {
+		if (!g_fasim_authority_profile.enabled) {
+			g_fasim_authority_profile.last_transition_nanoseconds =
+				ssw_now_nanoseconds();
+		}
+		g_fasim_authority_profile.enabled = 1;
+		return;
+	}
+	if (g_fasim_authority_profile.enabled) {
+		fasim_authority_profile_charge_current(ssw_now_nanoseconds());
+	}
+	g_fasim_authority_profile.enabled = 0;
+}
+
+uint8_t fasim_authority_profile_enabled(void) {
+	return g_fasim_authority_profile.enabled;
+}
+
+void fasim_authority_profile_enter(uint8_t stage) {
+	if (!g_fasim_authority_profile.enabled) {
+		return;
+	}
+	const uint64_t now = ssw_now_nanoseconds();
+	fasim_authority_profile_charge_current(now);
+	if (stage >= FASIM_AUTHORITY_STAGE_COUNT ||
+	    g_fasim_authority_profile.depth >=
+			sizeof(g_fasim_authority_profile.parent_stack) /
+			sizeof(g_fasim_authority_profile.parent_stack[0])) {
+		++g_fasim_authority_profile.stack_errors;
+		return;
+	}
+	g_fasim_authority_profile.parent_stack[g_fasim_authority_profile.depth++] =
+		g_fasim_authority_profile.current_stage;
+	g_fasim_authority_profile.current_stage = static_cast<int>(stage);
+	++g_fasim_authority_profile.stage_entries[stage];
+	if (g_fasim_authority_profile.depth > g_fasim_authority_profile.max_depth) {
+		g_fasim_authority_profile.max_depth = g_fasim_authority_profile.depth;
+	}
+}
+
+void fasim_authority_profile_leave(uint8_t stage) {
+	if (!g_fasim_authority_profile.enabled) {
+		return;
+	}
+	const uint64_t now = ssw_now_nanoseconds();
+	fasim_authority_profile_charge_current(now);
+	if (stage >= FASIM_AUTHORITY_STAGE_COUNT ||
+	    g_fasim_authority_profile.depth == 0 ||
+	    g_fasim_authority_profile.current_stage != static_cast<int>(stage)) {
+		++g_fasim_authority_profile.stack_errors;
+		return;
+	}
+	g_fasim_authority_profile.current_stage =
+		g_fasim_authority_profile.parent_stack[--g_fasim_authority_profile.depth];
+}
+
+fasim_authority_profile_snapshot fasim_authority_profile_get_snapshot(void) {
+	if (g_fasim_authority_profile.enabled) {
+		fasim_authority_profile_charge_current(ssw_now_nanoseconds());
+	}
+	fasim_authority_profile_snapshot result;
+	memset(&result, 0, sizeof(result));
+	for (int i = 0; i < FASIM_AUTHORITY_STAGE_COUNT; ++i) {
+		result.stage_nanoseconds[i] =
+			g_fasim_authority_profile.stage_nanoseconds[i];
+		result.stage_entries[i] = g_fasim_authority_profile.stage_entries[i];
+	}
+	result.stack_errors = g_fasim_authority_profile.stack_errors;
+	result.max_depth = g_fasim_authority_profile.max_depth;
+	result.active_depth = g_fasim_authority_profile.depth;
+	return result;
+}
+
+class FasimAuthorityProfileScope {
+public:
+	explicit FasimAuthorityProfileScope(fasim_authority_profile_stage stage_value) :
+		stage(stage_value), active(fasim_authority_profile_enabled() != 0) {
+		if (active) {
+			fasim_authority_profile_enter(static_cast<uint8_t>(stage));
+		}
+	}
+
+	~FasimAuthorityProfileScope() {
+		if (active) {
+			fasim_authority_profile_leave(static_cast<uint8_t>(stage));
+		}
+	}
+
+private:
+	fasim_authority_profile_stage stage;
+	bool active;
+};
 
 /* Generate query profile rearrange query sequence & calculate the weight of match/mismatch. */
 static __m128i* qP_byte(const int8_t* read_num,
@@ -611,7 +735,8 @@ uint8_t * sw_sse2_byte_once(const int8_t* ref,
 //			fprintf(stderr, "%d is score %d is ref\n", maxColumn[i], i);
 //		}
 //	}
-//	free(maxColumn);
+	/* maxColumn ownership is transferred to ssw_pre_align. */
+	free(bests);
 	free(end_read_column);
 	return maxColumn;
 	//return bests;
@@ -820,6 +945,9 @@ static alignment_end* sw_sse2_byte(const int8_t* ref,
 	//		fprintf(stderr, "%d is score %d is ref\n", maxColumn[i], i);
 	//	}
 	//}
+	fasim_ssw_oracle::record_alignment_dp_pass_u8(
+		maxColumn, refLen, ref_dir, "byte8", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -981,6 +1109,9 @@ static alignment_end* sw_avx2_byte(const int8_t* ref,
 			bests[1].ref = i;
 		}
 	}
+	fasim_ssw_oracle::record_alignment_dp_pass_u8(
+		maxColumn, refLen, ref_dir, "byte8_avx2", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1226,7 +1357,8 @@ uint16_t * sw_sse2_word_once(const int8_t* ref,
 		//	fprintf(stderr, "%d is score %d is ref\n", maxColumn[i], i);
 		//}
 	//}
-	//free(maxColumn);
+	/* maxColumn ownership is transferred to ssw_pre_align. */
+	free(bests);
 	free(end_read_column);
 	//return bests;
 	return maxColumn;
@@ -1408,6 +1540,9 @@ static alignment_end* sw_sse2_word(const int8_t* ref,
 		}
 	}
 
+	fasim_ssw_oracle::record_alignment_dp_pass_u16(
+		maxColumn, refLen, ref_dir, "word16", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1567,6 +1702,9 @@ static alignment_end* sw_avx2_word(const int8_t* ref,
 		}
 	}
 
+	fasim_ssw_oracle::record_alignment_dp_pass_u16(
+		maxColumn, refLen, ref_dir, "word16_avx2", bests[0].score, bests[0].ref,
+		bests[0].read, bests[1].score, bests[1].ref);
 	free(maxColumn);
 	free(end_read_column);
 	return bests;
@@ -1656,6 +1794,7 @@ static cigar* banded_sw(const int8_t* ref,
 			}
 			for (j = 1; j <= u; j++) h_b[j] = h_c[j];
 		}
+		fasim_ssw_oracle::record_band_iteration(band_width, max, score);
 		band_width *= 2;
 	} while (LIKELY(max < score));
 	band_width /= 2;
@@ -1847,16 +1986,9 @@ int * ssw_pre_align(const s_profile* prof,
 	int32_t word = 0, band_width = 0, readLen = prof->readLen;
 	int8_t* read_reverse = 0;
 	int *scoreMatrix;
-	uint8_t* byteColumn = (uint8_t*)calloc(refLen, 1);;
-	uint16_t *wordColumn;
-	byteColumn = NULL;
-	wordColumn = NULL;
+	uint8_t* byteColumn = NULL;
+	uint16_t *wordColumn = NULL;
 	cigar* path;
-	s_align* r = (s_align*)calloc(1, sizeof(s_align));
-	r->ref_begin1 = -1;
-	r->read_begin1 = -1;
-	r->cigar = 0;
-	r->cigarLen = 0;
 	if (maskLen < 15) {
 		fprintf(stderr, "When maskLen < 15, the function ssw_align doesn't return 2nd best alignment information.\n");
 	}
@@ -1864,6 +1996,7 @@ int * ssw_pre_align(const s_profile* prof,
 	// Find the alignment scores and ending positions
 	if (prof->profile_byte) {
 		byteColumn = sw_sse2_byte_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_byte, -1, prof->bias, maskLen);
+		fasim_ssw_oracle::record_prealign_columns_u8(byteColumn, refLen, "byte8");
 		int maxscore = 0;
 		for (int i = 0; i < refLen; i++)
 		{
@@ -1872,8 +2005,10 @@ int * ssw_pre_align(const s_profile* prof,
 		}
 		if (prof->profile_word && maxscore>=255) {//&& bests[0].score == 255
 			//freeMatrix(scoreMatrix);
+			free(byteColumn);
 			byteColumn = NULL;
 			wordColumn = sw_sse2_word_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+			fasim_ssw_oracle::record_prealign_columns_u16(wordColumn, refLen, "word16");
 			word = 1;
 		} //else if (bests[0].score == 255) {
 			//fprintf(stderr, "Please set 2 to the score_size parameter of the function ssw_init, otherwise the alignment results will be incorrect.\n");
@@ -1883,6 +2018,7 @@ int * ssw_pre_align(const s_profile* prof,
 	}
 	else if (prof->profile_word) {
 		wordColumn = sw_sse2_word_once(ref, 0, refLen, readLen, weight_gapO, weight_gapE, prof->profile_word, -1, maskLen);
+		fasim_ssw_oracle::record_prealign_columns_u16(wordColumn, refLen, "word16");
 		word = 1;
 	}
 	else {
@@ -1899,7 +2035,7 @@ int * ssw_pre_align(const s_profile* prof,
 		{
 			scoreMatrix[i] = (int)byteColumn[i];
 		}
-		// free byteColumn.
+		free(byteColumn);
 		byteColumn =NULL;
 	}
 	else if (wordColumn)
@@ -1908,10 +2044,11 @@ int * ssw_pre_align(const s_profile* prof,
 		{
 			scoreMatrix[i] = (int)wordColumn[i];
 		}
-		// free wordColumn
+		free(wordColumn);
 		wordColumn =NULL;
 	}
 
+	fasim_ssw_oracle::set_prealign_final_numeric_path(word == 0 ? "byte8" : "word16");
 	return scoreMatrix; // should be OK???
 	//r->score1 = bests[0].score;
 	//r->ref_end1 = bests[0].ref;
@@ -2011,6 +2148,9 @@ s_align* ssw_align(const s_profile* prof,
 		++g_ssw_align_internal_stats.forward_calls;
 	}
 	const uint64_t forward_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_FORWARD_ALIGNMENT);
 	if (prof->profile_byte) {
 		const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 #if defined(__AVX2__)
@@ -2081,6 +2221,8 @@ s_align* ssw_align(const s_profile* prof,
 		return NULL;
 	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.forward_score_end_nanoseconds, forward_start);
+	}
+	fasim_ssw_oracle::set_alignment_final_numeric_path(word == 0 ? "byte8" : "word16");
 	const uint64_t endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	r->score1 = bests[0].score;
 	r->ref_end1 = bests[0].ref;
@@ -2102,6 +2244,9 @@ s_align* ssw_align(const s_profile* prof,
 		++g_ssw_align_internal_stats.reverse_calls;
 	}
 	reverse_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_REVERSE_ALIGNMENT);
 	read_reverse = seq_reverse(prof->read, r->read_end1);
 	if (word == 0) {
 #if defined(__AVX2__)
@@ -2172,6 +2317,7 @@ s_align* ssw_align(const s_profile* prof,
 	free(read_reverse);
 	free(bests);
 	ssw_add_elapsed(&g_ssw_align_internal_stats.reverse_start_nanoseconds, reverse_start);
+	}
 	if ((7 & flag) == 0 || ((2 & flag) != 0 && r->score1 < filters) || ((4 & flag) != 0 && (r->ref_end1 - r->ref_begin1 > filterd || r->read_end1 - r->read_begin1 > filterd))) goto end;
 
 	// Generate cigar.
@@ -2186,7 +2332,11 @@ s_align* ssw_align(const s_profile* prof,
 		++g_ssw_align_internal_stats.banded_sw_calls;
 	}
 	banded_sw_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
-	path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK);
+		path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds, banded_sw_start);
 	if (path == 0) {
 		free(r);
@@ -2202,6 +2352,227 @@ s_align* ssw_align(const s_profile* prof,
 end:
 	return r;
 }
+
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+s_align* ssw_align_from_forward(const s_profile* prof,
+	const int8_t* ref,
+	int32_t refLen,
+	const uint8_t weight_gapO,
+	const uint8_t weight_gapE,
+	const uint8_t flag,
+	const uint16_t filters,
+	const int32_t filterd,
+	const int32_t maskLen,
+	const ssw_forward_endpoint* endpoint) {
+	if (prof == NULL || ref == NULL || endpoint == NULL || refLen <= 0 ||
+		prof->read == NULL || prof->mat == NULL || prof->readLen <= 0 ||
+		endpoint->ref_end2 < -1 || endpoint->ref_end2 >= refLen ||
+		(endpoint->numeric_path != SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
+		 endpoint->numeric_path != SSW_FORWARD_NUMERIC_PATH_WORD16) ||
+		(endpoint->numeric_path == SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
+		 prof->profile_byte == NULL) ||
+		(endpoint->numeric_path == SSW_FORWARD_NUMERIC_PATH_WORD16 &&
+		 prof->profile_word == NULL)) {
+		return NULL;
+	}
+	const bool no_alignment = endpoint->score1 == 0 &&
+		endpoint->ref_end1 == -1 && endpoint->read_end1 == 0;
+	if ((!no_alignment &&
+		 (endpoint->ref_end1 < 0 || endpoint->ref_end1 >= refLen ||
+		  endpoint->read_end1 < 0 || endpoint->read_end1 >= prof->readLen)) ||
+		(no_alignment && endpoint->score2 != 0)) {
+		return NULL;
+	}
+
+	s_align* r = (s_align*)calloc(1, sizeof(s_align));
+	if (r == NULL) return NULL;
+	r->ref_begin1 = -1;
+	r->read_begin1 = -1;
+	r->score1 = endpoint->score1;
+	r->ref_end1 = endpoint->ref_end1;
+	r->read_end1 = endpoint->read_end1;
+	if (maskLen >= 1) {
+		r->score2 = endpoint->score2;
+		r->ref_end2 = endpoint->ref_end2;
+	}
+	else {
+		r->score2 = 0;
+		r->ref_end2 = -1;
+	}
+
+	if (flag == 0 || (flag == 2 && r->score1 < filters)) return r;
+	if (no_alignment) {
+		r->read_begin1 = 0;
+		if ((7 & flag) == 0 ||
+			((2 & flag) != 0 && r->score1 < filters) ||
+			((4 & flag) != 0 && filterd < 0)) {
+			return r;
+		}
+		r->cigar = (uint32_t*)calloc(1, sizeof(uint32_t));
+		if (r->cigar == NULL) {
+			free(r);
+			return NULL;
+		}
+		r->cigar[0] = to_cigar_int(1, 'M');
+		r->cigarLen = 1;
+		return r;
+	}
+
+	const uint8_t collect_internal_stats = ssw_align_internal_stats_enabled();
+	if (collect_internal_stats) ++g_ssw_align_internal_stats.reverse_calls;
+	const uint64_t reverse_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	alignment_end* bests_reverse = NULL;
+	__m128i* vP = NULL;
+	int8_t* read_reverse = NULL;
+
+#if defined(__AVX2__)
+	const bool useAvx2Reverse = ssw_avx2_reverse_enabled_runtime();
+#else
+	if (ssw_avx2_requested_runtime()) ++g_ssw_avx2_fallback_calls;
+#endif
+
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_REVERSE_ALIGNMENT);
+		read_reverse = seq_reverse(prof->read, r->read_end1);
+		if (read_reverse == NULL) {
+			free(r);
+			return NULL;
+		}
+		if (endpoint->numeric_path == SSW_FORWARD_NUMERIC_PATH_BYTE8) {
+#if defined(__AVX2__)
+			__m256i* vPAvx2 = NULL;
+#endif
+			vP = qP_byte(read_reverse, prof->mat, r->read_end1 + 1,
+				prof->n, prof->bias);
+			const uint64_t byte_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+#if defined(__AVX2__)
+			if (useAvx2Reverse) {
+				vPAvx2 = qP_byte_avx2(read_reverse, prof->mat,
+					r->read_end1 + 1, prof->n, prof->bias);
+				if (vPAvx2 != NULL) {
+					++g_ssw_avx2_calls;
+					++g_ssw_avx2_reverse_calls;
+					++g_ssw_avx2_byte_calls;
+					g_ssw_avx2_active = 1;
+					bests_reverse = sw_avx2_byte(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vPAvx2, r->score1, prof->bias, maskLen);
+				}
+				else {
+					++g_ssw_avx2_fallback_calls;
+					bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vP, r->score1, prof->bias, maskLen);
+				}
+				free(vPAvx2);
+			}
+			else
+#endif
+			{
+				bests_reverse = sw_sse2_byte(ref, 1, r->ref_end1 + 1,
+					r->read_end1 + 1, weight_gapO, weight_gapE, vP,
+					r->score1, prof->bias, maskLen);
+			}
+			ssw_add_elapsed(&g_ssw_align_internal_stats.byte_path_nanoseconds,
+				byte_start);
+		}
+		else {
+#if defined(__AVX2__)
+			__m256i* vPAvx2 = NULL;
+#endif
+			vP = qP_word(read_reverse, prof->mat, r->read_end1 + 1, prof->n);
+			const uint64_t word_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+#if defined(__AVX2__)
+			if (useAvx2Reverse) {
+				vPAvx2 = qP_word_avx2(read_reverse, prof->mat,
+					r->read_end1 + 1, prof->n);
+				if (vPAvx2 != NULL) {
+					++g_ssw_avx2_calls;
+					++g_ssw_avx2_reverse_calls;
+					++g_ssw_avx2_word_calls;
+					g_ssw_avx2_active = 1;
+					bests_reverse = sw_avx2_word(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vPAvx2, r->score1, maskLen);
+				}
+				else {
+					++g_ssw_avx2_fallback_calls;
+					bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1,
+						r->read_end1 + 1, weight_gapO, weight_gapE,
+						vP, r->score1, maskLen);
+				}
+				free(vPAvx2);
+			}
+			else
+#endif
+			{
+				bests_reverse = sw_sse2_word(ref, 1, r->ref_end1 + 1,
+					r->read_end1 + 1, weight_gapO, weight_gapE, vP,
+					r->score1, maskLen);
+			}
+			ssw_add_elapsed(&g_ssw_align_internal_stats.word_path_nanoseconds,
+				word_start);
+		}
+	}
+
+	if (bests_reverse == NULL || vP == NULL) {
+		free(bests_reverse);
+		free(vP);
+		free(read_reverse);
+		free(r);
+		return NULL;
+	}
+	const uint64_t endpoint_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	r->score1 = bests_reverse[0].score < endpoint->score1 ?
+		bests_reverse[0].score : endpoint->score1;
+	r->ref_begin1 = bests_reverse[0].ref;
+	r->read_begin1 = r->read_end1 - bests_reverse[0].read;
+	ssw_add_elapsed(&g_ssw_align_internal_stats.endpoint_bookkeeping_nanoseconds,
+		endpoint_start);
+	free(bests_reverse);
+	free(vP);
+	free(read_reverse);
+	ssw_add_elapsed(&g_ssw_align_internal_stats.reverse_start_nanoseconds,
+		reverse_start);
+
+	if ((7 & flag) == 0 ||
+		((2 & flag) != 0 && r->score1 < filters) ||
+		((4 & flag) != 0 &&
+		 (r->ref_end1 - r->ref_begin1 > filterd ||
+		  r->read_end1 - r->read_begin1 > filterd))) {
+		return r;
+	}
+
+	const uint64_t cigar_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	const int32_t alignment_ref_len = r->ref_end1 - r->ref_begin1 + 1;
+	const int32_t alignment_read_len = r->read_end1 - r->read_begin1 + 1;
+	const int32_t band_width = abs(alignment_ref_len - alignment_read_len) + 1;
+	if (collect_internal_stats) ++g_ssw_align_internal_stats.banded_sw_calls;
+	const uint64_t banded_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
+	cigar* path = NULL;
+	{
+		FasimAuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK);
+		path = banded_sw(ref + r->ref_begin1,
+			prof->read + r->read_begin1,
+			alignment_ref_len, alignment_read_len, r->score1,
+			weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+	}
+	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds,
+		banded_start);
+	if (path == NULL) {
+		free(r);
+		return NULL;
+	}
+	r->cigar = path->seq;
+	r->cigarLen = path->length;
+	free(path);
+	ssw_add_elapsed(&g_ssw_align_internal_stats.cigar_nanoseconds, cigar_start);
+	return r;
+}
+#endif
 
 void align_destroy(s_align* a) {
 	free(a->cigar);

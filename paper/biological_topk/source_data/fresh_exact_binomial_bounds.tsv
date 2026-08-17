@@ -1,0 +1,7 @@
+endpoint_order	endpoint_name	ranking_mode	successes	trials	estimate	alpha_one_sided	lower_confidence_bound	promotion_threshold	threshold_pass	method	fixed_sequence_gate_reached
+1	score_complete_set_success	score	0	178	0	0.05	0	0.95	0	one_sided_exact_clopper_pearson	1
+2	stability_complete_set_success	stability	0	178	0	0.05	0	0.95	0	one_sided_exact_clopper_pearson	0
+3	nt_complete_set_success	nt	0	178	0	0.05	0	0.95	0	one_sided_exact_clopper_pearson	0
+4	score_top1_retention	score	0	178	0	0.05	0	0.95	0	one_sided_exact_clopper_pearson	0
+5	stability_top1_retention	stability	0	178	0	0.05	0	0.95	0	one_sided_exact_clopper_pearson	0
+6	nt_top1_retention	nt	0	178	0	0.05	0	0.95	0	one_sided_exact_clopper_pearson	0

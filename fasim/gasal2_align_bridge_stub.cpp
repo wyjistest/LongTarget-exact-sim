@@ -804,6 +804,26 @@ void fasim_gasal2_print_stats()
 	std::cerr << "benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_cpu_align_authority=0\n";
 	std::cerr << "benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_gpu_endpoint_cigar_traceback_output_authority=0\n";
 	std::cerr << "benchmark.fasim_gasal2_phase7_post_v5_3_new_gpu_engine_certificate_cuda_api_certificate_cuda_api_gate_pass=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_requested=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_active=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_real_skip_enabled=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_pre_drop_proof_available=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_proof_version=phase6_exact_v1\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_candidates_considered=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_certified_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_uncertified_candidates=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_exact_descriptor_duplicate_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_static_span_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_score_endpoint_span_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_shadow_false_rejects=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_score_frontier_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_stability_frontier_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_nt_frontier_skips=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_tie_rescues=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_rank_aware_supported=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_probe_requests=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_probe_seconds=0\n";
+	std::cerr << "benchmark.fasim_gasal2_traceback_certificate_shadow_fallbacks=0\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batches=0\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batch_tasks=0\n";
 	std::cerr << "benchmark.fasim_gasal2_longtarget_task_batch_scoreinfos=0\n";
@@ -867,6 +887,20 @@ bool fasim_gasal2_select_attempts(const std::string &query,
 	return fasim_gasal2_align_attempts(query, attempts, selected, errorOut);
 }
 
+bool fasim_gasal2_select_attempts_canonical_hybrid_v2(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::vector<FasimGasal2AttemptScoreTelemetry> *telemetry,
+	std::string *errorOut)
+{
+	if (telemetry != NULL)
+	{
+		telemetry->clear();
+	}
+	return fasim_gasal2_align_attempts(query, attempts, selected, errorOut);
+}
+
 bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
@@ -897,6 +931,54 @@ bool fasim_gasal2_score_attempts(
 	if (scores != NULL)
 	{
 		scores->clear();
+	}
+	if (errorOut != NULL)
+	{
+		*errorOut = "gasal2_unavailable";
+	}
+	return false;
+}
+
+bool fasim_gasal2_streamed_attempt_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	(void)query;
+	(void)attempts;
+	if (scores != NULL)
+	{
+		scores->clear();
+	}
+	if (telemetry != NULL)
+	{
+		telemetry->error = "gasal2_unavailable";
+	}
+	if (errorOut != NULL)
+	{
+		*errorOut = "gasal2_unavailable";
+	}
+	return false;
+}
+
+bool fasim_gasal2_consumer_spike_select_from_scores(
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2ScoreOnlyAlignment> &scores,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<std::string> *selectionReasons,
+	std::string *errorOut)
+{
+	(void)attempts;
+	(void)scores;
+	if (selectedAttemptIndexes != NULL)
+	{
+		selectedAttemptIndexes->clear();
+	}
+	if (selectionReasons != NULL)
+	{
+		selectionReasons->clear();
 	}
 	if (errorOut != NULL)
 	{

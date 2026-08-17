@@ -1,10 +1,12 @@
 .git/
 .tmp/
 /.worktrees/
+/.paper-artifacts/
 
 *.o
 *.out
 *.log
+!/paper/clean_checkout_validation.log
 *.py[cod]
 __pycache__/
 **/__pycache__/

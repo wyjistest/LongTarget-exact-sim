@@ -1,0 +1,82 @@
+{
+  "automatic_retry_used": false,
+  "budget_stop_technical_failure_count": 2,
+  "comparison_started": false,
+  "fixed_storage_quota_bytes": 8589934592,
+  "incident_kind": "fixed_storage_budget_projection_underestimate_and_preexecution_status_parser",
+  "large_candidate_telemetry_observations": [
+    {
+      "path": ".paper-artifacts/biological-topk/fresh-holdout/bt3_w001__repeat00_g/telemetry.json",
+      "sha256": "008f9bf672a8152269d688dc7e484084b9bb9f4d57ecf3f90290e0150ff5a4c7",
+      "size_bytes": 168694306
+    },
+    {
+      "path": ".paper-artifacts/biological-topk/fresh-holdout/bt3_w001__repeat01_g/telemetry.json",
+      "sha256": "8cbea4ae1fb9cd4201875b9e8617b7c2216d84be2bdd812bd2946956780772a6",
+      "size_bytes": 939837821
+    }
+  ],
+  "old_evidence_retention": "all terminal receipts, partial-derived failures, raw telemetry, inputs, outputs, logs, and snapshot retained byte-for-byte",
+  "panel_or_attempt_order_changed": false,
+  "phase": 4,
+  "phase3_projected_storage_upper_95_bytes": 4693975188,
+  "planned_attempt_count": 368,
+  "preexecution_authorization_incident": {
+    "artifact_root_created": false,
+    "failure": "first unstaged porcelain status path lost its leading character after strip",
+    "resolution": "stage Phase 4 start-state paths before formal execution",
+    "scientific_output_created": false,
+    "scientific_retry": false
+  },
+  "repair_epoch_authorized": 1,
+  "repair_epoch_limit": 1,
+  "repair_scope": [
+    "full rerun of every frozen attempt under new attempt IDs and a new artifact root",
+    "robust NUL-delimited git-status parsing",
+    "lossless deterministic gzip of raw telemetry after telemetry validation"
+  ],
+  "run_summary_path": ".paper-artifacts/biological-topk/fresh-holdout/run-summary.json",
+  "run_summary_sha256": "760b2de98d491cff5f822955a2cac087dc121f25afb8c35645d9bb7d83dfebd6",
+  "runtime_binary_changed": false,
+  "schema_version": 1,
+  "scientific_contract_changed": false,
+  "scientific_input_changed": false,
+  "status": "superseded_epoch_retained_repair1_authorized",
+  "stop_reason": "observed uncompressed large-workload telemetry growth would exhaust the fixed quota before panel completion",
+  "successful_attempt_count": 1,
+  "superseded_artifact_bytes": 1156799426,
+  "superseded_artifact_file_count": 47,
+  "superseded_artifact_inventory_sha256": "a55d2c89c5452af65547bf1743a3a529c9391f2e6541c61dc89ab1668bc77a78",
+  "superseded_artifact_root": ".paper-artifacts/biological-topk/fresh-holdout",
+  "superseded_execution_epoch": 0,
+  "terminal_attempt_count": 3,
+  "terminal_attempt_receipts": [
+    {
+      "attempt_id": "bt3_w001__repeat00_a",
+      "comparison_started": false,
+      "failure_reason": null,
+      "path": ".paper-artifacts/biological-topk/fresh-holdout/bt3_w001__repeat00_a/attempt-complete.json",
+      "sha256": "d4942a918f8302e108947fd066319002f8c6ce8f40d2ac65313f7caf17580c44",
+      "status": "success",
+      "wall_seconds": 194.61616566590965
+    },
+    {
+      "attempt_id": "bt3_w001__repeat00_g",
+      "comparison_started": false,
+      "failure_reason": "nonzero_exit_-15",
+      "path": ".paper-artifacts/biological-topk/fresh-holdout/bt3_w001__repeat00_g/attempt-complete.json",
+      "sha256": "2b84aae4b4fc3a10fa0e6f27a7def4283200d759a723d6544379f477e5c499df",
+      "status": "technical_failure",
+      "wall_seconds": 57.02304198406637
+    },
+    {
+      "attempt_id": "bt3_w001__repeat01_g",
+      "comparison_started": false,
+      "failure_reason": "nonzero_exit_-15",
+      "path": ".paper-artifacts/biological-topk/fresh-holdout/bt3_w001__repeat01_g/attempt-complete.json",
+      "sha256": "cbeb32065f95e60f0f4cc8c82217f787ee654de53abea5f5a261d1187a97f53b",
+      "status": "technical_failure",
+      "wall_seconds": 251.83798025688156
+    }
+  ]
+}

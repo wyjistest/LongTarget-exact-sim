@@ -1,0 +1,54 @@
+{
+  "candidate_sites": {
+    "container_relative_path": "phase1/real-gpu-smoke/container-product/candidate_sites.tsv",
+    "host_container_byte_equal": true,
+    "host_relative_path": "phase1/real-gpu-smoke/host-product/candidate_sites.tsv",
+    "row_count": 3,
+    "sha256": "895daa97902d67a0afd01ecb317bd012edb3aee1c6bf6d1df2390e702f3f1313"
+  },
+  "container_image_digest": "sha256:ab31acbf01e125f646889660f6286decfb30c015a21a30e7a60099a7fecbf530",
+  "development_diagnostic_only": true,
+  "excluded_from_all_v2_formal_panels": true,
+  "gpu": {
+    "compute_capability": "8.9",
+    "driver_version": "555.42.06",
+    "index": 0,
+    "memory_total_mib": 24564,
+    "name": "NVIDIA GeForce RTX 4090",
+    "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3"
+  },
+  "inputs": [
+    {
+      "length_nt": 444,
+      "path": "reproduce/bioinformatics/holdout_inputs/queries/hq01_ENSG00000276454_ENST00000615076.fa",
+      "role": "query",
+      "sha256": "f1a033aeaffe55eab472636b7b3dbcf9f6c6b267781aa68f71c66142b8da7ce7"
+    },
+    {
+      "length_nt": 2501,
+      "path": "reproduce/bioinformatics/holdout_inputs/targets/ht01_ENSG00000159423_chr1_18902299_18904799.fa",
+      "role": "target",
+      "sha256": "075b0bcbe0f5f232b030e44a25f27ac4cb05ad4ced6743bac8a0450286cbea43"
+    }
+  ],
+  "performance_estimate_generated": false,
+  "phase": 1,
+  "reports": {
+    "container": {
+      "relative_path": "phase1/real-gpu-smoke/container-report.json",
+      "sha256": "cdb220bf5b3cf269e61564f0e5eabe2b895085724824be1dd7433c3ec8df6378"
+    },
+    "host": {
+      "relative_path": "phase1/real-gpu-smoke/host-report.json",
+      "sha256": "96239c282e5eb9f2d7762cf3a8d633fdcec16b08f9f7815ac54d02c4ba8771c4"
+    }
+  },
+  "schema_version": 1,
+  "telemetry": {
+    "fallbacks": 0,
+    "gasal2_requests": 1389,
+    "gpu_scoreinfo_active": 1,
+    "gpu_scoreinfo_requested": 1
+  },
+  "workload_id": "phase1_excluded_dev_smoke"
+}

@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://longtarget.example/schemas/biological_topk_successor_program_state.schema.json",
+  "title": "Biological Top-K successor program state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "program_name",
+    "program_schema_version",
+    "epoch_id",
+    "predecessor_commit",
+    "predecessor_decision",
+    "fixed_total_artifact_storage_bytes",
+    "contract_name",
+    "contract_status",
+    "scientific_object",
+    "claim_scope",
+    "rank_order_claim",
+    "score_representation",
+    "gpu_screen_status",
+    "bioinformatics_route",
+    "active_phase",
+    "phase_status",
+    "last_completed_phase",
+    "last_decision",
+    "previous_phase_commit",
+    "audit_candidate_commit",
+    "final_decision_candidate",
+    "final_decision"
+  ],
+  "properties": {
+    "program_name": { "const": "biological_topk_candidate_site_validation_successor" },
+    "program_schema_version": { "const": 1 },
+    "epoch_id": { "const": "biological_topk_successor_v2" },
+    "predecessor_commit": { "const": "7fae3de6b13780d7cc0776038489cf2f22072339" },
+    "predecessor_decision": { "const": "blocked_fixed_budget" },
+    "fixed_total_artifact_storage_bytes": { "const": 68719476736 },
+    "contract_name": { "const": "biological_topk_candidate_site_v1" },
+    "contract_status": {
+      "enum": [
+        "in_validation",
+        "fresh_concordance_pass",
+        "concordance_no_go",
+        "concordance_and_utility_pass",
+        "biological_utility_no_go",
+        "performance_widening_pass",
+        "performance_widening_no_go",
+        "validated_within_fixed_operating_envelope",
+        "release_or_reproducibility_blocked"
+      ]
+    },
+    "scientific_object": { "const": "clustered_TFO_query_target_candidate_site" },
+    "claim_scope": { "const": "set_preservation_with_top1_retention" },
+    "rank_order_claim": { "const": "diagnostic_only" },
+    "score_representation": { "enum": ["pending_phase1", "integral_exact", "decimal_exact"] },
+    "gpu_screen_status": {
+      "enum": ["experimental", "validated_screening_backend_v1_release_candidate"]
+    },
+    "bioinformatics_route": {
+      "enum": [
+        "conditionally_reopened",
+        "closed_for_this_contract",
+        "closed_biological_utility_gap",
+        "conditionally_reopened_pending_phase8_release_candidate",
+        "no_go_retarget_csbj_or_methods",
+        "conditionally_reopened_pending_final_audit",
+        "release_or_reproducibility_blocked",
+        "bioinformatics_application_note_ready_pending_owner_actions",
+        "bioinformatics_application_note_ready_for_submission"
+      ]
+    },
+    "active_phase": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0, "maximum": 9 },
+        { "type": "null" }
+      ]
+    },
+    "phase_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      "properties": {
+        "0": { "$ref": "#/$defs/phase_status" },
+        "1": { "$ref": "#/$defs/phase_status" },
+        "2": { "$ref": "#/$defs/phase_status" },
+        "3": { "$ref": "#/$defs/phase_status" },
+        "4": { "$ref": "#/$defs/phase_status" },
+        "5": { "$ref": "#/$defs/phase_status" },
+        "6": { "$ref": "#/$defs/phase_status" },
+        "7": { "$ref": "#/$defs/phase_status" },
+        "8": { "$ref": "#/$defs/phase_status" },
+        "9": { "$ref": "#/$defs/phase_status" }
+      }
+    },
+    "last_completed_phase": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0, "maximum": 9 },
+        { "type": "null" }
+      ]
+    },
+    "last_decision": { "$ref": "#/$defs/decision" },
+    "previous_phase_commit": { "$ref": "#/$defs/nullable_commit" },
+    "audit_candidate_commit": { "$ref": "#/$defs/nullable_commit" },
+    "final_decision_candidate": { "$ref": "#/$defs/nullable_final_decision" },
+    "final_decision": { "$ref": "#/$defs/nullable_final_decision" }
+  },
+  "$defs": {
+    "phase_status": {
+      "enum": [
+        "pending",
+        "active",
+        "pass",
+        "no_go",
+        "blocked_missing_evidence",
+        "blocked_insufficient_source_universe",
+        "blocked_insufficient_information",
+        "blocked_insufficient_experimental_information",
+        "blocked_external_data",
+        "blocked_fixed_budget",
+        "blocked_technical_failure",
+        "not_authorized_previous_no_go"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "successor_epoch_not_started",
+        "successor_phase_0_protocol_frozen",
+        "successor_phase_1_contract_frozen",
+        "successor_phase_2_regression_frozen",
+        "successor_phase_3_holdout_frozen",
+        "fresh_concordance_pass",
+        "concordance_no_go",
+        "blocked_missing_evidence",
+        "blocked_insufficient_source_universe",
+        "blocked_insufficient_information",
+        "blocked_insufficient_experimental_information",
+        "blocked_external_data",
+        "blocked_fixed_budget",
+        "blocked_technical_failure",
+        "experimental_benchmark_preregistered",
+        "biological_utility_pass",
+        "biological_utility_no_go",
+        "performance_widening_pass",
+        "performance_widening_no_go",
+        "validated_within_fixed_operating_envelope",
+        "release_or_reproducibility_blocked",
+        "phase_9_audit_candidate",
+        "bioinformatics_application_note_ready_for_submission",
+        "bioinformatics_application_note_ready_pending_owner_actions",
+        "candidate_site_concordance_no_go",
+        "performance_widening_no_go_retarget_csbj"
+      ]
+    },
+    "nullable_commit": {
+      "anyOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_final_decision": {
+      "anyOf": [
+        {
+          "enum": [
+            "bioinformatics_application_note_ready_for_submission",
+            "bioinformatics_application_note_ready_pending_owner_actions",
+            "candidate_site_concordance_no_go",
+            "biological_utility_no_go",
+            "performance_widening_no_go_retarget_csbj",
+            "release_or_reproducibility_blocked"
+          ]
+        },
+        { "type": "null" }
+      ]
+    }
+  }
+}

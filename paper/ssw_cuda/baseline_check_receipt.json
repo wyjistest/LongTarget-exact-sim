@@ -1,0 +1,67 @@
+{
+  "checks": [
+    {
+      "check_id": "phase2",
+      "clean_checkout": false,
+      "command": "make check-bioinformatics-phase2",
+      "exit_code": 0,
+      "log_path": ".paper-artifacts/ssw-cuda-v1/phase0/checks/phase2.log",
+      "log_sha256": "ec81af98d51d56b1a143439e6fcd378a58f0f98d69f42381e2edf25202ed5cee",
+      "required_marker": "Bioinformatics Phase 2 checks OK"
+    },
+    {
+      "check_id": "phase3_pilot_clean_checkout",
+      "clean_checkout": true,
+      "command": "make check-bioinformatics-phase3-pilot",
+      "exit_code": 0,
+      "log_path": ".paper-artifacts/ssw-cuda-v1/phase0/checks/phase3_pilot_clean_checkout.log",
+      "log_sha256": "e7871cb640e685996a31482ebf4b588a5370648347efa58df4c11e0023654d92",
+      "required_marker": "Bioinformatics Phase 3 fixed pilot checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_runtime",
+      "clean_checkout": false,
+      "command": "make check-bioinformatics-canonical-hybrid-v2",
+      "exit_code": 0,
+      "log_path": ".paper-artifacts/ssw-cuda-v1/phase0/checks/canonical_hybrid_v2_runtime.log",
+      "log_sha256": "e9ede7142815304a80c3f6cb7c44cf18220013256185d0d1b6da8fc43f5b6dbb",
+      "required_marker": "Bioinformatics canonical-hybrid-v2 implementation checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_regression",
+      "clean_checkout": false,
+      "command": "make check-bioinformatics-canonical-hybrid-v2-regression",
+      "exit_code": 0,
+      "log_path": ".paper-artifacts/ssw-cuda-v1/phase0/checks/canonical_hybrid_v2_regression.log",
+      "log_sha256": "c173fecb4c0ab4623b525c4f3d58eb464e0a6c3c63940078bdd737c93cee35d2",
+      "required_marker": "Bioinformatics canonical-hybrid-v2 regression evidence checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_holdout",
+      "clean_checkout": false,
+      "command": "make check-bioinformatics-canonical-hybrid-v2-holdout",
+      "exit_code": 0,
+      "log_path": ".paper-artifacts/ssw-cuda-v1/phase0/checks/canonical_hybrid_v2_holdout.log",
+      "log_sha256": "92a4adbd351b61870c5d28538153b7634f215f8dcfdb060216d13af1de3842cc",
+      "required_marker": "Bioinformatics canonical-hybrid-v2 fresh holdout evidence checks OK"
+    },
+    {
+      "check_id": "canonical_hybrid_v2_performance",
+      "clean_checkout": false,
+      "command": "make check-bioinformatics-canonical-hybrid-v2-performance",
+      "exit_code": 0,
+      "log_path": ".paper-artifacts/ssw-cuda-v1/phase0/checks/canonical_hybrid_v2_performance.log",
+      "log_sha256": "0ea9852e2b4a0cdbec136a3db9d5472081076816af1eb335cba9bfe776c61d99",
+      "required_marker": "Bioinformatics canonical-hybrid-v2 performance evidence checks OK"
+    }
+  ],
+  "completed_utc": "2026-07-27T15:44:13Z",
+  "execution_start_head": "9f87aace6d96cf8142e3816299f04defae5710e4",
+  "phase2_checker_compatibility_fix": {
+    "historical_evidence_changed": false,
+    "reason": "Accept the additive frozen Phase 3 state and bound the immutable runtime comparison at the Phase 2 decision commit.",
+    "runtime_upper_bound_commit": "bf94dc75c5fe3e996472a1e90d242f582da361bf"
+  },
+  "schema_version": 1,
+  "status": "pass"
+}

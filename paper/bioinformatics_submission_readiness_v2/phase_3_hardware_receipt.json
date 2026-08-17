@@ -1,0 +1,38 @@
+{
+  "cpu": {
+    "architecture": "x86_64",
+    "logical_cpu_count": 20,
+    "model": "Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz",
+    "physical_core_count": 10,
+    "smt_threads_per_core": 2
+  },
+  "driver_version": "555.42.06",
+  "formal_gpu_index": 0,
+  "formal_gpu_uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+  "gpus": [
+    {
+      "compute_capability": "8.9",
+      "index": 0,
+      "memory_total_mib": 24564,
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3"
+    },
+    {
+      "compute_capability": "8.9",
+      "index": 1,
+      "memory_total_mib": 24564,
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2"
+    }
+  ],
+  "phase": 3,
+  "runner_mount_smoke": {
+    "backend_executed": false,
+    "command_mode": "--version",
+    "exact_file_bind_mount_shape": true,
+    "exit_code": 0,
+    "reported_version": "gasal2-gpu-screen 0.1.0-rc.2"
+  },
+  "schema_version": 1,
+  "unused_gpu_index": 1
+}

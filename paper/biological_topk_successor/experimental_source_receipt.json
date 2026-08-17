@@ -1,0 +1,323 @@
+{
+  "assembly_target": "GRCh38",
+  "coordinate_policy": "source_interval_center_unique_chain_mapping_then_centered_4097bp_GRCh38_window",
+  "dataset_specific_license_asserted": false,
+  "files": [
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSE31332_hotair_oe_peaks.bed.gz",
+      "sha256": "c377eaa7b7bb4d1c2d647d46a1031a589304873b2f24049902791b46c91eb19c",
+      "size_bytes": 7881,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE31nnn/GSE31332/suppl/GSE31332_hotair_oe_peaks.bed.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM1159894_PCGEM1_plusDHT_hs17l4_4.HOMERpeaks.txt.gz",
+      "sha256": "ba649a2eaef85485841087cc0a72b2a693dca159a816b505cdeeaa38d867da77",
+      "size_bytes": 20585,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1159nnn/GSM1159894/suppl/GSM1159894_PCGEM1_plusDHT_hs17l4_4.HOMERpeaks.txt.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM1415922_NTERA2_SRA.bed.gz",
+      "sha256": "079c393c5d6aee665ebf070d3fc07577b8b951e2a259131fabef78c90918e755",
+      "size_bytes": 70115,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1415nnn/GSM1415922/suppl/GSM1415922_NTERA2_SRA.bed.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM3161929_WT-CHIRP-seq_peaks.bed.gz",
+      "sha256": "8e222957a0865e84314ed5dcae44a35bd8e532cb756dcb2fc31113cc0d954eb4",
+      "size_bytes": 89094,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM3161nnn/GSM3161929/suppl/GSM3161929_WT-CHIRP-seq_peaks.bed.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM7108396_ChIRP_GBM4_rep1.bigwig",
+      "sha256": "afeaf6a21dd2b438c226b447f99408699e7f10dd3e7d077b4656f91c2304106b",
+      "size_bytes": 44850197,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM7108nnn/GSM7108396/suppl/GSM7108396_ChIRP_GBM4_rep1.bigwig"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM7108397_ChIRP_GBM4_rep2.bigwig",
+      "sha256": "ded80f0e64346e7ea48ba797b28ceb2fac7fd6561800d2a563f0ee83e1ab8f9d",
+      "size_bytes": 32319947,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM7108nnn/GSM7108397/suppl/GSM7108397_ChIRP_GBM4_rep2.bigwig"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM7108406_ChiRP_GBM4_Input.bigwig",
+      "sha256": "20d038886bfd19f08def300c121d85f7dd81d15ad74d8ad6aefc0bcdbb9b1378",
+      "size_bytes": 19074522,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM7108nnn/GSM7108406/suppl/GSM7108406_ChiRP_GBM4_Input.bigwig"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/GSM7108411_ChiRP_GBM4_LacZ.bigwig",
+      "sha256": "33850c5a5a0eed6fef450da253fc59a1da575ae402939456798b2167be5f14e3",
+      "size_bytes": 63785465,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM7108nnn/GSM7108411/suppl/GSM7108411_ChiRP_GBM4_LacZ.bigwig"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/NR_045587.1.fa",
+      "sha256": "69c81730ed32251375a15607b7902d9d306649b159763e06f394c76998f1d796",
+      "size_bytes": 1600,
+      "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id=NR_045587.1&rettype=fasta&retmode=text"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/gencode.v49.lncRNA_transcripts.fa.gz",
+      "sha256": "1f04e509309fa74b694ef3cc1e52c1c8173bb0e679f8a22785fa43ecadd28ef4",
+      "size_bytes": 37870043,
+      "url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_49/gencode.v49.lncRNA_transcripts.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr1.fa.gz",
+      "sha256": "baf03990d81ed87d66a976779c2eb4d8a0e5243829ca913556d3819fe0fba696",
+      "size_bytes": 74778116,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr1.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr10.fa.gz",
+      "sha256": "4425ab3327d51791e1c2361ffb283bb732ca77cfa1d76b9118d0f8eae1a568c8",
+      "size_bytes": 43157332,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr10.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr11.fa.gz",
+      "sha256": "2d8357fd5caa888cd4b6c16ebd6c249250fbc03d940447666de21d91f371726c",
+      "size_bytes": 43168911,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr11.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr12.fa.gz",
+      "sha256": "13a3a52fa31c74488c818adf3d7928620d7ec9c0f01c1147816723cd1fb38f95",
+      "size_bytes": 42940449,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr12.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr13.fa.gz",
+      "sha256": "73da1d4cc471e4c2104c31a9a2bd34ed2918a14bf6af058a68eda3a1fefb9636",
+      "size_bytes": 31870393,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr13.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr14.fa.gz",
+      "sha256": "7c41d84d3f9e6f718d2c5201b781716293c1cbaefbf09dcfe9b33d957fe3f23b",
+      "size_bytes": 29295890,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr14.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr15.fa.gz",
+      "sha256": "0e0d988d6cbdf9fe424e1847a2278aa3ff9636b08663a6dd32c046f001dcf427",
+      "size_bytes": 27201183,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr15.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr16.fa.gz",
+      "sha256": "588201116a650cffa36b15a9a37cd149db63b0790485fd6653cbba6be89371ed",
+      "size_bytes": 26106261,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr16.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr17.fa.gz",
+      "sha256": "9acaede8d9b0a190489b49ebf38063bc69897c0d5f125c7549a6f7ee91a0b3c0",
+      "size_bytes": 25930986,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr17.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr18.fa.gz",
+      "sha256": "fa2077f5ebee2db6cc44df8e7e764c5147d95b840ed05b0a158d8f0b84581f14",
+      "size_bytes": 25154367,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr18.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr19.fa.gz",
+      "sha256": "e56423c5fb8d06fd34f6c9ddd7b7cb40aa97cd73c8f3e5b6a3a41ea4556cd4e8",
+      "size_bytes": 17916986,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr19.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr2.fa.gz",
+      "sha256": "748007e198312d16d6277dcdd48d4f050109273cacf1a7a09860f965f2060555",
+      "size_bytes": 78561132,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr2.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr20.fa.gz",
+      "sha256": "271ca0ee4247c2fa30c8491764ad8acd4bdde8eb3cf314f0720235010ae85c9f",
+      "size_bytes": 20350590,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr20.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr21.fa.gz",
+      "sha256": "c979ca1e5065c2521a50773473e0d0cc018fd6f3e9bb3aa90493fe7b45d57d1b",
+      "size_bytes": 12709705,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr21.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr22.fa.gz",
+      "sha256": "05f9d97d6fbfd08a44ca45b50837ca2ae9c471f35ba79dffec04d2cb5eaaf695",
+      "size_bytes": 12255678,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr22.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr3.fa.gz",
+      "sha256": "8085449fc0da498712ce08476ebe06dfc885a5421cb742eebacf35bcf1c9fce1",
+      "size_bytes": 64527121,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr3.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr4.fa.gz",
+      "sha256": "0f50973dd3c9511c484f68bf83f0a75026d10f6544ee4c23fed6c06e7fd2a5dd",
+      "size_bytes": 61949239,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr4.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr5.fa.gz",
+      "sha256": "a29cb40486d4fcfcae187594809846df4cd4f10169045965bec987395ad714a2",
+      "size_bytes": 58835176,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr5.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr6.fa.gz",
+      "sha256": "88b83042e9e06f50a35394c46aa9af806b757a3c1fa7765318ea5f7fa7658174",
+      "size_bytes": 55575966,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr6.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr7.fa.gz",
+      "sha256": "455aa4c3faee9fbb952799db56a918dbc6850317c3c9c345e3b74e69d316a21a",
+      "size_bytes": 51118425,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr7.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr8.fa.gz",
+      "sha256": "68d2be09d82c39c254ddde43523d14741da18d7b9dc2ac646bd3d5569ff87671",
+      "size_bytes": 47076040,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr8.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chr9.fa.gz",
+      "sha256": "dc07c4ea08008635d5827f806fbec3c2723c5c9dd4f47fe947f4e91f1c1a535f",
+      "size_bytes": 39441862,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr9.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chrX.fa.gz",
+      "sha256": "1c7134f428960272a4b66baf53268aea5f6c756577b05bbab9af33c29b543685",
+      "size_bytes": 49662430,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chrX.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/grch38-primary/chrY.fa.gz",
+      "sha256": "a51b0a5b35dc81cd251e39463800bc988419be62ccc5d8d91b980a4f8685512a",
+      "size_bytes": 8418295,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chrY.fa.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/hg18ToHg38.over.chain.gz",
+      "sha256": "5dce497acbdaee42ba03e00726bec895e69c5f22a15b7f2522e87d04d852f9aa",
+      "size_bytes": 343575,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg18/liftOver/hg18ToHg38.over.chain.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/hg19ToHg38.over.chain.gz",
+      "sha256": "5c0598e500ceb5a78c73086929e8ef993aec309bcafb595139b53d440b125a1d",
+      "size_bytes": 227698,
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg38.over.chain.gz"
+    },
+    {
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/source/hg38-blacklist.v2.bed.gz",
+      "sha256": "c92e763af17271446194991e71917ac220593a5a3d40a06667be24178ef08cf2",
+      "size_bytes": 5867,
+      "url": "https://raw.githubusercontent.com/Boyle-Lab/Blacklist/master/lists/hg38-blacklist.v2.bed.gz"
+    }
+  ],
+  "legal_access_gate_pass": true,
+  "phase": 5,
+  "public_data_access": "NCBI_GEO_GENCODE_UCSC_and_ENCODE_blacklist_public_downloads",
+  "schema_version": 1,
+  "selection_timestamp": "2026-07-30",
+  "source_counts": {
+    "bte_hotair_gse31332": {
+      "eligible_GRCh38_windows": 807,
+      "primary_chromosome_peak_rows": 832,
+      "selected_primary_positive_windows": 100,
+      "source_peak_rows": 832,
+      "unique_center_liftover_rows": 830
+    },
+    "bte_hottip_gse114981": {
+      "eligible_GRCh38_windows": 5561,
+      "primary_chromosome_peak_rows": 6152,
+      "selected_primary_positive_windows": 100,
+      "source_peak_rows": 6152,
+      "unique_center_liftover_rows": 6131
+    },
+    "bte_linc01116_gse227804": {
+      "eligible_GRCh38_windows": 806,
+      "selected_primary_positive_windows": 100,
+      "signal_rule": {
+        "eligibility_definition": "replicate=min(normalized_rep1,normalized_rep2); control=max(normalized_input,normalized_lacz); replicate>0 and replicate>=threshold*control",
+        "feasibility_chromosome_count": 24,
+        "feasibility_chromosomes": [
+          "chr1",
+          "chr2",
+          "chr3",
+          "chr4",
+          "chr5",
+          "chr6",
+          "chr7",
+          "chr8",
+          "chr9",
+          "chr10",
+          "chr11",
+          "chr12",
+          "chr13",
+          "chr14",
+          "chr15",
+          "chr16",
+          "chr17",
+          "chr18",
+          "chr19",
+          "chr20",
+          "chr21",
+          "chr22",
+          "chrX",
+          "chrY"
+        ],
+        "fixed_window_count_definition": "ceil(primary_chromosome_length/4097)",
+        "fixed_window_length": 4097,
+        "fixed_window_origin": 0,
+        "interval_integration": "sum(overlap_bp*BigWig_value)/4097 including final partial window",
+        "primary_chromosome_signal_totals": [
+          "564215950",
+          "402509000",
+          "312317650",
+          "879640000"
+        ],
+        "selection_strength": "log1p(replicate)-log1p(control)",
+        "threshold_candidate_counts": {
+          "4": 3324,
+          "8": 830
+        },
+        "track_normalization": "integrated_window_mean*1000000/primary_chromosome_signal_total",
+        "track_paths": [
+          "source/GSM7108396_ChIRP_GBM4_rep1.bigwig",
+          "source/GSM7108397_ChIRP_GBM4_rep2.bigwig",
+          "source/GSM7108406_ChiRP_GBM4_Input.bigwig",
+          "source/GSM7108411_ChiRP_GBM4_LacZ.bigwig"
+        ]
+      },
+      "source_signal_windows_at_8x": 830,
+      "unique_center_liftover_rows": 821
+    },
+    "bte_pcgem1_gse47804": {
+      "eligible_GRCh38_windows": 1976,
+      "primary_chromosome_peak_rows": 2107,
+      "selected_primary_positive_windows": 100,
+      "source_peak_rows": 2142,
+      "unique_center_liftover_rows": 2103
+    },
+    "bte_sra_gse58641": {
+      "eligible_GRCh38_windows": 7875,
+      "primary_chromosome_peak_rows": 7898,
+      "selected_primary_positive_windows": 100,
+      "source_peak_rows": 7899,
+      "unique_center_liftover_rows": 7898
+    }
+  },
+  "status": "complete"
+}

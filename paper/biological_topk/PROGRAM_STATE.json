@@ -1,0 +1,31 @@
+{
+  "active_phase": null,
+  "audit_candidate_commit": null,
+  "bioinformatics_route": "conditionally_reopened",
+  "claim_scope": "set_preservation_with_top1_retention",
+  "contract_name": "biological_topk_candidate_site_v1",
+  "contract_status": "in_validation",
+  "final_decision": null,
+  "final_decision_candidate": null,
+  "gpu_screen_status": "experimental",
+  "last_completed_phase": 4,
+  "last_decision": "blocked_fixed_budget",
+  "phase_status": {
+    "0": "pass",
+    "1": "pass",
+    "2": "pass",
+    "3": "pass",
+    "4": "blocked_fixed_budget",
+    "5": "not_authorized_previous_no_go",
+    "6": "not_authorized_previous_no_go",
+    "7": "not_authorized_previous_no_go",
+    "8": "not_authorized_previous_no_go",
+    "9": "not_authorized_previous_no_go"
+  },
+  "previous_phase_commit": "ca6410c1fc986e91fd855a43ed71dfeb5940f68f",
+  "program_name": "biological_topk_candidate_site_validation",
+  "program_schema_version": 5,
+  "rank_order_claim": "diagnostic_only",
+  "scientific_object": "clustered_TFO_query_target_candidate_site",
+  "score_representation": "integral_exact"
+}

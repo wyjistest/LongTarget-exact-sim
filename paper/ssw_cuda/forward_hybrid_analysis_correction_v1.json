@@ -1,0 +1,28 @@
+{
+  "analysis_attempt": 1,
+  "analysis_failure": "historical authority directory contains wrapper logs plus one TFOsorted output",
+  "analysis_failure_class": "offline_output_adapter_cardinality",
+  "analysis_result_files_written": 0,
+  "analysis_root_v2": ".paper-artifacts/ssw-cuda-v1/forward-hybrid/offline-comparison-v2",
+  "analysis_root_v3": ".paper-artifacts/ssw-cuda-v1/forward-hybrid/offline-comparison-v3",
+  "comparison_input_rule": "exactly one regular non-symlink file with basename ending in -TFOsorted",
+  "correction_number": 1,
+  "failed_comparison_root_entries": [
+    {
+      "path": "p7v2c_hq01_ht01",
+      "type": "directory"
+    }
+  ],
+  "historical_authority_directory_entries": [
+    "wrapper-stderr.log",
+    "wrapper-stdout.log",
+    "GRCh38-ENST00000615076.1|ENSG00000276454.1|ENSG00000276454|GENCODE v49|GRCh38-target-TFOsorted"
+  ],
+  "measurement_repairs_maximum": 2,
+  "measurement_repairs_used": 2,
+  "new_backend_attempts": 0,
+  "replacement_retries": 0,
+  "schema_version": 1,
+  "scientific_contract_changed": false,
+  "v2_execution_receipt_sha256": "8a1947ae74feed5f213df0749ff74718053100067d233e5e67d3d13b137e4042"
+}

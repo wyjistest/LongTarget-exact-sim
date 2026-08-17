@@ -1,0 +1,90 @@
+{
+  "analysis": {
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 20260816,
+    "nested_block": "chromosome",
+    "nested_dataset_level": "one_primary_dataset_per_lncRNA_no_resampling_needed",
+    "one_sided_lcb_quantile": "0.05",
+    "outer_resampling_unit": "distinct_lncRNA",
+    "quantile_method": "inverted_cdf",
+    "shared_resample_indices_for_all_endpoints": true,
+    "thresholds": {
+      "E1": ">=-0.02",
+      "E2": ">=-0.05",
+      "E3": ">0",
+      "E4": ">0"
+    },
+    "zero_precision_resample_rule": "negative_infinity_E4_no_pseudocount_or_replacement"
+  },
+  "datasets_per_lncRNA": 1,
+  "distinct_lncRNA_outer_units": 5,
+  "phase": 5,
+  "planning_ranges": {
+    "expected_aucpr": [
+      "0.05",
+      "0.40"
+    ],
+    "plausible_prevalence": [
+      "0.01",
+      "0.10"
+    ],
+    "within_dataset_block_size": [
+      25,
+      50,
+      100
+    ],
+    "within_dataset_correlation": [
+      "0.05",
+      "0.10",
+      "0.20"
+    ],
+    "within_lncRNA_cross_assay_correlation": [
+      "0.25",
+      "0.50",
+      "0.75"
+    ]
+  },
+  "positives_per_dataset": 100,
+  "prevalence": "0.1",
+  "regions_per_dataset": 1000,
+  "results": {
+    "finite_lcb_fraction": "1",
+    "finite_lcb_panels": 10000,
+    "joint_gate_pass_count": 9958,
+    "joint_gate_pass_probability": "0.99580000000000002",
+    "marginal_gate_pass_counts": {
+      "E1": 9960,
+      "E2": 9998,
+      "E3": 10000,
+      "E4": 10000
+    },
+    "one_sided_interval_identifiable": true
+  },
+  "schema_version": 1,
+  "simulation_model": {
+    "between_lncRNA_standard_deviations": [
+      "0.01",
+      "0.02",
+      "0.029999999999999999",
+      "0.20000000000000001"
+    ],
+    "distribution": "independent_normal_planning_scenario",
+    "endpoint_order": [
+      "E1",
+      "E2",
+      "E3",
+      "E4"
+    ],
+    "interpretation": "pre-specified plausible passing scenario used only to test finite one-sided interval identification with five outer units",
+    "lncRNA_level_true_means": [
+      "0",
+      "0",
+      "0.10000000000000001",
+      "0.69314718055994529"
+    ]
+  },
+  "simulation_replicates": 10000,
+  "simulation_role": "design_identifiability_and_power_only_not_biological_evidence",
+  "simulation_seed": 20260815,
+  "status": "complete"
+}

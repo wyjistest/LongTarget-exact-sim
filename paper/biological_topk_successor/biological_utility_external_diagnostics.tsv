@@ -1,0 +1,6 @@
+dataset_id	outer_lncRNA_id	attempt_id	terminal_status	returncode	timed_out	wall_seconds	output_available	failure_reason	primary_metric_comparable	used_in_primary_inference
+bte_linc01116_gse227804	lncrna_linc01116	bt6_01_x	technical_failure	0	0	2.840346812	0	output_validation:RunnerError:Triplexator summary output missing	0	0
+bte_hotair_gse31332	lncrna_hotair	bt6_02_x	technical_failure	0	0	1.436209543	0	output_validation:RunnerError:Triplexator summary output missing	0	0
+bte_pcgem1_gse47804	lncrna_pcgem1	bt6_03_x	technical_failure	0	0	1.428280601	0	output_validation:RunnerError:Triplexator summary output missing	0	0
+bte_sra_gse58641	lncrna_sra	bt6_04_x	technical_failure	0	0	1.413306295	0	output_validation:RunnerError:Triplexator summary output missing	0	0
+bte_hottip_gse114981	lncrna_hottip	bt6_05_x	technical_failure	0	0	1.510288997	0	output_validation:RunnerError:Triplexator summary output missing	0	0

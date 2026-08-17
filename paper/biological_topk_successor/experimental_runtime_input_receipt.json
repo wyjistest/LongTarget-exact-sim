@@ -1,0 +1,75 @@
+{
+  "dataset_count": 5,
+  "evaluation_prediction_started": false,
+  "fasta_headers_label_blind": true,
+  "files": [
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_hotair_gse31332/query.fa",
+      "sha256": "b98cfb9e286ce52f69cb4e16807d3067f9267d6e7108f63aab9e962896cebec8",
+      "size_bytes": 2474
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_hotair_gse31332/target.fa",
+      "sha256": "6af58dc32dc9a47fe7e9473bc2db6f6953417a8ff0870c563198b8095ac52be4",
+      "size_bytes": 8292305
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_hottip_gse114981/query.fa",
+      "sha256": "cafc0dffcc52b639dacf7733de0dd3f7f52a283187eec7d12f3cd87eec4a4052",
+      "size_bytes": 2377
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_hottip_gse114981/target.fa",
+      "sha256": "306fe8e7d0eb72a889e35c79ab78eaf0b27a8806bc227a3fd82a9f0243ce928c",
+      "size_bytes": 8292305
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_linc01116_gse227804/query.fa",
+      "sha256": "5f7e7aa7faadde08ecdc1c46ff9987e6b5ca530f543bfc9e50454c4c6cff79fd",
+      "size_bytes": 1470
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_linc01116_gse227804/target.fa",
+      "sha256": "4db0cc3e4c470a5711886c03e2ebe23a8e90452cc30c483787215b61f60d93bc",
+      "size_bytes": 8292305
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_pcgem1_gse47804/query.fa",
+      "sha256": "ee11328e67724c048a6e89d4d222954bfe21c6525b1fbb67617a8238850bfcbb",
+      "size_bytes": 1804
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_pcgem1_gse47804/target.fa",
+      "sha256": "540bfd9a878af1f7cf4710c2f5fe9b611bb1969596cd0347ea9cde539b21fb43",
+      "size_bytes": 8292305
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_sra_gse58641/query.fa",
+      "sha256": "a12d275b86cec09138de0d59370019e433cbc3b6db2b859d6d36f5780c8fea11",
+      "size_bytes": 1520
+    },
+    {
+      "contains_labels": false,
+      "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/frozen-inputs/bte_sra_gse58641/target.fa",
+      "sha256": "51c5272d03956b59d5245efc79103f3da5dd6e49a1aea6f181f4b3053be3a9ce",
+      "size_bytes": 8292305
+    }
+  ],
+  "phase": 5,
+  "query_fasta_count": 5,
+  "schema_version": 1,
+  "status": "complete",
+  "target_fasta_count": 5,
+  "target_fasta_records_per_dataset": 1,
+  "target_region_count": 5000,
+  "target_separator_length": 4097
+}

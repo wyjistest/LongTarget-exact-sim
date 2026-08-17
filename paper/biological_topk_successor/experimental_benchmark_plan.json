@@ -1,0 +1,117 @@
+{
+  "assay_type_classes_available": [
+    "ChIRP"
+  ],
+  "bindings": {
+    "experimental_attempt_plan_sha256": "4bf32d5281d46f5c517c213ab0bee246ccb811118eef2e69b161d0ba370442e9",
+    "experimental_benchmark_manifest_sha256": "d26b8bf8fee8ff05d40898b1e8ee100143f623c32e4b58026e92630432a46d38",
+    "experimental_power_simulation_sha256": "6caa0303aba25cc3cca04d83b9c923c2b8f4cfe5f90f5d773716273d9da9ff68",
+    "experimental_source_receipt_sha256": "64a1ca04099605f7de98326cce9cf4b3d55812fdc458e0ac75c6b30efff934b2",
+    "experimental_tool_receipt_sha256": "9aef7a584cd513082db73f6934cc61a026003096af535743c6a76774e78c1ae4"
+  },
+  "bootstrap": {
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 20260816,
+    "nested_block": "chromosome",
+    "nested_dataset_level": "one_primary_dataset_per_lncRNA_no_resampling_needed",
+    "one_sided_lcb_quantile": "0.05",
+    "outer_resampling_unit": "distinct_lncRNA",
+    "quantile_method": "inverted_cdf",
+    "shared_resample_indices_for_all_endpoints": true,
+    "thresholds": {
+      "E1": ">=-0.02",
+      "E2": ">=-0.05",
+      "E3": ">0",
+      "E4": ">0"
+    },
+    "zero_precision_resample_rule": "negative_infinity_E4_no_pseudocount_or_replacement"
+  },
+  "bootstrap_zero_precision_resample_rule": "negative_infinity_E4_no_pseudocount_or_replacement",
+  "cross_assay_generality_claim": "not_supported",
+  "dataset_count": 5,
+  "distinct_lncRNA_outer_units": 5,
+  "endpoints": {
+    "E1": {
+      "contrast": "macro_lncRNA_G_minus_A_AUCPR",
+      "lcb": ">=-0.02"
+    },
+    "E2": {
+      "contrast": "macro_lncRNA_G_minus_A_recall_at_P",
+      "lcb": ">=-0.05"
+    },
+    "E3": {
+      "contrast": "macro_lncRNA_G_AUCPR_minus_prevalence",
+      "lcb": ">0"
+    },
+    "E4": {
+      "contrast": "macro_lncRNA_log_G_precision_at_P_over_prevalence",
+      "lcb": ">0"
+    }
+  },
+  "epoch_id": "biological_topk_successor_v2",
+  "evaluation_prediction_started": false,
+  "execution": {
+    "arms": [
+      "A",
+      "G",
+      "X"
+    ],
+    "attempt_count": 15,
+    "comparison_barrier": "all_15_attempts_terminal",
+    "fixed_quota_includes_predecessor_evidence": true,
+    "independent_execution": true,
+    "max_cpu_wall_hours": 96,
+    "max_gpu_hours": 96,
+    "max_infrastructure_repair_epochs": 1,
+    "max_total_artifact_storage_bytes": 68719476736,
+    "scientific_retry_or_replacement": false,
+    "tracked_evidence_reservation_bytes": 268435456
+  },
+  "intersection_union_gate": "E1_AND_E2_AND_E3_AND_E4",
+  "label_blinding": {
+    "fasta_header": "t_<24 lowercase hexadecimal characters>",
+    "fasta_order": "ascending_region_id with manifest-frozen concatenated offsets",
+    "labels_read_stage": "offline_only_after_all_attempts_terminal",
+    "labels_visible_to_prediction_backend": false,
+    "region_id": "bt5_<24 lowercase hexadecimal characters>"
+  },
+  "negative_matching": {
+    "absolute_gc_difference_max": "0.05",
+    "exclude_N": true,
+    "exclude_blacklist": true,
+    "exclude_source_positive_windows": true,
+    "same_chromosome": true,
+    "seed": "biological_topk_successor_phase5_negative_v1_20260730",
+    "selected_region_nonoverlap": true
+  },
+  "negatives_per_positive": 9,
+  "phase": 5,
+  "phase_6_authorized": true,
+  "positives_per_dataset": 100,
+  "primary_assay_type_classes": [
+    "ChIRP"
+  ],
+  "primary_k": {
+    "P_d": 100,
+    "name": "recall_at_P_d"
+  },
+  "region_score": {
+    "identical_function_for_A_and_G": true,
+    "legal_emitted_score_minimum": 0,
+    "no_valid_row_sentinel": -1,
+    "primary": "maximum exact integer Score",
+    "sentinel_below_legal_minimum": true,
+    "tie_policy": "ascending fixed region_id without labels",
+    "valid_row_rule": "existing contract validity and Nt(bp)>50"
+  },
+  "regions_per_dataset": 1000,
+  "schema_version": 1,
+  "scientific_output_created": false,
+  "source_commit": "59f2445b1deb980d5e4c2f25cda916206158d81a",
+  "status": "preregistered",
+  "target_build": "GRCh38",
+  "target_region_length": 4097,
+  "target_separator_length": 4097,
+  "target_serialization": "single FASTA record; ascending label-blind region_id; 4097-N separators; manifest-frozen offsets",
+  "zero_precision_rule": "automatic_E4_and_global_failure_no_pseudocount"
+}

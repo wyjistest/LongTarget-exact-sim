@@ -1,0 +1,111 @@
+{
+  "artifacts": [
+    {
+      "relative_path": "phase1/runtime-epoch-v2-2/gasal2-gpu-screen-submission-rc-v2-2.tar",
+      "role": "superseding_frozen_container_archive",
+      "sha256": "d6d3f9f26cbc1c1f50d80e2a04f5fe2621acd56af6c52797084bdd3d1ffe2d8b",
+      "size_bytes": 294943232
+    },
+    {
+      "relative_path": "phase1/runtime-epoch-v2-2/container-context/rootfs/opt/gasal2/runtime_identity.json",
+      "role": "superseding_embedded_runtime_identity",
+      "sha256": "269285aefffdde4f2be228479d64cd3e55721dcaecedfee3dc994671349e74ed",
+      "size_bytes": 1508
+    },
+    {
+      "relative_path": "phase1/runtime-epoch-v2-2/real-gpu-smoke/report.json",
+      "role": "excluded_v2_2_container_smoke_report",
+      "sha256": "fa727aba80eb23fa0f5514a098e236511ba3cf2fc61d4ce7040576aecf9484ea",
+      "size_bytes": 14920
+    },
+    {
+      "relative_path": "phase1/runtime-epoch-v2-2/real-gpu-smoke-host/report.json",
+      "role": "excluded_v2_2_host_smoke_report",
+      "sha256": "0a0f4af2453459dddd284aef74b371ab6553cb900a08e86799f369a26bc8744d",
+      "size_bytes": 16987
+    },
+    {
+      "relative_path": "phase1/runtime-epoch-v2-2/real-gpu-smoke/product/candidate_sites.tsv",
+      "role": "excluded_v2_2_container_product",
+      "sha256": "77cea049ce8e57bb46a9b8a433d3492b92ea8738e77e21d4e0f5a668e4ba44e0",
+      "size_bytes": 3348
+    },
+    {
+      "relative_path": "phase1/runtime-epoch-v2-2/real-gpu-smoke-host/product/candidate_sites.tsv",
+      "role": "excluded_v2_2_host_product",
+      "sha256": "77cea049ce8e57bb46a9b8a433d3492b92ea8738e77e21d4e0f5a668e4ba44e0",
+      "size_bytes": 3348
+    },
+    {
+      "relative_path": "phase2/development-harness/development-summary.json",
+      "role": "excluded_cpu_gpu_development_summary",
+      "sha256": "c8392bfa9645279b00d03b8aae783f5fe15f02fa77c7a49be90bd69f9c34175f",
+      "size_bytes": 289025
+    },
+    {
+      "relative_path": "phase2/development-harness/phase2_dev_bts3_w022/pair-complete.json",
+      "role": "excluded_retained_development_failure",
+      "sha256": "98480dcdfef4fcb5a1dfa0fd00d10c053febd1086e86cd0dd83aa8bd29ac9a8b",
+      "size_bytes": 88870
+    },
+    {
+      "relative_path": "phase2/development-harness/phase2_dev_bts3_w006/pair-complete.json",
+      "role": "excluded_retained_development_failure",
+      "sha256": "0c6cacd28162658533811dfe5dd4cae81514af4cb2fb85aff57fe5886ad0fe8f",
+      "size_bytes": 89370
+    },
+    {
+      "relative_path": "phase2/development-harness/phase2_dev_bts3_w153/pair-complete.json",
+      "role": "excluded_development_pass",
+      "sha256": "472902d54e9512e126bfa74552e3c4a6ee1d9e3ec811f5eb702f736d7710673b",
+      "size_bytes": 89233
+    },
+    {
+      "relative_path": "phase2/timing-debug/bts3_w008/gpu-report.json",
+      "role": "excluded_non_acgt_preflight_failure",
+      "sha256": "79d654d51590dc04241711109418dd8513418d50ef66b39d42b15c54f5ec66f7",
+      "size_bytes": 2318
+    },
+    {
+      "relative_path": "phase2/external-development/pato-hq01-ht01-bound/development-report.json",
+      "role": "excluded_pato_development_report",
+      "sha256": "007048c950e140dbb3e9efa98a42a1cd7e12184a58ef4a69db27170b2d409636",
+      "size_bytes": 2122
+    },
+    {
+      "relative_path": "phase2/external-development/pato-hq01-ht01-bound/external-result.summary",
+      "role": "excluded_pato_summary",
+      "sha256": "6d73e5c64f63e66496c522859dd9e771d4b5af6424f7844b786e0569c14ecb08",
+      "size_bytes": 102
+    },
+    {
+      "relative_path": "phase2/external-development/triplexator-hq01-ht01-bound/development-report.json",
+      "role": "excluded_triplexator_development_report",
+      "sha256": "e532d174acd2396a804346716a64889f282fa5106e01a4ae912f3e7934dc0ee3",
+      "size_bytes": 2089
+    },
+    {
+      "relative_path": "phase2/external-development/triplexator-hq01-ht01-bound/external-result.summary",
+      "role": "excluded_triplexator_summary",
+      "sha256": "6d73e5c64f63e66496c522859dd9e771d4b5af6424f7844b786e0569c14ecb08",
+      "size_bytes": 102
+    },
+    {
+      "relative_path": "phase2/tools/PATO-1.0.6/build/tools/PATO/PATO",
+      "role": "pato_development_binary",
+      "sha256": "f2f669831f01ffc6b29a0b21233dec9340517234cf040c5f3912845521955a7a",
+      "size_bytes": 717096
+    },
+    {
+      "relative_path": "phase2/tools/PATO-1.0.6/LICENSE",
+      "role": "pato_license",
+      "sha256": "f3347c319fa48a3add4479f84f213a0c6aa503b982f2824b6a47a7f77ed7a5d8",
+      "size_bytes": 1086
+    }
+  ],
+  "bytes_at_phase2_freeze": 1364742386,
+  "formal_claim_evidence": false,
+  "phase": 2,
+  "quota_bytes": 68719476736,
+  "schema_version": 1
+}

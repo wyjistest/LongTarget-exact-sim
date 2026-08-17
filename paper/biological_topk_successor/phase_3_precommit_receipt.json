@@ -1,0 +1,52 @@
+{
+  "checker_command": [
+    "python3",
+    "scripts/check_biological_topk_successor_phase.py",
+    "--phase",
+    "3",
+    "--mode",
+    "precommit"
+  ],
+  "checker_result": "pass",
+  "expected_changed_paths": [
+    "paper/biological_topk_successor/PROGRAM_STATE.json",
+    "paper/biological_topk_successor/STATUS.md",
+    "paper/biological_topk_successor/fresh_holdout_attempt_plan.tsv",
+    "paper/biological_topk_successor/fresh_holdout_manifest.sha256",
+    "paper/biological_topk_successor/fresh_holdout_manifest.tsv",
+    "paper/biological_topk_successor/fresh_holdout_plan.json",
+    "paper/biological_topk_successor/fresh_holdout_resource_decision.json",
+    "paper/biological_topk_successor/fresh_holdout_resource_projection.json",
+    "paper/biological_topk_successor/phase_3_change_allowlist.txt",
+    "paper/biological_topk_successor/phase_3_precommit_receipt.json",
+    "paper/biological_topk_successor/phase_3_start_receipt.json",
+    "reproduce/biological_topk_successor/analyze_phase4.py",
+    "reproduce/biological_topk_successor/freeze_phase3.py",
+    "reproduce/biological_topk_successor/run_phase4.py",
+    "scripts/check_biological_topk_successor_phase.py",
+    "scripts/check_biological_topk_successor_phase3.sh",
+    "tests/biological_topk_successor/test_phase3.py"
+  ],
+  "phase": 3,
+  "phase_start_parent_head": "a48bcf814d4d055320ee1ab437666bde9d03d390",
+  "planned_commit_message": "repro: freeze successor fresh candidate-site holdout",
+  "schema_evidence_sha256": {
+    "paper/biological_topk_successor/PROGRAM_STATE.json": "984cf9cfedb8003b76fe9568a9b8683e095d3b52a482bae7570f063da75f489c",
+    "paper/biological_topk_successor/STATUS.md": "44ae7ed352ffc4cc1e9680f7cd5bbbac314d0cecfd81ce0156fd6b412d45ddf0",
+    "paper/biological_topk_successor/fresh_holdout_attempt_plan.tsv": "ea8cc41013980a37f86f86e2a09fa610b35932351ccad39085a0a4498ae976f1",
+    "paper/biological_topk_successor/fresh_holdout_manifest.sha256": "6ad6e8021da9e037babde0791464406d04260f18b83faec1b6f773be7636628b",
+    "paper/biological_topk_successor/fresh_holdout_manifest.tsv": "f70349786f321964295353c7328c245ed08c182f3fbc898f81f907f12a79b865",
+    "paper/biological_topk_successor/fresh_holdout_plan.json": "22f8895b1d96954d9b2e30938afcf57649c0c99bd41049ad89c6068957663a8f",
+    "paper/biological_topk_successor/fresh_holdout_resource_decision.json": "13da7da70e7c945865f60dbf695ca93f1dfd1ec4748646af053de3564aefc2b6",
+    "paper/biological_topk_successor/fresh_holdout_resource_projection.json": "cc1af0060ed45f27efb21161f219a688d01d7bcdd68cd2e13186954af907b28e",
+    "paper/biological_topk_successor/phase_3_change_allowlist.txt": "0c0d73eda1d67066facd5db09f92c3e10081bbb69e5b1fb44e4ddf3814cbf227",
+    "paper/biological_topk_successor/phase_3_start_receipt.json": "184f7408f48e2f9a7bea58e7d96124491f74e4f4147a476bbb094ff80a4b2763",
+    "reproduce/biological_topk_successor/analyze_phase4.py": "afc53924ab02af696edb542da68892fac1d0f3b6113987b64f712c8ae865fcdd",
+    "reproduce/biological_topk_successor/freeze_phase3.py": "b331f6de5983a995bded471d37c611e2911f24632c3584979f0141e79f15b644",
+    "reproduce/biological_topk_successor/run_phase4.py": "8cc3ba48e1e3a4d30a5294629f8b0d3eb79b931212d347db8ffb7ac85b945048",
+    "scripts/check_biological_topk_successor_phase.py": "15bae774626e8d4ee35eb6ca6ee0ec49d9e45ccc214c3ca270219bd89813fa12",
+    "scripts/check_biological_topk_successor_phase3.sh": "51bec864542928c6ff14c0834f30fa54f584fbfa914a845c04d7ed6d7223dc12",
+    "tests/biological_topk_successor/test_phase3.py": "7c7ed56371e7dfe5a82ddf97e639616a174055aa79f6d6cc2f754a7ce55379a0"
+  },
+  "schema_version": 1
+}

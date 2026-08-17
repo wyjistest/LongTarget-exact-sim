@@ -1,0 +1,38 @@
+{
+  "all_regression_deterministic": true,
+  "ambiguous_matching_result_count": 0,
+  "classification_counts": {
+    "extra candidate site": 8,
+    "missing candidate site": 8,
+    "representation-only difference": 1,
+    "same candidate site endpoint shift": 23,
+    "strict-row diagnostic mismatch": 14,
+    "true candidate-site substitution": 8
+  },
+  "comparison_count": 184,
+  "dataset_comparison_counts": {
+    "canonical_hybrid_v2_former_fresh_60_regression_only": 60,
+    "canonical_hybrid_v2_regression_36": 36,
+    "historical_paper_core_available": 8,
+    "historical_paper_generalization_available": 44,
+    "phase2_holdout_36": 36
+  },
+  "detail_count": 2391,
+  "details_sha256": "9e028787f07e7ceca2bd2f5ad526c10209327fcdb87c8488ea7930ec898870d5",
+  "evidence_role": "historical_regression_only",
+  "fresh_pair_selected": false,
+  "independent_validation_claim": false,
+  "input_identity_mismatch_count": 0,
+  "known_cases_sha256": "0ad4ef0531cc4610f04dfe134e464e05bca76c8cf64a6d43b4769e910ce8a9fb",
+  "manifest_sha256": "973af60d11431c1a5641b848b850f7456907fe6c8cc9973021ff1a77efb447f9",
+  "new_prediction_run": false,
+  "no_parser_or_comparator_technical_failures": true,
+  "phase": 2,
+  "ranking_result_count": 552,
+  "results_sha256": "25044573fdaee7383a1ecc2543435d698093d0c681553f6c9b0bdc0891eabe09",
+  "schema_version": 1,
+  "set_preserved_result_count": 544,
+  "status": "pass",
+  "strict_row_mismatch_result_count": 14,
+  "technical_failure_count": 0
+}

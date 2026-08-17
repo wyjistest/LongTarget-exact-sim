@@ -1,0 +1,8 @@
+quick_reproduction=pass
+data_freeze_id=paper-data-v1-dccfd49-20260716
+source_manifest_files=11
+paired_summary_workloads=21
+render_manifest_files=30
+figure_sets=5
+table_bundles=4
+gpu_benchmarks_rerun=0

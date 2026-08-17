@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-07-15T08:50:24.049738+00:00",
+  "source": "paper benchmark run environment receipts",
+  "os": "Ubuntu 20.04.6 LTS",
+  "kernel": "5.15.0-46-generic",
+  "cpu_model": "Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz",
+  "logical_cpus": 20,
+  "physical_cores": 10,
+  "ram_bytes": 134745059328,
+  "gpus": [
+    {"index": 0, "name": "NVIDIA GeForce RTX 4090", "memory_mib": 24564},
+    {"index": 1, "name": "NVIDIA GeForce RTX 4090", "memory_mib": 24564}
+  ],
+  "nvidia_driver": "555.42.06",
+  "cuda_driver_reported": "12.5",
+  "cuda_toolkit": "12.5.82",
+  "cxx": "g++ 9.4.0",
+  "python": "3.11.10",
+  "matplotlib": "3.9.1",
+  "pillow": "10.4.0",
+  "numpy": "1.26.4",
+  "gasal2_commit": "106d94ee53fc847214fb05f2f9f892538a5d3baf",
+  "gasal2_gpu_sm_arch": "sm_89",
+  "gasal2_max_query_len": 2812,
+  "gasal2_n_code": "0x4E",
+  "cpu_governor": "powersave",
+  "gpu_persistence_mode": "disabled",
+  "gpu_application_clocks": "not controlled"
+}

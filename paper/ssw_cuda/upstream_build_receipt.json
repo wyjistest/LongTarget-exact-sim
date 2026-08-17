@@ -1,0 +1,296 @@
+{
+  "bindings": {
+    "architecture_decision_path": "paper/ssw_cuda/architecture_decision.md",
+    "architecture_decision_sha256": "2da0616ccce93da2f4359e688d3768247ce3e6b34363dbd4b53364561e295c69",
+    "generator_path": "reproduce/ssw_cuda/freeze_phase4.py",
+    "generator_sha256": "1b3a42b3ce53c124fa1d29463629204dd6562579fbb410afd17fb3b2dacb2e1a",
+    "semantic_diff_path": "paper/ssw_cuda/upstream_semantic_diff.tsv",
+    "semantic_diff_sha256": "bbcd77f7c578430b14452196d043bfab42c5e1d0923c18ddad90614331e5f5c4"
+  },
+  "build_attempts": [
+    {
+      "attempt_id": "accelign_build01",
+      "classification": "pass",
+      "command": [
+        "make",
+        "alignment_endpoints",
+        "GPUARCH=89",
+        "GPUARCH_NUM_COMPILE_THREADS=4"
+      ],
+      "ended_utc": "2026-07-28T07:59:04+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/accelign_build01.log",
+      "log_sha256": "0f3ab9ed6578a5d4ad159eaae38d547b3d37c2c4ba9a658f0ef6966ba2137353",
+      "max_rss_kib": 704660,
+      "output_binary": {
+        "path": ".paper-artifacts/ssw-cuda-v1/upstream/sources/Accelign/examples/low-level/alignment_endpoints",
+        "sha256": "10eb2460d432d01132bc2290bcb1b1bcafd01d3cee69ffe0a1844bdd45c5b146",
+        "size_bytes": 18306080
+      },
+      "repair": "none",
+      "returncode": 0,
+      "started_utc": "2026-07-28T07:58:20+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/accelign_build01.time",
+      "time_sha256": "d85018a4ffe42a388a5a7a0cd013671bbc08a5f4d024c6e3197f4cc47ad63a59",
+      "timeout_seconds": 1800,
+      "upstream_id": "accelign",
+      "wall_seconds": 43.94,
+      "working_directory": "examples/low-level"
+    },
+    {
+      "attempt_id": "g3sa_build01",
+      "classification": "failed_hardcoded_cuda_12_1_header",
+      "command": [
+        "make",
+        "-j4",
+        "OBJ_DIR=obj-phase4",
+        "BIN_DIR=bin-phase4",
+        "TARGET=bin-phase4/minimap2-gpu",
+        "NVCC=/usr/local/cuda/bin/nvcc",
+        "NVCCFLAGS=-arch=sm_89 -DMAX_QUERY_LEN=10000 -DN_CODE=0x4E -Iinclude"
+      ],
+      "ended_utc": "2026-07-28T08:00:04+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_build01.log",
+      "log_sha256": "ef6b760ffc836370cc094e21d162bf923f035b4401faa02604429c59c70fa90b",
+      "max_rss_kib": 32136,
+      "output_binary": null,
+      "repair": "none",
+      "returncode": 2,
+      "started_utc": "2026-07-28T08:00:04+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_build01.time",
+      "time_sha256": "63ca74668a525f386b28ba88458105cf7455066b0833c92a7c1b7e804c63d842",
+      "timeout_seconds": 1800,
+      "upstream_id": "g3sa",
+      "wall_seconds": 0.11,
+      "working_directory": "minimap2"
+    },
+    {
+      "attempt_id": "g3sa_build02",
+      "classification": "failed_missing_cuda_include_for_host_compiler",
+      "command": [
+        "make",
+        "-j4",
+        "OBJ_DIR=obj-phase4-attempt02",
+        "BIN_DIR=bin-phase4-attempt02",
+        "TARGET=bin-phase4-attempt02/minimap2-gpu",
+        "NVCC=/usr/local/cuda/bin/nvcc",
+        "NVCCFLAGS=-arch=sm_89 -DMAX_QUERY_LEN=10000 -DN_CODE=0x4E -Iinclude"
+      ],
+      "ended_utc": "2026-07-28T08:00:46+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_build02.log",
+      "log_sha256": "7b4a9bdc6e8990e88e5367af96be3adbb5918413da758563afeec77365edaacf",
+      "max_rss_kib": 32092,
+      "output_binary": null,
+      "repair": "replace_two_absolute_cuda_12_1_includes_with_cuda_runtime_angle_include",
+      "returncode": 2,
+      "started_utc": "2026-07-28T08:00:46+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_build02.time",
+      "time_sha256": "cef497222fd280bcce9c8037d2a2526b429a7200edd3109bf3f8e345e152a744",
+      "timeout_seconds": 1800,
+      "upstream_id": "g3sa",
+      "wall_seconds": 0.1,
+      "working_directory": "minimap2"
+    },
+    {
+      "attempt_id": "g3sa_build03",
+      "classification": "pass_after_bounded_portability_repair",
+      "command": [
+        "make",
+        "-j4",
+        "OBJ_DIR=obj-phase4-attempt03",
+        "BIN_DIR=bin-phase4-attempt03",
+        "TARGET=bin-phase4-attempt03/minimap2-gpu",
+        "CXX=g++",
+        "NVCC=/usr/local/cuda/bin/nvcc",
+        "CXXFLAGS=-std=c++11 -DMAX_QUERY_LEN=10000 -DN_CODE=0x4E -Iinclude -I/usr/local/cuda/include",
+        "NVCCFLAGS=-arch=sm_89 -DMAX_QUERY_LEN=10000 -DN_CODE=0x4E -Iinclude"
+      ],
+      "ended_utc": "2026-07-28T08:01:21+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_build03.log",
+      "log_sha256": "1443f8624aea8548f01ba1bff1a1be0efe2edf301fc7e38c513cc3188d8cde44",
+      "max_rss_kib": 459848,
+      "output_binary": {
+        "path": ".paper-artifacts/ssw-cuda-v1/upstream/sources/G3SA/minimap2/bin-phase4-attempt03/minimap2-gpu",
+        "sha256": "5d20a3c9c8103267f6464836c75df4854e3af9a45aafbba14b06cee219f36095",
+        "size_bytes": 3897320
+      },
+      "repair": "attempt02_header_patch_plus_explicit_host_cuda_include",
+      "returncode": 0,
+      "started_utc": "2026-07-28T08:01:03+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_build03.time",
+      "time_sha256": "6048d744020ec42d93b354f4fabec1bd2d5ea9f5135f1b529a3b3afeed002efb",
+      "timeout_seconds": 1800,
+      "upstream_id": "g3sa",
+      "wall_seconds": 17.44,
+      "working_directory": "minimap2"
+    }
+  ],
+  "build_budget": {
+    "architecture_candidate_count": 3,
+    "attempt_counts": {
+      "accelign": 1,
+      "g3sa": 3
+    },
+    "gpu_time_limit_seconds": 28800,
+    "maximum_architecture_candidates": 3,
+    "maximum_attempts_per_upstream": 3,
+    "observed_runtime_wall_seconds_upper_bound": 1.04
+  },
+  "claim_boundary": {
+    "bioinformatics_b3_track": "closed_amdahl",
+    "cpu_oracle_replaced": false,
+    "engineering_track": "active",
+    "g3sa_license_status": "reference_only_pending_component_level_legal_review",
+    "l1_l5_implementation_owner": "in_tree"
+  },
+  "frozen_parent_head": "21832757d3431da7e6ec8b38b0072528f228988f",
+  "frozen_utc": "2026-07-28T08:02:50Z",
+  "g3sa_portability_patch": {
+    "changed_paths": [
+      "minimap2/include/gasal.h",
+      "minimap2/include/host_mem.h"
+    ],
+    "description": "Replace two absolute CUDA 12.1 includes with standard cuda_runtime.h includes.",
+    "diff_sha256": "bbd368907e7790b7ca955a42f96796fbf5ac7095275d1f80db7fd9240d4d0e16",
+    "scope": "ignored_build_sandbox_only",
+    "semantic_change": false
+  },
+  "phase": 4,
+  "results": {
+    "accelign_build": "pass_first_attempt",
+    "accelign_multi_tile_2812_self_check": "pass",
+    "accelign_single_tile_self_check": "pass",
+    "accelign_ssw_equivalence_claimed": false,
+    "g3sa_build": "pass_third_and_final_attempt",
+    "g3sa_no_argument_smoke": "sigsegv_exit_139",
+    "g3sa_runtime_correctness_claimed": false,
+    "selected_architecture": "C_mixed_in_tree_checkpoint_recompute",
+    "third_party_code_linked_or_copied": false
+  },
+  "runtime_attempts": [
+    {
+      "attempt_id": "accelign_run01",
+      "classification": "single_tile_upstream_self_check_pass",
+      "command": [
+        "./alignment_endpoints",
+        "8",
+        "64",
+        "64",
+        "--checkResults",
+        "--randomSeqs"
+      ],
+      "ended_utc": "2026-07-28T07:59:22+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/accelign_run01.log",
+      "log_sha256": "2cc8b1967c60357390d8eb4b8a04c460dd61de7eda892a00eca398671c0881fc",
+      "max_rss_kib": 122420,
+      "repair": "none",
+      "returncode": 0,
+      "started_utc": "2026-07-28T07:59:22+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/accelign_run01.time",
+      "time_sha256": "6d072b92a58794dea4250a63bcd2b3037c741810662673f6b23253a8d6fd6181",
+      "timeout_seconds": 120,
+      "upstream_id": "accelign",
+      "wall_seconds": 0.23,
+      "working_directory": "examples/low-level"
+    },
+    {
+      "attempt_id": "accelign_run02",
+      "classification": "multi_tile_upstream_self_check_pass",
+      "command": [
+        "./alignment_endpoints",
+        "2",
+        "2812",
+        "2812",
+        "--checkResults",
+        "--randomSeqs"
+      ],
+      "ended_utc": "2026-07-28T07:59:36+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/accelign_run02.log",
+      "log_sha256": "411f6d6a0305e197e8d0c8bbd10fcf8e8b15b232e929ca3b2cb2386bcea6f77a",
+      "max_rss_kib": 223620,
+      "repair": "none",
+      "returncode": 0,
+      "started_utc": "2026-07-28T07:59:35+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/accelign_run02.time",
+      "time_sha256": "028fb5d2923d365c1fc3d8cd95ceb2dacdced65377ff584ec1883943719f3c0f",
+      "timeout_seconds": 120,
+      "upstream_id": "accelign",
+      "wall_seconds": 0.56,
+      "working_directory": "examples/low-level"
+    },
+    {
+      "attempt_id": "g3sa_run01",
+      "classification": "unsupported_help_flag_treated_as_input",
+      "command": [
+        "./bin-phase4-attempt03/minimap2-gpu",
+        "-h"
+      ],
+      "ended_utc": "2026-07-28T08:01:36+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_run01.log",
+      "log_sha256": "34146b409e7f26a6cc44af72878a987380b38556a70782f8693ea486c0903db6",
+      "max_rss_kib": 9968,
+      "repair": "none",
+      "returncode": 1,
+      "started_utc": "2026-07-28T08:01:36+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_run01.time",
+      "time_sha256": "36b9132d8089d43eb953aefd91c4f29d027b475eca330d16e2c7ce0d45609f7b",
+      "timeout_seconds": 30,
+      "upstream_id": "g3sa",
+      "wall_seconds": 0.06,
+      "working_directory": "minimap2"
+    },
+    {
+      "attempt_id": "g3sa_run02",
+      "classification": "no_argument_operational_smoke_sigsegv_no_correctness_claim",
+      "command": [
+        "./bin-phase4-attempt03/minimap2-gpu"
+      ],
+      "ended_utc": "2026-07-28T08:01:44+00:00",
+      "log_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_run02.log",
+      "log_sha256": "249dcf915d8c3d100da82696183796444402fc0b17be7e68c8bdef896f1fab1d",
+      "max_rss_kib": 9776,
+      "repair": "none",
+      "returncode": 139,
+      "started_utc": "2026-07-28T08:01:44+00:00",
+      "time_path": ".paper-artifacts/ssw-cuda-v1/upstream/logs/g3sa_run02.time",
+      "time_sha256": "9e1ba128c7ece28d15862e1498ac06d6353f0d3458f2f1b07d683bb61fb608f4",
+      "timeout_seconds": 30,
+      "upstream_id": "g3sa",
+      "wall_seconds": 0.19,
+      "working_directory": "minimap2"
+    }
+  ],
+  "schema_version": 1,
+  "status": "pass_with_bounded_upstream_runtime_limitations",
+  "toolchain": {
+    "cxx_path": "/usr/bin/x86_64-linux-gnu-g++-9",
+    "cxx_sha256": "0c0b987719385f8e242819dfef6a3e97b4b2540ce4035dbc11565df2966bd69e",
+    "cxx_version": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+    "gpu_devices": [
+      {
+        "compute_capability": "8.9",
+        "driver_version": "555.42.06",
+        "index": 0,
+        "memory_total_mib": 24564,
+        "name": "NVIDIA GeForce RTX 4090",
+        "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3"
+      },
+      {
+        "compute_capability": "8.9",
+        "driver_version": "555.42.06",
+        "index": 1,
+        "memory_total_mib": 24564,
+        "name": "NVIDIA GeForce RTX 4090",
+        "uuid": "GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2"
+      }
+    ],
+    "make_version": "GNU Make 4.2.1",
+    "nvcc_path": "/usr/local/cuda-12.5/bin/nvcc",
+    "nvcc_sha256": "737d062596cf306464d55f196a9e8db3ce64753825e58b4c2fc2da325579ad93",
+    "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2024 NVIDIA Corporation\nBuilt on Thu_Jun__6_02:18:23_PDT_2024\nCuda compilation tools, release 12.5, V12.5.82\nBuild cuda_12.5.r12.5/compiler.34385749_0"
+  },
+  "upstream_snapshot": {
+    "path": "paper/ssw_cuda/upstream_snapshot.tsv",
+    "row_count": 2,
+    "sha256": "a3a9ddb6a3100fc8ee87f54d0934f8e0fa7cd09296d6fc667c066695c139277b"
+  }
+}

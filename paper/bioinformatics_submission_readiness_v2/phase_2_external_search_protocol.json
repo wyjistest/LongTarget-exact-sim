@@ -1,0 +1,64 @@
+{
+  "citation_chaining": {
+    "seed_records": [
+      "10.1101/gr.130237.111",
+      "10.1093/bioinformatics/btad134",
+      "10.1016/j.csbj.2023.05.016",
+      "10.1093/bioinformatics/btaf641"
+    ],
+    "strategy": "forward and backward citation and software-repository chaining from the frozen related-work inventory"
+  },
+  "exclusion_criteria": [
+    "not an RNA-DNA-DNA triplex prediction, screening, or analysis method",
+    "intramolecular DNA-only triplex task",
+    "no inspectable implementation or accessible resource",
+    "unversioned demonstration repository without a stable executable and without peer-reviewed method support",
+    "duplicate wrapper around an already inventoried core engine",
+    "input or output semantics cannot support a scientifically interpretable comparison"
+  ],
+  "formal_comparator_selection_frozen": false,
+  "inclusion_criteria": [
+    "predicts or analyzes sequence-specific RNA-DNA-DNA triplex interactions",
+    "has an inspectable local implementation, public web resource, or archived data/code resource",
+    "has enough documentation to classify input, output, scale, and hardware semantics",
+    "was available on or before the search date"
+  ],
+  "phase": 2,
+  "queries": [
+    {
+      "query": "lncRNA DNA triplex in:name,description,readme",
+      "result_count": 16,
+      "source": "GitHub repository search API"
+    },
+    {
+      "query": "Triplexator alternative in:name,description,readme",
+      "result_count": 2,
+      "source": "GitHub repository search API"
+    },
+    {
+      "query": "lncRNA DNA triplex prediction software",
+      "result_screening_note": "The broad Crossref response was relevance-screened by title and citation chaining because it contained many physical-chemistry and DNA-nanotechnology records.",
+      "source": "Crossref works API title query"
+    }
+  ],
+  "schema_version": 1,
+  "search_date": "2026-07-31",
+  "search_date_timezone": "Asia/Shanghai",
+  "semantic_compatibility_criteria": {
+    "direct_runtime_candidate": "Must accept frozen RNA query and DNA target sequence objects locally, emit interpretable interaction or region-level output, run without hidden precomputation, and permit a fixed resource schedule.",
+    "landscape_only": "A web resource, precomputed database, wrapper pipeline, classifier, or method with materially different alignment/output semantics may be discussed but cannot be presented as a like-for-like wall-time comparator.",
+    "output_mapping": "Native output semantics remain native; no row equivalence to LongTarget candidate sites may be claimed without a preregistered mapping. Region-level biological metrics may be used only after Phase 3 freezes the mapping."
+  },
+  "software_availability_criteria": {
+    "current_executable": "Public source, identifiable version or commit, buildable local CLI, inspectable license, and a successful excluded development smoke.",
+    "legacy_executable": "Identifiable historical version and local CLI, with license/use boundary and successful excluded development smoke.",
+    "resource": "Publicly accessible web or archived resource with a stable publication or archive identifier."
+  },
+  "sources": [
+    "GitHub repository, tag, and release APIs",
+    "Crossref works API",
+    "publisher DOI records and availability statements",
+    "existing repository related-work inventory checked on 2026-07-16"
+  ],
+  "state_of_the_art_label_policy": "No tool is called current state of the art solely because it was found. PATO is frozen only as the candidate current executable comparator; final wording and comparator inclusion require the Phase 3 semantic mapping."
+}

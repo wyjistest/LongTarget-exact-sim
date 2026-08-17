@@ -1,0 +1,36 @@
+audit_id	requirement	authoritative_evidence	verifier	status
+P0	Scope claims runtime epoch and evidence inventory frozen	paper/scope_and_claims.md;paper/claim_evidence.tsv;paper/artifact_inventory.tsv;paper/runtime_epoch_log.tsv	check-fasim-gasal2-paper-phase0	pass
+P1	Benchmark protocol preregistered manifest and digest-aware harness complete	paper/benchmark_protocol.md;paper/workload_manifest.tsv;paper/workload_manifest.sha256	check-fasim-gasal2-paper-phase1	pass
+P2	Core repeated paired benchmarks and retained failures complete	paper/core_benchmark_report.md;paper/phase2_artifact_manifest.tsv;paper/source_data/core_benchmark_pairs_pre_freeze.tsv	check-fasim-gasal2-paper-phase2	pass
+P3	Preregistered short-query generalization mismatches and negative controls complete	paper/generalization_report.md;paper/phase3_artifact_manifest.tsv;paper/source_data/generalization_mismatch_top5_pre_freeze.tsv	check-fasim-gasal2-paper-phase3	pass
+P4	Ablation resource archive restore merge and exact-column evidence complete	paper/ablation_resource_report.md;paper/phase4_artifact_manifest.tsv;paper/source_data/ablation_resource_pairs_pre_freeze.tsv	check-fasim-gasal2-paper-phase4	pass
+P5	Statistics analyzed and machine-readable source data frozen	paper/source_data/DATA_FREEZE.md;paper/source_data/source_data_manifest.tsv;paper/source_data/paired_speedup_summary.tsv	check-fasim-gasal2-paper-phase5	pass
+P6	Vector figures direct 600 DPI PNG tables and captions generated	paper/figures/render_manifest.tsv;paper/figures/source_mapping.tsv;paper/captions.md	check-fasim-gasal2-paper-phase6	pass
+P7	Input environment container commands and clean-checkout reproduction complete	reproduce/input_manifest.tsv;reproduce/environment_manifest.json;reproduce/check_reproduction.sh;paper/clean_checkout_validation.log	check-fasim-gasal2-paper-phase7	pass
+P8	Manuscript source kit limitations verified bibliography and placeholders complete	paper/outline.md;paper/methods_notes.md;paper/results_claims.md;paper/limitations.md;paper/related_work_inventory.tsv;paper/references.bib;paper/authorship_metadata_needed.md	check-fasim-gasal2-paper-phase8	pass
+P9	Independent arithmetic language and final paper-preparation audit complete	paper/independent_arithmetic_audit.tsv;paper/PAPER_PREP_STATUS.md;scripts/check_fasim_gasal2_paper_prep.sh	check-fasim-gasal2-paper-prep	pass
+F01	paper scope and claims frozen	paper/scope_and_claims.md;paper/claim_evidence.tsv	check-fasim-gasal2-paper-phase0	pass
+F02	runtime commit/epoch frozen	paper/runtime_epoch_log.tsv;goal-final.md	check-fasim-gasal2-paper-phase0	pass
+F03	workload manifest preregistered	paper/workload_manifest.tsv;paper/workload_manifest.sha256	check-fasim-gasal2-paper-phase1	pass
+F04	core paired repeats complete	paper/core_benchmark_report.md;paper/source_data/core_benchmark_pairs_pre_freeze.tsv	check-fasim-gasal2-paper-phase2	pass
+F05	generalization panel complete, including mismatches	paper/generalization_report.md;paper/source_data/generalization.tsv;paper/source_data/generalization_mismatch_top5_pre_freeze.tsv	check-fasim-gasal2-paper-phase3	pass
+F06	negative controls recorded	paper/source_data/generalization_guards_pre_freeze.tsv;paper/source_data/correctness.tsv	check-fasim-gasal2-paper-phase3	pass
+F07	ablation/resource/archive evidence complete	paper/ablation_resource_report.md;paper/source_data/ablation.tsv;paper/source_data/resources.tsv;paper/source_data/archive_first.tsv	check-fasim-gasal2-paper-phase4	pass
+F08	raw artifacts immutable and digested	paper/phase2_artifact_manifest.tsv;paper/phase3_artifact_manifest.tsv;paper/phase4_artifact_manifest.tsv	check-fasim-gasal2-paper-phase2;check-fasim-gasal2-paper-phase3;check-fasim-gasal2-paper-phase4	pass
+F09	exclusions explicit	paper/source_data/exclusions.tsv;paper/source_data/DATA_FREEZE.md	check-fasim-gasal2-paper-phase5	pass
+F10	source data frozen	paper/source_data/source_data_manifest.tsv;paper/source_data/DATA_FREEZE.md	check-fasim-gasal2-paper-phase5	pass
+F11	statistics reproducible	paper/source_data/paired_speedup_summary.tsv;paper/source_data/paired_speedup_summary.json;paper/independent_arithmetic_audit.tsv	check-fasim-gasal2-paper-phase5;check-fasim-gasal2-paper-prep	pass
+F12	vector figures generated	paper/figures/fig1_method_fast_topk.svg;paper/figures/fig2_performance_generalization.svg;paper/figures/fig3_ablation_resources.svg;paper/figures/fig4_operating_envelope.svg;paper/figures/figS1_archive_first.svg	check-fasim-gasal2-paper-phase6	pass
+F13	600 DPI PNG directly exported	paper/figures/fig1_method_fast_topk_600dpi.png;paper/figures/fig2_performance_generalization_600dpi.png;paper/figures/fig3_ablation_resources_600dpi.png;paper/figures/fig4_operating_envelope_600dpi.png;paper/figures/figS1_archive_first_600dpi.png	check-fasim-gasal2-paper-phase6	pass
+F14	tables generated from source data	paper/tables/table1_workloads.tsv;paper/tables/table2_performance.tsv;paper/tables/table3_correctness.tsv;paper/tables/table4_ablation_resources.tsv	check-fasim-gasal2-paper-phase6	pass
+F15	captions include scope, n and contracts	paper/captions.md;paper/figures/source_mapping.tsv	check-fasim-gasal2-paper-phase6	pass
+F16	reproduction package passes from clean checkout	paper/clean_checkout_validation.log;reproduce/check_reproduction.sh	check-fasim-gasal2-paper-phase7	pass
+F17	methods notes complete	paper/methods_notes.md;paper/benchmark_protocol.md	check-fasim-gasal2-paper-phase8	pass
+F18	results claim map complete	paper/results_claims.md;paper/claim_evidence.tsv	check-fasim-gasal2-paper-phase8	pass
+F19	limitations complete	paper/limitations.md;paper/gap_register.tsv	check-fasim-gasal2-paper-phase8	pass
+F20	bibliography metadata verified	paper/related_work_inventory.tsv;paper/references.bib	check-fasim-gasal2-paper-phase8	pass
+F21	author/funding placeholders not invented	paper/authorship_metadata_needed.md	check-fasim-gasal2-paper-phase8	pass
+F22	long-query no-go preserved	docs/fasim_gasal2_long_query_final_decision.md;paper/limitations.md	check-fasim-gasal2-paper-prep	pass
+F23	full 121-segment and hg38 runs not performed	paper/source_data/benchmark_runs.tsv;docs/fasim_gasal2_long_query_final_decision.md	check-fasim-gasal2-paper-prep	pass
+F24	final aggregate check passes	scripts/check_fasim_gasal2_paper_prep.sh;Makefile	check-fasim-gasal2-paper-prep	pass
+F25	PAPER_PREP_STATUS.md written	paper/PAPER_PREP_STATUS.md	check-fasim-gasal2-paper-prep	pass

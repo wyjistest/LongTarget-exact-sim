@@ -4,14 +4,38 @@
 
 #include "ssw_cpp.h"
 #include "ssw.h"
+#include "ssw_oracle_trace.h"
 #include<algorithm>
 #include <iostream>
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+#include <limits>
+#endif
 #include <map>
 #include <memory>
 #include <sstream>
 #include <vector>
 
 namespace {
+	class AuthorityProfileScope {
+	public:
+		explicit AuthorityProfileScope(fasim_authority_profile_stage stage_value) :
+			stage(stage_value), active(fasim_authority_profile_enabled() != 0) {
+			if (active) {
+				fasim_authority_profile_enter(static_cast<uint8_t>(stage));
+			}
+		}
+
+		~AuthorityProfileScope() {
+			if (active) {
+				fasim_authority_profile_leave(static_cast<uint8_t>(stage));
+			}
+		}
+
+	private:
+		fasim_authority_profile_stage stage;
+		bool active;
+	};
 
 	struct SswProfileCacheEntry {
 		SswProfileCacheEntry()
@@ -484,6 +508,8 @@ namespace StripedSmithWaterman {
 	bool Aligner::Align(const char* query, const Filter& filter,
 		Alignment* alignment, const int32_t maskLen) const
 	{
+		AuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
 		if (!translation_matrix_) return false;
 		if (reference_length_ == 0) return false;
 
@@ -535,6 +561,7 @@ namespace StripedSmithWaterman {
 		const Filter& filter, Alignment* alignment, const int32_t maskLen,
 		int threshold, std::vector<struct scoreInfo> &finalScoreInfo,int match,int mismatch) const
 	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_PRE_ALIGN);
 		if (!translation_matrix_) return false;
 
 		int query_len = strlen(query);
@@ -549,6 +576,9 @@ namespace StripedSmithWaterman {
 
 
 		const int8_t score_size = 2;
+		fasim_ssw_oracle::begin_prealign(query, query_len, ref, ref_len,
+			match_score_, mismatch_penalty_, gap_opening_penalty_,
+			gap_extending_penalty_, maskLen);
 		s_profile* profile = ssw_init(translated_query, query_len, score_matrix_,
 			score_matrix_size_, score_size);
 
@@ -721,6 +751,14 @@ namespace StripedSmithWaterman {
 			//tmpScoreInfo[tmpScoreInfo.size() - 1].position);
 		//finalScoreInfo.push_back(bScoreInfo);
 
+		for (size_t score_info_index = 0;
+			score_info_index < finalScoreInfo.size(); ++score_info_index) {
+			fasim_ssw_oracle::append_prealign_scoreinfo(
+				static_cast<int>(score_info_index),
+				finalScoreInfo[score_info_index].score,
+				finalScoreInfo[score_info_index].position);
+		}
+		fasim_ssw_oracle::finish_prealign(threshold);
 		return true;
 	}
 
@@ -728,6 +766,7 @@ namespace StripedSmithWaterman {
 		const Filter& filter, const int32_t maskLen, int threshold,
 		std::vector<int> &columnScores) const
 	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_PRE_ALIGN);
 		columnScores.clear();
 		if (!translation_matrix_) return false;
 
@@ -784,6 +823,8 @@ namespace StripedSmithWaterman {
 	bool Aligner::Align(const char* query, const char* ref, const int& ref_len,
 		const Filter& filter, Alignment* alignment, const int32_t maskLen) const
 	{
+		AuthorityProfileScope authority_scope(
+			FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
 		if (!translation_matrix_) return false;
 
 		int query_len = strlen(query);
@@ -811,6 +852,10 @@ namespace StripedSmithWaterman {
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
+		fasim_ssw_oracle::begin_alignment(query, query_len, ref, valid_ref_len,
+			match_score_, mismatch_penalty_, gap_opening_penalty_,
+			gap_extending_penalty_, maskLen, flag, filter.score_filter,
+			filter.distance_filter);
 		s_align* s_al = ssw_align(profile, translated_ref, valid_ref_len,
 			static_cast<int>(gap_opening_penalty_),
 			static_cast<int>(gap_extending_penalty_),
@@ -819,10 +864,21 @@ namespace StripedSmithWaterman {
 		alignment->Clear();
 				if(s_al!=NULL){
 		    ConvertAlignment(*s_al, query_len, alignment);
+		    fasim_ssw_oracle::finish_alignment(
+			    alignment->sw_score,
+			    alignment->sw_score_next_best,
+			    alignment->ref_begin,
+			    alignment->ref_end,
+			    alignment->query_begin,
+			    alignment->query_end,
+			    alignment->ref_end_next_best,
+			    alignment->cigar_string,
+			    static_cast<int>(alignment->cigar.size()));
 		    align_destroy(s_al);
 		}
 		else{
 		    alignment->sw_score = 0;
+		    fasim_ssw_oracle::abort_alignment("ssw_align_returned_null");
 		}
 		if (profileCacheEnabled &&
 		    (SswProfileCacheValidateRuntime() ||
@@ -860,6 +916,71 @@ namespace StripedSmithWaterman {
 
 		return true;
 	}
+
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+	bool Aligner::AlignFromForward(const char* query, const char* ref,
+		const int& ref_len, const Filter& filter,
+		const ForwardEndpoint& endpoint, Alignment* alignment,
+		const int32_t maskLen) const
+	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
+		if (!translation_matrix_ || query == NULL || ref == NULL ||
+			alignment == NULL || ref_len <= 0 ||
+			endpoint.score1 < 0 ||
+			endpoint.score1 > std::numeric_limits<uint16_t>::max() ||
+			endpoint.score2 < 0 ||
+			endpoint.score2 > std::numeric_limits<uint16_t>::max() ||
+			(endpoint.numeric_path != SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
+			 endpoint.numeric_path != SSW_FORWARD_NUMERIC_PATH_WORD16)) {
+			return false;
+		}
+
+		const int query_len = strlen(query);
+		if (query_len == 0) return false;
+		int8_t* translated_query = new int8_t[query_len];
+		TranslateBase(query, query_len, translated_query);
+		int8_t* translated_ref = new int8_t[ref_len];
+		TranslateBase(ref, ref_len, translated_ref);
+
+		const int8_t score_size = 2;
+		const bool profileContextEnabled =
+			SswProfileContextEnabledRuntime() && SswProfileCacheEnabledRuntime();
+		const bool profileCacheEnabled =
+			SswProfileCacheEnabledRuntime() || profileContextEnabled;
+		s_profile* profile = profileCacheEnabled ?
+			SswProfileCacheGetOrBuild(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size, gap_opening_penalty_,
+				gap_extending_penalty_) :
+			ssw_init(translated_query, query_len, score_matrix_,
+				score_matrix_size_, score_size);
+
+		uint8_t flag = 0;
+		SetFlag(filter, &flag);
+		ssw_forward_endpoint raw_endpoint;
+		raw_endpoint.score1 = static_cast<uint16_t>(endpoint.score1);
+		raw_endpoint.score2 = static_cast<uint16_t>(endpoint.score2);
+		raw_endpoint.ref_end1 = endpoint.ref_end1;
+		raw_endpoint.read_end1 = endpoint.query_end1;
+		raw_endpoint.ref_end2 = endpoint.ref_end2;
+		raw_endpoint.numeric_path = static_cast<uint8_t>(endpoint.numeric_path);
+		s_align* raw_alignment = ssw_align_from_forward(profile, translated_ref,
+			ref_len, static_cast<int>(gap_opening_penalty_),
+			static_cast<int>(gap_extending_penalty_), flag,
+			filter.score_filter, filter.distance_filter, maskLen, &raw_endpoint);
+
+		alignment->Clear();
+		const bool success = raw_alignment != NULL;
+		if (success) {
+			ConvertAlignment(*raw_alignment, query_len, alignment);
+			align_destroy(raw_alignment);
+		}
+		delete[] translated_query;
+		delete[] translated_ref;
+		if (!profileCacheEnabled) init_destroy(profile);
+		return success;
+	}
+#endif
 
 	void Aligner::Clear(void) {
 		ClearMatrices();

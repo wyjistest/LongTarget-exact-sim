@@ -1,0 +1,2 @@
+validation_instance_id	workload_id	repeat_id	primary_instance	authority_candidate_count_score	candidate_candidate_count_score	clean_double_empty_all_modes	binary_gate_denominator_eligible	evidence_role
+bts3_w071__repeat00	bts3_w071	0	1	0	0	1	0	fresh_concordance_promotion

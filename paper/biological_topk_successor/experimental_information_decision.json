@@ -1,0 +1,23 @@
+{
+  "all_primary_lncRNAs_have_dataset": true,
+  "available_assay_type_classes": [
+    "ChIRP"
+  ],
+  "blocked_reason": null,
+  "cross_assay_generality_claim": "not_supported",
+  "decision": "pass",
+  "distinct_lncRNA_outer_units": 5,
+  "evaluation_prediction_started": false,
+  "external_predictor_available": true,
+  "finite_lcb_simulation_fraction": "1",
+  "labels_and_negatives_deterministic": true,
+  "minimum_distinct_lncRNAs": 5,
+  "minimum_outer_unit_gate_pass": true,
+  "multiple_assay_types_input_eligible": false,
+  "one_sided_interval_identifiable": true,
+  "phase": 5,
+  "phase_6_authorized": true,
+  "power_simulation_sha256": "6caa0303aba25cc3cca04d83b9c923c2b8f4cfe5f90f5d773716273d9da9ff68",
+  "primary_dataset_count": 5,
+  "schema_version": 1
+}

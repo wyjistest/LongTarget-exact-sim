@@ -48,6 +48,25 @@ struct FasimGasal2Stats
 		nt_sum_span_prune_enabled(false),
 		nt_sum_span_pruned_attempts(0),
 		nt_sum_span_pruned_groups(0),
+		traceback_certificate_shadow_requested(false),
+		traceback_certificate_shadow_active(false),
+		traceback_certificate_real_skip_enabled(false),
+		traceback_certificate_pre_drop_proof_available(false),
+		traceback_certificate_candidates_considered(0),
+		traceback_certificate_certified_skips(0),
+		traceback_certificate_uncertified_candidates(0),
+		traceback_certificate_exact_descriptor_duplicate_skips(0),
+		traceback_certificate_static_span_skips(0),
+		traceback_certificate_score_endpoint_span_skips(0),
+		traceback_certificate_shadow_false_rejects(0),
+		traceback_certificate_score_frontier_skips(0),
+		traceback_certificate_stability_frontier_skips(0),
+		traceback_certificate_nt_frontier_skips(0),
+		traceback_certificate_tie_rescues(0),
+		traceback_certificate_rank_aware_supported(false),
+		traceback_certificate_probe_requests(0),
+		traceback_certificate_probe_seconds(0.0),
+		traceback_certificate_fallbacks(0),
 		limited_traceback_enabled(false),
 		limited_traceback_max_scoreinfos(0),
 		limited_traceback_min_prealign_score(0),
@@ -719,6 +738,25 @@ struct FasimGasal2Stats
 	bool nt_sum_span_prune_enabled;
 	uint64_t nt_sum_span_pruned_attempts;
 	uint64_t nt_sum_span_pruned_groups;
+	bool traceback_certificate_shadow_requested;
+	bool traceback_certificate_shadow_active;
+	bool traceback_certificate_real_skip_enabled;
+	bool traceback_certificate_pre_drop_proof_available;
+	uint64_t traceback_certificate_candidates_considered;
+	uint64_t traceback_certificate_certified_skips;
+	uint64_t traceback_certificate_uncertified_candidates;
+	uint64_t traceback_certificate_exact_descriptor_duplicate_skips;
+	uint64_t traceback_certificate_static_span_skips;
+	uint64_t traceback_certificate_score_endpoint_span_skips;
+	uint64_t traceback_certificate_shadow_false_rejects;
+	uint64_t traceback_certificate_score_frontier_skips;
+	uint64_t traceback_certificate_stability_frontier_skips;
+	uint64_t traceback_certificate_nt_frontier_skips;
+	uint64_t traceback_certificate_tie_rescues;
+	bool traceback_certificate_rank_aware_supported;
+	uint64_t traceback_certificate_probe_requests;
+	double traceback_certificate_probe_seconds;
+	uint64_t traceback_certificate_fallbacks;
 	bool limited_traceback_enabled;
 	uint64_t limited_traceback_max_scoreinfos;
 	uint64_t limited_traceback_min_prealign_score;
@@ -1352,6 +1390,28 @@ struct FasimGasal2Stats
 	double cpu_traceback_convert_seconds;
 };
 
+struct FasimConsumerAttemptTraceRow
+{
+	FasimConsumerAttemptTraceRow() :
+		scoreinfo_index(-1),
+		identity_round(-1),
+		start(-1),
+		cutlength(0),
+		score(0),
+		query_end(0),
+		ref_end_local(-1)
+	{
+	}
+
+	int scoreinfo_index;
+	int identity_round;
+	int start;
+	int cutlength;
+	int score;
+	int query_end;
+	int ref_end_local;
+};
+
 struct FasimFastsimExtendScoreInfoTiming
 {
 	FasimFastsimExtendScoreInfoTiming() :
@@ -1420,6 +1480,7 @@ struct FasimFastsimExtendScoreInfoTiming
 	double attempt_probe_seconds;
 	double segmented_attempt_probe_seconds;
 	std::string attempt_probe_error;
+	std::vector<FasimConsumerAttemptTraceRow> consumer_attempt_trace;
 };
 
 struct FasimGasal2Attempt
@@ -1437,6 +1498,7 @@ struct FasimGasal2Attempt
 		task_strand(-1),
 		task_para(-1),
 		task_rule(-1),
+		identity_round(-1),
 		target_source(NULL),
 		target_offset(0),
 		target_length(0)
@@ -1455,6 +1517,7 @@ struct FasimGasal2Attempt
 	int task_strand;
 	int task_para;
 	int task_rule;
+	int identity_round;
 	const std::string *target_source;
 	size_t target_offset;
 	size_t target_length;
@@ -1487,6 +1550,7 @@ struct FasimGasal2Attempt
 struct FasimGasal2SelectedAlignment
 {
 	FasimGasal2SelectedAlignment() :
+		attempt_index(-1),
 		scoreinfo_index(0),
 		cutlength(0),
 		start(0),
@@ -1499,6 +1563,7 @@ struct FasimGasal2SelectedAlignment
 	{
 	}
 
+	int64_t attempt_index;
 	int scoreinfo_index;
 	int cutlength;
 	int start;
@@ -1509,6 +1574,26 @@ struct FasimGasal2SelectedAlignment
 	bool score_prepass_fallback_candidate;
 	bool selected;
 	StripedSmithWaterman::Alignment alignment;
+};
+
+struct FasimGasal2AttemptScoreTelemetry
+{
+	FasimGasal2AttemptScoreTelemetry() :
+		attempt_index(-1),
+		gpu_score(0),
+		gpu_query_end(-1),
+		gpu_ref_end_global(-1),
+		selected(false),
+		selection_reason("not_evaluated")
+	{
+	}
+
+	int64_t attempt_index;
+	int gpu_score;
+	int gpu_query_end;
+	int gpu_ref_end_global;
+	bool selected;
+	std::string selection_reason;
 };
 
 struct FasimGasal2ScoreOnlyAlignment
@@ -1531,6 +1616,137 @@ struct FasimGasal2ScoreOnlyAlignment
 	int score;
 	int query_end;
 	int ref_end;
+};
+
+// Score/endpoint projection for the isolated long-query attempt API spike.
+// `ref_end_local` is relative to the attempt target subview; the global field
+// adds FasimGasal2Attempt::start for consumer bookkeeping.
+struct FasimGasal2StreamedAttemptScore
+{
+	FasimGasal2StreamedAttemptScore() :
+		score(0),
+		query_end(0),
+		ref_end_local(-1),
+		ref_end_global(-1)
+	{
+	}
+
+	int score;
+	int query_end;
+	int ref_end_local;
+	int ref_end_global;
+};
+
+struct FasimGasal2StreamedAttemptScoreTelemetry
+{
+	FasimGasal2StreamedAttemptScoreTelemetry() :
+		requests(0),
+		batches(0),
+		gpu_scored_requests(0),
+		gpu_seconds(0.0),
+		h2d_seconds(0.0),
+		d2h_seconds(0.0),
+		total_seconds(0.0),
+		error("none")
+	{
+	}
+
+	uint64_t requests;
+	uint64_t batches;
+	uint64_t gpu_scored_requests;
+	double gpu_seconds;
+	double h2d_seconds;
+	double d2h_seconds;
+	double total_seconds;
+	std::string error;
+};
+
+// Development-only result for the isolated long-query consumer spike.  This
+// is intentionally separate from the historical phase7 telemetry fields.
+struct FasimLongQueryGpuConsumerSpikeResult
+{
+	FasimLongQueryGpuConsumerSpikeResult() :
+		ok(false),
+		validation_enabled(false),
+		scoreinfo_groups(0),
+		attempts(0),
+		gpu_scored_attempts(0),
+		endpoint_batches(0),
+		cpu_oracle_attempts(0),
+		attempt_mismatch_rows(0),
+		score_mismatches(0),
+		query_end_mismatches(0),
+		ref_end_local_mismatches(0),
+		terminal_mismatches(0),
+		control_selected_attempts(0),
+		cpu_control_selected_attempts(0),
+		consumer_selection_equal(false),
+		cpu_reference_align_attempts(0),
+		consumer_attempt_prefix_equal(false),
+		cpu_continuation_requested(false),
+		cpu_continuation_active(false),
+		cpu_continuation_calls(0),
+		cpu_continuation_failures(0),
+		replay_attempts(0),
+		cpu_align_attempts(0),
+		threshold_groups(0),
+		best_fallback_groups(0),
+		last_groups(0),
+		empty_groups(0),
+		score_seconds(0.0),
+		gpu_kernel_seconds(0.0),
+		h2d_seconds(0.0),
+		d2h_seconds(0.0),
+		cpu_oracle_seconds(0.0),
+		select_seconds(0.0),
+		traceback_seconds(0.0),
+		convert_seconds(0.0),
+		total_seconds(0.0),
+		first_attempt_mismatch("none"),
+		first_consumer_mismatch("none"),
+		error("none")
+	{
+	}
+
+	bool ok;
+	bool validation_enabled;
+	uint64_t scoreinfo_groups;
+	uint64_t attempts;
+	uint64_t gpu_scored_attempts;
+	uint64_t endpoint_batches;
+	uint64_t cpu_oracle_attempts;
+	uint64_t attempt_mismatch_rows;
+	uint64_t score_mismatches;
+	uint64_t query_end_mismatches;
+	uint64_t ref_end_local_mismatches;
+	uint64_t terminal_mismatches;
+	uint64_t control_selected_attempts;
+	uint64_t cpu_control_selected_attempts;
+	bool consumer_selection_equal;
+	uint64_t cpu_reference_align_attempts;
+	bool consumer_attempt_prefix_equal;
+	bool cpu_continuation_requested;
+	bool cpu_continuation_active;
+	uint64_t cpu_continuation_calls;
+	uint64_t cpu_continuation_failures;
+	uint64_t replay_attempts;
+	uint64_t cpu_align_attempts;
+	uint64_t threshold_groups;
+	uint64_t best_fallback_groups;
+	uint64_t last_groups;
+	uint64_t empty_groups;
+	double score_seconds;
+	double gpu_kernel_seconds;
+	double h2d_seconds;
+	double d2h_seconds;
+	double cpu_oracle_seconds;
+	double select_seconds;
+	double traceback_seconds;
+	double convert_seconds;
+	double total_seconds;
+	std::string first_attempt_mismatch;
+	std::string first_consumer_mismatch;
+	std::string error;
 };
 
 struct FasimGasal2LongQuerySegment
@@ -2279,6 +2495,13 @@ bool fasim_gasal2_select_attempts(const std::string &query,
                                   std::vector<FasimGasal2SelectedAlignment> *selected,
                                   std::string *errorOut);
 
+bool fasim_gasal2_select_attempts_canonical_hybrid_v2(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2SelectedAlignment> *selected,
+	std::vector<FasimGasal2AttemptScoreTelemetry> *telemetry,
+	std::string *errorOut);
+
 bool fasim_gasal2_select_attempt_indexes_from_scores(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
@@ -2289,6 +2512,25 @@ bool fasim_gasal2_score_attempts(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
 	std::vector<FasimGasal2ScoreOnlyAlignment> *scores,
+	std::string *errorOut);
+
+// Full-query, target-subview score/endpoint API used only by the bounded
+// long-query attempt-scoring spike.  It never falls back to GASAL2 or CPU.
+bool fasim_gasal2_streamed_attempt_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut);
+
+// Applies the frozen scoreInfo-local control semantics to already materialized
+// GPU score-only rows.  It deliberately performs no second GPU score pass and
+// does not perform traceback or triplex conversion.
+bool fasim_gasal2_consumer_spike_select_from_scores(
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2ScoreOnlyAlignment> &scores,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<std::string> *selectionReasons,
 	std::string *errorOut);
 
 void fasim_gasal2_record_attempt_consumer_shadow_request(

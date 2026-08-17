@@ -8,6 +8,7 @@
 #include<sys/time.h>
 #include<iostream>
 #include<time.h>
+#include<vector>
 #define BIGNUM 1000000
 #define MAXTST 1500
 #define MAXLIB 10000
@@ -749,8 +750,7 @@ int calc_score(string &strA, string &strB, int dnaStartPos, int rule)
 	char aa0_rc[MAX_LNCRNA];
 	int shuf_cnt = 0;
 	int shuf_max = 1002;
-	//int shuf_save_score[shuf_max];
-	int* shuf_save_score = new int[shuf_max];
+	std::vector<int> shuf_save_score(static_cast<size_t>(shuf_max));
 	int max_shuf_score[500];
 	int aa1_len[500];
 	int shuf_score[500];
@@ -892,8 +892,6 @@ int calc_score_once(string &strA, string &strB, int dnaStartPos, int rule)
 	char aa0_rc[MAX_LNCRNA];
 	int shuf_cnt = 0;
 	int shuf_max = 1002;
-	//int shuf_save_score[shuf_max];
-	int* shuf_save_score = new int[shuf_max];
 	int max_shuf_score[500];
 	int aa1_len[500];
 	int shuf_score[500];
@@ -954,7 +952,5 @@ int calc_score_once(string &strA, string &strB, int dnaStartPos, int rule)
 	free(aa1_save);
 	return score;
 }
-
-
 
 

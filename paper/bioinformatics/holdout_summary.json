@@ -1,0 +1,91 @@
+{
+  "attempt_all_ranked_counts": {
+    "clean": 34,
+    "mismatch": 2
+  },
+  "attempt_counts": {
+    "complete": 34,
+    "invalid_report": 0,
+    "missing": 0,
+    "oom": 0,
+    "planned": 36,
+    "represented": 36,
+    "scientific_mismatch": 2,
+    "technical_failure": 0,
+    "telemetry_error": 0,
+    "timeout": 0,
+    "verified_fallback": 3
+  },
+  "attempt_full_row_counts": {
+    "clean": 32,
+    "mismatch": 4
+  },
+  "attempt_rank_counts": {
+    "nt": {
+      "clean": 36,
+      "mismatch": 0
+    },
+    "score": {
+      "clean": 35,
+      "mismatch": 1
+    },
+    "stability": {
+      "clean": 35,
+      "mismatch": 1
+    }
+  },
+  "boundary_ties": {
+    "clean": 36,
+    "mismatch": 0
+  },
+  "common_execution_identity_sha256": "742b70d16f81a715debb1edc90802de5a3f2a4715ad578cebc84395d9393b7a9",
+  "decision": "verified_only_contract",
+  "executed_runner_sha256": "6a1e3d5cc91dae5b9d03eaffbc02af347c7e80f2d385f08151fd061e9ffb813b",
+  "freeze_id": "bioinformatics-phase2-holdout-v1-9e293b2c",
+  "guard_coverage": {
+    "gpu_only_promoted": {
+      "covered_workloads": 0,
+      "total_workloads": 24
+    },
+    "mechanism_guard_inferred": false,
+    "safe_verified_or_authority_contract_safe": {
+      "covered_workloads": 24,
+      "total_workloads": 24
+    }
+  },
+  "manifest_sha256": "9e293b2c3e8d0462e399fe64ff6f684e9c53f7dd428e9c88265b510909cee8c6",
+  "mode_row_count": 108,
+  "pilot_excluded_from_formal_source_data": true,
+  "pilot_receipt_sha256": "d8636edb025da431ce4a97ec507d73955be0781d0cfcbdcbad847f8f542ec76d",
+  "promotion_gates": {
+    "P1_score_zero_mismatch": false,
+    "gpu_only_contract_promoted": false,
+    "safe_resolution": "verified_or_authority"
+  },
+  "rank_row_count": 108,
+  "runner_checkpoint_commit": "1c07823bc3a56704415d242b3ddc937cfa03ee86",
+  "schema_version": 1,
+  "workload_all_ranked_counts": {
+    "clean": 22,
+    "mismatch": 2
+  },
+  "workload_count": 24,
+  "workload_full_row_counts": {
+    "clean": 20,
+    "mismatch": 4
+  },
+  "workload_rank_counts": {
+    "nt": {
+      "clean": 24,
+      "mismatch": 0
+    },
+    "score": {
+      "clean": 23,
+      "mismatch": 1
+    },
+    "stability": {
+      "clean": 23,
+      "mismatch": 1
+    }
+  }
+}

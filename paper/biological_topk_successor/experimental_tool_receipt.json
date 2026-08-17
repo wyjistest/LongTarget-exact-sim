@@ -1,0 +1,36 @@
+{
+  "authority": {
+    "path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_x86",
+    "runtime_receipt_path": "paper/bioinformatics/canonical_hybrid_v2_runtime.json",
+    "runtime_receipt_sha256": "5bf81a89ff0177c3616c635f81b64c48a36f63f6dc675a10c3eeccc8d9e865bd",
+    "sha256": "75c59f80ee329fe913edce71ea8a0ec1a63620a978b15d3673f636d62268822e"
+  },
+  "candidate": {
+    "path": ".paper-artifacts/bioinformatics-canonical-hybrid-v2/runtime-epoch1/fasim_longtarget_gasal2",
+    "runtime_receipt_path": "paper/bioinformatics/canonical_hybrid_v2_runtime.json",
+    "runtime_receipt_sha256": "5bf81a89ff0177c3616c635f81b64c48a36f63f6dc675a10c3eeccc8d9e865bd",
+    "sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9"
+  },
+  "external": {
+    "build": "GNU++98 permissive compatibility build; private compatibility patch changes obsolete SeqAn abstract return types from value to reference only",
+    "failure_policy": "retain terminal failure; no replacement or outcome-informed retry",
+    "license": "CC BY-NC-ND 3.0 Australia",
+    "license_path": ".paper-artifacts/biological-topk-successor/experimental-phase5/tools/triplexator-v1.3.3/LICENCE.txt",
+    "license_sha256": "8fdd847f4f79b9b74d9eba7092e536c2ae0dda1e0542e4e46ee5494daed231b4",
+    "name": "Triplexator",
+    "path": ".paper-artifacts/biological-topk-successor/experimental-phase5/tools/triplexator-v1.3.3/triplexator",
+    "primary_metric_comparability": false,
+    "reported_version": "Version 1.3.2 (30/03/2012) SeqAn Revision: 1225",
+    "sha256": "b13e66b61820ae56c5bf2a3f4f767a2d94ded354a920467cb3116778dbe8b481",
+    "upstream_commit": "4505bba7b3dc8cf4922d71446c755e91c448673c",
+    "upstream_repository": "https://github.com/Gurado/Triplexator.git",
+    "upstream_smoke_tests": "14/14 pass",
+    "upstream_tag": "v1.3.3",
+    "use_boundary": "local noncommercial research evaluation only; do not redistribute source or binary without owner/legal review",
+    "version_probe_exit_code": 1
+  },
+  "external_predictor_available": true,
+  "phase": 5,
+  "schema_version": 1,
+  "status": "pass"
+}

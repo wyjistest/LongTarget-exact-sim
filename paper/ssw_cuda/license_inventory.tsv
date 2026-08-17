@@ -1,0 +1,4 @@
+component	license_expression	notice_path	notice_sha256	source_commit	use_status	notes
+LongTarget-exact-sim	AGPL-3.0-or-later	LICENSE	76a97c878c9c7a8321bb395c2b44d3fe2f8d81314d219b20138ed0e2dddd5182	9f87aace6d96cf8142e3816299f04defae5710e4	project_license	Repository-level license declared by README and LICENSE.
+Complete Striped Smith-Waterman core	MIT AND BSD-2-Clause	fasim/sswNew.cpp	b4b2f3167354936968108ab4ace2b577704b7aebeebcb206bce63ef1c5b30870	9f87aace6d96cf8142e3816299f04defae5710e4	embedded_authority_source	Both notices are embedded at the start of the modified SSW source.
+GASAL2	Apache-2.0	.tmp/GASAL2/LICENSE	c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4	106d94ee53fc847214fb05f2f9f892538a5d3baf	historical_backend_reference	Ignored pinned checkout patched by patches/gasal2-fasim-bridge.patch; not the new authority.

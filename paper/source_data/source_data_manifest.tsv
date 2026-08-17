@@ -1,0 +1,12 @@
+data_freeze_id	path	kind	row_count	size_bytes	sha256
+paper-data-v1-dccfd49-20260716	benchmark_runs.tsv	tsv	167	88313	d120fbce6af2170d34b124cefd31ed0192b6990faa79c1a4656762e5728777a3
+paper-data-v1-dccfd49-20260716	paired_speedups.tsv	tsv	61	30445	1d28a8cb9c7acb1f2e8c7e0189ea2b7d1f5b9b7f9a440c4395e8bfb10f205ae5
+paper-data-v1-dccfd49-20260716	correctness.tsv	tsv	64	18359	f169ebe401b44dc19167a7ca055219301d1793b693b9a06866dbbf66df013e2a
+paper-data-v1-dccfd49-20260716	generalization.tsv	tsv	16	3243	d136e5380b9c9c40cdc96238dc07c8c07925f1ab8e1c543088259550e05bc589
+paper-data-v1-dccfd49-20260716	ablation.tsv	tsv	7	2216	497e10a216071617893ea238c0fa15e66d36ddb07c91f3505af53122cd44c5f0
+paper-data-v1-dccfd49-20260716	resources.tsv	tsv	8	3353	127e2c8f9bf0fad5444f86de167e806a7d19500077571a9781d0313665658c96
+paper-data-v1-dccfd49-20260716	archive_first.tsv	tsv	6	2670	ff7fddde636663c59f79cc19977e0071a39738b094a37e8144a74f43860c09e0
+paper-data-v1-dccfd49-20260716	operating_envelope.tsv	tsv	6	2051	4c8c0fad548dec9e224c699eee3b3f69f20ec19349ce80cce7d1e7a988d174b4
+paper-data-v1-dccfd49-20260716	exclusions.tsv	tsv	56	18000	063d3a235e57c44999f35b26b02d0fa36a5b458e7f33c17c25e3b7fcc6245233
+paper-data-v1-dccfd49-20260716	paired_speedup_summary.tsv	tsv	21	11180	f8bbfc76dbd7edc1855e14c25deaad96bbde44972cf930ef6834aad76236ecae
+paper-data-v1-dccfd49-20260716	paired_speedup_summary.json	json	21	30412	927176644c4800a311f83352c7b0ebf60264d3c6c56eb57c323e34f3dd00cb0b

@@ -1,0 +1,27 @@
+{
+  "N_panel": 178,
+  "artifact_storage_gate_pass": true,
+  "fixed_budget_gate_pass": true,
+  "fresh_pair_selected": false,
+  "gpu_hours_gate_pass": true,
+  "max_artifact_storage_bytes": 8589934592,
+  "max_formal_scheduled_wall_seconds": 172800,
+  "max_gpu_hours": 72,
+  "model_path": "paper/biological_topk/resource_projection_model.json",
+  "model_sha256": "8fb81ff5de6c51015954e1891a8e5cf96001e6a7fdd182debee3b922c2672286",
+  "new_prediction_run": false,
+  "owner_quota_may_be_raised_after_manifest_projection": false,
+  "projected_artifact_storage_bytes_upper_95": "5508762270",
+  "projected_gpu_hours_upper_95": "0.56136173127435929",
+  "projected_scheduled_elapsed_wall_seconds_upper_95": "20576.305696676598",
+  "scheduled_wall_gate_pass": true,
+  "schema_version": 1,
+  "status": "frozen",
+  "storage_quota_source": "paper/biological_topk/owner_storage_quota_approval.json",
+  "storage_quota_source_sha256": "25bddcfe69856003724256ef292b2c404e289a5246f50d219228b7091f6190c5",
+  "stratum_quotas": {
+    "large": 59,
+    "medium": 59,
+    "short": 60
+  }
+}

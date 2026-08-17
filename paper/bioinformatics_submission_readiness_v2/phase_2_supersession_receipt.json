@@ -1,0 +1,25 @@
+{
+  "correction_scope": "target input identity only; candidate generation binary is unchanged",
+  "discovered_during_excluded_development": true,
+  "formal_attempts_before_discovery": 0,
+  "new_epoch": {
+    "candidate_binary_sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+    "container_image_digest": "sha256:f04340aa1b77092c25eee50c84144adb08e6f1b48a34580f6f9c33aff3163ca7",
+    "implementation_commit": "8114ce45be9bd5b25e52dc8fe7bc768eb6aee589",
+    "software_epoch": "submission_rc_v2_2",
+    "status": "frozen_release_candidate_under_test",
+    "validation_status": "pending_phase4"
+  },
+  "old_epoch": {
+    "candidate_binary_sha256": "ec40144f172711347068443f99f2ff1de02a192051cb2ada4f2c2476d4ff0cd9",
+    "container_image_digest": "sha256:ab31acbf01e125f646889660f6286decfb30c015a21a30e7a60099a7fecbf530",
+    "implementation_commit": "0f04c241b6fda746f061b043aa9a9d26c79938ab",
+    "preserved_artifact": true,
+    "software_epoch": "submission_rc_v2",
+    "status": "superseded_before_formal_execution"
+  },
+  "phase": 2,
+  "reason": "For a target extracted from a nonzero genomic start, target_extracted_interval was incorrectly recorded as [0, target_length) instead of [target_region_start0, target_region_start0 + target_length).",
+  "schema_version": 1,
+  "supersession_does_not_rewrite_phase_1": true
+}

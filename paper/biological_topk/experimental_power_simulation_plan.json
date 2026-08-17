@@ -1,0 +1,75 @@
+{
+  "assay_coverage_rule": "at_least_two_if_two_or_more_input_eligible_types_exist",
+  "blocked_rule": "fewer_than_5_distinct_lncRNAs_or_nonidentifiable_one_sided_CI",
+  "co_primary_endpoints": {
+    "E1": {
+      "estimand": "macro_lncRNA_GPU_minus_CPU_AUCPR",
+      "lcb_threshold": "-0.02"
+    },
+    "E2": {
+      "estimand": "macro_lncRNA_GPU_minus_CPU_recall_at_Pd",
+      "lcb_threshold": "-0.05"
+    },
+    "E3": {
+      "estimand": "macro_lncRNA_GPU_AUCPR_minus_prevalence",
+      "lcb_threshold_strict": "0"
+    },
+    "E4": {
+      "estimand": "macro_lncRNA_log_GPU_top_P_fold_enrichment",
+      "lcb_threshold_strict": "0"
+    }
+  },
+  "expected_aucpr_range": [
+    "0.05",
+    "0.40"
+  ],
+  "hierarchical_bootstrap": {
+    "interval": "one_sided_percentile_95",
+    "nested_level_1": "dataset_or_assay_within_lncRNA",
+    "nested_level_2": "chromosome_or_frozen_genomic_block",
+    "outer": "distinct_lncRNA",
+    "pairing": "A_and_G_remain_paired_at_every_level",
+    "replicates": 10000,
+    "seed": 20260816,
+    "shared_resample_index_for_all_endpoints": true
+  },
+  "intersection_union_gate": "E1_AND_E2_AND_E3_AND_E4",
+  "minimum_distinct_lncRNAs": 5,
+  "nested_dataset_counts_per_lncRNA": [
+    1,
+    2,
+    3
+  ],
+  "one_sided_alpha_each": "0.05",
+  "outer_independent_unit": "distinct_lncRNA",
+  "plausible_prevalence_range": [
+    "0.01",
+    "0.10"
+  ],
+  "regions_per_dataset_grid": [
+    1000,
+    5000,
+    10000
+  ],
+  "same_lncRNA_multiple_assays_increase_outer_n": false,
+  "schema_version": 1,
+  "simulation_replicates": 10000,
+  "simulation_seed": 20260815,
+  "status": "preregistered_before_dataset_inventory_and_predictions",
+  "within_dataset_block_size_grid": [
+    25,
+    50,
+    100
+  ],
+  "within_dataset_correlation_grid": [
+    "0.05",
+    "0.10",
+    "0.20"
+  ],
+  "within_lncRNA_cross_assay_correlation_grid": [
+    "0.25",
+    "0.50",
+    "0.75"
+  ],
+  "zero_precision_rule": "automatic_E4_and_global_failure_no_pseudocount"
+}

@@ -1,0 +1,4 @@
+run	baseline_wall_seconds	candidate_wall_seconds	baseline_exact_stage_seconds	candidate_exact_stage_seconds	baseline_exact_kernel_seconds	candidate_exact_kernel_seconds	baseline_exact_h2d_seconds	candidate_exact_h2d_seconds	baseline_exact_d2h_seconds	candidate_exact_d2h_seconds	baseline_exact_launches	candidate_exact_launches	exact_tasks	exact_cells	output_sha256
+run_1	50.4	44.95	7.71952	4.70995	4.76866	4.35426	0.199246	0.200667	0.760264	0.0839724	94	94	384816	1924080000	42a18cbe7130328d88e7de73018ce93e0ab03837f6a12db893f841d09f417dfe
+run_2	50.43	44.5	7.71483	4.71392	4.76554	4.35959	0.198685	0.200728	0.752145	0.0861758	94	94	384816	1924080000	42a18cbe7130328d88e7de73018ce93e0ab03837f6a12db893f841d09f417dfe
+run_3	50.35	45.0	7.705	4.71246	4.76862	4.3611	0.198744	0.200383	0.744301	0.083535	94	94	384816	1924080000	42a18cbe7130328d88e7de73018ce93e0ab03837f6a12db893f841d09f417dfe

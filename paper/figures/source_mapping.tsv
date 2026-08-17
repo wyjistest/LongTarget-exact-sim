@@ -1,0 +1,8 @@
+figure_id	panel	source_data_file	filter	output_contract
+Figure 1	D	paired_speedups.tsv	workload_id=c1_h19_chr21_chr22_fast_topk	fast_topk_score_stability_nt
+Figure 2	A	paired_speedups.tsv;paired_speedup_summary.tsv	claim_id=C1	fast_topk_score_stability_nt
+Figure 2	B	generalization.tsv	row_type=supported_query	fast_topk_score_stability_nt
+Figure 3	A	paired_speedups.tsv;paired_speedup_summary.tsv	claim_id=C4	fast_topk_score_stability_nt
+Figure 3	B-D	ablation.tsv;resources.tsv;benchmark_runs.tsv	claim_id in {C5,C6}	full_tfosorted_rowset;archive_restore_only
+Figure 4	all	operating_envelope.tsv	all rows	mixed;shape-coded
+Figure S1	all	archive_first.tsv	all rows	archive_restore_only

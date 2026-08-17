@@ -1,0 +1,29 @@
+audit_id	requirement	expected_status	observed_status	evidence_path	evidence_sha256	note
+A001	Phase 0 historical evidence and exclusions	pass	pass	paper/ssw_cuda/historical_evidence_receipt.json	47273214065ccd5e333cd82bc601e6e4c8461877c76917713b3247e107325cd6	Historical v1 and canonical-hybrid-v2 decisions preserved.
+A002	Phase 1 CPU profile and Amdahl gate	pass	pass	paper/ssw_cuda/amdahl_v2_decision.json	dd8ac536e60cacea10ed4ec0ad1cc705dde797f308aa53a0e87c2affa8214fdd	B3 closed at 2.627762802x infinite-backend ceiling.
+A003	Phase 2 CPU oracle	pass	pass	paper/ssw_cuda/cpu_oracle_binary_receipt.json	647d4a8141c75ecbc936a6a25ddc8fda607cba1f76d956de3ee0abe4eaf66941	Frozen binary and trace evidence remain bound.
+A004	Phase 3 corpus and holdout policy	pass	pass	paper/ssw_cuda/corpus_receipt.json	a4d8b84e130a0857f059087b0ba13b7d5332fe1a504b435a4c320e67fbb2ea94	749 rows; fresh holdout not consumed.
+A005	Phase 4 bounded architecture selection	pass	pass	paper/ssw_cuda/upstream_build_receipt.json	31eca6cd834ba7f199a9ff078a5fbfa5c46c7cebeb1bebabe5418c9481317706	Architecture C selected without linked/copied upstream code.
+A006	Phase 5 exact L1/L2 checkpoint	pass	pass	paper/ssw_cuda/preselect_receipt.json	8b247a6afd170a36a518fe1a1bd40c591e5f05b2a888627a2acc133fedbad38f	623 primary GPU tasks; zero primary mismatch.
+A007	Phase 6 exact L3 checkpoint	pass	pass	paper/ssw_cuda/forward_endpoint_receipt.json	026a27107c076028820d0d89db6b6c0b24e3237804a3caa7c56f1091d3755c09	625 primary cases and 841 supported executions exact.
+A008	Phase 7 integrated checkpoint	pass_or_no_go	no_go	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	One implementation continuation contract failure; Phase 8 not authorized.
+A009	Phase 8 GPU reverse-start	conditional	not_run_phase7_no_go	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	Correctly skipped after Phase 7 no-go.
+A010	Phase 9 GPU traceback/CIGAR	conditional	not_run_phase7_no_go	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	Correctly skipped after Phase 7 no-go.
+A011	Phase 10 full-GPU integration	conditional	not_run_phase7_no_go	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	No full GPU backend exists.
+A012	Phase 11 fresh holdout promotion	conditional	not_run_phase7_no_go	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	No fresh holdout consumed.
+A013	Phase 12 performance and release	conditional	not_run_phase7_no_go	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	No B3 run, CLI promotion, or release candidate.
+A014	Historical canonical-hybrid-v2 no-go preserved	pass	pass	paper/bioinformatics/canonical_hybrid_v2_performance_receipt.json	765a77c9f3ee5a4a544a1d59a11a20868c94217843aa433942332c860dec7219	0.257592x speedup; 3.882109x slowdown; track closed.
+A015	Amdahl threshold unchanged	pass	pass	paper/ssw_cuda/amdahl_v2_decision.json	dd8ac536e60cacea10ed4ec0ad1cc705dde797f308aa53a0e87c2affa8214fdd	Target remains 10x.
+A016	CPU oracle source and binary do not drift	pass	pass	paper/ssw_cuda/cpu_oracle_binary_receipt.json	647d4a8141c75ecbc936a6a25ddc8fda607cba1f76d956de3ee0abe4eaf66941	Final checker binds execution commit and binary SHA.
+A017	Used-input exclusion registry reproducible	pass	pass	paper/ssw_cuda/used_input_exclusion_registry.tsv	6f10f684192d0f5cffa46d2c2e3c987cb7f4590e51ea61381e899695079d6762	112 deduplicated exclusions remain frozen.
+A018	Fresh holdout and 50x668 panel not consumed	pass	pass	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	Both flags are false.
+A019	Integrated L1-L7 correctness promotion	pass	not_achieved	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	Failure is explicit; no narrower success is substituted.
+A020	L8 remains diagnostic only	pass	pass	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	No full-output replacement claim.
+A021	CPU counters and failure inventory retained	pass	pass	paper/ssw_cuda/forward_hybrid_source_data.tsv	11e6af72d18a95ca746f7b872cbded4eb605a8f8b41e8bc6be590c37f4cc708f	26 complete, 1 technical failure, 22 not started.
+A022	Independent execution and offline comparison	pass	pass	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	Authority references were not executed or read by F.
+A023	Performance statistics and B3 boundary honest	pass	pass	paper/ssw_cuda/forward_hybrid_projection.json	bd50756f53eb6066f965538280dd543fc3273b627dfc46b93b1727e936eb4485	Projection is incomplete and explicitly non-formal; B3 stays closed.
+A024	License inventory available	pass	pass	paper/ssw_cuda/license_inventory.tsv	a4ba625c3355602a5e41b374aadd549e96e1ff5e3b658398724979639c04237f	Release completeness is not inferred from inventory alone.
+A025	Release reproducibility	pass	not_achieved	paper/ssw_cuda/forward_hybrid_decision.json	d0263d390ad0737275457215ef81ac61658a814461de37bbe5921e54f1979fb1	No release candidate was authorized.
+A026	Final working tree clean	pass	pass	NA	NA	Certified by final aggregate mode after the certification commit.
+A027	Final artifacts committed	pass	pass	NA	NA	Final artifacts are tracked and bound by the certification commit.
+A028	Phase 13 completion	pass	pass	NA	NA	Final decision and aggregate checker both pass.

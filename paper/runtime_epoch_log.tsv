@@ -1,0 +1,2 @@
+paper_runtime_epoch	runtime_commit	frozen_at_utc	change_class	affected_workloads	reason	status
+0	0d11aa2d61b7ccda59b462ab8e0750dad17ee18f	2026-07-15T07:10:34Z	runtime_freeze	all_paper_workloads	Long-query architecture closure is the immutable paper runtime baseline	active
