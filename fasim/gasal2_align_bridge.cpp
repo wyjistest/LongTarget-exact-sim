@@ -175,6 +175,47 @@ int streamed_attempt_batch_size()
 	return std::max(1, std::min(configured, 32768));
 }
 
+bool streamed_attempt_runtime_preflight(
+	uint64_t queryLength,
+	uint64_t maximumTargetSubviewLength,
+	bool maximumTargetSubviewLengthKnown,
+	const FasimLongQueryScoringContract &scoringContract,
+	FasimLongQueryRuntimeDescriptor *descriptorOut,
+	std::string *errorOut)
+{
+	FasimLongQueryRuntimeGuardRequest request;
+	request.query_length = queryLength;
+	request.maximum_target_subview_length = maximumTargetSubviewLength;
+	request.maximum_target_subview_length_known =
+		maximumTargetSubviewLengthKnown;
+	request.scoring = scoringContract;
+	request.device_index = streamed_attempt_cuda_device();
+	request.cuda_built = prealign_cuda_is_built();
+	std::string resourceError;
+	if (request.cuda_built && request.query_length > 0 &&
+		request.query_length <= fasim_long_query_runtime_query_length_limit())
+	{
+		PreAlignCudaQueryHandle resourceProbe;
+		resourceProbe.device = request.device_index;
+		resourceProbe.queryLength = static_cast<int>(request.query_length);
+		resourceProbe.segLen = static_cast<int>(
+			(request.query_length + 31u) / 32u);
+		PreAlignCudaResourceLimits limits;
+		if (prealign_cuda_query_resource_limits(
+				resourceProbe, &limits, &resourceError))
+		{
+			request.device_supported = true;
+			request.resource_limits_available = true;
+			request.default_dynamic_smem_limit_bytes =
+				static_cast<uint64_t>(limits.defaultDynamicSmemLimitBytes);
+			request.optin_dynamic_smem_limit_bytes =
+				static_cast<uint64_t>(limits.optinDynamicSmemLimitBytes);
+		}
+	}
+	return fasim_long_query_runtime_preflight(
+		request, descriptorOut, errorOut);
+}
+
 bool env_enabled(const char *name)
 {
 	const char *env = std::getenv(name);
@@ -2550,13 +2591,27 @@ bool fasim_gasal2_score_attempts(
 	return true;
 }
 
+bool fasim_gasal2_long_query_runtime_query_preflight_v1(
+	size_t queryLength,
+	const FasimLongQueryScoringContract &scoringContract,
+	FasimLongQueryRuntimeDescriptor *descriptorOut,
+	std::string *errorOut)
+{
+	return streamed_attempt_runtime_preflight(
+		static_cast<uint64_t>(queryLength), 0, false, scoringContract,
+		descriptorOut, errorOut);
+}
+
 bool fasim_gasal2_streamed_attempt_score_v1(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
+	const FasimLongQueryScoringContract &scoringContract,
 	std::vector<FasimGasal2StreamedAttemptScore> *scores,
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
 	std::string *errorOut)
 {
+	const std::chrono::steady_clock::time_point totalStart =
+		std::chrono::steady_clock::now();
 	if (scores != NULL)
 	{
 		scores->clear();
@@ -2577,35 +2632,15 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 		if (telemetry != NULL) telemetry->error = error;
 		return false;
 	}
-	if (!prealign_cuda_is_built())
-	{
-		if (errorOut != NULL) *errorOut = "prealign_cuda_not_built";
-		if (telemetry != NULL) telemetry->error = "prealign_cuda_not_built";
-		return false;
-	}
-
-	std::lock_guard<std::mutex> lock(g_mutex);
-	const std::chrono::steady_clock::time_point totalStart =
-		std::chrono::steady_clock::now();
-	std::string bridgeError;
-	if (!g_streamed_attempt_query_cache.prepare(query, &bridgeError))
-	{
-		if (errorOut != NULL) *errorOut = bridgeError.empty() ? "query_prepare_failed" : bridgeError;
-		if (telemetry != NULL)
-		{
-			telemetry->error = bridgeError.empty() ? "query_prepare_failed" : bridgeError;
-			telemetry->total_seconds = seconds_since(totalStart);
-		}
-		return false;
-	}
 
 	size_t maximumTargetLength = 0;
 	for (size_t i = 0; i < attempts.size(); ++i)
 	{
 		const FasimGasal2Attempt &attempt = attempts[i];
 		const size_t targetLength = attempt.target_size();
-		if (targetLength == 0 || attempt.target_data() == NULL ||
-			targetLength > static_cast<size_t>(std::numeric_limits<int>::max()))
+		if (!attempt.target_view_valid() || targetLength == 0 ||
+			targetLength > static_cast<size_t>(
+				fasim_long_query_runtime_target_subview_length_limit()))
 		{
 			const std::string error = "invalid_target_subview";
 			if (errorOut != NULL) *errorOut = error;
@@ -2617,6 +2652,42 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 			return false;
 		}
 		maximumTargetLength = std::max(maximumTargetLength, targetLength);
+	}
+
+	FasimLongQueryRuntimeDescriptor runtimeDescriptor;
+	std::string guardError;
+	if (!streamed_attempt_runtime_preflight(
+			static_cast<uint64_t>(query.size()),
+			static_cast<uint64_t>(maximumTargetLength), true,
+			scoringContract, &runtimeDescriptor, &guardError))
+	{
+		const std::string error = guardError.empty() ?
+			"long_query_runtime_preflight_failed" : guardError;
+		if (errorOut != NULL) *errorOut = error;
+		if (telemetry != NULL)
+		{
+			telemetry->runtime_descriptor = runtimeDescriptor;
+			telemetry->error = error;
+			telemetry->total_seconds = seconds_since(totalStart);
+		}
+		return false;
+	}
+	if (telemetry != NULL)
+	{
+		telemetry->runtime_descriptor = runtimeDescriptor;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	std::string bridgeError;
+	if (!g_streamed_attempt_query_cache.prepare(query, &bridgeError))
+	{
+		if (errorOut != NULL) *errorOut = bridgeError.empty() ? "query_prepare_failed" : bridgeError;
+		if (telemetry != NULL)
+		{
+			telemetry->error = bridgeError.empty() ? "query_prepare_failed" : bridgeError;
+			telemetry->total_seconds = seconds_since(totalStart);
+		}
+		return false;
 	}
 
 	scores->assign(attempts.size(), FasimGasal2StreamedAttemptScore());

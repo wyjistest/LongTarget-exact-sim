@@ -157,7 +157,7 @@ SSW_CUDA_PHASE6_DRIVER ?= $(SSW_CUDA_PHASE6_BUILD_DIR)/ssw_cuda_forward_driver
 SSW_CUDA_PHASE7_BUILD_DIR ?= $(CURDIR)/.paper-artifacts/ssw-cuda-v1/forward-hybrid/build
 SSW_CUDA_PHASE7_CONTINUATION_DRIVER ?= $(SSW_CUDA_PHASE7_BUILD_DIR)/ssw_cpu_continuation_driver
 SSW_CUDA_PHASE7_FASIM_BIN ?= $(SSW_CUDA_PHASE7_BUILD_DIR)/fasim_forward_hybrid
-FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
+FASIM_SOURCES := fasim/Fasim-LongTarget.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/long_query_runtime_guard.cpp
 FASIM_HEADERS := $(wildcard fasim/*.h)
 GASAL2_DIR ?= .tmp/GASAL2
 GASAL2_REPO_URL ?= https://github.com/nahmedraja/GASAL2.git
@@ -816,6 +816,12 @@ SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp 
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
 
+FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_TARGET ?= tests/test_fasim_long_query_runtime_guard
+FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_SOURCES := tests/test_fasim_long_query_runtime_guard.cpp fasim/long_query_runtime_guard.cpp
+
+FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_TARGET ?= tests/test_fasim_long_query_runtime_guard_cuda
+FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_SOURCES := tests/test_fasim_long_query_runtime_guard_cuda.cpp fasim/long_query_runtime_guard.cpp cuda/prealign_cuda.o
+
 SIM_SCAN_BATCH_TEST_TARGET ?= tests/test_sim_scan_batch
 SIM_SCAN_BATCH_TEST_SOURCES := tests/test_sim_scan_batch.cpp cuda/sim_scan_cuda_stub.cpp
 
@@ -910,6 +916,10 @@ build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
 
+build-fasim-long-query-runtime-guard-test: $(FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_TARGET)
+
+build-fasim-long-query-runtime-guard-cuda-test: $(FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_TARGET)
+
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
 
 build-sim-scan-cuda-true-batch-reduce-test: $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET)
@@ -980,6 +990,12 @@ $(SSW_AVX2_DIRECT_TEST_TARGET): $(SSW_AVX2_DIRECT_TEST_SOURCES) fasim/ssw.h
 
 $(PREALIGN_SHARED_TEST_TARGET): $(PREALIGN_SHARED_TEST_SOURCES) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_SHARED_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_TARGET): $(FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_SOURCES) fasim/long_query_runtime_guard.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_TARGET): $(FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_SOURCES) fasim/long_query_runtime_guard.h cuda/prealign_cuda.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_SCAN_BATCH_TEST_TARGET): $(SIM_SCAN_BATCH_TEST_SOURCES) cuda/sim_scan_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_SCAN_BATCH_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -1070,6 +1086,12 @@ check-fasim-cigar: $(FASIM_CIGAR_TEST_TARGET)
 
 check-prealign-shared: $(PREALIGN_SHARED_TEST_TARGET)
 	./$(PREALIGN_SHARED_TEST_TARGET)
+
+check-fasim-long-query-runtime-guard: $(FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_TARGET)
+	./$(FASIM_LONG_QUERY_RUNTIME_GUARD_TEST_TARGET)
+
+check-fasim-long-query-runtime-guard-cuda: $(FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_TARGET)
+	./$(FASIM_LONG_QUERY_RUNTIME_GUARD_CUDA_TEST_TARGET)
 
 check-sim-scan-batch: $(SIM_SCAN_BATCH_TEST_TARGET)
 	./$(SIM_SCAN_BATCH_TEST_TARGET)
@@ -3897,6 +3919,8 @@ check-fasim-sharded-worker-gpu-env-hygiene:
 		check-fasim-ssw-profile-cache-env check-fasim-ssw-avx2-direct check-fasim-ssw-avx2-digest \
 			check-fasim-gasal2-longtarget-bridge-digest check-fasim-gasal2-gpu-scoreinfo-top5 check-fasim-gasal2-scoreinfo-prune-top5-matrix check-fasim-gasal2-scoreinfo-prune-top5-chr22-2mb check-fasim-sharded-gasal2-top5-prune-runner check-fasim-gasal2-sharded-characterization-env characterize-fasim-gasal2-prealign-max-tasks-probe check-fasim-gasal2-prealign-max-tasks-probe check-fasim-gasal2-prealign-max-tasks-chr21-chr22-result check-fasim-gasal2-scoreinfo-prune-sweep check-fasim-exact-scoreinfo-gpu-max-per-task-sweep check-fasim-exact-scoreinfo-gpu-pruned-output characterize-fasim-exact-scoreinfo-gpu-column-pruned-output check-fasim-exact-scoreinfo-gpu-column-pruned-output characterize-fasim-exact-scoreinfo-gpu-column-pruned-output-matrix check-fasim-exact-scoreinfo-gpu-column-pruned-output-matrix characterize-fasim-gasal2-column-pruned-preset-top5-matrix check-fasim-gasal2-column-pruned-preset-top5-matrix check-fasim-gasal2-top5-binary-guard check-fasim-gasal2-top5-lowercase-input check-fasim-gasal2-formal-preset-examples check-fasim-gasal2-reproducible-setup check-fasim-gasal2-short-query-top5-readiness check-fasim-gasal2-short-query-top5-tfo-contract check-fasim-gasal2-formal-makefile-gate check-fasim-gasal2-top5-scoreinfo-milestone check-fasim-gasal2-top5-scoreinfo-milestone-result check-fasim-gasal2-top5-scoreinfo-meg3-grouped-result check-fasim-gasal2-top5-wrapper-meg3-grouped-result check-fasim-gasal2-scoreinfo-current-state check-fasim-gasal2-scoreinfo-scoped-milestone check-fasim-gasal2-scoreinfo-scoped-milestone-rollup check-fasim-gasal2-scoreinfo-scoped-release-smoke check-fasim-lite-full-equivalence check-fasim-gasal2-malat1-lite-equivalence-evidence check-fasim-gasal2-malat1-tfosorted-equivalence-evidence check-fasim-gasal2-malat1-tfosorted-equivalence-evidence-full check-fasim-gasal2-malat1-tfosorted-runtime-breakdown check-fasim-gasal2-malat1-no-probe-two-contract-runtime check-fasim-gasal2-malat1-no-probe-two-contract-runtime-tfosorted check-fasim-gasal2-malat1-no-probe-two-contract-runtime-first64 check-fasim-gasal2-malat1-no-probe-two-contract-runtime-first128 check-fasim-gasal2-malat1-no-probe-two-contract-runtime-first256 check-fasim-gasal2-malat1-no-probe-two-contract-runtime-full check-fasim-gasal2-malat1-no-probe-two-contract-runtime-full-tfosorted check-fasim-gasal2-neat1-speed-ceiling check-fasim-gasal2-neat1-next-architecture-requirements check-fasim-gasal2-broad-co-designed-scoreinfo-consumer-plan check-fasim-gasal2-broad-scoreinfo-consumer-shadow-env check-fasim-gasal2-broad-scoreinfo-consumer-triplex-export check-fasim-gasal2-broad-scoreinfo-attempt-planner check-fasim-gasal2-broad-replacement-consumer-shadow check-fasim-gasal2-broad-neat1-first64-result check-fasim-gasal2-attempt-consumer-shadow-plan check-fasim-gasal2-attempt-consumer-shadow-env check-fasim-gasal2-attempt-consumer-shadow-selection check-fasim-gasal2-replacement-consumer-shadow-requirements check-fasim-gasal2-replacement-consumer-shadow-env check-fasim-gasal2-replacement-consumer-shadow-runtime-smoke check-fasim-gasal2-score-prepass-state-machine-consumer check-fasim-gasal2-score-prepass-state-machine-consumer-env check-fasim-gasal2-score-prepass-state-machine-consumer-runtime-smoke check-fasim-gasal2-score-prepass-state-machine-consumer-segmented-runtime-smoke check-fasim-gasal2-score-prepass-state-machine-characterization check-fasim-gasal2-score-prepass-state-machine-trust check-fasim-gasal2-score-prepass-state-machine-trust-runtime-smoke check-fasim-gasal2-score-prepass-state-machine-stop check-fasim-long-query-streaming-scoreinfo-trust-runner check-fasim-long-query-streaming-scoreinfo-trust-group32-runner check-fasim-long-query-streaming-scoreinfo-trust-group32-audited-runner check-fasim-long-query-streaming-scoreinfo-trust-group32-segmented-probe-runner check-fasim-long-query-streaming-scoreinfo-trust-group32-audited-runner-real check-fasim-long-query-streaming-scoreinfo-neat1-audited-runner-real check-fasim-long-query-streaming-scoreinfo-neat1-runtime-boundary check-fasim-long-query-streaming-scoreinfo-fused-minscore-design check-fasim-long-query-streaming-scoreinfo-fused-minscore-prototype check-fasim-long-query-streaming-scoreinfo-fused-minscore-boundary check-fasim-long-query-streaming-scoreinfo-two-contract-bridge-design check-fasim-long-query-streaming-scoreinfo-two-contract-bridge-shadow check-fasim-long-query-streaming-scoreinfo-two-contract-bridge-trust check-fasim-long-query-streaming-scoreinfo-two-contract-bridge-runner check-fasim-long-query-streaming-scoreinfo-two-contract-trust-characterization check-fasim-long-query-streaming-scoreinfo-two-contract-group32-audited-runner check-fasim-long-query-streaming-scoreinfo-two-contract-group32-audited-runner-real check-fasim-long-query-streaming-scoreinfo-two-contract-group32-audited-runner-real-first64 check-fasim-long-query-streaming-scoreinfo-two-contract-group32-audited-runner-real-first128 check-fasim-long-query-streaming-scoreinfo-two-contract-group32-audited-runner-real-first256 check-fasim-long-query-streaming-scoreinfo-trust-runner-real characterize-fasim-long-query-streaming-scoreinfo-trust-runner characterize-fasim-long-query-streaming-scoreinfo-trust-runner-workers characterize-fasim-long-query-streaming-scoreinfo-trust-runner-groups characterize-fasim-long-query-streaming-scoreinfo-trust-runner-group32-scaling characterize-fasim-long-query-streaming-scoreinfo-trust-runner-malat1-full-group32 characterize-fasim-long-query-streaming-scoreinfo-two-contract-trust check-fasim-gasal2-top5-broader-validation check-fasim-gasal2-top5-product-readiness check-fasim-gasal2-top5-recommended-runtime check-fasim-gasal2-top5-output-contract check-fasim-gasal2-top5-activation-contract check-fasim-gasal2-topk-lite-wrapper-contract check-fasim-gasal2-long-query-boundary check-fasim-gasal2-long-query-segmented-plan check-fasim-gasal2-long-query-segmented-shadow-env check-fasim-gasal2-long-query-segmented-shadow-default-off characterize-fasim-gasal2-long-query-segmented-shadow check-fasim-gasal2-long-query-segmented-shadow-probe check-fasim-gasal2-long-query-segmented-score-prepass-shadow check-fasim-gasal2-long-query-segmented-score-prepass-reduction check-fasim-gasal2-long-query-segmented-score-prepass-batched check-fasim-gasal2-long-query-segmented-score-prepass-replay check-fasim-gasal2-long-query-segmented-scoreinfo-prune-mode check-fasim-gasal2-long-query-segmented-replay-no-last check-fasim-gasal2-long-query-segmented-no-last-scaling-result check-fasim-gasal2-long-query-segmented-record-limit check-fasim-gasal2-long-query-segmented-replay-score-order check-fasim-gasal2-long-query-segmented-pruned-traceback-shadow check-fasim-long-query-exact-column-scoreinfo-shadow check-fasim-long-query-streaming-scoreinfo-realpath-trust check-fasim-long-query-streaming-scoreinfo-trust-targets characterize-fasim-long-query-streaming-scoreinfo-realpath characterize-fasim-long-query-streaming-scoreinfo-realpath-trust characterize-fasim-long-query-streaming-scoreinfo-malat1-full-trust characterize-fasim-long-query-streaming-scoreinfo-neat1-trust characterize-fasim-long-query-streaming-scoreinfo-neat1-first64-trust check-fasim-gasal2-top5-formal-gate check-fasim-top5-gasal2-gpu-scoreinfo-default-off check-fasim-top5-gasal2-gpu-scoreinfo-env check-fasim-gasal2-single-pass-topn check-fasim-gasal2-single-pass-topn-sweep check-fasim-exact-scoreinfo-gpu-examples-gate investigate-fasim-gasal2-topk-lite-runner-legacy investigate-fasim-gasal2-topk-lite-runner-examples-legacy \
 		build-prealign-shared-test check-prealign-shared \
+		build-fasim-long-query-runtime-guard-test check-fasim-long-query-runtime-guard \
+		build-fasim-long-query-runtime-guard-cuda-test check-fasim-long-query-runtime-guard-cuda \
 		build-sim-scan-cuda-true-batch-reduce-test check-sim-scan-cuda-true-batch-reduce \
 			build-sim-region-bucketed-true-batch-test check-sim-region-bucketed-true-batch \
 			build-sim-region-scheduler-shape-telemetry-test check-sim-region-scheduler-shape-telemetry \

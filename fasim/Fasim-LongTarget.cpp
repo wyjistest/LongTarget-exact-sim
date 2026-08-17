@@ -11143,6 +11143,21 @@ int main(int argc, char* const* argv)
 			     << "GPU min-score hot path" << endl;
 			return EXIT_FAILURE;
 		}
+		StripedSmithWaterman::Aligner runtimeGuardAligner;
+		const FasimLongQueryScoringContract scoringContract =
+			fasim_long_query_runtime_scoring_contract(runtimeGuardAligner);
+		FasimLongQueryRuntimeDescriptor runtimeDescriptor;
+		std::string runtimeGuardError;
+		if (!fasim_gasal2_long_query_runtime_query_preflight_v1(
+				lncSeq.size(), scoringContract, &runtimeDescriptor,
+				&runtimeGuardError))
+		{
+			cerr << "FASIM long-query runtime preflight failed closed: "
+			     << (runtimeGuardError.empty() ?
+					"unknown_runtime_guard_error" : runtimeGuardError)
+			     << endl;
+			return EXIT_FAILURE;
+		}
 	}
 	fasim_prepare_gasal2_long_query_segmented_shadow_stats(
 		lncSeq,

@@ -147,6 +147,11 @@ namespace StripedSmithWaterman {
 			gap_extending_penalty_ = extending;
 		};
 
+		uint8_t match_score() const { return match_score_; }
+		uint8_t mismatch_penalty() const { return mismatch_penalty_; }
+		uint8_t gap_opening_penalty() const { return gap_opening_penalty_; }
+		uint8_t gap_extending_penalty() const { return gap_extending_penalty_; }
+
 		// =========
 		// @function Align the query againt the reference that is set by
 		//             SetReferenceSequence.

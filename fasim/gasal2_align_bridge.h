@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "long_query_runtime_guard.h"
 #include "ssw_cpp.h"
 
 struct FasimGasal2Stats
@@ -1545,6 +1546,16 @@ struct FasimGasal2Attempt
 	{
 		return target_source != NULL;
 	}
+
+	bool target_view_valid() const
+	{
+		if (target_source == NULL)
+		{
+			return target_offset == 0 && target_length == 0;
+		}
+		return target_offset <= target_source->size() &&
+			target_length <= target_source->size() - target_offset;
+	}
 };
 
 struct FasimGasal2SelectedAlignment
@@ -1659,6 +1670,7 @@ struct FasimGasal2StreamedAttemptScoreTelemetry
 	double d2h_seconds;
 	double total_seconds;
 	std::string error;
+	FasimLongQueryRuntimeDescriptor runtime_descriptor;
 };
 
 // Development-only result for the isolated long-query consumer spike.  This
@@ -1747,6 +1759,7 @@ struct FasimLongQueryGpuConsumerSpikeResult
 	std::string first_attempt_mismatch;
 	std::string first_consumer_mismatch;
 	std::string error;
+	FasimLongQueryRuntimeDescriptor runtime_descriptor;
 };
 
 struct FasimGasal2LongQuerySegment
@@ -2514,11 +2527,20 @@ bool fasim_gasal2_score_attempts(
 	std::vector<FasimGasal2ScoreOnlyAlignment> *scores,
 	std::string *errorOut);
 
+// Query-level guard used before any long-query GPU allocation or launch.
+// Target-dependent numeric safety is completed by the attempt API below.
+bool fasim_gasal2_long_query_runtime_query_preflight_v1(
+	size_t queryLength,
+	const FasimLongQueryScoringContract &scoringContract,
+	FasimLongQueryRuntimeDescriptor *descriptorOut,
+	std::string *errorOut);
+
 // Full-query, target-subview score/endpoint API used only by the bounded
 // long-query attempt-scoring spike.  It never falls back to GASAL2 or CPU.
 bool fasim_gasal2_streamed_attempt_score_v1(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
+	const FasimLongQueryScoringContract &scoringContract,
 	std::vector<FasimGasal2StreamedAttemptScore> *scores,
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
 	std::string *errorOut);

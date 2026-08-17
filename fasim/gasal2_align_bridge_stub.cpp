@@ -942,12 +942,14 @@ bool fasim_gasal2_score_attempts(
 bool fasim_gasal2_streamed_attempt_score_v1(
 	const std::string &query,
 	const std::vector<FasimGasal2Attempt> &attempts,
+	const FasimLongQueryScoringContract &scoringContract,
 	std::vector<FasimGasal2StreamedAttemptScore> *scores,
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
 	std::string *errorOut)
 {
 	(void)query;
 	(void)attempts;
+	(void)scoringContract;
 	if (scores != NULL)
 	{
 		scores->clear();
@@ -960,6 +962,26 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	{
 		*errorOut = "gasal2_unavailable";
 	}
+	return false;
+}
+
+bool fasim_gasal2_long_query_runtime_query_preflight_v1(
+	size_t queryLength,
+	const FasimLongQueryScoringContract &scoringContract,
+	FasimLongQueryRuntimeDescriptor *descriptorOut,
+	std::string *errorOut)
+{
+	if (descriptorOut == NULL)
+	{
+		if (errorOut != NULL) *errorOut = "missing_runtime_descriptor";
+		return false;
+	}
+	*descriptorOut = FasimLongQueryRuntimeDescriptor();
+	descriptorOut->query_length = static_cast<uint64_t>(queryLength);
+	descriptorOut->scoring = scoringContract;
+	descriptorOut->cuda_built = false;
+	descriptorOut->decision = "prealign_cuda_not_built";
+	if (errorOut != NULL) *errorOut = descriptorOut->decision;
 	return false;
 }
 

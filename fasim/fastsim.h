@@ -21,6 +21,29 @@ using std::cout;
 using std::endl;
 using std::ifstream;
 
+#if defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) || \
+	defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+static_assert(
+	static_cast<int>(SSW_FORWARD_NUMERIC_PATH_WORD16) ==
+		FASIM_LONG_QUERY_NUMERIC_PATH_WORD16,
+	"long-query WORD16 contract diverged from SSW");
+#endif
+
+inline FasimLongQueryScoringContract fasim_long_query_runtime_scoring_contract(
+	const StripedSmithWaterman::Aligner &aligner)
+{
+	FasimLongQueryScoringContract contract;
+	contract.match_score = static_cast<int>(aligner.match_score());
+	contract.mismatch_penalty =
+		static_cast<int>(aligner.mismatch_penalty());
+	contract.gap_open =
+		static_cast<int>(aligner.gap_opening_penalty());
+	contract.gap_extend =
+		static_cast<int>(aligner.gap_extending_penalty());
+	contract.numeric_path = FASIM_LONG_QUERY_NUMERIC_PATH_WORD16;
+	return contract;
+}
+
 class FasimAuthorityProfileScope
 {
 public:
@@ -2911,11 +2934,16 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 
 	std::vector<FasimGasal2StreamedAttemptScore> endpointScores;
 	FasimGasal2StreamedAttemptScoreTelemetry endpointTelemetry;
+	const FasimLongQueryScoringContract scoringContract =
+		fasim_long_query_runtime_scoring_contract(aligner);
 	std::string bridgeError;
 	const std::chrono::steady_clock::time_point scoreStart =
 		std::chrono::steady_clock::now();
-	if (!fasim_gasal2_streamed_attempt_score_v1(
-			strA, attempts, &endpointScores, &endpointTelemetry, &bridgeError))
+	const bool endpointScoreOk = fasim_gasal2_streamed_attempt_score_v1(
+		strA, attempts, scoringContract, &endpointScores,
+		&endpointTelemetry, &bridgeError);
+	result->runtime_descriptor = endpointTelemetry.runtime_descriptor;
+	if (!endpointScoreOk)
 	{
 		result->error = bridgeError.empty() ?
 			"streamed_attempt_score_failed" : bridgeError;
