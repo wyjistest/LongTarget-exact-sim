@@ -11867,6 +11867,43 @@ int main(int argc, char* const* argv)
 
 		const int maxTasksPerGpu = fasim_env_int_or_default("FASIM_PREALIGN_CUDA_MAX_TASKS", 4096);
 		int maxTasksTotal = useCudaBatch ? (maxTasksPerGpu * static_cast<int>(cudaQueries.size())) : 1;
+		const bool openmpStreamingRequested = fasim_openmp_requested_runtime();
+		const int openmpStreamingThreads = openmpStreamingRequested ?
+			fasim_openmp_configure_threads(paraList.corenum) : 1;
+		const int openmpStreamingBatch = fasim_env_int_or_default(
+			"FASIM_OPENMP_TASK_BATCH", 32);
+		/*
+		 * The production queue uses the tfosorted streaming path.  Keep this
+		 * OpenMP mode deliberately narrow: optional shadow/diagnostic paths have
+		 * shared accounting state and remain serial unless they gain their own
+		 * reduction contract.
+		 */
+		const bool openmpStreamingActive =
+			openmpStreamingRequested &&
+			openmpStreamingThreads > 1 &&
+			openmpStreamingBatch > 0 &&
+			!useCudaBatch &&
+			!verbose &&
+			!phaseTimingEnabled &&
+			paraList.doFastSim &&
+			outputMode == FASIM_OUTPUT_TFOSORTED &&
+			writeFull &&
+			!writeLite &&
+			!writeCigarArchiveProbe &&
+			!writeCompactArchiveProbe &&
+			!writeColumnArchiveProbe &&
+			!streamingScoreInfoInfrastructureRequested &&
+			!forwardHybridActive &&
+			!gasal2LongtargetBatch &&
+			!fasim_gasal2_enabled();
+		if (openmpStreamingActive)
+		{
+			maxTasksTotal = openmpStreamingBatch;
+			cerr << "benchmark.fasim_openmp.active=1\n"
+			     << "benchmark.fasim_openmp.threads=" << openmpStreamingThreads << "\n"
+			     << "benchmark.fasim_openmp.mode=streaming_tfosorted\n"
+			     << "benchmark.fasim_openmp.task_batch=" << maxTasksTotal << "\n";
+		}
 		if (!useCudaBatch && forwardHybridActive)
 		{
 			maxTasksTotal = fasim_env_int_or_default(
@@ -23525,6 +23562,67 @@ int main(int argc, char* const* argv)
 						return;
 					}
 				}
+			}
+
+			/*
+			 * Standard tfosorted CPU work can be parallelized at the task level.
+			 * Each task gets an independent SSW workspace and triplex vector; the
+			 * authority writer below still consumes those vectors in input order.
+			 * This branch intentionally precedes all optional shadow/replay paths,
+			 * which are excluded from openmpStreamingActive above.
+			 */
+			if (openmpStreamingActive && !tasks.empty())
+			{
+				for (size_t t = 0; t < tasks.size(); ++t)
+				{
+					// Resolve the cached threshold before workers touch the task list.
+					task_min_score(tasks[t]);
+				}
+				std::vector< std::vector<triplex> > openmpTriplexes(tasks.size());
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 1) if(openmpStreamingActive)
+#endif
+				for (int taskIndex = 0;
+				     taskIndex < static_cast<int>(tasks.size());
+				     ++taskIndex)
+				{
+					const StreamTask &task = tasks[static_cast<size_t>(taskIndex)];
+					std::string querySeq = lncSeq;
+					std::string targetSeq = task.seq2;
+					std::string srcSeq = *task.srcSeq;
+					fastSIM(
+						querySeq,
+						targetSeq,
+						srcSeq,
+						task.dnaStartPos,
+						task.minScore,
+						5,
+						-4,
+						-12,
+						-4,
+						openmpTriplexes[static_cast<size_t>(taskIndex)],
+						task.strand,
+						task.Para,
+						task.rule,
+						paraList.ntMin,
+						paraList.ntMax,
+						paraList.penaltyT,
+						paraList.penaltyC,
+						paraList,
+						writeFull);
+				}
+				for (size_t t = 0; t < tasks.size(); ++t)
+				{
+					taskTriplexes.swap(openmpTriplexes[t]);
+					write_task_triplexes(tasks[t]);
+				}
+				finalize_attempt_consumer_shadow();
+				finalize_emission_only_consumer_shadow();
+				tasks.clear();
+				encodedTargets.clear();
+				legacyEncodedTargets.clear();
+				currentTargetLength = -1;
+				return;
 			}
 
 			// CPU fallback for this batch.
