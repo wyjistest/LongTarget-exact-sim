@@ -473,6 +473,18 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
                                             PreAlignCudaBatchResult *batchResult,
                                             std::string *errorOut);
 
+// Diagnostic floor for the exact byte8-first/word16 endpoint implementation.
+// It preserves forward score/end-point semantics but intentionally skips the
+// reverse-start score pass; canonicalScore therefore equals forwardScore.
+bool prealign_cuda_find_max_forward_endpoints_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  std::vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+  PreAlignCudaBatchResult *batchResult,
+  std::string *errorOut);
+
 bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHandle &handle,
                                                       const uint8_t *encodedTargetsHost,
                                                       int taskCount,

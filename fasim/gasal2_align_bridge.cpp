@@ -2565,6 +2565,8 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	{
 		*telemetry = FasimGasal2StreamedAttemptScoreTelemetry();
 		telemetry->requests = static_cast<uint64_t>(attempts.size());
+		telemetry->exact_forward_only = env_enabled(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_EXACT_FORWARD_ONLY_TIMING");
 	}
 	if (errorOut != NULL)
 	{
@@ -2587,6 +2589,8 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	std::lock_guard<std::mutex> lock(g_mutex);
 	const std::chrono::steady_clock::time_point totalStart =
 		std::chrono::steady_clock::now();
+	const bool exactForwardOnly = env_enabled(
+		"FASIM_LONG_QUERY_GPU_CONSUMER_EXACT_FORWARD_ONLY_TIMING");
 	std::string bridgeError;
 	if (!g_streamed_attempt_query_cache.prepare(query, &bridgeError))
 	{
@@ -2668,14 +2672,24 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 
 		std::vector<PreAlignCudaAttemptEndpoint> endpointRows;
 		PreAlignCudaBatchResult batchResult;
-		if (!prealign_cuda_find_max_endpoints_batch(
+		const bool endpointOk = exactForwardOnly ?
+			prealign_cuda_find_max_forward_endpoints_batch(
 				g_streamed_attempt_query_cache.handle,
 				encoded.data(),
 				taskCount,
 				static_cast<int>(paddedTargetLength),
 				&endpointRows,
 				&batchResult,
-				&bridgeError))
+				&bridgeError) :
+			prealign_cuda_find_max_endpoints_batch(
+				g_streamed_attempt_query_cache.handle,
+				encoded.data(),
+				taskCount,
+				static_cast<int>(paddedTargetLength),
+				&endpointRows,
+				&batchResult,
+				&bridgeError);
+		if (!endpointOk)
 		{
 			const std::string error = bridgeError.empty() ?
 				"streamed_attempt_score_failed" : bridgeError;
@@ -2711,13 +2725,15 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 		{
 			const PreAlignCudaAttemptEndpoint &endpoint =
 				endpointRows[i - batchBegin];
-			const int expectedCanonical = std::min(
-				endpoint.forwardScore, endpoint.reverseScore);
+			const int expectedCanonical = exactForwardOnly ?
+				endpoint.forwardScore :
+				std::min(endpoint.forwardScore, endpoint.reverseScore);
 			const bool noAlignment = endpoint.forwardScore == 0 &&
 				endpoint.reverseScore == 0 && endpoint.canonicalScore == 0 &&
 				endpoint.targetEnd == -1 && endpoint.queryEnd == 0;
 			const bool validAlignment = endpoint.forwardScore > 0 &&
-				endpoint.reverseScore > 0 &&
+				(exactForwardOnly ? endpoint.reverseScore == 0 :
+				 endpoint.reverseScore > 0) &&
 				endpoint.canonicalScore == expectedCanonical &&
 				endpoint.targetEnd >= 0 &&
 				static_cast<size_t>(endpoint.targetEnd) < attempts[i].target_size() &&

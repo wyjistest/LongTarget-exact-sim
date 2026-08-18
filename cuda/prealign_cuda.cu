@@ -1916,7 +1916,8 @@ static __device__ void prealign_cuda_exact_ssw_pass(
   __syncwarp(mask);
 }
 
-template<int kLanes,bool kBytePath,typename Storage,int kTasksPerBlock>
+template<int kLanes,bool kBytePath,typename Storage,int kTasksPerBlock,
+         bool kComputeReverse>
 static __device__ void prealign_cuda_exact_attempt_endpoint_body(
   const int16_t *profile,
   const uint8_t *encodedTargets,
@@ -1969,7 +1970,7 @@ static __device__ void prealign_cuda_exact_attempt_endpoint_body(
     outEndpoints[taskIndex].numericPath = kBytePath ?
       PREALIGN_CUDA_NUMERIC_PATH_BYTE8 : PREALIGN_CUDA_NUMERIC_PATH_WORD16;
   }
-  if(overflow)
+  if(overflow || !kComputeReverse)
   {
     return;
   }
@@ -2005,7 +2006,7 @@ __global__ void prealign_cuda_exact_attempt_endpoint_byte_kernel(
   PreAlignCudaAttemptEndpoint *outEndpoints)
 {
   extern __shared__ unsigned char workspaceBytes[];
-  prealign_cuda_exact_attempt_endpoint_body<16,true,uint8_t,1>(
+  prealign_cuda_exact_attempt_endpoint_body<16,true,uint8_t,1,true>(
     profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
     queryLength, reinterpret_cast<uint8_t *>(workspaceBytes), outEndpoints);
 }
@@ -2020,7 +2021,37 @@ __global__ void prealign_cuda_exact_attempt_endpoint_word_kernel(
   PreAlignCudaAttemptEndpoint *outEndpoints)
 {
   extern __shared__ unsigned char workspaceBytes[];
-  prealign_cuda_exact_attempt_endpoint_body<8,false,int16_t,1>(
+  prealign_cuda_exact_attempt_endpoint_body<8,false,int16_t,1,true>(
+    profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
+    queryLength, reinterpret_cast<int16_t *>(workspaceBytes), outEndpoints);
+}
+
+__global__ void prealign_cuda_exact_attempt_forward_byte_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  extern __shared__ unsigned char workspaceBytes[];
+  prealign_cuda_exact_attempt_endpoint_body<16,true,uint8_t,1,false>(
+    profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
+    queryLength, reinterpret_cast<uint8_t *>(workspaceBytes), outEndpoints);
+}
+
+__global__ void prealign_cuda_exact_attempt_forward_word_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  extern __shared__ unsigned char workspaceBytes[];
+  prealign_cuda_exact_attempt_endpoint_body<8,false,int16_t,1,false>(
     profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
     queryLength, reinterpret_cast<int16_t *>(workspaceBytes), outEndpoints);
 }
@@ -6520,13 +6551,15 @@ bool prealign_cuda_find_max_scores_batch(const PreAlignCudaQueryHandle &handle,
   return true;
 }
 
-bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handle,
-                                            const uint8_t *encodedTargetsHost,
-                                            int taskCount,
-                                            int targetLength,
-                                            vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
-                                            PreAlignCudaBatchResult *batchResult,
-                                            string *errorOut)
+static bool prealign_cuda_find_exact_attempt_endpoints_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  bool computeReverse,
+  vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+  PreAlignCudaBatchResult *batchResult,
+  string *errorOut)
 {
   if(outEndpoints == NULL)
   {
@@ -6644,16 +6677,26 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
        sharedBytes > static_cast<size_t>(defaultLimit) &&
        sharedBytes <= static_cast<size_t>(optinLimit))
     {
-      attrStatus = cudaFuncSetAttribute(
-        prealign_cuda_exact_attempt_endpoint_byte_kernel,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        static_cast<int>(byteSharedBytes));
+      attrStatus = computeReverse ?
+        cudaFuncSetAttribute(
+          prealign_cuda_exact_attempt_endpoint_byte_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(byteSharedBytes)) :
+        cudaFuncSetAttribute(
+          prealign_cuda_exact_attempt_forward_byte_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(byteSharedBytes));
       if(attrStatus == cudaSuccess)
       {
-        attrStatus = cudaFuncSetAttribute(
-          prealign_cuda_exact_attempt_endpoint_word_kernel,
-          cudaFuncAttributeMaxDynamicSharedMemorySize,
-          static_cast<int>(wordSharedBytes));
+        attrStatus = computeReverse ?
+          cudaFuncSetAttribute(
+            prealign_cuda_exact_attempt_endpoint_word_kernel,
+            cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(wordSharedBytes)) :
+          cudaFuncSetAttribute(
+            prealign_cuda_exact_attempt_forward_word_kernel,
+            cudaFuncAttributeMaxDynamicSharedMemorySize,
+            static_cast<int>(wordSharedBytes));
       }
     }
     else if(attrStatus == cudaSuccess &&
@@ -6672,20 +6715,10 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     }
     if(status == cudaSuccess)
     {
-      prealign_cuda_exact_attempt_endpoint_byte_kernel<<<
-        taskCount, threadsPerBlock, byteSharedBytes>>>(
-        reinterpret_cast<const int16_t *>(handle.profileDevice),
-        context->targetsDevice,
-        taskCount,
-        targetLength,
-        handle.segLen,
-        handle.queryLength,
-        context->attemptEndpointsDevice);
-      status = cudaGetLastError();
-      if(status == cudaSuccess)
+      if(computeReverse)
       {
-        prealign_cuda_exact_attempt_endpoint_word_kernel<<<
-          taskCount, threadsPerBlock, wordSharedBytes>>>(
+        prealign_cuda_exact_attempt_endpoint_byte_kernel<<<
+          taskCount, threadsPerBlock, byteSharedBytes>>>(
           reinterpret_cast<const int16_t *>(handle.profileDevice),
           context->targetsDevice,
           taskCount,
@@ -6693,6 +6726,46 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
           handle.segLen,
           handle.queryLength,
           context->attemptEndpointsDevice);
+      }
+      else
+      {
+        prealign_cuda_exact_attempt_forward_byte_kernel<<<
+          taskCount, threadsPerBlock, byteSharedBytes>>>(
+          reinterpret_cast<const int16_t *>(handle.profileDevice),
+          context->targetsDevice,
+          taskCount,
+          targetLength,
+          handle.segLen,
+          handle.queryLength,
+          context->attemptEndpointsDevice);
+      }
+      status = cudaGetLastError();
+      if(status == cudaSuccess)
+      {
+        if(computeReverse)
+        {
+          prealign_cuda_exact_attempt_endpoint_word_kernel<<<
+            taskCount, threadsPerBlock, wordSharedBytes>>>(
+            reinterpret_cast<const int16_t *>(handle.profileDevice),
+            context->targetsDevice,
+            taskCount,
+            targetLength,
+            handle.segLen,
+            handle.queryLength,
+            context->attemptEndpointsDevice);
+        }
+        else
+        {
+          prealign_cuda_exact_attempt_forward_word_kernel<<<
+            taskCount, threadsPerBlock, wordSharedBytes>>>(
+            reinterpret_cast<const int16_t *>(handle.profileDevice),
+            context->targetsDevice,
+            taskCount,
+            targetLength,
+            handle.segLen,
+            handle.queryLength,
+            context->attemptEndpointsDevice);
+        }
         status = cudaGetLastError();
       }
     }
@@ -6735,6 +6808,33 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     batchResult->d2hSeconds = static_cast<double>(d2hElapsedMs) / 1000.0;
   }
   return true;
+}
+
+bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handle,
+                                            const uint8_t *encodedTargetsHost,
+                                            int taskCount,
+                                            int targetLength,
+                                            vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+                                            PreAlignCudaBatchResult *batchResult,
+                                            string *errorOut)
+{
+  return prealign_cuda_find_exact_attempt_endpoints_batch(
+    handle, encodedTargetsHost, taskCount, targetLength, true,
+    outEndpoints, batchResult, errorOut);
+}
+
+bool prealign_cuda_find_max_forward_endpoints_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+  PreAlignCudaBatchResult *batchResult,
+  string *errorOut)
+{
+  return prealign_cuda_find_exact_attempt_endpoints_batch(
+    handle, encodedTargetsHost, taskCount, targetLength, false,
+    outEndpoints, batchResult, errorOut);
 }
 
 bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHandle &handle,

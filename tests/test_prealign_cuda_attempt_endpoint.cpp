@@ -37,6 +37,25 @@ bool check_endpoint(const PreAlignCudaAttemptEndpoint &endpoint,
   return ok;
 }
 
+bool check_forward_endpoint(const PreAlignCudaAttemptEndpoint &endpoint,
+                            int forwardScore,
+                            int targetEnd,
+                            int queryEnd,
+                            int numericPath)
+{
+  bool ok = true;
+  ok = expect_equal("forward-only forwardScore", endpoint.forwardScore,
+                    forwardScore) && ok;
+  ok = expect_equal("forward-only reverseScore", endpoint.reverseScore, 0) && ok;
+  ok = expect_equal("forward-only canonicalScore", endpoint.canonicalScore,
+                    forwardScore) && ok;
+  ok = expect_equal("forward-only targetEnd", endpoint.targetEnd, targetEnd) && ok;
+  ok = expect_equal("forward-only queryEnd", endpoint.queryEnd, queryEnd) && ok;
+  ok = expect_equal("forward-only numericPath", endpoint.numericPath,
+                    numericPath) && ok;
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -77,8 +96,13 @@ int main()
   PreAlignCudaBatchResult batch;
   const bool scored = prealign_cuda_find_max_endpoints_batch(
     handle, targets.data(), taskCount, targetLength, &endpoints, &batch, &error);
+  std::vector<PreAlignCudaAttemptEndpoint> forwardEndpoints;
+  PreAlignCudaBatchResult forwardBatch;
+  const bool forwardScored = prealign_cuda_find_max_forward_endpoints_batch(
+    handle, targets.data(), taskCount, targetLength,
+    &forwardEndpoints, &forwardBatch, &error);
   prealign_cuda_release_query(&handle);
-  if(!scored)
+  if(!scored || !forwardScored)
   {
     std::cerr << "endpoint batch failed: " << error << "\n";
     return 1;
@@ -88,11 +112,21 @@ int main()
     std::cerr << "endpoint batch cardinality or CUDA authority mismatch\n";
     return 1;
   }
+  if(forwardEndpoints.size() != static_cast<size_t>(taskCount) ||
+     !forwardBatch.usedCuda)
+  {
+    std::cerr << "forward endpoint batch cardinality or CUDA authority mismatch\n";
+    return 1;
+  }
 
   bool ok = true;
   ok = check_endpoint(endpoints[0], 500, 500, 99, 99,
                       PREALIGN_CUDA_NUMERIC_PATH_WORD16) && ok;
   ok = check_endpoint(endpoints[1], 100, 100, 19, 19,
                       PREALIGN_CUDA_NUMERIC_PATH_BYTE8) && ok;
+  ok = check_forward_endpoint(forwardEndpoints[0], 500, 99, 99,
+                              PREALIGN_CUDA_NUMERIC_PATH_WORD16) && ok;
+  ok = check_forward_endpoint(forwardEndpoints[1], 100, 19, 19,
+                              PREALIGN_CUDA_NUMERIC_PATH_BYTE8) && ok;
   return ok ? 0 : 1;
 }

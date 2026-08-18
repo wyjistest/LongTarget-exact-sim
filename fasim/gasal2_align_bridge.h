@@ -1,8 +1,10 @@
 #ifndef FASIM_GASAL2_ALIGN_BRIDGE_H
 #define FASIM_GASAL2_ALIGN_BRIDGE_H
 
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -1655,6 +1657,7 @@ struct FasimGasal2StreamedAttemptScoreTelemetry
 		requests(0),
 		batches(0),
 		gpu_scored_requests(0),
+		exact_forward_only(false),
 		gpu_seconds(0.0),
 		h2d_seconds(0.0),
 		d2h_seconds(0.0),
@@ -1666,12 +1669,289 @@ struct FasimGasal2StreamedAttemptScoreTelemetry
 	uint64_t requests;
 	uint64_t batches;
 	uint64_t gpu_scored_requests;
+	bool exact_forward_only;
 	double gpu_seconds;
 	double h2d_seconds;
 	double d2h_seconds;
 	double total_seconds;
 	std::string error;
 };
+
+// Host-only audit of the minimum reverse-score requests needed by the ordered
+// scoreInfo consumer when forwardScore is used as an upper bound.  Work units
+// are conservative endpoint-envelope DP cells:
+//   (query_end + 1) * (ref_end_local + 1)
+// They are a stable geometry-weighted proxy, not measured kernel cells.
+struct FasimGasal2LazyReverseShadowResult
+{
+	FasimGasal2LazyReverseShadowResult() :
+		ok(false),
+		total_attempts(0),
+		full_reverse_attempts(0),
+		lazy_reverse_attempts(0),
+		lazy_reverse_threshold_attempts(0),
+		lazy_reverse_best_attempts(0),
+		lazy_reverse_last_attempts(0),
+		lazy_reverse_reused_for_best(0),
+		lazy_reverse_reused_for_last(0),
+		full_reverse_envelope_cells(0),
+		lazy_reverse_envelope_cells(0),
+		lazy_reverse_threshold_envelope_cells(0),
+		lazy_reverse_best_envelope_cells(0),
+		lazy_reverse_last_envelope_cells(0),
+		threshold_groups(0),
+		best_fallback_groups(0),
+		last_groups(0),
+		empty_groups(0),
+		error("none")
+	{
+	}
+
+	bool ok;
+	uint64_t total_attempts;
+	uint64_t full_reverse_attempts;
+	uint64_t lazy_reverse_attempts;
+	uint64_t lazy_reverse_threshold_attempts;
+	uint64_t lazy_reverse_best_attempts;
+	uint64_t lazy_reverse_last_attempts;
+	uint64_t lazy_reverse_reused_for_best;
+	uint64_t lazy_reverse_reused_for_last;
+	uint64_t full_reverse_envelope_cells;
+	uint64_t lazy_reverse_envelope_cells;
+	uint64_t lazy_reverse_threshold_envelope_cells;
+	uint64_t lazy_reverse_best_envelope_cells;
+	uint64_t lazy_reverse_last_envelope_cells;
+	uint64_t threshold_groups;
+	uint64_t best_fallback_groups;
+	uint64_t last_groups;
+	uint64_t empty_groups;
+	std::vector<size_t> selected_attempt_indexes;
+	std::vector<std::string> selection_reasons;
+	std::vector<unsigned char> reverse_needed;
+	std::string error;
+};
+
+inline uint64_t fasim_gasal2_lazy_reverse_saturating_add(
+	uint64_t left,
+	uint64_t right)
+{
+	const uint64_t maximum = std::numeric_limits<uint64_t>::max();
+	return right > maximum - left ? maximum : left + right;
+}
+
+inline uint64_t fasim_gasal2_lazy_reverse_envelope_cells(
+	const FasimGasal2Attempt &attempt,
+	const FasimGasal2ScoreOnlyAlignment &score)
+{
+	const int refEndLocal = score.ref_end - attempt.start;
+	if (score.forward_score <= 0 || score.query_end < 0 || refEndLocal < 0)
+	{
+		return 0;
+	}
+	return (static_cast<uint64_t>(score.query_end) + 1ULL) *
+		(static_cast<uint64_t>(refEndLocal) + 1ULL);
+}
+
+inline bool fasim_gasal2_lazy_reverse_shadow_select(
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2ScoreOnlyAlignment> &scores,
+	FasimGasal2LazyReverseShadowResult *result,
+	std::string *errorOut)
+{
+	if (result == NULL || attempts.size() != scores.size())
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = result == NULL ?
+				"null_lazy_reverse_result" : "lazy_reverse_score_count_mismatch";
+		}
+		return false;
+	}
+	*result = FasimGasal2LazyReverseShadowResult();
+	result->total_attempts = static_cast<uint64_t>(attempts.size());
+	result->selection_reasons.assign(attempts.size(), "not_selected_lower_score");
+	result->reverse_needed.assign(attempts.size(), 0);
+	if (errorOut != NULL)
+	{
+		errorOut->clear();
+	}
+
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		const FasimGasal2Attempt &attempt = attempts[i];
+		const FasimGasal2ScoreOnlyAlignment &score = scores[i];
+		if (attempt.scoreinfo_index != score.scoreinfo_index ||
+			score.forward_score < 0 || score.score < 0 ||
+			score.score > score.forward_score)
+		{
+			result->error = "invalid_lazy_reverse_input";
+			if (errorOut != NULL) *errorOut = result->error;
+			return false;
+		}
+		if (score.forward_score > 0)
+		{
+			++result->full_reverse_attempts;
+			result->full_reverse_envelope_cells =
+				fasim_gasal2_lazy_reverse_saturating_add(
+					result->full_reverse_envelope_cells,
+					fasim_gasal2_lazy_reverse_envelope_cells(attempt, score));
+		}
+	}
+
+	int currentScoreInfo = -1;
+	int exactBestScore = 0;
+	size_t exactBestIndex = 0;
+	bool haveExactBest = false;
+	size_t deferredLastIndex = 0;
+	bool haveDeferredLast = false;
+	bool emitted = false;
+
+	auto request_reverse = [&](size_t index, const char *reason)
+	{
+		if (result->reverse_needed[index] != 0)
+		{
+			return;
+		}
+		result->reverse_needed[index] = 1;
+		++result->lazy_reverse_attempts;
+		const uint64_t cells = fasim_gasal2_lazy_reverse_envelope_cells(
+			attempts[index], scores[index]);
+		result->lazy_reverse_envelope_cells =
+			fasim_gasal2_lazy_reverse_saturating_add(
+				result->lazy_reverse_envelope_cells, cells);
+		if (std::string(reason) == "threshold")
+		{
+			++result->lazy_reverse_threshold_attempts;
+			result->lazy_reverse_threshold_envelope_cells =
+				fasim_gasal2_lazy_reverse_saturating_add(
+					result->lazy_reverse_threshold_envelope_cells, cells);
+		}
+		else if (std::string(reason) == "best")
+		{
+			++result->lazy_reverse_best_attempts;
+			result->lazy_reverse_best_envelope_cells =
+				fasim_gasal2_lazy_reverse_saturating_add(
+					result->lazy_reverse_best_envelope_cells, cells);
+		}
+		else
+		{
+			++result->lazy_reverse_last_attempts;
+			result->lazy_reverse_last_envelope_cells =
+				fasim_gasal2_lazy_reverse_saturating_add(
+					result->lazy_reverse_last_envelope_cells, cells);
+		}
+	};
+
+	auto flush = [&]()
+	{
+		if (currentScoreInfo >= 0 && !emitted)
+		{
+			if (haveExactBest)
+			{
+				result->selected_attempt_indexes.push_back(exactBestIndex);
+				result->selection_reasons[exactBestIndex] = "best_fallback";
+				++result->best_fallback_groups;
+			}
+			else if (haveDeferredLast)
+			{
+				const FasimGasal2ScoreOnlyAlignment &last = scores[deferredLastIndex];
+				int exactLastScore = 0;
+				if (result->reverse_needed[deferredLastIndex] != 0)
+				{
+					++result->lazy_reverse_reused_for_last;
+					exactLastScore = last.score;
+				}
+				else if (last.forward_score > 0)
+				{
+					request_reverse(deferredLastIndex, "last");
+					exactLastScore = last.score;
+				}
+				if (exactLastScore != 0)
+				{
+					result->selected_attempt_indexes.push_back(deferredLastIndex);
+					result->selection_reasons[deferredLastIndex] = "last";
+					++result->last_groups;
+				}
+				else
+				{
+					++result->empty_groups;
+				}
+			}
+			else
+			{
+				++result->empty_groups;
+			}
+		}
+		exactBestScore = 0;
+		exactBestIndex = 0;
+		haveExactBest = false;
+		deferredLastIndex = 0;
+		haveDeferredLast = false;
+		emitted = false;
+	};
+
+	for (size_t i = 0; i < attempts.size(); ++i)
+	{
+		const FasimGasal2Attempt &attempt = attempts[i];
+		const FasimGasal2ScoreOnlyAlignment &score = scores[i];
+		if (attempt.scoreinfo_index < currentScoreInfo)
+		{
+			result->error = "lazy_reverse_scoreinfo_order_not_monotonic";
+			if (errorOut != NULL) *errorOut = result->error;
+			return false;
+		}
+		if (attempt.scoreinfo_index != currentScoreInfo)
+		{
+			flush();
+			currentScoreInfo = attempt.scoreinfo_index;
+		}
+		if (emitted)
+		{
+			result->selection_reasons[i] = "not_selected_after_threshold";
+			continue;
+		}
+
+		deferredLastIndex = i;
+		haveDeferredLast = true;
+		const bool terminal =
+			score.ref_end == attempt.start + attempt.cutlength - 1;
+		if (score.forward_score >= attempt.prealign_score)
+		{
+			request_reverse(i, "threshold");
+			if (score.score >= attempt.prealign_score)
+			{
+				result->selected_attempt_indexes.push_back(i);
+				result->selection_reasons[i] = "threshold";
+				++result->threshold_groups;
+				emitted = true;
+				continue;
+			}
+			if (terminal)
+			{
+				++result->lazy_reverse_reused_for_best;
+				if (score.score > exactBestScore)
+				{
+					exactBestScore = score.score;
+					exactBestIndex = i;
+					haveExactBest = true;
+				}
+			}
+		}
+		else if (terminal && score.forward_score > exactBestScore)
+		{
+			request_reverse(i, "best");
+			if (score.score > exactBestScore)
+			{
+				exactBestScore = score.score;
+				exactBestIndex = i;
+				haveExactBest = true;
+			}
+		}
+	}
+	flush();
+	result->ok = true;
+	return true;
+}
 
 // Development-only result for the isolated long-query consumer spike.  This
 // is intentionally separate from the historical phase7 telemetry fields.
@@ -1695,6 +1975,23 @@ struct FasimLongQueryGpuConsumerSpikeResult
 		consumer_selection_equal(false),
 		cpu_reference_align_attempts(0),
 		consumer_attempt_prefix_equal(false),
+		exact_forward_only(false),
+		lazy_reverse_shadow_requested(false),
+		lazy_reverse_shadow_active(false),
+		lazy_reverse_selection_equal(false),
+		lazy_reverse_reasons_equal(false),
+		lazy_reverse_full_attempts(0),
+		lazy_reverse_attempts(0),
+		lazy_reverse_threshold_attempts(0),
+		lazy_reverse_best_attempts(0),
+		lazy_reverse_last_attempts(0),
+		lazy_reverse_reused_for_best(0),
+		lazy_reverse_reused_for_last(0),
+		lazy_reverse_full_envelope_cells(0),
+		lazy_reverse_envelope_cells(0),
+		lazy_reverse_threshold_envelope_cells(0),
+		lazy_reverse_best_envelope_cells(0),
+		lazy_reverse_last_envelope_cells(0),
 		cpu_continuation_requested(false),
 		cpu_continuation_active(false),
 		cpu_continuation_calls(0),
@@ -1711,11 +2008,13 @@ struct FasimLongQueryGpuConsumerSpikeResult
 		d2h_seconds(0.0),
 		cpu_oracle_seconds(0.0),
 		select_seconds(0.0),
+		lazy_reverse_shadow_seconds(0.0),
 		traceback_seconds(0.0),
 		convert_seconds(0.0),
 		total_seconds(0.0),
 		first_attempt_mismatch("none"),
 		first_consumer_mismatch("none"),
+		first_lazy_reverse_mismatch("none"),
 		error("none")
 	{
 	}
@@ -1737,6 +2036,23 @@ struct FasimLongQueryGpuConsumerSpikeResult
 	bool consumer_selection_equal;
 	uint64_t cpu_reference_align_attempts;
 	bool consumer_attempt_prefix_equal;
+	bool exact_forward_only;
+	bool lazy_reverse_shadow_requested;
+	bool lazy_reverse_shadow_active;
+	bool lazy_reverse_selection_equal;
+	bool lazy_reverse_reasons_equal;
+	uint64_t lazy_reverse_full_attempts;
+	uint64_t lazy_reverse_attempts;
+	uint64_t lazy_reverse_threshold_attempts;
+	uint64_t lazy_reverse_best_attempts;
+	uint64_t lazy_reverse_last_attempts;
+	uint64_t lazy_reverse_reused_for_best;
+	uint64_t lazy_reverse_reused_for_last;
+	uint64_t lazy_reverse_full_envelope_cells;
+	uint64_t lazy_reverse_envelope_cells;
+	uint64_t lazy_reverse_threshold_envelope_cells;
+	uint64_t lazy_reverse_best_envelope_cells;
+	uint64_t lazy_reverse_last_envelope_cells;
 	bool cpu_continuation_requested;
 	bool cpu_continuation_active;
 	uint64_t cpu_continuation_calls;
@@ -1753,11 +2069,13 @@ struct FasimLongQueryGpuConsumerSpikeResult
 	double d2h_seconds;
 	double cpu_oracle_seconds;
 	double select_seconds;
+	double lazy_reverse_shadow_seconds;
 	double traceback_seconds;
 	double convert_seconds;
 	double total_seconds;
 	std::string first_attempt_mismatch;
 	std::string first_consumer_mismatch;
+	std::string first_lazy_reverse_mismatch;
 	std::string error;
 };
 

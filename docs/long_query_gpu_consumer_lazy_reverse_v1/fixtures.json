@@ -1,0 +1,38 @@
+{
+  "schema_version": "long_query_lazy_reverse_fixture_audit_v1",
+  "two_window": {
+    "input_query_sha256": "eb7f444ad384013d2df49eed95e76a18a89a681327d51031a8ed0263512a743a",
+    "target_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea",
+    "task_rows": 192,
+    "full_reverse_attempts": 9224,
+    "lazy_reverse_attempts": 2306,
+    "lazy_reverse_attempt_fraction": 0.25,
+    "lazy_reverse_envelope_cell_fraction": 0.3227895844523885,
+    "selection_mismatches": 0,
+    "reason_mismatches": 0,
+    "output_sha256": "53c2c3b87d1da3f5f5eec6d37a139ad04cb0a0859e661a08e10069ebccc3d30e",
+    "status": "pass"
+  },
+  "real_promoter_shard_0009": {
+    "query_sha256": "77a542d36f1de7e7ad5dae03a641456d6a5415f164034b4f144339e7c2c5b7fa",
+    "target_sha256": "c448a0564c4fbfb2261071885a2f83f2631323d54a5e64b5d4ed4ce57262295f",
+    "query_length_nt": 4006,
+    "target_length_bp": 4942620,
+    "task_rows": 48432,
+    "full_reverse_attempts": 4345980,
+    "lazy_reverse_attempts": 1086495,
+    "lazy_reverse_attempt_fraction": 0.25,
+    "lazy_reverse_envelope_cells": 108447735292,
+    "lazy_reverse_full_envelope_cells": 277070411023,
+    "lazy_reverse_envelope_cell_fraction": 0.39140857694471604,
+    "selection_mismatches": 0,
+    "reason_mismatches": 0,
+    "cpu_all_attempt_oracle": 0,
+    "cpu_reference_replay": 0,
+    "continuation_failures": 0,
+    "fallbacks": 0,
+    "cpu_output_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "hybrid_output_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "status": "pass"
+  }
+}

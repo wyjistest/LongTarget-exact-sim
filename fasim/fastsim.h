@@ -379,6 +379,17 @@ inline bool fasim_long_query_gpu_consumer_cpu_continuation_runtime()
 	return enabled;
 }
 
+inline bool fasim_long_query_gpu_consumer_lazy_reverse_shadow_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_LAZY_REVERSE_SHADOW");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_gasal2_emission_only_consumer_shadow_enabled_runtime()
 {
 	static const bool enabled = []()
@@ -2835,6 +2846,8 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	}
 	*result = FasimLongQueryGpuConsumerSpikeResult();
 	result->validation_enabled = validateAgainstCpu;
+	result->lazy_reverse_shadow_requested =
+		fasim_long_query_gpu_consumer_lazy_reverse_shadow_runtime();
 	shadowTriplexList.clear();
 	if (errorOut != NULL)
 	{
@@ -2845,6 +2858,12 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 
 	if (finalScoreInfo.empty())
 	{
+		if (result->lazy_reverse_shadow_requested)
+		{
+			result->lazy_reverse_shadow_active = true;
+			result->lazy_reverse_selection_equal = true;
+			result->lazy_reverse_reasons_equal = true;
+		}
 		result->ok = true;
 		result->total_seconds = std::chrono::duration<double>(
 			std::chrono::steady_clock::now() - totalStart).count();
@@ -2929,6 +2948,7 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	result->score_seconds = std::chrono::duration<double>(
 		std::chrono::steady_clock::now() - scoreStart).count();
 	result->gpu_scored_attempts = endpointTelemetry.gpu_scored_requests;
+	result->exact_forward_only = endpointTelemetry.exact_forward_only;
 	result->endpoint_batches = endpointTelemetry.batches;
 	result->gpu_kernel_seconds = endpointTelemetry.gpu_seconds;
 	result->h2d_seconds = endpointTelemetry.h2d_seconds;
@@ -2937,6 +2957,15 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		endpointTelemetry.gpu_scored_requests != attempts.size())
 	{
 		result->error = "gpu_score_count_mismatch";
+		if (errorOut != NULL) *errorOut = result->error;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	}
+	if (result->exact_forward_only && result->lazy_reverse_shadow_requested)
+	{
+		result->error =
+			"forward_only_timing_incompatible_with_lazy_reverse_shadow";
 		if (errorOut != NULL) *errorOut = result->error;
 		result->total_seconds = std::chrono::duration<double>(
 			std::chrono::steady_clock::now() - totalStart).count();
@@ -3071,6 +3100,103 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		result->total_seconds = std::chrono::duration<double>(
 			std::chrono::steady_clock::now() - totalStart).count();
 		return false;
+	}
+
+	if (result->lazy_reverse_shadow_requested)
+	{
+		const std::chrono::steady_clock::time_point lazyStart =
+			std::chrono::steady_clock::now();
+		FasimGasal2LazyReverseShadowResult lazy;
+		std::string lazyError;
+		if (!fasim_gasal2_lazy_reverse_shadow_select(
+				attempts, scores, &lazy, &lazyError))
+		{
+			result->error = lazyError.empty() ?
+				"lazy_reverse_shadow_failed" : lazyError;
+			if (errorOut != NULL) *errorOut = result->error;
+			result->lazy_reverse_shadow_seconds =
+				std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - lazyStart).count();
+			result->total_seconds = std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - totalStart).count();
+			return false;
+		}
+		result->lazy_reverse_shadow_active = true;
+		result->lazy_reverse_full_attempts = lazy.full_reverse_attempts;
+		result->lazy_reverse_attempts = lazy.lazy_reverse_attempts;
+		result->lazy_reverse_threshold_attempts =
+			lazy.lazy_reverse_threshold_attempts;
+		result->lazy_reverse_best_attempts = lazy.lazy_reverse_best_attempts;
+		result->lazy_reverse_last_attempts = lazy.lazy_reverse_last_attempts;
+		result->lazy_reverse_reused_for_best = lazy.lazy_reverse_reused_for_best;
+		result->lazy_reverse_reused_for_last = lazy.lazy_reverse_reused_for_last;
+		result->lazy_reverse_full_envelope_cells =
+			lazy.full_reverse_envelope_cells;
+		result->lazy_reverse_envelope_cells = lazy.lazy_reverse_envelope_cells;
+		result->lazy_reverse_threshold_envelope_cells =
+			lazy.lazy_reverse_threshold_envelope_cells;
+		result->lazy_reverse_best_envelope_cells =
+			lazy.lazy_reverse_best_envelope_cells;
+		result->lazy_reverse_last_envelope_cells =
+			lazy.lazy_reverse_last_envelope_cells;
+		result->lazy_reverse_selection_equal =
+			selected == lazy.selected_attempt_indexes;
+		result->lazy_reverse_reasons_equal = reasons == lazy.selection_reasons;
+		result->lazy_reverse_shadow_seconds =
+			std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - lazyStart).count();
+		if (!result->lazy_reverse_selection_equal ||
+			!result->lazy_reverse_reasons_equal)
+		{
+			size_t mismatch = 0;
+			const size_t sharedSelected = std::min(
+				selected.size(), lazy.selected_attempt_indexes.size());
+			while (mismatch < sharedSelected &&
+				selected[mismatch] == lazy.selected_attempt_indexes[mismatch])
+			{
+				++mismatch;
+			}
+			std::ostringstream detail;
+			detail << "selected_position=" << mismatch
+			       << ":full_count=" << selected.size()
+			       << ":lazy_count=" << lazy.selected_attempt_indexes.size();
+			if (mismatch < selected.size())
+			{
+				detail << ":full_index=" << selected[mismatch];
+			}
+			if (mismatch < lazy.selected_attempt_indexes.size())
+			{
+				detail << ":lazy_index=" << lazy.selected_attempt_indexes[mismatch];
+			}
+			if (result->lazy_reverse_selection_equal)
+			{
+				mismatch = 0;
+				const size_t sharedReasons = std::min(
+					reasons.size(), lazy.selection_reasons.size());
+				while (mismatch < sharedReasons &&
+					reasons[mismatch] == lazy.selection_reasons[mismatch])
+				{
+					++mismatch;
+				}
+				detail.str("");
+				detail.clear();
+				detail << "reason_attempt=" << mismatch;
+				if (mismatch < reasons.size())
+				{
+					detail << ":full_reason=" << reasons[mismatch];
+				}
+				if (mismatch < lazy.selection_reasons.size())
+				{
+					detail << ":lazy_reason=" << lazy.selection_reasons[mismatch];
+				}
+			}
+			result->first_lazy_reverse_mismatch = detail.str();
+			result->error = "lazy_reverse_shadow_selection_mismatch";
+			if (errorOut != NULL) *errorOut = result->error;
+			result->total_seconds = std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - totalStart).count();
+			return false;
+		}
 	}
 
 	// A selected winner is insufficient to reproduce the ordered state machine.

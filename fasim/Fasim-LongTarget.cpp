@@ -11545,7 +11545,7 @@ int main(int argc, char* const* argv)
 						if (longQueryGpuConsumerSpikeReport)
 						{
 								longQueryGpuConsumerSpikeReport
-									<< "task_index\texecution_mode\tauthority_comparison_available\tvalidation_enabled\tok\toutput_equal\tscoreinfo_groups\tattempts\tgpu_scored_attempts\tendpoint_batches\tcpu_oracle_attempts\tattempt_mismatch_rows\tscore_mismatches\tquery_end_mismatches\tref_end_local_mismatches\tterminal_mismatches\tcontrol_selected_attempts\tcpu_control_selected_attempts\tconsumer_selection_equal\tcpu_reference_align_attempts\tconsumer_attempt_prefix_equal\tcpu_continuation_requested\tcpu_continuation_active\tcpu_continuation_calls\tcpu_continuation_failures\treplay_attempts\tcpu_align_attempts\tthreshold_groups\tbest_fallback_groups\tlast_groups\tempty_groups\tscore_seconds\tgpu_kernel_seconds\th2d_seconds\td2h_seconds\tcpu_oracle_seconds\tselect_seconds\ttraceback_seconds\tconvert_seconds\ttotal_seconds\tmissing_rows\textra_rows\tfirst_attempt_mismatch\tfirst_consumer_mismatch\terror\n";
+									<< "task_index\texecution_mode\tauthority_comparison_available\tvalidation_enabled\tok\toutput_equal\tscoreinfo_groups\tattempts\tgpu_scored_attempts\tendpoint_batches\tcpu_oracle_attempts\tattempt_mismatch_rows\tscore_mismatches\tquery_end_mismatches\tref_end_local_mismatches\tterminal_mismatches\tcontrol_selected_attempts\tcpu_control_selected_attempts\tconsumer_selection_equal\tcpu_reference_align_attempts\tconsumer_attempt_prefix_equal\texact_forward_only\tlazy_reverse_shadow_requested\tlazy_reverse_shadow_active\tlazy_reverse_selection_equal\tlazy_reverse_reasons_equal\tlazy_reverse_full_attempts\tlazy_reverse_attempts\tlazy_reverse_threshold_attempts\tlazy_reverse_best_attempts\tlazy_reverse_last_attempts\tlazy_reverse_reused_for_best\tlazy_reverse_reused_for_last\tlazy_reverse_full_envelope_cells\tlazy_reverse_envelope_cells\tlazy_reverse_threshold_envelope_cells\tlazy_reverse_best_envelope_cells\tlazy_reverse_last_envelope_cells\tlazy_reverse_shadow_seconds\tcpu_continuation_requested\tcpu_continuation_active\tcpu_continuation_calls\tcpu_continuation_failures\treplay_attempts\tcpu_align_attempts\tthreshold_groups\tbest_fallback_groups\tlast_groups\tempty_groups\tscore_seconds\tgpu_kernel_seconds\th2d_seconds\td2h_seconds\tcpu_oracle_seconds\tselect_seconds\ttraceback_seconds\tconvert_seconds\ttotal_seconds\tmissing_rows\textra_rows\tfirst_attempt_mismatch\tfirst_consumer_mismatch\tfirst_lazy_reverse_mismatch\terror\n";
 						}
 					}
 				}
@@ -14552,6 +14552,24 @@ int main(int argc, char* const* argv)
 					<< (result.consumer_selection_equal ? 1 : 0) << '\t'
 					<< result.cpu_reference_align_attempts << '\t'
 					<< (result.consumer_attempt_prefix_equal ? 1 : 0) << '\t'
+					<< (result.exact_forward_only ? 1 : 0) << '\t'
+					<< (result.lazy_reverse_shadow_requested ? 1 : 0) << '\t'
+					<< (result.lazy_reverse_shadow_active ? 1 : 0) << '\t'
+					<< (result.lazy_reverse_selection_equal ? 1 : 0) << '\t'
+					<< (result.lazy_reverse_reasons_equal ? 1 : 0) << '\t'
+					<< result.lazy_reverse_full_attempts << '\t'
+					<< result.lazy_reverse_attempts << '\t'
+					<< result.lazy_reverse_threshold_attempts << '\t'
+					<< result.lazy_reverse_best_attempts << '\t'
+					<< result.lazy_reverse_last_attempts << '\t'
+					<< result.lazy_reverse_reused_for_best << '\t'
+					<< result.lazy_reverse_reused_for_last << '\t'
+					<< result.lazy_reverse_full_envelope_cells << '\t'
+					<< result.lazy_reverse_envelope_cells << '\t'
+					<< result.lazy_reverse_threshold_envelope_cells << '\t'
+					<< result.lazy_reverse_best_envelope_cells << '\t'
+					<< result.lazy_reverse_last_envelope_cells << '\t'
+					<< result.lazy_reverse_shadow_seconds << '\t'
 					<< (result.cpu_continuation_requested ? 1 : 0) << '\t'
 					<< (result.cpu_continuation_active ? 1 : 0) << '\t'
 					<< result.cpu_continuation_calls << '\t'
@@ -14575,6 +14593,7 @@ int main(int argc, char* const* argv)
 					<< extra << '\t'
 					<< result.first_attempt_mismatch << '\t'
 					<< result.first_consumer_mismatch << '\t'
+					<< result.first_lazy_reverse_mismatch << '\t'
 					<< error << '\n';
 		};
 

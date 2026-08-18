@@ -819,6 +819,18 @@ PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cud
 PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARGET ?= tests/test_prealign_cuda_attempt_endpoint
 PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_SOURCES := tests/test_prealign_cuda_attempt_endpoint.cpp cuda/prealign_cuda.o
 
+FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET ?= tests/test_fasim_lazy_reverse_shadow
+FASIM_LAZY_REVERSE_SHADOW_TEST_SOURCES := tests/test_fasim_lazy_reverse_shadow.cpp
+
+.PHONY: build-fasim-lazy-reverse-shadow-test check-fasim-lazy-reverse-shadow
+build-fasim-lazy-reverse-shadow-test: $(FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET)
+
+check-fasim-lazy-reverse-shadow: $(FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET)
+	./$(FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET)
+
+$(FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET): $(FASIM_LAZY_REVERSE_SHADOW_TEST_SOURCES) fasim/gasal2_align_bridge.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_LAZY_REVERSE_SHADOW_TEST_SOURCES) -o $@
+
 SIM_SCAN_BATCH_TEST_TARGET ?= tests/test_sim_scan_batch
 SIM_SCAN_BATCH_TEST_SOURCES := tests/test_sim_scan_batch.cpp cuda/sim_scan_cuda_stub.cpp
 

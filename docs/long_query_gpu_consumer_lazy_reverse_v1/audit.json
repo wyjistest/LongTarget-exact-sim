@@ -1,0 +1,73 @@
+{
+  "binary_sha256": "78ae50642b90781004d59958ae8c4d1ed4116f0e5cc4e71dc51b94e29595369d",
+  "decision": {
+    "compact_reverse_kernel_authorized": false,
+    "forward_only_floor_blocks_target": true,
+    "performance_no_go": true,
+    "reason": "forward-only floor already exceeds the 1.5x wall budget",
+    "target_speedup": 1.5
+  },
+  "forward_only": {
+    "failures": [],
+    "report": "/data/wenyujianData/linjieData/LongTarget-exact-sim-attempt-fix-v1/.tmp/lazy-reverse-shadow/shard-0009-forward-only/consumer.tsv",
+    "status": "pass",
+    "task_rows": 48432,
+    "totals": {
+      "attempts": 4345980,
+      "convert_seconds": 7.667868564999977,
+      "cpu_continuation_calls": 1086495,
+      "cpu_continuation_failures": 0,
+      "cpu_oracle_attempts": 0,
+      "cpu_reference_align_attempts": 0,
+      "d2h_seconds": 0.4527745919999955,
+      "gpu_kernel_seconds": 134.45516577000188,
+      "gpu_scored_attempts": 4345980,
+      "h2d_seconds": 0.42402905599999474,
+      "score_seconds": 136.8320588899998,
+      "total_seconds": 199.7794722199995,
+      "traceback_seconds": 54.154711424999796
+    }
+  },
+  "lazy_shadow": {
+    "consumer_report": "/data/wenyujianData/linjieData/LongTarget-exact-sim-attempt-fix-v1/.tmp/lazy-reverse-shadow/shard-0009/consumer.tsv",
+    "failures": [],
+    "lazy_reverse_attempt_fraction": 0.25,
+    "lazy_reverse_attempts": 1086495,
+    "lazy_reverse_best_attempts": 119878,
+    "lazy_reverse_best_envelope_cells": 14162812490,
+    "lazy_reverse_envelope_cell_fraction": 0.39140857694471604,
+    "lazy_reverse_envelope_cells": 108447735292,
+    "lazy_reverse_full_attempts": 4345980,
+    "lazy_reverse_full_envelope_cells": 277070411023,
+    "lazy_reverse_last_attempts": 96541,
+    "lazy_reverse_last_envelope_cells": 3520748331,
+    "lazy_reverse_reused_for_best": 0,
+    "lazy_reverse_reused_for_last": 0,
+    "lazy_reverse_shadow_seconds": 0.5724983979999996,
+    "lazy_reverse_threshold_attempts": 870076,
+    "lazy_reverse_threshold_envelope_cells": 90764174471,
+    "schema_version": "long_query_lazy_reverse_shadow_summary_v1",
+    "status": "pass",
+    "task_rows": 48432
+  },
+  "output": {
+    "byte_equal": true,
+    "cpu_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "forward_only_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075"
+  },
+  "schema_version": "long_query_exact_reverse_floor_audit_v1",
+  "source_commit": "ab74ed9e989f96180ff23953e61b954ab57975d8",
+  "speedup": {
+    "all_reverse_exact": 1.0737870419858662,
+    "exact_forward_only": 1.3121076884002756,
+    "predicted_lazy_reverse": 1.2072342747536338
+  },
+  "status": "pass",
+  "timing_seconds": {
+    "all_reverse_exact": 336.78,
+    "all_reverse_increment": 61.16999999999996,
+    "cpu_authority": 361.63,
+    "exact_forward_only": 275.61,
+    "predicted_lazy_reverse": 299.55246265170825
+  }
+}
