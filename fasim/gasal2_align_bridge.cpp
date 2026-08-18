@@ -2762,6 +2762,7 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 			out.ref_end_global = endpoint.targetEnd >= 0 ?
 				attempts[i].start + endpoint.targetEnd : -1;
 			out.numeric_path = endpoint.numericPath;
+			out.padded_target_length = static_cast<int>(paddedTargetLength);
 		}
 	}
 	if (telemetry != NULL)

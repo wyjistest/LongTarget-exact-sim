@@ -2837,7 +2837,9 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	const struct para &paraList,
 	bool materializeAlignmentStrings,
 	FasimLongQueryGpuConsumerSpikeResult *result,
-	std::string *errorOut)
+	std::string *errorOut,
+	std::ostream *attemptTraceOut = NULL,
+	uint64_t attemptTraceTaskId = std::numeric_limits<uint64_t>::max())
 {
 	FasimLongQueryGpuConsumerSpikeResult localResult;
 	if (result == NULL)
@@ -2984,9 +2986,64 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		gpuRow.prealign_score = attempt.prealign_score;
 		gpuRow.score = gpu.score;
 		gpuRow.forward_score = gpu.forward_score;
+		gpuRow.reverse_score = gpu.reverse_score;
 		gpuRow.query_end = gpu.query_end;
 		gpuRow.ref_end = gpu.ref_end_global;
 		gpuRow.numeric_path = gpu.numeric_path;
+	}
+
+	// Optional development trace.  It is emitted from the endpoint array before
+	// ordered selection or continuation can discard any attempt.  The trace is
+	// deliberately diagnostic and has no effect when the stream is absent.
+	if (attemptTraceOut != NULL && *attemptTraceOut)
+	{
+		for (size_t i = 0; i < attempts.size(); ++i)
+		{
+			const FasimGasal2Attempt &attempt = attempts[i];
+			const FasimGasal2StreamedAttemptScore &gpu = endpointScores[i];
+			const int refEndLocal = gpu.ref_end_local;
+			const bool terminal = refEndLocal == attempt.cutlength - 1;
+			const uint64_t padded = gpu.padded_target_length > 0 ?
+				static_cast<uint64_t>(gpu.padded_target_length) :
+				static_cast<uint64_t>(attempt.cutlength);
+			const uint64_t queryLength = static_cast<uint64_t>(strA.size());
+			const uint64_t cells = queryLength > 0 && padded > 0 &&
+				queryLength <= std::numeric_limits<uint64_t>::max() / padded ?
+				queryLength * padded : std::numeric_limits<uint64_t>::max();
+			int scoreInfoPosition = -1;
+			int scoreInfoScore = attempt.prealign_score;
+			if (attempt.scoreinfo_index >= 0 &&
+				static_cast<size_t>(attempt.scoreinfo_index) < finalScoreInfo.size())
+			{
+				scoreInfoPosition = finalScoreInfo[
+					static_cast<size_t>(attempt.scoreinfo_index)].position;
+				scoreInfoScore = finalScoreInfo[
+					static_cast<size_t>(attempt.scoreinfo_index)].score;
+			}
+			*attemptTraceOut
+				<< attemptTraceTaskId << '\t'
+				<< attempt.scoreinfo_index << '\t'
+				<< scoreInfoPosition << '\t'
+				<< scoreInfoScore << '\t'
+				<< i << '\t'
+				<< attempt.identity_round << '\t'
+				<< attempt.start << '\t'
+				<< attempt.cutlength << '\t'
+				<< attempt.prealign_score << '\t'
+				<< gpu.forward_score << '\t'
+				<< gpu.reverse_score << '\t'
+				<< gpu.score << '\t'
+				<< gpu.query_end << '\t'
+				<< refEndLocal << '\t'
+				<< gpu.ref_end_global << '\t'
+				<< (terminal ? 1 : 0) << '\t'
+				<< gpu.numeric_path << '\t'
+				<< padded << '\t'
+				<< queryLength << '\t'
+				<< cells << '\t'
+				<< cells << '\n';
+		}
+		attemptTraceOut->flush();
 	}
 
 	std::vector<FasimGasal2ScoreOnlyAlignment> cpuScores;

@@ -1607,6 +1607,7 @@ struct FasimGasal2ScoreOnlyAlignment
 		prealign_score(0),
 		score(0),
 		forward_score(0),
+		reverse_score(0),
 		query_end(-1),
 		ref_end(-1),
 		numeric_path(0)
@@ -1620,6 +1621,7 @@ struct FasimGasal2ScoreOnlyAlignment
 	// `score` is the canonical CPU Align() score after reverse-start recovery.
 	int score;
 	int forward_score;
+	int reverse_score;
 	int query_end;
 	int ref_end;
 	int numeric_path;
@@ -1637,7 +1639,8 @@ struct FasimGasal2StreamedAttemptScore
 		query_end(0),
 		ref_end_local(-1),
 		ref_end_global(-1),
-		numeric_path(0)
+		numeric_path(0),
+		padded_target_length(0)
 	{
 	}
 
@@ -1649,6 +1652,9 @@ struct FasimGasal2StreamedAttemptScore
 	int ref_end_local;
 	int ref_end_global;
 	int numeric_path;
+	// Batch-local padded target length used by the endpoint kernel.  This is
+	// diagnostic geometry only; it is not part of the product contract.
+	int padded_target_length;
 };
 
 struct FasimGasal2StreamedAttemptScoreTelemetry

@@ -1,0 +1,48 @@
+{
+  "schema_version": "long_query_consumer_driven_lower_bound_receipt_v1",
+  "source_parent_commit": "8670cc4817b12ed68dbdba41bfc5a0427a8db69e",
+  "audit_binary_sha256": "97703558f722e8ca66f8750df3b98cea5fe9412e1ae3489831e2588b7cd693ef",
+  "compiler": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+  "cuda_build_note": "nvcc unavailable; existing prealign_cuda.o and GASAL2 library were reused",
+  "gpu": {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 4090",
+    "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+    "driver": "555.42.06"
+  },
+  "query": {
+    "id": "ENSG00000229613",
+    "symbol": "LINC01501",
+    "length_nt": 4006,
+    "sequence_sha256": "896e9e632f321c87539268390c3668baab3d40f1007cd2433b44321561ebc657"
+  },
+  "target": {
+    "artifact": "shard_0009",
+    "length_bp": 4942620,
+    "file_sha256": "c448a0564c4fbfb2261071885a2f83f2631323d54a5e64b5d4ed4ce57262295f"
+  },
+  "trace": {
+    "rows_excluding_header": 4345980,
+    "sha256": "fcb5c9bcb8318026d7b2447016f458e7b478207242dbfad18342690747b8666f"
+  },
+  "output": {
+    "mode": "tfosorted",
+    "sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075"
+  },
+  "timing_inputs": {
+    "all_reverse_wall_seconds": 336.78,
+    "all_reverse_kernel_seconds": 194.11832934,
+    "forward_only_kernel_seconds": 134.45516577,
+    "cpu_authority_wall_seconds": 361.63,
+    "trace_capture_wall_seconds": 341.40
+  },
+  "decision": {
+    "replay_vs_runtime_telemetry": "exact",
+    "f1_projected_wall_seconds": 209.839117024007,
+    "f1_budget_seconds": 241.08666666666667,
+    "f1_margin_budget_seconds": 216.978,
+    "f0_cached_endpoint_replay": "not_executed",
+    "weighted_witness_coverage": 0.0,
+    "cuda_authorized": false
+  }
+}

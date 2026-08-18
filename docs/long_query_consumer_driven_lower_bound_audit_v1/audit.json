@@ -1,0 +1,96 @@
+{
+  "consumer_counts": {
+    "attempts": 4345980,
+    "best_fallback_groups": 119878,
+    "control_selected_attempts": 1086495,
+    "cpu_continuation_failures": 0,
+    "cpu_oracle_attempts": 0,
+    "cpu_reference_align_attempts": 0,
+    "empty_groups": 0,
+    "gpu_scored_attempts": 4345980,
+    "last_groups": 96541,
+    "scoreinfo_groups": 1086495,
+    "task_rows": 48432,
+    "threshold_groups": 870076
+  },
+  "consumer_report": ".tmp/lower-bound-shard-0009/run/consumer.tsv",
+  "f0": {
+    "cached_endpoint_replay_executed": false,
+    "downstream_consumer_seconds": 68.96264741999966,
+    "interpretation": "diagnostic floors; cached endpoint replay is not a product runtime",
+    "post_d2h_wall_seconds": 140.03559131999918,
+    "status": "diagnostic_residual_only",
+    "zero_gpu_kernel_wall_seconds": 142.66167065999997
+  },
+  "f1": {
+    "minimum_forward_cell_fraction": 0.388692060823503,
+    "minimum_reverse_cell_fraction": 0.25,
+    "projected_wall_seconds": 209.839117024007,
+    "reverse_work_definition": "exact lazy reverse requests from ordered upper-bound replay"
+  },
+  "f2": {
+    "decision": "not_authorized_without_independent_subview_witness",
+    "projected_wall_seconds": 209.839117024007,
+    "weighted_forward_witness_coverage": 0.0,
+    "witness_status": "uncertified"
+  },
+  "gate": {
+    "budget_wall_seconds": 241.08666666666667,
+    "conservative_budget_seconds": 216.978,
+    "cpu_authority_wall_seconds": 361.63,
+    "cuda_authorized": false,
+    "decision": "no_go_f0_or_witness_missing",
+    "engineering_margin": 0.9,
+    "f0_within_budget": null,
+    "f1_within_budget": true,
+    "f2_within_budget": true,
+    "replay_vs_runtime_exact": true,
+    "target_speedup": 1.5
+  },
+  "groups": {
+    "attempt_count": 4345980,
+    "full_dp_cells": 3447595039088,
+    "full_forward_cells": 1723797519544,
+    "full_reverse_cells": 1723797519544,
+    "groups": 1086495,
+    "groups_best_fallback": 119878,
+    "groups_last": 96541,
+    "groups_threshold": 870076,
+    "minimum_f1_dp_cell_fraction_ppm": 319346,
+    "minimum_f1_dp_cells": 1100975790200,
+    "minimum_forward_cells": 670026410314,
+    "minimum_reverse_cells": 430949379886,
+    "processed_forward_attempts": 1735752,
+    "reverse_needed_attempts": 1086495,
+    "tasks": 48432,
+    "witness_certified_forward_cells": 0,
+    "witness_certified_groups": 0,
+    "witness_eligible_groups": 0
+  },
+  "output": {
+    "expected_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "matches_expected": true,
+    "path": ".tmp/lower-bound-shard-0009/run/output/Homo_sapiens-LINC01501-shard_0009-TFOsorted",
+    "sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075"
+  },
+  "schema_version": "long_query_consumer_driven_lower_bound_audit_v1",
+  "selected_signature_sha256": "c9ae3b400370db94e8caa57e74f2168b2ab0eca18e3414467fe7be9e546659df",
+  "tasks": {
+    "count": 48432
+  },
+  "telemetry_comparison": {
+    "exact": true,
+    "mismatches": []
+  },
+  "timing": {
+    "convert_seconds": 7.720958565000029,
+    "d2h_seconds": 0.4787677760000013,
+    "gpu_kernel_seconds": 194.184348069998,
+    "h2d_seconds": 0.4283555199999977,
+    "score_seconds": 196.7444086800008,
+    "select_seconds": 0.4139605070000007,
+    "total_seconds": 265.70705610000044,
+    "traceback_seconds": 55.25204810600025
+  },
+  "trace": ".tmp/lower-bound-shard-0009/run/attempt_trace.tsv"
+}

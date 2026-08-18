@@ -11524,6 +11524,28 @@ int main(int argc, char* const* argv)
 				std::map<uint64_t, std::vector<triplex> > attemptConsumerTriplexesByTask;
 				std::map<uint64_t, std::vector<triplex> > emissionOnlyTriplexesByTask;
 				std::ofstream longQueryGpuConsumerSpikeReport;
+				std::ofstream longQueryGpuConsumerAttemptTraceReport;
+				const char *attemptTracePath = getenv(
+					"FASIM_LONG_QUERY_GPU_CONSUMER_LOWER_BOUND_TRACE");
+				if ((longQueryGpuConsumerSpikeV1Requested ||
+				     longQueryGpuConsumerReplacementPrototypeRequested) &&
+				    attemptTracePath != NULL && attemptTracePath[0] != '\0')
+				{
+					longQueryGpuConsumerAttemptTraceReport.open(
+						attemptTracePath, std::ios::out | std::ios::trunc);
+					if (!longQueryGpuConsumerAttemptTraceReport)
+					{
+						cerr << "failed to open long-query lower-bound trace: "
+						     << attemptTracePath << endl;
+						std::exit(EXIT_FAILURE);
+					}
+					longQueryGpuConsumerAttemptTraceReport
+						<< "task_id\tscoreinfo_index\tscoreinfo_position\tscoreinfo_score\t"
+						   "attempt_index\tidentity_round\tstart\tcutlength\tprealign_score\t"
+						   "forward_score\treverse_score\tcanonical_score\tquery_end\t"
+						   "ref_end_local\tref_end_global\tterminal\tnumeric_path\t"
+						   "padded_target_length\tquery_length\tforward_cells\treverse_cells\n";
+				}
 				if (longQueryGpuConsumerSpikeV1Requested ||
 				    longQueryGpuConsumerReplacementPrototypeRequested)
 				{
@@ -27471,6 +27493,9 @@ int main(int argc, char* const* argv)
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
 						StreamTask &task = tasks[t];
+						std::ostream *attemptTraceOut =
+							longQueryGpuConsumerAttemptTraceReport.is_open() ?
+							&longQueryGpuConsumerAttemptTraceReport : NULL;
 						const int minScore =
 							longQueryGpuConsumerReplacementPrototypeRequested ?
 								0 : task_min_score(task);
@@ -27515,10 +27540,12 @@ int main(int argc, char* const* argv)
 													paraList.ntMax,
 													paraList.penaltyT,
 													paraList.penaltyC,
-													paraList,
-													writeFull,
-													&replacementResult,
-													&replacementError);
+															paraList,
+															writeFull,
+															&replacementResult,
+															&replacementError,
+															attemptTraceOut,
+															static_cast<uint64_t>(task.taskIndex));
 										}
 										if (!replacementError.empty() &&
 										    replacementResult.error == "none")
@@ -27682,10 +27709,12 @@ int main(int argc, char* const* argv)
 											paraList.ntMax,
 											paraList.penaltyT,
 											paraList.penaltyC,
-											paraList,
-											writeFull,
-											&spikeResult,
-											&spikeError);
+														paraList,
+															writeFull,
+															&spikeResult,
+															&spikeError,
+															attemptTraceOut,
+															static_cast<uint64_t>(task.taskIndex));
 										if (!spikeError.empty() && spikeResult.error == "none")
 										{
 											spikeResult.error = spikeError;
