@@ -2936,7 +2936,8 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	const std::chrono::steady_clock::time_point scoreStart =
 		std::chrono::steady_clock::now();
 	if (!fasim_gasal2_streamed_attempt_score_v1(
-			strA, attempts, &endpointScores, &endpointTelemetry, &bridgeError))
+			strA, attempts, &endpointScores, &endpointTelemetry, &bridgeError,
+			attemptTraceTaskId))
 	{
 		result->error = bridgeError.empty() ?
 			"streamed_attempt_score_failed" : bridgeError;
@@ -2951,6 +2952,10 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		std::chrono::steady_clock::now() - scoreStart).count();
 	result->gpu_scored_attempts = endpointTelemetry.gpu_scored_requests;
 	result->exact_forward_only = endpointTelemetry.exact_forward_only;
+	result->cached_endpoint_replay = endpointTelemetry.cached_endpoint_replay;
+	result->cache_records = endpointTelemetry.cache_records;
+	result->cache_load_seconds = endpointTelemetry.cache_load_seconds;
+	result->cache_lookup_seconds = endpointTelemetry.cache_lookup_seconds;
 	result->endpoint_batches = endpointTelemetry.batches;
 	result->gpu_kernel_seconds = endpointTelemetry.gpu_seconds;
 	result->h2d_seconds = endpointTelemetry.h2d_seconds;
@@ -3477,7 +3482,15 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 				local.query_end != endpoint.query_end1)
 			{
 				++result->cpu_continuation_failures;
-				result->error = "cpu_continuation_contract_mismatch";
+				std::ostringstream detail;
+				detail << "cpu_continuation_contract_mismatch"
+				       << ":attempt=" << selectedIndex
+				       << ":expected=" << score.score << ','
+				       << endpoint.ref_end1 << ',' << endpoint.query_end1
+				       << ":observed=" << local.sw_score << ','
+				       << local.ref_end << ',' << local.query_end
+				       << ":ok=" << (continuationOk ? 1 : 0);
+				result->error = detail.str();
 				if (errorOut != NULL) *errorOut = result->error;
 				result->total_seconds = std::chrono::duration<double>(
 					std::chrono::steady_clock::now() - totalStart).count();

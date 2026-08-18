@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -108,12 +109,228 @@ struct StreamedAttemptQueryCache
 	PreAlignCudaQueryHandle handle;
 };
 
+double seconds_since(const std::chrono::steady_clock::time_point &start);
+
+// The F0 cache is a development-only physical-floor instrument.  The file is
+// produced by scripts/prepare_long_query_f0_audit.py and is intentionally
+// checked at the descriptor boundary: a mismatch is an error, never a GPU or
+// CPU fallback.
+#pragma pack(push, 1)
+struct F0CacheHeader
+{
+	char magic[8];
+	uint32_t version;
+	uint32_t record_size;
+	uint32_t query_length;
+	uint32_t flags;
+	uint64_t task_count;
+	uint64_t record_count;
+	unsigned char query_sha256[32];
+	unsigned char target_sha256[32];
+	unsigned char trace_sha256[32];
+};
+
+struct F0CacheIndex
+{
+	uint64_t task_id;
+	uint64_t first_record;
+	uint64_t record_count;
+};
+
+struct F0CacheRecord
+{
+	uint64_t task_id;
+	int32_t values[17];
+};
+#pragma pack(pop)
+
+static_assert(sizeof(F0CacheHeader) == 136, "unexpected F0 header size");
+static_assert(sizeof(F0CacheIndex) == 24, "unexpected F0 index size");
+static_assert(sizeof(F0CacheRecord) == 76, "unexpected F0 record size");
+
+class F0EndpointCache
+{
+public:
+	F0EndpointCache() : loaded_(false), path_(), header_(), indexes_(), records_(), by_task_() {}
+
+	bool requested() const
+	{
+		const char *path = std::getenv("FASIM_LONG_QUERY_F0_ENDPOINT_CACHE");
+		return path != NULL && path[0] != '\0';
+	}
+
+	bool lookup(const std::string &query,
+	            uint64_t taskId,
+	            const std::vector<FasimGasal2Attempt> &attempts,
+	            std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	            FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	            std::string *errorOut)
+	{
+		const auto loadStart = std::chrono::steady_clock::now();
+		if (!load(errorOut))
+		{
+			return false;
+		}
+		if (telemetry != NULL)
+		{
+			telemetry->cache_load_seconds += seconds_since(loadStart);
+		}
+		const auto lookupStart = std::chrono::steady_clock::now();
+		if (taskId == std::numeric_limits<uint64_t>::max())
+		{
+			return fail("f0_cache_task_id_missing", errorOut);
+		}
+		if (query.size() != static_cast<size_t>(header_.query_length))
+		{
+			return fail("f0_cache_query_length_mismatch", errorOut);
+		}
+		std::map<uint64_t, std::pair<uint64_t, uint64_t> >::const_iterator it =
+			by_task_.find(taskId);
+		if (it == by_task_.end())
+		{
+			return fail("f0_cache_task_missing", errorOut);
+		}
+		const uint64_t first = it->second.first;
+		const uint64_t count = it->second.second;
+		if (count != static_cast<uint64_t>(attempts.size()) ||
+		    first > records_.size() || count > records_.size() - first)
+		{
+			return fail("f0_cache_attempt_count_mismatch", errorOut);
+		}
+		scores->assign(attempts.size(), FasimGasal2StreamedAttemptScore());
+		for (size_t i = 0; i < attempts.size(); ++i)
+		{
+			const F0CacheRecord &record = records_[static_cast<size_t>(first) + i];
+			const FasimGasal2Attempt &attempt = attempts[i];
+			const int32_t *v = record.values;
+			if (record.task_id != taskId ||
+			    v[0] != attempt.scoreinfo_index ||
+			    v[1] != static_cast<int32_t>(i) ||
+			    v[2] != attempt.start + attempt.cutlength - 1 ||
+			    v[3] != attempt.prealign_score ||
+			    v[4] != attempt.identity_round ||
+			    v[5] != attempt.start ||
+			    v[6] != attempt.cutlength ||
+			    v[7] != attempt.prealign_score ||
+			    v[16] != static_cast<int32_t>(query.size()) ||
+			    attempt.target_size() != static_cast<size_t>(attempt.cutlength))
+			{
+				std::ostringstream detail;
+				detail << "f0_cache_descriptor_mismatch:task=" << taskId
+				       << ":ordinal=" << i;
+				return fail(detail.str(), errorOut);
+			}
+			FasimGasal2StreamedAttemptScore &out = (*scores)[i];
+			out.score = v[10];
+			out.forward_score = v[8];
+			out.reverse_score = v[9];
+			out.query_end = v[11];
+			out.ref_end_local = v[12];
+			out.ref_end_global = v[13];
+			out.numeric_path = v[14];
+			out.padded_target_length = v[15];
+		}
+		if (telemetry != NULL)
+		{
+			telemetry->cached_endpoint_replay = true;
+			telemetry->cache_records += count;
+			telemetry->cache_lookup_seconds += seconds_since(lookupStart);
+			telemetry->batches = 1;
+			telemetry->gpu_scored_requests = count;
+			telemetry->gpu_seconds = 0.0;
+			telemetry->h2d_seconds = 0.0;
+			telemetry->d2h_seconds = 0.0;
+		}
+		return true;
+	}
+
+private:
+	bool fail(const std::string &message, std::string *errorOut) const
+	{
+		if (errorOut != NULL)
+		{
+			*errorOut = message;
+		}
+		return false;
+	}
+
+	bool load(std::string *errorOut)
+	{
+		const char *pathValue = std::getenv("FASIM_LONG_QUERY_F0_ENDPOINT_CACHE");
+		if (pathValue == NULL || pathValue[0] == '\0')
+		{
+			return fail("f0_cache_path_missing", errorOut);
+		}
+		const std::string requestedPath(pathValue);
+		if (loaded_ && requestedPath == path_)
+		{
+			return true;
+		}
+		std::ifstream input(requestedPath.c_str(), std::ios::in | std::ios::binary);
+		if (!input)
+		{
+			return fail("f0_cache_open_failed", errorOut);
+		}
+		F0CacheHeader header;
+		input.read(reinterpret_cast<char *>(&header), sizeof(header));
+		if (!input || std::memcmp(header.magic, "LQF0CACH", 8) != 0 ||
+		    header.version != 1 || header.record_size != sizeof(F0CacheRecord) ||
+		    header.task_count == 0 || header.record_count == 0)
+		{
+			return fail("f0_cache_header_invalid", errorOut);
+		}
+		if (header.task_count > static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
+		    header.record_count > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+		{
+			return fail("f0_cache_size_overflow", errorOut);
+		}
+		std::vector<F0CacheIndex> indexes(static_cast<size_t>(header.task_count));
+		std::vector<F0CacheRecord> records(static_cast<size_t>(header.record_count));
+		input.read(reinterpret_cast<char *>(indexes.data()),
+		           static_cast<std::streamsize>(indexes.size() * sizeof(F0CacheIndex)));
+		input.read(reinterpret_cast<char *>(records.data()),
+		           static_cast<std::streamsize>(records.size() * sizeof(F0CacheRecord)));
+		if (!input)
+		{
+			return fail("f0_cache_truncated", errorOut);
+		}
+		std::map<uint64_t, std::pair<uint64_t, uint64_t> > byTask;
+		for (size_t i = 0; i < indexes.size(); ++i)
+		{
+			const F0CacheIndex &index = indexes[i];
+			if ((i > 0 && indexes[i - 1].task_id >= index.task_id) ||
+			    index.first_record > header.record_count ||
+			    index.record_count > header.record_count - index.first_record)
+			{
+				return fail("f0_cache_index_invalid", errorOut);
+			}
+			byTask[index.task_id] =
+				std::make_pair(index.first_record, index.record_count);
+		}
+		header_ = header;
+		indexes_.swap(indexes);
+		records_.swap(records);
+		by_task_.swap(byTask);
+		path_ = requestedPath;
+		loaded_ = true;
+		return true;
+	}
+
+	bool loaded_;
+	std::string path_;
+	F0CacheHeader header_;
+	std::vector<F0CacheIndex> indexes_;
+	std::vector<F0CacheRecord> records_;
+	std::map<uint64_t, std::pair<uint64_t, uint64_t> > by_task_;
+};
+
 std::mutex g_mutex;
 FasimGasal2Stats g_stats;
 BridgeState g_score_state;
 BridgeState g_traceback_state;
 StreamedAttemptQueryCache g_streamed_attempt_query_cache;
 uint64_t g_limited_traceback_export_batch_id = 0;
+F0EndpointCache g_f0_endpoint_cache;
 
 double seconds_since(const std::chrono::steady_clock::time_point &start)
 {
@@ -2555,7 +2772,8 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	const std::vector<FasimGasal2Attempt> &attempts,
 	std::vector<FasimGasal2StreamedAttemptScore> *scores,
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
-	std::string *errorOut)
+	std::string *errorOut,
+	uint64_t cacheTaskId)
 {
 	if (scores != NULL)
 	{
@@ -2589,6 +2807,29 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	std::lock_guard<std::mutex> lock(g_mutex);
 	const std::chrono::steady_clock::time_point totalStart =
 		std::chrono::steady_clock::now();
+	if (g_f0_endpoint_cache.requested())
+	{
+		if (!g_f0_endpoint_cache.lookup(query,
+		                               cacheTaskId,
+		                               attempts,
+		                               scores,
+		                               telemetry,
+		                               errorOut))
+		{
+			if (telemetry != NULL)
+			{
+				telemetry->error = errorOut != NULL && !errorOut->empty() ?
+					*errorOut : "f0_cache_lookup_failed";
+				telemetry->total_seconds = seconds_since(totalStart);
+			}
+			return false;
+		}
+		if (telemetry != NULL)
+		{
+			telemetry->total_seconds = seconds_since(totalStart);
+		}
+		return true;
+	}
 	const bool exactForwardOnly = env_enabled(
 		"FASIM_LONG_QUERY_GPU_CONSUMER_EXACT_FORWARD_ONLY_TIMING");
 	std::string bridgeError;

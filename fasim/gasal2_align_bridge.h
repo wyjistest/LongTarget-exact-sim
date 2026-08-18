@@ -1664,6 +1664,10 @@ struct FasimGasal2StreamedAttemptScoreTelemetry
 		batches(0),
 		gpu_scored_requests(0),
 		exact_forward_only(false),
+		cached_endpoint_replay(false),
+		cache_records(0),
+		cache_load_seconds(0.0),
+		cache_lookup_seconds(0.0),
 		gpu_seconds(0.0),
 		h2d_seconds(0.0),
 		d2h_seconds(0.0),
@@ -1676,6 +1680,12 @@ struct FasimGasal2StreamedAttemptScoreTelemetry
 	uint64_t batches;
 	uint64_t gpu_scored_requests;
 	bool exact_forward_only;
+	// Development-only physical-floor instrumentation.  A cache hit is never
+	// a product fallback; descriptor mismatch must fail closed.
+	bool cached_endpoint_replay;
+	uint64_t cache_records;
+	double cache_load_seconds;
+	double cache_lookup_seconds;
 	double gpu_seconds;
 	double h2d_seconds;
 	double d2h_seconds;
@@ -1982,7 +1992,11 @@ struct FasimLongQueryGpuConsumerSpikeResult
 		cpu_reference_align_attempts(0),
 		consumer_attempt_prefix_equal(false),
 		exact_forward_only(false),
-		lazy_reverse_shadow_requested(false),
+		cached_endpoint_replay(false),
+		cache_records(0),
+		cache_load_seconds(0.0),
+		cache_lookup_seconds(0.0),
+			lazy_reverse_shadow_requested(false),
 		lazy_reverse_shadow_active(false),
 		lazy_reverse_selection_equal(false),
 		lazy_reverse_reasons_equal(false),
@@ -2043,7 +2057,11 @@ struct FasimLongQueryGpuConsumerSpikeResult
 	uint64_t cpu_reference_align_attempts;
 	bool consumer_attempt_prefix_equal;
 	bool exact_forward_only;
-	bool lazy_reverse_shadow_requested;
+	bool cached_endpoint_replay;
+	uint64_t cache_records;
+	double cache_load_seconds;
+	double cache_lookup_seconds;
+		bool lazy_reverse_shadow_requested;
 	bool lazy_reverse_shadow_active;
 	bool lazy_reverse_selection_equal;
 	bool lazy_reverse_reasons_equal;
@@ -2857,7 +2875,8 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	const std::vector<FasimGasal2Attempt> &attempts,
 	std::vector<FasimGasal2StreamedAttemptScore> *scores,
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
-	std::string *errorOut);
+	std::string *errorOut,
+	uint64_t cache_task_id = std::numeric_limits<uint64_t>::max());
 
 // Applies the frozen scoreInfo-local control semantics to already materialized
 // GPU score-only rows.  It deliberately performs no second GPU score pass and

@@ -1,0 +1,24 @@
+{
+  "schema_version": "long_query_witness_proxy_audit_v1",
+  "fixture": "LINC01501 x promoter_shard_0009",
+  "trace_sha256": "fcb5c9bcb8318026d7b2447016f458e7b478207242dbfad18342690747b8666f",
+  "groups": 1086495,
+  "first_attempt_threshold_groups": 870076,
+  "lower_bound_only_groups": 648765,
+  "lower_bound_only_group_fraction": 0.5971173360208745,
+  "full_forward_cells": 1723797519544,
+  "lower_bound_only_forward_cells": 256325440292,
+  "lower_bound_only_weighted_forward_fraction": 0.1486981141264238,
+  "strict_certificate_groups": 0,
+  "strict_certificate_weighted_forward_fraction": 0.0,
+  "threshold_groups_not_terminal": 221311,
+  "threshold_groups_invalid_numeric_path": 0,
+  "threshold_groups_invalid_span": 0,
+  "ambiguous_forward_reverse_groups": 0,
+  "proofs": {
+    "endpoint_path_start": "missing",
+    "whole_target_upper_bound": "missing",
+    "tie_break": "missing"
+  },
+  "decision": "witness_not_authorized_strict_proof_missing"
+}

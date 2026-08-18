@@ -1,0 +1,51 @@
+{
+  "schema_version": "long_query_consumer_round_profile_v1",
+  "fixture": "LINC01501 x promoter_shard_0009",
+  "trace_sha256": "fcb5c9bcb8318026d7b2447016f458e7b478207242dbfad18342690747b8666f",
+  "groups": 1086495,
+  "attempts": 4345980,
+  "task_count": 48432,
+  "selection_reasons": {
+    "threshold": 870076,
+    "best_fallback": 119878,
+    "last": 96541
+  },
+  "rounds": {
+    "0": {
+      "active_groups": 1086495,
+      "forward_attempts": 1086495,
+      "forward_cells": 430949379886,
+      "reverse_requests": 946928,
+      "reverse_cells": 378915129412
+    },
+    "1": {
+      "active_groups": 216419,
+      "forward_attempts": 216419,
+      "forward_cells": 79692343476,
+      "reverse_requests": 16813,
+      "reverse_cells": 6211543360
+    },
+    "2": {
+      "active_groups": 216419,
+      "forward_attempts": 216419,
+      "forward_cells": 79692343476,
+      "reverse_requests": 13804,
+      "reverse_cells": 5118458188
+    },
+    "3": {
+      "active_groups": 216419,
+      "forward_attempts": 216419,
+      "forward_cells": 79692343476,
+      "reverse_requests": 108950,
+      "reverse_cells": 40704248926
+    }
+  },
+  "full_forward_cells": 1723797519544,
+  "minimum_forward_cells": 670026410314,
+  "full_reverse_cells": 1723797519544,
+  "minimum_reverse_cells": 430949379886,
+  "forward_cell_fraction": 0.388692060823503,
+  "reverse_cell_fraction": 0.25,
+  "combined_cell_fraction": 0.31934603041175147,
+  "selected_signature_sha256": "c9ae3b400370db94e8caa57e74f2168b2ab0eca18e3414467fe7be9e546659df"
+}

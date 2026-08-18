@@ -944,10 +944,12 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	const std::vector<FasimGasal2Attempt> &attempts,
 	std::vector<FasimGasal2StreamedAttemptScore> *scores,
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
-	std::string *errorOut)
+	std::string *errorOut,
+	uint64_t cacheTaskId)
 {
 	(void)query;
 	(void)attempts;
+	(void)cacheTaskId;
 	if (scores != NULL)
 	{
 		scores->clear();
