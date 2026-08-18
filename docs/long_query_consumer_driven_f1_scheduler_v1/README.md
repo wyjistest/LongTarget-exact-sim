@@ -23,7 +23,7 @@ scoreInfo groups
   -> canonical triplex conversion and TFOsorted output
 ```
 
-Here “global” means all tasks in one bounded streaming batch. The outer FASTA
+Here "global" means all tasks in one bounded streaming batch. The outer FASTA
 loop still flushes batches at its configured task limit, so this spike does not
 materialize the entire target FASTA in one scheduler call.
 
