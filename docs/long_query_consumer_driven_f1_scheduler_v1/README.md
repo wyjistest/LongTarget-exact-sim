@@ -23,6 +23,10 @@ scoreInfo groups
   -> canonical triplex conversion and TFOsorted output
 ```
 
+Here “global” means all tasks in one bounded streaming batch. The outer FASTA
+loop still flushes batches at its configured task limit, so this spike does not
+materialize the entire target FASTA in one scheduler call.
+
 There is no witness shortcut, new DP recurrence, GPU traceback, full CPU oracle,
 or fallback from an F1 failure. A stage or continuation contract failure exits
 the process. The normal path is unchanged; enable the spike only with:
