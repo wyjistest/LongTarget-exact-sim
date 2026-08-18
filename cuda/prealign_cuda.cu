@@ -1691,6 +1691,340 @@ __global__ void prealign_cuda_max_endpoint_batch_kernel(const int16_t *profile,
   }
 }
 
+static __device__ __forceinline__ int prealign_cuda_sat_i16_add(int left,int right)
+{
+  const int value = left + right;
+  return value > 32767 ? 32767 : (value < -32768 ? -32768 : value);
+}
+
+template<int kLanes>
+static __device__ __forceinline__ int prealign_cuda_subwarp_max(int value,
+                                                                unsigned int mask)
+{
+  for(int offset = kLanes / 2; offset > 0; offset >>= 1)
+  {
+    value = cuda_max_int(
+      value, __shfl_down_sync(mask, value, offset, kLanes));
+  }
+  return __shfl_sync(mask, value, 0, kLanes);
+}
+
+template<int kLanes>
+static __device__ __forceinline__ int prealign_cuda_subwarp_min(int value,
+                                                                unsigned int mask)
+{
+  for(int offset = kLanes / 2; offset > 0; offset >>= 1)
+  {
+    const int other = __shfl_down_sync(mask, value, offset, kLanes);
+    value = other < value ? other : value;
+  }
+  return __shfl_sync(mask, value, 0, kLanes);
+}
+
+template<int kLanes>
+static __device__ __forceinline__ int prealign_cuda_subwarp_shift_left(int value,
+                                                                      int lane,
+                                                                      unsigned int mask)
+{
+  const int shifted = __shfl_up_sync(mask, value, 1, kLanes);
+  return lane == 0 ? 0 : shifted;
+}
+
+static __device__ __forceinline__ int prealign_cuda_profile_score(
+  const int16_t *profile,
+  int profileSegLen,
+  int queryPosition,
+  int targetCode)
+{
+  const int profileLane = queryPosition / profileSegLen;
+  const int profileSegment = queryPosition - profileLane * profileSegLen;
+  return static_cast<int>(profile[
+    (static_cast<size_t>(targetCode) * static_cast<size_t>(profileSegLen) +
+     static_cast<size_t>(profileSegment)) * 32u +
+    static_cast<size_t>(profileLane)]);
+}
+
+// Exact modified-SSW pass.  kLanes deliberately matches the CPU SSE profile:
+// 16 lanes for byte8 and 8 lanes for word16.  In particular, byte8 keeps the
+// CPU's unsigned saturation and signed lazy-F termination comparison.
+template<int kLanes,bool kBytePath,typename Storage>
+static __device__ void prealign_cuda_exact_ssw_pass(
+  const int16_t *profile,
+  int profileSegLen,
+  const uint8_t *target,
+  int logicalQueryLength,
+  int originalQueryEnd,
+  int referenceLength,
+  int originalReferenceEnd,
+  bool reverse,
+  bool trackQueryEnd,
+  int terminateScore,
+  Storage *workspace,
+  int lane,
+  unsigned int mask,
+  int *scoreOut,
+  int *referenceEndOut,
+  int *queryEndOut,
+  bool *overflowOut)
+{
+  const int segmentLength =
+    logicalQueryLength / kLanes + (logicalQueryLength % kLanes == 0 ? 0 : 1);
+  const int paddedQueryLength = segmentLength * kLanes;
+  Storage *E = workspace;
+  Storage *H0 = E + paddedQueryLength;
+  Storage *H1 = H0 + paddedQueryLength;
+
+  for(int segment = 0; segment < segmentLength; ++segment)
+  {
+    const int offset = segment * kLanes + lane;
+    E[offset] = 0;
+    H0[offset] = 0;
+    H1[offset] = 0;
+  }
+  __syncwarp(mask);
+
+  Storage *HStore = H0;
+  Storage *HLoad = H1;
+  int laneMaximum = 0;
+  int globalMaximum = 0;
+  int bestReference = kBytePath ? -1 : 0;
+  int bestQuery = logicalQueryLength - 1;
+  bool overflow = false;
+
+  for(int column = 0; column < referenceLength; ++column)
+  {
+    const int referencePosition = reverse ?
+      originalReferenceEnd - column : column;
+    const int targetCode = static_cast<int>(target[referencePosition]);
+    int vF = 0;
+    int vH = lane == 0 ? 0 :
+      static_cast<int>(HStore[(segmentLength - 1) * kLanes + lane - 1]);
+    Storage *swap = HLoad;
+    HLoad = HStore;
+    HStore = swap;
+    int columnLaneMaximum = 0;
+
+    for(int segment = 0; segment < segmentLength; ++segment)
+    {
+      const int offset = segment * kLanes + lane;
+      const int logicalQueryPosition = segment + lane * segmentLength;
+      int substitution = 0;
+      if(logicalQueryPosition < logicalQueryLength)
+      {
+        const int originalQueryPosition = reverse ?
+          originalQueryEnd - logicalQueryPosition : logicalQueryPosition;
+        substitution = prealign_cuda_profile_score(
+          profile, profileSegLen, originalQueryPosition, targetCode);
+      }
+      const int oldH = static_cast<int>(HLoad[offset]);
+      int vE = static_cast<int>(E[offset]);
+      if(kBytePath)
+      {
+        vH = cuda_sat_u8_add(vH, substitution + 4);
+        vH = cuda_sat_u8_sub(vH, 4);
+      }
+      else
+      {
+        vH = prealign_cuda_sat_i16_add(vH, substitution);
+        vH = cuda_clamp_nonnegative(vH);
+      }
+      vH = cuda_max_int(vH, vE);
+      vH = cuda_max_int(vH, vF);
+      columnLaneMaximum = cuda_max_int(columnLaneMaximum, vH);
+      HStore[offset] = static_cast<Storage>(vH);
+
+      const int opened = cuda_clamp_nonnegative(vH - 16);
+      vE = cuda_clamp_nonnegative(vE - 4);
+      E[offset] = static_cast<Storage>(cuda_max_int(vE, opened));
+      vF = cuda_clamp_nonnegative(vF - 4);
+      vF = cuda_max_int(vF, opened);
+      vH = oldH;
+    }
+
+    bool lazyDone = false;
+    for(int iteration = 0; iteration < kLanes && !lazyDone; ++iteration)
+    {
+      vF = prealign_cuda_subwarp_shift_left<kLanes>(vF, lane, mask);
+      for(int segment = 0; segment < segmentLength; ++segment)
+      {
+        const int offset = segment * kLanes + lane;
+        int stored = static_cast<int>(HStore[offset]);
+        stored = cuda_max_int(stored, vF);
+        HStore[offset] = static_cast<Storage>(stored);
+        columnLaneMaximum = cuda_max_int(columnLaneMaximum, stored);
+        const int opened = cuda_clamp_nonnegative(stored - 16);
+        vF = cuda_clamp_nonnegative(vF - 4);
+        const bool shouldContinue = kBytePath ?
+          static_cast<int8_t>(vF) > static_cast<int8_t>(opened) :
+          vF > opened;
+        if((__ballot_sync(mask, shouldContinue) & mask) == 0)
+        {
+          lazyDone = true;
+          break;
+        }
+      }
+    }
+
+    laneMaximum = cuda_max_int(laneMaximum, columnLaneMaximum);
+    const int currentMaximum = prealign_cuda_subwarp_max<kLanes>(laneMaximum, mask);
+    const int columnMaximum = prealign_cuda_subwarp_max<kLanes>(
+      columnLaneMaximum, mask);
+    const bool newBest = currentMaximum > globalMaximum;
+    if(newBest)
+    {
+      globalMaximum = currentMaximum;
+      if(kBytePath && globalMaximum + 4 >= 255)
+      {
+        overflow = true;
+      }
+      else
+      {
+        bestReference = referencePosition;
+        if(trackQueryEnd)
+        {
+          int candidateQuery = logicalQueryLength - 1;
+          for(int segment = 0; segment < segmentLength; ++segment)
+          {
+            const int logicalQueryPosition = segment + lane * segmentLength;
+            if(logicalQueryPosition < logicalQueryLength &&
+               static_cast<int>(HStore[segment * kLanes + lane]) ==
+                 globalMaximum &&
+               logicalQueryPosition < candidateQuery)
+            {
+              candidateQuery = logicalQueryPosition;
+            }
+          }
+          bestQuery = prealign_cuda_subwarp_min<kLanes>(candidateQuery, mask);
+        }
+      }
+    }
+    __syncwarp(mask);
+    if(overflow || (terminateScore >= 0 && columnMaximum == terminateScore))
+    {
+      break;
+    }
+  }
+
+  if(trackQueryEnd && !overflow && globalMaximum == 0)
+  {
+    bestQuery = 0;
+  }
+  *scoreOut = overflow ? 255 : globalMaximum;
+  *referenceEndOut = bestReference;
+  *queryEndOut = bestQuery;
+  *overflowOut = overflow;
+  __syncwarp(mask);
+}
+
+template<int kLanes,bool kBytePath,typename Storage,int kTasksPerBlock>
+static __device__ void prealign_cuda_exact_attempt_endpoint_body(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  Storage *workspace,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  const int warpLane = static_cast<int>(threadIdx.x);
+  const int subwarp = warpLane / kLanes;
+  const int lane = warpLane - subwarp * kLanes;
+  const int taskIndex = static_cast<int>(blockIdx.x) * kTasksPerBlock + subwarp;
+  if(subwarp >= kTasksPerBlock || taskIndex >= taskCount)
+  {
+    return;
+  }
+  const unsigned int mask = ((1u << kLanes) - 1u) << (subwarp * kLanes);
+  const int paddedQueryLength =
+    (queryLength + kLanes - 1) / kLanes * kLanes;
+  Storage *taskWorkspace = workspace +
+    static_cast<size_t>(subwarp) * static_cast<size_t>(3 * paddedQueryLength);
+  if(!kBytePath &&
+     outEndpoints[taskIndex].forwardScore != 255)
+  {
+    return;
+  }
+
+  const uint8_t *target = encodedTargets +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(paddedTargetLength);
+  int forwardScore = 0;
+  int targetEnd = kBytePath ? -1 : 0;
+  int queryEnd = 0;
+  bool overflow = false;
+  prealign_cuda_exact_ssw_pass<kLanes,kBytePath,Storage>(
+    profile, profileSegLen, target, queryLength, queryLength - 1,
+    paddedTargetLength, paddedTargetLength - 1, false, true, -1,
+    taskWorkspace,
+    lane, mask,
+    &forwardScore, &targetEnd, &queryEnd, &overflow);
+
+  if(lane == 0)
+  {
+    outEndpoints[taskIndex].forwardScore = forwardScore;
+    outEndpoints[taskIndex].reverseScore = 0;
+    outEndpoints[taskIndex].canonicalScore = overflow ? 255 : forwardScore;
+    outEndpoints[taskIndex].targetEnd = targetEnd;
+    outEndpoints[taskIndex].queryEnd = queryEnd;
+    outEndpoints[taskIndex].numericPath = kBytePath ?
+      PREALIGN_CUDA_NUMERIC_PATH_BYTE8 : PREALIGN_CUDA_NUMERIC_PATH_WORD16;
+  }
+  if(overflow)
+  {
+    return;
+  }
+
+  int reverseScore = 0;
+  int reverseReferenceEnd = kBytePath ? -1 : 0;
+  int reverseQueryEnd = 0;
+  bool reverseOverflow = false;
+  if(targetEnd >= 0 && queryEnd >= 0)
+  {
+    prealign_cuda_exact_ssw_pass<kLanes,kBytePath,Storage>(
+      profile, profileSegLen, target, queryEnd + 1, queryEnd,
+      targetEnd + 1, targetEnd, true, false, forwardScore, taskWorkspace,
+      lane, mask,
+      &reverseScore, &reverseReferenceEnd, &reverseQueryEnd,
+      &reverseOverflow);
+  }
+  if(lane == 0)
+  {
+    outEndpoints[taskIndex].reverseScore = reverseScore;
+    outEndpoints[taskIndex].canonicalScore =
+      reverseScore < forwardScore ? reverseScore : forwardScore;
+  }
+}
+
+__global__ void prealign_cuda_exact_attempt_endpoint_byte_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  extern __shared__ unsigned char workspaceBytes[];
+  prealign_cuda_exact_attempt_endpoint_body<16,true,uint8_t,1>(
+    profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
+    queryLength, reinterpret_cast<uint8_t *>(workspaceBytes), outEndpoints);
+}
+
+__global__ void prealign_cuda_exact_attempt_endpoint_word_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  extern __shared__ unsigned char workspaceBytes[];
+  prealign_cuda_exact_attempt_endpoint_body<8,false,int16_t,1>(
+    profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
+    queryLength, reinterpret_cast<int16_t *>(workspaceBytes), outEndpoints);
+}
+
 __global__ void prealign_cuda_reduce_column_max_scores_kernel(const int *columnMaxima,
                                                              int taskCount,
                                                              int targetLength,
@@ -2008,6 +2342,7 @@ struct PreAlignCudaContext
     capacityColumnMaxTasks(0),
     capacityColumnMaxTargetLength(0),
     capacityScoreTasks(0),
+    capacityAttemptEndpointTasks(0),
     capacityScoreInfoTasks(0),
     capacityScoreInfoMaxPerTask(0),
     capacityDescriptorTasks(0),
@@ -2018,6 +2353,7 @@ struct PreAlignCudaContext
     peaksDevice(NULL),
     columnMaximaDevice(NULL),
     scoresDevice(NULL),
+    attemptEndpointsDevice(NULL),
     minScoresDevice(NULL),
     scoreInfoDevice(NULL),
     scoreInfoCountsDevice(NULL),
@@ -2043,6 +2379,7 @@ struct PreAlignCudaContext
   int capacityColumnMaxTasks;
   int capacityColumnMaxTargetLength;
   int capacityScoreTasks;
+  int capacityAttemptEndpointTasks;
   int capacityScoreInfoTasks;
   int capacityScoreInfoMaxPerTask;
   int capacityDescriptorTasks;
@@ -2054,6 +2391,7 @@ struct PreAlignCudaContext
   PreAlignCudaPeak *peaksDevice;
   int *columnMaximaDevice;
   int *scoresDevice;
+  PreAlignCudaAttemptEndpoint *attemptEndpointsDevice;
   int *minScoresDevice;
   PreAlignCudaPeak *scoreInfoDevice;
   int *scoreInfoCountsDevice;
@@ -2316,6 +2654,40 @@ static bool ensure_prealign_cuda_scores_capacity_locked(PreAlignCudaContext &con
 
   context.scoresDevice = newScoresDevice;
   context.capacityScoreTasks = newCapTasks;
+  return true;
+}
+
+static bool ensure_prealign_cuda_attempt_endpoint_capacity_locked(
+  PreAlignCudaContext &context,
+  int taskCount,
+  string *errorOut)
+{
+  if(taskCount <= context.capacityAttemptEndpointTasks &&
+     context.attemptEndpointsDevice != NULL)
+  {
+    return true;
+  }
+
+  const int newCapTasks = max(context.capacityAttemptEndpointTasks, taskCount);
+  const size_t bytes = static_cast<size_t>(newCapTasks) *
+    sizeof(PreAlignCudaAttemptEndpoint);
+  PreAlignCudaAttemptEndpoint *newEndpointsDevice = NULL;
+  const cudaError_t status = cudaMalloc(
+    reinterpret_cast<void **>(&newEndpointsDevice), bytes);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL)
+    {
+      *errorOut = cuda_error_string(status);
+    }
+    return false;
+  }
+  if(context.attemptEndpointsDevice != NULL)
+  {
+    cudaFree(context.attemptEndpointsDevice);
+  }
+  context.attemptEndpointsDevice = newEndpointsDevice;
+  context.capacityAttemptEndpointTasks = newCapTasks;
   return true;
 }
 
@@ -6204,15 +6576,16 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   lock_guard<mutex> lock(*contextMutex);
   if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut) ||
      !ensure_prealign_cuda_capacity_locked(*context, taskCount, targetLength, 1, errorOut) ||
-     !ensure_prealign_cuda_scores_capacity_locked(*context, taskCount, errorOut))
+     !ensure_prealign_cuda_attempt_endpoint_capacity_locked(
+       *context, taskCount, errorOut))
   {
     return false;
   }
 
   const size_t targetsBytes =
     static_cast<size_t>(taskCount) * static_cast<size_t>(targetLength) * sizeof(uint8_t);
-  const size_t peakBytes = static_cast<size_t>(taskCount) * sizeof(PreAlignCudaPeak);
-  const size_t endpointBytes = static_cast<size_t>(taskCount) * sizeof(int);
+  const size_t endpointBytes = static_cast<size_t>(taskCount) *
+    sizeof(PreAlignCudaAttemptEndpoint);
 
   cudaEvent_t h2dStart = NULL;
   cudaEvent_t h2dStop = NULL;
@@ -6249,8 +6622,15 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   if(status == cudaSuccess)
   {
     const int threadsPerBlock = 32;
-    const size_t sharedBytes =
-      static_cast<size_t>(3) * static_cast<size_t>(handle.segLen) * 32u * sizeof(int16_t);
+    const int bytePaddedQueryLength =
+      (handle.queryLength + 15) / 16 * 16;
+    const int wordPaddedQueryLength =
+      (handle.queryLength + 7) / 8 * 8;
+    const size_t byteSharedBytes = static_cast<size_t>(3) *
+      static_cast<size_t>(bytePaddedQueryLength) * sizeof(uint8_t);
+    const size_t wordSharedBytes = static_cast<size_t>(3) *
+      static_cast<size_t>(wordPaddedQueryLength) * sizeof(int16_t);
+    const size_t sharedBytes = max(byteSharedBytes, wordSharedBytes);
     int defaultLimit = 0;
     int optinLimit = 0;
     cudaError_t attrStatus = cudaDeviceGetAttribute(
@@ -6265,9 +6645,16 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
        sharedBytes <= static_cast<size_t>(optinLimit))
     {
       attrStatus = cudaFuncSetAttribute(
-        prealign_cuda_max_endpoint_batch_kernel,
+        prealign_cuda_exact_attempt_endpoint_byte_kernel,
         cudaFuncAttributeMaxDynamicSharedMemorySize,
-        static_cast<int>(sharedBytes));
+        static_cast<int>(byteSharedBytes));
+      if(attrStatus == cudaSuccess)
+      {
+        attrStatus = cudaFuncSetAttribute(
+          prealign_cuda_exact_attempt_endpoint_word_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(wordSharedBytes));
+      }
     }
     else if(attrStatus == cudaSuccess &&
             sharedBytes > static_cast<size_t>(optinLimit))
@@ -6285,16 +6672,29 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     }
     if(status == cudaSuccess)
     {
-      prealign_cuda_max_endpoint_batch_kernel<<<taskCount, threadsPerBlock, sharedBytes>>>(
+      prealign_cuda_exact_attempt_endpoint_byte_kernel<<<
+        taskCount, threadsPerBlock, byteSharedBytes>>>(
         reinterpret_cast<const int16_t *>(handle.profileDevice),
         context->targetsDevice,
         taskCount,
         targetLength,
         handle.segLen,
         handle.queryLength,
-        context->peaksDevice,
-        context->scoresDevice);
+        context->attemptEndpointsDevice);
       status = cudaGetLastError();
+      if(status == cudaSuccess)
+      {
+        prealign_cuda_exact_attempt_endpoint_word_kernel<<<
+          taskCount, threadsPerBlock, wordSharedBytes>>>(
+          reinterpret_cast<const int16_t *>(handle.profileDevice),
+          context->targetsDevice,
+          taskCount,
+          targetLength,
+          handle.segLen,
+          handle.queryLength,
+          context->attemptEndpointsDevice);
+        status = cudaGetLastError();
+      }
     }
   }
   if(status == cudaSuccess) status = cudaEventRecord(context->stopEvent);
@@ -6302,16 +6702,14 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   float kernelElapsedMs = 0.0f;
   if(status == cudaSuccess) status = cudaEventElapsedTime(&kernelElapsedMs, context->startEvent, context->stopEvent);
 
-  vector<PreAlignCudaPeak> peaks(static_cast<size_t>(taskCount));
-  vector<int> queryEnds(static_cast<size_t>(taskCount));
+  vector<PreAlignCudaAttemptEndpoint> endpoints(static_cast<size_t>(taskCount));
   if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
   if(status == cudaSuccess)
   {
-    status = cudaMemcpy(peaks.data(), context->peaksDevice, peakBytes, cudaMemcpyDeviceToHost);
-  }
-  if(status == cudaSuccess)
-  {
-    status = cudaMemcpy(queryEnds.data(), context->scoresDevice, endpointBytes, cudaMemcpyDeviceToHost);
+    status = cudaMemcpy(endpoints.data(),
+                        context->attemptEndpointsDevice,
+                        endpointBytes,
+                        cudaMemcpyDeviceToHost);
   }
   if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
   if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
@@ -6328,13 +6726,7 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     return false;
   }
 
-  outEndpoints->resize(static_cast<size_t>(taskCount));
-  for(int i = 0; i < taskCount; ++i)
-  {
-    (*outEndpoints)[static_cast<size_t>(i)].score = peaks[static_cast<size_t>(i)].score;
-    (*outEndpoints)[static_cast<size_t>(i)].targetEnd = peaks[static_cast<size_t>(i)].position;
-    (*outEndpoints)[static_cast<size_t>(i)].queryEnd = queryEnds[static_cast<size_t>(i)];
-  }
+  outEndpoints->swap(endpoints);
   if(batchResult != NULL)
   {
     batchResult->usedCuda = true;

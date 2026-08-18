@@ -2954,8 +2954,10 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		gpuRow.start = attempt.start;
 		gpuRow.prealign_score = attempt.prealign_score;
 		gpuRow.score = gpu.score;
+		gpuRow.forward_score = gpu.forward_score;
 		gpuRow.query_end = gpu.query_end;
 		gpuRow.ref_end = gpu.ref_end_global;
+		gpuRow.numeric_path = gpu.numeric_path;
 	}
 
 	std::vector<FasimGasal2ScoreOnlyAlignment> cpuScores;
@@ -3271,12 +3273,12 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 				static_cast<size_t>(attempt.start),
 				static_cast<size_t>(attempt.cutlength));
 			StripedSmithWaterman::ForwardEndpoint endpoint;
-			endpoint.score1 = score.score;
+			endpoint.score1 = score.forward_score;
 			endpoint.score2 = 0;
 			endpoint.ref_end1 = score.ref_end - attempt.start;
 			endpoint.query_end1 = score.query_end;
 			endpoint.ref_end2 = -1;
-			endpoint.numeric_path = SSW_FORWARD_NUMERIC_PATH_WORD16;
+			endpoint.numeric_path = score.numeric_path;
 			StripedSmithWaterman::Alignment local;
 			const std::chrono::steady_clock::time_point continuationStart =
 				std::chrono::steady_clock::now();

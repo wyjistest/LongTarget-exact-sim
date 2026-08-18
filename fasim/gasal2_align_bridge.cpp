@@ -2711,12 +2711,41 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 		{
 			const PreAlignCudaAttemptEndpoint &endpoint =
 				endpointRows[i - batchBegin];
+			const int expectedCanonical = std::min(
+				endpoint.forwardScore, endpoint.reverseScore);
+			const bool noAlignment = endpoint.forwardScore == 0 &&
+				endpoint.reverseScore == 0 && endpoint.canonicalScore == 0 &&
+				endpoint.targetEnd == -1 && endpoint.queryEnd == 0;
+			const bool validAlignment = endpoint.forwardScore > 0 &&
+				endpoint.reverseScore > 0 &&
+				endpoint.canonicalScore == expectedCanonical &&
+				endpoint.targetEnd >= 0 &&
+				static_cast<size_t>(endpoint.targetEnd) < attempts[i].target_size() &&
+				endpoint.queryEnd >= 0 &&
+				static_cast<size_t>(endpoint.queryEnd) < query.size();
+			const bool validNumericPath =
+				endpoint.numericPath == PREALIGN_CUDA_NUMERIC_PATH_BYTE8 ||
+				endpoint.numericPath == PREALIGN_CUDA_NUMERIC_PATH_WORD16;
+			if ((!noAlignment && !validAlignment) || !validNumericPath)
+			{
+				const std::string error = "invalid_canonical_attempt_endpoint";
+				if (errorOut != NULL) *errorOut = error;
+				if (telemetry != NULL)
+				{
+					telemetry->error = error;
+					telemetry->total_seconds = seconds_since(totalStart);
+				}
+				return false;
+			}
 			FasimGasal2StreamedAttemptScore &out = (*scores)[i];
-			out.score = endpoint.score;
+			out.score = endpoint.canonicalScore;
+			out.forward_score = endpoint.forwardScore;
+			out.reverse_score = endpoint.reverseScore;
 			out.query_end = endpoint.queryEnd;
 			out.ref_end_local = endpoint.targetEnd;
 			out.ref_end_global = endpoint.targetEnd >= 0 ?
 				attempts[i].start + endpoint.targetEnd : -1;
+			out.numeric_path = endpoint.numericPath;
 		}
 	}
 	if (telemetry != NULL)

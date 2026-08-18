@@ -30,17 +30,32 @@ struct PreAlignCudaPeak
   int position;
 };
 
-// Endpoint-only result for a full-query x target-subview request.  `position`
-// is the zero-based local target end; the query end is returned separately by
-// prealign_cuda_find_max_endpoints_batch because the legacy peak ABI is used
-// by several existing callers.
+// Canonical attempt tuple for a full-query x target-subview request.  The
+// consumer uses canonicalScore; selected CPU continuation uses forwardScore,
+// targetEnd, queryEnd, and numericPath.
 struct PreAlignCudaAttemptEndpoint
 {
-  int score;
+  int forwardScore;
+  int reverseScore;
+  int canonicalScore;
   int targetEnd;
   int queryEnd;
+  int numericPath;
 
-  PreAlignCudaAttemptEndpoint():score(0),targetEnd(-1),queryEnd(0) {}
+  PreAlignCudaAttemptEndpoint():
+    forwardScore(0),
+    reverseScore(0),
+    canonicalScore(0),
+    targetEnd(-1),
+    queryEnd(0),
+    numericPath(0) {}
+};
+
+enum PreAlignCudaNumericPath
+{
+  PREALIGN_CUDA_NUMERIC_PATH_UNKNOWN = 0,
+  PREALIGN_CUDA_NUMERIC_PATH_BYTE8 = 1,
+  PREALIGN_CUDA_NUMERIC_PATH_WORD16 = 2
 };
 
 struct PreAlignCudaAttemptDescriptor

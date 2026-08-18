@@ -1604,8 +1604,10 @@ struct FasimGasal2ScoreOnlyAlignment
 		start(0),
 		prealign_score(0),
 		score(0),
+		forward_score(0),
 		query_end(-1),
-		ref_end(-1)
+		ref_end(-1),
+		numeric_path(0)
 	{
 	}
 
@@ -1613,28 +1615,38 @@ struct FasimGasal2ScoreOnlyAlignment
 	int cutlength;
 	int start;
 	int prealign_score;
+	// `score` is the canonical CPU Align() score after reverse-start recovery.
 	int score;
+	int forward_score;
 	int query_end;
 	int ref_end;
+	int numeric_path;
 };
 
-// Score/endpoint projection for the isolated long-query attempt API spike.
+// Canonical score/endpoint projection for the long-query attempt API.
 // `ref_end_local` is relative to the attempt target subview; the global field
 // adds FasimGasal2Attempt::start for consumer bookkeeping.
 struct FasimGasal2StreamedAttemptScore
 {
 	FasimGasal2StreamedAttemptScore() :
 		score(0),
+		forward_score(0),
+		reverse_score(0),
 		query_end(0),
 		ref_end_local(-1),
-		ref_end_global(-1)
+		ref_end_global(-1),
+		numeric_path(0)
 	{
 	}
 
+	// `score` is min(forward_score, reverse_score), matching CPU Align().
 	int score;
+	int forward_score;
+	int reverse_score;
 	int query_end;
 	int ref_end_local;
 	int ref_end_global;
+	int numeric_path;
 };
 
 struct FasimGasal2StreamedAttemptScoreTelemetry
