@@ -27584,8 +27584,79 @@ int main(int argc, char* const* argv)
 						longQueryStreamingScoreInfoShadowStats.realpath_extend_flush_segmented_attempt_probe_seconds +=
 							fasim_seconds_since(flushProbeStart);
 					}
+					if (longQueryGpuConsumerF1SchedulerRequested)
+					{
+						std::vector<FasimLongQueryGpuConsumerF1TaskInput> f1Inputs(
+							tasks.size());
+						for (size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+						{
+							f1Inputs[taskIndex].target = &tasks[taskIndex].seq2;
+							f1Inputs[taskIndex].source = tasks[taskIndex].srcSeq.get();
+							f1Inputs[taskIndex].dnaStartPos = tasks[taskIndex].dnaStartPos;
+							f1Inputs[taskIndex].strand = tasks[taskIndex].strand;
+							f1Inputs[taskIndex].Para = tasks[taskIndex].Para;
+							f1Inputs[taskIndex].rule = tasks[taskIndex].rule;
+							if (taskIndex < streamingRealpathScoreInfos.size())
+								f1Inputs[taskIndex].scoreInfo =
+									&streamingRealpathScoreInfos[taskIndex];
+						}
+						std::vector<std::vector<triplex> > f1TriplexesByTask;
+						std::vector<FasimLongQueryGpuConsumerF1Result> f1Results;
+						std::string f1BatchError;
+						const bool f1Ready = streamingRealpathCanUse &&
+							streamingRealpathScoreInfos.size() == tasks.size();
+						const bool f1BatchOk = f1Ready &&
+							fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
+								aligner, filter, 15, lncSeq, f1Inputs,
+								f1TriplexesByTask, f1Results,
+								paraList.ntMin, paraList.ntMax,
+								paraList.penaltyT, paraList.penaltyC, paraList,
+								writeFull, &f1BatchError);
+						for (size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+						{
+							FasimLongQueryGpuConsumerF1Result rowResult;
+							if (taskIndex < f1Results.size()) rowResult = f1Results[taskIndex];
+							if (!f1BatchError.empty() && rowResult.error == "none")
+								rowResult.error = f1BatchError;
+							write_long_query_gpu_consumer_f1_row(
+								tasks[taskIndex].taskIndex, rowResult);
+							const bool emptyScoreInfo = rowResult.scoreinfo_groups == 0 &&
+								rowResult.attempts == 0 && rowResult.selected_attempts == 0;
+							const bool rowContractOk = f1BatchOk && rowResult.ok &&
+								rowResult.cpu_continuation_failures == 0 &&
+								rowResult.cpu_continuation_calls == rowResult.selected_attempts &&
+								(emptyScoreInfo || rowResult.forward_attempts > 0) &&
+								rowResult.reverse_scored_attempts == rowResult.reverse_requests;
+							if (!rowContractOk)
+							{
+								longQueryGpuConsumerF1Report.flush();
+								cerr << "FASIM long-query global F1 scheduler failed closed"
+								     << " task=" << tasks[taskIndex].taskIndex
+								     << " error=" << rowResult.error << endl;
+								std::exit(EXIT_FAILURE);
+							}
+							if (taskIndex >= f1TriplexesByTask.size())
+							{
+								longQueryGpuConsumerF1Report.flush();
+								cerr << "FASIM long-query global F1 scheduler missing task output"
+								     << " task=" << tasks[taskIndex].taskIndex << endl;
+								std::exit(EXIT_FAILURE);
+							}
+							taskTriplexes.swap(f1TriplexesByTask[taskIndex]);
+							longQueryStreamingScoreInfoShadowStats.realpath_extend_seconds +=
+								rowResult.total_seconds;
+							longQueryStreamingScoreInfoShadowStats.realpath_extend_scoreinfo_groups +=
+								rowResult.scoreinfo_groups;
+							longQueryStreamingScoreInfoShadowStats.realpath_extend_align_attempts +=
+								rowResult.cpu_continuation_calls;
+							++longQueryStreamingScoreInfoShadowStats.realpath_extend_calls;
+							++longQueryStreamingScoreInfoShadowStats.realpath_used;
+							write_task_triplexes(tasks[taskIndex]);
+						}
+					}
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
+						if (longQueryGpuConsumerF1SchedulerRequested) continue;
 						StreamTask &task = tasks[t];
 						std::ostream *attemptTraceOut =
 							longQueryGpuConsumerAttemptTraceReport.is_open() ?

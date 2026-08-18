@@ -8,14 +8,16 @@ product mode or change the production promoter contract.
 ## Execution shape
 
 The scheduler keeps the existing exact forward and reverse endpoint kernels and
-changes only the submission schedule:
+changes only the submission schedule. All task rows share the round barrier;
+the stage API receives one descriptor vector per round rather than launching a
+four-round loop independently for each task:
 
 ```text
 scoreInfo groups
-  -> round 0 forward batch
+  -> every task's round-0 descriptors in one global forward batch
   -> reverse only when the forward upper bound can affect threshold/best
   -> retire threshold groups
-  -> repeat for active rounds
+  -> globally compact active groups and repeat for active rounds
   -> one deferred reverse for a final last fallback when needed
   -> selected CPU AlignFromForward continuation
   -> canonical triplex conversion and TFOsorted output
@@ -72,7 +74,7 @@ complete TFOsorted SHA-256        a940474a6bbf5a4e27678571206210263792da0d1f4424
 lite SHA-256                      6f9e95ab6209d2ea053dfdef4872b6fd5616b07a9be8950976786c0a1215c226
 ```
 
-The measured wall time was about 106 seconds while the machine was carrying a
+The measured wall time was 32.46 seconds while the machine was carrying a
 separate 16-thread OpenMP production workload. It is retained as diagnostic
 timing only and is not a clean speed claim. The exactness result is independent
 of that resource contention.
@@ -82,8 +84,8 @@ complete-output runs also matched their independent CPU authority artifacts:
 
 ```text
 query             length   complete TFOsorted SHA-256                         wall (diagnostic)
-PCAT19            8181     b49e3fa33ec1ae5961032f420cfe1a60d5a5b12f8886828be997f7cd5219a578   237.54 s
-AL035530.2       12397     714cd07a86d86eca5c2858bae5d409b569b173aca12b0db44fcda9062ad40500   567.88 s
+PCAT19            8181     b49e3fa33ec1ae5961032f420cfe1a60d5a5b12f8886828be997f7cd5219a578    60.36 s
+AL035530.2       12397     714cd07a86d86eca5c2858bae5d409b569b173aca12b0db44fcda9062ad40500   108.30 s
 ```
 
 The corresponding lite digests are `ad63b2887f8c3095e261ad063ffb395d9eac7fb379beaeb7fe35dd6618f9f084`
