@@ -485,6 +485,21 @@ bool prealign_cuda_find_max_forward_endpoints_batch(
   PreAlignCudaBatchResult *batchResult,
   std::string *errorOut);
 
+// Development-only second stage for the consumer-driven F1 scheduler.  The
+// endpoint records supplied by the caller must be the exact results of the
+// forward-only entry point for the same target descriptors.  This dispatch
+// runs only the canonical reverse-start pass and updates reverseScore and
+// canonicalScore in those records; a descriptor mismatch is an error.
+bool prealign_cuda_find_reverse_endpoints_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  const PreAlignCudaAttemptEndpoint *forwardEndpointsHost,
+  int taskCount,
+  int targetLength,
+  std::vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+  PreAlignCudaBatchResult *batchResult,
+  std::string *errorOut);
+
 bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHandle &handle,
                                                       const uint8_t *encodedTargetsHost,
                                                       int taskCount,

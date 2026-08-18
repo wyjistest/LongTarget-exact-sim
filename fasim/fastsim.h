@@ -368,6 +368,16 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_enabled_runtime()
 	return enabled;
 }
 
+inline bool fasim_long_query_gpu_consumer_f1_scheduler_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_long_query_gpu_consumer_cpu_continuation_runtime()
 {
 	static const bool enabled = []()
@@ -3617,6 +3627,468 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	result->total_seconds = std::chrono::duration<double>(
 		std::chrono::steady_clock::now() - totalStart).count();
 	return true;
+}
+
+// Development-only F1 scheduler.  It keeps the scientific consumer on the
+// host, but submits only the ordered forward prefix and the reverse requests
+// proven necessary by the forward-score upper bound.  The default path never
+// calls this function.
+inline bool fasim_long_query_gpu_consumer_f1_from_scoreinfo(
+	StripedSmithWaterman::Aligner &aligner,
+	StripedSmithWaterman::Filter &filter,
+	int32_t maskLen,
+	const string &strA,
+	const string &strB,
+	const string &strSrc,
+	long dnaStartPos,
+	const std::vector<struct StripedSmithWaterman::scoreInfo> &finalScoreInfo,
+	vector<struct triplex> &shadowTriplexList,
+	long strand,
+	long Para,
+	long rule,
+	int ntMin,
+	int ntMax,
+	int penaltyT,
+	int penaltyC,
+	const struct para &paraList,
+	bool materializeAlignmentStrings,
+	FasimLongQueryGpuConsumerF1Result *result,
+	std::string *errorOut)
+{
+	FasimLongQueryGpuConsumerF1Result localResult;
+	if (result == NULL) result = &localResult;
+	*result = FasimLongQueryGpuConsumerF1Result();
+	shadowTriplexList.clear();
+	if (errorOut != NULL) errorOut->clear();
+	const std::chrono::steady_clock::time_point totalStart =
+		std::chrono::steady_clock::now();
+
+	if (!fasim_long_query_gpu_consumer_f1_scheduler_runtime())
+	{
+		result->error = "f1_scheduler_not_requested";
+		if (errorOut != NULL) *errorOut = result->error;
+		return false;
+	}
+	if (!fasim_long_query_gpu_consumer_cpu_continuation_runtime())
+	{
+		result->error = "f1_requires_cpu_continuation_flag";
+		if (errorOut != NULL) *errorOut = result->error;
+		return false;
+	}
+#if !defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) && \
+	!defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+	result->error = "f1_cpu_continuation_not_built";
+	if (errorOut != NULL) *errorOut = result->error;
+	return false;
+#endif
+	if (finalScoreInfo.empty())
+	{
+		result->ok = true;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return true;
+	}
+
+	struct F1GroupState
+	{
+		F1GroupState() :
+			active(true), emitted(false), haveBest(false), bestScore(0),
+			bestIndex(0), haveLast(false), lastIndex(0), selectedIndex(0),
+			haveSelected(false), reason("empty")
+		{
+		}
+		std::vector<size_t> indexes;
+		bool active;
+		bool emitted;
+		bool haveBest;
+		int bestScore;
+		size_t bestIndex;
+		bool haveLast;
+		size_t lastIndex;
+		size_t selectedIndex;
+		bool haveSelected;
+		std::string reason;
+	};
+
+	std::vector<FasimGasal2Attempt> attempts;
+	std::vector<F1GroupState> groups(finalScoreInfo.size());
+	attempts.reserve(finalScoreInfo.size() * 4);
+	const int8_t nt_table[128] = {
+		4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
+		4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
+		4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
+		4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
+		4,0,4,1,4,4,4,2,4,4,4,4,4,4,4,4,
+		4,4,4,4,3,0,4,4,4,4,4,4,4,4,4,4,
+		4,0,4,1,4,4,4,2,4,4,4,4,4,4,4,4,
+		4,4,4,4,3,0,4,4,4,4,4,4,4,4,4,4
+	};
+	for (size_t groupIndex = 0; groupIndex < finalScoreInfo.size(); ++groupIndex)
+	{
+		const StripedSmithWaterman::scoreInfo &info = finalScoreInfo[groupIndex];
+		float identity = 0.6f;
+		int identityRound = 0;
+		while (identity <= 1.0f)
+		{
+			int cutlength = static_cast<int>(info.score + 24) /
+				(9 * identity - 4) + 1;
+			cutlength = info.position - cutlength + 1 > 0 ?
+				cutlength : info.position + 1;
+			const int start = info.position - cutlength + 1;
+			if (start >= 0 && cutlength > 0 &&
+				start + cutlength <= static_cast<int>(strB.size()))
+			{
+				FasimGasal2Attempt attempt;
+				attempt.scoreinfo_index = static_cast<int>(groupIndex);
+				attempt.cutlength = cutlength;
+				attempt.start = start;
+				attempt.prealign_score = info.score;
+				attempt.target_end_required_for_fallback = cutlength - 1;
+				attempt.nt_min_length = ntMin;
+				attempt.identity_round = identityRound;
+				attempt.set_target_view(&strB, static_cast<size_t>(start),
+				                       static_cast<size_t>(cutlength));
+				groups[groupIndex].indexes.push_back(attempts.size());
+				attempts.push_back(attempt);
+			}
+			identity += 0.1f;
+			++identityRound;
+		}
+		if (groups[groupIndex].indexes.empty())
+		{
+			result->error = "f1_empty_scoreinfo_group";
+			if (errorOut != NULL) *errorOut = result->error;
+			return false;
+		}
+	}
+	result->scoreinfo_groups = static_cast<uint64_t>(groups.size());
+	result->attempts = static_cast<uint64_t>(attempts.size());
+	std::vector<FasimGasal2StreamedAttemptScore> forwardScores(attempts.size());
+	std::vector<FasimGasal2StreamedAttemptScore> canonicalScores(attempts.size());
+	std::vector<unsigned char> canonicalKnown(attempts.size(), 0);
+	std::vector<unsigned char> reverseRequested(attempts.size(), 0);
+
+	auto addTelemetry = [&](const FasimGasal2StreamedAttemptScoreTelemetry &telemetry,
+	                        bool reverse)
+	{
+		if (reverse) result->reverse_seconds += telemetry.total_seconds;
+		else result->forward_seconds += telemetry.total_seconds;
+		result->gpu_kernel_seconds += telemetry.gpu_seconds;
+		result->h2d_seconds += telemetry.h2d_seconds;
+		result->d2h_seconds += telemetry.d2h_seconds;
+	};
+	auto fail = [&](const std::string &message) -> bool
+	{
+		result->error = message;
+		if (errorOut != NULL) *errorOut = message;
+		result->total_seconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - totalStart).count();
+		return false;
+	};
+
+	const size_t maxRounds = [&]() {
+		size_t maximum = 0;
+		for (size_t i = 0; i < groups.size(); ++i)
+			maximum = std::max(maximum, groups[i].indexes.size());
+		return maximum;
+	}();
+	for (size_t round = 0; round < maxRounds; ++round)
+	{
+		std::vector<size_t> roundIndexes;
+		std::vector<FasimGasal2Attempt> roundAttempts;
+		uint64_t activeGroups = 0;
+		for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
+		{
+			F1GroupState &group = groups[groupIndex];
+			if (!group.active || round >= group.indexes.size()) continue;
+			++activeGroups;
+			roundIndexes.push_back(group.indexes[round]);
+			roundAttempts.push_back(attempts[group.indexes[round]]);
+		}
+		result->round_active_groups.push_back(activeGroups);
+		result->round_forward_attempts.push_back(
+			static_cast<uint64_t>(roundAttempts.size()));
+		if (roundAttempts.empty())
+		{
+			result->round_reverse_requests.push_back(0);
+			continue;
+		}
+		FasimGasal2StreamedAttemptScoreTelemetry forwardTelemetry;
+		std::string stageError;
+		std::vector<FasimGasal2StreamedAttemptScore> roundForward;
+		if (!fasim_gasal2_streamed_attempt_forward_score_v1(
+				strA, roundAttempts, &roundForward, &forwardTelemetry,
+				&stageError))
+		{
+			return fail(stageError.empty() ? "f1_forward_stage_failed" : stageError);
+		}
+		addTelemetry(forwardTelemetry, false);
+		result->forward_attempts += static_cast<uint64_t>(roundIndexes.size());
+		for (size_t i = 0; i < roundIndexes.size(); ++i)
+			forwardScores[roundIndexes[i]] = roundForward[i];
+
+		std::vector<size_t> reverseIndexes;
+		std::vector<FasimGasal2Attempt> reverseAttempts;
+		std::vector<FasimGasal2StreamedAttemptScore> reverseForward;
+		for (size_t i = 0; i < roundIndexes.size(); ++i)
+		{
+			const size_t globalIndex = roundIndexes[i];
+			const FasimGasal2Attempt &attempt = attempts[globalIndex];
+			const FasimGasal2StreamedAttemptScore &score = roundForward[i];
+			F1GroupState &group = groups[static_cast<size_t>(attempt.scoreinfo_index)];
+			group.haveLast = true;
+			group.lastIndex = globalIndex;
+			const bool terminal = score.ref_end_local == attempt.cutlength - 1;
+			const bool needsThresholdCheck = score.forward_score >= attempt.prealign_score;
+			const bool needsBestCheck = terminal &&
+				score.forward_score > group.bestScore;
+			if ((needsThresholdCheck || needsBestCheck) &&
+				reverseRequested[globalIndex] == 0)
+			{
+				reverseRequested[globalIndex] = 1;
+				reverseIndexes.push_back(globalIndex);
+				reverseAttempts.push_back(attempt);
+				reverseForward.push_back(score);
+			}
+		}
+		result->round_reverse_requests.push_back(
+			static_cast<uint64_t>(reverseIndexes.size()));
+		result->reverse_requests += static_cast<uint64_t>(reverseIndexes.size());
+		if (!reverseIndexes.empty())
+		{
+			FasimGasal2StreamedAttemptScoreTelemetry reverseTelemetry;
+			std::vector<FasimGasal2StreamedAttemptScore> reverseScores;
+			if (!fasim_gasal2_streamed_attempt_reverse_score_v1(
+					strA, reverseAttempts, reverseForward, &reverseScores,
+					&reverseTelemetry, &stageError))
+			{
+				return fail(stageError.empty() ? "f1_reverse_stage_failed" : stageError);
+			}
+			addTelemetry(reverseTelemetry, true);
+			result->reverse_scored_attempts +=
+				static_cast<uint64_t>(reverseIndexes.size());
+			for (size_t i = 0; i < reverseIndexes.size(); ++i)
+			{
+				const size_t globalIndex = reverseIndexes[i];
+				canonicalScores[globalIndex] = reverseScores[i];
+				canonicalKnown[globalIndex] = 1;
+				const FasimGasal2Attempt &attempt = attempts[globalIndex];
+				F1GroupState &group = groups[
+					static_cast<size_t>(attempt.scoreinfo_index)];
+				const int canonical = reverseScores[i].score;
+				if (!group.emitted && canonical >= attempt.prealign_score)
+				{
+					group.emitted = true;
+					group.active = false;
+					group.haveSelected = true;
+					group.selectedIndex = globalIndex;
+					group.reason = "threshold";
+				}
+				else if (!group.emitted &&
+					canonical > group.bestScore &&
+					reverseScores[i].ref_end_local == attempt.cutlength - 1)
+				{
+					group.bestScore = canonical;
+					group.bestIndex = globalIndex;
+					group.haveBest = true;
+				}
+			}
+		}
+
+		// A group whose final attempt was just consumed can retire via best or
+		// defer the last fallback until its canonical reverse is available.
+		for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
+		{
+			F1GroupState &group = groups[groupIndex];
+			if (!group.active || round + 1 < group.indexes.size()) continue;
+			if (group.haveBest)
+			{
+				group.active = false;
+				group.emitted = true;
+				group.haveSelected = true;
+				group.selectedIndex = group.bestIndex;
+				group.reason = "best_fallback";
+			}
+			else if (group.haveLast && canonicalKnown[group.lastIndex])
+			{
+				group.active = false;
+				group.emitted = true;
+				if (canonicalScores[group.lastIndex].score != 0)
+				{
+					group.haveSelected = true;
+					group.selectedIndex = group.lastIndex;
+					group.reason = "last";
+				}
+				else
+				{
+					group.reason = "empty";
+				}
+			}
+		}
+	}
+
+	// Last fallback is the only decision that may require a deferred reverse.
+	std::vector<size_t> deferredIndexes;
+	std::vector<FasimGasal2Attempt> deferredAttempts;
+	std::vector<FasimGasal2StreamedAttemptScore> deferredForward;
+	for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
+	{
+		F1GroupState &group = groups[groupIndex];
+		if (!group.active || !group.haveLast || canonicalKnown[group.lastIndex]) continue;
+		const size_t globalIndex = group.lastIndex;
+		if (reverseRequested[globalIndex] == 0)
+		{
+			reverseRequested[globalIndex] = 1;
+			deferredIndexes.push_back(globalIndex);
+			deferredAttempts.push_back(attempts[globalIndex]);
+			deferredForward.push_back(forwardScores[globalIndex]);
+		}
+	}
+	if (!deferredIndexes.empty())
+	{
+		result->round_active_groups.push_back(0);
+		result->round_forward_attempts.push_back(0);
+		result->round_reverse_requests.push_back(
+			static_cast<uint64_t>(deferredIndexes.size()));
+		result->reverse_requests += static_cast<uint64_t>(deferredIndexes.size());
+		FasimGasal2StreamedAttemptScoreTelemetry reverseTelemetry;
+		std::vector<FasimGasal2StreamedAttemptScore> reverseScores;
+		std::string stageError;
+		if (!fasim_gasal2_streamed_attempt_reverse_score_v1(
+				strA, deferredAttempts, deferredForward, &reverseScores,
+				&reverseTelemetry, &stageError))
+		{
+			return fail(stageError.empty() ? "f1_deferred_reverse_failed" : stageError);
+		}
+		addTelemetry(reverseTelemetry, true);
+		result->reverse_scored_attempts +=
+			static_cast<uint64_t>(deferredIndexes.size());
+		for (size_t i = 0; i < deferredIndexes.size(); ++i)
+		{
+			const size_t globalIndex = deferredIndexes[i];
+			canonicalScores[globalIndex] = reverseScores[i];
+			canonicalKnown[globalIndex] = 1;
+			F1GroupState &group = groups[
+				static_cast<size_t>(attempts[globalIndex].scoreinfo_index)];
+			group.active = false;
+			group.emitted = true;
+			if (reverseScores[i].score != 0)
+			{
+				group.haveSelected = true;
+				group.selectedIndex = globalIndex;
+				group.reason = "last";
+			}
+			else
+			{
+				group.reason = "empty";
+			}
+		}
+	}
+
+	std::vector<size_t> selected;
+	for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
+	{
+		F1GroupState &group = groups[groupIndex];
+		if (group.haveSelected)
+		{
+			selected.push_back(group.selectedIndex);
+			if (group.reason == "threshold") ++result->threshold_groups;
+			else if (group.reason == "best_fallback") ++result->best_fallback_groups;
+			else if (group.reason == "last") ++result->last_groups;
+		}
+		else
+		{
+			++result->empty_groups;
+		}
+	}
+	result->selected_attempts = static_cast<uint64_t>(selected.size());
+
+	std::vector<triplex> convertedRows;
+	for (size_t selectedPosition = 0; selectedPosition < selected.size();
+		 ++selectedPosition)
+	{
+		const size_t index = selected[selectedPosition];
+		if (index >= attempts.size() || index >= forwardScores.size() ||
+			index >= canonicalScores.size() || !canonicalKnown[index])
+			return fail("f1_selected_endpoint_missing");
+		const FasimGasal2Attempt &attempt = attempts[index];
+		const FasimGasal2StreamedAttemptScore &forward = forwardScores[index];
+		const FasimGasal2StreamedAttemptScore &canonical = canonicalScores[index];
+		const std::string small = strB.substr(
+			static_cast<size_t>(attempt.start),
+			static_cast<size_t>(attempt.cutlength));
+		StripedSmithWaterman::Alignment local;
+		bool continuationOk = false;
+		const std::chrono::steady_clock::time_point continuationStart =
+			std::chrono::steady_clock::now();
+#if defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) || \
+	defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+		StripedSmithWaterman::ForwardEndpoint endpoint;
+		endpoint.score1 = forward.forward_score;
+		endpoint.score2 = 0;
+		endpoint.ref_end1 = forward.ref_end_local;
+		endpoint.query_end1 = forward.query_end;
+		endpoint.ref_end2 = -1;
+		endpoint.numeric_path = forward.numeric_path;
+		continuationOk = aligner.AlignFromForward(
+			strA.c_str(), small.c_str(), static_cast<int>(small.size()),
+			filter, endpoint, &local, maskLen);
+#else
+		aligner.Align(strA.c_str(), small.c_str(), small.size(), filter,
+		              &local, maskLen);
+		continuationOk = true;
+#endif
+		result->traceback_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - continuationStart).count();
+		++result->cpu_continuation_calls;
+		if (!continuationOk || local.sw_score != canonical.score ||
+			local.ref_end != forward.ref_end_local ||
+			local.query_end != forward.query_end)
+		{
+			++result->cpu_continuation_failures;
+			std::ostringstream detail;
+			detail << "f1_continuation_contract_mismatch:attempt=" << index
+			       << ":expected=" << canonical.score << ','
+			       << forward.ref_end_local << ',' << forward.query_end
+			       << ":observed=" << local.sw_score
+			       << ',' << local.ref_end << ',' << local.query_end;
+			return fail(detail.str());
+		}
+		StripedSmithWaterman::Alignment global = local;
+		global.ref_begin += attempt.start;
+		global.ref_end += attempt.start;
+		const std::chrono::steady_clock::time_point convertStart =
+			std::chrono::steady_clock::now();
+		convertMyTriplex(global, convertedRows, strA, strB, strSrc, nt_table,
+		                 dnaStartPos, rule, strand, Para, penaltyT, penaltyC,
+		                 ntMin, ntMax, materializeAlignmentStrings);
+		result->convert_seconds += std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - convertStart).count();
+	}
+
+	{
+		FasimAuthorityProfileScope authoritySortScope(
+			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
+		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexMultiple);
+		convertedRows.erase(std::unique(convertedRows.begin(), convertedRows.end(),
+		                                sameMyTriplex), convertedRows.end());
+		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexMultiple2);
+		convertedRows.erase(std::unique(convertedRows.begin(), convertedRows.end(),
+		                                sameMyTriplex), convertedRows.end());
+		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexSingle);
+	}
+	const size_t topLimit = std::min(convertedRows.size(), static_cast<size_t>(N));
+	for (size_t i = 0; i < topLimit; ++i)
+	{
+		const triplex &row = convertedRows[i];
+		if (row.identity >= paraList.minIdentity &&
+			row.tri_score >= paraList.minStability && row.nt >= ntMin)
+			shadowTriplexList.push_back(row);
+	}
+	result->ok = result->cpu_continuation_failures == 0;
+	result->total_seconds = std::chrono::duration<double>(
+		std::chrono::steady_clock::now() - totalStart).count();
+	return result->ok;
 }
 
 inline bool fasim_shadow_emission_only_consumer_from_scoreinfo(

@@ -3555,6 +3555,12 @@ static inline bool fasim_long_query_gpu_consumer_replacement_prototype_runtime()
 		"FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE");
 }
 
+static inline bool fasim_main_long_query_gpu_consumer_f1_scheduler_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER");
+}
+
 static inline uint64_t fasim_long_query_gpu_consumer_spike_v1_max_tasks_runtime()
 {
 	const char *env = getenv("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_MAX_TASKS");
@@ -11108,6 +11114,15 @@ int main(int argc, char* const* argv)
 		fasim_long_query_gpu_consumer_spike_v1_runtime();
 	const bool longQueryGpuConsumerReplacementPrototypeRequested =
 		fasim_long_query_gpu_consumer_replacement_prototype_runtime();
+	const bool longQueryGpuConsumerF1SchedulerRequested =
+		fasim_main_long_query_gpu_consumer_f1_scheduler_runtime();
+	if ((longQueryGpuConsumerSpikeV1Requested ? 1 : 0) +
+		(longQueryGpuConsumerReplacementPrototypeRequested ? 1 : 0) +
+		(longQueryGpuConsumerF1SchedulerRequested ? 1 : 0) > 1)
+	{
+		cerr << "FASIM long-query consumer modes are mutually exclusive" << endl;
+		return EXIT_FAILURE;
+	}
 	if (longQueryGpuConsumerSpikeV1Requested &&
 	    longQueryGpuConsumerReplacementPrototypeRequested)
 	{
@@ -11115,10 +11130,11 @@ int main(int argc, char* const* argv)
 		     << "mutually exclusive" << endl;
 		return EXIT_FAILURE;
 	}
-	if (longQueryGpuConsumerReplacementPrototypeRequested &&
+	if ((longQueryGpuConsumerReplacementPrototypeRequested ||
+	     longQueryGpuConsumerF1SchedulerRequested) &&
 	    !fasim_long_query_gpu_consumer_cpu_continuation_runtime())
 	{
-		cerr << "FASIM long-query replacement prototype requires "
+		cerr << "FASIM long-query replacement/F1 mode requires "
 		     << "FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION=1" << endl;
 		return EXIT_FAILURE;
 	}
@@ -11127,7 +11143,8 @@ int main(int argc, char* const* argv)
 		FasimScopedSeconds scoped(phaseTimingEnabled, &phaseTiming.read_rna_seconds);
 		lncSeq = readRna(paraList.file2path, lncName);
 	}
-	if (longQueryGpuConsumerReplacementPrototypeRequested)
+	if (longQueryGpuConsumerReplacementPrototypeRequested ||
+	    longQueryGpuConsumerF1SchedulerRequested)
 	{
 		const bool replacementConfigOk =
 			paraList.doFastSim &&
@@ -11138,7 +11155,7 @@ int main(int argc, char* const* argv)
 			!fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
 		if (!replacementConfigOk)
 		{
-			cerr << "FASIM long-query replacement prototype requires a >2812 nt "
+			cerr << "FASIM long-query replacement/F1 mode requires a >2812 nt "
 			     << "Fasim query, exact legacy-byte streaming scoreInfo, and the "
 			     << "GPU min-score hot path" << endl;
 			return EXIT_FAILURE;
@@ -11524,10 +11541,12 @@ int main(int argc, char* const* argv)
 				std::map<uint64_t, std::vector<triplex> > attemptConsumerTriplexesByTask;
 				std::map<uint64_t, std::vector<triplex> > emissionOnlyTriplexesByTask;
 				std::ofstream longQueryGpuConsumerSpikeReport;
+				std::ofstream longQueryGpuConsumerF1Report;
 				std::ofstream longQueryGpuConsumerAttemptTraceReport;
 				const char *attemptTracePath = getenv(
 					"FASIM_LONG_QUERY_GPU_CONSUMER_LOWER_BOUND_TRACE");
 				if ((longQueryGpuConsumerSpikeV1Requested ||
+				     longQueryGpuConsumerF1SchedulerRequested ||
 				     longQueryGpuConsumerReplacementPrototypeRequested) &&
 				    attemptTracePath != NULL && attemptTracePath[0] != '\0')
 				{
@@ -11569,6 +11588,32 @@ int main(int argc, char* const* argv)
 								longQueryGpuConsumerSpikeReport
 									<< "task_index\texecution_mode\tauthority_comparison_available\tvalidation_enabled\tok\toutput_equal\tscoreinfo_groups\tattempts\tgpu_scored_attempts\tendpoint_batches\tcpu_oracle_attempts\tattempt_mismatch_rows\tscore_mismatches\tquery_end_mismatches\tref_end_local_mismatches\tterminal_mismatches\tcontrol_selected_attempts\tcpu_control_selected_attempts\tconsumer_selection_equal\tcpu_reference_align_attempts\tconsumer_attempt_prefix_equal\texact_forward_only\tlazy_reverse_shadow_requested\tlazy_reverse_shadow_active\tlazy_reverse_selection_equal\tlazy_reverse_reasons_equal\tlazy_reverse_full_attempts\tlazy_reverse_attempts\tlazy_reverse_threshold_attempts\tlazy_reverse_best_attempts\tlazy_reverse_last_attempts\tlazy_reverse_reused_for_best\tlazy_reverse_reused_for_last\tlazy_reverse_full_envelope_cells\tlazy_reverse_envelope_cells\tlazy_reverse_threshold_envelope_cells\tlazy_reverse_best_envelope_cells\tlazy_reverse_last_envelope_cells\tlazy_reverse_shadow_seconds\tcpu_continuation_requested\tcpu_continuation_active\tcpu_continuation_calls\tcpu_continuation_failures\treplay_attempts\tcpu_align_attempts\tthreshold_groups\tbest_fallback_groups\tlast_groups\tempty_groups\tscore_seconds\tgpu_kernel_seconds\th2d_seconds\td2h_seconds\tcpu_oracle_seconds\tselect_seconds\ttraceback_seconds\tconvert_seconds\ttotal_seconds\tmissing_rows\textra_rows\tfirst_attempt_mismatch\tfirst_consumer_mismatch\tfirst_lazy_reverse_mismatch\tcached_endpoint_replay\tcache_records\tcache_load_seconds\tcache_lookup_seconds\terror\n";
 						}
+					}
+				}
+				if (longQueryGpuConsumerF1SchedulerRequested)
+				{
+					const char *reportPath = getenv(
+						"FASIM_LONG_QUERY_GPU_CONSUMER_F1_REPORT");
+					if (reportPath != NULL && reportPath[0] != '\0')
+					{
+						longQueryGpuConsumerF1Report.open(
+							reportPath, std::ios::out | std::ios::trunc);
+						if (!longQueryGpuConsumerF1Report)
+						{
+							cerr << "failed to open F1 scheduler report: "
+							     << reportPath << endl;
+							std::exit(EXIT_FAILURE);
+						}
+						longQueryGpuConsumerF1Report
+							<< "task_index\texecution_mode\tok\tscoreinfo_groups\tattempts\t"
+							   "forward_attempts\treverse_requests\treverse_scored_attempts\t"
+							   "selected_attempts\tcpu_continuation_calls\t"
+							   "cpu_continuation_failures\tthreshold_groups\tbest_fallback_groups\t"
+							   "last_groups\tempty_groups\tforward_seconds\treverse_seconds\t"
+							   "select_seconds\ttraceback_seconds\tconvert_seconds\t"
+							   "gpu_kernel_seconds\th2d_seconds\td2h_seconds\ttotal_seconds\t"
+							   "round_active_groups\tround_forward_attempts\tround_reverse_requests\t"
+							   "error\n";
 					}
 				}
 			uint64_t attemptConsumerShadowTaskMismatches = 0;
@@ -11820,6 +11865,7 @@ int main(int argc, char* const* argv)
 						phase7NativeCudaFasimDpEngineFirst1ShadowRequested ||
 						phase7GpuUpperBoundRejectFirst1ShadowRequested ||
 						phase7GpuExactWorkUnitCompactionFirst1ShadowRequested ||
+						longQueryGpuConsumerF1SchedulerRequested ||
 						longQueryGpuConsumerSpikeV1Requested ||
 						longQueryGpuConsumerReplacementPrototypeRequested;
 		const bool streamingScoreInfoLegacyByteRequested =
@@ -11875,7 +11921,8 @@ int main(int argc, char* const* argv)
 			useCudaBatch =
 				!cudaQueries.empty() &&
 				(fasim_prealign_cuda_enabled_runtime() || gpuDpColumnAutoEffective);
-			if (longQueryGpuConsumerSpikeV1Requested ||
+			if (longQueryGpuConsumerF1SchedulerRequested ||
+			    longQueryGpuConsumerSpikeV1Requested ||
 			    longQueryGpuConsumerReplacementPrototypeRequested)
 			{
 				// Keep the preAlign handles for stateful scoreInfo, but route task
@@ -11976,6 +12023,7 @@ int main(int argc, char* const* argv)
 				fasim_gasal2_is_built() &&
 				fasim_gasal2_longtarget_bridge_enabled() &&
 			!fasim_gasal2_cpu_traceback_all_enabled_runtime() &&
+			!longQueryGpuConsumerF1SchedulerRequested &&
 			!longQueryGpuConsumerSpikeV1Requested &&
 			!longQueryGpuConsumerReplacementPrototypeRequested;
 		const bool gasal2LongtargetCpuTracebackBatch =
@@ -14621,6 +14669,42 @@ int main(int argc, char* const* argv)
 						<< result.cache_load_seconds << '\t'
 						<< result.cache_lookup_seconds << '\t'
 						<< error << '\n';
+		};
+
+		auto write_long_query_gpu_consumer_f1_row =
+			[&](uint64_t taskIndex,
+			    const FasimLongQueryGpuConsumerF1Result &result)
+		{
+			if (!longQueryGpuConsumerF1Report) return;
+			auto join_counts = [](const std::vector<uint64_t> &values)
+			{
+				std::ostringstream out;
+				for (size_t i = 0; i < values.size(); ++i)
+				{
+					if (i != 0) out << ',';
+					out << values[i];
+				}
+				return out.str();
+			};
+			longQueryGpuConsumerF1Report
+				<< taskIndex << "\tf1_round_scheduled\t"
+				<< (result.ok ? 1 : 0) << '\t'
+				<< result.scoreinfo_groups << '\t' << result.attempts << '\t'
+				<< result.forward_attempts << '\t' << result.reverse_requests << '\t'
+				<< result.reverse_scored_attempts << '\t' << result.selected_attempts << '\t'
+				<< result.cpu_continuation_calls << '\t'
+				<< result.cpu_continuation_failures << '\t'
+				<< result.threshold_groups << '\t' << result.best_fallback_groups << '\t'
+				<< result.last_groups << '\t' << result.empty_groups << '\t'
+				<< result.forward_seconds << '\t' << result.reverse_seconds << '\t'
+				<< result.select_seconds << '\t' << result.traceback_seconds << '\t'
+				<< result.convert_seconds << '\t' << result.gpu_kernel_seconds << '\t'
+				<< result.h2d_seconds << '\t' << result.d2h_seconds << '\t'
+				<< result.total_seconds << '\t'
+				<< join_counts(result.round_active_groups) << '\t'
+				<< join_counts(result.round_forward_attempts) << '\t'
+				<< join_counts(result.round_reverse_requests) << '\t'
+				<< (result.error.empty() ? "none" : result.error) << '\n';
 		};
 
 			auto record_triplex_probe_first_mismatch =
@@ -20137,9 +20221,10 @@ int main(int argc, char* const* argv)
 
 				auto run_long_query_streaming_scoreinfo_shadow = [&]()
 				{
-					if (longQueryStreamingScoreInfoShadowStats.requested == 0 ||
-					    (gasal2QueryLengthSupported &&
-					     !longQueryGpuConsumerSpikeV1Requested &&
+						if (longQueryStreamingScoreInfoShadowStats.requested == 0 ||
+						    (gasal2QueryLengthSupported &&
+						     !longQueryGpuConsumerF1SchedulerRequested &&
+						     !longQueryGpuConsumerSpikeV1Requested &&
 					     !longQueryGpuConsumerReplacementPrototypeRequested) ||
 					    !paraList.doFastSim)
 						{
@@ -20161,8 +20246,9 @@ int main(int argc, char* const* argv)
 							const bool streamingRealpathRequested =
 									fasim_long_query_streaming_scoreinfo_realpath_prototype_runtime() ||
 									scorePrepassStateMachineShadowRequested ||
-									longQueryGpuConsumerSpikeV1Requested ||
-									longQueryGpuConsumerReplacementPrototypeRequested;
+																				longQueryGpuConsumerSpikeV1Requested ||
+																				longQueryGpuConsumerF1SchedulerRequested ||
+																				longQueryGpuConsumerReplacementPrototypeRequested;
 						const bool streamingRealpathAllowed =
 							(streamingRealpathRequested && !twoContractRequested) ||
 							twoContractTrustRequested;
@@ -20170,8 +20256,9 @@ int main(int argc, char* const* argv)
 							((streamingRealpathRequested && !twoContractRequested) ||
 							 twoContractTrustRequested) &&
 							!fusedMinScoreRequested &&
-							(twoContractTrustRequested ||
-							 longQueryGpuConsumerReplacementPrototypeRequested ||
+																				(twoContractTrustRequested ||
+																				 longQueryGpuConsumerF1SchedulerRequested ||
+																				 longQueryGpuConsumerReplacementPrototypeRequested ||
 							 fasim_long_query_streaming_scoreinfo_realpath_trust_runtime());
 						if (streamingRealpathAllowed)
 						{
@@ -24566,7 +24653,8 @@ int main(int argc, char* const* argv)
 								false);
 						}
 
-					if (!longQueryGpuConsumerSpikeV1Requested &&
+					if (!longQueryGpuConsumerF1SchedulerRequested &&
+					    !longQueryGpuConsumerSpikeV1Requested &&
 					    !longQueryGpuConsumerReplacementPrototypeRequested &&
 					    (gasal2_batched_traceback_enabled() ||
 				    segmentedLongQueryShadowFallbackRequested ||
@@ -24580,7 +24668,8 @@ int main(int argc, char* const* argv)
 						 !fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime()) ||
 						(fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime() &&
 						 fasim_long_query_streaming_scoreinfo_two_contract_bridge_trust_runtime()) ||
-						longQueryGpuConsumerSpikeV1Requested ||
+							longQueryGpuConsumerF1SchedulerRequested ||
+							longQueryGpuConsumerSpikeV1Requested ||
 						longQueryGpuConsumerReplacementPrototypeRequested;
 					if (streamingRealpathRequested)
 					{
@@ -24665,7 +24754,8 @@ int main(int argc, char* const* argv)
 						 fasim_long_query_streaming_scoreinfo_two_contract_bridge_trust_runtime()) ||
 						scorePrepassStateMachineShadowRequested ||
 						phase7V4GpuLegacyByteScoreInfoSourceReplayRequested ||
-						longQueryGpuConsumerSpikeV1Requested ||
+							longQueryGpuConsumerF1SchedulerRequested ||
+							longQueryGpuConsumerSpikeV1Requested ||
 						longQueryGpuConsumerReplacementPrototypeRequested;
 					const bool streamingRealpathCanUse =
 						streamingRealpathRequested &&
@@ -27500,12 +27590,73 @@ int main(int argc, char* const* argv)
 						std::ostream *attemptTraceOut =
 							longQueryGpuConsumerAttemptTraceReport.is_open() ?
 							&longQueryGpuConsumerAttemptTraceReport : NULL;
-						const int minScore =
-							longQueryGpuConsumerReplacementPrototypeRequested ?
+							const int minScore =
+								(longQueryGpuConsumerF1SchedulerRequested ||
+								 longQueryGpuConsumerReplacementPrototypeRequested) ?
 								0 : task_min_score(task);
 							taskTriplexes.clear();
 							if (paraList.doFastSim)
 							{
+								if (longQueryGpuConsumerF1SchedulerRequested)
+								{
+									std::vector<triplex> f1Triplexes;
+									FasimLongQueryGpuConsumerF1Result f1Result;
+									std::string f1Error;
+									bool f1Ok = false;
+									if (!streamingRealpathCanUse ||
+									    t >= streamingRealpathScoreInfos.size())
+									{
+										f1Result.error = "f1_scoreinfo_not_ready";
+										f1Error = f1Result.error;
+									}
+									else
+									{
+										f1Ok = fasim_long_query_gpu_consumer_f1_from_scoreinfo(
+											aligner, filter, 15, lncSeq, task.seq2,
+											*task.srcSeq, task.dnaStartPos,
+											streamingRealpathScoreInfos[t], f1Triplexes,
+											task.strand, task.Para, task.rule,
+											paraList.ntMin, paraList.ntMax,
+											paraList.penaltyT, paraList.penaltyC, paraList,
+											writeFull, &f1Result, &f1Error);
+									}
+									if (!f1Error.empty() && f1Result.error == "none")
+										f1Result.error = f1Error;
+									write_long_query_gpu_consumer_f1_row(
+										task.taskIndex, f1Result);
+									const bool f1EmptyScoreInfo =
+										f1Result.scoreinfo_groups == 0 &&
+										f1Result.attempts == 0 &&
+										f1Result.selected_attempts == 0;
+									const bool f1ContractOk = f1Ok && f1Result.ok &&
+										f1Result.cpu_continuation_failures == 0 &&
+										f1Result.cpu_continuation_calls ==
+											f1Result.selected_attempts &&
+										(f1EmptyScoreInfo || f1Result.forward_attempts > 0) &&
+										f1Result.reverse_scored_attempts ==
+											f1Result.reverse_requests;
+									if (!f1ContractOk)
+									{
+										longQueryGpuConsumerF1Report.flush();
+										cerr << "FASIM long-query F1 scheduler failed closed"
+										     << " task=" << task.taskIndex
+										     << " error=" << f1Result.error << endl;
+										std::exit(EXIT_FAILURE);
+									}
+									taskTriplexes.swap(f1Triplexes);
+									longQueryStreamingScoreInfoShadowStats
+										.realpath_extend_seconds += f1Result.total_seconds;
+									longQueryStreamingScoreInfoShadowStats
+										.realpath_extend_scoreinfo_groups +=
+											f1Result.scoreinfo_groups;
+									longQueryStreamingScoreInfoShadowStats
+										.realpath_extend_align_attempts +=
+											f1Result.cpu_continuation_calls;
+									++longQueryStreamingScoreInfoShadowStats.realpath_extend_calls;
+									++longQueryStreamingScoreInfoShadowStats.realpath_used;
+									write_task_triplexes(task);
+									continue;
+								}
 									if (longQueryGpuConsumerReplacementPrototypeRequested)
 									{
 										std::vector<triplex> replacementTriplexes;

@@ -2056,6 +2056,105 @@ __global__ void prealign_cuda_exact_attempt_forward_word_kernel(
     queryLength, reinterpret_cast<int16_t *>(workspaceBytes), outEndpoints);
 }
 
+// Reverse-only companion to the exact endpoint pass.  Forward endpoints are
+// populated by the preceding forward-only stage and are deliberately kept in
+// the same device record buffer.  The byte/word split mirrors the existing
+// overflow dispatch: byte handles non-overflow rows and word handles rows
+// whose byte pass saturated at 255.
+template<int kLanes,bool kBytePath,typename Storage>
+static __device__ void prealign_cuda_exact_attempt_reverse_endpoint_body(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  Storage *workspace,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  const int warpLane = static_cast<int>(threadIdx.x);
+  const int subwarp = warpLane / kLanes;
+  const int lane = warpLane - subwarp * kLanes;
+  const int taskIndex = static_cast<int>(blockIdx.x) + subwarp;
+  if(subwarp >= 1 || taskIndex >= taskCount)
+  {
+    return;
+  }
+  const unsigned int mask = ((1u << kLanes) - 1u) << (subwarp * kLanes);
+  const int paddedQueryLength =
+    (queryLength + kLanes - 1) / kLanes * kLanes;
+  Storage *taskWorkspace = workspace +
+    static_cast<size_t>(subwarp) * static_cast<size_t>(3 * paddedQueryLength);
+  const PreAlignCudaAttemptEndpoint prior = outEndpoints[taskIndex];
+  // The forward dispatch records the numeric path explicitly.  Do not infer
+  // it from the score: a legitimate WORD16 score can also equal 255.
+  if((kBytePath && prior.numericPath != PREALIGN_CUDA_NUMERIC_PATH_BYTE8) ||
+     (!kBytePath && prior.numericPath != PREALIGN_CUDA_NUMERIC_PATH_WORD16))
+  {
+    return;
+  }
+  const int forwardScore = prior.forwardScore;
+  const int targetEnd = prior.targetEnd;
+  const int queryEnd = prior.queryEnd;
+  if(forwardScore <= 0 || targetEnd < 0 || queryEnd < 0)
+  {
+    if(lane == 0)
+    {
+      outEndpoints[taskIndex].reverseScore = 0;
+      outEndpoints[taskIndex].canonicalScore = 0;
+    }
+    return;
+  }
+  const uint8_t *target = encodedTargets +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(paddedTargetLength);
+  int reverseScore = 0;
+  int reverseReferenceEnd = kBytePath ? -1 : 0;
+  int reverseQueryEnd = 0;
+  bool reverseOverflow = false;
+  prealign_cuda_exact_ssw_pass<kLanes,kBytePath,Storage>(
+    profile, profileSegLen, target, queryEnd + 1, queryEnd,
+    targetEnd + 1, targetEnd, true, false, forwardScore, taskWorkspace,
+    lane, mask,
+    &reverseScore, &reverseReferenceEnd, &reverseQueryEnd,
+    &reverseOverflow);
+  if(lane == 0)
+  {
+    outEndpoints[taskIndex].reverseScore = reverseScore;
+    outEndpoints[taskIndex].canonicalScore =
+      reverseScore < forwardScore ? reverseScore : forwardScore;
+  }
+}
+
+__global__ void prealign_cuda_exact_attempt_reverse_byte_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  extern __shared__ unsigned char workspaceBytes[];
+  prealign_cuda_exact_attempt_reverse_endpoint_body<16,true,uint8_t>(
+    profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
+    queryLength, reinterpret_cast<uint8_t *>(workspaceBytes), outEndpoints);
+}
+
+__global__ void prealign_cuda_exact_attempt_reverse_word_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int paddedTargetLength,
+  int profileSegLen,
+  int queryLength,
+  PreAlignCudaAttemptEndpoint *outEndpoints)
+{
+  extern __shared__ unsigned char workspaceBytes[];
+  prealign_cuda_exact_attempt_reverse_endpoint_body<8,false,int16_t>(
+    profile, encodedTargets, taskCount, paddedTargetLength, profileSegLen,
+    queryLength, reinterpret_cast<int16_t *>(workspaceBytes), outEndpoints);
+}
+
 __global__ void prealign_cuda_reduce_column_max_scores_kernel(const int *columnMaxima,
                                                              int taskCount,
                                                              int targetLength,
@@ -6835,6 +6934,206 @@ bool prealign_cuda_find_max_forward_endpoints_batch(
   return prealign_cuda_find_exact_attempt_endpoints_batch(
     handle, encodedTargetsHost, taskCount, targetLength, false,
     outEndpoints, batchResult, errorOut);
+}
+
+bool prealign_cuda_find_reverse_endpoints_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  const PreAlignCudaAttemptEndpoint *forwardEndpointsHost,
+  int taskCount,
+  int targetLength,
+  vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+  PreAlignCudaBatchResult *batchResult,
+  string *errorOut)
+{
+  if(outEndpoints == NULL || forwardEndpointsHost == NULL)
+  {
+    if(errorOut != NULL) *errorOut = outEndpoints == NULL ?
+      "missing output buffer" : "missing forward endpoints";
+    return false;
+  }
+  outEndpoints->clear();
+  if(batchResult != NULL) *batchResult = PreAlignCudaBatchResult();
+  if(encodedTargetsHost == NULL || taskCount <= 0 || targetLength <= 0)
+  {
+    if(errorOut != NULL) *errorOut = encodedTargetsHost == NULL ?
+      "missing input targets" : "invalid target dimensions";
+    return false;
+  }
+  if(handle.profileDevice == 0 || handle.segLen <= 0 || handle.queryLength <= 0)
+  {
+    if(errorOut != NULL) *errorOut = "CUDA query handle not initialized";
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(handle.device, &context,
+                                           &contextMutex, errorOut))
+  {
+    return false;
+  }
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut) ||
+     !ensure_prealign_cuda_capacity_locked(*context, taskCount, targetLength, 1, errorOut) ||
+     !ensure_prealign_cuda_attempt_endpoint_capacity_locked(
+       *context, taskCount, errorOut))
+  {
+    return false;
+  }
+
+  const size_t targetsBytes = static_cast<size_t>(taskCount) *
+    static_cast<size_t>(targetLength) * sizeof(uint8_t);
+  const size_t endpointBytes = static_cast<size_t>(taskCount) *
+    sizeof(PreAlignCudaAttemptEndpoint);
+  cudaEvent_t h2dStart = NULL;
+  cudaEvent_t h2dStop = NULL;
+  cudaEvent_t d2hStart = NULL;
+  cudaEvent_t d2hStop = NULL;
+  cudaError_t status = cudaEventCreate(&h2dStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&h2dStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(h2dStart != NULL) cudaEventDestroy(h2dStart);
+    if(h2dStop != NULL) cudaEventDestroy(h2dStop);
+    if(d2hStart != NULL) cudaEventDestroy(d2hStart);
+    if(d2hStop != NULL) cudaEventDestroy(d2hStop);
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+
+  status = cudaEventRecord(h2dStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->targetsDevice, encodedTargetsHost,
+                        targetsBytes, cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->attemptEndpointsDevice,
+                        forwardEndpointsHost, endpointBytes,
+                        cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(h2dStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(h2dStop);
+  float h2dElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&h2dElapsedMs, h2dStart, h2dStop);
+  }
+
+  if(status == cudaSuccess) status = cudaEventRecord(context->startEvent);
+  if(status == cudaSuccess)
+  {
+    const int threadsPerBlock = 32;
+    const int bytePaddedQueryLength =
+      (handle.queryLength + 15) / 16 * 16;
+    const int wordPaddedQueryLength =
+      (handle.queryLength + 7) / 8 * 8;
+    const size_t byteSharedBytes = static_cast<size_t>(3) *
+      static_cast<size_t>(bytePaddedQueryLength) * sizeof(uint8_t);
+    const size_t wordSharedBytes = static_cast<size_t>(3) *
+      static_cast<size_t>(wordPaddedQueryLength) * sizeof(int16_t);
+    const size_t sharedBytes = std::max(byteSharedBytes, wordSharedBytes);
+    int defaultLimit = 0;
+    int optinLimit = 0;
+    cudaError_t attrStatus = cudaDeviceGetAttribute(
+      &defaultLimit, cudaDevAttrMaxSharedMemoryPerBlock, handle.device);
+    if(attrStatus == cudaSuccess)
+    {
+      attrStatus = cudaDeviceGetAttribute(
+        &optinLimit, cudaDevAttrMaxSharedMemoryPerBlockOptin, handle.device);
+    }
+    if(attrStatus == cudaSuccess &&
+       sharedBytes > static_cast<size_t>(defaultLimit) &&
+       sharedBytes <= static_cast<size_t>(optinLimit))
+    {
+      attrStatus = cudaFuncSetAttribute(
+        prealign_cuda_exact_attempt_reverse_byte_kernel,
+        cudaFuncAttributeMaxDynamicSharedMemorySize,
+        static_cast<int>(byteSharedBytes));
+      if(attrStatus == cudaSuccess)
+      {
+        attrStatus = cudaFuncSetAttribute(
+          prealign_cuda_exact_attempt_reverse_word_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(wordSharedBytes));
+      }
+    }
+    else if(attrStatus == cudaSuccess &&
+            sharedBytes > static_cast<size_t>(optinLimit))
+    {
+      status = cudaErrorInvalidConfiguration;
+      if(errorOut != NULL)
+      {
+        *errorOut = prealign_cuda_shared_smem_exceeds_optin_error(
+          sharedBytes, optinLimit);
+      }
+    }
+    if(attrStatus != cudaSuccess) status = attrStatus;
+    if(status == cudaSuccess)
+    {
+      prealign_cuda_exact_attempt_reverse_byte_kernel<<<
+        taskCount, threadsPerBlock, byteSharedBytes>>>(
+        reinterpret_cast<const int16_t *>(handle.profileDevice),
+        context->targetsDevice, taskCount, targetLength, handle.segLen,
+        handle.queryLength, context->attemptEndpointsDevice);
+      status = cudaGetLastError();
+      if(status == cudaSuccess)
+      {
+        prealign_cuda_exact_attempt_reverse_word_kernel<<<
+          taskCount, threadsPerBlock, wordSharedBytes>>>(
+          reinterpret_cast<const int16_t *>(handle.profileDevice),
+          context->targetsDevice, taskCount, targetLength, handle.segLen,
+          handle.queryLength, context->attemptEndpointsDevice);
+        status = cudaGetLastError();
+      }
+    }
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(context->stopEvent);
+  if(status == cudaSuccess) status = cudaEventSynchronize(context->stopEvent);
+  float kernelElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&kernelElapsedMs,
+                                  context->startEvent, context->stopEvent);
+  }
+
+  vector<PreAlignCudaAttemptEndpoint> endpoints(
+    static_cast<size_t>(taskCount));
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(endpoints.data(), context->attemptEndpointsDevice,
+                        endpointBytes, cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
+  float d2hElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&d2hElapsedMs, d2hStart, d2hStop);
+  }
+  cudaEventDestroy(h2dStart);
+  cudaEventDestroy(h2dStop);
+  cudaEventDestroy(d2hStart);
+  cudaEventDestroy(d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+  outEndpoints->swap(endpoints);
+  if(batchResult != NULL)
+  {
+    batchResult->usedCuda = true;
+    batchResult->gpuSeconds = static_cast<double>(kernelElapsedMs) / 1000.0;
+    batchResult->h2dSeconds = static_cast<double>(h2dElapsedMs) / 1000.0;
+    batchResult->d2hSeconds = static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  return true;
 }
 
 bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHandle &handle,

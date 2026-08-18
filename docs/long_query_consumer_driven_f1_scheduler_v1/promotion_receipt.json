@@ -1,0 +1,71 @@
+{
+  "schema_version": "long_query_consumer_driven_f1_scheduler_v1_promotion_receipt",
+  "source_base_commit": "4bad9a6ece08e00c10e7e098905f7e51cbfbf4c9",
+  "implementation_commit": "long-query-consumer-driven-f1-scheduler-impl-v1 (HEAD)",
+  "binary_sha256": "8c7e635cee445276c0de47ab8910c78270517fd92f9340ff354be8bfc2a259f8",
+  "decision": "three_length_exactness_pass_development_only",
+  "production_authorized": false,
+  "timing_eligibility": "resource-contaminated-diagnostic-only",
+  "target": {
+    "id": "chr22_slice_10m_12m",
+    "length_bp": 2000000,
+    "sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea"
+  },
+  "runs": [
+    {
+      "query_id": "ENSG00000229613",
+      "symbol": "LINC01501",
+      "length_nt": 4006,
+      "task_rows": 10368,
+      "scoreinfo_groups": 245422,
+      "attempts": 981688,
+      "forward_attempts": 389089,
+      "reverse_requests": 245422,
+      "forward_attempt_fraction": 0.396347,
+      "combined_dp_proxy_fraction": 0.323173,
+      "selected_continuations": 245422,
+      "continuation_failures": 0,
+      "tfosorted_rows": 9032,
+      "lite_sha256": "6f9e95ab6209d2ea053dfdef4872b6fd5616b07a9be8950976786c0a1215c226",
+      "tfosorted_sha256": "a940474a6bbf5a4e27678571206210263792da0d1f4424942554930fd72b6f3b",
+      "wall_seconds": 106.33
+    },
+    {
+      "query_id": "ENSG00000267107",
+      "symbol": "PCAT19",
+      "length_nt": 8181,
+      "task_rows": 10368,
+      "scoreinfo_groups": 214604,
+      "attempts": 858416,
+      "forward_attempts": 369860,
+      "reverse_requests": 214604,
+      "forward_attempt_fraction": 0.430863,
+      "combined_dp_proxy_fraction": 0.340432,
+      "selected_continuations": 214604,
+      "continuation_failures": 0,
+      "tfosorted_rows": 2924,
+      "lite_sha256": "ad63b2887f8c3095e261ad063ffb395d9eac7fb379beaeb7fe35dd6618f9f084",
+      "tfosorted_sha256": "b49e3fa33ec1ae5961032f420cfe1a60d5a5b12f8886828be997f7cd5219a578",
+      "wall_seconds": 237.54
+    },
+    {
+      "query_id": "ENSG00000271913",
+      "symbol": "AL035530.2",
+      "length_nt": 12397,
+      "task_rows": 10368,
+      "scoreinfo_groups": 196292,
+      "attempts": 785168,
+      "forward_attempts": 616658,
+      "reverse_requests": 196292,
+      "forward_attempt_fraction": 0.785384,
+      "combined_dp_proxy_fraction": 0.517692,
+      "selected_continuations": 196292,
+      "continuation_failures": 0,
+      "tfosorted_rows": 4150,
+      "lite_sha256": "7739dbe484344279cdde9beeb009dfff902815c32b4e7acb85b20d81abc17b46",
+      "tfosorted_sha256": "714cd07a86d86eca5c2858bae5d409b569b173aca12b0db44fcda9062ad40500",
+      "wall_seconds": 567.88,
+      "empty_scoreinfo_tasks_accepted": true
+    }
+  ]
+}

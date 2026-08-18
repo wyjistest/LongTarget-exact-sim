@@ -2103,6 +2103,70 @@ struct FasimLongQueryGpuConsumerSpikeResult
 	std::string error;
 };
 
+// Result envelope for the development-only ordered F1 scheduler.  The
+// scheduler owns no production output path; this struct exists to make its
+// round/attempt accounting auditable without overloading the v1 spike schema.
+struct FasimLongQueryGpuConsumerF1Result
+{
+	FasimLongQueryGpuConsumerF1Result() :
+		ok(false),
+		validation_enabled(false),
+		scoreinfo_groups(0),
+		attempts(0),
+		forward_attempts(0),
+		reverse_requests(0),
+		reverse_scored_attempts(0),
+		selected_attempts(0),
+		cpu_continuation_calls(0),
+		cpu_continuation_failures(0),
+		threshold_groups(0),
+		best_fallback_groups(0),
+		last_groups(0),
+		empty_groups(0),
+		forward_seconds(0.0),
+		reverse_seconds(0.0),
+		select_seconds(0.0),
+		traceback_seconds(0.0),
+		convert_seconds(0.0),
+		gpu_kernel_seconds(0.0),
+		h2d_seconds(0.0),
+		d2h_seconds(0.0),
+		total_seconds(0.0),
+		first_mismatch("none"),
+		error("none")
+	{
+	}
+
+	bool ok;
+	bool validation_enabled;
+	uint64_t scoreinfo_groups;
+	uint64_t attempts;
+	uint64_t forward_attempts;
+	uint64_t reverse_requests;
+	uint64_t reverse_scored_attempts;
+	uint64_t selected_attempts;
+	uint64_t cpu_continuation_calls;
+	uint64_t cpu_continuation_failures;
+	uint64_t threshold_groups;
+	uint64_t best_fallback_groups;
+	uint64_t last_groups;
+	uint64_t empty_groups;
+	double forward_seconds;
+	double reverse_seconds;
+	double select_seconds;
+	double traceback_seconds;
+	double convert_seconds;
+	double gpu_kernel_seconds;
+	double h2d_seconds;
+	double d2h_seconds;
+	double total_seconds;
+	std::vector<uint64_t> round_active_groups;
+	std::vector<uint64_t> round_forward_attempts;
+	std::vector<uint64_t> round_reverse_requests;
+	std::string first_mismatch;
+	std::string error;
+};
+
 struct FasimGasal2LongQuerySegment
 {
 	FasimGasal2LongQuerySegment() :
@@ -2877,6 +2941,26 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
 	std::string *errorOut,
 	uint64_t cache_task_id = std::numeric_limits<uint64_t>::max());
+
+// Explicit two-stage entry points used by the development-only F1 scheduler.
+// The forward call performs only the exact forward endpoint pass.  The
+// reverse call consumes the corresponding forward records and performs only
+// the canonical reverse-start pass; both APIs fail closed on count/path
+// mismatches and never fall back to CPU or GASAL2.
+bool fasim_gasal2_streamed_attempt_forward_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut);
+
+bool fasim_gasal2_streamed_attempt_reverse_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2StreamedAttemptScore> &forward_scores,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut);
 
 // Applies the frozen scoreInfo-local control semantics to already materialized
 // GPU score-only rows.  It deliberately performs no second GPU score pass and

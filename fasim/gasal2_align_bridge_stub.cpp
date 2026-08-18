@@ -26,6 +26,11 @@ bool fasim_gasal2_enabled()
 	{
 		return true;
 	}
+	env = std::getenv("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER");
+	if (env != NULL && env[0] != '\0' && env[0] != '0')
+	{
+		return true;
+	}
 	env = std::getenv("FASIM_GASAL2_PHASE7_POST_V5_3_NEW_GPU_ENGINE_REAL_SOURCE_CERTIFICATE_SOURCE");
 	if (env != NULL && env[0] != '\0' && env[0] != '0')
 	{
@@ -69,6 +74,11 @@ bool fasim_gasal2_longtarget_bridge_enabled()
 		return true;
 	}
 	env = std::getenv("FASIM_TOP5_GASAL2_GPU_SCOREINFO");
+	if (env != NULL && env[0] != '\0' && env[0] != '0')
+	{
+		return true;
+	}
+	env = std::getenv("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER");
 	if (env != NULL && env[0] != '\0' && env[0] != '0')
 	{
 		return true;
@@ -962,6 +972,38 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 	{
 		*errorOut = "gasal2_unavailable";
 	}
+	return false;
+}
+
+bool fasim_gasal2_streamed_attempt_forward_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	(void)query;
+	(void)attempts;
+	if (scores != NULL) scores->clear();
+	if (telemetry != NULL) telemetry->error = "gasal2_unavailable";
+	if (errorOut != NULL) *errorOut = "gasal2_unavailable";
+	return false;
+}
+
+bool fasim_gasal2_streamed_attempt_reverse_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2StreamedAttemptScore> &forwardScores,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	(void)query;
+	(void)attempts;
+	(void)forwardScores;
+	if (scores != NULL) scores->clear();
+	if (telemetry != NULL) telemetry->error = "gasal2_unavailable";
+	if (errorOut != NULL) *errorOut = "gasal2_unavailable";
 	return false;
 }
 

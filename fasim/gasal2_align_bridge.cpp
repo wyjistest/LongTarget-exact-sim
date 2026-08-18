@@ -1967,6 +1967,7 @@ bool fasim_gasal2_enabled()
 	return env_enabled("FASIM_ALIGN_GASAL2") ||
 	       env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO") ||
 	       env_enabled("FASIM_TOP5_GASAL2_LONG_QUERY_SEGMENTED_SHADOW") ||
+	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER") ||
 	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_V1") ||
 	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE") ||
 	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW") ||
@@ -1986,6 +1987,7 @@ bool fasim_gasal2_longtarget_bridge_enabled()
 {
 	return env_enabled("FASIM_ALIGN_GASAL2_LONGTARGET_BRIDGE") ||
 	       env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO") ||
+	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER") ||
 	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_SPIKE_V1") ||
 	       env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE") ||
 	       env_enabled("FASIM_GASAL2_SCORE_PREPASS_STATE_MACHINE_CONSUMER_SHADOW") ||
@@ -2765,6 +2767,243 @@ bool fasim_gasal2_score_attempts(
 		scores->push_back(out);
 	}
 	return true;
+}
+
+enum class FasimStreamedAttemptStage
+{
+	Forward,
+	Reverse
+};
+
+static bool fasim_gasal2_streamed_attempt_stage_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	FasimStreamedAttemptStage stage,
+	const std::vector<FasimGasal2StreamedAttemptScore> *forwardScores,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	if (scores != NULL) scores->clear();
+	if (telemetry != NULL)
+	{
+		*telemetry = FasimGasal2StreamedAttemptScoreTelemetry();
+		telemetry->requests = static_cast<uint64_t>(attempts.size());
+		telemetry->exact_forward_only = stage == FasimStreamedAttemptStage::Forward;
+	}
+	if (errorOut != NULL) errorOut->clear();
+	if (query.empty() || attempts.empty() || scores == NULL)
+	{
+		const std::string error = attempts.empty() ? "empty_attempts" : "invalid_input";
+		if (errorOut != NULL) *errorOut = error;
+		if (telemetry != NULL) telemetry->error = error;
+		return false;
+	}
+	if (stage == FasimStreamedAttemptStage::Reverse &&
+		(forwardScores == NULL || forwardScores->size() != attempts.size()))
+	{
+		if (errorOut != NULL) *errorOut = "forward_stage_count_mismatch";
+		if (telemetry != NULL) telemetry->error = "forward_stage_count_mismatch";
+		return false;
+	}
+	if (g_f0_endpoint_cache.requested())
+	{
+		if (errorOut != NULL) *errorOut = "f1_stage_cache_not_allowed";
+		if (telemetry != NULL) telemetry->error = "f1_stage_cache_not_allowed";
+		return false;
+	}
+	if (!prealign_cuda_is_built())
+	{
+		if (errorOut != NULL) *errorOut = "prealign_cuda_not_built";
+		if (telemetry != NULL) telemetry->error = "prealign_cuda_not_built";
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(g_mutex);
+	const std::chrono::steady_clock::time_point totalStart =
+		std::chrono::steady_clock::now();
+	std::string bridgeError;
+	if (!g_streamed_attempt_query_cache.prepare(query, &bridgeError))
+	{
+		const std::string error = bridgeError.empty() ?
+			"query_prepare_failed" : bridgeError;
+		if (errorOut != NULL) *errorOut = error;
+		if (telemetry != NULL)
+		{
+			telemetry->error = error;
+			telemetry->total_seconds = seconds_since(totalStart);
+		}
+		return false;
+	}
+
+	scores->assign(attempts.size(), FasimGasal2StreamedAttemptScore());
+	const int maxBatch = streamed_attempt_batch_size();
+	for (size_t batchBegin = 0; batchBegin < attempts.size();
+		 batchBegin += static_cast<size_t>(maxBatch))
+	{
+		const size_t batchEnd = std::min(
+			attempts.size(), batchBegin + static_cast<size_t>(maxBatch));
+		const int taskCount = static_cast<int>(batchEnd - batchBegin);
+		size_t paddedTargetLength = 0;
+		for (size_t i = batchBegin; i < batchEnd; ++i)
+		{
+			const size_t length = attempts[i].target_size();
+			if (length == 0 || attempts[i].target_data() == NULL ||
+				length > static_cast<size_t>(std::numeric_limits<int>::max()))
+			{
+				if (errorOut != NULL) *errorOut = "invalid_target_subview";
+				if (telemetry != NULL) telemetry->error = "invalid_target_subview";
+				return false;
+			}
+			paddedTargetLength = std::max(paddedTargetLength, length);
+		}
+
+		std::vector<uint8_t> encoded(
+			static_cast<size_t>(taskCount) * paddedTargetLength,
+			static_cast<uint8_t>(4));
+		for (size_t i = batchBegin; i < batchEnd; ++i)
+		{
+			const FasimGasal2Attempt &attempt = attempts[i];
+			uint8_t *destination = encoded.data() +
+				((i - batchBegin) * paddedTargetLength);
+			for (size_t base = 0; base < attempt.target_size(); ++base)
+			{
+				destination[base] = prealign_shared_encode_base(
+					static_cast<unsigned char>(attempt.target_data()[base]));
+			}
+		}
+
+		std::vector<PreAlignCudaAttemptEndpoint> prior;
+		if (stage == FasimStreamedAttemptStage::Reverse)
+		{
+			prior.resize(static_cast<size_t>(taskCount));
+			for (size_t i = batchBegin; i < batchEnd; ++i)
+			{
+				const FasimGasal2StreamedAttemptScore &source =
+					(*forwardScores)[i];
+				PreAlignCudaAttemptEndpoint &destination = prior[i - batchBegin];
+				destination.forwardScore = source.forward_score;
+				destination.reverseScore = 0;
+				destination.canonicalScore = source.forward_score;
+				destination.targetEnd = source.ref_end_local;
+				destination.queryEnd = source.query_end;
+				destination.numericPath = source.numeric_path;
+				if (destination.numericPath != PREALIGN_CUDA_NUMERIC_PATH_BYTE8 &&
+					destination.numericPath != PREALIGN_CUDA_NUMERIC_PATH_WORD16)
+				{
+					if (errorOut != NULL) *errorOut = "forward_stage_numeric_path_invalid";
+					if (telemetry != NULL) telemetry->error = "forward_stage_numeric_path_invalid";
+					return false;
+				}
+			}
+		}
+
+		std::vector<PreAlignCudaAttemptEndpoint> endpointRows;
+		PreAlignCudaBatchResult batchResult;
+		const bool ok = stage == FasimStreamedAttemptStage::Forward ?
+			prealign_cuda_find_max_forward_endpoints_batch(
+				g_streamed_attempt_query_cache.handle, encoded.data(), taskCount,
+				static_cast<int>(paddedTargetLength), &endpointRows,
+				&batchResult, &bridgeError) :
+			prealign_cuda_find_reverse_endpoints_batch(
+				g_streamed_attempt_query_cache.handle, encoded.data(), prior.data(),
+				taskCount, static_cast<int>(paddedTargetLength), &endpointRows,
+				&batchResult, &bridgeError);
+		if (!ok || endpointRows.size() != static_cast<size_t>(taskCount))
+		{
+			const std::string error = bridgeError.empty() ?
+				(ok ? "stage_endpoint_count_mismatch" : "stage_endpoint_failed") :
+				bridgeError;
+			if (errorOut != NULL) *errorOut = error;
+			if (telemetry != NULL)
+			{
+				telemetry->error = error;
+				telemetry->total_seconds = seconds_since(totalStart);
+			}
+			return false;
+		}
+		if (telemetry != NULL)
+		{
+			++telemetry->batches;
+			telemetry->gpu_scored_requests += static_cast<uint64_t>(taskCount);
+			telemetry->gpu_seconds += batchResult.gpuSeconds;
+			telemetry->h2d_seconds += batchResult.h2dSeconds;
+			telemetry->d2h_seconds += batchResult.d2hSeconds;
+		}
+		for (size_t i = batchBegin; i < batchEnd; ++i)
+		{
+			const PreAlignCudaAttemptEndpoint &endpoint =
+				endpointRows[i - batchBegin];
+			const bool validPath =
+				endpoint.numericPath == PREALIGN_CUDA_NUMERIC_PATH_BYTE8 ||
+				endpoint.numericPath == PREALIGN_CUDA_NUMERIC_PATH_WORD16;
+			const bool noAlignment = endpoint.forwardScore == 0 &&
+				endpoint.targetEnd == -1 && endpoint.queryEnd == 0;
+			if (!validPath || (!noAlignment &&
+				(endpoint.targetEnd < 0 || endpoint.queryEnd < 0 ||
+				 static_cast<size_t>(endpoint.targetEnd) >= attempts[i].target_size() ||
+				 static_cast<size_t>(endpoint.queryEnd) >= query.size())))
+			{
+				if (errorOut != NULL) *errorOut = "invalid_stage_endpoint";
+				if (telemetry != NULL) telemetry->error = "invalid_stage_endpoint";
+				return false;
+			}
+			if (stage == FasimStreamedAttemptStage::Reverse)
+			{
+				const PreAlignCudaAttemptEndpoint &expected = prior[i - batchBegin];
+				if (endpoint.forwardScore != expected.forwardScore ||
+					endpoint.targetEnd != expected.targetEnd ||
+					endpoint.queryEnd != expected.queryEnd ||
+					endpoint.numericPath != expected.numericPath ||
+					endpoint.reverseScore < 0 ||
+					endpoint.canonicalScore != std::min(
+						endpoint.forwardScore, endpoint.reverseScore))
+				{
+					if (errorOut != NULL) *errorOut = "reverse_stage_forward_record_mismatch";
+					if (telemetry != NULL) telemetry->error = "reverse_stage_forward_record_mismatch";
+					return false;
+				}
+			}
+			FasimGasal2StreamedAttemptScore &out = (*scores)[i];
+			out.score = endpoint.canonicalScore;
+			out.forward_score = endpoint.forwardScore;
+			out.reverse_score = endpoint.reverseScore;
+			out.query_end = endpoint.queryEnd;
+			out.ref_end_local = endpoint.targetEnd;
+			out.ref_end_global = endpoint.targetEnd >= 0 ?
+				attempts[i].start + endpoint.targetEnd : -1;
+			out.numeric_path = endpoint.numericPath;
+			out.padded_target_length = static_cast<int>(paddedTargetLength);
+		}
+	}
+	if (telemetry != NULL)
+		telemetry->total_seconds = seconds_since(totalStart);
+	return true;
+}
+
+bool fasim_gasal2_streamed_attempt_forward_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	return fasim_gasal2_streamed_attempt_stage_v1(
+		query, attempts, FasimStreamedAttemptStage::Forward, NULL,
+		scores, telemetry, errorOut);
+}
+
+bool fasim_gasal2_streamed_attempt_reverse_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2StreamedAttemptScore> &forwardScores,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	return fasim_gasal2_streamed_attempt_stage_v1(
+		query, attempts, FasimStreamedAttemptStage::Reverse, &forwardScores,
+		scores, telemetry, errorOut);
 }
 
 bool fasim_gasal2_streamed_attempt_score_v1(
