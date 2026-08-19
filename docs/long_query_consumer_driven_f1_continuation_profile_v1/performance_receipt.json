@@ -1,0 +1,105 @@
+{
+  "schema_version": "long_query_consumer_driven_f1_continuation_profile_v1",
+  "status": "prepared_profile_reuse_engineering_go",
+  "source": {
+    "branch": "long-query-consumer-driven-f1-continuation-profile-v1",
+    "commit": "63c56da303ae2b50f66b772c3de7387b5b8df26d",
+    "tracked_source_diff_empty_at_build": true,
+    "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_continuation_63c56da",
+    "binary_sha256": "fd41e436cdea90d6b6cbd41e5db47b9410ceae53572e5adb25c272b29406799e",
+    "runner_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/run_f1_continuation_profile_arm.sh",
+    "runner_sha256": "250f2fe2b7912681539abb0b0f490be73f4c62b489e928b4031418cea4c68b60"
+  },
+  "workload": {
+    "query": "LINC01501",
+    "query_length_nt": 4006,
+    "target": "shard_0009",
+    "target_length_bp": 4942620,
+    "output_contract": "complete TFOsorted",
+    "scoring_contract": "5/4/16/4 + WORD16"
+  },
+  "environment": {
+    "benchmark_logical_cpu": 19,
+    "gpu_visible_index": 1,
+    "co_resident_openmp_queue": true,
+    "physical_core_overlap_with_openmp_queue": false,
+    "timing_class": "affinity_isolated_engineering"
+  },
+  "paired_runs": [
+    {
+      "cycle": 1,
+      "order": "B-R",
+      "baseline_seconds": 150.08,
+      "prepared_reuse_seconds": 115.46,
+      "baseline_over_reuse": 1.29984
+    },
+    {
+      "cycle": 2,
+      "order": "R-B",
+      "baseline_seconds": 150.16,
+      "prepared_reuse_seconds": 115.30,
+      "baseline_over_reuse": 1.30234
+    },
+    {
+      "cycle": 3,
+      "order": "B-R",
+      "baseline_seconds": 150.01,
+      "prepared_reuse_seconds": 115.13,
+      "baseline_over_reuse": 1.30296
+    }
+  ],
+  "summary": {
+    "baseline_median_seconds": 150.08,
+    "prepared_reuse_median_seconds": 115.30,
+    "ratio_of_medians": 1.30165,
+    "wall_reduction_fraction": 0.231743,
+    "contextual_frozen_cpu_median_seconds": 364.75,
+    "contextual_cpu_over_reuse": 3.16349
+  },
+  "exactness": {
+    "timed_outputs_exact": "6/6",
+    "diagnostic_outputs_exact": "2/2",
+    "tfosorted_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "task_rows": 48432,
+    "scoreinfo_groups": 1086495,
+    "attempts": 4345980,
+    "forward_attempts": 1735752,
+    "reverse_requests": 1086495,
+    "selected_continuations": 1086495,
+    "continuation_failures": 0,
+    "fallbacks": 0,
+    "cpu_all_attempt_oracle": 0
+  },
+  "prepared_reuse_profile_seconds": {
+    "wall": 115.77,
+    "whole_query_scoreinfo": 25.6275,
+    "f1_forward": 9.02226,
+    "f1_reverse": 1.82893,
+    "selected_continuation": 19.9789,
+    "continuation_ssw": 19.2566,
+    "reverse_start": 15.7645,
+    "banded_sw": 3.33259,
+    "triplex_conversion": 7.32714,
+    "serialization_io": 0.11962818,
+    "cluster_rank_sort": 0.202730834,
+    "known_stage_residual_approx": 51.50
+  },
+  "artifacts": {
+    "root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_continuation_profile_v1",
+    "metadata_composite_sha256": "4e8b06d2ea346dcbf6ae2d72efaba97adeab37bf8af846802360096fb14d4ce8",
+    "profile_f1_tsv_sha256": "e572165fce5075643f0670de126bc04e3a8423bee1aa9e79506fa8c472b7f0c3"
+  },
+  "decision": {
+    "prepared_profile_reuse": "engineering_go",
+    "next_focus": "profile F1 host attempt/group construction and round bookkeeping before parallel continuation",
+    "consumer_cuda_authorized": false,
+    "production_authorized": false,
+    "bioinformatics_v2_state": "unchanged"
+  },
+  "limitations": [
+    "One 4,006 nt query and one 4,942,620 bp promoter shard were measured.",
+    "The production OpenMP queue remained active on non-overlapping physical cores.",
+    "The CPU speedup is contextual to the separately frozen F1 gate, not freshly paired in this checkpoint.",
+    "No full promoter concat or continuous query-length envelope was tested."
+  ]
+}
