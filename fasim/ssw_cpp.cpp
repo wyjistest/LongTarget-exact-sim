@@ -6,6 +6,7 @@
 #include "ssw.h"
 #include "ssw_oracle_trace.h"
 #include<algorithm>
+#include <chrono>
 #include <iostream>
 #if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
 	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
@@ -57,6 +58,23 @@ namespace {
 
 	static thread_local std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >
 		g_ssw_profile_cache;
+	static thread_local StripedSmithWaterman::ForwardContinuationProfileStats
+		g_forward_continuation_profile;
+	static thread_local bool g_forward_continuation_profile_enabled = false;
+
+	uint64_t ForwardContinuationProfileNowNanoseconds() {
+		return static_cast<uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count());
+	}
+
+	void ForwardContinuationProfileAddElapsed(uint64_t* destination,
+		uint64_t startNanoseconds) {
+		if (g_forward_continuation_profile_enabled && destination != NULL) {
+			*destination += ForwardContinuationProfileNowNanoseconds() -
+				startNanoseconds;
+		}
+	}
 
 	static const int8_t kBaseTranslation[128] = {
 		4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
@@ -358,22 +376,36 @@ namespace {
 		const int scoreMatrixSize,
 		const int8_t scoreSize,
 		const uint8_t gapOpeningPenalty,
-		const uint8_t gapExtendingPenalty) {
+		const uint8_t gapExtendingPenalty,
+		bool* cacheHit) {
 		const std::string key = SswProfileCacheKey(translatedQuery, queryLen,
 			scoreMatrix, scoreMatrixSize, gapOpeningPenalty, gapExtendingPenalty,
 			scoreSize);
 		std::map<std::string, std::unique_ptr<SswProfileCacheEntry> >::iterator it =
 			g_ssw_profile_cache.find(key);
 		if (it != g_ssw_profile_cache.end()) {
+			if (cacheHit != NULL) *cacheHit = true;
+			if (g_forward_continuation_profile_enabled) {
+				++g_forward_continuation_profile.profile_cache_hits;
+			}
 			return it->second->profile;
+		}
+		if (cacheHit != NULL) *cacheHit = false;
+		if (g_forward_continuation_profile_enabled) {
+			++g_forward_continuation_profile.profile_cache_misses;
 		}
 
 		std::unique_ptr<SswProfileCacheEntry> entry(new SswProfileCacheEntry());
 		entry->query.assign(translatedQuery, translatedQuery + queryLen);
 		entry->matrix.assign(scoreMatrix,
 			scoreMatrix + scoreMatrixSize * scoreMatrixSize);
+		const uint64_t buildStart = g_forward_continuation_profile_enabled ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
 		entry->profile = ssw_init(entry->query.data(), queryLen,
 			entry->matrix.data(), scoreMatrixSize, scoreSize);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.profile_build_nanoseconds,
+			buildStart);
 		s_profile* profile = entry->profile;
 		g_ssw_profile_cache.insert(std::make_pair(key, std::move(entry)));
 		return profile;
@@ -404,6 +436,18 @@ namespace {
 
 
 namespace StripedSmithWaterman {
+
+	ForwardContinuationProfileStats ForwardContinuationProfileSnapshot() {
+		return g_forward_continuation_profile;
+	}
+
+	void ForwardContinuationProfileSetEnabled(bool enabled) {
+		g_forward_continuation_profile_enabled = enabled;
+	}
+
+	bool ForwardContinuationProfileEnabled() {
+		return g_forward_continuation_profile_enabled;
+	}
 
 	Aligner::Aligner(void)
 		: score_matrix_(NULL)
@@ -846,7 +890,7 @@ namespace StripedSmithWaterman {
 		s_profile* profile = profileCacheEnabled ?
 			SswProfileCacheGetOrBuild(translated_query, query_len, score_matrix_,
 				score_matrix_size_, score_size, gap_opening_penalty_,
-				gap_extending_penalty_) :
+				gap_extending_penalty_, NULL) :
 			ssw_init(translated_query, query_len, score_matrix_,
 				score_matrix_size_, score_size);
 
@@ -919,14 +963,68 @@ namespace StripedSmithWaterman {
 
 #if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
 	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
-	bool Aligner::AlignFromForward(const char* query, const char* ref,
-		const int& ref_len, const Filter& filter,
-		const ForwardEndpoint& endpoint, Alignment* alignment,
-		const int32_t maskLen) const
+	struct ForwardContinuationQuery::Impl {
+		Impl() : owner(NULL), query_len(0), profile(NULL),
+			gap_opening_penalty(0), gap_extending_penalty(0) {}
+		~Impl() {
+			if (profile != NULL) init_destroy(profile);
+		}
+
+		const Aligner* owner;
+		int query_len;
+		std::vector<int8_t> query;
+		std::vector<int8_t> matrix;
+		s_profile* profile;
+		uint8_t gap_opening_penalty;
+		uint8_t gap_extending_penalty;
+	};
+
+	ForwardContinuationQuery::ForwardContinuationQuery() : impl_(NULL) {}
+
+	ForwardContinuationQuery::~ForwardContinuationQuery() {
+		delete impl_;
+	}
+
+	bool ForwardContinuationQuery::ready() const {
+		return impl_ != NULL && impl_->profile != NULL;
+	}
+
+	bool Aligner::PrepareForwardContinuationQuery(
+		const char* query, ForwardContinuationQuery* prepared) const
 	{
-		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
-		if (!translation_matrix_ || query == NULL || ref == NULL ||
-			alignment == NULL || ref_len <= 0 ||
+		if (translation_matrix_ == NULL || score_matrix_ == NULL ||
+			query == NULL || prepared == NULL) {
+			return false;
+		}
+		delete prepared->impl_;
+		prepared->impl_ = NULL;
+		const int query_len = static_cast<int>(strlen(query));
+		if (query_len <= 0) return false;
+
+		std::unique_ptr<ForwardContinuationQuery::Impl> impl(
+			new ForwardContinuationQuery::Impl());
+		impl->owner = this;
+		impl->query_len = query_len;
+		impl->query.resize(static_cast<size_t>(query_len));
+		TranslateBase(query, query_len, impl->query.data());
+		impl->matrix.assign(score_matrix_,
+			score_matrix_ + score_matrix_size_ * score_matrix_size_);
+		impl->gap_opening_penalty = gap_opening_penalty_;
+		impl->gap_extending_penalty = gap_extending_penalty_;
+		impl->profile = ssw_init(impl->query.data(), query_len,
+			impl->matrix.data(), score_matrix_size_, 2);
+		if (impl->profile == NULL) return false;
+		prepared->impl_ = impl.release();
+		return true;
+	}
+
+	bool Aligner::AlignFromForwardProfile(const int query_len,
+		const ::_profile* profile, const char* ref, const int& ref_len,
+		const Filter& filter, const ForwardEndpoint& endpoint,
+		Alignment* alignment, const int32_t maskLen) const
+	{
+		if (translation_matrix_ == NULL || profile == NULL || ref == NULL ||
+			alignment == NULL || query_len <= 0 || ref_len <= 0 ||
 			endpoint.score1 < 0 ||
 			endpoint.score1 > std::numeric_limits<uint16_t>::max() ||
 			endpoint.score2 < 0 ||
@@ -936,24 +1034,23 @@ namespace StripedSmithWaterman {
 			return false;
 		}
 
-		const int query_len = strlen(query);
-		if (query_len == 0) return false;
-		int8_t* translated_query = new int8_t[query_len];
-		TranslateBase(query, query_len, translated_query);
+		const bool collectProfile = g_forward_continuation_profile_enabled;
+		if (collectProfile) {
+			g_forward_continuation_profile.ref_bytes +=
+				static_cast<uint64_t>(ref_len);
+		}
+		const uint64_t refAllocStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
 		int8_t* translated_ref = new int8_t[ref_len];
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.ref_alloc_nanoseconds,
+			refAllocStart);
+		const uint64_t refTranslateStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
 		TranslateBase(ref, ref_len, translated_ref);
-
-		const int8_t score_size = 2;
-		const bool profileContextEnabled =
-			SswProfileContextEnabledRuntime() && SswProfileCacheEnabledRuntime();
-		const bool profileCacheEnabled =
-			SswProfileCacheEnabledRuntime() || profileContextEnabled;
-		s_profile* profile = profileCacheEnabled ?
-			SswProfileCacheGetOrBuild(translated_query, query_len, score_matrix_,
-				score_matrix_size_, score_size, gap_opening_penalty_,
-				gap_extending_penalty_) :
-			ssw_init(translated_query, query_len, score_matrix_,
-				score_matrix_size_, score_size);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.ref_translate_nanoseconds,
+			refTranslateStart);
 
 		uint8_t flag = 0;
 		SetFlag(filter, &flag);
@@ -964,21 +1061,127 @@ namespace StripedSmithWaterman {
 		raw_endpoint.read_end1 = endpoint.query_end1;
 		raw_endpoint.ref_end2 = endpoint.ref_end2;
 		raw_endpoint.numeric_path = static_cast<uint8_t>(endpoint.numeric_path);
+		const uint64_t sswStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
 		s_align* raw_alignment = ssw_align_from_forward(profile, translated_ref,
 			ref_len, static_cast<int>(gap_opening_penalty_),
 			static_cast<int>(gap_extending_penalty_), flag,
 			filter.score_filter, filter.distance_filter, maskLen, &raw_endpoint);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.ssw_nanoseconds, sswStart);
 
+		const uint64_t convertStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
 		alignment->Clear();
 		const bool success = raw_alignment != NULL;
-		if (success) {
-			ConvertAlignment(*raw_alignment, query_len, alignment);
-			align_destroy(raw_alignment);
-		}
-		delete[] translated_query;
+		if (success) ConvertAlignment(*raw_alignment, query_len, alignment);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.alignment_convert_nanoseconds,
+			convertStart);
+		const uint64_t cleanupStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
+		if (raw_alignment != NULL) align_destroy(raw_alignment);
 		delete[] translated_ref;
-		if (!profileCacheEnabled) init_destroy(profile);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.cleanup_nanoseconds,
+			cleanupStart);
 		return success;
+	}
+
+	bool Aligner::AlignFromForward(const char* query, const char* ref,
+		const int& ref_len, const Filter& filter,
+		const ForwardEndpoint& endpoint, Alignment* alignment,
+		const int32_t maskLen) const
+	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
+		const bool collectProfile = g_forward_continuation_profile_enabled;
+		if (collectProfile) ++g_forward_continuation_profile.calls;
+		if (translation_matrix_ == NULL || query == NULL) return false;
+
+		const uint64_t strlenStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
+		const int query_len = static_cast<int>(strlen(query));
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.query_strlen_nanoseconds,
+			strlenStart);
+		if (query_len <= 0) return false;
+		if (collectProfile) {
+			g_forward_continuation_profile.query_bytes +=
+				static_cast<uint64_t>(query_len);
+		}
+		const uint64_t queryAllocStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
+		int8_t* translated_query = new int8_t[query_len];
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.query_alloc_nanoseconds,
+			queryAllocStart);
+		const uint64_t queryTranslateStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
+		TranslateBase(query, query_len, translated_query);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.query_translate_nanoseconds,
+			queryTranslateStart);
+
+		const bool profileCacheEnabled = SswProfileCacheEnabledRuntime();
+		s_profile* profile = NULL;
+		if (profileCacheEnabled) {
+			if (collectProfile) {
+				++g_forward_continuation_profile.profile_cache_calls;
+			}
+			const uint64_t lookupStart = collectProfile ?
+				ForwardContinuationProfileNowNanoseconds() : 0;
+			bool cacheHit = false;
+			profile = SswProfileCacheGetOrBuild(translated_query, query_len,
+				score_matrix_, score_matrix_size_, 2, gap_opening_penalty_,
+				gap_extending_penalty_, &cacheHit);
+			ForwardContinuationProfileAddElapsed(
+				&g_forward_continuation_profile.profile_lookup_nanoseconds,
+				lookupStart);
+		}
+		else {
+			const uint64_t buildStart = collectProfile ?
+				ForwardContinuationProfileNowNanoseconds() : 0;
+			profile = ssw_init(translated_query, query_len, score_matrix_,
+				score_matrix_size_, 2);
+			ForwardContinuationProfileAddElapsed(
+				&g_forward_continuation_profile.profile_build_nanoseconds,
+				buildStart);
+		}
+
+		const bool success = AlignFromForwardProfile(query_len, profile, ref,
+			ref_len, filter, endpoint, alignment, maskLen);
+		const uint64_t cleanupStart = collectProfile ?
+			ForwardContinuationProfileNowNanoseconds() : 0;
+		delete[] translated_query;
+		if (!profileCacheEnabled && profile != NULL) init_destroy(profile);
+		ForwardContinuationProfileAddElapsed(
+			&g_forward_continuation_profile.cleanup_nanoseconds,
+			cleanupStart);
+		return success;
+	}
+
+	bool Aligner::AlignFromForward(const ForwardContinuationQuery& prepared,
+		const char* ref, const int& ref_len, const Filter& filter,
+		const ForwardEndpoint& endpoint, Alignment* alignment,
+		const int32_t maskLen) const
+	{
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
+		if (g_forward_continuation_profile_enabled) {
+			++g_forward_continuation_profile.calls;
+		}
+		if (score_matrix_ == NULL || translation_matrix_ == NULL ||
+			!prepared.ready() || prepared.impl_->owner != this ||
+			prepared.impl_->gap_opening_penalty != gap_opening_penalty_ ||
+			prepared.impl_->gap_extending_penalty != gap_extending_penalty_ ||
+			prepared.impl_->matrix.size() !=
+				static_cast<size_t>(score_matrix_size_ * score_matrix_size_) ||
+			!std::equal(prepared.impl_->matrix.begin(), prepared.impl_->matrix.end(),
+				score_matrix_)) {
+			return false;
+		}
+		return AlignFromForwardProfile(prepared.impl_->query_len,
+			prepared.impl_->profile, ref, ref_len, filter, endpoint, alignment,
+			maskLen);
 	}
 #endif
 

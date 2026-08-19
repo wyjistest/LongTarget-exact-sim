@@ -9,7 +9,42 @@
 #include <string>
 #include <vector>
 
+struct _profile;
+
 namespace StripedSmithWaterman {
+
+	struct ForwardContinuationProfileStats {
+		ForwardContinuationProfileStats()
+			: calls(0), query_bytes(0), ref_bytes(0),
+			  query_strlen_nanoseconds(0), query_alloc_nanoseconds(0),
+			  query_translate_nanoseconds(0), ref_alloc_nanoseconds(0),
+			  ref_translate_nanoseconds(0), profile_lookup_nanoseconds(0),
+			  profile_build_nanoseconds(0), ssw_nanoseconds(0),
+			  alignment_convert_nanoseconds(0), cleanup_nanoseconds(0),
+			  profile_cache_calls(0), profile_cache_hits(0),
+			  profile_cache_misses(0) {}
+
+		uint64_t calls;
+		uint64_t query_bytes;
+		uint64_t ref_bytes;
+		uint64_t query_strlen_nanoseconds;
+		uint64_t query_alloc_nanoseconds;
+		uint64_t query_translate_nanoseconds;
+		uint64_t ref_alloc_nanoseconds;
+		uint64_t ref_translate_nanoseconds;
+		uint64_t profile_lookup_nanoseconds;
+		uint64_t profile_build_nanoseconds;
+		uint64_t ssw_nanoseconds;
+		uint64_t alignment_convert_nanoseconds;
+		uint64_t cleanup_nanoseconds;
+		uint64_t profile_cache_calls;
+		uint64_t profile_cache_hits;
+		uint64_t profile_cache_misses;
+	};
+
+	ForwardContinuationProfileStats ForwardContinuationProfileSnapshot();
+	void ForwardContinuationProfileSetEnabled(bool enabled);
+	bool ForwardContinuationProfileEnabled();
 
 	struct Alignment {
 		uint16_t sw_score;           // The best alignment score
@@ -47,6 +82,22 @@ namespace StripedSmithWaterman {
 
 #if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
 	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+	class Aligner;
+
+	class ForwardContinuationQuery {
+	public:
+		ForwardContinuationQuery();
+		~ForwardContinuationQuery();
+		bool ready() const;
+
+	private:
+		struct Impl;
+		Impl* impl_;
+		friend class Aligner;
+		ForwardContinuationQuery(const ForwardContinuationQuery&);
+		ForwardContinuationQuery& operator=(const ForwardContinuationQuery&);
+	};
+
 	struct ForwardEndpoint {
 		ForwardEndpoint()
 			: score1(0), score2(0), ref_end1(-1), query_end1(0),
@@ -179,9 +230,15 @@ namespace StripedSmithWaterman {
 			const Filter& filter, Alignment* alignment, const int32_t maskLen) const;
 #if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
 	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
-		bool AlignFromForward(const char* query, const char* ref, const int& ref_len,
-			const Filter& filter, const ForwardEndpoint& endpoint,
-			Alignment* alignment, const int32_t maskLen) const;
+			bool AlignFromForward(const char* query, const char* ref, const int& ref_len,
+				const Filter& filter, const ForwardEndpoint& endpoint,
+				Alignment* alignment, const int32_t maskLen) const;
+			bool PrepareForwardContinuationQuery(
+				const char* query, ForwardContinuationQuery* prepared) const;
+			bool AlignFromForward(const ForwardContinuationQuery& prepared,
+				const char* ref, const int& ref_len, const Filter& filter,
+				const ForwardEndpoint& endpoint, Alignment* alignment,
+				const int32_t maskLen) const;
 #endif
 		// @function use this function to get all sub-optimal alignments whose 
 		// score is larger than threshold. Highly similar with Align, but just gather
@@ -239,8 +296,15 @@ namespace StripedSmithWaterman {
 		int8_t* translated_reference_;
 		int32_t reference_length_;
 
-		int TranslateBase(const char* bases, const int& length, int8_t* translated) const;
-		void SetAllDefault(void);
+			int TranslateBase(const char* bases, const int& length, int8_t* translated) const;
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+			bool AlignFromForwardProfile(const int query_len,
+				const ::_profile* profile, const char* ref, const int& ref_len,
+				const Filter& filter, const ForwardEndpoint& endpoint,
+				Alignment* alignment, const int32_t maskLen) const;
+#endif
+			void SetAllDefault(void);
 		void BuildDefaultMatrix(void);
 		void ClearMatrices(void);
 

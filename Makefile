@@ -810,6 +810,9 @@ FASIM_TRANSFERSTRING_TABLE_TEST_SOURCES := tests/test_fasim_transferstring_table
 FASIM_SSW_PROFILE_CACHE_TEST_TARGET ?= tests/test_fasim_ssw_profile_cache
 FASIM_SSW_PROFILE_CACHE_TEST_SOURCES := tests/test_fasim_ssw_profile_cache.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
+FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET ?= tests/test_fasim_forward_continuation_query
+FASIM_FORWARD_CONTINUATION_QUERY_TEST_SOURCES := tests/test_fasim_forward_continuation_query.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
+
 SSW_AVX2_DIRECT_TEST_TARGET ?= tests/test_ssw_avx2_direct
 SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
@@ -921,6 +924,12 @@ build-fasim-transferstring-table-test: $(FASIM_TRANSFERSTRING_TABLE_TEST_TARGET)
 
 build-fasim-ssw-profile-cache-test: $(FASIM_SSW_PROFILE_CACHE_TEST_TARGET)
 
+.PHONY: build-fasim-forward-continuation-query-test check-fasim-forward-continuation-query
+build-fasim-forward-continuation-query-test: $(FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET)
+
+check-fasim-forward-continuation-query: $(FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET)
+	./$(FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET)
+
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
@@ -991,6 +1000,9 @@ $(FASIM_TRANSFERSTRING_TABLE_TEST_TARGET): $(FASIM_TRANSFERSTRING_TABLE_TEST_SOU
 
 $(FASIM_SSW_PROFILE_CACHE_TEST_TARGET): $(FASIM_SSW_PROFILE_CACHE_TEST_SOURCES) fasim/ssw_cpp.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SSW_PROFILE_CACHE_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET): $(FASIM_FORWARD_CONTINUATION_QUERY_TEST_SOURCES) fasim/ssw_cpp.h fasim/ssw.h
+	$(CXX) $(CPPFLAGS) -DFASIM_WITH_SSW_FORWARD_CONTINUATION $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_FORWARD_CONTINUATION_QUERY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(SSW_AVX2_DIRECT_TEST_TARGET): $(SSW_AVX2_DIRECT_TEST_SOURCES) fasim/ssw.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) -mavx2 $(SSW_AVX2_DIRECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@

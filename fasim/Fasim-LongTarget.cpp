@@ -11611,6 +11611,20 @@ int main(int argc, char* const* argv)
 							   "cpu_continuation_failures\tthreshold_groups\tbest_fallback_groups\t"
 							   "last_groups\tempty_groups\tforward_seconds\treverse_seconds\t"
 							   "select_seconds\ttraceback_seconds\tconvert_seconds\t"
+							   "continuation_profile_active\tcontinuation_profile_reuse_requested\t"
+							   "continuation_profile_reuse_active\tcontinuation_profile_prepare_seconds\t"
+							   "continuation_profile_calls\t"
+							   "continuation_query_bytes\tcontinuation_ref_bytes\t"
+							   "continuation_profile_cache_calls\tcontinuation_profile_cache_hits\t"
+							   "continuation_profile_cache_misses\tcontinuation_reverse_calls\t"
+							   "continuation_banded_sw_calls\tcontinuation_substring_seconds\t"
+							   "continuation_query_strlen_seconds\tcontinuation_query_alloc_seconds\t"
+							   "continuation_query_translate_seconds\tcontinuation_ref_alloc_seconds\t"
+							   "continuation_ref_translate_seconds\tcontinuation_profile_lookup_seconds\t"
+							   "continuation_profile_build_seconds\tcontinuation_ssw_seconds\t"
+							   "continuation_reverse_start_seconds\tcontinuation_banded_sw_seconds\t"
+							   "continuation_cigar_seconds\tcontinuation_alignment_convert_seconds\t"
+							   "continuation_cleanup_seconds\t"
 							   "gpu_kernel_seconds\th2d_seconds\td2h_seconds\ttotal_seconds\t"
 							   "round_active_groups\tround_forward_attempts\tround_reverse_requests\t"
 							   "error\n";
@@ -14698,7 +14712,34 @@ int main(int argc, char* const* argv)
 				<< result.last_groups << '\t' << result.empty_groups << '\t'
 				<< result.forward_seconds << '\t' << result.reverse_seconds << '\t'
 				<< result.select_seconds << '\t' << result.traceback_seconds << '\t'
-				<< result.convert_seconds << '\t' << result.gpu_kernel_seconds << '\t'
+				<< result.convert_seconds << '\t'
+				<< (result.continuation_profile_active ? 1 : 0) << '\t'
+				<< (result.continuation_profile_reuse_requested ? 1 : 0) << '\t'
+				<< (result.continuation_profile_reuse_active ? 1 : 0) << '\t'
+				<< result.continuation_profile_prepare_seconds << '\t'
+				<< result.continuation_profile_calls << '\t'
+				<< result.continuation_query_bytes << '\t'
+				<< result.continuation_ref_bytes << '\t'
+				<< result.continuation_profile_cache_calls << '\t'
+				<< result.continuation_profile_cache_hits << '\t'
+				<< result.continuation_profile_cache_misses << '\t'
+				<< result.continuation_reverse_calls << '\t'
+				<< result.continuation_banded_sw_calls << '\t'
+				<< result.continuation_substring_seconds << '\t'
+				<< result.continuation_query_strlen_seconds << '\t'
+				<< result.continuation_query_alloc_seconds << '\t'
+				<< result.continuation_query_translate_seconds << '\t'
+				<< result.continuation_ref_alloc_seconds << '\t'
+				<< result.continuation_ref_translate_seconds << '\t'
+				<< result.continuation_profile_lookup_seconds << '\t'
+				<< result.continuation_profile_build_seconds << '\t'
+				<< result.continuation_ssw_seconds << '\t'
+				<< result.continuation_reverse_start_seconds << '\t'
+				<< result.continuation_banded_sw_seconds << '\t'
+				<< result.continuation_cigar_seconds << '\t'
+				<< result.continuation_alignment_convert_seconds << '\t'
+				<< result.continuation_cleanup_seconds << '\t'
+				<< result.gpu_kernel_seconds << '\t'
 				<< result.h2d_seconds << '\t' << result.d2h_seconds << '\t'
 				<< result.total_seconds << '\t'
 				<< join_counts(result.round_active_groups) << '\t'

@@ -379,6 +379,60 @@ inline bool fasim_long_query_gpu_consumer_f1_scheduler_runtime()
 	return enabled;
 }
 
+inline bool fasim_long_query_gpu_consumer_f1_continuation_profile_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_F1_CONTINUATION_PROFILE");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_long_query_gpu_consumer_f1_profile_reuse_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_F1_PROFILE_REUSE");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
+class FasimLongQueryGpuConsumerF1ContinuationProfileScope
+{
+public:
+	explicit FasimLongQueryGpuConsumerF1ContinuationProfileScope(bool enabled) :
+		active(enabled),
+		priorContinuationProfile(
+			StripedSmithWaterman::ForwardContinuationProfileEnabled()),
+		priorInternalProfile(ssw_align_internal_stats_enabled())
+	{
+		if (active)
+		{
+			StripedSmithWaterman::ForwardContinuationProfileSetEnabled(true);
+			ssw_align_internal_stats_set_enabled(1);
+		}
+	}
+
+	~FasimLongQueryGpuConsumerF1ContinuationProfileScope()
+	{
+		if (active)
+		{
+			StripedSmithWaterman::ForwardContinuationProfileSetEnabled(
+				priorContinuationProfile);
+			ssw_align_internal_stats_set_enabled(priorInternalProfile);
+		}
+	}
+
+private:
+	bool active;
+	bool priorContinuationProfile;
+	uint8_t priorInternalProfile;
+};
+
 // Inputs for the global F1 round scheduler.  The pointers are borrowed for
 // the duration of one call; the caller owns all strings and scoreInfo vectors.
 struct FasimLongQueryGpuConsumerF1TaskInput
@@ -4588,10 +4642,51 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			return fail("f1_global_accounting_contract_mismatch");
 	}
 
+	const bool continuationProfileActive =
+		fasim_long_query_gpu_consumer_f1_continuation_profile_runtime();
+	FasimLongQueryGpuConsumerF1ContinuationProfileScope continuationProfileScope(
+		continuationProfileActive);
+	const bool continuationProfileReuseRequested =
+		fasim_long_query_gpu_consumer_f1_profile_reuse_runtime();
+	bool continuationProfileReuseActive = false;
+	double continuationProfilePrepareSeconds = 0.0;
+#if defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) || \
+	defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+	StripedSmithWaterman::ForwardContinuationQuery preparedContinuationQuery;
+	if (continuationProfileReuseRequested)
+	{
+		const std::chrono::steady_clock::time_point prepareStart =
+			std::chrono::steady_clock::now();
+		continuationProfileReuseActive = aligner.PrepareForwardContinuationQuery(
+			query.c_str(), &preparedContinuationQuery);
+		continuationProfilePrepareSeconds = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - prepareStart).count();
+		if (!continuationProfileReuseActive)
+			return fail("f1_global_continuation_profile_prepare_failed");
+	}
+#else
+	if (continuationProfileReuseRequested)
+		return fail("f1_global_continuation_profile_reuse_not_built");
+#endif
 	for (size_t taskIndex = 0; taskIndex < taskInputs.size(); ++taskIndex)
 	{
 		const FasimLongQueryGpuConsumerF1TaskInput &input = taskInputs[taskIndex];
 		std::vector<triplex> &convertedRows = taskTriplexLists[taskIndex];
+		taskResults[taskIndex].continuation_profile_reuse_requested =
+			continuationProfileReuseRequested;
+		taskResults[taskIndex].continuation_profile_reuse_active =
+			continuationProfileReuseActive;
+		if (taskIndex == 0)
+			taskResults[taskIndex].continuation_profile_prepare_seconds =
+				continuationProfilePrepareSeconds;
+		StripedSmithWaterman::ForwardContinuationProfileStats profileBefore;
+		ssw_align_internal_stats internalBefore = {};
+		if (continuationProfileActive)
+		{
+			profileBefore =
+				StripedSmithWaterman::ForwardContinuationProfileSnapshot();
+			internalBefore = ssw_align_internal_stats_snapshot();
+		}
 		const std::chrono::steady_clock::time_point taskStart =
 			std::chrono::steady_clock::now();
 		for (size_t position = 0; position < selected[taskIndex].size(); ++position)
@@ -4603,8 +4698,15 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			const FasimGasal2Attempt &attempt = attempts[globalIndex];
 			const FasimGasal2StreamedAttemptScore &forward = forwardScores[globalIndex];
 			const FasimGasal2StreamedAttemptScore &canonical = canonicalScores[globalIndex];
+			std::chrono::steady_clock::time_point substringStart;
+			if (continuationProfileActive)
+				substringStart = std::chrono::steady_clock::now();
 			const std::string small = input.target->substr(
 				static_cast<size_t>(attempt.start), static_cast<size_t>(attempt.cutlength));
+			if (continuationProfileActive)
+				taskResults[taskIndex].continuation_substring_seconds +=
+					std::chrono::duration<double>(
+						std::chrono::steady_clock::now() - substringStart).count();
 			StripedSmithWaterman::Alignment local;
 			const std::chrono::steady_clock::time_point continuationStart =
 				std::chrono::steady_clock::now();
@@ -4618,9 +4720,15 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			endpoint.query_end1 = forward.query_end;
 			endpoint.ref_end2 = -1;
 			endpoint.numeric_path = forward.numeric_path;
-			continuationOk = aligner.AlignFromForward(
-				query.c_str(), small.c_str(), static_cast<int>(small.size()),
-				filter, endpoint, &local, maskLen);
+			if (continuationProfileReuseActive)
+				continuationOk = aligner.AlignFromForward(
+					preparedContinuationQuery, small.c_str(),
+					static_cast<int>(small.size()), filter, endpoint, &local,
+					maskLen);
+			else
+				continuationOk = aligner.AlignFromForward(
+					query.c_str(), small.c_str(), static_cast<int>(small.size()),
+					filter, endpoint, &local, maskLen);
 #else
 			aligner.Align(query.c_str(), small.c_str(), small.size(), filter, &local, maskLen);
 			continuationOk = true;
@@ -4670,6 +4778,77 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 				filtered.push_back(row);
 		}
 		convertedRows.swap(filtered);
+		if (continuationProfileActive)
+		{
+			const StripedSmithWaterman::ForwardContinuationProfileStats profileAfter =
+				StripedSmithWaterman::ForwardContinuationProfileSnapshot();
+			const ssw_align_internal_stats internalAfter =
+				ssw_align_internal_stats_snapshot();
+			auto delta = [](uint64_t after, uint64_t before) -> uint64_t
+			{
+				return after >= before ? after - before : 0;
+			};
+			const double secondsPerNanosecond = 1.0e-9;
+			FasimLongQueryGpuConsumerF1Result &profileResult = taskResults[taskIndex];
+			profileResult.continuation_profile_active = true;
+			profileResult.continuation_profile_calls =
+				delta(profileAfter.calls, profileBefore.calls);
+			profileResult.continuation_query_bytes =
+				delta(profileAfter.query_bytes, profileBefore.query_bytes);
+			profileResult.continuation_ref_bytes =
+				delta(profileAfter.ref_bytes, profileBefore.ref_bytes);
+			profileResult.continuation_profile_cache_calls =
+				delta(profileAfter.profile_cache_calls, profileBefore.profile_cache_calls);
+			profileResult.continuation_profile_cache_hits =
+				delta(profileAfter.profile_cache_hits, profileBefore.profile_cache_hits);
+			profileResult.continuation_profile_cache_misses =
+				delta(profileAfter.profile_cache_misses, profileBefore.profile_cache_misses);
+			profileResult.continuation_reverse_calls =
+				delta(internalAfter.reverse_calls, internalBefore.reverse_calls);
+			profileResult.continuation_banded_sw_calls =
+				delta(internalAfter.banded_sw_calls, internalBefore.banded_sw_calls);
+			profileResult.continuation_query_strlen_seconds = secondsPerNanosecond *
+				delta(profileAfter.query_strlen_nanoseconds,
+					profileBefore.query_strlen_nanoseconds);
+			profileResult.continuation_query_alloc_seconds = secondsPerNanosecond *
+				delta(profileAfter.query_alloc_nanoseconds,
+					profileBefore.query_alloc_nanoseconds);
+			profileResult.continuation_query_translate_seconds = secondsPerNanosecond *
+				delta(profileAfter.query_translate_nanoseconds,
+					profileBefore.query_translate_nanoseconds);
+			profileResult.continuation_ref_alloc_seconds = secondsPerNanosecond *
+				delta(profileAfter.ref_alloc_nanoseconds,
+					profileBefore.ref_alloc_nanoseconds);
+			profileResult.continuation_ref_translate_seconds = secondsPerNanosecond *
+				delta(profileAfter.ref_translate_nanoseconds,
+					profileBefore.ref_translate_nanoseconds);
+			profileResult.continuation_profile_lookup_seconds = secondsPerNanosecond *
+				delta(profileAfter.profile_lookup_nanoseconds,
+					profileBefore.profile_lookup_nanoseconds);
+			profileResult.continuation_profile_build_seconds = secondsPerNanosecond *
+				delta(profileAfter.profile_build_nanoseconds,
+					profileBefore.profile_build_nanoseconds);
+			profileResult.continuation_ssw_seconds = secondsPerNanosecond *
+				delta(profileAfter.ssw_nanoseconds, profileBefore.ssw_nanoseconds);
+			profileResult.continuation_reverse_start_seconds = secondsPerNanosecond *
+				delta(internalAfter.reverse_start_nanoseconds,
+					internalBefore.reverse_start_nanoseconds);
+			profileResult.continuation_banded_sw_seconds = secondsPerNanosecond *
+				delta(internalAfter.banded_sw_nanoseconds,
+					internalBefore.banded_sw_nanoseconds);
+			profileResult.continuation_cigar_seconds = secondsPerNanosecond *
+				delta(internalAfter.cigar_nanoseconds,
+					internalBefore.cigar_nanoseconds);
+			profileResult.continuation_alignment_convert_seconds = secondsPerNanosecond *
+				delta(profileAfter.alignment_convert_nanoseconds,
+					profileBefore.alignment_convert_nanoseconds);
+			profileResult.continuation_cleanup_seconds = secondsPerNanosecond *
+				delta(profileAfter.cleanup_nanoseconds,
+					profileBefore.cleanup_nanoseconds);
+			if (profileResult.continuation_profile_calls !=
+				profileResult.cpu_continuation_calls)
+				return fail("f1_global_continuation_profile_accounting_mismatch");
+		}
 		taskResults[taskIndex].ok = taskResults[taskIndex].cpu_continuation_failures == 0;
 		if (taskResults[taskIndex].cpu_continuation_calls !=
 			taskResults[taskIndex].selected_attempts)

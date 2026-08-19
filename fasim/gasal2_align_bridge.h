@@ -2123,11 +2123,37 @@ struct FasimLongQueryGpuConsumerF1Result
 		best_fallback_groups(0),
 		last_groups(0),
 		empty_groups(0),
+		continuation_profile_active(false),
+		continuation_profile_reuse_requested(false),
+		continuation_profile_reuse_active(false),
+		continuation_profile_calls(0),
+		continuation_query_bytes(0),
+		continuation_ref_bytes(0),
+		continuation_profile_cache_calls(0),
+		continuation_profile_cache_hits(0),
+		continuation_profile_cache_misses(0),
+		continuation_reverse_calls(0),
+		continuation_banded_sw_calls(0),
 		forward_seconds(0.0),
 		reverse_seconds(0.0),
 		select_seconds(0.0),
 		traceback_seconds(0.0),
 		convert_seconds(0.0),
+		continuation_profile_prepare_seconds(0.0),
+		continuation_substring_seconds(0.0),
+		continuation_query_strlen_seconds(0.0),
+		continuation_query_alloc_seconds(0.0),
+		continuation_query_translate_seconds(0.0),
+		continuation_ref_alloc_seconds(0.0),
+		continuation_ref_translate_seconds(0.0),
+		continuation_profile_lookup_seconds(0.0),
+		continuation_profile_build_seconds(0.0),
+		continuation_ssw_seconds(0.0),
+		continuation_reverse_start_seconds(0.0),
+		continuation_banded_sw_seconds(0.0),
+		continuation_cigar_seconds(0.0),
+		continuation_alignment_convert_seconds(0.0),
+		continuation_cleanup_seconds(0.0),
 		gpu_kernel_seconds(0.0),
 		h2d_seconds(0.0),
 		d2h_seconds(0.0),
@@ -2151,11 +2177,37 @@ struct FasimLongQueryGpuConsumerF1Result
 	uint64_t best_fallback_groups;
 	uint64_t last_groups;
 	uint64_t empty_groups;
+	bool continuation_profile_active;
+	bool continuation_profile_reuse_requested;
+	bool continuation_profile_reuse_active;
+	uint64_t continuation_profile_calls;
+	uint64_t continuation_query_bytes;
+	uint64_t continuation_ref_bytes;
+	uint64_t continuation_profile_cache_calls;
+	uint64_t continuation_profile_cache_hits;
+	uint64_t continuation_profile_cache_misses;
+	uint64_t continuation_reverse_calls;
+	uint64_t continuation_banded_sw_calls;
 	double forward_seconds;
 	double reverse_seconds;
 	double select_seconds;
 	double traceback_seconds;
 	double convert_seconds;
+	double continuation_profile_prepare_seconds;
+	double continuation_substring_seconds;
+	double continuation_query_strlen_seconds;
+	double continuation_query_alloc_seconds;
+	double continuation_query_translate_seconds;
+	double continuation_ref_alloc_seconds;
+	double continuation_ref_translate_seconds;
+	double continuation_profile_lookup_seconds;
+	double continuation_profile_build_seconds;
+	double continuation_ssw_seconds;
+	double continuation_reverse_start_seconds;
+	double continuation_banded_sw_seconds;
+	double continuation_cigar_seconds;
+	double continuation_alignment_convert_seconds;
+	double continuation_cleanup_seconds;
 	double gpu_kernel_seconds;
 	double h2d_seconds;
 	double d2h_seconds;
