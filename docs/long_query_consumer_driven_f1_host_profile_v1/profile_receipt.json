@@ -3,7 +3,7 @@
   "status": "host_inner_bookkeeping_not_bottleneck",
   "source": {
     "branch": "long-query-consumer-driven-f1-host-profile-v1",
-    "commit": "c0a9acd35663e818f6f7acfe81f96bb41849838e",
+    "commit": "96b4ec7664ccfb4fbec5970dcf253a8d43c0b3c7",
     "tracked_source_diff_empty_after_commit": true,
     "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_host_profile_v1",
     "binary_sha256": "ab04bc72f895263de63ff99bbf36b330f47831d68bcf9ca5d4d8fd8e2837effb"

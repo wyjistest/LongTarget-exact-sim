@@ -3,7 +3,7 @@
   "status": "f1_table_transform_engineering_go",
   "source": {
     "branch": "long-query-consumer-driven-f1-transfer-table-v1",
-    "commit": "e829f28bedca91f5ccdcb8b3bacff5fdeb8828c8",
+    "commit": "5fa744dd50d816a83ac3d2cd011a5e81b0578201",
     "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_transferstring_default_v1",
     "binary_sha256": "951bbc6e4e6780b24d1914feec9726d1fa1275022db178a6f34f23f2a15dca2a"
   },

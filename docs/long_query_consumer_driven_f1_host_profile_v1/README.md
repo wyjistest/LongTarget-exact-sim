@@ -11,7 +11,7 @@ Enable the instrumentation with:
 FASIM_LONG_QUERY_GPU_CONSUMER_F1_HOST_PROFILE=1
 ```
 
-The measured binary was built from `c0a9acd35663e818f6f7acfe81f96bb41849838e`
+The measured binary was built from `96b4ec7664ccfb4fbec5970dcf253a8d43c0b3c7`
 and has SHA-256:
 
 ```text
