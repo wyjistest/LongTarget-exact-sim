@@ -1,0 +1,89 @@
+{
+  "schema_version": "long_query_consumer_driven_f1_host_profile_v1",
+  "status": "host_inner_bookkeeping_not_bottleneck",
+  "source": {
+    "branch": "long-query-consumer-driven-f1-host-profile-v1",
+    "commit": "96b4ec7664ccfb4fbec5970dcf253a8d43c0b3c7",
+    "tracked_source_diff_empty_after_commit": true,
+    "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_host_profile_v1",
+    "binary_sha256": "ab04bc72f895263de63ff99bbf36b330f47831d68bcf9ca5d4d8fd8e2837effb"
+  },
+  "workload": {
+    "query": "LINC01501",
+    "query_length_nt": 4006,
+    "target": "shard_0009",
+    "target_length_bp": 4942620,
+    "output_contract": "complete TFOsorted",
+    "scoring_contract": "5/4/16/4 + WORD16"
+  },
+  "environment": {
+    "benchmark_logical_cpu": 19,
+    "gpu_visible_index": 1,
+    "co_resident_openmp_queue": true,
+    "physical_core_overlap_with_openmp_queue": false,
+    "timing_class": "affinity_isolated_diagnostic"
+  },
+  "run": {
+    "wall_seconds": 115.62,
+    "max_rss_kb": 338848,
+    "exit_status": 0,
+    "global_f1_batches": 13,
+    "whole_query_scoreinfo_seconds": 25.6252,
+    "complete_f1_batch_seconds": 39.5138488,
+    "outside_scoreinfo_and_f1_batch_seconds": 50.4809512
+  },
+  "f1_batch_profile_seconds": {
+    "validation": 0.000007348,
+    "attempt_group_build": 0.414644028,
+    "score_buffer_allocation": 0.033961950,
+    "round_descriptors": 0.184760690,
+    "forward_stages": 9.023835200,
+    "forward_apply": 0.037712555,
+    "reverse_compaction": 0.137826141,
+    "reverse_stages": 1.757428300,
+    "reverse_apply": 0.057326419,
+    "round_retire": 0.044418756,
+    "deferred_compaction": 0.020480811,
+    "deferred_stages": 0.079565176,
+    "deferred_apply": 0.013785662,
+    "selection": 0.029898564,
+    "accounting": 0.002115019,
+    "continuation_outer": 27.549344100,
+    "inner_elapsed": 39.413402200,
+    "accounted": 39.387100200,
+    "inner_unaccounted": 0.026300947,
+    "post_inner_destruction_and_return": 0.100445642
+  },
+  "exactness": {
+    "tfosorted_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "task_rows": 48432,
+    "scoreinfo_groups": 1086495,
+    "attempts": 4345980,
+    "forward_attempts": 1735752,
+    "reverse_requests": 1086495,
+    "selected_continuations": 1086495,
+    "continuation_failures": 0,
+    "fallbacks": 0,
+    "cpu_all_attempt_oracle": 0
+  },
+  "artifacts": {
+    "root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_host_profile_v1/real_shard_profile",
+    "f1_tsv_sha256": "25df0c7a245d6523823886c8e1dcd60f891946337ac90450adedfc9361db5bdd",
+    "stderr_sha256": "7db7450ce34a59e22f29c0431db9fe47e3e5a1fb388b2286234e8d2c3fa66e45",
+    "time_sha256": "3c74e3c1c2164747d07f08d0657f509f13664cebbd5c46b13fa6cde44e94ee48"
+  },
+  "decision": {
+    "attempt_build_compaction_or_destruction_optimization": "no_go",
+    "continuation_thread_pool": "not_yet_authorized",
+    "next_focus": "profile outer F1 caller and output aggregation chain",
+    "consumer_cuda_authorized": false,
+    "production_authorized": false,
+    "bioinformatics_v2_state": "unchanged"
+  },
+  "limitations": [
+    "One 4,006 nt query and one 4,942,620 bp promoter shard were measured.",
+    "The production OpenMP queue remained active on non-overlapping physical cores.",
+    "This is a diagnostic attribution run, not a fresh paired performance gate.",
+    "No full promoter concat or continuous query-length envelope was tested."
+  ]
+}
