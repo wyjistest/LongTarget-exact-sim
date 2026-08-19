@@ -6,6 +6,8 @@
 #include <utility>
 #include <numeric>
 #include <chrono>
+#include <atomic>
+#include <thread>
 #include "ssw_cpp.h"
 #include "ssw.h"
 #include "ssw_oracle_trace.h"
@@ -410,6 +412,20 @@ inline bool fasim_long_query_gpu_consumer_f1_host_profile_runtime()
 		return env != NULL && env[0] != '\0' && env[0] != '0';
 	}();
 	return enabled;
+}
+
+inline int fasim_long_query_gpu_consumer_f1_continuation_threads_runtime()
+{
+	static const int threads = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_F1_CONTINUATION_THREADS");
+		if (env == NULL || env[0] == '\0') return 1;
+		const long value = strtol(env, NULL, 10);
+		if (value <= 1) return 1;
+		return static_cast<int>(std::min(value, 64L));
+	}();
+	return threads;
 }
 
 class FasimLongQueryGpuConsumerF1ContinuationProfileScope
@@ -4760,17 +4776,43 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 	if (continuationProfileReuseRequested)
 		return fail("f1_global_continuation_profile_reuse_not_built");
 #endif
+	const int continuationThreadsRequested =
+		fasim_long_query_gpu_consumer_f1_continuation_threads_runtime();
+	const int continuationWorkerCount = std::min(
+		continuationThreadsRequested, static_cast<int>(taskInputs.size()));
+	const bool continuationParallelActive = continuationWorkerCount > 1;
+	if (continuationParallelActive && !continuationProfileReuseActive)
+		return fail("f1_parallel_continuation_requires_profile_reuse");
+	if (continuationParallelActive && continuationProfileActive)
+		return fail("f1_parallel_continuation_profile_unsupported");
 	for (size_t taskIndex = 0; taskIndex < taskInputs.size(); ++taskIndex)
 	{
-		const FasimLongQueryGpuConsumerF1TaskInput &input = taskInputs[taskIndex];
-		std::vector<triplex> &convertedRows = taskTriplexLists[taskIndex];
 		taskResults[taskIndex].continuation_profile_reuse_requested =
 			continuationProfileReuseRequested;
 		taskResults[taskIndex].continuation_profile_reuse_active =
 			continuationProfileReuseActive;
-		if (taskIndex == 0)
-			taskResults[taskIndex].continuation_profile_prepare_seconds =
-				continuationProfilePrepareSeconds;
+		taskResults[taskIndex].continuation_threads_requested =
+			static_cast<uint64_t>(continuationThreadsRequested);
+		taskResults[taskIndex].continuation_workers =
+			static_cast<uint64_t>(continuationWorkerCount);
+		taskResults[taskIndex].continuation_parallel_active =
+			continuationParallelActive;
+	}
+	if (!taskResults.empty())
+		taskResults[0].continuation_profile_prepare_seconds =
+			continuationProfilePrepareSeconds;
+
+	auto materializeTask = [&](size_t taskIndex) -> bool
+	{
+		const FasimLongQueryGpuConsumerF1TaskInput &input = taskInputs[taskIndex];
+		std::vector<triplex> &convertedRows = taskTriplexLists[taskIndex];
+		FasimLongQueryGpuConsumerF1Result &taskResult = taskResults[taskIndex];
+		auto taskFail = [&](const std::string &message) -> bool
+		{
+			taskResult.ok = false;
+			taskResult.error = message;
+			return false;
+		};
 		StripedSmithWaterman::ForwardContinuationProfileStats profileBefore;
 		ssw_align_internal_stats internalBefore = {};
 		if (continuationProfileActive)
@@ -4786,7 +4828,7 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			const size_t globalIndex = selected[taskIndex][position];
 			if (globalIndex >= attempts.size() || attemptTasks[globalIndex] != taskIndex ||
 				!canonicalKnown[globalIndex])
-				return fail("f1_global_selected_endpoint_missing");
+				return taskFail("f1_global_selected_endpoint_missing");
 			const FasimGasal2Attempt &attempt = attempts[globalIndex];
 			const FasimGasal2StreamedAttemptScore &forward = forwardScores[globalIndex];
 			const FasimGasal2StreamedAttemptScore &canonical = canonicalScores[globalIndex];
@@ -4831,11 +4873,11 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			if (!continuationOk || local.sw_score != canonical.score ||
 				local.ref_end != forward.ref_end_local || local.query_end != forward.query_end)
 			{
-				++taskResults[taskIndex].cpu_continuation_failures;
+				++taskResult.cpu_continuation_failures;
 				std::ostringstream detail;
 				detail << "f1_global_continuation_contract_mismatch:task=" << taskIndex
 				       << ":attempt=" << globalIndex;
-				return fail(detail.str());
+				return taskFail(detail.str());
 			}
 			StripedSmithWaterman::Alignment global = local;
 			global.ref_begin += attempt.start;
@@ -4939,15 +4981,60 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 					profileBefore.cleanup_nanoseconds);
 			if (profileResult.continuation_profile_calls !=
 				profileResult.cpu_continuation_calls)
-				return fail("f1_global_continuation_profile_accounting_mismatch");
+				return taskFail(
+					"f1_global_continuation_profile_accounting_mismatch");
 		}
-		taskResults[taskIndex].ok = taskResults[taskIndex].cpu_continuation_failures == 0;
-		if (taskResults[taskIndex].cpu_continuation_calls !=
-			taskResults[taskIndex].selected_attempts)
-			return fail("f1_global_continuation_accounting_mismatch");
-		taskResults[taskIndex].total_seconds =
+		taskResult.ok = taskResult.cpu_continuation_failures == 0;
+		if (taskResult.cpu_continuation_calls != taskResult.selected_attempts)
+			return taskFail("f1_global_continuation_accounting_mismatch");
+		taskResult.total_seconds =
 			std::chrono::duration<double>(std::chrono::steady_clock::now() - taskStart).count() +
-			taskResults[taskIndex].forward_seconds + taskResults[taskIndex].reverse_seconds;
+			taskResult.forward_seconds + taskResult.reverse_seconds;
+		return true;
+	};
+
+	if (!continuationParallelActive)
+	{
+		for (size_t taskIndex = 0; taskIndex < taskInputs.size(); ++taskIndex)
+		{
+			if (!materializeTask(taskIndex))
+				return fail(taskResults[taskIndex].error);
+		}
+	}
+	else
+	{
+		std::atomic<size_t> nextTask(0);
+		std::atomic<bool> materializationFailed(false);
+		std::vector<std::thread> workers;
+		workers.reserve(static_cast<size_t>(continuationWorkerCount));
+		for (int worker = 0; worker < continuationWorkerCount; ++worker)
+		{
+			workers.push_back(std::thread([&]()
+			{
+				while (!materializationFailed.load(std::memory_order_relaxed))
+				{
+					const size_t taskIndex = nextTask.fetch_add(
+						1, std::memory_order_relaxed);
+					if (taskIndex >= taskInputs.size()) break;
+					if (!materializeTask(taskIndex))
+					{
+						materializationFailed.store(true, std::memory_order_relaxed);
+						break;
+					}
+				}
+			}));
+		}
+		for (size_t worker = 0; worker < workers.size(); ++worker)
+			workers[worker].join();
+		if (materializationFailed.load(std::memory_order_relaxed))
+		{
+			for (size_t taskIndex = 0; taskIndex < taskResults.size(); ++taskIndex)
+			{
+				if (taskResults[taskIndex].error != "none")
+					return fail(taskResults[taskIndex].error);
+			}
+			return fail("f1_parallel_continuation_failed");
+		}
 	}
 	hostContinuationOuterSeconds = hostElapsed(hostContinuationOuterStart);
 	if (hostProfileActive && !taskResults.empty())
