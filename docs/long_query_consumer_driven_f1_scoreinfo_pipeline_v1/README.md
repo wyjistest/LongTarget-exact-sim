@@ -21,7 +21,8 @@ The implementation checkpoint is:
 
 ```text
 branch: long-query-f1-scoreinfo-pipeline-v1
-commit: 05fc765c3fff94ef35b09e4753e4c5950a1f7a04
+local implementation commit:  05fc765c3fff94ef35b09e4753e4c5950a1f7a04
+remote implementation commit: ab0a95a88dc72749d202f33462fd2e1093cd6a3d
 binary SHA-256:
 7b4a0206172b212b3b60a6f14bca90142d788dc7c6b615fefea99047701d1822
 ```
@@ -214,4 +215,3 @@ the global-state scoreInfo path, but the later F1 attempt kernel failed its CUDA
 launch resource envelope. This checkpoint therefore does not claim arbitrary
 24--33 kb support. Full promoter concat and fresh multi-query validation also
 remain pending.
-
