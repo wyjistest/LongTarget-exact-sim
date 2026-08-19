@@ -1,0 +1,136 @@
+{
+  "schema_version": "long_query_consumer_driven_f1_scoreinfo_pipeline_v1",
+  "status": "bounded_engineering_pass",
+  "source": {
+    "branch": "long-query-f1-scoreinfo-pipeline-v1",
+    "local_implementation_commit": "05fc765c3fff94ef35b09e4753e4c5950a1f7a04",
+    "remote_implementation_commit": "ab0a95a88dc72749d202f33462fd2e1093cd6a3d",
+    "source_diff_empty_during_final_shard_run": true,
+    "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_scoreinfo_pipeline_v1",
+    "binary_sha256": "7b4a0206172b212b3b60a6f14bca90142d788dc7c6b615fefea99047701d1822"
+  },
+  "scope": {
+    "cpu_gpu_batch_pipeline": true,
+    "automatic_shared_scoreinfo": true,
+    "continuation_task_workers": true,
+    "exact_transformed_task_duplicate_audit": true,
+    "intra_query_dual_gpu_split": false,
+    "multi_gpu_policy": "independent_lncRNA_jobs"
+  },
+  "real_shard_workload": {
+    "query": "LINC01501",
+    "query_length_nt": 4006,
+    "target": "shard_0009",
+    "target_length_bp": 4942620,
+    "task_rows": 48432,
+    "output_contract": "complete TFOsorted",
+    "scoring_contract": "5/4/16/4 + WORD16"
+  },
+  "environment": {
+    "gpu_physical_index": 1,
+    "cpu_set": "0,9",
+    "continuation_workers": 2,
+    "co_resident_openmp_queue": true,
+    "timing_class": "single_repeat_resource_isolated_diagnostic"
+  },
+  "shared_scoreinfo": {
+    "baseline_wall_seconds": 53.46,
+    "shared_wall_seconds": 41.06,
+    "baseline_scoreinfo_seconds": 25.5579,
+    "shared_scoreinfo_seconds": 13.1215,
+    "baseline_scoreinfo_gpu_call_seconds": 20.5628,
+    "shared_scoreinfo_gpu_call_seconds": 8.12863,
+    "scoreinfo_speedup": 1.947788,
+    "end_to_end_speedup": 1.301997,
+    "packed_two_tasks_per_warp_control_seconds": 3.92,
+    "packed_two_tasks_per_warp_candidate_seconds": 4.57,
+    "packed_two_tasks_per_warp_decision": "removed_performance_regression"
+  },
+  "pipeline_final_run": {
+    "artifact_root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_scoreinfo_pipeline_final_v1/cycle_pipeline_R3",
+    "wall_seconds": 32.91,
+    "max_rss_kb": 345252,
+    "exit_status": 0,
+    "pipeline_launches": 13,
+    "pipeline_commits": 13,
+    "pipeline_failures": 0,
+    "pipeline_gpu_ready_wait_seconds": 12.0414,
+    "pipeline_join_wait_seconds": 5.45197,
+    "pipeline_continuation_covered_seconds": 13.1268,
+    "scoreinfo_total_seconds": 13.2569,
+    "scoreinfo_gpu_call_seconds": 8.22926,
+    "speedup_vs_shared_scoreinfo": 1.247645,
+    "speedup_vs_prior_two_worker_f1": 1.624430,
+    "frozen_cpu_authority_seconds": 364.75,
+    "contextual_cpu_speedup": 11.083257,
+    "f1_tsv_sha256": "78244e6d103ddaf040f495a9fc53f1d56c5374836ffd88aaaa8fef4f415fe83f",
+    "stderr_sha256": "ab0309397b83992fc39f346bcd006eb6909f5446c523f405543e01fc8b9dc5a8",
+    "stdout_sha256": "e4fec2ff8237f47c35e61ffc40769811c99b5e56cab78d956fbaccf763b64dbb",
+    "time_sha256": "814729223be1bfcbce7d5f6e64ae0434cbd7c422cc41b6b67dee77ee963b825c"
+  },
+  "exactness": {
+    "real_shard_complete_tfosorted_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "real_shard_f1_structural_sha256": "6659cbdc18137d95089342c5971559d8626b0f1eff0f538282c7def4957ef036",
+    "scoreinfo_groups": 1086495,
+    "attempts": 4345980,
+    "forward_attempts": 1735752,
+    "reverse_requests": 1086495,
+    "reverse_scored_attempts": 1086495,
+    "selected_continuations": 1086495,
+    "continuation_failures": 0,
+    "threshold_groups": 870076,
+    "best_fallback_groups": 119878,
+    "last_groups": 96541,
+    "fixture_complete_tfosorted_sha256": {
+      "4006_nt": "a940474a6bbf5a4e27678571206210263792da0d1f4424942554930fd72b6f3b",
+      "8181_nt": "b49e3fa33ec1ae5961032f420cfe1a60d5a5b12f8886828be997f7cd5219a578",
+      "12397_nt": "714cd07a86d86eca5c2858bae5d409b569b173aca12b0db44fcda9062ad40500"
+    },
+    "fixture_continuation_failures": {
+      "4006_nt": 0,
+      "8181_nt": 0,
+      "12397_nt": 0
+    }
+  },
+  "duplicate_audit": {
+    "artifact_root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_scoreinfo_shared_auto_audit_v1/cycle_auto_audit_R",
+    "tasks": 48432,
+    "unique_tasks": 48432,
+    "duplicate_tasks": 0,
+    "cells_before": 242084160,
+    "cells_after": 242084160,
+    "execution_path_authorized": false,
+    "decision": "no_exact_duplicates_no_dedup_path"
+  },
+  "worker_scaling": {
+    "one_worker_wall_seconds": 66.74,
+    "two_physical_workers_wall_seconds": 53.46,
+    "four_smt_workers_on_two_physical_cores_wall_seconds": 52.59,
+    "recommended_workers_on_measured_host": 2,
+    "four_or_eight_physical_core_sweep": "pending_resource_isolation"
+  },
+  "verification": {
+    "integrated_scoreinfo_pipeline_check": "pass",
+    "pipeline_requires_f1_guard": "pass",
+    "pipeline_rejects_shared_phase_timing_guard": "pass",
+    "shared_scoreinfo_auto_off_escape_hatch": "pass",
+    "forward_continuation_query_regression": "pass",
+    "ssw_profile_cache_regression": "pass",
+    "transferstring_table_regression": "pass"
+  },
+  "decision": {
+    "engineering_spike": "pass",
+    "formal_paired_performance": "pending",
+    "consumer_cuda_authorized": false,
+    "production_authorized": false,
+    "bioinformatics_v2_state": "unchanged"
+  },
+  "limitations": [
+    "The final 32.91-second real-shard result is one contextual run, not a paired-repeat median.",
+    "The frozen CPU authority timing comes from a separate earlier epoch.",
+    "Only three discrete query lengths were revalidated; no continuous length envelope is claimed.",
+    "A 24137-nt probe reaches a later F1 attempt-kernel CUDA resource limit after scoreInfo safely falls back to global state.",
+    "No full promoter concat performance run was performed.",
+    "No intra-query dual-GPU implementation was added."
+  ]
+}
