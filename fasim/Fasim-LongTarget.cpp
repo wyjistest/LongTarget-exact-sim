@@ -11612,7 +11612,9 @@ int main(int argc, char* const* argv)
 							   "last_groups\tempty_groups\tforward_seconds\treverse_seconds\t"
 							   "select_seconds\ttraceback_seconds\tconvert_seconds\t"
 							   "continuation_profile_active\tcontinuation_profile_reuse_requested\t"
-							   "continuation_profile_reuse_active\tcontinuation_profile_prepare_seconds\t"
+							   "continuation_profile_reuse_active\tcontinuation_threads_requested\t"
+							   "continuation_workers\tcontinuation_parallel_active\t"
+							   "continuation_profile_prepare_seconds\t"
 							   "continuation_profile_calls\t"
 							   "continuation_query_bytes\tcontinuation_ref_bytes\t"
 							   "continuation_profile_cache_calls\tcontinuation_profile_cache_hits\t"
@@ -14727,6 +14729,9 @@ int main(int argc, char* const* argv)
 				<< (result.continuation_profile_active ? 1 : 0) << '\t'
 				<< (result.continuation_profile_reuse_requested ? 1 : 0) << '\t'
 				<< (result.continuation_profile_reuse_active ? 1 : 0) << '\t'
+				<< result.continuation_threads_requested << '\t'
+				<< result.continuation_workers << '\t'
+				<< (result.continuation_parallel_active ? 1 : 0) << '\t'
 				<< result.continuation_profile_prepare_seconds << '\t'
 				<< result.continuation_profile_calls << '\t'
 				<< result.continuation_query_bytes << '\t'

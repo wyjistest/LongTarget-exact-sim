@@ -2126,6 +2126,9 @@ struct FasimLongQueryGpuConsumerF1Result
 		continuation_profile_active(false),
 		continuation_profile_reuse_requested(false),
 		continuation_profile_reuse_active(false),
+		continuation_threads_requested(1),
+		continuation_workers(1),
+		continuation_parallel_active(false),
 		continuation_profile_calls(0),
 		continuation_query_bytes(0),
 		continuation_ref_bytes(0),
@@ -2202,6 +2205,9 @@ struct FasimLongQueryGpuConsumerF1Result
 	bool continuation_profile_active;
 	bool continuation_profile_reuse_requested;
 	bool continuation_profile_reuse_active;
+	uint64_t continuation_threads_requested;
+	uint64_t continuation_workers;
+	bool continuation_parallel_active;
 	uint64_t continuation_profile_calls;
 	uint64_t continuation_query_bytes;
 	uint64_t continuation_ref_bytes;
