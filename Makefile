@@ -930,6 +930,10 @@ build-fasim-forward-continuation-query-test: $(FASIM_FORWARD_CONTINUATION_QUERY_
 check-fasim-forward-continuation-query: $(FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET)
 	./$(FASIM_FORWARD_CONTINUATION_QUERY_TEST_TARGET)
 
+.PHONY: check-long-query-consumer-f1-scoreinfo-pipeline-v1
+check-long-query-consumer-f1-scoreinfo-pipeline-v1:
+	BIN=$(CURDIR)/.tmp/fasim_f1_scoreinfo_pipeline_v1 WORK=$(or $(WORK),$(CURDIR)/.tmp/long_query_consumer_f1_scoreinfo_pipeline_v1) bash ./scripts/check_long_query_consumer_f1_scoreinfo_pipeline_v1.sh
+
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)

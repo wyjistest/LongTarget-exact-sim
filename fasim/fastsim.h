@@ -8,6 +8,7 @@
 #include <chrono>
 #include <atomic>
 #include <thread>
+#include <functional>
 #include "ssw_cpp.h"
 #include "ssw.h"
 #include "ssw_oracle_trace.h"
@@ -376,6 +377,16 @@ inline bool fasim_long_query_gpu_consumer_f1_scheduler_runtime()
 	static const bool enabled = []()
 	{
 		const char *env = getenv("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
+inline bool fasim_long_query_gpu_consumer_f1_pipeline_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_LONG_QUERY_GPU_CONSUMER_F1_PIPELINE");
 		return env != NULL && env[0] != '\0' && env[0] != '0';
 	}();
 	return enabled;
@@ -3747,7 +3758,8 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 	int penaltyC,
 	const struct para &paraList,
 	bool materializeAlignmentStrings,
-	std::string *errorOut);
+	std::string *errorOut,
+	std::function<void()> gpuStageCompleteCallback = std::function<void()>());
 
 // Development-only per-task F1 scheduler.  It keeps the scientific consumer on the
 // host, but submits only the ordered forward prefix and the reverse requests
@@ -4225,7 +4237,8 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 	int penaltyC,
 	const struct para &paraList,
 	bool materializeAlignmentStrings,
-	std::string *errorOut)
+	std::string *errorOut,
+	std::function<void()> gpuStageCompleteCallback)
 {
 	taskTriplexLists.assign(taskInputs.size(), std::vector<struct triplex>());
 	taskResults.assign(taskInputs.size(), FasimLongQueryGpuConsumerF1Result());
@@ -4746,6 +4759,8 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			return fail("f1_global_accounting_contract_mismatch");
 	}
 	hostAccountingSeconds = hostElapsed(hostAccountingStart);
+	if (gpuStageCompleteCallback)
+		gpuStageCompleteCallback();
 
 	std::chrono::steady_clock::time_point hostContinuationOuterStart;
 	if (hostProfileActive)
