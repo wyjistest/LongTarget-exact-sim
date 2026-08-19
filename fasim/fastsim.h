@@ -401,6 +401,17 @@ inline bool fasim_long_query_gpu_consumer_f1_profile_reuse_runtime()
 	return enabled;
 }
 
+inline bool fasim_long_query_gpu_consumer_f1_host_profile_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_F1_HOST_PROFILE");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
 class FasimLongQueryGpuConsumerF1ContinuationProfileScope
 {
 public:
@@ -4205,6 +4216,30 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 	if (errorOut != NULL) errorOut->clear();
 	const std::chrono::steady_clock::time_point totalStart =
 		std::chrono::steady_clock::now();
+	const bool hostProfileActive =
+		fasim_long_query_gpu_consumer_f1_host_profile_runtime();
+	auto hostElapsed = [&](const std::chrono::steady_clock::time_point &start)
+		-> double
+	{
+		return hostProfileActive ? std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - start).count() : 0.0;
+	};
+	double hostValidationSeconds = 0.0;
+	double hostAttemptBuildSeconds = 0.0;
+	double hostScoreBufferAllocSeconds = 0.0;
+	double hostRoundDescriptorSeconds = 0.0;
+	double hostForwardStageSeconds = 0.0;
+	double hostForwardApplySeconds = 0.0;
+	double hostReverseCompactSeconds = 0.0;
+	double hostReverseStageSeconds = 0.0;
+	double hostReverseApplySeconds = 0.0;
+	double hostRoundRetireSeconds = 0.0;
+	double hostDeferredCompactSeconds = 0.0;
+	double hostDeferredStageSeconds = 0.0;
+	double hostDeferredApplySeconds = 0.0;
+	double hostSelectionSeconds = 0.0;
+	double hostAccountingSeconds = 0.0;
+	double hostContinuationOuterSeconds = 0.0;
 
 	auto fail = [&](const std::string &message) -> bool
 	{
@@ -4229,6 +4264,9 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 #endif
 	if (query.empty()) return fail("f1_empty_query");
 	if (taskInputs.empty()) return true;
+	hostValidationSeconds = hostElapsed(totalStart);
+	std::chrono::steady_clock::time_point hostAttemptBuildStart;
+	if (hostProfileActive) hostAttemptBuildStart = std::chrono::steady_clock::now();
 
 	struct BatchGroupState
 	{
@@ -4328,6 +4366,10 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			taskResults[taskIndex].attempts == 0)
 			return fail("f1_attempt_generation_empty");
 	}
+	hostAttemptBuildSeconds = hostElapsed(hostAttemptBuildStart);
+	std::chrono::steady_clock::time_point hostScoreBufferAllocStart;
+	if (hostProfileActive)
+		hostScoreBufferAllocStart = std::chrono::steady_clock::now();
 
 	std::vector<FasimGasal2StreamedAttemptScore> forwardScores(attempts.size());
 	std::vector<FasimGasal2StreamedAttemptScore> canonicalScores(attempts.size());
@@ -4359,9 +4401,13 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 	for (size_t taskIndex = 0; taskIndex < groups.size(); ++taskIndex)
 		for (size_t groupIndex = 0; groupIndex < groups[taskIndex].size(); ++groupIndex)
 			maxRounds = std::max(maxRounds, groups[taskIndex][groupIndex].indexes.size());
+	hostScoreBufferAllocSeconds = hostElapsed(hostScoreBufferAllocStart);
 
 	for (size_t round = 0; round < maxRounds; ++round)
 	{
+		std::chrono::steady_clock::time_point hostRoundDescriptorStart;
+		if (hostProfileActive)
+			hostRoundDescriptorStart = std::chrono::steady_clock::now();
 		std::vector<size_t> roundIndexes;
 		std::vector<FasimGasal2Attempt> roundAttempts;
 		std::vector<uint64_t> taskRoundCounts(taskInputs.size(), 0);
@@ -4381,14 +4427,22 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			taskResults[taskIndex].round_forward_attempts.push_back(activeGroups);
 			taskResults[taskIndex].round_reverse_requests.push_back(0);
 		}
+		hostRoundDescriptorSeconds += hostElapsed(hostRoundDescriptorStart);
 		if (roundAttempts.empty()) continue;
 
 		FasimGasal2StreamedAttemptScoreTelemetry forwardTelemetry;
 		std::vector<FasimGasal2StreamedAttemptScore> roundForward;
 		std::string stageError;
+		std::chrono::steady_clock::time_point hostForwardStageStart;
+		if (hostProfileActive)
+			hostForwardStageStart = std::chrono::steady_clock::now();
 		if (!fasim_gasal2_streamed_attempt_forward_score_v1(
 				query, roundAttempts, &roundForward, &forwardTelemetry, &stageError))
 			return fail(stageError.empty() ? "f1_global_forward_stage_failed" : stageError);
+		hostForwardStageSeconds += hostElapsed(hostForwardStageStart);
+		std::chrono::steady_clock::time_point hostForwardApplyStart;
+		if (hostProfileActive)
+			hostForwardApplyStart = std::chrono::steady_clock::now();
 		distributeTelemetry(forwardTelemetry, false, taskRoundCounts);
 		for (size_t i = 0; i < roundIndexes.size(); ++i)
 		{
@@ -4396,7 +4450,11 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			forwardScores[globalIndex] = roundForward[i];
 			++taskResults[attemptTasks[globalIndex]].forward_attempts;
 		}
+		hostForwardApplySeconds += hostElapsed(hostForwardApplyStart);
 
+		std::chrono::steady_clock::time_point hostReverseCompactStart;
+		if (hostProfileActive)
+			hostReverseCompactStart = std::chrono::steady_clock::now();
 		std::vector<size_t> reverseIndexes;
 		std::vector<FasimGasal2Attempt> reverseAttempts;
 		std::vector<FasimGasal2StreamedAttemptScore> reverseForward;
@@ -4428,14 +4486,22 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			taskResults[taskIndex].round_reverse_requests.back() = taskReverseCounts[taskIndex];
 		for (size_t taskIndex = 0; taskIndex < taskInputs.size(); ++taskIndex)
 			taskResults[taskIndex].reverse_requests += taskReverseCounts[taskIndex];
+		hostReverseCompactSeconds += hostElapsed(hostReverseCompactStart);
 		if (!reverseIndexes.empty())
 		{
 			FasimGasal2StreamedAttemptScoreTelemetry reverseTelemetry;
 			std::vector<FasimGasal2StreamedAttemptScore> reverseScores;
+			std::chrono::steady_clock::time_point hostReverseStageStart;
+			if (hostProfileActive)
+				hostReverseStageStart = std::chrono::steady_clock::now();
 			if (!fasim_gasal2_streamed_attempt_reverse_score_v1(
 					query, reverseAttempts, reverseForward, &reverseScores,
 					&reverseTelemetry, &stageError))
 				return fail(stageError.empty() ? "f1_global_reverse_stage_failed" : stageError);
+			hostReverseStageSeconds += hostElapsed(hostReverseStageStart);
+			std::chrono::steady_clock::time_point hostReverseApplyStart;
+			if (hostProfileActive)
+				hostReverseApplyStart = std::chrono::steady_clock::now();
 			distributeTelemetry(reverseTelemetry, true, taskReverseCounts);
 			for (size_t i = 0; i < reverseIndexes.size(); ++i)
 			{
@@ -4464,8 +4530,12 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 					group.haveBest = true;
 				}
 			}
+			hostReverseApplySeconds += hostElapsed(hostReverseApplyStart);
 		}
 
+		std::chrono::steady_clock::time_point hostRoundRetireStart;
+		if (hostProfileActive)
+			hostRoundRetireStart = std::chrono::steady_clock::now();
 		for (size_t taskIndex = 0; taskIndex < groups.size(); ++taskIndex)
 		{
 			for (size_t groupIndex = 0; groupIndex < groups[taskIndex].size(); ++groupIndex)
@@ -4494,8 +4564,12 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 				}
 			}
 		}
+		hostRoundRetireSeconds += hostElapsed(hostRoundRetireStart);
 	}
 
+	std::chrono::steady_clock::time_point hostDeferredCompactStart;
+	if (hostProfileActive)
+		hostDeferredCompactStart = std::chrono::steady_clock::now();
 	std::vector<size_t> deferredIndexes;
 	std::vector<FasimGasal2Attempt> deferredAttempts;
 	std::vector<FasimGasal2StreamedAttemptScore> deferredForward;
@@ -4517,6 +4591,7 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			}
 		}
 	}
+	hostDeferredCompactSeconds = hostElapsed(hostDeferredCompactStart);
 	if (!deferredIndexes.empty())
 	{
 		for (size_t taskIndex = 0; taskIndex < taskInputs.size(); ++taskIndex)
@@ -4534,10 +4609,17 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 		FasimGasal2StreamedAttemptScoreTelemetry reverseTelemetry;
 		std::vector<FasimGasal2StreamedAttemptScore> reverseScores;
 		std::string stageError;
+		std::chrono::steady_clock::time_point hostDeferredStageStart;
+		if (hostProfileActive)
+			hostDeferredStageStart = std::chrono::steady_clock::now();
 		if (!fasim_gasal2_streamed_attempt_reverse_score_v1(
 				query, deferredAttempts, deferredForward, &reverseScores,
 				&reverseTelemetry, &stageError))
 			return fail(stageError.empty() ? "f1_global_deferred_reverse_failed" : stageError);
+		hostDeferredStageSeconds = hostElapsed(hostDeferredStageStart);
+		std::chrono::steady_clock::time_point hostDeferredApplyStart;
+		if (hostProfileActive)
+			hostDeferredApplyStart = std::chrono::steady_clock::now();
 		distributeTelemetry(reverseTelemetry, true, deferredTaskCounts);
 		for (size_t i = 0; i < deferredIndexes.size(); ++i)
 		{
@@ -4558,8 +4640,11 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			}
 			else group.reason = "empty";
 		}
+		hostDeferredApplySeconds = hostElapsed(hostDeferredApplyStart);
 	}
 
+	std::chrono::steady_clock::time_point hostSelectionStart;
+	if (hostProfileActive) hostSelectionStart = std::chrono::steady_clock::now();
 	std::vector<std::vector<size_t> > selected(taskInputs.size());
 	const int8_t nt_table[128] = {
 		4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
@@ -4589,10 +4674,13 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 		taskResults[taskIndex].selected_attempts =
 			static_cast<uint64_t>(selected[taskIndex].size());
 	}
+	hostSelectionSeconds = hostElapsed(hostSelectionStart);
 
 	// The F1 report is also a runtime contract. Reject accounting drift before
 	// materializing output, rather than allowing a partial result to be
 	// mistaken for an exact scheduler run.
+	std::chrono::steady_clock::time_point hostAccountingStart;
+	if (hostProfileActive) hostAccountingStart = std::chrono::steady_clock::now();
 	for (size_t taskIndex = 0; taskIndex < taskInputs.size(); ++taskIndex)
 	{
 		const FasimLongQueryGpuConsumerF1Result &taskResult =
@@ -4641,7 +4729,11 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 		if (!accountingOk)
 			return fail("f1_global_accounting_contract_mismatch");
 	}
+	hostAccountingSeconds = hostElapsed(hostAccountingStart);
 
+	std::chrono::steady_clock::time_point hostContinuationOuterStart;
+	if (hostProfileActive)
+		hostContinuationOuterStart = std::chrono::steady_clock::now();
 	const bool continuationProfileActive =
 		fasim_long_query_gpu_consumer_f1_continuation_profile_runtime();
 	FasimLongQueryGpuConsumerF1ContinuationProfileScope continuationProfileScope(
@@ -4856,6 +4948,41 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 		taskResults[taskIndex].total_seconds =
 			std::chrono::duration<double>(std::chrono::steady_clock::now() - taskStart).count() +
 			taskResults[taskIndex].forward_seconds + taskResults[taskIndex].reverse_seconds;
+	}
+	hostContinuationOuterSeconds = hostElapsed(hostContinuationOuterStart);
+	if (hostProfileActive && !taskResults.empty())
+	{
+		FasimLongQueryGpuConsumerF1Result &hostResult = taskResults[0];
+		hostResult.host_profile_active = true;
+		hostResult.host_validation_seconds = hostValidationSeconds;
+		hostResult.host_attempt_build_seconds = hostAttemptBuildSeconds;
+		hostResult.host_score_buffer_alloc_seconds = hostScoreBufferAllocSeconds;
+		hostResult.host_round_descriptor_seconds = hostRoundDescriptorSeconds;
+		hostResult.host_forward_stage_seconds = hostForwardStageSeconds;
+		hostResult.host_forward_apply_seconds = hostForwardApplySeconds;
+		hostResult.host_reverse_compact_seconds = hostReverseCompactSeconds;
+		hostResult.host_reverse_stage_seconds = hostReverseStageSeconds;
+		hostResult.host_reverse_apply_seconds = hostReverseApplySeconds;
+		hostResult.host_round_retire_seconds = hostRoundRetireSeconds;
+		hostResult.host_deferred_compact_seconds = hostDeferredCompactSeconds;
+		hostResult.host_deferred_stage_seconds = hostDeferredStageSeconds;
+		hostResult.host_deferred_apply_seconds = hostDeferredApplySeconds;
+		hostResult.host_selection_seconds = hostSelectionSeconds;
+		hostResult.host_accounting_seconds = hostAccountingSeconds;
+		hostResult.host_continuation_outer_seconds = hostContinuationOuterSeconds;
+		hostResult.host_inner_elapsed_seconds = hostElapsed(totalStart);
+		hostResult.host_accounted_seconds =
+			hostValidationSeconds + hostAttemptBuildSeconds +
+			hostScoreBufferAllocSeconds + hostRoundDescriptorSeconds +
+			hostForwardStageSeconds + hostForwardApplySeconds +
+			hostReverseCompactSeconds + hostReverseStageSeconds +
+			hostReverseApplySeconds + hostRoundRetireSeconds +
+			hostDeferredCompactSeconds + hostDeferredStageSeconds +
+			hostDeferredApplySeconds + hostSelectionSeconds +
+			hostAccountingSeconds + hostContinuationOuterSeconds;
+		hostResult.host_inner_unaccounted_seconds = std::max(0.0,
+			hostResult.host_inner_elapsed_seconds -
+			hostResult.host_accounted_seconds);
 	}
 	return true;
 }

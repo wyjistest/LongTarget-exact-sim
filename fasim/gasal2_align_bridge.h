@@ -2132,9 +2132,10 @@ struct FasimLongQueryGpuConsumerF1Result
 		continuation_profile_cache_calls(0),
 		continuation_profile_cache_hits(0),
 		continuation_profile_cache_misses(0),
-		continuation_reverse_calls(0),
-		continuation_banded_sw_calls(0),
-		forward_seconds(0.0),
+			continuation_reverse_calls(0),
+			continuation_banded_sw_calls(0),
+			host_profile_active(false),
+			forward_seconds(0.0),
 		reverse_seconds(0.0),
 		select_seconds(0.0),
 		traceback_seconds(0.0),
@@ -2152,8 +2153,29 @@ struct FasimLongQueryGpuConsumerF1Result
 		continuation_reverse_start_seconds(0.0),
 		continuation_banded_sw_seconds(0.0),
 		continuation_cigar_seconds(0.0),
-		continuation_alignment_convert_seconds(0.0),
-		continuation_cleanup_seconds(0.0),
+			continuation_alignment_convert_seconds(0.0),
+			continuation_cleanup_seconds(0.0),
+			host_batch_wall_seconds(0.0),
+			host_validation_seconds(0.0),
+			host_attempt_build_seconds(0.0),
+			host_score_buffer_alloc_seconds(0.0),
+			host_round_descriptor_seconds(0.0),
+			host_forward_stage_seconds(0.0),
+			host_forward_apply_seconds(0.0),
+			host_reverse_compact_seconds(0.0),
+			host_reverse_stage_seconds(0.0),
+			host_reverse_apply_seconds(0.0),
+			host_round_retire_seconds(0.0),
+			host_deferred_compact_seconds(0.0),
+			host_deferred_stage_seconds(0.0),
+			host_deferred_apply_seconds(0.0),
+			host_selection_seconds(0.0),
+			host_accounting_seconds(0.0),
+			host_continuation_outer_seconds(0.0),
+			host_inner_elapsed_seconds(0.0),
+			host_accounted_seconds(0.0),
+			host_inner_unaccounted_seconds(0.0),
+			host_post_inner_seconds(0.0),
 		gpu_kernel_seconds(0.0),
 		h2d_seconds(0.0),
 		d2h_seconds(0.0),
@@ -2188,6 +2210,7 @@ struct FasimLongQueryGpuConsumerF1Result
 	uint64_t continuation_profile_cache_misses;
 	uint64_t continuation_reverse_calls;
 	uint64_t continuation_banded_sw_calls;
+	bool host_profile_active;
 	double forward_seconds;
 	double reverse_seconds;
 	double select_seconds;
@@ -2208,6 +2231,27 @@ struct FasimLongQueryGpuConsumerF1Result
 	double continuation_cigar_seconds;
 	double continuation_alignment_convert_seconds;
 	double continuation_cleanup_seconds;
+	double host_batch_wall_seconds;
+	double host_validation_seconds;
+	double host_attempt_build_seconds;
+	double host_score_buffer_alloc_seconds;
+	double host_round_descriptor_seconds;
+	double host_forward_stage_seconds;
+	double host_forward_apply_seconds;
+	double host_reverse_compact_seconds;
+	double host_reverse_stage_seconds;
+	double host_reverse_apply_seconds;
+	double host_round_retire_seconds;
+	double host_deferred_compact_seconds;
+	double host_deferred_stage_seconds;
+	double host_deferred_apply_seconds;
+	double host_selection_seconds;
+	double host_accounting_seconds;
+	double host_continuation_outer_seconds;
+	double host_inner_elapsed_seconds;
+	double host_accounted_seconds;
+	double host_inner_unaccounted_seconds;
+	double host_post_inner_seconds;
 	double gpu_kernel_seconds;
 	double h2d_seconds;
 	double d2h_seconds;

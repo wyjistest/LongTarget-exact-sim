@@ -11625,6 +11625,17 @@ int main(int argc, char* const* argv)
 							   "continuation_reverse_start_seconds\tcontinuation_banded_sw_seconds\t"
 							   "continuation_cigar_seconds\tcontinuation_alignment_convert_seconds\t"
 							   "continuation_cleanup_seconds\t"
+							   "host_profile_active\thost_batch_wall_seconds\t"
+							   "host_validation_seconds\thost_attempt_build_seconds\t"
+							   "host_score_buffer_alloc_seconds\thost_round_descriptor_seconds\t"
+							   "host_forward_stage_seconds\thost_forward_apply_seconds\t"
+							   "host_reverse_compact_seconds\thost_reverse_stage_seconds\t"
+							   "host_reverse_apply_seconds\thost_round_retire_seconds\t"
+							   "host_deferred_compact_seconds\thost_deferred_stage_seconds\t"
+							   "host_deferred_apply_seconds\thost_selection_seconds\t"
+							   "host_accounting_seconds\thost_continuation_outer_seconds\t"
+							   "host_inner_elapsed_seconds\thost_accounted_seconds\t"
+							   "host_inner_unaccounted_seconds\thost_post_inner_seconds\t"
 							   "gpu_kernel_seconds\th2d_seconds\td2h_seconds\ttotal_seconds\t"
 							   "round_active_groups\tround_forward_attempts\tround_reverse_requests\t"
 							   "error\n";
@@ -14739,6 +14750,28 @@ int main(int argc, char* const* argv)
 				<< result.continuation_cigar_seconds << '\t'
 				<< result.continuation_alignment_convert_seconds << '\t'
 				<< result.continuation_cleanup_seconds << '\t'
+				<< (result.host_profile_active ? 1 : 0) << '\t'
+				<< result.host_batch_wall_seconds << '\t'
+				<< result.host_validation_seconds << '\t'
+				<< result.host_attempt_build_seconds << '\t'
+				<< result.host_score_buffer_alloc_seconds << '\t'
+				<< result.host_round_descriptor_seconds << '\t'
+				<< result.host_forward_stage_seconds << '\t'
+				<< result.host_forward_apply_seconds << '\t'
+				<< result.host_reverse_compact_seconds << '\t'
+				<< result.host_reverse_stage_seconds << '\t'
+				<< result.host_reverse_apply_seconds << '\t'
+				<< result.host_round_retire_seconds << '\t'
+				<< result.host_deferred_compact_seconds << '\t'
+				<< result.host_deferred_stage_seconds << '\t'
+				<< result.host_deferred_apply_seconds << '\t'
+				<< result.host_selection_seconds << '\t'
+				<< result.host_accounting_seconds << '\t'
+				<< result.host_continuation_outer_seconds << '\t'
+				<< result.host_inner_elapsed_seconds << '\t'
+				<< result.host_accounted_seconds << '\t'
+				<< result.host_inner_unaccounted_seconds << '\t'
+				<< result.host_post_inner_seconds << '\t'
 				<< result.gpu_kernel_seconds << '\t'
 				<< result.h2d_seconds << '\t' << result.d2h_seconds << '\t'
 				<< result.total_seconds << '\t'
@@ -27641,19 +27674,32 @@ int main(int argc, char* const* argv)
 								f1Inputs[taskIndex].scoreInfo =
 									&streamingRealpathScoreInfos[taskIndex];
 						}
-						std::vector<std::vector<triplex> > f1TriplexesByTask;
-						std::vector<FasimLongQueryGpuConsumerF1Result> f1Results;
-						std::string f1BatchError;
-						const bool f1Ready = streamingRealpathCanUse &&
+							std::vector<std::vector<triplex> > f1TriplexesByTask;
+							std::vector<FasimLongQueryGpuConsumerF1Result> f1Results;
+							std::string f1BatchError;
+							const bool f1HostProfileActive =
+								fasim_long_query_gpu_consumer_f1_host_profile_runtime();
+							std::chrono::steady_clock::time_point f1BatchWallStart;
+							if (f1HostProfileActive)
+								f1BatchWallStart = std::chrono::steady_clock::now();
+							const bool f1Ready = streamingRealpathCanUse &&
 							streamingRealpathScoreInfos.size() == tasks.size();
 						const bool f1BatchOk = f1Ready &&
 							fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 								aligner, filter, 15, lncSeq, f1Inputs,
 								f1TriplexesByTask, f1Results,
 								paraList.ntMin, paraList.ntMax,
-								paraList.penaltyT, paraList.penaltyC, paraList,
-								writeFull, &f1BatchError);
-						for (size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
+									paraList.penaltyT, paraList.penaltyC, paraList,
+									writeFull, &f1BatchError);
+							if (f1HostProfileActive && !f1Results.empty())
+							{
+								f1Results[0].host_batch_wall_seconds =
+									fasim_seconds_since(f1BatchWallStart);
+								f1Results[0].host_post_inner_seconds = std::max(0.0,
+									f1Results[0].host_batch_wall_seconds -
+									f1Results[0].host_inner_elapsed_seconds);
+							}
+							for (size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
 						{
 							FasimLongQueryGpuConsumerF1Result rowResult;
 							if (taskIndex < f1Results.size()) rowResult = f1Results[taskIndex];
