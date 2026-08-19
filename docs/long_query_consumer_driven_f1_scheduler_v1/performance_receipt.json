@@ -1,0 +1,345 @@
+{
+  "schema_version": "long_query_consumer_driven_f1_paired_performance_receipt_v1",
+  "status": "engineering_performance_go",
+  "completed_local": "2026-08-19T11:34:53+08:00",
+  "workload": {
+    "workload_id": "shake_ENSG00000229613_shard_0009",
+    "query_gene_id": "ENSG00000229613",
+    "query_symbol": "LINC01501",
+    "query_length_nt": 4006,
+    "query_path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_checkpoint_v1/inputs/ENSG00000229613.fa",
+    "query_file_sha256": "77a542d36f1de7e7ad5dae03a641456d6a5415f164034b4f144339e7c2c5b7fa",
+    "query_sequence_sha256": "896e9e632f321c87539268390c3668baab3d40f1007cd2433b44321561ebc657",
+    "target_artifact_id": "shard_0009",
+    "target_length_bp": 4942620,
+    "target_path": "/data/wenyujianData/linjieData/promoter_sequences/human_GRCh38_GENCODE_v33_genes20cells_tss_promoters_v1/shards/shard_0009.fa",
+    "target_file_sha256": "c448a0564c4fbfb2261071885a2f83f2631323d54a5e64b5d4ed4ce57262295f",
+    "scoring_contract": "5/4/16/4 + WORD16",
+    "output_mode": "complete TFOsorted"
+  },
+  "source": {
+    "branch": "long-query-consumer-driven-f1-scheduler-impl-v1",
+    "commit": "ee10f408b18c39238436cdcd8ab34c8d5b1cb8a5",
+    "remote_commit": "ee10f408b18c39238436cdcd8ab34c8d5b1cb8a5",
+    "tracked_source_diff_empty": true,
+    "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_global_script_probe_v3",
+    "binary_sha256": "3d15ae13e529bc69d12b14613541d8934563b0c44305b436b15a8a88c58dd630",
+    "runner_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/run_f1_paired_arm.sh",
+    "runner_sha256": "3361cfa300588b5d76f3efe3f3720ce9a9dba06f2917c6a2edf758067884f263",
+    "audit_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/audit_f1_paired_v2.py",
+    "audit_sha256": "1012128a8f7e51add13854e167183f7137a62e8b8e0323305ed2804f15901ad6"
+  },
+  "environment": {
+    "hostname": "amax",
+    "kernel": "Linux 5.15.0-46-generic x86_64",
+    "cpu_model": "Intel(R) Core(TM) i9-10900X CPU @ 3.70GHz",
+    "cpu_topology": "1 socket, 10 physical cores, 2 threads per core",
+    "benchmark_logical_cpu": 19,
+    "benchmark_physical_core": 9,
+    "benchmark_sibling_logical_cpu": 9,
+    "omp_num_threads": 1,
+    "gpu_visible_index": 1,
+    "gpu_uuid": "GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2",
+    "gpu_name": "NVIDIA GeForce RTX 4090",
+    "gpu_memory_mib": 24564,
+    "driver_version": "555.42.06",
+    "timing_eligibility": "paired_affinity_isolated_engineering_gate",
+    "idle_host": false,
+    "co_resident_openmp_queue": true,
+    "co_resident_worker_logical_cpus_observed_after_runs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18
+    ],
+    "physical_core_overlap_with_benchmark": false,
+    "gpu_overlap_observed": false,
+    "resource_note": "The production OpenMP queue remained active, but its worker threads excluded both logical CPUs 9 and 19 of physical core 9. The benchmark used logical CPU 19 and GPU 1. The host package, LLC, and memory subsystem were still shared, so this is an affinity-isolated engineering gate rather than an idle-host publication benchmark."
+  },
+  "arms": {
+    "A": {
+      "name": "CPU authority",
+      "FASIM_ALIGN_GASAL2": 0,
+      "FASIM_ENABLE_PREALIGN_CUDA": 0,
+      "FASIM_ALIGN_GASAL2_LONGTARGET_BRIDGE": 0,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION": 0,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE": 0,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER": 0
+    },
+    "E": {
+      "name": "exact all-reverse",
+      "FASIM_ALIGN_GASAL2": 1,
+      "FASIM_ENABLE_PREALIGN_CUDA": 1,
+      "FASIM_ALIGN_GASAL2_LONGTARGET_BRIDGE": 1,
+      "FASIM_ALIGN_GASAL2_MAX_QUERY_LEN": 2812,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_LEGACY_BYTE": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_GPU_MINSCORE": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_GPU_MINSCORE_HOT": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_REALPATH_PROTOTYPE": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_REALPATH_TRUST": 1,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION": 1,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE": 1,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER": 0
+    },
+    "F": {
+      "name": "consumer-driven F1 exact",
+      "FASIM_ALIGN_GASAL2": 1,
+      "FASIM_ENABLE_PREALIGN_CUDA": 1,
+      "FASIM_ALIGN_GASAL2_LONGTARGET_BRIDGE": 1,
+      "FASIM_ALIGN_GASAL2_MAX_QUERY_LEN": 2812,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_LEGACY_BYTE": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_GPU_MINSCORE": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_GPU_MINSCORE_HOT": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_REALPATH_PROTOTYPE": 1,
+      "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_REALPATH_TRUST": 1,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION": 1,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE": 0,
+      "FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER": 1
+    }
+  },
+  "execution": {
+    "root": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_scheduler_paired_v1/formal_cycles_v2",
+    "cycles": 5,
+    "runs": 15,
+    "cycle_orders": [
+      "A-E-F",
+      "F-E-A",
+      "E-A-F",
+      "A-F-E",
+      "F-A-E"
+    ],
+    "started_local": "2026-08-19T10:12:35+08:00",
+    "completed_local": "2026-08-19T11:27:45+08:00",
+    "run_metadata_composite_sha256": "6d3e0268da00feb515764f3d20942ade57ae5b1f2d37579aa372c20613a5fc81",
+    "f1_reports_composite_sha256": "fbe2ff67d169e56052a1023a59bf58e35ecdfc54d097cc8dcc7abd1c406fa4e4",
+    "all_reverse_reports_composite_sha256": "cdd03e707af56246dec146743f57b431d6e12cc3441967eadcc05a120575610c"
+  },
+  "runs": [
+    {
+      "cycle": 1,
+      "order": "A-E-F",
+      "A_wall_seconds": 364.70,
+      "E_wall_seconds": 336.70,
+      "F_wall_seconds": 149.77,
+      "A_max_rss_kb": 18680,
+      "E_max_rss_kb": 198316,
+      "F_max_rss_kb": 337724,
+      "paired_A_over_F": 2.4350671028910993,
+      "paired_F_reduction_vs_E": 0.5551826551826551
+    },
+    {
+      "cycle": 2,
+      "order": "F-E-A",
+      "A_wall_seconds": 364.80,
+      "E_wall_seconds": 336.83,
+      "F_wall_seconds": 149.84,
+      "A_max_rss_kb": 18752,
+      "E_max_rss_kb": 198464,
+      "F_max_rss_kb": 335544,
+      "paired_A_over_F": 2.434596903363588,
+      "paired_F_reduction_vs_E": 0.5551465130778137
+    },
+    {
+      "cycle": 3,
+      "order": "E-A-F",
+      "A_wall_seconds": 364.64,
+      "E_wall_seconds": 336.79,
+      "F_wall_seconds": 149.69,
+      "A_max_rss_kb": 18692,
+      "E_max_rss_kb": 198240,
+      "F_max_rss_kb": 337640,
+      "paired_A_over_F": 2.435967666510789,
+      "paired_F_reduction_vs_E": 0.5555390599483359
+    },
+    {
+      "cycle": 4,
+      "order": "A-F-E",
+      "A_wall_seconds": 364.75,
+      "E_wall_seconds": 336.76,
+      "F_wall_seconds": 149.92,
+      "A_max_rss_kb": 18952,
+      "E_max_rss_kb": 198280,
+      "F_max_rss_kb": 337420,
+      "paired_A_over_F": 2.4329642475987194,
+      "paired_F_reduction_vs_E": 0.554816486518589
+    },
+    {
+      "cycle": 5,
+      "order": "F-A-E",
+      "A_wall_seconds": 364.77,
+      "E_wall_seconds": 336.81,
+      "F_wall_seconds": 149.41,
+      "A_max_rss_kb": 18680,
+      "E_max_rss_kb": 198772,
+      "F_max_rss_kb": 335644,
+      "paired_A_over_F": 2.441402851214778,
+      "paired_F_reduction_vs_E": 0.5563967815682432
+    }
+  ],
+  "wall_summary": {
+    "A_seconds": {
+      "values": [364.70, 364.80, 364.64, 364.75, 364.77],
+      "min": 364.64,
+      "median": 364.75,
+      "max": 364.80
+    },
+    "E_seconds": {
+      "values": [336.70, 336.83, 336.79, 336.76, 336.81],
+      "min": 336.70,
+      "median": 336.79,
+      "max": 336.83
+    },
+    "F_seconds": {
+      "values": [149.77, 149.84, 149.69, 149.92, 149.41],
+      "min": 149.41,
+      "median": 149.77,
+      "max": 149.92
+    },
+    "ratio_of_medians_A_over_F": 2.435400948120451,
+    "median_paired_A_over_F": 2.4350671028910993,
+    "ratio_of_medians_E_over_F": 2.248714695866996,
+    "median_paired_F_reduction_vs_E": 0.5551826551826551,
+    "ratio_of_medians_F_reduction_vs_E": 0.5553015232043707
+  },
+  "exactness": {
+    "runs_with_exit_status_zero": 15,
+    "runs_with_finished_normally": 15,
+    "runs_with_exact_raw_tfosorted": 15,
+    "raw_tfosorted_rows_including_header": 44754,
+    "raw_tfosorted_data_rows": 44753,
+    "raw_tfosorted_bytes": 10281889,
+    "raw_tfosorted_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "fallback_zero_all_gpu_runs": true,
+    "cpu_prealign_zero_all_gpu_runs": true,
+    "cpu_all_attempt_oracle_zero_all_gpu_runs": true,
+    "cpu_reference_align_attempts_zero_all_gpu_runs": true,
+    "selected_continuation_failures_zero_all_gpu_runs": true,
+    "runtime_error_none_all_gpu_runs": true,
+    "downstream_exactness_basis": {
+      "receipt_path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_scheduler_shake_v1/f1_real_promoter_shake_receipt.json",
+      "receipt_sha256": "17dad44de9211e0f0989efd941511c39aa4bc50bcd9a6b43845b2acc7a8cea3f",
+      "decoded_mapping_exact": true,
+      "dbd1_exact": true,
+      "dbs_exact": true,
+      "affinity_exact": true,
+      "candidate_sites_exact": true,
+      "note": "The paired benchmark reran complete raw TFOsorted generation only. Downstream byte equality is inherited from the separately frozen real-promoter F1 shake receipt for the identical input and raw digest."
+    }
+  },
+  "f1_accounting_each_repeat": {
+    "task_rows": 48432,
+    "scoreinfo_groups": 1086495,
+    "attempts": 4345980,
+    "forward_attempts": 1735752,
+    "reverse_requests": 1086495,
+    "reverse_scored_attempts": 1086495,
+    "selected_attempts": 1086495,
+    "cpu_continuation_calls": 1086495,
+    "cpu_continuation_failures": 0,
+    "threshold_groups": 870076,
+    "best_fallback_groups": 119878,
+    "last_groups": 96541,
+    "empty_groups": 0,
+    "round_active_groups": [1086495, 216419, 216419, 216419, 0],
+    "round_forward_attempts": [1086495, 216419, 216419, 216419, 0],
+    "round_reverse_requests": [946928, 16813, 13804, 12409, 96541]
+  },
+  "telemetry_medians_seconds": {
+    "whole_query_scoreinfo": {
+      "E_total": 25.6147,
+      "E_kernel": 20.5108,
+      "F_total": 25.6557,
+      "F_kernel": 20.532
+    },
+    "all_reverse_consumer": {
+      "score": 197.6903005099987,
+      "gpu_kernel": 195.25941165999905,
+      "h2d": 0.42281398399999803,
+      "d2h": 0.4646480960000009,
+      "select": 0.3988645199999992,
+      "selected_traceback": 54.83120850199995,
+      "conversion": 7.648774720000029,
+      "total": 261.3215752600022
+    },
+    "f1_consumer": {
+      "forward": 9.028285575020092,
+      "reverse": 1.836365958537908,
+      "forward_plus_reverse_median_per_run": 10.863732122,
+      "gpu_kernel": 10.353061811880103,
+      "h2d": 0.07147228744319821,
+      "d2h": 0.027140639774000178,
+      "select": 0.0,
+      "selected_traceback": 54.3664249920002,
+      "conversion": 7.414983611000053,
+      "total": 73.10398592659992
+    },
+    "wall_residual": {
+      "E": 49.82592473999783,
+      "F": 51.02196663969977
+    },
+    "endpoint_stage_effect": {
+      "E_score_seconds": 197.690300510,
+      "F_forward_plus_reverse_seconds": 10.863732122,
+      "reduction_fraction": 0.945046711478,
+      "speedup": 18.197273118476
+    }
+  },
+  "gates": {
+    "correctness_pass": true,
+    "technical_success_pass": true,
+    "nominal_1_5x_limit_seconds": 243.16666666666666,
+    "nominal_1_5x_pass": true,
+    "engineering_margin_limit_seconds": 218.85,
+    "engineering_margin_headroom_seconds": 69.08,
+    "engineering_margin_pass": true,
+    "all_reverse_reduction_required": 0.20,
+    "all_reverse_reduction_observed_paired_median": 0.5551826551826551,
+    "all_reverse_reduction_pass": true
+  },
+  "decision": {
+    "f1_scheduler_correctness": "pass",
+    "f1_scheduler_real_promoter_performance": "go",
+    "f1_scheduler_engineering_spike": "go",
+    "consumer_cuda_authorized": false,
+    "production_authorized": false,
+    "bioinformatics_v2_state": "unchanged",
+    "next_authorized_focus": "profile and reduce the F0/selected-continuation floor, then evaluate bounded CPU/GPU pipelining",
+    "prohibited_claims": [
+      "production-ready",
+      "GPU-owned consumer",
+      "continuous 4-12 kb validation",
+      "full-concat performance result",
+      "10x full-output exact acceleration"
+    ]
+  },
+  "limitations": [
+    "The performance gate covers one 4,006 nt query against one 4,942,620 bp real-promoter shard, not the full promoter concat or a continuous length envelope.",
+    "The host was not idle; a production OpenMP queue remained active on non-overlapping physical cores. The result is valid for the affinity-isolated engineering gate but is not labeled an idle-host publication benchmark.",
+    "The frozen binary reports exact per-round counts and aggregate forward/reverse/kernel/transfer timings, but not per-round kernel wall, per-round DP-cell proxy, host state-update wall, or compaction wall separately.",
+    "The F1 consumer remains host-controlled and therefore does not authorize a GPU-owned consumer or production mode."
+  ],
+  "excluded_diagnostics": [
+    {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_scheduler_paired_v1/E_pilot",
+      "reason": "missing replacement-prototype flag; not an all-reverse arm"
+    },
+    {
+      "path": "/data/wenyujianData/linjieData/longtarget_runs/exact_long_query_hybrid_f1_scheduler_paired_v1/formal_cycles",
+      "reason": "first runner revision leaked streaming-scoreInfo variables into arm A; exactness retained but all performance values excluded"
+    }
+  ]
+}

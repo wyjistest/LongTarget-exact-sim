@@ -106,6 +106,39 @@ their four-round attempts; the corresponding forward-plus-reverse proxy
 fractions were 32.3%, 34.0%, and 51.8%. These are accounting observations, not
 speed claims.
 
+## Paired real-promoter performance gate
+
+The frozen `ee10f40` binary was exercised in five balanced A/E/F cycles on
+`LINC01501 (4,006 nt) x shard_0009 (4,942,620 bp)`. Arm A was the CPU
+authority, E was the exact all-reverse replacement path, and F was the F1
+scheduler. All 15 complete TFOsorted artifacts were byte-identical with SHA-256
+`2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075`.
+
+```text
+arm A median wall                         364.75 s
+arm E median wall                         336.79 s
+arm F median wall                         149.77 s
+median paired A/F speedup                  2.435x
+median paired F reduction versus E         55.52%
+```
+
+F passed the nominal 1.5x limit (`243.17 s`), the preregistered engineering
+margin limit (`218.85 s`), and the required 20% reduction versus E. Every F
+repeat reproduced 1,735,752 ordered forward attempts, 1,086,495 reverse
+requests, and 1,086,495 selected CPU continuations with zero continuation
+failures or fallback.
+
+The production OpenMP queue remained active on other physical cores. The
+benchmark used logical CPU 19 (physical core 9, with sibling CPU 9 unused by
+the queue) and an otherwise idle GPU 1. The result is therefore an
+affinity-isolated engineering performance gate, not an idle-host publication
+benchmark. The machine-readable evidence and excluded diagnostic-run reasons
+are in `performance_receipt.json`.
+
+This result authorizes continued F1 engineering and profiling of the selected
+continuation floor. It does not authorize production, a GPU-owned consumer, a
+full-concat performance claim, or a continuous long-query length envelope.
+
 ## Boundaries
 
 The F1 scheduler remains an engineering spike. It must not be described as
