@@ -1,0 +1,107 @@
+{
+  "schema_version": "long_query_consumer_driven_f1_transfer_table_v1",
+  "status": "f1_table_transform_engineering_go",
+  "source": {
+    "branch": "long-query-consumer-driven-f1-transfer-table-v1",
+    "commit": "5fa744dd50d816a83ac3d2cd011a5e81b0578201",
+    "binary_path": "/data/wenyujianData/LongTarget-exact-sim-f1/.tmp/fasim_f1_transferstring_default_v1",
+    "binary_sha256": "951bbc6e4e6780b24d1914feec9726d1fa1275022db178a6f34f23f2a15dca2a"
+  },
+  "workload": {
+    "query": "LINC01501",
+    "query_length_nt": 4006,
+    "target": "shard_0009",
+    "target_length_bp": 4942620,
+    "task_rows": 48432,
+    "transfer_input_bytes": 242084160,
+    "output_contract": "complete TFOsorted",
+    "scoring_contract": "5/4/16/4 + WORD16"
+  },
+  "environment": {
+    "benchmark_logical_cpu": 19,
+    "gpu_visible_index": 1,
+    "co_resident_openmp_queue": true,
+    "timing_class": "affinity_isolated_engineering"
+  },
+  "same_binary_runs": [
+    {
+      "mode": "explicit_legacy_control",
+      "wall_seconds": 115.71,
+      "transfer_seconds": 48.7316,
+      "flush_seconds": 66.2245,
+      "scoreinfo_seconds": 25.6502,
+      "f1_tsv_sha256": "f650ebb1b914ea20bbe9fa8afd4053cb7fbd144ce1a63dae3a153782ada7fc6d",
+      "stderr_sha256": "1274da101e9b4cfb2d7510fb98b424fb0e658be9ce8595210625ef06285f5ebb",
+      "time_sha256": "ff26121f52abb9a63f295a24fcfe938b4f2e4d713c7c3641ee3114386ca45fcd"
+    },
+    {
+      "mode": "f1_default_table_repeat_1",
+      "wall_seconds": 67.19,
+      "transfer_seconds": 0.212765,
+      "flush_seconds": 66.2287,
+      "scoreinfo_seconds": 25.6706,
+      "f1_tsv_sha256": "20444d794a4f0e19f57a082aa96c2cf6d01b51bf170a6fb4ab69415ad8e36492",
+      "stderr_sha256": "17511956c660f742b5fdf519a782714d8b6ae28d2491dd493d4dfcad98bdb426",
+      "time_sha256": "7c1502fab389d7cd6478f90507dd3b8acb9378d0d1289b07667d1cc42027785a"
+    },
+    {
+      "mode": "f1_default_table_repeat_2",
+      "wall_seconds": 67.23,
+      "transfer_seconds": 0.212622,
+      "flush_seconds": 66.2648,
+      "scoreinfo_seconds": 25.6411,
+      "f1_tsv_sha256": "9111d0d1c0f1d9d80fffbdd1f9280f7895583b40426aed932872e7f76655eaee",
+      "stderr_sha256": "be3ebf93967cb5fd7e2858dbe0aec450f183263dbb9f90141e80c10c4b54f6f9",
+      "time_sha256": "ab7dfa623b587b3d407a87a33ac509334e7008b8bea54ed289b85943254d032e"
+    }
+  ],
+  "summary": {
+    "table_center_wall_seconds": 67.21,
+    "legacy_over_table": 1.721619,
+    "wall_reduction_fraction": 0.419151,
+    "table_center_transfer_seconds": 0.212694,
+    "transfer_speedup": 229.116546,
+    "transfer_reduction_fraction": 0.995635409,
+    "contextual_frozen_cpu_seconds": 364.75,
+    "contextual_cpu_over_table": 5.427020
+  },
+  "exactness": {
+    "tfosorted_sha256": "2199bc6033f51eed498b6e692a4f7f6e95178dca631d26562828bc9181cc1075",
+    "scheduler_structural_signature_sha256": "6659cbdc18137d95089342c5971559d8626b0f1eff0f538282c7def4957ef036",
+    "scoreinfo_groups": 1086495,
+    "attempts": 4345980,
+    "forward_attempts": 1735752,
+    "reverse_requests": 1086495,
+    "selected_continuations": 1086495,
+    "continuation_failures": 0,
+    "fallbacks": 0,
+    "cpu_all_attempt_oracle": 0,
+    "bounded_fixture_tfosorted_sha256": "a940474a6bbf5a4e27678571206210263792da0d1f4424942554930fd72b6f3b",
+    "bounded_fixture_decision": "f1_scheduler_pass"
+  },
+  "remaining_profile_seconds": {
+    "whole_query_scoreinfo": 25.6411,
+    "complete_f1_batch_calls": 39.8057946,
+    "forward": 9.034339536,
+    "reverse": 1.833330494,
+    "continuation_outer": 27.8279528,
+    "continuation_ssw": 19.288686985,
+    "continuation_reverse_start": 15.825333256,
+    "continuation_banded_sw": 3.311272296,
+    "triplex_conversion": 7.304846418
+  },
+  "decision": {
+    "f1_table_transform": "engineering_go",
+    "next_focus": "whole-query scoreInfo and selected continuation",
+    "continuation_thread_pool": "requires_separate_gate",
+    "consumer_cuda_authorized": false,
+    "production_authorized": false,
+    "bioinformatics_v2_state": "unchanged"
+  },
+  "limitations": [
+    "One 4,006 nt query and one 4,942,620 bp promoter shard were measured.",
+    "The production OpenMP queue remained active during the engineering runs.",
+    "The CPU speedup is contextual to a separately frozen authority median.",
+    "No full promoter concat or continuous query-length envelope was tested."
+  ]
+}
