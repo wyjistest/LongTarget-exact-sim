@@ -2432,10 +2432,18 @@ struct FasimLongQueryStreamingScoreInfoShadowStats
 		unsupported(0),
 		gpu_batches(0),
 		gpu_tasks(0),
+		task_duplicate_audit_requested(0),
+		task_duplicate_audit_tasks(0),
+		task_duplicate_audit_unique_tasks(0),
+		task_duplicate_audit_duplicate_tasks(0),
+		task_duplicate_audit_cells_before(0),
+		task_duplicate_audit_cells_after(0),
 			overflow_batches(0),
 			fallback_batches(0),
 			boundary_state_bytes(0),
 			legacy_byte_shared(0),
+			legacy_byte_shared_auto_requested(0),
+			legacy_byte_shared_auto_fallbacks(0),
 			legacy_byte_shared_required_smem_bytes(0),
 			legacy_byte_shared_default_smem_limit_bytes(0),
 			legacy_byte_shared_optin_smem_limit_bytes(0),
@@ -2707,10 +2715,18 @@ struct FasimLongQueryStreamingScoreInfoShadowStats
 	uint64_t unsupported;
 	uint64_t gpu_batches;
 	uint64_t gpu_tasks;
+	uint64_t task_duplicate_audit_requested;
+	uint64_t task_duplicate_audit_tasks;
+	uint64_t task_duplicate_audit_unique_tasks;
+	uint64_t task_duplicate_audit_duplicate_tasks;
+	uint64_t task_duplicate_audit_cells_before;
+	uint64_t task_duplicate_audit_cells_after;
 		uint64_t overflow_batches;
 		uint64_t fallback_batches;
 			uint64_t boundary_state_bytes;
 			uint64_t legacy_byte_shared;
+			uint64_t legacy_byte_shared_auto_requested;
+			uint64_t legacy_byte_shared_auto_fallbacks;
 			uint64_t legacy_byte_shared_required_smem_bytes;
 			uint64_t legacy_byte_shared_default_smem_limit_bytes;
 			uint64_t legacy_byte_shared_optin_smem_limit_bytes;
