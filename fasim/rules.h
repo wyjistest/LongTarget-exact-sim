@@ -109,6 +109,13 @@ static inline bool fasim_transfer_string_table_requested_runtime()
 		{
 			return env[0] != '0';
 		}
+		const char *f1SchedulerEnv = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER");
+		if (f1SchedulerEnv != NULL && f1SchedulerEnv[0] != '\0' &&
+		    f1SchedulerEnv[0] != '0')
+		{
+			return true;
+		}
 		const char *top5PresetEnv = getenv("FASIM_TOP5_GASAL2_GPU_SCOREINFO");
 		if (top5PresetEnv == NULL || top5PresetEnv[0] == '\0')
 		{

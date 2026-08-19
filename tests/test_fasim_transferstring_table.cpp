@@ -22,6 +22,26 @@ void require_equal(const std::string &label,
   }
 }
 
+bool env_enabled(const char *name)
+{
+  const char *value = std::getenv(name);
+  return value != NULL && value[0] != '\0' && value[0] != '0';
+}
+
+void check_runtime_selection()
+{
+  const char *explicitValue = std::getenv("FASIM_TRANSFERSTRING_TABLE");
+  const bool expected = explicitValue != NULL && explicitValue[0] != '\0' ?
+      explicitValue[0] != '0' :
+      env_enabled("FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER") ||
+      env_enabled("FASIM_TOP5_GASAL2_GPU_SCOREINFO");
+  if(fasim_transfer_string_table_requested_runtime() != expected)
+  {
+    std::cerr << "runtime table selection mismatch\n";
+    std::exit(1);
+  }
+}
+
 void check_table_matches_legacy_for_all_modes()
 {
   const std::vector<std::string> inputs = {
@@ -56,11 +76,10 @@ void check_table_matches_legacy_for_all_modes()
   }
 }
 
-void check_opt_in_defaults_to_legacy()
+void check_runtime_dispatch_matches_legacy()
 {
-  unsetenv("FASIM_TRANSFERSTRING_TABLE");
   const std::string seq = "ACGTNXacgtnx";
-  require_equal("default opt-in path",
+  require_equal("runtime dispatch",
                 transferString(seq, 0, 1, 1),
                 transferStringTableOptIn(seq, 0, 1, 1));
 }
@@ -87,8 +106,9 @@ void check_lowercase_inputs_are_normalized()
 
 int main()
 {
+  check_runtime_selection();
   check_table_matches_legacy_for_all_modes();
-  check_opt_in_defaults_to_legacy();
+  check_runtime_dispatch_matches_legacy();
   check_lowercase_inputs_are_normalized();
   return 0;
 }
