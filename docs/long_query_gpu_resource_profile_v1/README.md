@@ -7,6 +7,15 @@ kernel, change a production runtime, or modify the active full-concat shadow.
 It prepares the next independent Nsight Compute epoch for main scoreInfo and
 F1 Round 0.
 
+## Model correction
+
+The initial `be506be` receipt incorrectly applied the F1
+`ceil(query_length / 16) * 16` workspace formula to the main scoreInfo kernel.
+The main kernel launch actually allocates each state buffer as
+`ceil(query_length / 32) * 16` elements. The corrected values below are bound
+to the host launch expression and replace the main residency values in
+`be506be`; that earlier receipt must not be used for resource decisions.
+
 ## Tool correction
 
 Nsight Compute is installed but was not on `PATH` during the prior profiling
@@ -66,11 +75,11 @@ The current main scoreInfo kernel stores three `int16_t` byte-state arrays.
 The current F1 forward kernel already stores three `uint8_t` arrays. Predicted
 resident blocks per SM are:
 
-| Query | Main current shared / blocks | Main uint8 two-state shared / blocks | F1 current shared / blocks | F1 two-state shared / blocks |
-| ---: | ---: | ---: | ---: | ---: |
-| 8,000 | 48,000 B / 2 | 16,000 B / 6 | 24,000 B / 4 | 16,000 B / 6 |
-| 11,498 | 69,024 B / 1 | 23,008 B / 4 | 34,512 B / 2 | 23,008 B / 4 |
-| 12,397 | 74,400 B / 1 | 24,800 B / 4 | 37,200 B / 2 | 24,800 B / 4 |
+| Query | Main current shared / blocks | Main uint8 three-state shared / blocks | Main uint8 two-state shared / blocks | F1 current shared / blocks | F1 two-state shared / blocks |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 8,000 | 24,000 B / 4 | 12,000 B / 8 | 8,000 B / 12 | 24,000 B / 4 | 16,000 B / 6 |
+| 11,498 | 34,560 B / 2 | 17,280 B / 5 | 11,520 B / 8 | 34,512 B / 2 | 23,008 B / 4 |
+| 12,397 | 37,248 B / 2 | 18,624 B / 5 | 12,416 B / 8 | 37,200 B / 2 | 24,800 B / 4 |
 
 These are resource ceilings, not speedup predictions. Runtime occupancy can be
 lower, and more resident blocks help only if the kernel has enough ready work
@@ -155,6 +164,6 @@ regenerated with:
 
 ```bash
 python3 scripts/model_long_query_gpu_resources_v1.py \
-  --source-commit 9023cb251bff2e7eb350edfd9183853dafdb03c6 \
+  --source-commit c4c3510b8fef7215b54c2ba35132f84fa33467a3 \
   --output docs/long_query_gpu_resource_profile_v1/static_model.json
 ```
