@@ -950,6 +950,10 @@ check-long-query-consumer-f1-scoreinfo-pipeline-v1:
 check-long-query-dynamic-gpu-pool-v1:
 	bash ./scripts/check_long_query_dynamic_gpu_pool_v1.sh
 
+.PHONY: check-long-query-f1-round-profile-summary-v1
+check-long-query-f1-round-profile-summary-v1:
+	python3 ./tests/test_summarize_long_query_f1_round_profile_v1.py -v
+
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)

@@ -11776,6 +11776,7 @@ int main(int argc, char* const* argv)
 							   "continuation_reverse_start_seconds\tcontinuation_banded_sw_seconds\t"
 							   "continuation_cigar_seconds\tcontinuation_alignment_convert_seconds\t"
 							   "continuation_cleanup_seconds\t"
+							   "round_profile_active\tround_profile_owner\t"
 							   "host_profile_active\thost_batch_wall_seconds\t"
 							   "host_validation_seconds\thost_attempt_build_seconds\t"
 							   "host_score_buffer_alloc_seconds\thost_round_descriptor_seconds\t"
@@ -11789,6 +11790,15 @@ int main(int argc, char* const* argv)
 							   "host_inner_unaccounted_seconds\thost_post_inner_seconds\t"
 							   "gpu_kernel_seconds\th2d_seconds\td2h_seconds\ttotal_seconds\t"
 							   "round_active_groups\tround_forward_attempts\tround_reverse_requests\t"
+							   "round_forward_total_seconds\tround_forward_gpu_seconds\t"
+							   "round_forward_h2d_seconds\tround_forward_d2h_seconds\t"
+							   "round_reverse_total_seconds\tround_reverse_gpu_seconds\t"
+							   "round_reverse_h2d_seconds\tround_reverse_d2h_seconds\t"
+							   "round_host_descriptor_seconds\t"
+							   "round_host_forward_apply_seconds\t"
+							   "round_host_reverse_compact_seconds\t"
+							   "round_host_reverse_apply_seconds\t"
+							   "round_host_retire_seconds\t"
 							   "error\n";
 					}
 				}
@@ -13063,6 +13073,17 @@ int main(int argc, char* const* argv)
 				    << static_cast<int>(atr.score * 1000.0f) << ':'
 				    << static_cast<int>(atr.identity * 1000.0f) << ':'
 				    << static_cast<int>(atr.tri_score * 1000.0f);
+				return out.str();
+			};
+			auto join_seconds = [](const std::vector<double> &values)
+			{
+				std::ostringstream out;
+				out << std::setprecision(17);
+				for (size_t i = 0; i < values.size(); ++i)
+				{
+					if (i != 0) out << ',';
+					out << values[i];
+				}
 				return out.str();
 			};
 
@@ -14909,6 +14930,8 @@ int main(int argc, char* const* argv)
 				<< result.continuation_cigar_seconds << '\t'
 				<< result.continuation_alignment_convert_seconds << '\t'
 				<< result.continuation_cleanup_seconds << '\t'
+				<< (result.round_profile_active ? 1 : 0) << '\t'
+				<< (result.round_profile_owner ? 1 : 0) << '\t'
 				<< (result.host_profile_active ? 1 : 0) << '\t'
 				<< result.host_batch_wall_seconds << '\t'
 				<< result.host_validation_seconds << '\t'
@@ -14937,6 +14960,19 @@ int main(int argc, char* const* argv)
 				<< join_counts(result.round_active_groups) << '\t'
 				<< join_counts(result.round_forward_attempts) << '\t'
 				<< join_counts(result.round_reverse_requests) << '\t'
+				<< join_seconds(result.round_forward_total_seconds) << '\t'
+				<< join_seconds(result.round_forward_gpu_seconds) << '\t'
+				<< join_seconds(result.round_forward_h2d_seconds) << '\t'
+				<< join_seconds(result.round_forward_d2h_seconds) << '\t'
+				<< join_seconds(result.round_reverse_total_seconds) << '\t'
+				<< join_seconds(result.round_reverse_gpu_seconds) << '\t'
+				<< join_seconds(result.round_reverse_h2d_seconds) << '\t'
+				<< join_seconds(result.round_reverse_d2h_seconds) << '\t'
+				<< join_seconds(result.round_host_descriptor_seconds) << '\t'
+				<< join_seconds(result.round_host_forward_apply_seconds) << '\t'
+				<< join_seconds(result.round_host_reverse_compact_seconds) << '\t'
+				<< join_seconds(result.round_host_reverse_apply_seconds) << '\t'
+				<< join_seconds(result.round_host_retire_seconds) << '\t'
 				<< (result.error.empty() ? "none" : result.error) << '\n';
 		};
 

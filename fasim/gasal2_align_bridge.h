@@ -2142,6 +2142,8 @@ struct FasimLongQueryGpuConsumerF1Result
 		continuation_profile_cache_misses(0),
 			continuation_reverse_calls(0),
 			continuation_banded_sw_calls(0),
+			round_profile_active(false),
+			round_profile_owner(false),
 			host_profile_active(false),
 			forward_seconds(0.0),
 		reverse_seconds(0.0),
@@ -2226,6 +2228,8 @@ struct FasimLongQueryGpuConsumerF1Result
 	uint64_t continuation_profile_cache_misses;
 	uint64_t continuation_reverse_calls;
 	uint64_t continuation_banded_sw_calls;
+	bool round_profile_active;
+	bool round_profile_owner;
 	bool host_profile_active;
 	double forward_seconds;
 	double reverse_seconds;
@@ -2275,6 +2279,19 @@ struct FasimLongQueryGpuConsumerF1Result
 	std::vector<uint64_t> round_active_groups;
 	std::vector<uint64_t> round_forward_attempts;
 	std::vector<uint64_t> round_reverse_requests;
+	std::vector<double> round_forward_total_seconds;
+	std::vector<double> round_forward_gpu_seconds;
+	std::vector<double> round_forward_h2d_seconds;
+	std::vector<double> round_forward_d2h_seconds;
+	std::vector<double> round_reverse_total_seconds;
+	std::vector<double> round_reverse_gpu_seconds;
+	std::vector<double> round_reverse_h2d_seconds;
+	std::vector<double> round_reverse_d2h_seconds;
+	std::vector<double> round_host_descriptor_seconds;
+	std::vector<double> round_host_forward_apply_seconds;
+	std::vector<double> round_host_reverse_compact_seconds;
+	std::vector<double> round_host_reverse_apply_seconds;
+	std::vector<double> round_host_retire_seconds;
 	std::string first_mismatch;
 	std::string error;
 };
