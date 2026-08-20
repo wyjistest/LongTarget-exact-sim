@@ -1,0 +1,10 @@
+stage,kernel,time_percent,total_time_ns,instances,average_time_ns
+f1_forward_byte,prealign_cuda_exact_attempt_forward_byte_kernel,41.0,6909337867,96,71972269.4
+main_scoreinfo,prealign_cuda_column_max_legacy_byte_batch_kernel,40.4,6799494720,3,2266498240.0
+minscore_uint8,prealign_cuda_max_score_byte_global_state_batch_kernel,10.8,1815380198,3,605126732.7
+f1_reverse_byte,prealign_cuda_exact_attempt_reverse_byte_kernel,6.9,1164686564,64,18198227.6
+minscore_word16_replay,prealign_cuda_column_max_global_state_batch_kernel,0.9,153470679,3,51156893.0
+scoreinfo_compact,prealign_cuda_column_scoreinfo_pruned_compact_kernel,0.0,3362933,3,1120977.7
+f1_forward_word_replay,prealign_cuda_exact_attempt_forward_word_kernel,0.0,539007,96,5614.7
+f1_reverse_word_replay,prealign_cuda_exact_attempt_reverse_word_kernel,0.0,320767,64,5012.0
+minscore_reduce,prealign_cuda_reduce_column_max_scores_kernel,0.0,6624,3,2208.0

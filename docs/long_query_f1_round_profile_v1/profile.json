@@ -1,0 +1,160 @@
+{
+  "schema_version": "long_query_f1_round_profile_receipt_v1",
+  "source_commit": "03903c94e0fab7ff74913aca46e2646b9b13f060",
+  "binary_sha256": "f672bcadbe52018354fd4f96d6c66b4f5037940c3983030b1ee28199c045f7aa",
+  "binary_rebuild_sha256_equal": true,
+  "date": "2026-08-20",
+  "runtime_flag": "FASIM_LONG_QUERY_GPU_CONSUMER_F1_ROUND_PROFILE",
+  "default_enabled": false,
+  "input": {
+    "query_id": "PCAT19_prefix_8000",
+    "query_length": 8000,
+    "query_file_sha256": "476b3a8948ec86bde95a5426887270f271a666bb60e456279f06c972e02555fe",
+    "target_id": "chr22_slice_10m_12m",
+    "target_length": 2000000,
+    "target_file_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea"
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+    "driver": "555.42.06"
+  },
+  "profile_run": {
+    "f1_report_rows": 10368,
+    "f1_report_sha256": "800c49ea562d914f40e4b37c60cbb6f11427278f8e1f978ff5ec823521670dd8",
+    "summary_sha256": "d6a48386a1681d37e93aa7ce5a316d5cabaec6318460eecb5026eba1a33a00e8",
+    "owner_count": 3,
+    "owner_task_indexes": [0, 4096, 8192],
+    "technical_failures": 0,
+    "tfosorted_sha256": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+    "expected_tfosorted_sha256": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+    "aggregate_gpu_seconds": 8.064679101599987,
+    "round_profile_gpu_seconds": 8.06467900633812,
+    "gpu_sum_absolute_difference": 9.52618677274586e-08,
+    "gpu_sum_tolerance": 8.064679101599986e-06,
+    "profiled_host_seconds": 0.113398135,
+    "profiled_host_to_gpu_ratio": 0.01406108475128138,
+    "decision": "round_profile_pass"
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "active_groups": 217424,
+      "forward_attempts": 217424,
+      "reverse_requests": 185191,
+      "forward_gpu_seconds": 5.0001179733276375,
+      "reverse_gpu_seconds": 1.0569277486801147,
+      "gpu_seconds": 6.057045722007752,
+      "gpu_fraction": 0.7510585005612069,
+      "host_seconds": 0.056198084
+    },
+    {
+      "round": 1,
+      "active_groups": 52128,
+      "forward_attempts": 52128,
+      "reverse_requests": 4046,
+      "forward_gpu_seconds": 0.8307856578826904,
+      "reverse_gpu_seconds": 0.02571571207046509,
+      "gpu_seconds": 0.8565013699531555,
+      "gpu_fraction": 0.10620402489423593,
+      "host_seconds": 0.016564979
+    },
+    {
+      "round": 2,
+      "active_groups": 52128,
+      "forward_attempts": 52128,
+      "reverse_requests": 3114,
+      "forward_gpu_seconds": 0.6009064378738403,
+      "reverse_gpu_seconds": 0.01570406436920166,
+      "gpu_seconds": 0.616610502243042,
+      "gpu_fraction": 0.07645815806908633,
+      "host_seconds": 0.016845211
+    },
+    {
+      "round": 3,
+      "active_groups": 52128,
+      "forward_attempts": 52128,
+      "reverse_requests": 2976,
+      "forward_gpu_seconds": 0.4700047082901001,
+      "reverse_gpu_seconds": 0.012032895803451538,
+      "gpu_seconds": 0.4820376040935516,
+      "gpu_fraction": 0.05977145571630477,
+      "host_seconds": 0.015950385
+    },
+    {
+      "round": 4,
+      "kind": "deferred_reverse",
+      "active_groups": 0,
+      "forward_attempts": 0,
+      "reverse_requests": 22097,
+      "forward_gpu_seconds": 0.0,
+      "reverse_gpu_seconds": 0.052483808040618904,
+      "gpu_seconds": 0.052483808040618904,
+      "gpu_fraction": 0.00650786075916615,
+      "host_seconds": 0.007839476
+    }
+  ],
+  "derived": {
+    "round0_survivor_fraction": 0.239752741,
+    "f1_forward_gpu_seconds": 6.901814777374268,
+    "f1_reverse_gpu_seconds": 1.162864228963852,
+    "round0_gpu_fraction": 0.7510585005612069,
+    "host_round_scheduling_is_primary_bottleneck": false
+  },
+  "nsight_systems": {
+    "version": "2024.2.3.38-242334140272v0",
+    "raw_report_sha256": "4969fdb0ff652c0b60c71c5c1459d448bf1ce816d2c856dcccacf2357afcc014",
+    "raw_report_committed": false,
+    "tfosorted_sha256": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+    "total_gpu_kernel_seconds": 16.846599359,
+    "kernels": [
+      {"stage": "f1_forward_byte", "total_seconds": 6.909337867, "instances": 96, "fraction": 0.410132497},
+      {"stage": "main_scoreinfo", "total_seconds": 6.79949472, "instances": 3, "fraction": 0.4036123},
+      {"stage": "minscore_uint8", "total_seconds": 1.815380198, "instances": 3, "fraction": 0.107759445},
+      {"stage": "f1_reverse_byte", "total_seconds": 1.164686564, "instances": 64, "fraction": 0.069134817},
+      {"stage": "minscore_word16_replay", "total_seconds": 0.153470679, "instances": 3, "fraction": 0.009109891},
+      {"stage": "other", "total_seconds": 0.004229331, "fraction": 0.00025105}
+    ],
+    "cuda_api": {
+      "event_synchronize_seconds": 16.852621885,
+      "memcpy_seconds": 0.037503714,
+      "launch_kernel_seconds": 0.006112276
+    },
+    "cpu_context_switch_trace_supported": false,
+    "nsight_compute_available": false
+  },
+  "dual_contract_bound": {
+    "main_scoreinfo_gpu_seconds": 6.79949472,
+    "uint8_and_replay_minscore_gpu_seconds": 1.968857501,
+    "combined_gpu_seconds": 8.768352221,
+    "perfect_minscore_elimination_combined_speedup": 1.289559384,
+    "perfect_minscore_elimination_reduction": 0.224541334,
+    "required_combined_reduction": 0.2,
+    "maximum_dual_seconds_for_gate": 7.014681777,
+    "allowed_increment_over_main_seconds": 0.215187057,
+    "required_incremental_minscore_reduction_factor": 9.14951638,
+    "kernel_authorized": false,
+    "reason": "insufficient_margin_after_uint8_minscore_and_missing_resource_metrics"
+  },
+  "tests": {
+    "summary_unit_tests_passed": 3,
+    "frozen_4006_scheduler_counts_and_digest": true,
+    "async_legacy_replay_fixtures_passed": 2,
+    "cpu_only_stub_build": true,
+    "uint8_api_regression": true,
+    "dynamic_gpu_pool_tests_passed": 24,
+    "git_diff_check": true
+  },
+  "decision": {
+    "round_profile_mechanism": "pass",
+    "host_only_f1_rewrite": "no_go",
+    "dual_contract_kernel": "not_authorized",
+    "next_profile_focus": "main_scoreinfo_resource_metrics",
+    "next_kernel_focus": "main_scoreinfo_only_after_resource_profile"
+  },
+  "limitations": {
+    "full_concat_profiled": false,
+    "openmp_background_load_present": true,
+    "nsight_compute_metrics_available": false
+  }
+}
