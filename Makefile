@@ -822,6 +822,12 @@ PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cud
 PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARGET ?= tests/test_prealign_cuda_attempt_endpoint
 PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_SOURCES := tests/test_prealign_cuda_attempt_endpoint.cpp cuda/prealign_cuda.o
 
+PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET ?= tests/test_prealign_cuda_global_state_direct
+PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_SOURCES := tests/test_prealign_cuda_global_state_direct.cpp cuda/prealign_cuda.o
+
+PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_TARGET ?= tests/benchmark_prealign_cuda_global_state_direct
+PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_SOURCES := tests/benchmark_prealign_cuda_global_state_direct.cpp cuda/prealign_cuda.o
+
 FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET ?= tests/test_fasim_lazy_reverse_shadow
 FASIM_LAZY_REVERSE_SHADOW_TEST_SOURCES := tests/test_fasim_lazy_reverse_shadow.cpp
 
@@ -934,11 +940,19 @@ check-fasim-forward-continuation-query: $(FASIM_FORWARD_CONTINUATION_QUERY_TEST_
 check-long-query-consumer-f1-scoreinfo-pipeline-v1:
 	BIN=$(CURDIR)/.tmp/fasim_f1_scoreinfo_pipeline_v1 WORK=$(or $(WORK),$(CURDIR)/.tmp/long_query_consumer_f1_scoreinfo_pipeline_v1) bash ./scripts/check_long_query_consumer_f1_scoreinfo_pipeline_v1.sh
 
+.PHONY: check-long-query-dynamic-gpu-pool-v1
+check-long-query-dynamic-gpu-pool-v1:
+	bash ./scripts/check_long_query_dynamic_gpu_pool_v1.sh
+
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
 
 build-prealign-cuda-attempt-endpoint-test: $(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARGET)
+
+build-prealign-cuda-global-state-direct-test: $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET)
+
+build-prealign-cuda-global-state-direct-benchmark: $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_TARGET)
 
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
 
@@ -1016,6 +1030,12 @@ $(PREALIGN_SHARED_TEST_TARGET): $(PREALIGN_SHARED_TEST_SOURCES) cuda/prealign_cu
 
 $(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARGET): $(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET): $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_TARGET): $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_SCAN_BATCH_TEST_TARGET): $(SIM_SCAN_BATCH_TEST_SOURCES) cuda/sim_scan_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_SCAN_BATCH_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -1109,6 +1129,10 @@ check-prealign-shared: $(PREALIGN_SHARED_TEST_TARGET)
 
 check-prealign-cuda-attempt-endpoint: $(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARGET)
 	./$(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARGET)
+
+.PHONY: check-prealign-cuda-global-state-direct
+check-prealign-cuda-global-state-direct: $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET)
+	./$(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET)
 
 check-sim-scan-batch: $(SIM_SCAN_BATCH_TEST_TARGET)
 	./$(SIM_SCAN_BATCH_TEST_TARGET)

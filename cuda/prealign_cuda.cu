@@ -547,6 +547,120 @@ __global__ void prealign_cuda_column_max_global_state_batch_kernel(const int16_t
   }
 }
 
+// Development-only scalar-output variant of the word16 global-state kernel.
+// The recurrence and task mapping above are intentionally unchanged; only the
+// per-column output and the follow-up reduction are replaced by a register max.
+__global__ void prealign_cuda_max_score_global_state_direct_batch_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int targetLength,
+  int segLen,
+  int16_t *stateDevice,
+  int *outScores)
+{
+  const int lane = static_cast<int>(threadIdx.x);
+  const int taskIndex = static_cast<int>(blockIdx.x);
+  if(taskIndex >= taskCount || lane >= 32)
+  {
+    return;
+  }
+  const size_t stateStride =
+    static_cast<size_t>(3) * static_cast<size_t>(segLen) * 32u;
+  int16_t *taskState = stateDevice + static_cast<size_t>(taskIndex) * stateStride;
+  int16_t *E = taskState;
+  int16_t *H0 = E + segLen * 32;
+  int16_t *H1 = H0 + segLen * 32;
+
+  for(int i = lane; i < segLen * 32; i += 32)
+  {
+    E[i] = 0;
+    H0[i] = 0;
+    H1[i] = 0;
+  }
+  __syncwarp();
+
+  const uint8_t *taskTarget =
+    encodedTargets + static_cast<size_t>(taskIndex) * static_cast<size_t>(targetLength);
+  const int gapOpen = 16;
+  const int gapExtend = 4;
+  int16_t *HLoad = H0;
+  int16_t *HStore = H1;
+  int taskLaneMax = 0;
+
+  for(int targetIndex = 0; targetIndex < targetLength; ++targetIndex)
+  {
+    const uint8_t targetCode = taskTarget[targetIndex];
+    const int16_t *profileRow =
+      profile + static_cast<size_t>(targetCode) * static_cast<size_t>(segLen) * 32u;
+    int colLaneMax = 0;
+    int vF = 0;
+    int vH = static_cast<int>(HLoad[(segLen - 1) * 32 + lane]);
+    vH = cuda_warp_shift_left_1(vH,lane);
+
+    for(int segIndex = 0; segIndex < segLen; ++segIndex)
+    {
+      const int score = static_cast<int>(profileRow[segIndex * 32 + lane]);
+      const int oldH = static_cast<int>(HLoad[segIndex * 32 + lane]);
+      int vE = static_cast<int>(E[segIndex * 32 + lane]);
+
+      vH = vH + score;
+      vH = cuda_max_int(vH,vE);
+      vH = cuda_max_int(vH,vF);
+      vH = cuda_clamp_nonnegative(vH);
+
+      HStore[segIndex * 32 + lane] = static_cast<int16_t>(vH);
+      colLaneMax = cuda_max_int(colLaneMax,vH);
+
+      int vHGapOpen = vH - gapOpen;
+      vHGapOpen = cuda_clamp_nonnegative(vHGapOpen);
+      vE = cuda_clamp_nonnegative(vE - gapExtend);
+      vE = cuda_max_int(vE,vHGapOpen);
+      E[segIndex * 32 + lane] = static_cast<int16_t>(vE);
+      vF = cuda_clamp_nonnegative(vF - gapExtend);
+      vF = cuda_max_int(vF,vHGapOpen);
+      vH = oldH;
+    }
+
+    int segIndex = 0;
+    int vHStore = static_cast<int>(HStore[segIndex * 32 + lane]);
+    vF = cuda_warp_shift_left_1(vF,lane);
+    while(true)
+    {
+      vHStore = cuda_max_int(vHStore,vF);
+      HStore[segIndex * 32 + lane] = static_cast<int16_t>(vHStore);
+      colLaneMax = cuda_max_int(colLaneMax,vHStore);
+
+      const int vHGapOpen = cuda_clamp_nonnegative(vHStore - gapOpen);
+      vF = cuda_clamp_nonnegative(vF - gapExtend);
+      const int shouldContinue = vF > vHGapOpen ? 1 : 0;
+      if(__ballot_sync(0xffffffffu,shouldContinue) == 0)
+      {
+        break;
+      }
+      ++segIndex;
+      if(segIndex >= segLen)
+      {
+        segIndex = 0;
+        vF = cuda_warp_shift_left_1(vF,lane);
+      }
+      vHStore = static_cast<int>(HStore[segIndex * 32 + lane]);
+    }
+
+    int16_t *tmp = HLoad;
+    HLoad = HStore;
+    HStore = tmp;
+    taskLaneMax = cuda_max_int(taskLaneMax,colLaneMax);
+    __syncwarp();
+  }
+
+  const int taskMax = cuda_warp_reduce_max_int(taskLaneMax);
+  if(lane == 0)
+  {
+    outScores[taskIndex] = taskMax;
+  }
+}
+
 __global__ void prealign_cuda_column_max_legacy_byte_global_state_batch_kernel(const int16_t *profile,
                                                                                const uint8_t *encodedTargets,
                                                                                int taskCount,
@@ -7376,6 +7490,144 @@ bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHan
     reduceBatchResult->h2dSeconds = 0.0;
     reduceBatchResult->d2hSeconds =
       static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  return true;
+}
+
+bool prealign_cuda_find_max_scores_global_state_direct_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  vector<int> *outScores,
+  PreAlignCudaBatchResult *batchResult,
+  string *errorOut)
+{
+  if(outScores == NULL)
+  {
+    if(errorOut != NULL) *errorOut = "missing output buffer";
+    return false;
+  }
+  outScores->clear();
+  if(batchResult != NULL) *batchResult = PreAlignCudaBatchResult();
+  if(encodedTargetsHost == NULL)
+  {
+    if(errorOut != NULL) *errorOut = "missing input targets";
+    return false;
+  }
+  if(taskCount <= 0 || targetLength <= 0)
+  {
+    if(errorOut != NULL) *errorOut = "invalid target dimensions";
+    return false;
+  }
+  if(handle.profileDevice == 0 || handle.segLen <= 0 || handle.queryLength <= 0)
+  {
+    if(errorOut != NULL) *errorOut = "CUDA query handle not initialized";
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(handle.device,&context,&contextMutex,errorOut))
+  {
+    return false;
+  }
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context,handle.device,errorOut) ||
+     !ensure_prealign_cuda_capacity_locked(*context,taskCount,targetLength,1,errorOut) ||
+     !ensure_prealign_cuda_scores_capacity_locked(*context,taskCount,errorOut) ||
+     !ensure_prealign_cuda_global_state_capacity_locked(
+       *context,taskCount,handle.segLen,errorOut))
+  {
+    return false;
+  }
+
+  const size_t targetsBytes =
+    static_cast<size_t>(taskCount) * static_cast<size_t>(targetLength) * sizeof(uint8_t);
+  const size_t scoreBytes = static_cast<size_t>(taskCount) * sizeof(int);
+  cudaEvent_t h2dStart = NULL;
+  cudaEvent_t h2dStop = NULL;
+  cudaEvent_t d2hStart = NULL;
+  cudaEvent_t d2hStop = NULL;
+  cudaError_t status = cudaEventCreate(&h2dStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&h2dStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(h2dStart != NULL) cudaEventDestroy(h2dStart);
+    if(h2dStop != NULL) cudaEventDestroy(h2dStop);
+    if(d2hStart != NULL) cudaEventDestroy(d2hStart);
+    if(d2hStop != NULL) cudaEventDestroy(d2hStop);
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+
+  status = cudaEventRecord(h2dStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->targetsDevice,encodedTargetsHost,
+                        targetsBytes,cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(h2dStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(h2dStop);
+  float h2dElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&h2dElapsedMs,h2dStart,h2dStop);
+  }
+
+  if(status == cudaSuccess) status = cudaEventRecord(context->startEvent);
+  if(status == cudaSuccess)
+  {
+    const int threadsPerBlock = 32;
+    prealign_cuda_max_score_global_state_direct_batch_kernel<<<
+      taskCount,threadsPerBlock,0>>>(
+        reinterpret_cast<const int16_t *>(handle.profileDevice),
+        context->targetsDevice,taskCount,targetLength,handle.segLen,
+        context->globalStateDevice,context->scoresDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(context->stopEvent);
+  if(status == cudaSuccess) status = cudaEventSynchronize(context->stopEvent);
+  float kernelElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&kernelElapsedMs,
+                                  context->startEvent,context->stopEvent);
+  }
+
+  vector<int> scores(static_cast<size_t>(taskCount));
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(scores.data(),context->scoresDevice,
+                        scoreBytes,cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
+  float d2hElapsedMs = 0.0f;
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&d2hElapsedMs,d2hStart,d2hStop);
+  }
+
+  cudaEventDestroy(h2dStart);
+  cudaEventDestroy(h2dStop);
+  cudaEventDestroy(d2hStart);
+  cudaEventDestroy(d2hStop);
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+  outScores->swap(scores);
+  if(batchResult != NULL)
+  {
+    batchResult->usedCuda = true;
+    batchResult->gpuSeconds = static_cast<double>(kernelElapsedMs) / 1000.0;
+    batchResult->h2dSeconds = static_cast<double>(h2dElapsedMs) / 1000.0;
+    batchResult->d2hSeconds = static_cast<double>(d2hElapsedMs) / 1000.0;
   }
   return true;
 }

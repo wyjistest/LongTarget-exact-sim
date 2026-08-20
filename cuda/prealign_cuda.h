@@ -510,4 +510,16 @@ bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHan
                                                       PreAlignCudaBatchResult *reduceBatchResult,
                                                       std::string *errorOut);
 
+// Development-only word16/global-state scalar-output spike. This preserves the
+// authority recurrence and task mapping while avoiding per-column output and
+// the second reduction kernel.
+bool prealign_cuda_find_max_scores_global_state_direct_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  std::vector<int> *outScores,
+  PreAlignCudaBatchResult *batchResult,
+  std::string *errorOut);
+
 #endif
