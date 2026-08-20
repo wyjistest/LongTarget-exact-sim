@@ -28,6 +28,7 @@ DEVICE = {
 KERNELS = {
     "main_scoreinfo_current_int16_3state": {
         "kernel": "prealign_cuda_column_max_legacy_byte_batch_kernel",
+        "segment_width": 32,
         "state_buffers": 3,
         "state_bytes": 2,
         "state_lanes": 16,
@@ -38,6 +39,7 @@ KERNELS = {
     },
     "main_scoreinfo_uint8_3state_candidate": {
         "kernel": "candidate_not_implemented",
+        "segment_width": 32,
         "state_buffers": 3,
         "state_bytes": 1,
         "state_lanes": 16,
@@ -48,6 +50,7 @@ KERNELS = {
     },
     "main_scoreinfo_uint8_2state_candidate": {
         "kernel": "candidate_not_implemented",
+        "segment_width": 32,
         "state_buffers": 2,
         "state_bytes": 1,
         "state_lanes": 16,
@@ -58,6 +61,7 @@ KERNELS = {
     },
     "f1_forward_current_uint8_3state": {
         "kernel": "prealign_cuda_exact_attempt_forward_byte_kernel",
+        "segment_width": 16,
         "state_buffers": 3,
         "state_bytes": 1,
         "state_lanes": 16,
@@ -68,6 +72,7 @@ KERNELS = {
     },
     "f1_forward_uint8_2state_candidate": {
         "kernel": "candidate_not_implemented",
+        "segment_width": 16,
         "state_buffers": 2,
         "state_bytes": 1,
         "state_lanes": 16,
@@ -87,12 +92,14 @@ def model_kernel(query_length: int, spec: Dict[str, object]) -> Dict[str, object
     if query_length <= 0:
         raise ValueError("query length must be positive")
     state_lanes = int(spec["state_lanes"])
+    segment_width = int(spec["segment_width"])
     threads = int(spec["threads_per_block"])
     registers = int(spec["registers_per_thread"])
-    padded_query_length = ceil_div(query_length, state_lanes) * state_lanes
+    segment_length = ceil_div(query_length, segment_width)
+    state_elements = segment_length * state_lanes
     dynamic_shared = (
         int(spec["state_buffers"])
-        * padded_query_length
+        * state_elements
         * int(spec["state_bytes"])
     )
     resource_fit = dynamic_shared <= DEVICE["optin_shared_bytes_per_block"]
@@ -118,7 +125,8 @@ def model_kernel(query_length: int, spec: Dict[str, object]) -> Dict[str, object
     return {
         **spec,
         "query_length": query_length,
-        "padded_query_length": padded_query_length,
+        "segment_length": segment_length,
+        "state_elements_per_buffer": state_elements,
         "dynamic_shared_bytes_per_block": dynamic_shared,
         "uses_optin_shared_memory": dynamic_shared
         > DEVICE["default_shared_bytes_per_block"],
