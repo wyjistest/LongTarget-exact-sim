@@ -1,0 +1,211 @@
+{
+  "schema_version": "long_query_minscore_uint8_global_state_audit_v1",
+  "source_commit": "741af2ab4d1c94cdc224a6a0f8d92a954d2281ab",
+  "binary_sha256": "6a91e8508673d29ece2e23778cc51561b45dde517b72fe2f57a00f2fd18299e2",
+  "binary_rebuild_sha256_equal": true,
+  "date": "2026-08-20",
+  "authority": "word16_global_state_column_output_plus_reduce",
+  "candidate": "uint8_global_state_with_strict_saturation_certificate_and_selective_full_word16_replay",
+  "numerical_contract": {
+    "lane_mapping": 32,
+    "scoring": "5/4/16/4",
+    "query_profile_equal_to_authority": true,
+    "recurrence_equal_to_authority": true,
+    "candidate_state_type": "uint8_t",
+    "accepted_task_condition": "every_stored_H_value_le_255",
+    "replay_unit": "complete_task",
+    "replay_authority": "unchanged_word16_column_output_plus_reduce",
+    "byte_profile_lazy_f_scoreinfo_state_shared": false
+  },
+  "runtime": {
+    "default_enabled": false,
+    "enable_flag": "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_MINSCORE_UINT8_GLOBAL",
+    "minimum_query_length_flag": "FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_MINSCORE_UINT8_GLOBAL_MIN_QUERY_LENGTH",
+    "default_minimum_query_length": 8000,
+    "requires_gpu_minscore": true,
+    "byte_overflow_audit_mutually_exclusive": true,
+    "mutual_exclusion_exit_code": 1,
+    "mutual_exclusion_message": "uint8 global minScore runtime and byte-overflow audit are mutually exclusive"
+  },
+  "gpu_devices": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+      "driver": "555.42.06",
+      "memory_mib": 24564
+    },
+    {
+      "index": 1,
+      "name": "NVIDIA GeForce RTX 4090",
+      "uuid": "GPU-9c6883e3-fe8f-1a96-ebac-c8496069cba2",
+      "driver": "555.42.06",
+      "memory_mib": 24564
+    }
+  ],
+  "target": {
+    "id": "chr22_slice_10m_12m",
+    "sequence_length": 2000000,
+    "file_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea"
+  },
+  "source_bound_cases": [
+    {
+      "id": "pcat19_prefix_7999_gate_off",
+      "query_length": 7999,
+      "query_file_sha256": "fcea7d09bfaa789f70ff1d2ccfecf764802dbd24f2bea19de91786ea15552125",
+      "runtime_requested": true,
+      "runtime_active": false,
+      "candidate_batches": 0,
+      "candidate_tasks": 0,
+      "word_replay_tasks": 0,
+      "authority_minscore_wall_seconds": 4.40563,
+      "candidate_minscore_wall_seconds": null,
+      "stage_speedup": 1.0,
+      "off_total_wall_seconds": 43.8011,
+      "on_total_wall_seconds": 43.8576,
+      "f1_rows_per_arm": 10368,
+      "f1_non_timing_digest_off": "45a5ab8544cea263d34dff55432f34f25bda432e7dce2df4edab13f90d21a9fe",
+      "f1_non_timing_digest_on": "45a5ab8544cea263d34dff55432f34f25bda432e7dce2df4edab13f90d21a9fe",
+      "tfosorted_sha256_off": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+      "tfosorted_sha256_on": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+      "byte_identical": true,
+      "technical_failures": 0
+    },
+    {
+      "id": "pcat19_prefix_8000_gate_on",
+      "query_length": 8000,
+      "query_file_sha256": "476b3a8948ec86bde95a5426887270f271a666bb60e456279f06c972e02555fe",
+      "runtime_requested": true,
+      "runtime_active": true,
+      "candidate_batches": 3,
+      "candidate_tasks": 10368,
+      "word_replay_tasks": 8,
+      "word_replay_task_fraction": 0.000771604938,
+      "authority_minscore_wall_seconds": 4.37106,
+      "candidate_minscore_wall_seconds": 1.97082,
+      "stage_speedup": 2.217889,
+      "off_total_wall_seconds": 43.8442,
+      "on_total_wall_seconds": 41.3267,
+      "f1_rows_per_arm": 10368,
+      "f1_non_timing_digest_off": "45a5ab8544cea263d34dff55432f34f25bda432e7dce2df4edab13f90d21a9fe",
+      "f1_non_timing_digest_on": "45a5ab8544cea263d34dff55432f34f25bda432e7dce2df4edab13f90d21a9fe",
+      "tfosorted_sha256_off": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+      "tfosorted_sha256_on": "238ce9019d325d40d24c7f153b7943df2e8ace12b4ea5a1ae7074fe61bf24492",
+      "byte_identical": true,
+      "technical_failures": 0
+    },
+    {
+      "id": "ENSG00000229852_fresh",
+      "query_length": 10451,
+      "query_file_sha256": "9c93402dc8b8bfc2c34cb70b15f02053aa4959c32b57d98d45cb17fa19eac5e3",
+      "gpu_index": 0,
+      "runtime_active": true,
+      "candidate_batches": 3,
+      "candidate_tasks": 10368,
+      "word_replay_tasks": 331,
+      "word_replay_task_fraction": 0.031925154321,
+      "authority_minscore_wall_seconds": 6.38103,
+      "candidate_minscore_wall_seconds": 3.18115,
+      "stage_speedup": 2.005888,
+      "off_total_wall_seconds": 72.7988,
+      "on_total_wall_seconds": 69.3233,
+      "f1_rows_per_arm": 10368,
+      "f1_non_timing_digest_off": "b4691513513dea1a37e6e01adc625e4262f8ba37c6177d3efa5b67335002b104",
+      "f1_non_timing_digest_on": "b4691513513dea1a37e6e01adc625e4262f8ba37c6177d3efa5b67335002b104",
+      "tfosorted_sha256_off": "e541bad07ad4fa928396928b9cc3b1c208773f4aba139396f5ff375f64de9d7c",
+      "tfosorted_sha256_on": "e541bad07ad4fa928396928b9cc3b1c208773f4aba139396f5ff375f64de9d7c",
+      "byte_identical": true,
+      "technical_failures": 0
+    },
+    {
+      "id": "ENSG00000250208_fresh",
+      "query_length": 11498,
+      "query_file_sha256": "de034f0f20e3bcb213939609b14ee2ab49ee2723c232652014356283060a0dec",
+      "gpu_index": 1,
+      "runtime_active": true,
+      "candidate_batches": 3,
+      "candidate_tasks": 10368,
+      "word_replay_tasks": 705,
+      "word_replay_task_fraction": 0.067997685185,
+      "authority_minscore_wall_seconds": 7.09396,
+      "candidate_minscore_wall_seconds": 4.19916,
+      "stage_speedup": 1.689376,
+      "off_total_wall_seconds": 104.289,
+      "on_total_wall_seconds": 101.645,
+      "f1_rows_per_arm": 10368,
+      "f1_non_timing_digest_off": "501d15d0aab6e930233a17f7556ad81a6ff0095a471cfae82560179df3498e71",
+      "f1_non_timing_digest_on": "501d15d0aab6e930233a17f7556ad81a6ff0095a471cfae82560179df3498e71",
+      "tfosorted_sha256_off": "41aad1f83a6f5ea2a020525f46adddc92bd58e66c25bed8214dc0cb9ee7ba632",
+      "tfosorted_sha256_on": "41aad1f83a6f5ea2a020525f46adddc92bd58e66c25bed8214dc0cb9ee7ba632",
+      "byte_identical": true,
+      "technical_failures": 0
+    }
+  ],
+  "supporting_api_batch_cases": [
+    {
+      "query_length": 4006,
+      "task_count": 4096,
+      "target_length": 5000,
+      "word_replay_tasks": 0,
+      "score_mismatches": 0,
+      "authority_wall_seconds": 0.425311,
+      "candidate_wall_seconds": 0.336694,
+      "stage_speedup": 1.263197
+    },
+    {
+      "query_length": 8181,
+      "task_count": 4096,
+      "target_length": 5000,
+      "word_replay_tasks": 6,
+      "score_mismatches": 0,
+      "authority_wall_seconds": 1.95417,
+      "candidate_wall_seconds": 0.837436,
+      "stage_speedup": 2.333516
+    },
+    {
+      "query_length": 12397,
+      "task_count": 4096,
+      "target_length": 5000,
+      "word_replay_tasks": 36,
+      "score_mismatches": 0,
+      "paired_samples": [
+        {"authority_wall_seconds": 3.03746, "candidate_wall_seconds": 1.99474, "stage_speedup": 1.522735},
+        {"authority_wall_seconds": 3.02718, "candidate_wall_seconds": 1.9904, "stage_speedup": 1.52089},
+        {"authority_wall_seconds": 3.04641, "candidate_wall_seconds": 2.00449, "stage_speedup": 1.519793}
+      ],
+      "median_stage_speedup": 1.52089
+    }
+  ],
+  "tests": {
+    "uint8_api_query_lengths": [1, 31, 32, 33, 511, 2812, 4006, 8181, 12397],
+    "uint8_api_exact": true,
+    "forced_overflow_replay_exact": true,
+    "word16_scalar_direct_output_regression": true,
+    "cpu_only_stub_build": true,
+    "dynamic_gpu_pool_passed": 24,
+    "dynamic_gpu_pool_total": 24,
+    "f1_legacy_replay_fixture_passed": 2,
+    "f1_legacy_replay_fixture_total": 2,
+    "git_diff_check": true
+  },
+  "gate": {
+    "minimum_stage_speedup": 1.5,
+    "minimum_query_length": 8000,
+    "source_bound_active_cases": 3,
+    "source_bound_active_cases_passing": 3,
+    "lowest_source_bound_active_stage_speedup": 1.689376,
+    "all_complete_outputs_byte_identical": true,
+    "all_f1_non_timing_signatures_equal": true,
+    "all_f1_row_failures_zero": true,
+    "all_gpu_minscore_fallbacks_zero": true,
+    "decision": "conditional_go_for_full_concat_shadow"
+  },
+  "limitations": {
+    "full_concat_tested": false,
+    "openmp_background_load_present": true,
+    "total_process_wall_is_formal": false,
+    "production_default_enabled": false,
+    "production_dynamic_gpu_queue_started": false
+  },
+  "next_gate": "representative_164.9Mb_full_concat_same_binary_off_on_exact_shadow"
+}
