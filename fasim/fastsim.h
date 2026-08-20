@@ -425,6 +425,17 @@ inline bool fasim_long_query_gpu_consumer_f1_host_profile_runtime()
 	return enabled;
 }
 
+inline bool fasim_long_query_gpu_consumer_f1_legacy_cpu_replay_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv(
+			"FASIM_LONG_QUERY_GPU_CONSUMER_F1_LEGACY_CPU_REPLAY");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline int fasim_long_query_gpu_consumer_f1_continuation_threads_runtime()
 {
 	static const int threads = []()
@@ -471,6 +482,38 @@ private:
 	uint8_t priorInternalProfile;
 };
 
+class FasimLongQueryGpuConsumerF1ContinuationProfilePauseScope
+{
+public:
+	explicit FasimLongQueryGpuConsumerF1ContinuationProfilePauseScope(bool enabled) :
+		active(enabled),
+		priorContinuationProfile(
+			StripedSmithWaterman::ForwardContinuationProfileEnabled()),
+		priorInternalProfile(ssw_align_internal_stats_enabled())
+	{
+		if (active)
+		{
+			StripedSmithWaterman::ForwardContinuationProfileSetEnabled(false);
+			ssw_align_internal_stats_set_enabled(0);
+		}
+	}
+
+	~FasimLongQueryGpuConsumerF1ContinuationProfilePauseScope()
+	{
+		if (active)
+		{
+			StripedSmithWaterman::ForwardContinuationProfileSetEnabled(
+				priorContinuationProfile);
+			ssw_align_internal_stats_set_enabled(priorInternalProfile);
+		}
+	}
+
+private:
+	bool active;
+	bool priorContinuationProfile;
+	uint8_t priorInternalProfile;
+};
+
 // Inputs for the global F1 round scheduler.  The pointers are borrowed for
 // the duration of one call; the caller owns all strings and scoreInfo vectors.
 struct FasimLongQueryGpuConsumerF1TaskInput
@@ -488,6 +531,21 @@ struct FasimLongQueryGpuConsumerF1TaskInput
 	long rule;
 	const std::vector<struct StripedSmithWaterman::scoreInfo> *scoreInfo;
 };
+
+inline bool fasim_long_query_gpu_consumer_f1_continuation_contract_ok(
+	const FasimLongQueryGpuConsumerF1Result &result)
+{
+	if (result.legacy_cpu_replay_active)
+	{
+		return result.legacy_cpu_replay_requested &&
+			result.cpu_continuation_failures == 1 &&
+			result.cpu_continuation_calls > 0 &&
+			result.cpu_continuation_calls <= result.selected_attempts &&
+			result.legacy_cpu_replay_attempts > 0;
+	}
+	return result.cpu_continuation_failures == 0 &&
+		result.cpu_continuation_calls == result.selected_attempts;
+}
 
 inline bool fasim_long_query_gpu_consumer_cpu_continuation_runtime()
 {
@@ -1328,7 +1386,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 	                                         int penaltyC,
 	                                         const struct para &paraList,
 	                                         bool materializeAlignmentStrings = true,
-	                                         FasimFastsimExtendScoreInfoTiming *timing = NULL);
+	                                         FasimFastsimExtendScoreInfoTiming *timing = NULL,
+	                                         bool forceCpuAuthority = false);
 
 inline void fastSIM_extend_from_attempt_descriptors(
 	StripedSmithWaterman::Aligner &aligner,
@@ -1714,7 +1773,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 	                                         int penaltyC,
 	                                         const struct para &paraList,
 	                                         bool materializeAlignmentStrings,
-	                                         FasimFastsimExtendScoreInfoTiming *timing)
+	                                         FasimFastsimExtendScoreInfoTiming *timing,
+	                                         bool forceCpuAuthority)
 {
 	vector<struct triplex> myTriplexList;
 
@@ -1730,7 +1790,8 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 	};
 
 	string smallSeq;
-	if (fasim_gasal2_enabled() &&
+	if (!forceCpuAuthority &&
+	    fasim_gasal2_enabled() &&
 	    fasim_gasal2_is_built() &&
 	    fasim_gasal2_fastsim_query_length_supported_runtime(strA.size()) &&
 	    !fasim_gasal2_attempt_consumer_shadow_enabled_runtime() &&
@@ -2052,11 +2113,14 @@ inline void fastSIM_extend_from_scoreinfo(StripedSmithWaterman::Aligner &aligner
 		}
 		}
 
-		fasim_probe_gasal2_extend_attempts_from_scoreinfo(strA,
-		                                                  strB,
-		                                                  finalScoreInfo,
-		                                                  ntMin,
-		                                                  timing);
+		if (!forceCpuAuthority)
+		{
+			fasim_probe_gasal2_extend_attempts_from_scoreinfo(strA,
+			                                                  strB,
+			                                                  finalScoreInfo,
+			                                                  ntMin,
+			                                                  timing);
+		}
 
 		for (int i = 0; i < finalScoreInfo.size(); i++)
 		{
@@ -3790,6 +3854,9 @@ inline bool fasim_long_query_gpu_consumer_f1_from_scoreinfo(
 	FasimLongQueryGpuConsumerF1Result localResult;
 	if (result == NULL) result = &localResult;
 	*result = FasimLongQueryGpuConsumerF1Result();
+	const bool legacyCpuReplayRequested =
+		fasim_long_query_gpu_consumer_f1_legacy_cpu_replay_runtime();
+	result->legacy_cpu_replay_requested = legacyCpuReplayRequested;
 	shadowTriplexList.clear();
 	if (errorOut != NULL) errorOut->clear();
 	const std::chrono::steady_clock::time_point totalStart =
@@ -4136,6 +4203,7 @@ inline bool fasim_long_query_gpu_consumer_f1_from_scoreinfo(
 	result->selected_attempts = static_cast<uint64_t>(selected.size());
 
 	std::vector<triplex> convertedRows;
+	bool legacyCpuReplayActive = false;
 	for (size_t selectedPosition = 0; selectedPosition < selected.size();
 		 ++selectedPosition)
 	{
@@ -4184,7 +4252,25 @@ inline bool fasim_long_query_gpu_consumer_f1_from_scoreinfo(
 			       << forward.ref_end_local << ',' << forward.query_end
 			       << ":observed=" << local.sw_score
 			       << ',' << local.ref_end << ',' << local.query_end;
-			return fail(detail.str());
+			if (!legacyCpuReplayRequested) return fail(detail.str());
+
+			convertedRows.clear();
+			StripedSmithWaterman::Alignment legacyAlignment;
+			FasimFastsimExtendScoreInfoTiming legacyTiming;
+			const std::chrono::steady_clock::time_point legacyReplayStart =
+				std::chrono::steady_clock::now();
+			fastSIM_extend_from_scoreinfo(
+				aligner, filter, legacyAlignment, maskLen, strA, strB, strSrc,
+				dnaStartPos, finalScoreInfo, convertedRows, strand, Para, rule,
+				ntMin, ntMax, penaltyT, penaltyC, paraList,
+				materializeAlignmentStrings, &legacyTiming, true);
+			result->legacy_cpu_replay_active = true;
+			result->legacy_cpu_replay_attempts = legacyTiming.align_attempts;
+			result->legacy_cpu_replay_seconds = std::chrono::duration<double>(
+				std::chrono::steady_clock::now() - legacyReplayStart).count();
+			result->legacy_cpu_replay_reason = detail.str();
+			legacyCpuReplayActive = true;
+			break;
 		}
 		StripedSmithWaterman::Alignment global = local;
 		global.ref_begin += attempt.start;
@@ -4198,6 +4284,7 @@ inline bool fasim_long_query_gpu_consumer_f1_from_scoreinfo(
 			std::chrono::steady_clock::now() - convertStart).count();
 	}
 
+	if (!legacyCpuReplayActive)
 	{
 		FasimAuthorityProfileScope authoritySortScope(
 			FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
@@ -4209,15 +4296,22 @@ inline bool fasim_long_query_gpu_consumer_f1_from_scoreinfo(
 		                                sameMyTriplex), convertedRows.end());
 		std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexSingle);
 	}
-	const size_t topLimit = std::min(convertedRows.size(), static_cast<size_t>(N));
-	for (size_t i = 0; i < topLimit; ++i)
+	if (legacyCpuReplayActive)
 	{
-		const triplex &row = convertedRows[i];
-		if (row.identity >= paraList.minIdentity &&
-			row.tri_score >= paraList.minStability && row.nt >= ntMin)
-			shadowTriplexList.push_back(row);
+		shadowTriplexList.swap(convertedRows);
 	}
-	result->ok = result->cpu_continuation_failures == 0;
+	else
+	{
+		const size_t topLimit = std::min(convertedRows.size(), static_cast<size_t>(N));
+		for (size_t i = 0; i < topLimit; ++i)
+		{
+			const triplex &row = convertedRows[i];
+			if (row.identity >= paraList.minIdentity &&
+				row.tri_score >= paraList.minStability && row.nt >= ntMin)
+				shadowTriplexList.push_back(row);
+		}
+	}
+	result->ok = fasim_long_query_gpu_consumer_f1_continuation_contract_ok(*result);
 	result->total_seconds = std::chrono::duration<double>(
 		std::chrono::steady_clock::now() - totalStart).count();
 	return result->ok;
@@ -4242,6 +4336,11 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 {
 	taskTriplexLists.assign(taskInputs.size(), std::vector<struct triplex>());
 	taskResults.assign(taskInputs.size(), FasimLongQueryGpuConsumerF1Result());
+	const bool legacyCpuReplayRequested =
+		fasim_long_query_gpu_consumer_f1_legacy_cpu_replay_runtime();
+	for (size_t taskIndex = 0; taskIndex < taskResults.size(); ++taskIndex)
+		taskResults[taskIndex].legacy_cpu_replay_requested =
+			legacyCpuReplayRequested;
 	if (errorOut != NULL) errorOut->clear();
 	const std::chrono::steady_clock::time_point totalStart =
 		std::chrono::steady_clock::now();
@@ -4838,6 +4937,7 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 		}
 		const std::chrono::steady_clock::time_point taskStart =
 			std::chrono::steady_clock::now();
+		bool legacyCpuReplayActive = false;
 		for (size_t position = 0; position < selected[taskIndex].size(); ++position)
 		{
 			const size_t globalIndex = selected[taskIndex][position];
@@ -4892,7 +4992,31 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 				std::ostringstream detail;
 				detail << "f1_global_continuation_contract_mismatch:task=" << taskIndex
 				       << ":attempt=" << globalIndex;
-				return taskFail(detail.str());
+				if (!legacyCpuReplayRequested) return taskFail(detail.str());
+
+				convertedRows.clear();
+				StripedSmithWaterman::Alignment legacyAlignment;
+				FasimFastsimExtendScoreInfoTiming legacyTiming;
+				const std::chrono::steady_clock::time_point legacyReplayStart =
+					std::chrono::steady_clock::now();
+				{
+					FasimLongQueryGpuConsumerF1ContinuationProfilePauseScope pauseProfile(
+						continuationProfileActive);
+					fastSIM_extend_from_scoreinfo(
+						aligner, filter, legacyAlignment, maskLen, query, *input.target,
+						*input.source, input.dnaStartPos, *input.scoreInfo,
+						convertedRows, input.strand, input.Para, input.rule,
+						static_cast<int>(ntMin), static_cast<int>(ntMax), penaltyT,
+						penaltyC, paraList, materializeAlignmentStrings,
+						&legacyTiming, true);
+				}
+				taskResult.legacy_cpu_replay_active = true;
+				taskResult.legacy_cpu_replay_attempts = legacyTiming.align_attempts;
+				taskResult.legacy_cpu_replay_seconds = std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - legacyReplayStart).count();
+				taskResult.legacy_cpu_replay_reason = detail.str();
+				legacyCpuReplayActive = true;
+				break;
 			}
 			StripedSmithWaterman::Alignment global = local;
 			global.ref_begin += attempt.start;
@@ -4906,6 +5030,7 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 			taskResults[taskIndex].convert_seconds += std::chrono::duration<double>(
 				std::chrono::steady_clock::now() - convertStart).count();
 		}
+		if (!legacyCpuReplayActive)
 		{
 			FasimAuthorityProfileScope authoritySortScope(
 				FASIM_AUTHORITY_STAGE_CLUSTER_RANK_SORT);
@@ -4917,16 +5042,19 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 									sameMyTriplex), convertedRows.end());
 			std::sort(convertedRows.begin(), convertedRows.end(), compMyTriplexSingle);
 		}
-		const size_t topLimit = std::min(convertedRows.size(), static_cast<size_t>(N));
-		std::vector<triplex> filtered;
-		for (size_t i = 0; i < topLimit; ++i)
+		if (!legacyCpuReplayActive)
 		{
-			const triplex &row = convertedRows[i];
-			if (row.identity >= paraList.minIdentity &&
-				row.tri_score >= paraList.minStability && row.nt >= ntMin)
-				filtered.push_back(row);
+			const size_t topLimit = std::min(convertedRows.size(), static_cast<size_t>(N));
+			std::vector<triplex> filtered;
+			for (size_t i = 0; i < topLimit; ++i)
+			{
+				const triplex &row = convertedRows[i];
+				if (row.identity >= paraList.minIdentity &&
+					row.tri_score >= paraList.minStability && row.nt >= ntMin)
+					filtered.push_back(row);
+			}
+			convertedRows.swap(filtered);
 		}
-		convertedRows.swap(filtered);
 		if (continuationProfileActive)
 		{
 			const StripedSmithWaterman::ForwardContinuationProfileStats profileAfter =
@@ -4999,8 +5127,9 @@ inline bool fasim_long_query_gpu_consumer_f1_batch_from_scoreinfo(
 				return taskFail(
 					"f1_global_continuation_profile_accounting_mismatch");
 		}
-		taskResult.ok = taskResult.cpu_continuation_failures == 0;
-		if (taskResult.cpu_continuation_calls != taskResult.selected_attempts)
+		taskResult.ok =
+			fasim_long_query_gpu_consumer_f1_continuation_contract_ok(taskResult);
+		if (!taskResult.ok)
 			return taskFail("f1_global_continuation_accounting_mismatch");
 		taskResult.total_seconds =
 			std::chrono::duration<double>(std::chrono::steady_clock::now() - taskStart).count() +

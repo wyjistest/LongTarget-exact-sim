@@ -9,6 +9,7 @@ QUERY="${QUERY:-/data/wenyujianData/linjieData/longtarget_runs/segment_owner_aut
 TARGET="${TARGET:-$ROOT/.tmp/fasim_gasal2_chr22_slice_10m_12m.fa}"
 BUILD="${BUILD:-1}"
 CHECK_FROZEN_COUNTS="${CHECK_FROZEN_COUNTS:-1}"
+LEGACY_CPU_REPLAY="${LEGACY_CPU_REPLAY:-0}"
 
 # Development worktrees share the large fixture with the primary checkout.
 # Prefer an explicitly supplied TARGET, then fall back to the adjacent checkout
@@ -74,6 +75,7 @@ env \
   FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_REALPATH_TRUST=1 \
   FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER=1 \
   FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION=1 \
+  FASIM_LONG_QUERY_GPU_CONSUMER_F1_LEGACY_CPU_REPLAY="$LEGACY_CPU_REPLAY" \
   FASIM_LONG_QUERY_GPU_CONSUMER_F1_REPORT="$WORK/f1.tsv" \
   "$BIN" -f1 "$TARGET" -f2 "$QUERY" -r 0 -na 512 -O "$WORK/out" \
   >"$WORK/stdout.log" 2>"$WORK/stderr.log"
@@ -89,7 +91,7 @@ ACTUAL_DIGEST="$(sha256sum "${OUTPUTS[0]}" | awk '{print $1}')"
   exit 1
 }
 
-python3 - "$WORK/f1.tsv" "$WORK/summary.json" "$CHECK_FROZEN_COUNTS" <<'PY'
+python3 - "$WORK/f1.tsv" "$WORK/summary.json" "$CHECK_FROZEN_COUNTS" "$LEGACY_CPU_REPLAY" <<'PY'
 import csv
 import json
 import sys
@@ -98,6 +100,7 @@ from pathlib import Path
 report_path = Path(sys.argv[1])
 summary_path = Path(sys.argv[2])
 check_frozen_counts = sys.argv[3] != "0"
+legacy_cpu_replay_requested = int(sys.argv[4] != "0")
 with report_path.open(newline="", encoding="utf-8") as handle:
     rows = list(csv.DictReader(handle, delimiter="\t"))
 
@@ -125,6 +128,14 @@ for row in rows:
         failures.append("ok")
     if integer(row, "cpu_continuation_failures") != 0:
         failures.append("cpu_continuation_failures")
+    if integer(row, "legacy_cpu_replay_requested") != legacy_cpu_replay_requested:
+        failures.append("legacy_cpu_replay_requested")
+    if integer(row, "legacy_cpu_replay_active") != 0:
+        failures.append("legacy_cpu_replay_active")
+    if integer(row, "legacy_cpu_replay_attempts") != 0:
+        failures.append("legacy_cpu_replay_attempts")
+    if row.get("legacy_cpu_replay_reason") not in (None, "", "none"):
+        failures.append("legacy_cpu_replay_reason")
     if integer(row, "cpu_continuation_calls") != integer(row, "selected_attempts"):
         failures.append("continuation_count")
     if integer(row, "reverse_scored_attempts") != integer(row, "reverse_requests"):
@@ -145,6 +156,9 @@ summary = {
     "selected_attempts": total("selected_attempts"),
     "cpu_continuation_calls": total("cpu_continuation_calls"),
     "cpu_continuation_failures": total("cpu_continuation_failures"),
+    "legacy_cpu_replay_requested": total("legacy_cpu_replay_requested"),
+    "legacy_cpu_replay_active": total("legacy_cpu_replay_active"),
+    "legacy_cpu_replay_attempts": total("legacy_cpu_replay_attempts"),
     "threshold_groups": total("threshold_groups"),
     "best_fallback_groups": total("best_fallback_groups"),
     "last_groups": total("last_groups"),

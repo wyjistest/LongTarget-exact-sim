@@ -11654,7 +11654,10 @@ int main(int argc, char* const* argv)
 							<< "task_index\texecution_mode\tok\tscoreinfo_groups\tattempts\t"
 							   "forward_attempts\treverse_requests\treverse_scored_attempts\t"
 							   "selected_attempts\tcpu_continuation_calls\t"
-							   "cpu_continuation_failures\tthreshold_groups\tbest_fallback_groups\t"
+							   "cpu_continuation_failures\tlegacy_cpu_replay_requested\t"
+							   "legacy_cpu_replay_active\tlegacy_cpu_replay_attempts\t"
+							   "legacy_cpu_replay_seconds\tlegacy_cpu_replay_reason\t"
+							   "threshold_groups\tbest_fallback_groups\t"
 							   "last_groups\tempty_groups\tforward_seconds\treverse_seconds\t"
 							   "select_seconds\ttraceback_seconds\tconvert_seconds\t"
 							   "continuation_profile_active\tcontinuation_profile_reuse_requested\t"
@@ -14767,6 +14770,11 @@ int main(int argc, char* const* argv)
 				<< result.reverse_scored_attempts << '\t' << result.selected_attempts << '\t'
 				<< result.cpu_continuation_calls << '\t'
 				<< result.cpu_continuation_failures << '\t'
+				<< (result.legacy_cpu_replay_requested ? 1 : 0) << '\t'
+				<< (result.legacy_cpu_replay_active ? 1 : 0) << '\t'
+				<< result.legacy_cpu_replay_attempts << '\t'
+				<< result.legacy_cpu_replay_seconds << '\t'
+				<< result.legacy_cpu_replay_reason << '\t'
 				<< result.threshold_groups << '\t' << result.best_fallback_groups << '\t'
 				<< result.last_groups << '\t' << result.empty_groups << '\t'
 				<< result.forward_seconds << '\t' << result.reverse_seconds << '\t'
@@ -20094,8 +20102,8 @@ int main(int argc, char* const* argv)
 					const bool emptyScoreInfo = rowResult.scoreinfo_groups == 0 &&
 						rowResult.attempts == 0 && rowResult.selected_attempts == 0;
 					const bool rowContractOk = rowResult.ok &&
-						rowResult.cpu_continuation_failures == 0 &&
-						rowResult.cpu_continuation_calls == rowResult.selected_attempts &&
+						fasim_long_query_gpu_consumer_f1_continuation_contract_ok(
+							rowResult) &&
 						(emptyScoreInfo || rowResult.forward_attempts > 0) &&
 						rowResult.reverse_scored_attempts == rowResult.reverse_requests;
 					if (!rowContractOk)
@@ -20113,7 +20121,8 @@ int main(int argc, char* const* argv)
 					longQueryStreamingScoreInfoShadowStats.realpath_extend_scoreinfo_groups +=
 						rowResult.scoreinfo_groups;
 					longQueryStreamingScoreInfoShadowStats.realpath_extend_align_attempts +=
-						rowResult.cpu_continuation_calls;
+						rowResult.cpu_continuation_calls +
+						rowResult.legacy_cpu_replay_attempts;
 					++longQueryStreamingScoreInfoShadowStats.realpath_extend_calls;
 					++longQueryStreamingScoreInfoShadowStats.realpath_used;
 					write_task_triplexes(batch.tasks[taskIndex]);
@@ -28048,8 +28057,8 @@ int main(int argc, char* const* argv)
 								const bool emptyScoreInfo = rowResult.scoreinfo_groups == 0 &&
 									rowResult.attempts == 0 && rowResult.selected_attempts == 0;
 								const bool rowContractOk = f1BatchOk && rowResult.ok &&
-									rowResult.cpu_continuation_failures == 0 &&
-									rowResult.cpu_continuation_calls == rowResult.selected_attempts &&
+									fasim_long_query_gpu_consumer_f1_continuation_contract_ok(
+										rowResult) &&
 									(emptyScoreInfo || rowResult.forward_attempts > 0) &&
 									rowResult.reverse_scored_attempts == rowResult.reverse_requests;
 								if (!rowContractOk)
@@ -28073,7 +28082,8 @@ int main(int argc, char* const* argv)
 								longQueryStreamingScoreInfoShadowStats.realpath_extend_scoreinfo_groups +=
 									rowResult.scoreinfo_groups;
 								longQueryStreamingScoreInfoShadowStats.realpath_extend_align_attempts +=
-									rowResult.cpu_continuation_calls;
+									rowResult.cpu_continuation_calls +
+									rowResult.legacy_cpu_replay_attempts;
 								++longQueryStreamingScoreInfoShadowStats.realpath_extend_calls;
 								++longQueryStreamingScoreInfoShadowStats.realpath_used;
 								write_task_triplexes(tasks[taskIndex]);
@@ -28126,9 +28136,8 @@ int main(int argc, char* const* argv)
 										f1Result.attempts == 0 &&
 										f1Result.selected_attempts == 0;
 									const bool f1ContractOk = f1Ok && f1Result.ok &&
-										f1Result.cpu_continuation_failures == 0 &&
-										f1Result.cpu_continuation_calls ==
-											f1Result.selected_attempts &&
+										fasim_long_query_gpu_consumer_f1_continuation_contract_ok(
+											f1Result) &&
 										(f1EmptyScoreInfo || f1Result.forward_attempts > 0) &&
 										f1Result.reverse_scored_attempts ==
 											f1Result.reverse_requests;
@@ -28148,7 +28157,8 @@ int main(int argc, char* const* argv)
 											f1Result.scoreinfo_groups;
 									longQueryStreamingScoreInfoShadowStats
 										.realpath_extend_align_attempts +=
-											f1Result.cpu_continuation_calls;
+											f1Result.cpu_continuation_calls +
+											f1Result.legacy_cpu_replay_attempts;
 									++longQueryStreamingScoreInfoShadowStats.realpath_extend_calls;
 									++longQueryStreamingScoreInfoShadowStats.realpath_used;
 									write_task_triplexes(task);

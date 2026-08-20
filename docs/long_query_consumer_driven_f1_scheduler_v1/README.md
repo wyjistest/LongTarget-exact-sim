@@ -27,9 +27,9 @@ Here "global" means all tasks in one bounded streaming batch. The outer FASTA
 loop still flushes batches at its configured task limit, so this spike does not
 materialize the entire target FASTA in one scheduler call.
 
-There is no witness shortcut, new DP recurrence, GPU traceback, full CPU oracle,
-or fallback from an F1 failure. A stage or continuation contract failure exits
-the process. The normal path is unchanged; enable the spike only with:
+There is no witness shortcut, new DP recurrence, or GPU traceback. By default,
+a stage or continuation contract failure exits the process. The normal path is
+unchanged; enable the spike only with:
 
 ```text
 FASIM_LONG_QUERY_GPU_CONSUMER_F1_SCHEDULER=1
@@ -39,6 +39,33 @@ FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION=1
 The stateful streaming scoreInfo flags and the legacy `2812` GASAL2 guard are
 also required by the checked runner. The full-query attempt API itself does not
 raise that legacy guard.
+
+### Legacy CPU replay for continuation mismatches
+
+The optional compatibility flag below handles a selected continuation that the
+legacy CPU SSW implementation cannot materialize:
+
+```text
+FASIM_LONG_QUERY_GPU_CONSUMER_F1_LEGACY_CPU_REPLAY=1
+```
+
+The scheduler discards every provisional F1 row for that target task and runs
+the complete legacy CPU scoreInfo consumer for the task. It does not merely
+drop the failed selected row: the CPU consumer replays the original ordered
+attempts and determines threshold, best, last, and empty outcomes itself. Other
+tasks in the batch retain their F1 results. The flag is default-off, a replay is
+reported explicitly through the `legacy_cpu_replay_*` columns, and an
+unrecovered or internally inconsistent result still fails closed.
+
+The two fresh-query traceback failures are covered by:
+
+```bash
+BUILD=0 scripts/check_long_query_consumer_f1_legacy_cpu_replay_v1.sh
+```
+
+That check extracts the two exact 5 kb promoter windows, confirms strict F1
+still rejects each continuation mismatch, enables task replay, and requires the
+complete replay artifact to be byte-identical to a CPU-only run.
 
 ## Reproduction
 

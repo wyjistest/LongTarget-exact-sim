@@ -2119,6 +2119,11 @@ struct FasimLongQueryGpuConsumerF1Result
 		selected_attempts(0),
 		cpu_continuation_calls(0),
 		cpu_continuation_failures(0),
+		legacy_cpu_replay_requested(false),
+		legacy_cpu_replay_active(false),
+		legacy_cpu_replay_attempts(0),
+		legacy_cpu_replay_seconds(0.0),
+		legacy_cpu_replay_reason("none"),
 		threshold_groups(0),
 		best_fallback_groups(0),
 		last_groups(0),
@@ -2198,6 +2203,11 @@ struct FasimLongQueryGpuConsumerF1Result
 	uint64_t selected_attempts;
 	uint64_t cpu_continuation_calls;
 	uint64_t cpu_continuation_failures;
+	bool legacy_cpu_replay_requested;
+	bool legacy_cpu_replay_active;
+	uint64_t legacy_cpu_replay_attempts;
+	double legacy_cpu_replay_seconds;
+	std::string legacy_cpu_replay_reason;
 	uint64_t threshold_groups;
 	uint64_t best_fallback_groups;
 	uint64_t last_groups;
