@@ -954,6 +954,14 @@ check-long-query-dynamic-gpu-pool-v1:
 check-long-query-f1-round-profile-summary-v1:
 	python3 ./tests/test_summarize_long_query_f1_round_profile_v1.py -v
 
+.PHONY: check-long-query-gpu-resource-model-v1
+check-long-query-gpu-resource-model-v1:
+	python3 ./tests/test_model_long_query_gpu_resources_v1.py -v
+
+.PHONY: check-long-query-ncu-profile-preflight-v1
+check-long-query-ncu-profile-preflight-v1:
+	bash ./scripts/run_long_query_ncu_profile_v1.sh --preflight
+
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
