@@ -962,6 +962,10 @@ check-long-query-gpu-resource-model-v1:
 check-long-query-ncu-profile-preflight-v1:
 	bash ./scripts/run_long_query_ncu_profile_v1.sh --preflight
 
+.PHONY: check-long-query-scoreinfo-state-layout-audit-v1
+check-long-query-scoreinfo-state-layout-audit-v1:
+	python3 ./tests/test_audit_long_query_scoreinfo_state_layout_v1.py -v
+
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
