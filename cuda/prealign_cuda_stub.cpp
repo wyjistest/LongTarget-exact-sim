@@ -976,3 +976,29 @@ bool prealign_cuda_find_max_scores_global_state_direct_batch(
   }
   return false;
 }
+
+bool prealign_cuda_find_max_scores_byte_global_state_replay_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  vector<int> *outScores,
+  vector<uint8_t> *outWordReplayFlags,
+  PreAlignCudaBatchResult *byteBatchResult,
+  PreAlignCudaBatchResult *wordReplayBatchResult,
+  string *errorOut)
+{
+  (void)handle;
+  (void)encodedTargetsHost;
+  (void)taskCount;
+  (void)targetLength;
+  if(outScores != NULL) outScores->clear();
+  if(outWordReplayFlags != NULL) outWordReplayFlags->clear();
+  if(byteBatchResult != NULL) *byteBatchResult = PreAlignCudaBatchResult();
+  if(wordReplayBatchResult != NULL)
+  {
+    *wordReplayBatchResult = PreAlignCudaBatchResult();
+  }
+  if(errorOut != NULL) *errorOut = "CUDA support not built";
+  return false;
+}

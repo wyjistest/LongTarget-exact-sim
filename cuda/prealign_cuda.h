@@ -522,4 +522,18 @@ bool prealign_cuda_find_max_scores_global_state_direct_batch(
   PreAlignCudaBatchResult *batchResult,
   std::string *errorOut);
 
+// Development-only exact byte/global-state spike. Every task first runs the
+// compact uint8 recurrence; tasks whose saturation certificate fires are
+// replayed through the unchanged word16 column-output plus reduction authority.
+bool prealign_cuda_find_max_scores_byte_global_state_replay_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  std::vector<int> *outScores,
+  std::vector<uint8_t> *outWordReplayFlags,
+  PreAlignCudaBatchResult *byteBatchResult,
+  PreAlignCudaBatchResult *wordReplayBatchResult,
+  std::string *errorOut);
+
 #endif

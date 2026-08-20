@@ -2030,6 +2030,127 @@ static __device__ void prealign_cuda_exact_ssw_pass(
   __syncwarp(mask);
 }
 
+// Compact representation of the word16 min-score authority. The recurrence,
+// 32-lane mapping, and Lazy-F comparison are unchanged. A task is accepted only
+// if every stored H value fits in uint8; otherwise its result is discarded and
+// the complete task is replayed through the unchanged word16 authority.
+__global__ void prealign_cuda_max_score_byte_global_state_batch_kernel(
+  const int16_t *profile,
+  const uint8_t *encodedTargets,
+  int taskCount,
+  int targetLength,
+  int segLen,
+  uint8_t *stateDevice,
+  int *outScores,
+  uint8_t *outWordReplayFlags)
+{
+  const int lane = static_cast<int>(threadIdx.x);
+  const int taskIndex = static_cast<int>(blockIdx.x);
+  if(taskIndex >= taskCount || lane >= 32)
+  {
+    return;
+  }
+  const size_t stateStride =
+    static_cast<size_t>(3) * static_cast<size_t>(segLen) * 32u;
+  uint8_t *taskState =
+    stateDevice + static_cast<size_t>(taskIndex) * stateStride;
+  uint8_t *E = taskState;
+  uint8_t *H0 = E + segLen * 32;
+  uint8_t *H1 = H0 + segLen * 32;
+
+  for(int segment = 0; segment < segLen; ++segment)
+  {
+    const int offset = segment * 32 + lane;
+    E[offset] = 0;
+    H0[offset] = 0;
+    H1[offset] = 0;
+  }
+  __syncwarp();
+
+  uint8_t *HLoad = H0;
+  uint8_t *HStore = H1;
+  const uint8_t *target = encodedTargets +
+    static_cast<size_t>(taskIndex) * static_cast<size_t>(targetLength);
+  int laneMaximum = 0;
+  bool laneOverflow = false;
+
+  for(int column = 0; column < targetLength; ++column)
+  {
+    const int targetCode = static_cast<int>(target[column]);
+    const int16_t *profileRow = profile +
+      static_cast<size_t>(targetCode) * static_cast<size_t>(segLen) * 32u;
+    int vF = 0;
+    int vH = static_cast<int>(HLoad[(segLen - 1) * 32 + lane]);
+    vH = cuda_warp_shift_left_1(vH,lane);
+    int columnLaneMaximum = 0;
+
+    for(int segment = 0; segment < segLen; ++segment)
+    {
+      const int offset = segment * 32 + lane;
+      const int substitution =
+        static_cast<int>(profileRow[offset]);
+      const int oldH = static_cast<int>(HLoad[offset]);
+      int vE = static_cast<int>(E[offset]);
+
+      vH = cuda_clamp_nonnegative(vH + substitution);
+      vH = cuda_max_int(vH,vE);
+      vH = cuda_max_int(vH,vF);
+      if(vH > 255)
+      {
+        laneOverflow = true;
+        vH = 255;
+      }
+      HStore[offset] = static_cast<uint8_t>(vH);
+      columnLaneMaximum = cuda_max_int(columnLaneMaximum,vH);
+
+      const int opened = cuda_clamp_nonnegative(vH - 16);
+      vE = cuda_clamp_nonnegative(vE - 4);
+      E[offset] = static_cast<uint8_t>(cuda_max_int(vE,opened));
+      vF = cuda_clamp_nonnegative(vF - 4);
+      vF = cuda_max_int(vF,opened);
+      vH = oldH;
+    }
+
+    int segment = 0;
+    int stored = static_cast<int>(HStore[segment * 32 + lane]);
+    vF = cuda_warp_shift_left_1(vF,lane);
+    while(true)
+    {
+      stored = cuda_max_int(stored,vF);
+      HStore[segment * 32 + lane] = static_cast<uint8_t>(stored);
+      columnLaneMaximum = cuda_max_int(columnLaneMaximum,stored);
+      const int opened = cuda_clamp_nonnegative(stored - 16);
+      vF = cuda_clamp_nonnegative(vF - 4);
+      const int shouldContinue = vF > opened ? 1 : 0;
+      if(__ballot_sync(0xffffffffu,shouldContinue) == 0)
+      {
+        break;
+      }
+      ++segment;
+      if(segment >= segLen)
+      {
+        segment = 0;
+        vF = cuda_warp_shift_left_1(vF,lane);
+      }
+      stored = static_cast<int>(HStore[segment * 32 + lane]);
+    }
+
+    uint8_t *swap = HLoad;
+    HLoad = HStore;
+    HStore = swap;
+    laneMaximum = cuda_max_int(laneMaximum,columnLaneMaximum);
+    __syncwarp();
+  }
+
+  const int score = cuda_warp_reduce_max_int(laneMaximum);
+  const bool overflow = __ballot_sync(0xffffffffu,laneOverflow) != 0;
+  if(lane == 0)
+  {
+    outScores[taskIndex] = overflow ? 255 : score;
+    outWordReplayFlags[taskIndex] = overflow ? 1 : 0;
+  }
+}
+
 template<int kLanes,bool kBytePath,typename Storage,int kTasksPerBlock,
          bool kComputeReverse>
 static __device__ void prealign_cuda_exact_attempt_endpoint_body(
@@ -2593,6 +2714,8 @@ struct PreAlignCudaContext
     capacityDescriptorsPerTask(0),
     capacityGlobalStateTasks(0),
     capacityGlobalStateSegLen(0),
+    capacityByteGlobalStateTasks(0),
+    capacityByteGlobalStateQueryLength(0),
     targetsDevice(NULL),
     peaksDevice(NULL),
     columnMaximaDevice(NULL),
@@ -2610,6 +2733,8 @@ struct PreAlignCudaContext
     certificateRowsDevice(NULL),
     descriptorOverflowDevice(NULL),
     globalStateDevice(NULL),
+    byteGlobalStateDevice(NULL),
+    byteWordReplayFlagsDevice(NULL),
     startEvent(NULL),
     stopEvent(NULL)
   {
@@ -2630,6 +2755,8 @@ struct PreAlignCudaContext
   int capacityDescriptorsPerTask;
   int capacityGlobalStateTasks;
   int capacityGlobalStateSegLen;
+  int capacityByteGlobalStateTasks;
+  int capacityByteGlobalStateQueryLength;
 
   uint8_t *targetsDevice;
   PreAlignCudaPeak *peaksDevice;
@@ -2648,6 +2775,8 @@ struct PreAlignCudaContext
   int *certificateRowsDevice;
   int *descriptorOverflowDevice;
   int16_t *globalStateDevice;
+  uint8_t *byteGlobalStateDevice;
+  uint8_t *byteWordReplayFlagsDevice;
 
   cudaEvent_t startEvent;
   cudaEvent_t stopEvent;
@@ -3238,6 +3367,59 @@ static bool ensure_prealign_cuda_global_state_capacity_locked(PreAlignCudaContex
   context.globalStateDevice = newGlobalStateDevice;
   context.capacityGlobalStateTasks = newCapTasks;
   context.capacityGlobalStateSegLen = newCapSegLen;
+  return true;
+}
+
+static bool ensure_prealign_cuda_byte_global_state_capacity_locked(
+  PreAlignCudaContext &context,
+  int taskCount,
+  int queryLength,
+  string *errorOut)
+{
+  if(taskCount <= context.capacityByteGlobalStateTasks &&
+     queryLength <= context.capacityByteGlobalStateQueryLength &&
+     context.byteGlobalStateDevice != NULL &&
+     context.byteWordReplayFlagsDevice != NULL)
+  {
+    return true;
+  }
+
+  const int newCapTasks = max(context.capacityByteGlobalStateTasks,taskCount);
+  const int newCapQueryLength =
+    max(context.capacityByteGlobalStateQueryLength,queryLength);
+  const int paddedQueryLength = (newCapQueryLength + 31) / 32 * 32;
+  const size_t stateBytes = static_cast<size_t>(newCapTasks) * 3u *
+    static_cast<size_t>(paddedQueryLength) * sizeof(uint8_t);
+  const size_t flagBytes =
+    static_cast<size_t>(newCapTasks) * sizeof(uint8_t);
+  uint8_t *newStateDevice = NULL;
+  uint8_t *newFlagsDevice = NULL;
+  cudaError_t status = cudaMalloc(
+    reinterpret_cast<void **>(&newStateDevice),stateBytes);
+  if(status == cudaSuccess)
+  {
+    status = cudaMalloc(reinterpret_cast<void **>(&newFlagsDevice),flagBytes);
+  }
+  if(status != cudaSuccess)
+  {
+    if(newStateDevice != NULL) cudaFree(newStateDevice);
+    if(newFlagsDevice != NULL) cudaFree(newFlagsDevice);
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+
+  if(context.byteGlobalStateDevice != NULL)
+  {
+    cudaFree(context.byteGlobalStateDevice);
+  }
+  if(context.byteWordReplayFlagsDevice != NULL)
+  {
+    cudaFree(context.byteWordReplayFlagsDevice);
+  }
+  context.byteGlobalStateDevice = newStateDevice;
+  context.byteWordReplayFlagsDevice = newFlagsDevice;
+  context.capacityByteGlobalStateTasks = newCapTasks;
+  context.capacityByteGlobalStateQueryLength = newCapQueryLength;
   return true;
 }
 
@@ -7628,6 +7810,287 @@ bool prealign_cuda_find_max_scores_global_state_direct_batch(
     batchResult->gpuSeconds = static_cast<double>(kernelElapsedMs) / 1000.0;
     batchResult->h2dSeconds = static_cast<double>(h2dElapsedMs) / 1000.0;
     batchResult->d2hSeconds = static_cast<double>(d2hElapsedMs) / 1000.0;
+  }
+  return true;
+}
+
+bool prealign_cuda_find_max_scores_byte_global_state_replay_batch(
+  const PreAlignCudaQueryHandle &handle,
+  const uint8_t *encodedTargetsHost,
+  int taskCount,
+  int targetLength,
+  vector<int> *outScores,
+  vector<uint8_t> *outWordReplayFlags,
+  PreAlignCudaBatchResult *byteBatchResult,
+  PreAlignCudaBatchResult *wordReplayBatchResult,
+  string *errorOut)
+{
+  if(outScores == NULL || outWordReplayFlags == NULL)
+  {
+    if(errorOut != NULL) *errorOut = "missing byte replay output buffer";
+    return false;
+  }
+  outScores->clear();
+  outWordReplayFlags->clear();
+  if(byteBatchResult != NULL) *byteBatchResult = PreAlignCudaBatchResult();
+  if(wordReplayBatchResult != NULL)
+  {
+    *wordReplayBatchResult = PreAlignCudaBatchResult();
+  }
+  if(encodedTargetsHost == NULL)
+  {
+    if(errorOut != NULL) *errorOut = "missing input targets";
+    return false;
+  }
+  if(taskCount <= 0 || targetLength <= 0)
+  {
+    if(errorOut != NULL) *errorOut = "invalid target dimensions";
+    return false;
+  }
+  if(handle.profileDevice == 0 || handle.segLen <= 0 || handle.queryLength <= 0)
+  {
+    if(errorOut != NULL) *errorOut = "CUDA query handle not initialized";
+    return false;
+  }
+
+  PreAlignCudaContext *context = NULL;
+  mutex *contextMutex = NULL;
+  if(!get_prealign_cuda_context_for_device(
+       handle.device,&context,&contextMutex,errorOut))
+  {
+    return false;
+  }
+  lock_guard<mutex> lock(*contextMutex);
+  if(!ensure_prealign_cuda_initialized_locked(*context,handle.device,errorOut) ||
+     !ensure_prealign_cuda_capacity_locked(
+       *context,taskCount,targetLength,1,errorOut) ||
+     !ensure_prealign_cuda_scores_capacity_locked(*context,taskCount,errorOut) ||
+     !ensure_prealign_cuda_byte_global_state_capacity_locked(
+       *context,taskCount,handle.queryLength,errorOut))
+  {
+    return false;
+  }
+
+  cudaEvent_t transferStart = NULL;
+  cudaEvent_t transferStop = NULL;
+  cudaEvent_t replayStart = NULL;
+  cudaEvent_t replayStop = NULL;
+  cudaError_t status = cudaEventCreate(&transferStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&transferStop);
+  if(status == cudaSuccess) status = cudaEventCreate(&replayStart);
+  if(status == cudaSuccess) status = cudaEventCreate(&replayStop);
+  if(status != cudaSuccess)
+  {
+    if(transferStart != NULL) cudaEventDestroy(transferStart);
+    if(transferStop != NULL) cudaEventDestroy(transferStop);
+    if(replayStart != NULL) cudaEventDestroy(replayStart);
+    if(replayStop != NULL) cudaEventDestroy(replayStop);
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+  const auto destroyEvents = [&]()
+  {
+    cudaEventDestroy(transferStart);
+    cudaEventDestroy(transferStop);
+    cudaEventDestroy(replayStart);
+    cudaEventDestroy(replayStop);
+  };
+
+  const size_t targetsBytes = static_cast<size_t>(taskCount) *
+    static_cast<size_t>(targetLength) * sizeof(uint8_t);
+  const size_t scoreBytes = static_cast<size_t>(taskCount) * sizeof(int);
+  const size_t flagBytes = static_cast<size_t>(taskCount) * sizeof(uint8_t);
+  float initialH2dMs = 0.0f;
+  float byteKernelMs = 0.0f;
+  float byteD2hMs = 0.0f;
+
+  status = cudaEventRecord(transferStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(context->targetsDevice,encodedTargetsHost,
+                        targetsBytes,cudaMemcpyHostToDevice);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(transferStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(transferStop);
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&initialH2dMs,transferStart,transferStop);
+  }
+
+  if(status == cudaSuccess) status = cudaEventRecord(context->startEvent);
+  if(status == cudaSuccess)
+  {
+    prealign_cuda_max_score_byte_global_state_batch_kernel<<<taskCount,32,0>>>(
+      reinterpret_cast<const int16_t *>(handle.profileDevice),
+      context->targetsDevice,taskCount,targetLength,handle.segLen,
+      context->byteGlobalStateDevice,
+      context->scoresDevice,context->byteWordReplayFlagsDevice);
+    status = cudaGetLastError();
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(context->stopEvent);
+  if(status == cudaSuccess) status = cudaEventSynchronize(context->stopEvent);
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(
+      &byteKernelMs,context->startEvent,context->stopEvent);
+  }
+
+  vector<int> scores(static_cast<size_t>(taskCount));
+  vector<uint8_t> replayFlags(static_cast<size_t>(taskCount));
+  if(status == cudaSuccess) status = cudaEventRecord(transferStart);
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(scores.data(),context->scoresDevice,
+                        scoreBytes,cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess)
+  {
+    status = cudaMemcpy(replayFlags.data(),context->byteWordReplayFlagsDevice,
+                        flagBytes,cudaMemcpyDeviceToHost);
+  }
+  if(status == cudaSuccess) status = cudaEventRecord(transferStop);
+  if(status == cudaSuccess) status = cudaEventSynchronize(transferStop);
+  if(status == cudaSuccess)
+  {
+    status = cudaEventElapsedTime(&byteD2hMs,transferStart,transferStop);
+  }
+  if(status != cudaSuccess)
+  {
+    destroyEvents();
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+
+  vector<int> replayIndices;
+  for(int taskIndex = 0; taskIndex < taskCount; ++taskIndex)
+  {
+    if(replayFlags[static_cast<size_t>(taskIndex)] != 0)
+    {
+      replayIndices.push_back(taskIndex);
+    }
+  }
+
+  float replayH2dMs = 0.0f;
+  float replayKernelMs = 0.0f;
+  float replayD2hMs = 0.0f;
+  if(!replayIndices.empty())
+  {
+    const int replayCount = static_cast<int>(replayIndices.size());
+    if(!ensure_prealign_cuda_column_maxima_capacity_locked(
+         *context,replayCount,targetLength,errorOut) ||
+       !ensure_prealign_cuda_global_state_capacity_locked(
+         *context,replayCount,handle.segLen,errorOut))
+    {
+      destroyEvents();
+      return false;
+    }
+
+    vector<uint8_t> replayTargets(
+      static_cast<size_t>(replayCount) * static_cast<size_t>(targetLength));
+    for(int replayIndex = 0; replayIndex < replayCount; ++replayIndex)
+    {
+      const int sourceTask = replayIndices[static_cast<size_t>(replayIndex)];
+      const size_t sourceOffset =
+        static_cast<size_t>(sourceTask) * static_cast<size_t>(targetLength);
+      const size_t destinationOffset =
+        static_cast<size_t>(replayIndex) * static_cast<size_t>(targetLength);
+      for(int column = 0; column < targetLength; ++column)
+      {
+        replayTargets[destinationOffset + static_cast<size_t>(column)] =
+          encodedTargetsHost[sourceOffset + static_cast<size_t>(column)];
+      }
+    }
+    const size_t replayTargetBytes = replayTargets.size() * sizeof(uint8_t);
+    const size_t replayScoreBytes =
+      static_cast<size_t>(replayCount) * sizeof(int);
+
+    status = cudaEventRecord(transferStart);
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(context->targetsDevice,replayTargets.data(),
+                          replayTargetBytes,cudaMemcpyHostToDevice);
+    }
+    if(status == cudaSuccess) status = cudaEventRecord(transferStop);
+    if(status == cudaSuccess) status = cudaEventSynchronize(transferStop);
+    if(status == cudaSuccess)
+    {
+      status = cudaEventElapsedTime(&replayH2dMs,transferStart,transferStop);
+    }
+
+    if(status == cudaSuccess) status = cudaEventRecord(replayStart);
+    if(status == cudaSuccess)
+    {
+      prealign_cuda_column_max_global_state_batch_kernel<<<replayCount,32,0>>>(
+        reinterpret_cast<const int16_t *>(handle.profileDevice),
+        context->targetsDevice,replayCount,targetLength,handle.segLen,
+        context->globalStateDevice,context->columnMaximaDevice);
+      status = cudaGetLastError();
+    }
+    if(status == cudaSuccess)
+    {
+      const int reduceThreads = 256;
+      const size_t reduceSharedBytes =
+        static_cast<size_t>(reduceThreads) * sizeof(int);
+      prealign_cuda_reduce_column_max_scores_kernel<<<
+        replayCount,reduceThreads,reduceSharedBytes>>>(
+          context->columnMaximaDevice,replayCount,targetLength,
+          context->scoresDevice);
+      status = cudaGetLastError();
+    }
+    if(status == cudaSuccess) status = cudaEventRecord(replayStop);
+    if(status == cudaSuccess) status = cudaEventSynchronize(replayStop);
+    if(status == cudaSuccess)
+    {
+      status = cudaEventElapsedTime(&replayKernelMs,replayStart,replayStop);
+    }
+
+    vector<int> replayScores(static_cast<size_t>(replayCount));
+    if(status == cudaSuccess) status = cudaEventRecord(transferStart);
+    if(status == cudaSuccess)
+    {
+      status = cudaMemcpy(replayScores.data(),context->scoresDevice,
+                          replayScoreBytes,cudaMemcpyDeviceToHost);
+    }
+    if(status == cudaSuccess) status = cudaEventRecord(transferStop);
+    if(status == cudaSuccess) status = cudaEventSynchronize(transferStop);
+    if(status == cudaSuccess)
+    {
+      status = cudaEventElapsedTime(&replayD2hMs,transferStart,transferStop);
+    }
+    if(status == cudaSuccess)
+    {
+      for(int replayIndex = 0; replayIndex < replayCount; ++replayIndex)
+      {
+        scores[static_cast<size_t>(replayIndices[static_cast<size_t>(replayIndex)])] =
+          replayScores[static_cast<size_t>(replayIndex)];
+      }
+    }
+  }
+
+  destroyEvents();
+  if(status != cudaSuccess)
+  {
+    if(errorOut != NULL) *errorOut = cuda_error_string(status);
+    return false;
+  }
+  outScores->swap(scores);
+  outWordReplayFlags->swap(replayFlags);
+  if(byteBatchResult != NULL)
+  {
+    byteBatchResult->usedCuda = true;
+    byteBatchResult->gpuSeconds = static_cast<double>(byteKernelMs) / 1000.0;
+    byteBatchResult->h2dSeconds = static_cast<double>(initialH2dMs) / 1000.0;
+    byteBatchResult->d2hSeconds = static_cast<double>(byteD2hMs) / 1000.0;
+  }
+  if(wordReplayBatchResult != NULL && !replayIndices.empty())
+  {
+    wordReplayBatchResult->usedCuda = true;
+    wordReplayBatchResult->gpuSeconds =
+      static_cast<double>(replayKernelMs) / 1000.0;
+    wordReplayBatchResult->h2dSeconds =
+      static_cast<double>(replayH2dMs) / 1000.0;
+    wordReplayBatchResult->d2hSeconds =
+      static_cast<double>(replayD2hMs) / 1000.0;
   }
   return true;
 }

@@ -828,6 +828,12 @@ PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_SOURCES := tests/test_prealign_cuda_globa
 PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_TARGET ?= tests/benchmark_prealign_cuda_global_state_direct
 PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_SOURCES := tests/benchmark_prealign_cuda_global_state_direct.cpp cuda/prealign_cuda.o
 
+PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_TARGET ?= tests/test_prealign_cuda_byte_global_state_replay
+PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_SOURCES := tests/test_prealign_cuda_byte_global_state_replay.cpp cuda/prealign_cuda.o
+
+PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_BENCH_TARGET ?= tests/benchmark_prealign_cuda_byte_global_state_replay
+PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_BENCH_SOURCES := tests/benchmark_prealign_cuda_byte_global_state_replay.cpp cuda/prealign_cuda.o
+
 FASIM_LAZY_REVERSE_SHADOW_TEST_TARGET ?= tests/test_fasim_lazy_reverse_shadow
 FASIM_LAZY_REVERSE_SHADOW_TEST_SOURCES := tests/test_fasim_lazy_reverse_shadow.cpp
 
@@ -954,6 +960,10 @@ build-prealign-cuda-global-state-direct-test: $(PREALIGN_CUDA_GLOBAL_STATE_DIREC
 
 build-prealign-cuda-global-state-direct-benchmark: $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_TARGET)
 
+build-prealign-cuda-byte-global-state-replay-test: $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_TARGET)
+
+build-prealign-cuda-byte-global-state-replay-benchmark: $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_BENCH_TARGET)
+
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
 
 build-sim-scan-cuda-true-batch-reduce-test: $(SIM_SCAN_CUDA_TRUE_BATCH_REDUCE_TEST_TARGET)
@@ -1036,6 +1046,12 @@ $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET): $(PREALIGN_CUDA_GLOBAL_STATE_D
 
 $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_TARGET): $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_BENCH_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_TARGET): $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
+
+$(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_BENCH_TARGET): $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_BENCH_SOURCES) cuda/prealign_cuda.h cuda/prealign_shared.h
+	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_BENCH_SOURCES) $(LDFLAGS) $(LDLIBS) $(CUDA_LDFLAGS) -o $@
 
 $(SIM_SCAN_BATCH_TEST_TARGET): $(SIM_SCAN_BATCH_TEST_SOURCES) cuda/sim_scan_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SIM_SCAN_BATCH_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -1133,6 +1149,10 @@ check-prealign-cuda-attempt-endpoint: $(PREALIGN_CUDA_ATTEMPT_ENDPOINT_TEST_TARG
 .PHONY: check-prealign-cuda-global-state-direct
 check-prealign-cuda-global-state-direct: $(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET)
 	./$(PREALIGN_CUDA_GLOBAL_STATE_DIRECT_TEST_TARGET)
+
+.PHONY: check-prealign-cuda-byte-global-state-replay
+check-prealign-cuda-byte-global-state-replay: $(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_TARGET)
+	./$(PREALIGN_CUDA_BYTE_GLOBAL_STATE_REPLAY_TEST_TARGET)
 
 check-sim-scan-batch: $(SIM_SCAN_BATCH_TEST_TARGET)
 	./$(SIM_SCAN_BATCH_TEST_TARGET)

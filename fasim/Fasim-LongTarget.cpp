@@ -3966,6 +3966,12 @@ static inline bool fasim_long_query_streaming_scoreinfo_gpu_minscore_byte_audit_
 		"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_MINSCORE_BYTE_OVERFLOW_AUDIT");
 }
 
+static inline bool fasim_long_query_streaming_scoreinfo_gpu_minscore_uint8_runtime()
+{
+	return fasim_env_flag_enabled(
+		"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_MINSCORE_UINT8_GLOBAL");
+}
+
 static inline bool fasim_long_query_streaming_scoreinfo_fused_minscore_runtime()
 {
 	return fasim_env_flag_enabled(
@@ -11048,6 +11054,26 @@ int main(int argc, char* const* argv)
 		streamingScoreInfoTwoContractRequested;
 	const bool gpuMinScoreByteOverflowAuditRequested =
 		fasim_long_query_streaming_scoreinfo_gpu_minscore_byte_audit_runtime();
+	const bool gpuMinScoreUint8Requested =
+		fasim_long_query_streaming_scoreinfo_gpu_minscore_uint8_runtime();
+	const int gpuMinScoreUint8MinQueryLength = fasim_env_int_or_default(
+		"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_MINSCORE_UINT8_GLOBAL_MIN_QUERY_LENGTH",
+		8000);
+	bool gpuMinScoreUint8Active = false;
+	if (gpuMinScoreUint8Requested &&
+	    (!streamingScoreInfoGpuMinScoreRequested ||
+	     gpuMinScoreUint8MinQueryLength < 1))
+	{
+		cerr << "uint8 global minScore requires GPU minScore and a positive length gate"
+		     << endl;
+		return EXIT_FAILURE;
+	}
+	if (gpuMinScoreUint8Requested && gpuMinScoreByteOverflowAuditRequested)
+	{
+		cerr << "uint8 global minScore runtime and byte-overflow audit are mutually exclusive"
+		     << endl;
+		return EXIT_FAILURE;
+	}
 	const int gpuMinScoreByteOverflowAuditStartBatch =
 		std::max(0, fasim_env_int_or_default(
 			"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_MINSCORE_BYTE_OVERFLOW_AUDIT_START_BATCH",
@@ -11630,6 +11656,14 @@ int main(int argc, char* const* argv)
 					double gpuMinScoreByteOverflowAuditAuthorityWallSeconds = 0.0;
 					double gpuMinScoreByteOverflowAuditAuthorityKernelSeconds = 0.0;
 					std::string gpuMinScoreByteOverflowAuditError = "none";
+					uint64_t gpuMinScoreUint8Batches = 0;
+					uint64_t gpuMinScoreUint8Tasks = 0;
+					uint64_t gpuMinScoreUint8WordReplayTasks = 0;
+					double gpuMinScoreUint8WallSeconds = 0.0;
+					double gpuMinScoreUint8KernelSeconds = 0.0;
+					double gpuMinScoreUint8H2DSeconds = 0.0;
+					double gpuMinScoreUint8D2HSeconds = 0.0;
+					std::string gpuMinScoreUint8Error = "none";
 					if (gpuMinScoreByteOverflowAuditRequested)
 					{
 						const char *reportPath = getenv(
@@ -20800,17 +20834,41 @@ int main(int argc, char* const* argv)
 						std::string gpuMinScoreError;
 						const auto gpuMinScoreStart =
 							std::chrono::steady_clock::now();
-						gpuMinScoreOk =
-							prealign_cuda_find_max_scores_global_state_batch(
-								streamingScoreInfoGpuMinScoreCudaQuery,
-								legacyEncodedTargets.data(),
-								static_cast<int>(tasks.size()),
-								currentTargetLength,
-								false,
-								&gpuMinScoreSourceScores,
-								&gpuMinScoreResult,
-								&gpuMinScoreReduceResult,
-								&gpuMinScoreError);
+						std::vector<uint8_t> gpuMinScoreWordReplayFlags;
+						const bool gpuMinScoreUint8ThisQuery =
+							gpuMinScoreUint8Requested &&
+							static_cast<int>(lncSeq.size()) >=
+								gpuMinScoreUint8MinQueryLength;
+						gpuMinScoreUint8Active =
+							gpuMinScoreUint8Active || gpuMinScoreUint8ThisQuery;
+						if (gpuMinScoreUint8ThisQuery)
+						{
+							gpuMinScoreOk =
+								prealign_cuda_find_max_scores_byte_global_state_replay_batch(
+									streamingScoreInfoGpuMinScoreCudaQuery,
+									legacyEncodedTargets.data(),
+									static_cast<int>(tasks.size()),
+									currentTargetLength,
+									&gpuMinScoreSourceScores,
+									&gpuMinScoreWordReplayFlags,
+									&gpuMinScoreResult,
+									&gpuMinScoreReduceResult,
+									&gpuMinScoreError);
+						}
+						else
+						{
+							gpuMinScoreOk =
+								prealign_cuda_find_max_scores_global_state_batch(
+									streamingScoreInfoGpuMinScoreCudaQuery,
+									legacyEncodedTargets.data(),
+									static_cast<int>(tasks.size()),
+									currentTargetLength,
+									false,
+									&gpuMinScoreSourceScores,
+									&gpuMinScoreResult,
+									&gpuMinScoreReduceResult,
+									&gpuMinScoreError);
+						}
 						gpuMinScoreWallSeconds = fasim_seconds_since(gpuMinScoreStart);
 						gpuMinScoreKernelSeconds =
 							gpuMinScoreResult.gpuSeconds +
@@ -20821,6 +20879,24 @@ int main(int argc, char* const* argv)
 						gpuMinScoreD2HSeconds =
 							gpuMinScoreResult.d2hSeconds +
 							gpuMinScoreReduceResult.d2hSeconds;
+						if (gpuMinScoreUint8ThisQuery)
+						{
+							++gpuMinScoreUint8Batches;
+							gpuMinScoreUint8Tasks += tasks.size();
+							gpuMinScoreUint8WordReplayTasks += static_cast<uint64_t>(
+								std::count(gpuMinScoreWordReplayFlags.begin(),
+								           gpuMinScoreWordReplayFlags.end(),
+								           static_cast<uint8_t>(1)));
+							gpuMinScoreUint8WallSeconds += gpuMinScoreWallSeconds;
+							gpuMinScoreUint8KernelSeconds += gpuMinScoreKernelSeconds;
+							gpuMinScoreUint8H2DSeconds += gpuMinScoreH2DSeconds;
+							gpuMinScoreUint8D2HSeconds += gpuMinScoreD2HSeconds;
+							if (!gpuMinScoreOk)
+							{
+								gpuMinScoreUint8Error = gpuMinScoreError.empty() ?
+									"uint8_global_minscore_failed" : gpuMinScoreError;
+							}
+						}
 						longQueryStreamingScoreInfoShadowStats
 							.gpu_minscore_wall_seconds +=
 							gpuMinScoreWallSeconds;
@@ -20900,33 +20976,41 @@ int main(int argc, char* const* argv)
 							if (auditThisBatch)
 							{
 								++gpuMinScoreByteOverflowAuditActiveBatches;
-								std::vector<PreAlignCudaAttemptEndpoint> auditEndpoints;
-								PreAlignCudaBatchResult auditBatchResult;
+								std::vector<int> auditScores;
+								std::vector<uint8_t> auditWordReplayFlags;
+								PreAlignCudaBatchResult auditByteBatchResult;
+								PreAlignCudaBatchResult auditWordReplayBatchResult;
 								std::string auditError;
 								const auto auditStart = std::chrono::steady_clock::now();
 								const bool auditOk = gpuMinScoreOk &&
-									prealign_cuda_find_max_forward_endpoints_batch(
+									prealign_cuda_find_max_scores_byte_global_state_replay_batch(
 										streamingScoreInfoGpuMinScoreCudaQuery,
 										legacyEncodedTargets.data(),
 										static_cast<int>(tasks.size()),
 										currentTargetLength,
-										&auditEndpoints,
-										&auditBatchResult,
+										&auditScores,
+										&auditWordReplayFlags,
+										&auditByteBatchResult,
+										&auditWordReplayBatchResult,
 										&auditError);
 								const double auditWallSeconds =
 									fasim_seconds_since(auditStart);
 								gpuMinScoreByteOverflowAuditWallSeconds += auditWallSeconds;
 								gpuMinScoreByteOverflowAuditKernelSeconds +=
-									auditBatchResult.gpuSeconds;
+									auditByteBatchResult.gpuSeconds +
+									auditWordReplayBatchResult.gpuSeconds;
 								gpuMinScoreByteOverflowAuditH2DSeconds +=
-									auditBatchResult.h2dSeconds;
+									auditByteBatchResult.h2dSeconds +
+									auditWordReplayBatchResult.h2dSeconds;
 								gpuMinScoreByteOverflowAuditD2HSeconds +=
-									auditBatchResult.d2hSeconds;
+									auditByteBatchResult.d2hSeconds +
+									auditWordReplayBatchResult.d2hSeconds;
 								gpuMinScoreByteOverflowAuditAuthorityWallSeconds +=
 									gpuMinScoreWallSeconds;
 								gpuMinScoreByteOverflowAuditAuthorityKernelSeconds +=
 									gpuMinScoreKernelSeconds;
-								if (!auditOk || auditEndpoints.size() != tasks.size() ||
+								if (!auditOk || auditScores.size() != tasks.size() ||
+								    auditWordReplayFlags.size() != tasks.size() ||
 								    gpuMinScoreSourceScores.size() != tasks.size())
 								{
 									gpuMinScoreByteOverflowAuditError =
@@ -20954,19 +21038,10 @@ int main(int argc, char* const* argv)
 										static_cast<uint64_t>(currentTargetLength);
 									for (size_t taskIndex = 0; taskIndex < tasks.size(); ++taskIndex)
 									{
-										const PreAlignCudaAttemptEndpoint &endpoint =
-											auditEndpoints[taskIndex];
-										const bool bytePath = endpoint.numericPath ==
-											PREALIGN_CUDA_NUMERIC_PATH_BYTE8;
-										const bool wordPath = endpoint.numericPath ==
-											PREALIGN_CUDA_NUMERIC_PATH_WORD16;
-										if (!bytePath && !wordPath)
-										{
-											gpuMinScoreByteOverflowAuditError =
-												"byte_audit_unknown_numeric_path";
-											break;
-										}
-										const bool mismatch = endpoint.forwardScore !=
+										const bool wordPath =
+											auditWordReplayFlags[taskIndex] != 0;
+										const bool bytePath = !wordPath;
+										const bool mismatch = auditScores[taskIndex] !=
 											gpuMinScoreSourceScores[taskIndex];
 										ByteAuditGroup &group = groups[ByteAuditKey(
 											tasks[taskIndex].rule,
@@ -21003,9 +21078,12 @@ int main(int argc, char* const* argv)
 											<< group.mismatches << '\t' << gpuMinScoreWallSeconds
 											<< '\t' << gpuMinScoreKernelSeconds << '\t'
 											<< auditWallSeconds << '\t'
-											<< auditBatchResult.gpuSeconds << '\t'
-											<< auditBatchResult.h2dSeconds << '\t'
-											<< auditBatchResult.d2hSeconds << '\n';
+											<< auditByteBatchResult.gpuSeconds +
+											   auditWordReplayBatchResult.gpuSeconds << '\t'
+											<< auditByteBatchResult.h2dSeconds +
+											   auditWordReplayBatchResult.h2dSeconds << '\t'
+											<< auditByteBatchResult.d2hSeconds +
+											   auditWordReplayBatchResult.d2hSeconds << '\n';
 									}
 									gpuMinScoreByteOverflowAuditReport.flush();
 								}
@@ -29281,7 +29359,31 @@ int main(int argc, char* const* argv)
 						return EXIT_FAILURE;
 					}
 				}
-				two_slot_drain_pipeline();
+				if (gpuMinScoreUint8Requested)
+				{
+					cerr << "benchmark.fasim_long_query_gpu_minscore_uint8_global_requested=1\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_active="
+					     << (gpuMinScoreUint8Active ? 1 : 0) << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_min_query_length="
+					     << gpuMinScoreUint8MinQueryLength << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_batches="
+					     << gpuMinScoreUint8Batches << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_tasks="
+					     << gpuMinScoreUint8Tasks << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_word_replay_tasks="
+					     << gpuMinScoreUint8WordReplayTasks << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_wall_seconds="
+					     << gpuMinScoreUint8WallSeconds << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_kernel_seconds="
+					     << gpuMinScoreUint8KernelSeconds << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_h2d_seconds="
+					     << gpuMinScoreUint8H2DSeconds << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_d2h_seconds="
+					     << gpuMinScoreUint8D2HSeconds << "\n"
+					     << "benchmark.fasim_long_query_gpu_minscore_uint8_global_error="
+					     << gpuMinScoreUint8Error << "\n";
+				}
+					two_slot_drain_pipeline();
 			if (outOpened)
 			{
 				FasimAuthorityProfileScope authorityIoScope(
