@@ -1,0 +1,67 @@
+{
+  "schema_version": "long_query_dynamic_gpu_production_manifest_audit_v1",
+  "implementation_commit": "115c3fc0002b0ae04939740d27ed69f7334db015",
+  "production_epoch_started": false,
+  "source_manifests": [
+    {
+      "id": "gpu0_static_canceled",
+      "rows": 48,
+      "sha256": "a3554d3e7792e739f55f70d791d7da4536cafe9a757dfd01eed96e682bb54bc1"
+    },
+    {
+      "id": "gpu1_static_canceled",
+      "rows": 48,
+      "sha256": "34224fec4a817ab770c4e642cc3e65da6d8e36d90124422c3e84f6902e70b00a"
+    }
+  ],
+  "reserved_ownership_manifests": [
+    {
+      "id": "openmp_active_unchanged",
+      "rows": 48,
+      "sha256": "052237c084865baa83b6185c9bde03a4fb8d47a952a965c7e83c524ebba3c541"
+    }
+  ],
+  "next_binary_sha256": "3c2ed3c0bc4391e2f865868cb64365ab5d481b126e4797158fb8dfc1c150e998",
+  "target_sha256": "7b46f5a422386de87fed4f363574fb7da691e37403630b1e40c34f56387abf40",
+  "source_gpu_jobs": 96,
+  "validated_completed_jobs": 4,
+  "pending_jobs": 92,
+  "pending_manifest_sha256": "253db967eda6fd5bd93d0486f6f40989de7fe27410a0353b16db6b37c8dda094",
+  "allowed_historical_completion": {
+    "source_commit": "372d3119520120c516bf8312b6ed101339ea768d",
+    "binary_sha256": "7b4a0206172b212b3b60a6f14bca90142d788dc7c6b615fefea99047701d1822"
+  },
+  "completed": [
+    {
+      "gene_id": "ENSG00000179406",
+      "artifact_sha256": "94c2f6918b820e55378f9798419daac480e88a9264660b65796b15eb4d08535a",
+      "f1_rows": 1615536,
+      "cpu_continuation_failures": 0
+    },
+    {
+      "gene_id": "ENSG00000286746",
+      "artifact_sha256": "ee0b95b75e64c8d551134cd1687af80dcd0914e7aa58039fe5ff057c41af77c3",
+      "f1_rows": 1615536,
+      "cpu_continuation_failures": 0
+    },
+    {
+      "gene_id": "ENSG00000287516",
+      "artifact_sha256": "3cac35a6435e0f742c00e6d0fe8e288567093ede9558427ccca3611ad8f6500e",
+      "f1_rows": 1615536,
+      "cpu_continuation_failures": 0
+    },
+    {
+      "gene_id": "ENSG00000259673",
+      "artifact_sha256": "18abd4a46cd3fef64644760c3d1f7645dc2dbc82b552153fe36d24ee75d40b63",
+      "f1_rows": 1615536,
+      "cpu_continuation_failures": 0
+    }
+  ],
+  "guards": {
+    "all_completed_f1_rows_ok": true,
+    "all_completed_gpu_fallbacks_zero": true,
+    "all_completed_continuation_failures_zero": true,
+    "openmp_ownership_overlap": 0,
+    "ambiguous_completion_acceptance": 0
+  }
+}

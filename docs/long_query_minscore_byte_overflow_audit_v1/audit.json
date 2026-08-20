@@ -1,0 +1,99 @@
+{
+  "schema_version": "long_query_minscore_byte_overflow_audit_v1",
+  "implementation_commit": "115c3fc0002b0ae04939740d27ed69f7334db015",
+  "binary_sha256": "3c2ed3c0bc4391e2f865868cb64365ab5d481b126e4797158fb8dfc1c150e998",
+  "binary_rebuild_sha256_equal": true,
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+    "driver": "555.42.06"
+  },
+  "target": {
+    "id": "chr22_slice_10m_12m",
+    "sequence_length": 2000000,
+    "file_sha256": "e36fd5e349179420d36f7a2cca4503dbe1e82ad4d7eecb88afd421f0f23099ea"
+  },
+  "scope": {
+    "start_batch": 0,
+    "max_batches": 1,
+    "tasks_per_case": 4096,
+    "target_length_per_task": 5000,
+    "scoring": "5/4/16/4",
+    "authority_numeric_path": "word16_global_state",
+    "candidate_numeric_path": "exact_byte_endpoint_plus_selective_word16_replay"
+  },
+  "cases": [
+    {
+      "gene_id": "ENSG00000229613",
+      "query_length": 4006,
+      "query_file_sha256": "14a63426e6299c3bd8469c56085fd58b9ce98260d86da2d06a3bf31e26c331f1",
+      "query_sequence_sha256": "896e9e632f321c87539268390c3668baab3d40f1007cd2433b44321561ebc657",
+      "dp_cells": 82042880000,
+      "word_replay_tasks": 0,
+      "word_replay_dp_cells": 0,
+      "weighted_replay_fraction": 0.0,
+      "score_mismatches": 0,
+      "authority_wall_seconds": 0.428757,
+      "byte_replay_wall_seconds": 1.01245,
+      "byte_replay_to_authority_ratio": 2.361360864,
+      "audit_tsv_sha256": "c840e1aec842a70e64247585647107c8decd51f408b95f2862b9f0dcefde34d9",
+      "tfosorted_rows": 9032,
+      "tfosorted_sha256": "a940474a6bbf5a4e27678571206210263792da0d1f4424942554930fd72b6f3b",
+      "expected_tfosorted_sha256": "a940474a6bbf5a4e27678571206210263792da0d1f4424942554930fd72b6f3b"
+    },
+    {
+      "gene_id": "ENSG00000267107",
+      "query_length": 8181,
+      "query_file_sha256": "d30aca955692680eafbe3a268d0b92b198ba78e8e6fe9af7cb052ea8b46b5299",
+      "query_sequence_sha256": "47beffef5f7ace208e89213d5210dd818af0d5d3f8d93f250c75768a40a872b6",
+      "dp_cells": 167546880000,
+      "word_replay_tasks": 6,
+      "word_replay_dp_cells": 245430000,
+      "weighted_replay_fraction": 0.00146484375,
+      "score_mismatches": 0,
+      "authority_wall_seconds": 1.9578,
+      "byte_replay_wall_seconds": 4.13247,
+      "byte_replay_to_authority_ratio": 2.110772295,
+      "audit_tsv_sha256": "6591e278bd5f8786f99d85f939a3a7bb5e22a48b6b2bcac4ba337de1347829f0",
+      "tfosorted_rows": 2924,
+      "tfosorted_sha256": "b49e3fa33ec1ae5961032f420cfe1a60d5a5b12f8886828be997f7cd5219a578",
+      "expected_tfosorted_sha256": "b49e3fa33ec1ae5961032f420cfe1a60d5a5b12f8886828be997f7cd5219a578",
+      "nonzero_strata": [
+        {"rule": 2, "strand": 1, "para": -1, "tasks": 3, "dp_cells": 122715000},
+        {"rule": 3, "strand": 1, "para": -1, "tasks": 2, "dp_cells": 81810000},
+        {"rule": 5, "strand": 1, "para": -1, "tasks": 1, "dp_cells": 40905000}
+      ]
+    },
+    {
+      "gene_id": "ENSG00000271913",
+      "query_length": 12397,
+      "query_file_sha256": "356d76e143051afd0f1e821d4ae0d57198e7fb8b1ceab845126c61a10ac4d3f8",
+      "query_sequence_sha256": "451ab7d2c04706a496e26d4e73552d4a093369122b93d6535ba84feeb7e8bffe",
+      "dp_cells": 253890560000,
+      "word_replay_tasks": 44,
+      "word_replay_dp_cells": 2727340000,
+      "weighted_replay_fraction": 0.0107421875,
+      "score_mismatches": 0,
+      "authority_wall_seconds": 3.02847,
+      "byte_replay_wall_seconds": 12.0303,
+      "byte_replay_to_authority_ratio": 3.972401906,
+      "audit_tsv_sha256": "144b01a751e44ac4aed887a220cd5da408a4af191c3688fb81ca82e83df1d41f",
+      "tfosorted_rows": 4150,
+      "tfosorted_sha256": "714cd07a86d86eca5c2858bae5d409b569b173aca12b0db44fcda9062ad40500",
+      "expected_tfosorted_sha256": "714cd07a86d86eca5c2858bae5d409b569b173aca12b0db44fcda9062ad40500",
+      "nonzero_strata": [
+        {"rule": 5, "strand": 0, "para": 1, "tasks": 1, "dp_cells": 61985000},
+        {"rule": 9, "strand": 0, "para": -1, "tasks": 18, "dp_cells": 1115730000},
+        {"rule": 9, "strand": 1, "para": -1, "tasks": 22, "dp_cells": 1363670000},
+        {"rule": 12, "strand": 1, "para": -1, "tasks": 3, "dp_cells": 185955000}
+      ]
+    }
+  ],
+  "all_complete_outputs_exact": true,
+  "all_f1_pipeline_failures_zero": true,
+  "all_gpu_fallbacks_zero": true,
+  "existing_byte_endpoint_kernel_for_minscore": "no_go",
+  "compact_uint8_global_state_bounded_spike_authorized": true,
+  "production_byte_fast_path_authorized": false,
+  "required_stage_speedup": 1.5
+}

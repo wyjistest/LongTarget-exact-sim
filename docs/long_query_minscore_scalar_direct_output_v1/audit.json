@@ -1,0 +1,57 @@
+{
+  "schema_version": "long_query_minscore_scalar_direct_output_audit_v1",
+  "implementation_commit": "115c3fc0002b0ae04939740d27ed69f7334db015",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "uuid": "GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3",
+    "driver": "555.42.06"
+  },
+  "toolchain": {
+    "cuda": "12.5",
+    "cxx": "g++ 9.4.0"
+  },
+  "test_binary_sha256": "d73c3c946cfad881d38adf9a3c072c24e96314ed6b8ec16be91d60240a94b257",
+  "benchmark_binary_sha256": "38ca64692d611a5c3d1f380c530db8ddf04ea92213ee2f79a424c2178f9cdc3f",
+  "authority": "word16_global_state_column_output_plus_reduce",
+  "candidate": "word16_global_state_direct_scalar_output",
+  "exact_query_lengths": [1, 31, 32, 33, 511, 2812, 4006, 8181, 12397],
+  "task_exactness": true,
+  "benchmark": {
+    "task_count": 128,
+    "target_length": 5000,
+    "repeats": 7,
+    "cases": [
+      {
+        "query_length": 4006,
+        "authority_wall_median_seconds": 0.020154463,
+        "direct_wall_median_seconds": 0.019857026,
+        "wall_ratio": 0.985242127265,
+        "authority_kernel_median_seconds": 0.0199779836587,
+        "direct_kernel_median_seconds": 0.0196972808838,
+        "kernel_ratio": 0.985949394109
+      },
+      {
+        "query_length": 8181,
+        "authority_wall_median_seconds": 0.106483831,
+        "direct_wall_median_seconds": 0.10594994,
+        "wall_ratio": 0.994986177761,
+        "authority_kernel_median_seconds": 0.106305215281,
+        "direct_kernel_median_seconds": 0.105781219482,
+        "kernel_ratio": 0.995070836396
+      },
+      {
+        "query_length": 12397,
+        "authority_wall_median_seconds": 0.238655616,
+        "direct_wall_median_seconds": 0.238159639,
+        "wall_ratio": 0.997921787854,
+        "authority_kernel_median_seconds": 0.238466243619,
+        "direct_kernel_median_seconds": 0.237983047485,
+        "kernel_ratio": 0.997973733614
+      }
+    ]
+  },
+  "retention_gate_max_wall_ratio": 0.85,
+  "retention_gate_pass": false,
+  "decision": "no_go",
+  "runtime_wired": false
+}
