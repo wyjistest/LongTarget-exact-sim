@@ -342,6 +342,24 @@ $(GASAL2_BUILD_STAMP): $(wildcard $(GASAL2_DIR)/src/*) $(wildcard $(GASAL2_DIR)/
 
 build-fasim-gasal2: $(FASIM_GASAL2_TARGET)
 
+# Independent development candidate; never overwrites the production target.
+FASIM_GPU_EXACT_REPAIR_TARGET ?= .tmp/fasim_gpu_exact_repair_v1
+FASIM_GPU_EXACT_REPAIR_TEST ?= .tmp/test_gpu_exact_repair_endpoints
+
+.PHONY: build-fasim-gpu-exact-repair build-gpu-exact-repair-test
+build-fasim-gpu-exact-repair:
+	$(MAKE) build-fasim-gasal2 FASIM_GASAL2_TARGET=$(FASIM_GPU_EXACT_REPAIR_TARGET) \
+		CPPFLAGS="$(CPPFLAGS) -DFASIM_WITH_SSW_FORWARD_CONTINUATION"
+
+build-gpu-exact-repair-test: $(FASIM_GPU_EXACT_REPAIR_TEST)
+
+$(FASIM_GPU_EXACT_REPAIR_TEST): tests/test_gpu_exact_repair_endpoints.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp fasim/gasal2_align_bridge.cpp $(FASIM_HEADERS) cuda/prealign_cuda.o $(GASAL2_BUILD_STAMP) $(GASAL2_DIR)/lib/libgasal.a
+	$(CXX) $(CPPFLAGS) -DFASIM_WITH_SSW_FORWARD_CONTINUATION -DFASIM_WITH_GASAL2 \
+		-I. -I$(GASAL2_DIR)/include $(FASIM_CXXFLAGS) $(FASIM_SIMD_FLAGS) \
+		tests/test_gpu_exact_repair_endpoints.cpp fasim/ssw_cpp.cpp fasim/sswNew.cpp \
+		fasim/ssw_oracle_trace.cpp fasim/gasal2_align_bridge.cpp cuda/prealign_cuda.o \
+		$(LDFLAGS) $(LDLIBS) -L$(GASAL2_DIR)/lib -lgasal $(CUDA_LDFLAGS) -o $@
+
 $(FASIM_GASAL2_TARGET): $(FASIM_SOURCES) $(FASIM_HEADERS) fasim/gasal2_align_bridge.cpp cuda/prealign_cuda.o cuda/prealign_cuda.h $(GASAL2_BUILD_STAMP) $(GASAL2_DIR)/lib/libgasal.a
 	$(CXX) $(CPPFLAGS) -DFASIM_WITH_GASAL2 -I$(GASAL2_DIR)/include $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(FASIM_SOURCES) fasim/gasal2_align_bridge.cpp cuda/prealign_cuda.o $(LDFLAGS) $(LDLIBS) -L$(GASAL2_DIR)/lib -lgasal $(CUDA_LDFLAGS) -L$(GASAL2_CUDA_LIB) -lcudart -o $@
 
@@ -813,6 +831,9 @@ FASIM_SSW_PROFILE_CACHE_TEST_SOURCES := tests/test_fasim_ssw_profile_cache.cpp f
 SSW_AVX2_DIRECT_TEST_TARGET ?= tests/test_ssw_avx2_direct
 SSW_AVX2_DIRECT_TEST_SOURCES := tests/test_ssw_avx2_direct.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
 
+SSW_BANDED_TRACEBACK_TEST_TARGET ?= tests/test_ssw_banded_traceback
+SSW_BANDED_TRACEBACK_TEST_SOURCES := tests/test_ssw_banded_traceback.cpp fasim/sswNew.cpp fasim/ssw_oracle_trace.cpp
+
 PREALIGN_SHARED_TEST_TARGET ?= tests/test_prealign_shared
 PREALIGN_SHARED_TEST_SOURCES := tests/test_prealign_shared.cpp cuda/prealign_cuda_stub.cpp
 
@@ -908,6 +929,8 @@ build-fasim-ssw-profile-cache-test: $(FASIM_SSW_PROFILE_CACHE_TEST_TARGET)
 
 build-ssw-avx2-direct-test: $(SSW_AVX2_DIRECT_TEST_TARGET)
 
+build-ssw-banded-traceback-test: $(SSW_BANDED_TRACEBACK_TEST_TARGET)
+
 build-prealign-shared-test: $(PREALIGN_SHARED_TEST_TARGET)
 
 build-sim-scan-batch-test: $(SIM_SCAN_BATCH_TEST_TARGET)
@@ -977,6 +1000,9 @@ $(FASIM_SSW_PROFILE_CACHE_TEST_TARGET): $(FASIM_SSW_PROFILE_CACHE_TEST_SOURCES) 
 
 $(SSW_AVX2_DIRECT_TEST_TARGET): $(SSW_AVX2_DIRECT_TEST_SOURCES) fasim/ssw.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) -mavx2 $(SSW_AVX2_DIRECT_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(SSW_BANDED_TRACEBACK_TEST_TARGET): $(SSW_BANDED_TRACEBACK_TEST_SOURCES) fasim/ssw.h
+	$(CXX) $(CPPFLAGS) -DFASIM_SSW_BANDED_TRACEBACK_TEST_API $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(SSW_BANDED_TRACEBACK_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
 
 $(PREALIGN_SHARED_TEST_TARGET): $(PREALIGN_SHARED_TEST_SOURCES) cuda/prealign_cuda.h
 	$(CXX) $(CPPFLAGS) $(FASIM_CXXFLAGS) $(ARCH_FLAGS) $(FASIM_SIMD_FLAGS) $(PREALIGN_SHARED_TEST_SOURCES) $(LDFLAGS) $(LDLIBS) -o $@
@@ -1342,6 +1368,10 @@ check-fasim-ssw-profile-context-digest:
 check-fasim-ssw-avx2-direct:
 	$(MAKE) build-ssw-avx2-direct-test
 	FASIM_SSW_AVX2=1 ./tests/test_ssw_avx2_direct
+
+check-fasim-ssw-banded-traceback:
+	$(MAKE) build-ssw-banded-traceback-test
+	./$(SSW_BANDED_TRACEBACK_TEST_TARGET)
 
 check-fasim-ssw-avx2-digest:
 	mkdir -p $(CURDIR)/.tmp/fasim_ssw_avx2_digest

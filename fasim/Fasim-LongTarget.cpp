@@ -3551,7 +3551,7 @@ static inline bool fasim_long_query_gpu_consumer_spike_v1_runtime()
 
 static inline bool fasim_long_query_gpu_consumer_replacement_prototype_runtime()
 {
-	return fasim_env_flag_enabled(
+	return fasim_gpu_exact_repair_v1_runtime() || fasim_env_flag_enabled(
 		"FASIM_LONG_QUERY_GPU_CONSUMER_REPLACEMENT_PROTOTYPE");
 }
 
@@ -3915,7 +3915,7 @@ static inline bool fasim_long_query_streaming_scoreinfo_debug_columns_runtime()
 
 static inline bool fasim_long_query_streaming_scoreinfo_legacy_byte_runtime()
 {
-	return fasim_env_flag_enabled(
+	return fasim_gpu_exact_repair_v1_runtime() || fasim_env_flag_enabled(
 		"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_LEGACY_BYTE");
 }
 
@@ -3927,13 +3927,13 @@ static inline bool fasim_long_query_streaming_scoreinfo_legacy_byte_shared_runti
 
 static inline bool fasim_long_query_streaming_scoreinfo_gpu_minscore_runtime()
 {
-	return fasim_env_flag_enabled(
+	return fasim_gpu_exact_repair_v1_runtime() || fasim_env_flag_enabled(
 		"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_GPU_MINSCORE");
 }
 
 static inline bool fasim_long_query_streaming_scoreinfo_gpu_minscore_hot_runtime()
 {
-	return fasim_env_flag_enabled(
+	return fasim_gpu_exact_repair_v1_runtime() || fasim_env_flag_enabled(
 		"FASIM_LONG_QUERY_STREAMING_SCOREINFO_GPU_SHADOW_GPU_MINSCORE_HOT");
 }
 
@@ -11129,19 +11129,39 @@ int main(int argc, char* const* argv)
 	}
 	if (longQueryGpuConsumerReplacementPrototypeRequested)
 	{
+		if (fasim_gpu_exact_repair_v1_runtime())
+		{
+#if !defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) && !defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+			cerr << "GPU exact repair requires the CPU continuation build" << endl;
+			return EXIT_FAILURE;
+#endif
+			if (fasim_output_mode_runtime() != FASIM_OUTPUT_TFOSORTED &&
+			    fasim_output_mode_runtime() != FASIM_OUTPUT_LITE)
+			{
+				cerr << "GPU exact repair supports tfosorted or lite output only" << endl;
+				return EXIT_FAILURE;
+			}
+		}
 		const bool replacementConfigOk =
 			paraList.doFastSim &&
-			lncSeq.size() > 2812 &&
+			(lncSeq.size() > 2812 ||
+			 (fasim_gpu_exact_repair_v1_runtime() && !lncSeq.empty())) &&
 			fasim_long_query_streaming_scoreinfo_legacy_byte_runtime() &&
 			fasim_long_query_streaming_scoreinfo_gpu_minscore_runtime() &&
 			fasim_long_query_streaming_scoreinfo_gpu_minscore_hot_runtime() &&
-			!fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime();
+			!fasim_long_query_streaming_scoreinfo_two_contract_bridge_runtime() &&
+			!fasim_long_query_streaming_scoreinfo_fused_minscore_runtime();
 		if (!replacementConfigOk)
 		{
 			cerr << "FASIM long-query replacement prototype requires a >2812 nt "
 			     << "Fasim query, exact legacy-byte streaming scoreInfo, and the "
 			     << "GPU min-score hot path" << endl;
 			return EXIT_FAILURE;
+		}
+		if (fasim_gpu_exact_repair_v1_runtime())
+		{
+			cerr << "benchmark.fasim_gpu_exact_repair_v1.requested=1\n"
+			     << "benchmark.fasim_gpu_exact_repair_v1.epoch=gpu_exact_repair_v1\n";
 		}
 	}
 	fasim_prepare_gasal2_long_query_segmented_shadow_stats(
@@ -11430,6 +11450,8 @@ int main(int argc, char* const* argv)
 			ofstream phase7FrontierLogFile;
 			string outFilePath;
 				string outLiteFilePath;
+			const string repairOutputSuffix = fasim_gpu_exact_repair_v1_runtime() ?
+				".partial.gpu_exact_repair_v1." + std::to_string(getpid()) : "";
 				string cigarArchiveProbePath;
 				string compactArchiveProbePath;
 				string columnArchiveProbePath;
@@ -11545,7 +11567,7 @@ int main(int argc, char* const* argv)
 						if (longQueryGpuConsumerSpikeReport)
 						{
 								longQueryGpuConsumerSpikeReport
-									<< "task_index\texecution_mode\tauthority_comparison_available\tvalidation_enabled\tok\toutput_equal\tscoreinfo_groups\tattempts\tgpu_scored_attempts\tendpoint_batches\tcpu_oracle_attempts\tattempt_mismatch_rows\tscore_mismatches\tquery_end_mismatches\tref_end_local_mismatches\tterminal_mismatches\tcontrol_selected_attempts\tcpu_control_selected_attempts\tconsumer_selection_equal\tcpu_reference_align_attempts\tconsumer_attempt_prefix_equal\tcpu_continuation_requested\tcpu_continuation_active\tcpu_continuation_calls\tcpu_continuation_failures\treplay_attempts\tcpu_align_attempts\tthreshold_groups\tbest_fallback_groups\tlast_groups\tempty_groups\tscore_seconds\tgpu_kernel_seconds\th2d_seconds\td2h_seconds\tcpu_oracle_seconds\tselect_seconds\ttraceback_seconds\tconvert_seconds\ttotal_seconds\tmissing_rows\textra_rows\tfirst_attempt_mismatch\tfirst_consumer_mismatch\terror\n";
+									<< "task_index\texecution_mode\tauthority_comparison_available\tvalidation_enabled\tok\toutput_equal\tscoreinfo_groups\tattempts\tgpu_scored_attempts\tendpoint_batches\tcpu_oracle_attempts\tattempt_mismatch_rows\tscore_mismatches\tquery_end_mismatches\tref_end_local_mismatches\tterminal_mismatches\tcontrol_selected_attempts\tcpu_control_selected_attempts\tconsumer_selection_equal\tcpu_reference_align_attempts\tconsumer_attempt_prefix_equal\tcpu_continuation_requested\tcpu_continuation_active\tcpu_continuation_calls\tcpu_continuation_failures\treplay_attempts\tcpu_align_attempts\tthreshold_groups\tbest_fallback_groups\tlast_groups\tempty_groups\tscore_seconds\tgpu_kernel_seconds\th2d_seconds\td2h_seconds\tcpu_oracle_seconds\tselect_seconds\ttraceback_seconds\tconvert_seconds\ttotal_seconds\tmissing_rows\textra_rows\tfirst_attempt_mismatch\tfirst_consumer_mismatch\terror\tcpu_continuation_reselection_groups\tcpu_continuation_extra_calls\n";
 						}
 					}
 				}
@@ -11570,9 +11592,16 @@ int main(int argc, char* const* argv)
 			outSpecies = speciesValue.empty() ? string("unknown") : speciesValue;
 			outFilePath = resultDir + "/" + outSpecies + "-" + lncName + "-" + fileName + "-TFOsorted";
 			outLiteFilePath = outFilePath + ".lite";
+			if (!repairOutputSuffix.empty() &&
+			    ((writeFull && access(outFilePath.c_str(), F_OK) == 0) ||
+			     (writeLite && access(outLiteFilePath.c_str(), F_OK) == 0)))
+			{
+				cerr << "GPU exact repair requires a new output path; result already exists" << endl;
+				std::exit(EXIT_FAILURE);
+			}
 			if (writeFull)
 			{
-				outFile.open(outFilePath.c_str(), ios::trunc);
+				outFile.open((outFilePath + repairOutputSuffix).c_str(), ios::trunc);
 				if (!outFile.is_open())
 				{
 					cerr << "failed to open output file: " << outFilePath << endl;
@@ -11582,7 +11611,7 @@ int main(int argc, char* const* argv)
 			}
 				if (writeLite)
 				{
-					outLiteFile.open(outLiteFilePath.c_str(), ios::trunc);
+					outLiteFile.open((outLiteFilePath + repairOutputSuffix).c_str(), ios::trunc);
 				if (!outLiteFile.is_open())
 				{
 					cerr << "failed to open output file: " << outLiteFilePath << endl;
@@ -14575,7 +14604,9 @@ int main(int argc, char* const* argv)
 					<< extra << '\t'
 					<< result.first_attempt_mismatch << '\t'
 					<< result.first_consumer_mismatch << '\t'
-					<< error << '\n';
+					<< error << '\t'
+					<< result.cpu_continuation_reselection_groups << '\t'
+					<< result.cpu_continuation_extra_calls << '\n';
 		};
 
 			auto record_triplex_probe_first_mismatch =
@@ -20124,6 +20155,7 @@ int main(int argc, char* const* argv)
 						const bool streamingRealpathTrust =
 							((streamingRealpathRequested && !twoContractRequested) ||
 							 twoContractTrustRequested) &&
+							!fasim_env_flag_enabled("FASIM_GPU_EXACT_REPAIR_CHECK_SCOREINFO") &&
 							!fusedMinScoreRequested &&
 							(twoContractTrustRequested ||
 							 longQueryGpuConsumerReplacementPrototypeRequested ||
@@ -20389,6 +20421,11 @@ int main(int argc, char* const* argv)
 							longQueryStreamingScoreInfoShadowStats.two_contract_error =
 								"legacy_score_query_or_targets_unavailable";
 						}
+					}
+					if (longQueryGpuConsumerReplacementPrototypeRequested && !gpuMinScoreOk)
+					{
+						longQueryStreamingScoreInfoShadowStats.error = "replacement_gpu_minscore_unavailable";
+						return;
 					}
 					const auto minScoreStart = std::chrono::steady_clock::now();
 					if (!fusedMinScoreRequested)
@@ -20748,6 +20785,13 @@ int main(int argc, char* const* argv)
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
 						const int count = t < compactCounts.size() ? compactCounts[t] : -1;
+						if (longQueryGpuConsumerReplacementPrototypeRequested &&
+						    (t >= compactInputCounts.size() || compactInputCounts[t] != count))
+						{
+							// A capacity limit must never silently prune a scientific result.
+							longQueryStreamingScoreInfoShadowStats.error = "replacement_scoreinfo_capacity_exceeded";
+							return;
+						}
 						if (count < 0 || count > maxPerTask)
 						{
 							++longQueryStreamingScoreInfoShadowStats.scoreinfo_mismatches;
@@ -27516,6 +27560,8 @@ int main(int argc, char* const* argv)
 											replacementResult.scoreinfo_groups == 0;
 										const bool replacementContractOk =
 											replacementOk && replacementResult.ok &&
+											longQueryStreamingScoreInfoShadowStats.gpu_minscore_score_mismatches == 0 &&
+											longQueryStreamingScoreInfoShadowStats.gpu_minscore_min_score_mismatches == 0 &&
 											!replacementResult.validation_enabled &&
 											replacementResult.cpu_oracle_attempts == 0 &&
 											replacementResult.cpu_reference_align_attempts == 0 &&
@@ -27528,7 +27574,8 @@ int main(int argc, char* const* argv)
 											  replacementResult.cpu_align_attempts ==
 											      replacementResult.cpu_continuation_calls &&
 											  replacementResult.cpu_continuation_calls ==
-											      replacementResult.control_selected_attempts));
+											      replacementResult.control_selected_attempts +
+											      replacementResult.cpu_continuation_extra_calls));
 										if (!replacementContractOk)
 										{
 											longQueryGpuConsumerSpikeReport.flush();
@@ -28426,6 +28473,23 @@ int main(int argc, char* const* argv)
 						.broad_path_planner_descriptor_digest =
 						fasim_hex_u64(broadPlannerDescriptorDigest);
 					broadPlannerDescriptorOpened = false;
+				}
+			}
+			if (outOpened && !repairOutputSuffix.empty())
+			{
+				if ((writeFull && outFile.fail()) || (writeLite && outLiteFile.fail()))
+				{
+					cerr << "GPU exact repair output write failed; partial result retained" << endl;
+					std::exit(EXIT_FAILURE);
+				}
+				for (const auto &path : {writeFull ? outFilePath : string(),
+				                         writeLite ? outLiteFilePath : string()})
+				{
+					if (!path.empty() && std::rename((path + repairOutputSuffix).c_str(), path.c_str()) != 0)
+					{
+						cerr << "GPU exact repair could not publish output: " << path << endl;
+						std::exit(EXIT_FAILURE);
+					}
 				}
 			}
 			for (size_t i = 0; i < cudaQueries.size(); ++i)

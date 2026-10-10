@@ -38,11 +38,19 @@ static inline void prealign_shared_encode_sequence(const std::string &sequence,s
   }
 }
 
+// The SSW fork translates U as A. Keep this separate from the legacy
+// calc_score alphabet, whose U/ambiguity semantics are a different contract.
+static inline uint8_t prealign_shared_encode_ssw_base(unsigned char c)
+{
+  return c == 'U' || c == 'u' ? 0 : prealign_shared_encode_base(c);
+}
+
 static inline void prealign_shared_build_query_profile(const std::string &query,
                                                        int matchScore,
                                                        int mismatchPenalty,
                                                        std::vector<int16_t> &profile,
-                                                       int &segLenOut)
+                                                       int &segLenOut,
+                                                       bool sswEncoding = false)
 {
   const int queryLength = static_cast<int>(query.size());
   const int segWidth = 32;
@@ -61,7 +69,9 @@ static inline void prealign_shared_build_query_profile(const std::string &query,
         int16_t score = 0;
         if(queryIndex < queryLength)
         {
-          const uint8_t queryCode = prealign_shared_encode_base(static_cast<unsigned char>(query[static_cast<size_t>(queryIndex)]));
+          const unsigned char base = static_cast<unsigned char>(query[static_cast<size_t>(queryIndex)]);
+          const uint8_t queryCode = sswEncoding ? prealign_shared_encode_ssw_base(base) :
+                                                prealign_shared_encode_base(base);
           if(queryCode < 4 && targetCode < 4 && static_cast<int>(queryCode) == targetCode)
           {
             score = static_cast<int16_t>(matchScore);

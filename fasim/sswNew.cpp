@@ -89,6 +89,7 @@
 #include <immintrin.h>
 #endif
 #include <stdint.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -128,6 +129,8 @@ typedef struct {
 typedef struct {
 	uint32_t* seq;
 	int32_t length;
+	int32_t ref_begin_offset;
+	int32_t read_begin_offset;
 } cigar;
 
 struct _profile {
@@ -1709,6 +1712,48 @@ static alignment_end* sw_avx2_word(const int8_t* ref,
 }
 #endif
 
+static bool ssw_checked_multiply_size(size_t left, size_t right, size_t* product) {
+	if (product == NULL || (left != 0 && right > SIZE_MAX / left)) return false;
+	*product = left * right;
+	return true;
+}
+
+template <typename T>
+static bool ssw_resize_array(T** buffer, size_t count) {
+	if (buffer == NULL) return false;
+	size_t bytes = 0;
+	if (!ssw_checked_multiply_size(count, sizeof(T), &bytes) || bytes == 0) {
+		return false;
+	}
+	void* resized = realloc(*buffer, bytes);
+	if (resized == NULL) return false;
+	*buffer = static_cast<T*>(resized);
+	return true;
+}
+
+static void ssw_destroy_cigar(cigar* path) {
+	if (path == NULL) return;
+	free(path->seq);
+	free(path);
+}
+
+static bool ssw_append_cigar(uint32_t** values,
+	size_t* length,
+	size_t* capacity,
+	uint32_t value) {
+	if (values == NULL || length == NULL || capacity == NULL) return false;
+	if (*length == *capacity) {
+		if (*capacity > SIZE_MAX / 2) return false;
+		const size_t next_capacity = *capacity == 0 ? 16 : *capacity * 2;
+		if (!ssw_resize_array(values, next_capacity)) {
+			return false;
+		}
+		*capacity = next_capacity;
+	}
+	(*values)[(*length)++] = value;
+	return true;
+}
+
 static cigar* banded_sw(const int8_t* ref,
 	const int8_t* read,
 	int32_t refLen,
@@ -1718,38 +1763,87 @@ static cigar* banded_sw(const int8_t* ref,
 	const int32_t weight_gapE,  /* will be used as - */
 	int32_t band_width,
 	const int8_t* mat,	/* pointer to the weight matrix */
-	int32_t n) {
+	int32_t n,
+	const char** failure_reason,
+	int32_t* final_band_width) {
 
-	uint32_t *c = (uint32_t*)malloc(16 * sizeof(uint32_t)), *c1;
-	int32_t i, j, e, f, temp1, temp2, s = 16, s1 = 8, l, max = 0;
-	int64_t s2 = 1024;
+	if (failure_reason != NULL) *failure_reason = "unknown";
+	if (final_band_width != NULL) *final_band_width = 0;
+	if (ref == NULL || read == NULL || mat == NULL || refLen <= 0 ||
+		readLen <= 0 || score <= 0 || weight_gapO < 0 || weight_gapE < 0 ||
+		band_width <= 0 || n <= 0) {
+		if (failure_reason != NULL) *failure_reason = "invalid_input";
+		return NULL;
+	}
+	for (int32_t index = 0; index < refLen; ++index) {
+		if (ref[index] < 0 || ref[index] >= n) {
+			if (failure_reason != NULL) *failure_reason = "invalid_reference_symbol";
+			return NULL;
+		}
+	}
+	for (int32_t index = 0; index < readLen; ++index) {
+		if (read[index] < 0 || read[index] >= n) {
+			if (failure_reason != NULL) *failure_reason = "invalid_read_symbol";
+			return NULL;
+		}
+	}
+
+	uint32_t* c = NULL;
+	uint32_t* c1 = NULL;
+	cigar* result = NULL;
+	size_t cigar_length = 0;
+	size_t cigar_capacity = 0;
+	int32_t i, j, e, f, temp1, temp2, max = 0;
 	char op, prev_op;
-	int32_t width, width_d, *h_b, *e_b, *h_c;
-	int8_t *direction, *direction_line;
-	cigar* result = (cigar*)malloc(sizeof(cigar));
-	h_b = (int32_t*)malloc(s1 * sizeof(int32_t));
-	e_b = (int32_t*)malloc(s1 * sizeof(int32_t));
-	h_c = (int32_t*)malloc(s1 * sizeof(int32_t));
-	direction = (int8_t*)malloc(s2 * sizeof(int8_t));
+	int32_t width = 0, width_d = 0, direction_width = 0;
+	int32_t* h_b = NULL;
+	int32_t* e_b = NULL;
+	int32_t* h_c = NULL;
+	int8_t* direction = NULL;
+	int8_t* direction_line = NULL;
+	size_t state_capacity = 0;
+	size_t direction_capacity = 0;
+	const int32_t neg_inf = INT32_MIN / 2;
+	const int32_t full_band = refLen > readLen ? refLen : readLen;
+	if (band_width > full_band) band_width = full_band;
 
-	do {
-		width = band_width * 2 + 3, width_d = band_width * 2 + 1;
-		while (width >= s1) {
-			++s1;
-			kroundup32(s1);
-			h_b = (int32_t*)realloc(h_b, s1 * sizeof(int32_t));
-			e_b = (int32_t*)realloc(e_b, s1 * sizeof(int32_t));
-			h_c = (int32_t*)realloc(h_c, s1 * sizeof(int32_t));
+	for (;;) {
+		const int64_t width64 = static_cast<int64_t>(band_width) * 2 + 3;
+		const int64_t width_d64 = static_cast<int64_t>(band_width) * 2 + 1;
+		if (width64 > INT32_MAX || width_d64 > INT32_MAX) {
+			if (failure_reason != NULL) *failure_reason = "band_width_overflow";
+			goto fail;
 		}
-		while (width_d * readLen * 3 >= s2) {
-			++s2;
-			kroundup32(s2);
-			if (s2 < 0) {
-				fprintf(stderr, "Alignment score and position are not consensus.\n");
-				exit(1);
+		width = static_cast<int32_t>(width64);
+		width_d = static_cast<int32_t>(width_d64);
+		// A very wide query band still has only refLen addressable columns.
+		direction_width = width_d < refLen ? width_d : refLen;
+		if (static_cast<size_t>(width) > state_capacity) {
+			const size_t next_capacity = static_cast<size_t>(width);
+			if (!ssw_resize_array(&h_b, next_capacity) ||
+				!ssw_resize_array(&e_b, next_capacity) ||
+				!ssw_resize_array(&h_c, next_capacity)) {
+				if (failure_reason != NULL) *failure_reason = "state_allocation_failed";
+				goto fail;
 			}
-			direction = (int8_t*)realloc(direction, s2 * sizeof(int8_t));
+			state_capacity = next_capacity;
 		}
+		size_t direction_elements = 0;
+		if (!ssw_checked_multiply_size(static_cast<size_t>(direction_width),
+				static_cast<size_t>(readLen), &direction_elements) ||
+			!ssw_checked_multiply_size(direction_elements, 3, &direction_elements)) {
+			if (failure_reason != NULL) *failure_reason = "direction_size_overflow";
+			goto fail;
+		}
+		if (direction_elements > direction_capacity) {
+			if (!ssw_resize_array(&direction, direction_elements)) {
+				if (failure_reason != NULL) *failure_reason = "direction_allocation_failed";
+				goto fail;
+			}
+			direction_capacity = direction_elements;
+		}
+
+		max = 0;
 		direction_line = direction;
 		for (j = 1; LIKELY(j < width - 1); j++) h_b[j] = 0;
 		for (i = 0; LIKELY(i < readLen); i++) {
@@ -1757,8 +1851,11 @@ static cigar* banded_sw(const int8_t* ref,
 			j = i - band_width;	beg = beg > j ? beg : j; // band start
 			j = i + band_width; end = end < j ? end : j; // band end
 			edge = end + 1 < width - 1 ? end + 1 : width - 1;
-			f = h_b[0] = e_b[0] = h_b[edge] = e_b[edge] = h_c[0] = 0;
-			direction_line = direction + width_d * i * 3;
+			f = neg_inf;
+			h_b[0] = h_b[edge] = h_c[0] = 0;
+			e_b[0] = e_b[edge] = neg_inf;
+			direction_line = direction +
+				static_cast<size_t>(direction_width) * static_cast<size_t>(i) * 3;
 
 			for (j = beg; LIKELY(j <= end); j++) {
 				int32_t b, e1, f1, d, de, df, dh;
@@ -1769,7 +1866,7 @@ static cigar* banded_sw(const int8_t* ref,
 				set_d(dh, band_width, i, j, 2);
 
 				temp1 = i == 0 ? -weight_gapO : h_b[e] - weight_gapO;
-				temp2 = i == 0 ? -weight_gapE : e_b[e] - weight_gapE;
+				temp2 = i == 0 ? neg_inf : e_b[e] - weight_gapE;
 				e_b[u] = temp1 > temp2 ? temp1 : temp2;
 				direction_line[de] = temp1 > temp2 ? 3 : 2;
 
@@ -1785,7 +1882,6 @@ static cigar* banded_sw(const int8_t* ref,
 				h_c[u] = temp1 > temp2 ? temp1 : temp2;
 
 				if (h_c[u] > max) max = h_c[u];
-                if ((ref[j] * n + read[i])>=25) cout<<i<<"----------error------"<<j<<"\n";
 				if (temp1 <= temp2) direction_line[dh] = 1;
 				else direction_line[dh] = e1 > f1 ? direction_line[de] : direction_line[df];
 //				cout<<"j:"<<j<<"\tscore:\t"<<h_c[u]<<"\t";
@@ -1793,37 +1889,46 @@ static cigar* banded_sw(const int8_t* ref,
 			for (j = 1; j <= u; j++) h_b[j] = h_c[j];
 		}
 		fasim_ssw_oracle::record_band_iteration(band_width, max, score);
-		band_width *= 2;
-	} while (LIKELY(max < score));
-	band_width /= 2;
-
+		// The fork's min(forward, reverse) score can be unreachable in this
+		// scalar recurrence. Full band is therefore the hard terminal bound.
+		if (max >= score || band_width >= full_band) break;
+		const int64_t doubled = static_cast<int64_t>(band_width) * 2;
+		band_width = doubled >= full_band ? full_band : static_cast<int32_t>(doubled);
+	}
+	if (final_band_width != NULL) *final_band_width = band_width;
 	// trace back
 	i = readLen - 1;
 	j = refLen - 1;
 	e = 0;	// Count the number of M, D or I.
-	l = 0;	// record length of current cigar
 	op = prev_op = 'M';
 	temp2 = 2;	// h
-	while (LIKELY(i > 0)) {
-		set_d(temp1, band_width, i, j, temp2);
-		switch (direction_line[temp1]) {
+	while (LIKELY(i > 0 && j > 0)) {
+		const int32_t band_start = i > band_width ? i - band_width : 0;
+		const int64_t cell = static_cast<int64_t>(j) - band_start;
+		const int64_t direction_index =
+			(static_cast<int64_t>(i) * direction_width + cell) * 3 + temp2;
+		const int64_t direction_limit =
+			static_cast<int64_t>(direction_width) * readLen * 3;
+		if (cell < 0 || cell >= direction_width || temp2 < 0 || temp2 > 2 ||
+			direction_index < 0 || direction_index >= direction_limit) {
+			if (failure_reason != NULL) *failure_reason = "traceback_index_out_of_bounds";
+			goto fail;
+		}
+		switch (direction[direction_index]) {
 		case 1:
 			--i;
 			--j;
 			temp2 = 2;
-			direction_line -= width_d * 3;
 			op = 'M';
 			break;
 		case 2:
 			--i;
 			temp2 = 0;	// e
-			direction_line -= width_d * 3;
 			op = 'I';
 			break;
 		case 3:
 			--i;
 			temp2 = 2;
-			direction_line -= width_d * 3;
 			op = 'I';
 			break;
 		case 4:
@@ -1837,67 +1942,230 @@ static cigar* banded_sw(const int8_t* ref,
 			op = 'D';
 			break;
 		default:
-			fprintf(stderr, "Trace back error: %d.\n", direction_line[temp1 - 1]);
-			free(direction);
-			free(h_c);
-			free(e_b);
-			free(h_b);
-			free(c);
-			free(result);
-			return 0;
+			if (failure_reason != NULL) *failure_reason = "invalid_traceback_direction";
+			goto fail;
 		}
 		if (op == prev_op) ++e;
 		else {
-			++l;
-			while (l >= s) {
-				++s;
-				kroundup32(s);
-				c = (uint32_t*)realloc(c, s * sizeof(uint32_t));
+			if (!ssw_append_cigar(&c, &cigar_length, &cigar_capacity,
+					to_cigar_int(e, prev_op))) {
+				if (failure_reason != NULL) *failure_reason = "cigar_allocation_failed";
+				goto fail;
 			}
-			c[l - 1] = to_cigar_int(e, prev_op);
 			prev_op = op;
 			e = 1;
 		}
 	}
 	if (op == 'M') {
-		++l;
-		while (l >= s) {
-			++s;
-			kroundup32(s);
-			c = (uint32_t*)realloc(c, s * sizeof(uint32_t));
+		if (!ssw_append_cigar(&c, &cigar_length, &cigar_capacity,
+				to_cigar_int(e + 1, op))) {
+			if (failure_reason != NULL) *failure_reason = "cigar_allocation_failed";
+			goto fail;
 		}
-		c[l - 1] = to_cigar_int(e + 1, op);
 	}
 	else {
-		l += 2;
-		while (l >= s) {
-			++s;
-			kroundup32(s);
-			c = (uint32_t*)realloc(c, s * sizeof(uint32_t));
+		if (!ssw_append_cigar(&c, &cigar_length, &cigar_capacity,
+				to_cigar_int(e, op)) ||
+			!ssw_append_cigar(&c, &cigar_length, &cigar_capacity,
+				to_cigar_int(1, 'M'))) {
+			if (failure_reason != NULL) *failure_reason = "cigar_allocation_failed";
+			goto fail;
 		}
-		c[l - 2] = to_cigar_int(e, op);
-		c[l - 1] = to_cigar_int(1, 'M');
 	}
 
 	// reverse cigar
-	c1 = (uint32_t*)malloc(l * sizeof(uint32_t));
-	s = 0;
-	e = l - 1;
-	while (LIKELY(s <= e)) {
-		c1[s] = c[e];
-		c1[e] = c[s];
-		++s;
-		--e;
+	if (cigar_length > static_cast<size_t>(INT32_MAX)) {
+		if (failure_reason != NULL) *failure_reason = "cigar_length_overflow";
+		goto fail;
+	}
+	if (!ssw_resize_array(&c1, cigar_length)) {
+		if (failure_reason != NULL) *failure_reason = "cigar_allocation_failed";
+		goto fail;
+	}
+	for (size_t index = 0; index < cigar_length; ++index) {
+		c1[index] = c[cigar_length - index - 1];
+	}
+	result = static_cast<cigar*>(malloc(sizeof(cigar)));
+	if (result == NULL) {
+		free(c1);
+		if (failure_reason != NULL) *failure_reason = "cigar_result_allocation_failed";
+		goto fail;
 	}
 	result->seq = c1;
-	result->length = l;
+	result->length = static_cast<int32_t>(cigar_length);
+	// A reverse endpoint can precede the true local start. Return the
+	// unconsumed prefix so the public coordinates can be tightened exactly.
+	result->ref_begin_offset = j;
+	result->read_begin_offset = i;
 
 	free(direction);
 	free(h_c);
 	free(e_b);
 	free(h_b);
 	free(c);
+	if (failure_reason != NULL) *failure_reason = "none";
 	return result;
+
+fail:
+	free(direction);
+	free(h_c);
+	free(e_b);
+	free(h_b);
+	free(c);
+	return NULL;
+}
+
+static bool cigar_alignment_score(const cigar* path,
+	const int8_t* ref,
+	int32_t refLen,
+	const int8_t* read,
+	int32_t readLen,
+	const int8_t* mat,
+	int32_t n,
+	const uint32_t weight_gapO,
+	const uint32_t weight_gapE,
+	int32_t* alignment_score) {
+	if (path == NULL || path->seq == NULL || path->length <= 0 || ref == NULL ||
+		read == NULL || mat == NULL || n <= 0 || alignment_score == NULL) {
+		return false;
+	}
+	if (path->ref_begin_offset < 0 || path->ref_begin_offset >= refLen ||
+		path->read_begin_offset < 0 || path->read_begin_offset >= readLen) {
+		return false;
+	}
+	ref += path->ref_begin_offset;
+	read += path->read_begin_offset;
+	refLen -= path->ref_begin_offset;
+	readLen -= path->read_begin_offset;
+	int64_t score = 0;
+	int32_t ref_pos = 0;
+	int32_t read_pos = 0;
+	for (int32_t index = 0; index < path->length; ++index) {
+		const uint32_t length = cigar_int_to_len(path->seq[index]);
+		const char op = cigar_int_to_op(path->seq[index]);
+		if (length == 0 && op != 'M') return false;
+		if (op == 'M') {
+			if (length > static_cast<uint32_t>(refLen - ref_pos) ||
+				length > static_cast<uint32_t>(readLen - read_pos)) {
+				return false;
+			}
+			for (uint32_t offset = 0; offset < length; ++offset) {
+				score += mat[ref[ref_pos] * n + read[read_pos]];
+				++ref_pos;
+				++read_pos;
+			}
+		}
+		else if (op == 'I') {
+			if (length > static_cast<uint32_t>(readLen - read_pos)) return false;
+			score -= static_cast<int64_t>(weight_gapO) +
+				static_cast<int64_t>(length - 1) * weight_gapE;
+			read_pos += static_cast<int32_t>(length);
+		}
+		else if (op == 'D') {
+			if (length > static_cast<uint32_t>(refLen - ref_pos)) return false;
+			score -= static_cast<int64_t>(weight_gapO) +
+				static_cast<int64_t>(length - 1) * weight_gapE;
+			ref_pos += static_cast<int32_t>(length);
+		}
+		else {
+			return false;
+		}
+	}
+	if (score < INT32_MIN || score > INT32_MAX) return false;
+	if (ref_pos != refLen || read_pos != readLen) return false;
+	*alignment_score = static_cast<int32_t>(score);
+	return true;
+}
+
+static cigar* exact_banded_sw(const int8_t* ref,
+	const int8_t* read,
+	int32_t refLen,
+	int32_t readLen,
+	int32_t score,
+	const int32_t weight_gapO,
+	const int32_t weight_gapE,
+	int32_t band_width,
+	const int8_t* mat,
+	int32_t n,
+	const char** failure_reason) {
+	const int32_t full_band = refLen > readLen ? refLen : readLen;
+	int32_t attempted_band = 0;
+	const char* local_reason = "unknown";
+	cigar* path = banded_sw(ref, read, refLen, readLen, score, weight_gapO,
+		weight_gapE, band_width, mat, n, &local_reason, &attempted_band);
+	int32_t observed_score = 0;
+	// This fork reports min(forward, reverse). A structurally exact CIGAR can
+	// therefore score differently; coordinates and full sequence consumption
+	// remain the fail-closed contract.
+	if (path != NULL &&
+		cigar_alignment_score(path, ref, refLen, read, readLen, mat, n,
+			weight_gapO, weight_gapE, &observed_score)) {
+		if (failure_reason != NULL) *failure_reason = "none";
+		return path;
+	}
+	if (path != NULL) local_reason = "cigar_contract_invalid";
+	ssw_destroy_cigar(path);
+	if (attempted_band < full_band) {
+		path = banded_sw(ref, read, refLen, readLen, score, weight_gapO,
+			weight_gapE, full_band, mat, n, &local_reason,
+			&attempted_band);
+		observed_score = 0;
+		if (path != NULL &&
+			cigar_alignment_score(path, ref, refLen, read, readLen, mat, n,
+				weight_gapO, weight_gapE, &observed_score)) {
+			if (failure_reason != NULL) *failure_reason = "none";
+			return path;
+		}
+		if (path != NULL) local_reason = "cigar_contract_invalid";
+		ssw_destroy_cigar(path);
+	}
+	if (failure_reason != NULL) {
+		*failure_reason = local_reason;
+	}
+	return NULL;
+}
+
+#ifdef FASIM_SSW_BANDED_TRACEBACK_TEST_API
+bool ssw_test_exact_banded_traceback(const int8_t* ref,
+	const int8_t* read,
+	int32_t refLen,
+	int32_t readLen,
+	int32_t score,
+	int32_t weight_gapO,
+	int32_t weight_gapE,
+	int32_t band_width,
+	const int8_t* mat,
+	int32_t n,
+	int32_t* ref_begin_offset,
+	int32_t* read_begin_offset,
+	uint32_t* only_cigar) {
+	const char* failure_reason = "unknown";
+	cigar* path = exact_banded_sw(ref, read, refLen, readLen, score,
+		weight_gapO, weight_gapE, band_width, mat, n, &failure_reason);
+	if (path == NULL || path->length != 1 || ref_begin_offset == NULL ||
+		read_begin_offset == NULL || only_cigar == NULL) {
+		ssw_destroy_cigar(path);
+		return false;
+	}
+	*ref_begin_offset = path->ref_begin_offset;
+	*read_begin_offset = path->read_begin_offset;
+	*only_cigar = path->seq[0];
+	ssw_destroy_cigar(path);
+	return true;
+}
+#endif
+
+static void ssw_fail_closed_traceback(const char* reason,
+	int32_t refLen,
+	int32_t readLen,
+	int32_t score,
+	int32_t band_width) {
+	fprintf(stderr,
+		"FATAL: exact SSW traceback failed: reason=%s ref_len=%d read_len=%d "
+		"score=%d initial_band=%d\n",
+		reason == NULL ? "unknown" : reason, refLen, readLen, score, band_width);
+	fflush(stderr);
+	abort();
 }
 
 static int8_t* seq_reverse(const int8_t* seq, int32_t end)	/* end is 0-based alignment ending position */
@@ -2128,6 +2396,7 @@ s_align* ssw_align(const s_profile* prof,
 	uint64_t cigar_start = 0;
 	uint64_t banded_sw_start = 0;
 	cigar* path;
+	const char* traceback_failure = "unknown";
 	s_align* r = (s_align*)calloc(1, sizeof(s_align));
 	r->ref_begin1 = -1;
 	r->read_begin1 = -1;
@@ -2241,7 +2510,24 @@ s_align* ssw_align(const s_profile* prof,
 	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.endpoint_bookkeeping_nanoseconds, endpoint_start);
 
-	if (flag == 0 || (flag == 2 && r->score1 < filters)) goto end;
+	if (flag == 0 || (flag == 2 && r->score1 < filters)) {
+		free(bests);
+		goto end;
+	}
+	// Preserve the legacy no-alignment sentinel without taking ref - 1 into
+	// traceback. The forward-continuation API uses the same representation.
+	if (r->score1 == 0 && r->ref_end1 == -1 && r->read_end1 == 0) {
+		free(bests);
+		r->read_begin1 = 0;
+		if ((7 & flag) != 0 && !((2 & flag) != 0 && r->score1 < filters) &&
+			!((4 & flag) != 0 && filterd < 0)) {
+			r->cigar = (uint32_t*)calloc(1, sizeof(uint32_t));
+			if (r->cigar == NULL) ssw_fail_closed_traceback("allocation_failed", 0, 0, 0, 0);
+			r->cigar[0] = to_cigar_int(1, 'M');
+			r->cigarLen = 1;
+		}
+		return r;
+	}
 
 	// Find the beginning position of the best alignment.
 	if (collect_internal_stats) {
@@ -2339,18 +2625,21 @@ s_align* ssw_align(const s_profile* prof,
 	{
 		FasimAuthorityProfileScope authority_scope(
 			FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK);
-		path = banded_sw(ref + r->ref_begin1, prof->read + r->read_begin1, refLen, readLen, r->score1, weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+		path = exact_banded_sw(ref + r->ref_begin1,
+			prof->read + r->read_begin1, refLen, readLen, r->score1,
+			weight_gapO, weight_gapE, band_width, prof->mat, prof->n,
+			&traceback_failure);
 	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds, banded_sw_start);
-	if (path == 0) {
-		free(r);
-		r = NULL;
+	if (path == NULL) {
+		ssw_fail_closed_traceback(traceback_failure, refLen, readLen,
+			r->score1, band_width);
 	}
-	else {
-		r->cigar = path->seq;
-		r->cigarLen = path->length;
-		free(path);
-	}
+	r->ref_begin1 += path->ref_begin_offset;
+	r->read_begin1 += path->read_begin_offset;
+	r->cigar = path->seq;
+	r->cigarLen = path->length;
+	free(path);
 	ssw_add_elapsed(&g_ssw_align_internal_stats.cigar_nanoseconds, cigar_start);
 
 end:
@@ -2556,20 +2845,24 @@ s_align* ssw_align_from_forward(const s_profile* prof,
 	if (collect_internal_stats) ++g_ssw_align_internal_stats.banded_sw_calls;
 	const uint64_t banded_start = collect_internal_stats ? ssw_now_nanoseconds() : 0;
 	cigar* path = NULL;
+	const char* traceback_failure = "unknown";
 	{
 		FasimAuthorityProfileScope authority_scope(
 			FASIM_AUTHORITY_STAGE_BANDED_TRACEBACK);
-		path = banded_sw(ref + r->ref_begin1,
+		path = exact_banded_sw(ref + r->ref_begin1,
 			prof->read + r->read_begin1,
 			alignment_ref_len, alignment_read_len, r->score1,
-			weight_gapO, weight_gapE, band_width, prof->mat, prof->n);
+			weight_gapO, weight_gapE, band_width, prof->mat, prof->n,
+			&traceback_failure);
 	}
 	ssw_add_elapsed(&g_ssw_align_internal_stats.banded_sw_nanoseconds,
 		banded_start);
 	if (path == NULL) {
-		free(r);
-		return NULL;
+		ssw_fail_closed_traceback(traceback_failure, alignment_ref_len,
+			alignment_read_len, r->score1, band_width);
 	}
+	r->ref_begin1 += path->ref_begin_offset;
+	r->read_begin1 += path->read_begin_offset;
 	r->cigar = path->seq;
 	r->cigarLen = path->length;
 	free(path);

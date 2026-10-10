@@ -368,6 +368,18 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_enabled_runtime()
 	return enabled;
 }
 
+// Independent development epoch: reuse the exact streaming pipeline for both
+// short and long queries. The legacy runtime remains opt-in and unchanged.
+inline bool fasim_gpu_exact_repair_v1_runtime()
+{
+	static const bool enabled = []()
+	{
+		const char *env = getenv("FASIM_GPU_EXACT_REPAIR_V1");
+		return env != NULL && env[0] != '\0' && env[0] != '0';
+	}();
+	return enabled;
+}
+
 inline bool fasim_long_query_gpu_consumer_cpu_continuation_runtime()
 {
 	static const bool enabled = []()
@@ -376,7 +388,7 @@ inline bool fasim_long_query_gpu_consumer_cpu_continuation_runtime()
 			"FASIM_LONG_QUERY_GPU_CONSUMER_CPU_CONTINUATION");
 		return env != NULL && env[0] != '\0' && env[0] != '0';
 	}();
-	return enabled;
+	return enabled || fasim_gpu_exact_repair_v1_runtime();
 }
 
 inline bool fasim_gasal2_emission_only_consumer_shadow_enabled_runtime()
@@ -3253,7 +3265,7 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	if (result->cpu_continuation_requested)
 	{
 		result->cpu_continuation_active = true;
-		for (size_t selectedIndex : selected)
+		auto continueAttempt = [&](size_t selectedIndex, StripedSmithWaterman::Alignment &local) -> bool
 		{
 			if (selectedIndex >= attempts.size() || selectedIndex >= scores.size() ||
 				selectedIndex >= reasons.size())
@@ -3276,8 +3288,7 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 			endpoint.ref_end1 = score.ref_end - attempt.start;
 			endpoint.query_end1 = score.query_end;
 			endpoint.ref_end2 = -1;
-			endpoint.numeric_path = SSW_FORWARD_NUMERIC_PATH_WORD16;
-			StripedSmithWaterman::Alignment local;
+			endpoint.numeric_path = endpointScores[selectedIndex].numeric_path;
 			const std::chrono::steady_clock::time_point continuationStart =
 				std::chrono::steady_clock::now();
 			const bool continuationOk = aligner.AlignFromForward(
@@ -3287,7 +3298,7 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 				std::chrono::steady_clock::now() - continuationStart).count();
 			++result->cpu_continuation_calls;
 			++result->cpu_align_attempts;
-			if (!continuationOk || local.sw_score != score.score ||
+			if (!continuationOk || local.sw_score > score.score ||
 				local.ref_end != endpoint.ref_end1 ||
 				local.query_end != endpoint.query_end1)
 			{
@@ -3298,22 +3309,78 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 					std::chrono::steady_clock::now() - totalStart).count();
 				return false;
 			}
-			emit(attempt, local);
-			if (reasons[selectedIndex] == "threshold")
+			return true;
+		};
+		uint64_t resolvedGroups = 0;
+		for (size_t selectedIndex : selected)
+		{
+			StripedSmithWaterman::Alignment local;
+			if (!continueAttempt(selectedIndex, local)) return false;
+			size_t finalIndex = selectedIndex;
+			std::string reason = reasons[selectedIndex];
+			if (local.sw_score != scores[selectedIndex].score)
+			{
+				// This fork reports min(forward, reverse). A lower canonical
+				// score is valid, but may change threshold/best/last selection.
+				// Resolve only this group, reusing all GPU forward endpoints.
+				++result->cpu_continuation_reselection_groups;
+				size_t begin = selectedIndex;
+				while (begin > 0 && attempts[begin - 1].scoreinfo_index ==
+				       attempts[selectedIndex].scoreinfo_index) --begin;
+				StripedSmithWaterman::Alignment best, last;
+				size_t bestIndex = begin, lastIndex = begin;
+				bool threshold = false;
+				for (size_t i = begin; i < attempts.size() &&
+				     attempts[i].scoreinfo_index == attempts[selectedIndex].scoreinfo_index; ++i)
+				{
+					StripedSmithWaterman::Alignment current;
+					if (i == selectedIndex) current = local;
+					else
+					{
+						++result->cpu_continuation_extra_calls;
+						if (!continueAttempt(i, current)) return false;
+					}
+					last = current;
+					lastIndex = i;
+					if (current.sw_score >= attempts[i].prealign_score)
+					{
+						local = current;
+						finalIndex = i;
+						reason = "threshold";
+						threshold = true;
+						break;
+					}
+					if (current.sw_score > best.sw_score &&
+					    current.ref_end == attempts[i].cutlength - 1)
+					{
+						best = current;
+						bestIndex = i;
+					}
+				}
+				if (!threshold)
+				{
+					local = best.sw_score > 0 ? best : last;
+					finalIndex = best.sw_score > 0 ? bestIndex : lastIndex;
+					reason = best.sw_score > 0 ? "best_fallback" : "last";
+				}
+			}
+			if (local.sw_score == 0) continue;
+			++resolvedGroups;
+			emit(attempts[finalIndex], local);
+			if (reason == "threshold")
 			{
 				++result->threshold_groups;
 			}
-			else if (reasons[selectedIndex] == "best_fallback")
+			else if (reason == "best_fallback")
 			{
 				++result->best_fallback_groups;
 			}
-			else if (reasons[selectedIndex] == "last")
+			else if (reason == "last")
 			{
 				++result->last_groups;
 			}
 		}
-		result->empty_groups = result->scoreinfo_groups >= selected.size() ?
-			result->scoreinfo_groups - selected.size() : 0;
+		result->empty_groups = result->scoreinfo_groups - resolvedGroups;
 	}
 	else
 #endif

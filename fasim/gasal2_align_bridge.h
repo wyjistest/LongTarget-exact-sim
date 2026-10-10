@@ -1627,7 +1627,8 @@ struct FasimGasal2StreamedAttemptScore
 		score(0),
 		query_end(0),
 		ref_end_local(-1),
-		ref_end_global(-1)
+		ref_end_global(-1),
+		numeric_path(2)
 	{
 	}
 
@@ -1635,6 +1636,7 @@ struct FasimGasal2StreamedAttemptScore
 	int query_end;
 	int ref_end_local;
 	int ref_end_global;
+	int numeric_path;
 };
 
 struct FasimGasal2StreamedAttemptScoreTelemetry
@@ -1687,6 +1689,8 @@ struct FasimLongQueryGpuConsumerSpikeResult
 		cpu_continuation_active(false),
 		cpu_continuation_calls(0),
 		cpu_continuation_failures(0),
+		cpu_continuation_reselection_groups(0),
+		cpu_continuation_extra_calls(0),
 		replay_attempts(0),
 		cpu_align_attempts(0),
 		threshold_groups(0),
@@ -1729,6 +1733,8 @@ struct FasimLongQueryGpuConsumerSpikeResult
 	bool cpu_continuation_active;
 	uint64_t cpu_continuation_calls;
 	uint64_t cpu_continuation_failures;
+	uint64_t cpu_continuation_reselection_groups;
+	uint64_t cpu_continuation_extra_calls;
 	uint64_t replay_attempts;
 	uint64_t cpu_align_attempts;
 	uint64_t threshold_groups;

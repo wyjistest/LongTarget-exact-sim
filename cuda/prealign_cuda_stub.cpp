@@ -836,8 +836,12 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
                                             int targetLength,
                                             vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
                                             PreAlignCudaBatchResult *batchResult,
-                                            string *errorOut)
+                                            string *errorOut,
+                                            bool legacyExact,
+                                            const int *targetLengthsHost)
 {
+  (void)legacyExact;
+  (void)targetLengthsHost;
   (void)handle;
   (void)encodedTargetsHost;
   (void)taskCount;

@@ -39,8 +39,9 @@ struct PreAlignCudaAttemptEndpoint
   int score;
   int targetEnd;
   int queryEnd;
+  int numericPath; // 1 = legacy byte8, 2 = legacy word16
 
-  PreAlignCudaAttemptEndpoint():score(0),targetEnd(-1),queryEnd(0) {}
+  PreAlignCudaAttemptEndpoint():score(0),targetEnd(-1),queryEnd(0),numericPath(2) {}
 };
 
 struct PreAlignCudaAttemptDescriptor
@@ -456,7 +457,9 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
                                             int targetLength,
                                             std::vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
                                             PreAlignCudaBatchResult *batchResult,
-                                            std::string *errorOut);
+                                            std::string *errorOut,
+                                            bool legacyExact = false,
+                                            const int *targetLengthsHost = NULL);
 
 bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHandle &handle,
                                                       const uint8_t *encodedTargetsHost,

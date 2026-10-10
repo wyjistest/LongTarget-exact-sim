@@ -1535,6 +1535,131 @@ __global__ void prealign_cuda_max_score_batch_kernel(const int16_t *profile,
 // Full-query endpoint projection used by the long-query attempt-score spike.
 // The recurrence intentionally mirrors prealign_cuda_max_score_batch_kernel;
 // only the winning target column and logical query lane are retained.
+// Literal SSE2 forward semantics, including neutral query padding, signed
+// byte Lazy-F comparison, earliest endpoint ties, and per-task word replay.
+template<int lanes, bool bytePath>
+__device__ bool legacy_endpoint_pass(const int16_t *profile,
+                                    const uint8_t *target, int targetLength,
+                                    int profileSegLen, int queryLength,
+                                    int16_t *state, PreAlignCudaPeak *peak,
+                                    int *queryEnd)
+{
+  const int lane = threadIdx.x;
+  const bool active = lane < lanes;
+  const int segments = (queryLength + lanes - 1) / lanes;
+  const int padded = segments * lanes;
+  int16_t *E = state;
+  int16_t *load = E + padded;
+  int16_t *store = load + padded;
+  for(int i = lane; i < 3 * padded; i += 32) state[i] = 0;
+  __syncwarp();
+  int best = 0, bestTarget = bytePath ? -1 : 0, bestQuery = 0;
+  for(int column = 0; column < targetLength; ++column)
+  {
+    int f = 0, columnMax = 0;
+    int h = active ? load[(segments - 1) * lanes + lane] : 0;
+    h = __shfl_up_sync(0xffffffffu, h, 1);
+    if(lane == 0 || !active) h = 0;
+    for(int segment = 0; segment < segments; ++segment)
+    {
+      const int index = segment * lanes + lane;
+      const int position = lane * segments + segment;
+      int substitution = 0;
+      if(active && position < queryLength)
+      {
+        const size_t profileIndex =
+          (static_cast<size_t>(target[column]) * profileSegLen +
+           position % profileSegLen) * 32u + position / profileSegLen;
+        substitution = profile[profileIndex];
+      }
+      const int old = active ? load[index] : 0;
+      int e = active ? E[index] : 0;
+      h = bytePath ? cuda_sat_u8_sub(cuda_sat_u8_add(h, substitution + 4), 4) :
+                    cuda_clamp_nonnegative(min(32767, h + substitution));
+      h = cuda_max_int(h, cuda_max_int(e, f));
+      if(active)
+      {
+        store[index] = static_cast<int16_t>(h);
+        columnMax = cuda_max_int(columnMax, h);
+      }
+      const int opened = cuda_clamp_nonnegative(h - 16);
+      e = cuda_max_int(cuda_clamp_nonnegative(e - 4), opened);
+      f = cuda_max_int(cuda_clamp_nonnegative(f - 4), opened);
+      if(active) E[index] = static_cast<int16_t>(e);
+      h = old;
+    }
+    bool done = false;
+    for(int pass = 0; pass < lanes && !done; ++pass)
+    {
+      f = __shfl_up_sync(0xffffffffu, f, 1);
+      if(lane == 0 || !active) f = 0;
+      for(int segment = 0; segment < segments; ++segment)
+      {
+        const int index = segment * lanes + lane;
+        h = cuda_max_int(active ? store[index] : 0, f);
+        if(active)
+        {
+          store[index] = static_cast<int16_t>(h);
+          columnMax = cuda_max_int(columnMax, h);
+        }
+        const int opened = cuda_clamp_nonnegative(h - 16);
+        f = cuda_clamp_nonnegative(f - 4);
+        const bool again = active && (bytePath ?
+          cuda_to_signed_i8(f) > cuda_to_signed_i8(opened) : f > opened);
+        if(__ballot_sync(0xffffffffu, again) == 0)
+        {
+          done = true;
+          break;
+        }
+      }
+    }
+    const int reduced = cuda_warp_reduce_max_int(columnMax);
+    const int maximum = __shfl_sync(0xffffffffu, reduced, 0);
+    if(maximum > best)
+    {
+      if(bytePath && maximum + 4 >= 255) return true;
+      best = maximum;
+      bestTarget = column;
+      int end = queryLength - 1;
+      if(active)
+        for(int segment = 0; segment < segments; ++segment)
+          if(store[segment * lanes + lane] == best)
+            end = min(end, lane * segments + segment);
+      for(int delta = 16; delta > 0; delta >>= 1)
+        end = min(end, __shfl_down_sync(0xffffffffu, end, delta));
+      bestQuery = __shfl_sync(0xffffffffu, end, 0);
+    }
+    int16_t *swap = load;
+    load = store;
+    store = swap;
+    __syncwarp();
+  }
+  if(lane == 0)
+  {
+    peak->score = best;
+    peak->position = bestTarget;
+    *queryEnd = bestQuery;
+  }
+  return false;
+}
+
+__global__ void prealign_cuda_legacy_endpoint_batch_kernel(
+    const int16_t *profile, const uint8_t *targets, int targetStride,
+    int profileSegLen, int queryLength, int taskCount,
+    PreAlignCudaPeak *peaks, int *scores)
+{
+  extern __shared__ int16_t state[];
+  const int task = blockIdx.x;
+  const uint8_t *target = targets + static_cast<size_t>(task) * targetStride;
+  const int length = scores[2 * taskCount + task];
+  const bool overflow = legacy_endpoint_pass<16, true>(profile, target, length,
+    profileSegLen, queryLength, state, peaks + task, scores + task);
+  if(overflow)
+    legacy_endpoint_pass<8, false>(profile, target, length,
+      profileSegLen, queryLength, state, peaks + task, scores + task);
+  if(threadIdx.x == 0) scores[taskCount + task] = overflow ? 2 : 1;
+}
+
 __global__ void prealign_cuda_max_endpoint_batch_kernel(const int16_t *profile,
                                                          const uint8_t *encodedTargets,
                                                          int taskCount,
@@ -6154,7 +6279,9 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
                                             int targetLength,
                                             vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
                                             PreAlignCudaBatchResult *batchResult,
-                                            string *errorOut)
+                                            string *errorOut,
+                                            bool legacyExact,
+                                            const int *targetLengthsHost)
 {
   if(outEndpoints == NULL)
   {
@@ -6194,6 +6321,21 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     return false;
   }
 
+  if(legacyExact)
+  {
+    if(targetLengthsHost == NULL || taskCount > 715827882)
+    {
+      if(errorOut != NULL) *errorOut = "missing legacy target lengths or excessive task count";
+      return false;
+    }
+    for(int i = 0; i < taskCount; ++i)
+      if(targetLengthsHost[i] <= 0 || targetLengthsHost[i] > targetLength)
+      {
+        if(errorOut != NULL) *errorOut = "invalid legacy target length";
+        return false;
+      }
+  }
+
   PreAlignCudaContext *context = NULL;
   mutex *contextMutex = NULL;
   if(!get_prealign_cuda_context_for_device(handle.device, &context, &contextMutex, errorOut))
@@ -6204,7 +6346,7 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   lock_guard<mutex> lock(*contextMutex);
   if(!ensure_prealign_cuda_initialized_locked(*context, handle.device, errorOut) ||
      !ensure_prealign_cuda_capacity_locked(*context, taskCount, targetLength, 1, errorOut) ||
-     !ensure_prealign_cuda_scores_capacity_locked(*context, taskCount, errorOut))
+     !ensure_prealign_cuda_scores_capacity_locked(*context, legacyExact ? 3 * taskCount : taskCount, errorOut))
   {
     return false;
   }
@@ -6240,6 +6382,9 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
                         targetsBytes,
                         cudaMemcpyHostToDevice);
   }
+  if(status == cudaSuccess && legacyExact)
+    status = cudaMemcpy(context->scoresDevice + 2 * taskCount,
+                        targetLengthsHost, endpointBytes, cudaMemcpyHostToDevice);
   if(status == cudaSuccess) status = cudaEventRecord(h2dStop);
   if(status == cudaSuccess) status = cudaEventSynchronize(h2dStop);
   float h2dElapsedMs = 0.0f;
@@ -6249,8 +6394,10 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   if(status == cudaSuccess)
   {
     const int threadsPerBlock = 32;
-    const size_t sharedBytes =
-      static_cast<size_t>(3) * static_cast<size_t>(handle.segLen) * 32u * sizeof(int16_t);
+    const size_t padded = legacyExact ?
+      ((static_cast<size_t>(handle.queryLength) + 15u) / 16u) * 16u :
+      static_cast<size_t>(handle.segLen) * 32u;
+    const size_t sharedBytes = 3u * padded * sizeof(int16_t);
     int defaultLimit = 0;
     int optinLimit = 0;
     cudaError_t attrStatus = cudaDeviceGetAttribute(
@@ -6264,10 +6411,11 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
        sharedBytes > static_cast<size_t>(defaultLimit) &&
        sharedBytes <= static_cast<size_t>(optinLimit))
     {
-      attrStatus = cudaFuncSetAttribute(
-        prealign_cuda_max_endpoint_batch_kernel,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        static_cast<int>(sharedBytes));
+      attrStatus = legacyExact ?
+        cudaFuncSetAttribute(prealign_cuda_legacy_endpoint_batch_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(sharedBytes)) :
+        cudaFuncSetAttribute(prealign_cuda_max_endpoint_batch_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(sharedBytes));
     }
     else if(attrStatus == cudaSuccess &&
             sharedBytes > static_cast<size_t>(optinLimit))
@@ -6285,7 +6433,13 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     }
     if(status == cudaSuccess)
     {
-      prealign_cuda_max_endpoint_batch_kernel<<<taskCount, threadsPerBlock, sharedBytes>>>(
+      if(legacyExact)
+        prealign_cuda_legacy_endpoint_batch_kernel<<<taskCount, threadsPerBlock, sharedBytes>>>(
+          reinterpret_cast<const int16_t *>(handle.profileDevice),
+          context->targetsDevice, targetLength, handle.segLen, handle.queryLength,
+          taskCount, context->peaksDevice, context->scoresDevice);
+      else
+        prealign_cuda_max_endpoint_batch_kernel<<<taskCount, threadsPerBlock, sharedBytes>>>(
         reinterpret_cast<const int16_t *>(handle.profileDevice),
         context->targetsDevice,
         taskCount,
@@ -6303,7 +6457,7 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   if(status == cudaSuccess) status = cudaEventElapsedTime(&kernelElapsedMs, context->startEvent, context->stopEvent);
 
   vector<PreAlignCudaPeak> peaks(static_cast<size_t>(taskCount));
-  vector<int> queryEnds(static_cast<size_t>(taskCount));
+  vector<int> queryEnds(static_cast<size_t>(taskCount) * (legacyExact ? 2u : 1u));
   if(status == cudaSuccess) status = cudaEventRecord(d2hStart);
   if(status == cudaSuccess)
   {
@@ -6311,7 +6465,8 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
   }
   if(status == cudaSuccess)
   {
-    status = cudaMemcpy(queryEnds.data(), context->scoresDevice, endpointBytes, cudaMemcpyDeviceToHost);
+    status = cudaMemcpy(queryEnds.data(), context->scoresDevice,
+                        endpointBytes * (legacyExact ? 2u : 1u), cudaMemcpyDeviceToHost);
   }
   if(status == cudaSuccess) status = cudaEventRecord(d2hStop);
   if(status == cudaSuccess) status = cudaEventSynchronize(d2hStop);
@@ -6334,6 +6489,7 @@ bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handl
     (*outEndpoints)[static_cast<size_t>(i)].score = peaks[static_cast<size_t>(i)].score;
     (*outEndpoints)[static_cast<size_t>(i)].targetEnd = peaks[static_cast<size_t>(i)].position;
     (*outEndpoints)[static_cast<size_t>(i)].queryEnd = queryEnds[static_cast<size_t>(i)];
+    if(legacyExact) (*outEndpoints)[static_cast<size_t>(i)].numericPath = queryEnds[taskCount + i];
   }
   if(batchResult != NULL)
   {

@@ -32,6 +32,12 @@ enum class GasalMode
 
 int streamed_attempt_cuda_device();
 
+bool gpu_exact_repair_enabled()
+{
+	const char *env = getenv("FASIM_GPU_EXACT_REPAIR_V1");
+	return env != NULL && env[0] != '\0' && env[0] != '0';
+}
+
 struct BridgeState
 {
 	BridgeState() :
@@ -85,7 +91,7 @@ struct StreamedAttemptQueryCache
 			return false;
 		}
 		prealign_shared_build_query_profile(
-			queryValue, 5, 4, profile, seg_len);
+			queryValue, 5, 4, profile, seg_len, gpu_exact_repair_enabled());
 		if (!prealign_cuda_prepare_query(
 			&handle,
 			profile.data(),
@@ -2653,16 +2659,19 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 		std::vector<uint8_t> encoded(
 			static_cast<size_t>(taskCount) * paddedTargetLength,
 			static_cast<uint8_t>(4));
+		std::vector<int> targetLengths(static_cast<size_t>(taskCount));
 		for (size_t i = batchBegin; i < batchEnd; ++i)
 		{
 			const FasimGasal2Attempt &attempt = attempts[i];
+			targetLengths[i - batchBegin] = static_cast<int>(attempt.target_size());
 			const char *target = attempt.target_data();
 			uint8_t *destination = encoded.data() +
 				((i - batchBegin) * paddedTargetLength);
 			for (size_t base = 0; base < attempt.target_size(); ++base)
 			{
-				destination[base] = prealign_shared_encode_base(
-					static_cast<unsigned char>(target[base]));
+				const unsigned char c = static_cast<unsigned char>(target[base]);
+				destination[base] = gpu_exact_repair_enabled() ?
+					prealign_shared_encode_ssw_base(c) : prealign_shared_encode_base(c);
 			}
 		}
 
@@ -2675,7 +2684,7 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 				static_cast<int>(paddedTargetLength),
 				&endpointRows,
 				&batchResult,
-				&bridgeError))
+				&bridgeError, gpu_exact_repair_enabled(), targetLengths.data()))
 		{
 			const std::string error = bridgeError.empty() ?
 				"streamed_attempt_score_failed" : bridgeError;
@@ -2717,6 +2726,7 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 			out.ref_end_local = endpoint.targetEnd;
 			out.ref_end_global = endpoint.targetEnd >= 0 ?
 				attempts[i].start + endpoint.targetEnd : -1;
+			out.numeric_path = endpoint.numericPath;
 		}
 	}
 	if (telemetry != NULL)
@@ -4645,12 +4655,22 @@ bool select_attempts_impl(const std::string &query,
 
 	std::vector<size_t> selectedAttemptIndexes;
 	std::vector<std::string> selectionReasons;
-	if (strict || env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_STRICT"))
+	const bool strictSelection =
+		strict || env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_STRICT");
+	if (strictSelection)
 	{
 		select_attempts_from_scores(attempts,
 		                            scoreResults,
 		                            &selectedAttemptIndexes,
 		                            telemetry != NULL ? &selectionReasons : NULL);
+	}
+	else
+	{
+		const int scoreMargin = env_int_or_zero("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_SCORE_MARGIN");
+		const bool includeLast = !env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_NO_LAST");
+		const bool includeFallback = !env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_THRESHOLD_LAST");
+		select_cpu_traceback_candidates_from_scores(attempts, scoreResults,
+			scoreMargin, includeLast, includeFallback, &selectedAttemptIndexes);
 	}
 	if (telemetry != NULL)
 	{
@@ -4664,23 +4684,10 @@ bool select_attempts_impl(const std::string &query,
 			row.gpu_ref_end_global = scoreResults[i].ref_end;
 			row.selection_reason = selectionReasons.empty() ?
 				"selection_reason_unavailable" : selectionReasons[i];
-			row.selected = row.selection_reason == "threshold" ||
-			               row.selection_reason == "best_fallback" ||
-			               row.selection_reason == "last";
+			row.selected = std::find(selectedAttemptIndexes.begin(),
+				selectedAttemptIndexes.end(), i) != selectedAttemptIndexes.end();
 			telemetry->push_back(row);
 		}
-	}
-	else
-	{
-		const int scoreMargin = env_int_or_zero("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_SCORE_MARGIN");
-		const bool includeLast = !env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_NO_LAST");
-		const bool includeFallback = !env_enabled("FASIM_ALIGN_GASAL2_CPU_TRACEBACK_THRESHOLD_LAST");
-		select_cpu_traceback_candidates_from_scores(attempts,
-		                                            scoreResults,
-		                                            scoreMargin,
-		                                            includeLast,
-		                                            includeFallback,
-		                                            &selectedAttemptIndexes);
 	}
 	g_stats.score_selected_attempts += selectedAttemptIndexes.size();
 	selected->reserve(selectedAttemptIndexes.size());
