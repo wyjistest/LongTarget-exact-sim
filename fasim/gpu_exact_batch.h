@@ -14,6 +14,12 @@ inline bool fasim_gpu_exact_batch_v1_runtime()
 	return value != NULL && value[0] != '\0' && value[0] != '0';
 }
 
+inline bool fasim_gpu_exact_query_reuse_v1_runtime()
+{
+	const char *value = std::getenv("FASIM_GPU_EXACT_QUERY_REUSE_V1");
+	return value != NULL && value[0] != '\0' && value[0] != '0';
+}
+
 // Shared with the endpoint bridge: changing this limit alone does not enable
 // cross-task batching. Keep the historical bridge's default and bounds.
 inline size_t fasim_streamed_attempt_batch_limit_v1()
@@ -199,6 +205,8 @@ struct FasimGpuExactBatchStats
 {
 	uint64_t windows = 0, tasks = 0, attempts = 0, endpoint_batches = 0;
 	uint64_t max_window_tasks = 0, max_window_attempts = 0;
+	uint64_t cpu_query_prepares = 0;
+	double cpu_query_prepare_seconds = 0.0;
 	double planning_seconds = 0.0, score_seconds = 0.0;
 	double gpu_seconds = 0.0, h2d_seconds = 0.0, d2h_seconds = 0.0;
 
@@ -225,6 +233,8 @@ struct FasimGpuExactBatchStats
 			<< "benchmark.fasim_gpu_exact_batch_v1.attempt_limit="
 			<< fasim_streamed_attempt_batch_limit_v1() << '\n'
 			<< "benchmark.fasim_gpu_exact_batch_v1.windows=" << windows << '\n'
+			<< "benchmark.fasim_gpu_exact_batch_v1.cpu_query_prepares=" << cpu_query_prepares << '\n'
+			<< "benchmark.fasim_gpu_exact_batch_v1.cpu_query_prepare_seconds=" << cpu_query_prepare_seconds << '\n'
 			<< "benchmark.fasim_gpu_exact_batch_v1.tasks=" << tasks << '\n'
 			<< "benchmark.fasim_gpu_exact_batch_v1.attempts=" << attempts << '\n'
 			<< "benchmark.fasim_gpu_exact_batch_v1.endpoint_batches=" << endpoint_batches << '\n'

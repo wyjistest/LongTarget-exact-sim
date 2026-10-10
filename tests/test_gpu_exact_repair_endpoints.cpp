@@ -25,6 +25,68 @@ static std::vector<int8_t> encode(const std::string &s) {
     return result;
 }
 
+static bool alignment_equal(const StripedSmithWaterman::Alignment &a,
+                            const StripedSmithWaterman::Alignment &b) {
+    return a.sw_score == b.sw_score && a.sw_score_next_best == b.sw_score_next_best &&
+        a.query_begin == b.query_begin && a.query_end == b.query_end &&
+        a.ref_begin == b.ref_begin && a.ref_end == b.ref_end &&
+        a.ref_end_next_best == b.ref_end_next_best && a.mismatches == b.mismatches &&
+        a.cigar == b.cigar && a.cigar_string == b.cigar_string;
+}
+
+static void check_prepared_query_lifetime() {
+    using namespace StripedSmithWaterman;
+    Aligner aligner, other;
+    ForwardQueryContext prepared;
+    ForwardEndpoint endpoint;
+    Filter filter;
+    Alignment actual, expected;
+    if (aligner.AlignFromForward(prepared, "A", 1, filter, endpoint, &actual, 15))
+        throw std::runtime_error("unprepared query accepted");
+    std::string source(129, 'A');
+    if (!aligner.PrepareForwardQuery(source.c_str(), &prepared))
+        throw std::runtime_error("prepare failed");
+    source.assign(129, 'C'); // Prepared data must own its input.
+    const std::string query(129, 'A');
+    if (!prepared.MatchesQuery(query) || prepared.MatchesQuery(source))
+        throw std::runtime_error("prepared query identity/lifetime mismatch");
+    for (int pass = 0; pass < 3; ++pass) {
+        for (int length : {1, 49, 50, 51, 129}) {
+            const std::string storage = "GG" + std::string(length, 'A') + "CC";
+            endpoint.score1 = length * 5;
+            endpoint.query_end1 = endpoint.ref_end1 = length - 1;
+            endpoint.numeric_path = length >= 51 ? 2 : 1;
+            if (!aligner.AlignFromForward(query.c_str(), storage.data() + 2, length,
+                    filter, endpoint, &expected, 15) ||
+                !aligner.AlignFromForward(prepared, storage.data() + 2, length,
+                    filter, endpoint, &actual, 15) || !alignment_equal(expected, actual))
+                throw std::runtime_error("reused byte/word or nonterminated view differs");
+        }
+    }
+    if (other.AlignFromForward(prepared, query.data(), query.size(), filter, endpoint, &actual, 15))
+        throw std::runtime_error("wrong query owner accepted");
+    aligner.Clear();
+    if (aligner.AlignFromForward(prepared, query.data(), query.size(), filter, endpoint, &actual, 15))
+        throw std::runtime_error("cleared aligner accepted prepared query");
+    if (!aligner.ReBuild(5, 4, 16, 4) ||
+        aligner.AlignFromForward(prepared, query.data(), query.size(), filter, endpoint, &actual, 15))
+        throw std::runtime_error("rebuilt aligner accepted stale prepared query");
+    if (!aligner.PrepareForwardQuery(source.c_str(), &prepared) ||
+        !aligner.AlignFromForward(prepared, source.data(), source.size(), filter, endpoint, &actual, 15) ||
+        !aligner.AlignFromForward(source.c_str(), source.data(), source.size(), filter, endpoint, &expected, 15) ||
+        !alignment_equal(expected, actual))
+        throw std::runtime_error("query replacement differs");
+    for (int invalid : {-1, 65536}) {
+        endpoint.score1 = invalid;
+        if (aligner.AlignFromForward(prepared, source.data(), source.size(), filter, endpoint, &actual, 15))
+            throw std::runtime_error("invalid forward score accepted");
+    }
+    if (aligner.PrepareForwardQuery("", &prepared) || prepared.MatchesQuery(source) ||
+        aligner.PrepareForwardQuery(NULL, &prepared))
+        throw std::runtime_error("failed preparation retained stale state");
+    std::cerr << "prepared_query_ownership_reuse_numeric_rebuild_guards=pass\n";
+}
+
 static void check_batch_planner() {
     const std::string query(129, 'A'), target(129, 'A');
     const std::vector<StripedSmithWaterman::scoreInfo> infos = {{61, 100}};
@@ -177,6 +239,7 @@ static void check_ragged_batch() {
 
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    check_prepared_query_lifetime();
     check_batch_planner();
 #ifndef FASIM_REPAIR_TEST_CPU_ONLY
     check_selection();
@@ -194,7 +257,7 @@ int main(int argc, char **argv) {
     int8_t matrix[25];
     for (int i = 0; i < 5; ++i)
         for (int j = 0; j < 5; ++j) matrix[i * 5 + j] = i == j && i < 4 ? 5 : -4;
-    std::cout << "case_id\tforward_equal\tcontinuation_equal\tcpu_score\tgpu_score\tcpu_begin\tgpu_begin\tnumeric_equal\tnumeric_path\n";
+    std::cout << "case_id\tforward_equal\tcontinuation_equal\tcpu_score\tgpu_score\tcpu_begin\tgpu_begin\tnumeric_equal\tnumeric_path\tprepared_equal\n";
     while (std::getline(input, line)) {
         if (line.empty()) continue;
         std::vector<std::string> fields;
@@ -252,10 +315,16 @@ int main(int argc, char **argv) {
             authority.query_begin == continuation.query_begin && authority.ref_begin == continuation.ref_begin &&
             authority.query_end == continuation.query_end && authority.ref_end == continuation.ref_end &&
             authority.cigar == continuation.cigar;
+        StripedSmithWaterman::ForwardQueryContext prepared;
+        StripedSmithWaterman::Alignment reused;
+        const bool prepared_equal = aligner.PrepareForwardQuery(query.c_str(), &prepared) &&
+            aligner.AlignFromForward(prepared, target.c_str(), target.size(),
+                filter, endpoint, &reused, 15) && alignment_equal(continuation, reused);
         std::cout << fields[0] << '\t' << forward_equal << '\t' << continuation_equal << '\t'
             << authority.sw_score << '\t' << gpu.score << '\t' << authority.ref_begin << '\t'
-            << continuation.ref_begin << '\t' << numeric_equal << '\t' << gpu.numeric_path << '\n';
-        failures += !forward_equal || !continuation_equal || !numeric_equal;
+            << continuation.ref_begin << '\t' << numeric_equal << '\t' << gpu.numeric_path << '\t'
+            << prepared_equal << '\n';
+        failures += !forward_equal || !continuation_equal || !numeric_equal || !prepared_equal;
         ++cases;
         align_destroy(forward);
         init_destroy(profile);

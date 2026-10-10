@@ -2840,7 +2840,8 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	bool materializeAlignmentStrings,
 	FasimLongQueryGpuConsumerSpikeResult *result,
 	std::string *errorOut,
-	const FasimGpuExactPreparedTask *prepared = NULL)
+	const FasimGpuExactPreparedTask *prepared = NULL,
+	const StripedSmithWaterman::ForwardQueryContext *forwardQuery = NULL)
 {
 	FasimLongQueryGpuConsumerSpikeResult localResult;
 	if (result == NULL)
@@ -2863,6 +2864,14 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		if (errorOut != NULL) *errorOut = result->error;
 		return false;
 	}
+#if defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) || defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+	if (forwardQuery != NULL && !forwardQuery->MatchesQuery(strA))
+	{
+		result->error = "prepared_cpu_query_mismatch";
+		if (errorOut != NULL) *errorOut = result->error;
+		return false;
+	}
+#endif
 	if (finalScoreInfo.empty())
 	{
 		result->ok = true;
@@ -3272,9 +3281,11 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 			endpoint.numeric_path = endpointScores[selectedIndex].numeric_path;
 			const std::chrono::steady_clock::time_point continuationStart =
 				std::chrono::steady_clock::now();
-			const bool continuationOk = aligner.AlignFromForward(
-				strA.c_str(), small.c_str(), static_cast<int>(small.size()),
-				filter, endpoint, &local, maskLen);
+			const bool continuationOk = forwardQuery != NULL ?
+				aligner.AlignFromForward(*forwardQuery, small.c_str(),
+					static_cast<int>(small.size()), filter, endpoint, &local, maskLen) :
+				aligner.AlignFromForward(strA.c_str(), small.c_str(),
+					static_cast<int>(small.size()), filter, endpoint, &local, maskLen);
 			result->traceback_seconds += std::chrono::duration<double>(
 				std::chrono::steady_clock::now() - continuationStart).count();
 			++result->cpu_continuation_calls;

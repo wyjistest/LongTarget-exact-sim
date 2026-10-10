@@ -21,6 +21,8 @@ def main():
     p.add_argument('--reuse-query', action='store_true')
     p.add_argument('--gpu', default='GPU-d1f5be95-b8a3-3c18-f919-90913038a1a3')
     args = p.parse_args()
+    if args.stage == 'faults' and not args.reuse_query:
+        p.error('faults stage checks the opt-in query-reuse prerequisites; use --reuse-query')
     args.binary, args.baseline, args.work = (
         path.resolve() for path in (args.binary, args.baseline, args.work))
     args.work.mkdir(parents=True, exist_ok=False)

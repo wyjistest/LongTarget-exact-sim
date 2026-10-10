@@ -11109,7 +11109,13 @@ int main(int argc, char* const* argv)
 	const bool longQueryGpuConsumerReplacementPrototypeRequested =
 		fasim_long_query_gpu_consumer_replacement_prototype_runtime();
 	const bool gpuExactBatchRequested = fasim_gpu_exact_batch_v1_runtime();
+	const bool gpuExactQueryReuseRequested = fasim_gpu_exact_query_reuse_v1_runtime();
 	FasimGpuExactBatchStats gpuExactBatchStats;
+	if (gpuExactQueryReuseRequested && !gpuExactBatchRequested)
+	{
+		cerr << "FASIM_GPU_EXACT_QUERY_REUSE_V1 requires FASIM_GPU_EXACT_BATCH_V1=1" << endl;
+		return EXIT_FAILURE;
+	}
 	if (gpuExactBatchRequested && !fasim_gpu_exact_repair_v1_runtime())
 	{
 		cerr << "FASIM_GPU_EXACT_BATCH_V1 requires FASIM_GPU_EXACT_REPAIR_V1=1" << endl;
@@ -27501,6 +27507,22 @@ int main(int argc, char* const* argv)
 							fasim_seconds_since(flushProbeStart);
 					}
 					FasimGpuExactAttemptWindow replacementWindow;
+					const StripedSmithWaterman::ForwardQueryContext *forwardQuery = NULL;
+#if defined(FASIM_WITH_SSW_FORWARD_CONTINUATION) || defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID)
+					StripedSmithWaterman::ForwardQueryContext preparedForwardQuery;
+					if (gpuExactQueryReuseRequested && !tasks.empty())
+					{
+						const auto prepareStart = std::chrono::steady_clock::now();
+						if (!aligner.PrepareForwardQuery(lncSeq.c_str(), &preparedForwardQuery))
+						{
+							cerr << "FASIM prepared CPU query failed" << endl;
+							std::exit(EXIT_FAILURE);
+						}
+						forwardQuery = &preparedForwardQuery;
+						++gpuExactBatchStats.cpu_query_prepares;
+						gpuExactBatchStats.cpu_query_prepare_seconds += fasim_seconds_since(prepareStart);
+					}
+#endif
 					size_t replacementWindowBegin = 0, replacementWindowEnd = 0;
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
@@ -27582,7 +27604,7 @@ int main(int argc, char* const* argv)
 													paraList,
 													writeFull,
 													&replacementResult,
-													&replacementError, prepared);
+													&replacementError, prepared, forwardQuery);
 											if (prepared != NULL)
 												replacementResult.total_seconds += prepared->planning_seconds +
 													prepared->telemetry.total_seconds;

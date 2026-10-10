@@ -346,8 +346,12 @@ build-fasim-gasal2: $(FASIM_GASAL2_TARGET)
 FASIM_GPU_EXACT_REPAIR_TARGET ?= .tmp/fasim_gpu_exact_repair_v1
 FASIM_GPU_EXACT_REPAIR_TEST ?= .tmp/test_gpu_exact_repair_endpoints
 FASIM_GPU_EXACT_BATCH_TARGET ?= .tmp/fasim_gpu_exact_batch_v1
+FASIM_GPU_EXACT_HOST_TARGET ?= .tmp/fasim_gpu_exact_host_v1
 
-.PHONY: build-fasim-gpu-exact-repair build-gpu-exact-repair-test build-fasim-gpu-exact-batch
+.PHONY: build-fasim-gpu-exact-repair build-gpu-exact-repair-test build-fasim-gpu-exact-batch build-fasim-gpu-exact-host
+build-fasim-gpu-exact-host:
+	$(MAKE) build-fasim-gpu-exact-repair FASIM_GPU_EXACT_REPAIR_TARGET=$(FASIM_GPU_EXACT_HOST_TARGET)
+
 build-fasim-gpu-exact-batch:
 	$(MAKE) build-fasim-gpu-exact-repair FASIM_GPU_EXACT_REPAIR_TARGET=$(FASIM_GPU_EXACT_BATCH_TARGET)
 

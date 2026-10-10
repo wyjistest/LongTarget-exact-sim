@@ -919,6 +919,95 @@ namespace StripedSmithWaterman {
 
 #if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
 	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+	struct ForwardQueryContext::Impl {
+		const Aligner* owner = NULL;
+		uint64_t matrix_generation = 0;
+		std::string query;
+		std::vector<int8_t> encoded;
+		std::vector<int8_t> matrix;
+		s_profile* profile = NULL;
+		~Impl() { if (profile != NULL) init_destroy(profile); }
+	};
+
+	ForwardQueryContext::ForwardQueryContext() {}
+	ForwardQueryContext::~ForwardQueryContext() {}
+	bool ForwardQueryContext::MatchesQuery(const std::string& query) const {
+		return impl_ && impl_->query == query;
+	}
+
+	bool Aligner::PrepareForwardQuery(const char* query, ForwardQueryContext* context) const {
+		if (context == NULL) return false;
+		context->impl_.reset();
+		if (query == NULL || translation_matrix_ == NULL || score_matrix_ == NULL ||
+			score_matrix_size_ <= 0) return false;
+		const size_t length = strlen(query);
+		if (length == 0 || length > static_cast<size_t>(std::numeric_limits<int>::max()))
+			return false;
+		std::unique_ptr<ForwardQueryContext::Impl> prepared(new ForwardQueryContext::Impl);
+		prepared->owner = this;
+		prepared->matrix_generation = matrix_generation_;
+		prepared->query.assign(query, length);
+		prepared->encoded.resize(length);
+		TranslateBase(query, static_cast<int>(length), prepared->encoded.data());
+		prepared->matrix.assign(score_matrix_,
+			score_matrix_ + static_cast<size_t>(score_matrix_size_) * score_matrix_size_);
+		prepared->profile = ssw_init(prepared->encoded.data(), static_cast<int>(length),
+			prepared->matrix.data(), score_matrix_size_, 2);
+		if (prepared->profile == NULL) return false;
+		context->impl_ = std::move(prepared);
+		return true;
+	}
+
+	static bool ValidForwardEndpoint(const ForwardEndpoint& endpoint) {
+		return endpoint.score1 >= 0 &&
+			endpoint.score1 <= std::numeric_limits<uint16_t>::max() &&
+			endpoint.score2 >= 0 &&
+			endpoint.score2 <= std::numeric_limits<uint16_t>::max() &&
+			(endpoint.numeric_path == SSW_FORWARD_NUMERIC_PATH_BYTE8 ||
+			 endpoint.numeric_path == SSW_FORWARD_NUMERIC_PATH_WORD16);
+	}
+
+	static bool FinishForwardContinuation(const s_profile* profile, int query_len,
+		const int8_t* translated_ref, int ref_len, const Filter& filter,
+		const ForwardEndpoint& endpoint, Alignment* alignment, int32_t maskLen,
+		uint8_t gap_opening, uint8_t gap_extending) {
+		uint8_t flag = 0;
+		SetFlag(filter, &flag);
+		ssw_forward_endpoint raw_endpoint;
+		raw_endpoint.score1 = static_cast<uint16_t>(endpoint.score1);
+		raw_endpoint.score2 = static_cast<uint16_t>(endpoint.score2);
+		raw_endpoint.ref_end1 = endpoint.ref_end1;
+		raw_endpoint.read_end1 = endpoint.query_end1;
+		raw_endpoint.ref_end2 = endpoint.ref_end2;
+		raw_endpoint.numeric_path = static_cast<uint8_t>(endpoint.numeric_path);
+		s_align* raw_alignment = ssw_align_from_forward(profile, translated_ref,
+			ref_len, gap_opening, gap_extending, flag,
+			filter.score_filter, filter.distance_filter, maskLen, &raw_endpoint);
+		alignment->Clear();
+		const bool success = raw_alignment != NULL;
+		if (success) {
+			ConvertAlignment(*raw_alignment, query_len, alignment);
+			align_destroy(raw_alignment);
+		}
+		return success;
+	}
+
+	bool Aligner::AlignFromForward(const ForwardQueryContext& query, const char* ref,
+		const int& ref_len, const Filter& filter, const ForwardEndpoint& endpoint,
+		Alignment* alignment, const int32_t maskLen) const {
+		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
+		if (!translation_matrix_ || !query.impl_ || query.impl_->owner != this ||
+			query.impl_->matrix_generation != matrix_generation_ || ref == NULL ||
+			alignment == NULL || ref_len <= 0 || !ValidForwardEndpoint(endpoint))
+			return false;
+		std::unique_ptr<int8_t[]> translated_ref(new int8_t[ref_len]);
+		TranslateBase(ref, ref_len, translated_ref.get());
+		return FinishForwardContinuation(query.impl_->profile,
+			static_cast<int>(query.impl_->encoded.size()), translated_ref.get(),
+			ref_len, filter, endpoint, alignment, maskLen,
+			gap_opening_penalty_, gap_extending_penalty_);
+	}
+
 	bool Aligner::AlignFromForward(const char* query, const char* ref,
 		const int& ref_len, const Filter& filter,
 		const ForwardEndpoint& endpoint, Alignment* alignment,
@@ -926,13 +1015,7 @@ namespace StripedSmithWaterman {
 	{
 		AuthorityProfileScope authority_scope(FASIM_AUTHORITY_STAGE_BACKEND_BRIDGE);
 		if (!translation_matrix_ || query == NULL || ref == NULL ||
-			alignment == NULL || ref_len <= 0 ||
-			endpoint.score1 < 0 ||
-			endpoint.score1 > std::numeric_limits<uint16_t>::max() ||
-			endpoint.score2 < 0 ||
-			endpoint.score2 > std::numeric_limits<uint16_t>::max() ||
-			(endpoint.numeric_path != SSW_FORWARD_NUMERIC_PATH_BYTE8 &&
-			 endpoint.numeric_path != SSW_FORWARD_NUMERIC_PATH_WORD16)) {
+			alignment == NULL || ref_len <= 0 || !ValidForwardEndpoint(endpoint)) {
 			return false;
 		}
 
@@ -955,26 +1038,9 @@ namespace StripedSmithWaterman {
 			ssw_init(translated_query, query_len, score_matrix_,
 				score_matrix_size_, score_size);
 
-		uint8_t flag = 0;
-		SetFlag(filter, &flag);
-		ssw_forward_endpoint raw_endpoint;
-		raw_endpoint.score1 = static_cast<uint16_t>(endpoint.score1);
-		raw_endpoint.score2 = static_cast<uint16_t>(endpoint.score2);
-		raw_endpoint.ref_end1 = endpoint.ref_end1;
-		raw_endpoint.read_end1 = endpoint.query_end1;
-		raw_endpoint.ref_end2 = endpoint.ref_end2;
-		raw_endpoint.numeric_path = static_cast<uint8_t>(endpoint.numeric_path);
-		s_align* raw_alignment = ssw_align_from_forward(profile, translated_ref,
-			ref_len, static_cast<int>(gap_opening_penalty_),
-			static_cast<int>(gap_extending_penalty_), flag,
-			filter.score_filter, filter.distance_filter, maskLen, &raw_endpoint);
-
-		alignment->Clear();
-		const bool success = raw_alignment != NULL;
-		if (success) {
-			ConvertAlignment(*raw_alignment, query_len, alignment);
-			align_destroy(raw_alignment);
-		}
+		const bool success = FinishForwardContinuation(profile, query_len, translated_ref,
+			ref_len, filter, endpoint, alignment, maskLen,
+			gap_opening_penalty_, gap_extending_penalty_);
 		delete[] translated_query;
 		delete[] translated_ref;
 		if (!profileCacheEnabled) init_destroy(profile);
@@ -1048,6 +1114,10 @@ namespace StripedSmithWaterman {
 	}
 
 	void Aligner::ClearMatrices(void) {
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+		++matrix_generation_;
+#endif
 		delete[] score_matrix_;
 		score_matrix_ = NULL;
 

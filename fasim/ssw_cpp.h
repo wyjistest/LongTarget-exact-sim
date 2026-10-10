@@ -8,8 +8,10 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace StripedSmithWaterman {
+	class ForwardQueryContext;
 
 	struct Alignment {
 		uint16_t sw_score;           // The best alignment score
@@ -57,6 +59,22 @@ namespace StripedSmithWaterman {
 		int query_end1;
 		int ref_end2;
 		int numeric_path;
+	};
+
+	// Owns the encoded query, scoring matrix and full-query profile. Valid
+	// for the preparing Aligner's lifetime, until its matrices are rebuilt.
+	// Reverse-prefix profiles and traceback remain per-alignment operations.
+	class ForwardQueryContext {
+	public:
+		ForwardQueryContext();
+		~ForwardQueryContext();
+		bool MatchesQuery(const std::string& query) const;
+		ForwardQueryContext(const ForwardQueryContext&) = delete;
+		ForwardQueryContext& operator=(const ForwardQueryContext&) = delete;
+	private:
+		friend class Aligner;
+		struct Impl;
+		std::unique_ptr<Impl> impl_;
 	};
 #endif
 
@@ -182,6 +200,10 @@ namespace StripedSmithWaterman {
 		bool AlignFromForward(const char* query, const char* ref, const int& ref_len,
 			const Filter& filter, const ForwardEndpoint& endpoint,
 			Alignment* alignment, const int32_t maskLen) const;
+		bool PrepareForwardQuery(const char* query, ForwardQueryContext* context) const;
+		bool AlignFromForward(const ForwardQueryContext& query, const char* ref,
+			const int& ref_len, const Filter& filter, const ForwardEndpoint& endpoint,
+			Alignment* alignment, const int32_t maskLen) const;
 #endif
 		// @function use this function to get all sub-optimal alignments whose 
 		// score is larger than threshold. Highly similar with Align, but just gather
@@ -227,6 +249,10 @@ namespace StripedSmithWaterman {
 			const int&    translation_matrix_size);
 
 	private:
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
+		uint64_t matrix_generation_ = 0;
+#endif
 		int8_t* score_matrix_;
 		int     score_matrix_size_;
 		int8_t* translation_matrix_;
