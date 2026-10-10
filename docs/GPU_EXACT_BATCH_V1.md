@@ -112,6 +112,53 @@ python3 scripts/check_gpu_exact_batch_v1.py \
   --work /new/benchmark
 ```
 
+## Batch-size sweep
+
+Full `w010`, consumer TSV and CPU oracle disabled, one run per size:
+
+| Attempt limit | Endpoint batches | End-to-end seconds |
+| ---: | ---: | ---: |
+| 1,024 | 12,959 | 89.8098 |
+| 4,096 | 3,135 | 83.3020 |
+| 8,192 | 1,569 | 82.2818 |
+
+All three outputs match the frozen CPU digest. Evidence: `sweep01`.
+The default remains 4,096: it substantially reduces submissions, while the
+single 8,192 run only improves wall time by 1.02 s (about 1.2%) and uses larger
+temporary buffers. That small difference is not treated as a reliable
+general advantage on this shared machine. No workload-specific dispatch was
+introduced. The separate AB/BA comparison uses 4,096.
+
+## Full AB/BA result
+
+The final comparison used the frozen repair executable and the released
+batching executable on the same GPU, in old/new/new/old order:
+
+| Order | Frozen repair (s) | Cross-task batch 4,096 (s) |
+| --- | ---: | ---: |
+| AB | 160.8916 | 83.6845 |
+| BA | 160.4299 | 83.6559 |
+| Median | 160.6608 | 83.6702 |
+
+The ratio of medians is **1.9202x additional speedup**, or **47.92% less wall
+time**. All four complete outputs match the frozen CPU file digest. Evidence:
+`benchmark01/performance.json`, `benchmark01/summary.json`, and individual
+run receipts. No per-task consumer report or in-process CPU oracle was enabled.
+
+The prior repair's roughly 137 s timing was from an earlier measurement period;
+it is not the denominator for this ratio. Another GPU context and CPU jobs were
+present during this comparison, so this is a same-session shared-server result,
+not an exclusive-device or general workload claim. Two repetitions per backend
+were stable here; no new comparison with OpenMP or serial CPU is claimed.
+
+Implementation commit: `b90ec0b2a6d287d101e4e7b5f1a783e535b9d7e7`.
+
+Released executable:
+`/data/wenyujianData/linjieData/longtarget_runs/gasal2_exact_batch_20261010_v1/release/fasim_gpu_exact_batch_v1`.
+
+Executable SHA-256:
+`2f7ccad8e2356859d9ab718296c3a26d71d7679a43ec74639add301db576159a`.
+
 ## Telemetry
 
 `benchmark.fasim_gpu_exact_batch_v1.*` records window/task/attempt/batch counts,
