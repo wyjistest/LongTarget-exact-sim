@@ -939,6 +939,54 @@ bool fasim_gasal2_score_attempts(
 	return false;
 }
 
+bool fasim_gasal2_streamed_attempt_score_v1(
+	const std::string &query,
+	const std::vector<FasimGasal2Attempt> &attempts,
+	std::vector<FasimGasal2StreamedAttemptScore> *scores,
+	FasimGasal2StreamedAttemptScoreTelemetry *telemetry,
+	std::string *errorOut)
+{
+	(void)query;
+	(void)attempts;
+	if (scores != NULL)
+	{
+		scores->clear();
+	}
+	if (telemetry != NULL)
+	{
+		telemetry->error = "gasal2_unavailable";
+	}
+	if (errorOut != NULL)
+	{
+		*errorOut = "gasal2_unavailable";
+	}
+	return false;
+}
+
+bool fasim_gasal2_consumer_spike_select_from_scores(
+	const std::vector<FasimGasal2Attempt> &attempts,
+	const std::vector<FasimGasal2ScoreOnlyAlignment> &scores,
+	std::vector<size_t> *selectedAttemptIndexes,
+	std::vector<std::string> *selectionReasons,
+	std::string *errorOut)
+{
+	(void)attempts;
+	(void)scores;
+	if (selectedAttemptIndexes != NULL)
+	{
+		selectedAttemptIndexes->clear();
+	}
+	if (selectionReasons != NULL)
+	{
+		selectionReasons->clear();
+	}
+	if (errorOut != NULL)
+	{
+		*errorOut = "gasal2_unavailable";
+	}
+	return false;
+}
+
 void fasim_gasal2_record_attempt_consumer_shadow_request(
 	uint64_t tasks,
 	uint64_t scoreInfos,

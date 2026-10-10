@@ -330,7 +330,6 @@ string transferStringTableOptIn(const string &seq1, int strand, int Para, int ru
 string transferString(const string &seq1, int strand, int Para, int rule)
 {
 	const char *tmp = NULL;
-	int i = 0;
 	string tmpSeq;
 	if (Para >= 0)
 	{
@@ -518,32 +517,35 @@ string transferString(const string &seq1, int strand, int Para, int rule)
 	{
 		exit(1);
 	}
-	for (i = 0; i < seq1.size(); i++)
+	// Avoid a string allocation/copy per base with the legacy COW string ABI.
+	tmpSeq.resize(seq1.size());
+	char *destination = tmpSeq.empty() ? NULL : &tmpSeq[0];
+	for (size_t i = 0; i < seq1.size(); i++)
 	{
 		const char base = static_cast<char>(toupper(static_cast<unsigned char>(seq1[i])));
 		if (base == tmp[0])
 		{
-			tmpSeq = tmpSeq + tmp[5];
+			destination[i] = tmp[5];
 		}
 		else if (base == tmp[1])
 		{
-			tmpSeq = tmpSeq + tmp[6];
+			destination[i] = tmp[6];
 		}
 		else if (base == tmp[2])
 		{
-			tmpSeq = tmpSeq + tmp[7];
+			destination[i] = tmp[7];
 		}
 		else if (base == tmp[3])
 		{
-			tmpSeq = tmpSeq + tmp[8];
+			destination[i] = tmp[8];
 		}
 		else if (base == tmp[4])
 		{
-			tmpSeq = tmpSeq + tmp[9];
+			destination[i] = tmp[9];
 		}
 		else
 		{
-			tmpSeq = tmpSeq + 'N';
+			destination[i] = 'N';
 		}
 	}
 	if (tmpSeq.size() != seq1.size())

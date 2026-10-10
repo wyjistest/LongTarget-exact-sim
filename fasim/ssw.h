@@ -128,7 +128,8 @@ extern "C" {
 		const int32_t filterd,
 		const int32_t maskLen);
 
-#ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
+#if defined(FASIM_WITH_SSW_CUDA_FORWARD_HYBRID) || \
+	defined(FASIM_WITH_SSW_FORWARD_CONTINUATION)
 	typedef enum {
 		SSW_FORWARD_NUMERIC_PATH_BYTE8 = 1,
 		SSW_FORWARD_NUMERIC_PATH_WORD16 = 2

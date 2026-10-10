@@ -30,6 +30,19 @@ struct PreAlignCudaPeak
   int position;
 };
 
+// Endpoint-only result for a full-query x target-subview request.  `position`
+// is the zero-based local target end; the query end is returned separately by
+// prealign_cuda_find_max_endpoints_batch because the legacy peak ABI is used
+// by several existing callers.
+struct PreAlignCudaAttemptEndpoint
+{
+  int score;
+  int targetEnd;
+  int queryEnd;
+
+  PreAlignCudaAttemptEndpoint():score(0),targetEnd(-1),queryEnd(0) {}
+};
+
 struct PreAlignCudaAttemptDescriptor
 {
   LONGTARGET_PREALIGN_CUDA_HOST_DEVICE PreAlignCudaAttemptDescriptor():
@@ -433,6 +446,17 @@ bool prealign_cuda_find_max_scores_batch(const PreAlignCudaQueryHandle &handle,
                                          std::vector<int> *outScores,
                                          PreAlignCudaBatchResult *batchResult,
                                          std::string *errorOut);
+
+// Runs the full-query DP against one target subview per task and returns the
+// exact score/end-point projection needed by the long-query consumer state
+// machine.  This is intentionally separate from GASAL2's single-shot API.
+bool prealign_cuda_find_max_endpoints_batch(const PreAlignCudaQueryHandle &handle,
+                                            const uint8_t *encodedTargetsHost,
+                                            int taskCount,
+                                            int targetLength,
+                                            std::vector<PreAlignCudaAttemptEndpoint> *outEndpoints,
+                                            PreAlignCudaBatchResult *batchResult,
+                                            std::string *errorOut);
 
 bool prealign_cuda_find_max_scores_global_state_batch(const PreAlignCudaQueryHandle &handle,
                                                       const uint8_t *encodedTargetsHost,
