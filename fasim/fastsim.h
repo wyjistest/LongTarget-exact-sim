@@ -10,6 +10,7 @@
 #include "ssw_oracle_trace.h"
 #include "sim.h"
 #include "gasal2_align_bridge.h"
+#include "gpu_exact_batch.h"
 #ifdef FASIM_WITH_SSW_CUDA_FORWARD_HYBRID
 #include "ssw_cuda/ssw_cuda_forward_hybrid.h"
 #endif
@@ -2838,7 +2839,8 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	const struct para &paraList,
 	bool materializeAlignmentStrings,
 	FasimLongQueryGpuConsumerSpikeResult *result,
-	std::string *errorOut)
+	std::string *errorOut,
+	const FasimGpuExactPreparedTask *prepared = NULL)
 {
 	FasimLongQueryGpuConsumerSpikeResult localResult;
 	if (result == NULL)
@@ -2855,6 +2857,12 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 	const std::chrono::steady_clock::time_point totalStart =
 		std::chrono::steady_clock::now();
 
+	if (prepared != NULL && !prepared->matches(strA, strB, finalScoreInfo, ntMin))
+	{
+		result->error = "prepared_attempt_task_mismatch";
+		if (errorOut != NULL) *errorOut = result->error;
+		return false;
+	}
 	if (finalScoreInfo.empty())
 	{
 		result->ok = true;
@@ -2873,43 +2881,11 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4
 	};
 
-	std::vector<FasimGasal2Attempt> attempts;
-	attempts.reserve(finalScoreInfo.size() * 5);
-	for (size_t scoreInfoIndex = 0;
-	     scoreInfoIndex < finalScoreInfo.size();
-	     ++scoreInfoIndex)
-	{
-		const StripedSmithWaterman::scoreInfo &scoreInfo =
-			finalScoreInfo[scoreInfoIndex];
-		float identity = 0.6f;
-		int identityRound = 0;
-		while (identity <= 1.0f)
-		{
-			int cutlength = static_cast<int>(scoreInfo.score + 24) /
-				(9 * identity - 4) + 1;
-			cutlength = scoreInfo.position - cutlength + 1 > 0 ?
-				cutlength : scoreInfo.position + 1;
-			const int start = scoreInfo.position - cutlength + 1;
-			if (start >= 0 && cutlength > 0 &&
-				start + cutlength <= static_cast<int>(strB.size()))
-			{
-				FasimGasal2Attempt attempt;
-				attempt.scoreinfo_index = static_cast<int>(scoreInfoIndex);
-				attempt.cutlength = cutlength;
-				attempt.start = start;
-				attempt.prealign_score = scoreInfo.score;
-				attempt.target_end_required_for_fallback = cutlength - 1;
-				attempt.nt_min_length = ntMin;
-				attempt.identity_round = identityRound;
-				attempt.set_target_view(&strB,
-				                        static_cast<size_t>(start),
-				                        static_cast<size_t>(cutlength));
-				attempts.push_back(attempt);
-			}
-			identity += 0.1f;
-			++identityRound;
-		}
-	}
+	std::vector<FasimGasal2Attempt> ownedAttempts;
+	if (prepared == NULL)
+		fasim_gpu_exact_plan_attempts(strB, finalScoreInfo, ntMin, ownedAttempts);
+	const std::vector<FasimGasal2Attempt> &attempts =
+		prepared == NULL ? ownedAttempts : prepared->attempts;
 	result->scoreinfo_groups = static_cast<uint64_t>(finalScoreInfo.size());
 	result->attempts = static_cast<uint64_t>(attempts.size());
 	if (attempts.empty())
@@ -2921,13 +2897,17 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 		return false;
 	}
 
-	std::vector<FasimGasal2StreamedAttemptScore> endpointScores;
+	std::vector<FasimGasal2StreamedAttemptScore> ownedEndpointScores;
+	const std::vector<FasimGasal2StreamedAttemptScore> &endpointScores =
+		prepared == NULL ? ownedEndpointScores : prepared->endpoints;
 	FasimGasal2StreamedAttemptScoreTelemetry endpointTelemetry;
 	std::string bridgeError;
 	const std::chrono::steady_clock::time_point scoreStart =
 		std::chrono::steady_clock::now();
-	if (!fasim_gasal2_streamed_attempt_score_v1(
-			strA, attempts, &endpointScores, &endpointTelemetry, &bridgeError))
+	if (prepared != NULL)
+		endpointTelemetry = prepared->telemetry;
+	else if (!fasim_gasal2_streamed_attempt_score_v1(
+			strA, attempts, &ownedEndpointScores, &endpointTelemetry, &bridgeError))
 	{
 		result->error = bridgeError.empty() ?
 			"streamed_attempt_score_failed" : bridgeError;
@@ -2938,8 +2918,9 @@ inline bool fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 			std::chrono::steady_clock::now() - totalStart).count();
 		return false;
 	}
-	result->score_seconds = std::chrono::duration<double>(
-		std::chrono::steady_clock::now() - scoreStart).count();
+	result->score_seconds = prepared != NULL ? endpointTelemetry.total_seconds :
+		std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - scoreStart).count();
 	result->gpu_scored_attempts = endpointTelemetry.gpu_scored_requests;
 	result->endpoint_batches = endpointTelemetry.batches;
 	result->gpu_kernel_seconds = endpointTelemetry.gpu_seconds;

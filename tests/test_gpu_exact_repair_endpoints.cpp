@@ -1,4 +1,5 @@
 #include "fasim/gasal2_align_bridge.h"
+#include "fasim/gpu_exact_batch.h"
 #include "fasim/ssw_cpp.h"
 #include "fasim/ssw.h"
 #include <algorithm>
@@ -24,7 +25,97 @@ static std::vector<int8_t> encode(const std::string &s) {
     return result;
 }
 
+static void check_batch_planner() {
+    const std::string query(129, 'A'), target(129, 'A');
+    const std::vector<StripedSmithWaterman::scoreInfo> infos = {{61, 100}};
+    FasimGpuExactAttemptWindow window;
+    if (!window.append(11, query, target, infos, 20, 7) || window.attempt_count != 4)
+        throw std::runtime_error("planner lost the historical four rounds");
+    const int lengths[] = {61, 37, 27, 21};
+    const int starts[] = {40, 64, 74, 80};
+    for (size_t i = 0; i < 4; ++i) {
+        const auto &a = window.tasks[0].attempts[i];
+        if (a.cutlength != lengths[i] || a.start != starts[i] ||
+            a.identity_round != static_cast<int>(i) || a.target_source != &target ||
+            a.target_offset != static_cast<size_t>(starts[i]))
+            throw std::runtime_error("frozen attempt geometry changed");
+    }
+    if (window.append(12, query, target, infos, 20, 7) || window.attempt_count != 4)
+        throw std::runtime_error("batch limit lost a task boundary");
+    FasimGpuExactAttemptWindow oversized;
+    if (!oversized.append(12, query, target, infos, 20, 1) || oversized.attempt_count != 4)
+        throw std::runtime_error("single oversized task was dropped");
+    if (window.tasks[0].matches(query, target, infos, 20))
+        throw std::runtime_error("unscored task was marked ready");
+    std::cerr << "cross_task_planner_boundaries=pass\n";
+}
+
 #ifndef FASIM_REPAIR_TEST_CPU_ONLY
+static void check_cross_task_batches() {
+    const std::string query(129, 'A');
+    const std::vector<std::string> targets = {
+        "A", "", std::string(17, 'A'), std::string(50, 'A'),
+        std::string(51, 'A'), std::string(129, 'A'), "CCCAAAUUuNAAA",
+        std::string(70, 'C'), "", "NAAANAAANAAA"
+    };
+    std::vector<std::vector<StripedSmithWaterman::scoreInfo> > infos(targets.size());
+    std::vector<std::vector<FasimGasal2StreamedAttemptScore> > expected(targets.size());
+    std::string error;
+    for (size_t t = 0; t < targets.size(); ++t) {
+        if (targets[t].empty()) continue;
+        infos[t] = {{645, static_cast<int>(targets[t].size()) - 1},
+                    {20, static_cast<int>(targets[t].size()) - 1}};
+        std::vector<FasimGasal2Attempt> attempts;
+        fasim_gpu_exact_plan_attempts(targets[t], infos[t], 20, attempts);
+        if (!fasim_gasal2_streamed_attempt_score_v1(query, attempts, &expected[t], NULL, &error))
+            throw std::runtime_error("serial batch control: " + error);
+    }
+    for (int limit : {1, 7, 16, 1024, 4096, 8192}) {
+        const std::string setting = std::to_string(limit);
+        setenv("FASIM_LONG_QUERY_STREAMED_ATTEMPT_BATCH", setting.c_str(), 1);
+        for (size_t begin = 0; begin < targets.size();) {
+            FasimGpuExactAttemptWindow window;
+            size_t end = begin;
+            while (end < targets.size() && window.append(100 + end, query, targets[end],
+                   infos[end], 20, limit)) {
+                ++end;
+                if (window.attempt_count >= static_cast<size_t>(limit)) break;
+            }
+            if (!window.score(&error)) throw std::runtime_error("cross-task batch: " + error);
+            uint64_t batches = 0, requests = 0;
+            for (size_t t = begin; t < end; ++t) {
+                const auto &task = window.tasks[t - begin];
+                if (task.task_index != 100 + t || !task.matches(query, targets[t], infos[t], 20) ||
+                    task.endpoints.size() != expected[t].size())
+                    throw std::runtime_error("cross-task mapping mismatch");
+                if (task.matches(query, targets[t], infos[t], 21))
+                    throw std::runtime_error("prepared task accepted the wrong context");
+                for (size_t i = 0; i < expected[t].size(); ++i) {
+                    const auto &a = expected[t][i], &b = task.endpoints[i];
+                    if (a.score != b.score || a.query_end != b.query_end ||
+                        a.ref_end_local != b.ref_end_local || a.ref_end_global != b.ref_end_global ||
+                        a.numeric_path != b.numeric_path)
+                        throw std::runtime_error("cross-task endpoint tuple mismatch");
+                }
+                batches += task.telemetry.batches;
+                requests += task.telemetry.gpu_scored_requests;
+            }
+            if (batches != window.telemetry.batches || requests != window.attempt_count)
+                throw std::runtime_error("batch telemetry double-counted or missing");
+            begin = end;
+        }
+    }
+    unsetenv("FASIM_LONG_QUERY_STREAMED_ATTEMPT_BATCH");
+    FasimGpuExactAttemptWindow empty;
+    if (empty.score(&error)) throw std::runtime_error("empty window accepted");
+    const std::string anotherQuery = query;
+    FasimGpuExactAttemptWindow mixed;
+    mixed.append(1, query, targets[0], infos[0], 20, 4096);
+    mixed.append(2, anotherQuery, targets[2], infos[2], 20, 4096);
+    if (mixed.score(&error)) throw std::runtime_error("mixed query contexts accepted");
+    std::cerr << "cross_task_ragged_numeric_mapping=pass limits=1,7,16,1024,4096,8192\n";
+}
+
 static void check_selection() {
     setenv("FASIM_ALIGN_GASAL2", "1", 1);
     const char *targets[] = {"A", "AA", "AAA", "AAAA", "AAA", "AAAT", "AAT", "CCCC", "GGGG"};
@@ -86,9 +177,11 @@ static void check_ragged_batch() {
 
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    check_batch_planner();
 #ifndef FASIM_REPAIR_TEST_CPU_ONLY
     check_selection();
     check_ragged_batch();
+    check_cross_task_batches();
 #endif
     std::ifstream input(argv[1]);
     std::string line;

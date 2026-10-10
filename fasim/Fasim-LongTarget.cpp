@@ -11108,6 +11108,13 @@ int main(int argc, char* const* argv)
 		fasim_long_query_gpu_consumer_spike_v1_runtime();
 	const bool longQueryGpuConsumerReplacementPrototypeRequested =
 		fasim_long_query_gpu_consumer_replacement_prototype_runtime();
+	const bool gpuExactBatchRequested = fasim_gpu_exact_batch_v1_runtime();
+	FasimGpuExactBatchStats gpuExactBatchStats;
+	if (gpuExactBatchRequested && !fasim_gpu_exact_repair_v1_runtime())
+	{
+		cerr << "FASIM_GPU_EXACT_BATCH_V1 requires FASIM_GPU_EXACT_REPAIR_V1=1" << endl;
+		return EXIT_FAILURE;
+	}
 	if (longQueryGpuConsumerSpikeV1Requested &&
 	    longQueryGpuConsumerReplacementPrototypeRequested)
 	{
@@ -27493,6 +27500,8 @@ int main(int argc, char* const* argv)
 						longQueryStreamingScoreInfoShadowStats.realpath_extend_flush_segmented_attempt_probe_seconds +=
 							fasim_seconds_since(flushProbeStart);
 					}
+					FasimGpuExactAttemptWindow replacementWindow;
+					size_t replacementWindowBegin = 0, replacementWindowEnd = 0;
 					for (size_t t = 0; t < tasks.size(); ++t)
 					{
 						StreamTask &task = tasks[t];
@@ -27520,7 +27529,37 @@ int main(int argc, char* const* argv)
 										}
 										else
 										{
-											replacementOk =
+											const FasimGpuExactPreparedTask *prepared = NULL;
+											if (gpuExactBatchRequested)
+											{
+												if (t >= replacementWindowEnd)
+												{
+													replacementWindow = FasimGpuExactAttemptWindow();
+													replacementWindowBegin = replacementWindowEnd = t;
+													const size_t limit = fasim_streamed_attempt_batch_limit_v1();
+													while (replacementWindowEnd < tasks.size() &&
+														replacementWindowEnd < streamingRealpathScoreInfos.size())
+													{
+														StreamTask &next = tasks[replacementWindowEnd];
+														if (!replacementWindow.append(next.taskIndex, lncSeq,
+															next.seq2, streamingRealpathScoreInfos[replacementWindowEnd],
+															paraList.ntMin, limit)) break;
+														++replacementWindowEnd;
+														if (replacementWindow.attempt_count >= limit) break;
+													}
+													if (replacementWindow.score(&replacementError))
+														gpuExactBatchStats.add(replacementWindow);
+												}
+												if (replacementError.empty())
+												{
+													const size_t index = t - replacementWindowBegin;
+													if (index >= replacementWindow.tasks.size() ||
+														replacementWindow.tasks[index].task_index != task.taskIndex)
+														replacementError = "prepared_attempt_task_order_mismatch";
+													else prepared = &replacementWindow.tasks[index];
+												}
+											}
+											if (replacementError.empty()) replacementOk =
 												fasim_long_query_gpu_consumer_spike_v1_from_scoreinfo(
 													aligner,
 													filter,
@@ -27543,7 +27582,10 @@ int main(int argc, char* const* argv)
 													paraList,
 													writeFull,
 													&replacementResult,
-													&replacementError);
+													&replacementError, prepared);
+											if (prepared != NULL)
+												replacementResult.total_seconds += prepared->planning_seconds +
+													prepared->telemetry.total_seconds;
 										}
 										if (!replacementError.empty() &&
 										    replacementResult.error == "none")
@@ -28635,6 +28677,7 @@ int main(int argc, char* const* argv)
 			}
 			end = clock();
 		cout << "finished normally" << endl;
+			if (gpuExactBatchRequested) gpuExactBatchStats.report(cerr);
 			cpu_time = ((float)(end - start)) / CLOCKS_PER_SEC;
 			cout<<"Running time is "<<cpu_time<<endl;
 			if (phaseTimingEnabled)

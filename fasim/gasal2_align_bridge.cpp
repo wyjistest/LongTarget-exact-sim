@@ -1,4 +1,5 @@
 #include "gasal2_align_bridge.h"
+#include "gpu_exact_batch.h"
 #include "gasal2_traceback_certificate.h"
 
 #include "gasal_header.h"
@@ -176,9 +177,7 @@ int streamed_attempt_cuda_device()
 
 int streamed_attempt_batch_size()
 {
-	const int configured = env_int_or_default(
-		"FASIM_LONG_QUERY_STREAMED_ATTEMPT_BATCH", 4096);
-	return std::max(1, std::min(configured, 32768));
+	return static_cast<int>(fasim_streamed_attempt_batch_limit_v1());
 }
 
 bool env_enabled(const char *name)
