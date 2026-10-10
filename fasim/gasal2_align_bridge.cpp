@@ -2626,6 +2626,9 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 
 	scores->assign(attempts.size(), FasimGasal2StreamedAttemptScore());
 	const int maxBatch = streamed_attempt_batch_size();
+	// Execution mode is fixed for this call. Do not scan the environment for
+	// every nucleotide in every overlapping target view.
+	const bool legacyExact = gpu_exact_repair_enabled();
 	for (size_t batchBegin = 0; batchBegin < attempts.size();
 	     batchBegin += static_cast<size_t>(maxBatch))
 	{
@@ -2669,7 +2672,7 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 			for (size_t base = 0; base < attempt.target_size(); ++base)
 			{
 				const unsigned char c = static_cast<unsigned char>(target[base]);
-				destination[base] = gpu_exact_repair_enabled() ?
+				destination[base] = legacyExact ?
 					prealign_shared_encode_ssw_base(c) : prealign_shared_encode_base(c);
 			}
 		}
@@ -2683,7 +2686,7 @@ bool fasim_gasal2_streamed_attempt_score_v1(
 				static_cast<int>(paddedTargetLength),
 				&endpointRows,
 				&batchResult,
-				&bridgeError, gpu_exact_repair_enabled(), targetLengths.data()))
+				&bridgeError, legacyExact, targetLengths.data()))
 		{
 			const std::string error = bridgeError.empty() ?
 				"streamed_attempt_score_failed" : bridgeError;
