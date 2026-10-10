@@ -113,6 +113,17 @@ that choice before execution, and supplies the actual long-query evidence.
 
 ## Performance
 
+Full-input AB/BA completed with four byte-identical outputs:
+
+| Run | CPU authority | GPU exact repair |
+| --- | ---: | ---: |
+| AB | 338.0294 s | 137.4910 s |
+| BA | 338.6481 s | 137.4149 s |
+
+The ratio of median wall times is **2.4615×**, or about 59.4% less wall time.
+This clears the bounded engineering 1.5× goal on `w010`, not the paper's 10×
+goal or its separate fresh-input acceptance requirements.
+
 The final full-input AB/BA receipt is `benchmark_final/performance.json`.
 It times CPU, candidate, candidate, CPU sequentially, without the per-task
 consumer TSV or in-process CPU oracle. Timing includes process/GPU startup,
